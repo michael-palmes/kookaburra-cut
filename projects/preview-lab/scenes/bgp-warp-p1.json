@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 warp Sandstone",
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#f4ede1", "#e3cfa9", "#ede2cd", "#dcc394"],
+    "speed": 0.4,
+    "params": {
+      "proportion": 0.5,
+      "softness": 1,
+      "distortion": 0.2,
+      "swirl": 0.6
+    },
+    "preset": "p1"
+  }
+}

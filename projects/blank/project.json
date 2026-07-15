@@ -1,0 +1,12 @@
+{
+  "id": "blank",
+  "name": "Blank",
+  "themeId": "kookaburra-default",
+  "formats": ["16:9", "9:16", "1:1"],
+  "scenes": [
+    {
+      "file": "scenes/01-headline.tsx",
+      "durationMs": 4000
+    }
+  ]
+}

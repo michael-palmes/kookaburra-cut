@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 warp Melaleuca",
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#eff4f0", "#c9dcd0", "#dfe9e2", "#b7d0c1"],
+    "speed": 0.45,
+    "params": {
+      "shape": 2,
+      "shapeScale": 0.2,
+      "swirl": 0.7,
+      "distortion": 0.3,
+      "softness": 0.8
+    },
+    "preset": "p3"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "youtube",
+  "name": "YouTube",
+  "description": "Top-shelf 4K for YouTube — the two-pass encode gets the best picture the platform will keep.",
+  "platform": "YouTube",
+  "favouredAspect": "16:9",
+  "allowedAspects": ["16:9"],
+  "notes": "Two-pass at native 4K60 — the slowest preset by design; YouTube's 2160p60 guidance is 53–68 Mbps.",
+  "video": {
+    "codec": "libx264",
+    "fps": 60,
+    "rate": { "targetKbps": 45000, "maxKbps": 60000, "bufsizeKbps": 90000, "twoPass": true },
+    "profile": "high",
+    "level": "5.2",
+    "gopSeconds": 2,
+    "bFrames": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 384 }, "loudnessTarget": -14 }
+}

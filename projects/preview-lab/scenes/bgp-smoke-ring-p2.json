@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Lake Hillier",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#f7eef0", "#e3b8c4"],
+    "speed": 0.35,
+    "params": {
+      "thickness": 0.45,
+      "radius": 0.32,
+      "innerShape": 1.4,
+      "noiseScale": 2
+    },
+    "preset": "p2"
+  }
+}

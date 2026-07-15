@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "id": "kookaburra-master",
+  "name": "Kookaburra Master",
+  "description": "The full-quality studio master — keeps every pixel for editing, archiving or re-encoding later.",
+  "platform": "Kookaburra Cut",
+  "favouredAspect": "16:9",
+  "allowedAspects": ["16:9", "9:16", "1:1", "4:5"],
+  "notes": "ProRes 422 HQ is fixed-quality — the rate field is ignored by the encoder.",
+  "video": {
+    "codec": "prores_ks",
+    "fps": 60,
+    "rate": { "crf": 0 },
+    "faststart": false,
+    "colourTags": true
+  },
+  "audio": { "codec": { "pcmBits": 24 } }
+}

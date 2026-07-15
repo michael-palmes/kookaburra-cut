@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Hinterland",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#f9fbfa", "#b8cdc9", "#e4ecea"],
+    "speed": 0.3,
+    "params": {
+      "brightness": 0.1,
+      "contrast": 0.12
+    },
+    "preset": "p4"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Southern Ocean",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#0a141c", "#1e3a50", "#38617f", "#12242f"],
+    "speed": 0.4,
+    "params": {
+      "bandCount": 5,
+      "twist": 0.16,
+      "softness": 0.3
+    },
+    "preset": "p6"
+  }
+}

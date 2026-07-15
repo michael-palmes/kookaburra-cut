@@ -1,0 +1,197 @@
+import {
+  parseBackdropSpec,
+  parseBackgroundSpec,
+  parseLightingOverride,
+  parseTextAnimationSpec,
+} from "../theme/schema";
+import type {
+  TextAnimationSpec,
+  ThemeBackdrop,
+  ThemeBackground,
+  ThemeLighting,
+} from "../theme/tokens";
+import type {
+  DeviceMediaSpec,
+  DeviceMotionSpec,
+  DevicePlacement,
+  DeviceShadowMode,
+} from "../toolkit/device/Device";
+
+/** The per-scene sidecar schema (`scenes/<stem>.json` beside a scene's TSX): holds everything machine-editable (name, text, devices, camera, duration), written atomically via `write_scene_doc`; this module is pure (types + validation only) so it's unit-testable and safe to import anywhere, with IO and hooks living in `sceneDoc.ts`. Field docs: the kookaburra-scene-authoring skill; rationale: docs/decisions.md. */
+
+/** Newest sidecar schema this build understands (newer docs are ignored with a warning). */
+export const SCENE_DOC_VERSION = 1;
+
+/** One device entry, deliberately shaped as `Device` props plus a stable id. */
+export interface SceneDocDeviceSpec {
+  id: string;
+  /** Catalog id, e.g. `"iphone-15-pro"` (unknown ids degrade inside `Device`). */
+  model: string;
+  colour?: string;
+  media?: DeviceMediaSpec;
+  placement?: DevicePlacement;
+  motion?: DeviceMotionSpec;
+  shadow?: DeviceShadowMode;
+  /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
+  lidDeg?: number;
+}
+
+export type SceneDocDuration =
+  | { mode: "manual" }
+  | { mode: "follow-media"; sourceDeviceId?: string };
+
+/** Orbit pose for the per-scene camera track. */
+export interface SceneDocCameraPose {
+  target: [number, number, number];
+  azimuthDeg: number;
+  elevationDeg: number;
+  distance: number;
+}
+
+export interface SceneDocCameraKey {
+  id: string;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: SceneDocCameraPose;
+}
+
+export interface SceneDocCameraSegment {
+  from: string;
+  to: string;
+  /** An `engine/ease.ts` name (anime.js v4 style) or `"jump"`. */
+  ease: string;
+}
+
+/** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
+export type SceneTextAlign = "left" | "center" | "right";
+
+export interface SceneDoc {
+  version: number;
+  /** Human name shown by pickers (scenes have no display name otherwise). */
+  name?: string;
+  duration?: SceneDocDuration;
+  /** Every user-visible string, keyed for `useSceneText` (the skill-mandated rule). */
+  text?: Record<string, string>;
+  /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
+  textLayout?: { align?: SceneTextAlign };
+  /** Raw-hex text fills keyed `<textKey>Color` (e.g. `titleColor`), the one narrow exception to "colours stay tokens"; consumed by text primitives given a matching `textKey`, inert otherwise. */
+  textStyle?: Record<string, string>;
+  devices?: SceneDocDeviceSpec[];
+  camera?: { keys: SceneDocCameraKey[]; segments: SceneDocCameraSegment[] };
+  /** Theme override for this scene: a theme id that swaps the whole theme (colours, typography, lighting, backdrop, effects base); absent falls back to the project's theme, and unknown ids degrade rather than crash. */
+  themeId?: string;
+  /** Staging override: replaces the theme's backdrop for this scene. */
+  backdrop?: ThemeBackdrop;
+  /** Fixed-background override: replaces the theme's camera-locked, frame-filling background for this scene (whole-value replacement, like `backdrop`); `{type:"none"}` cancels the theme's layer. */
+  background?: ThemeBackground;
+  /** Text-animation override: a whole spec replacing the theme's `textAnimation` for this scene (the backdrop pattern, what the picker writes); explicit per-primitive TSX props still win unless `textAnimationForce`. */
+  textAnimation?: TextAnimationSpec;
+  /** Flips the resolution order for this scene (the panel's Override): text primitives ignore their own TSX animation props and follow the sidecar/theme spec instead (timing props like `from`/`to`/`outAt` still apply); written when the user overrides coded motion, absent means the normal prop-wins order. */
+  textAnimationForce?: boolean;
+  /** Partial lighting override: each present field fully replaces the theme's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `key` + `shadow` override rather than a whole new theme. */
+  lighting?: Partial<ThemeLighting>;
+}
+
+/** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */
+export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    console.warn(`[sceneDoc] ${source}: not an object — ignored`);
+    return undefined;
+  }
+  const doc = raw as Record<string, unknown>;
+  if (typeof doc.version !== "number" || doc.version < 1) {
+    console.warn(`[sceneDoc] ${source}: missing/invalid "version" — ignored`);
+    return undefined;
+  }
+  if (doc.version > SCENE_DOC_VERSION) {
+    console.warn(
+      `[sceneDoc] ${source}: version ${doc.version} is newer than this Kookaburra Cut understands — ignored`,
+    );
+    return undefined;
+  }
+  const out: SceneDoc = { version: doc.version };
+  if (typeof doc.name === "string") out.name = doc.name;
+  const duration = doc.duration as SceneDocDuration | undefined;
+  if (duration && (duration.mode === "manual" || duration.mode === "follow-media")) {
+    out.duration = duration;
+  }
+  if (typeof doc.text === "object" && doc.text !== null && !Array.isArray(doc.text)) {
+    const text: Record<string, string> = {};
+    for (const [key, value] of Object.entries(doc.text as Record<string, unknown>)) {
+      if (typeof value === "string") text[key] = value;
+      else console.warn(`[sceneDoc] ${source}: text["${key}"] isn't a string — dropped`);
+    }
+    out.text = text;
+  }
+  if (
+    typeof doc.textLayout === "object" &&
+    doc.textLayout !== null &&
+    !Array.isArray(doc.textLayout)
+  ) {
+    const align = (doc.textLayout as Record<string, unknown>).align;
+    if (align === "left" || align === "center" || align === "right") {
+      out.textLayout = { align };
+    } else if (align !== undefined) {
+      console.warn(`[sceneDoc] ${source}: textLayout.align isn't left|center|right — dropped`);
+    }
+  }
+  if (
+    typeof doc.textStyle === "object" &&
+    doc.textStyle !== null &&
+    !Array.isArray(doc.textStyle)
+  ) {
+    const raw = doc.textStyle as Record<string, unknown>;
+    const textStyle: NonNullable<SceneDoc["textStyle"]> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (!key.endsWith("Color")) {
+        console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color key, dropped`);
+      } else if (typeof value === "string" && value.length > 0) {
+        textStyle[key] = value;
+      } else {
+        console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a non-empty string, dropped`);
+      }
+    }
+    if (Object.keys(textStyle).length > 0) out.textStyle = textStyle;
+  }
+  if (Array.isArray(doc.devices)) {
+    const devices: SceneDocDeviceSpec[] = [];
+    for (const entry of doc.devices as unknown[]) {
+      const device = entry as SceneDocDeviceSpec;
+      if (
+        device &&
+        typeof device === "object" &&
+        typeof device.id === "string" &&
+        typeof device.model === "string"
+      ) {
+        devices.push(device);
+      } else {
+        console.warn(`[sceneDoc] ${source}: device entry needs string "id" + "model" — dropped`);
+      }
+    }
+    out.devices = devices;
+  }
+  if (typeof doc.camera === "object" && doc.camera !== null) {
+    const camera = doc.camera as SceneDoc["camera"];
+    if (Array.isArray(camera?.keys) && Array.isArray(camera?.segments)) out.camera = camera;
+  }
+  if (typeof doc.themeId === "string" && doc.themeId.length > 0) out.themeId = doc.themeId;
+  if (doc.backdrop !== undefined) {
+    const backdrop = parseBackdropSpec(doc.backdrop, source);
+    if (backdrop) out.backdrop = backdrop;
+  }
+  if (doc.background !== undefined) {
+    // Sidecars may carry video fills (decision 5); themes may not.
+    const background = parseBackgroundSpec(doc.background, source, { video: true });
+    if (background) out.background = background;
+  }
+  if (doc.textAnimation !== undefined) {
+    const textAnimation = parseTextAnimationSpec(doc.textAnimation, source);
+    if (textAnimation) out.textAnimation = textAnimation;
+  }
+  if (doc.textAnimationForce === true) out.textAnimationForce = true;
+  if (doc.lighting !== undefined) {
+    const lighting = parseLightingOverride(doc.lighting, source);
+    if (lighting) out.lighting = lighting;
+  }
+  return out;
+}

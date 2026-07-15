@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 warp Bogong",
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#12100d", "#575145", "#242019", "#665f52"],
+    "speed": 0.35,
+    "params": {
+      "proportion": 0.55,
+      "softness": 0.85,
+      "distortion": 0.4,
+      "swirl": 1,
+      "swirlIterations": 16
+    },
+    "preset": "p9"
+  }
+}

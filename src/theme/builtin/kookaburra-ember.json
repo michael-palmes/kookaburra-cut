@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-ember",
+  "name": "Ember",
+  "mode": "dark",
+  "colors": {
+    "background": "#191512",
+    "text": "#f5ede4",
+    "accent": "#d9a441",
+    "muted": "#94867a"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#241c12", 0], ["#3a2c15", 1]]
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "Space Grotesk",
+      "weight": 600
+    },
+    "body": "Open Sans",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 220,
+      "base": 550,
+      "slow": 1000
+    },
+    "easings": {
+      "standard": "outQuad",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 70,
+    "startScale": 0.9,
+    "shine": true
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -25,
+      "elevationDeg": 40,
+      "intensity": 2.0,
+      "color": "#ffd9a0"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 135,
+        "elevationDeg": 25,
+        "intensity": 0.5,
+        "color": "#6a5340"
+      }
+    ],
+    "ambient": 0.45,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.8,
+      "opacity": 0.4,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#0d0805"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.6,
+    "rotationDeg": 0
+  },
+  "backdrop": {
+    "type": "floor",
+    "color": "#262220",
+    "filletRadius": 2.5
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.04
+  }
+}

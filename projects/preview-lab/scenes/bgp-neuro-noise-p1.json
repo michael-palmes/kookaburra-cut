@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Snowgum",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#ffffff", "#ccd9d2", "#ecf1ee"],
+    "speed": 0.4,
+    "params": {
+      "brightness": 0.08,
+      "contrast": 0.15
+    },
+    "preset": "p1"
+  }
+}

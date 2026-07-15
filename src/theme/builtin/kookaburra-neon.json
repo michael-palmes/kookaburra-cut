@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "id": "kookaburra-neon",
+  "name": "Neon",
+  "mode": "dark",
+  "colors": {
+    "background": "#000000",
+    "text": "#f5f7fa",
+    "accent": "#a3e635",
+    "muted": "#9aa3b5"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#0a0f00", 0], ["#1d2b06", 1]]
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "JetBrains Mono",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 160,
+      "base": 420,
+      "slow": 800
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "scatter-scale",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -20,
+      "elevationDeg": 48,
+      "intensity": 1.6,
+      "color": "#cfe8ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 150,
+        "elevationDeg": 20,
+        "intensity": 0.6,
+        "color": "#b9ff66"
+      }
+    ],
+    "ambient": 0.3
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.6,
+    "rotationDeg": 0
+  },
+  "effects": {
+    "bloom": {
+      "intensity": 0.9,
+      "luminanceThreshold": 0.85,
+      "luminanceSmoothing": 0.3
+    }
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.05
+  }
+}

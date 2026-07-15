@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "linkedin-organic",
+  "name": "LinkedIn",
+  "description": "Portrait video for your LinkedIn page and posts — crisp on phones and desktop alike.",
+  "platform": "LinkedIn",
+  "favouredAspect": "9:16",
+  "allowedAspects": ["9:16", "4:5", "1:1"],
+  "video": {
+    "codec": "libx264",
+    "scaleShortEdgeTo": 1080,
+    "fps": 30,
+    "rate": { "targetKbps": 10000, "maxKbps": 12000, "bufsizeKbps": 20000 },
+    "profile": "high",
+    "level": "4.2",
+    "gopSeconds": 2,
+    "bFrames": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 128 }, "loudnessTarget": -14 }
+}

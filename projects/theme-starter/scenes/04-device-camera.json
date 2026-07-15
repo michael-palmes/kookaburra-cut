@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "Device + camera move",
+  "text": {
+    "headline": "Get closer"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "deep-blue",
+      "media": { "src": "assets/sample-phone-recording.mp4", "kind": "video", "startMs": 1200 },
+      "placement": { "rotationDeg": [0, 0, 0] },
+      "motion": { "preset": "float", "amplitude": 0.05, "hz": 0.3 }
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 16, "elevationDeg": 6, "distance": 5.8 }
+      },
+      {
+        "id": "k2",
+        "tMs": 2600,
+        "pose": { "target": [0, 0.2, 0], "azimuthDeg": -8, "elevationDeg": 2, "distance": 4.8 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "inOutQuad" }]
+  }
+}

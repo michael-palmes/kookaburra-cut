@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 warp Top End",
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#0a1418", "#25525c", "#132630", "#366a72"],
+    "speed": 0.45,
+    "params": {
+      "shape": 1,
+      "shapeScale": 0.3,
+      "swirl": 0.75,
+      "softness": 0.8,
+      "swirlIterations": 12
+    },
+    "preset": "p7"
+  }
+}

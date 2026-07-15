@@ -1,0 +1,518 @@
+//! Non-destructive mini video editor: an edit is a JSON document under a project's `edits/` folder describing trim/reorder/retime of clips cut from `assets/` source videos (never modified), edited in a second Tauri window (label `editor`); the flatten render uses `libx264 -crf 18 -preset veryfast` and is NOT part of the byte-identical export path, but re-entering as a `VideoClip` source deterministically re-extracts to a CFR-60 PNG sequence, so a rendered edit still passes `Verify ×2`.
+
+use std::path::Path;
+use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
+
+use crate::media;
+use crate::workspace::{self, SettingsState};
+
+/// A source video referenced by an edit (read-only; identified by `id`, located by `rel`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditSource {
+    pub id: String,
+    pub rel: String,
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+    pub duration_ms: u64,
+    /// Resolved absolute path, filled in server-side before a render. Never persisted.
+    #[serde(skip)]
+    pub abs: String,
+}
+
+/// One clip on the single video track: a `[inMs, outMs)` slice of `sourceId`, retimed by `speed`, positioned at `startMs` on the timeline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditClip {
+    pub id: String,
+    pub source_id: String,
+    pub in_ms: u64,
+    pub out_ms: u64,
+    pub speed: f64,
+    pub start_ms: u64,
+}
+
+/// Output geometry, taken from the first source when the edit is created, editable later.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditSettings {
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+}
+
+/// The full edit document (`<project>/edits/<name>.json`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditDoc {
+    pub version: u32,
+    pub name: String,
+    pub sources: Vec<EditSource>,
+    pub settings: EditSettings,
+    pub clips: Vec<EditClip>,
+}
+
+/// Which edit the editor window should open; stored in managed state and read by the editor on boot (`get_editor_target`) rather than smuggled through a URL query.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditTarget {
+    pub slug: String,
+    pub name: String,
+    /// Absolute project folder, the editor builds `/@fs` source URLs from it (dev).
+    pub path: String,
+    /// The originating source video (project-relative); lets the editor recreate the document from scratch when `edit.json` is corrupt (`reset_edit`).
+    pub source_rel: String,
+}
+
+/// The pending editor target (set just before the window opens / is refocused).
+#[derive(Default)]
+pub struct EditorState(pub Mutex<Option<EditTarget>>);
+
+/// Determinate render progress, streamed to the editor over an ipc `Channel`.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderProgress {
+    frame: u32,
+    total: u32,
+}
+
+const EDIT_VERSION: u32 = 1;
+
+fn edits_dir(root: &Path, slug: &str) -> std::path::PathBuf {
+    root.join(slug).join("edits")
+}
+
+fn edit_path(root: &Path, slug: &str, name: &str) -> std::path::PathBuf {
+    edits_dir(root, slug).join(format!("{name}.json"))
+}
+
+/// Atomic write (tmp + rename) so a crash mid-save can never corrupt `edit.json`; the "no interaction corrupts the document" half of the robustness contract.
+fn write_doc(path: &Path, doc: &EditDoc) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, text + "\n").map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+fn read_doc(path: &Path) -> Result<EditDoc, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("reading edit at {}: {e}", path.display()))?;
+    let doc: EditDoc =
+        serde_json::from_str(&text).map_err(|e| format!("edit is corrupt: {e}"))?;
+    if doc.version > EDIT_VERSION {
+        return Err(format!(
+            "this edit uses document version {} — it needs a newer Kookaburra Cut",
+            doc.version
+        ));
+    }
+    Ok(doc)
+}
+
+/// Open the editor window for `(slug, name)`, retargeting and focusing it if it already exists, otherwise creating it; the `editor` label picks up `capabilities/editor.json` at runtime, so Rust-side creation needs no create-window capability on the main window.
+fn open_editor_window(app: &AppHandle, target: &EditTarget) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("editor") {
+        let _ = win.set_title(&format!("Kookaburra Cut — {}", target.name));
+        let _ = win.emit("kookaburra://editor-target", target.clone());
+        win.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let builder = WebviewWindowBuilder::new(app, "editor", WebviewUrl::App("editor.html".into()))
+        .title(format!("Kookaburra Cut — {}", target.name))
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(900.0, 600.0)
+        .theme(Some(tauri::Theme::Dark))
+        // --surface-window; the NSWindow layer of the anti-flash work.
+        .background_color(tauri::window::Color(0x0E, 0x11, 0x13, 0xFF))
+        // HTML5 drag-and-drop (media panel → timeline) only works with Tauri's native drag-drop interception OFF; editor window only, the MAIN window keeps native drag-anywhere file import (tauri://drag-drop).
+        .disable_drag_drop_handler();
+    // Overlay titlebar chrome, matching the main window's config (tauri.conf.json: titleBarStyle Overlay, hiddenTitle, trafficLightPosition 12,20).
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(12.0, 20.0));
+    let window = builder.build().map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    crate::deflash_webview(&window);
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+    Ok(())
+}
+
+/// Create (or re-open) an edit for `source_rel` and open the editor window on it; the edit name is the slugified source stem, so re-editing the same clip reopens the same document.
+#[tauri::command]
+pub async fn open_edit(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    editor: State<'_, EditorState>,
+    slug: String,
+    source_rel: String,
+) -> Result<String, String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    let source_abs = media::resolve_asset(&root, &slug, &source_rel)?;
+    if !source_abs.is_file() {
+        return Err(format!("source not found: {source_rel}"));
+    }
+
+    let stem = source_abs
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("edit");
+    let mut name = workspace::slugify(stem);
+    if name.is_empty() {
+        name = "edit".into();
+    }
+
+    let path = edit_path(&root, &slug, &name);
+    if !path.is_file() {
+        let doc = create_default_doc(&app, &root, &slug, &name, &source_rel).await?;
+        write_doc(&path, &doc)?;
+    }
+
+    let target = EditTarget {
+        slug: slug.clone(),
+        name: name.clone(),
+        path: root.join(&slug).to_string_lossy().into_owned(),
+        source_rel: source_rel.clone(),
+    };
+    *editor.0.lock().map_err(|_| "editor state poisoned")? = Some(target.clone());
+    open_editor_window(&app, &target)?;
+    Ok(name)
+}
+
+/// The fresh single-clip document `open_edit` seeds (and `reset_edit` recreates).
+async fn create_default_doc(
+    app: &AppHandle,
+    root: &Path,
+    slug: &str,
+    name: &str,
+    source_rel: &str,
+) -> Result<EditDoc, String> {
+    let source_abs = media::resolve_asset(root, slug, source_rel)?;
+    if !source_abs.is_file() {
+        return Err(format!("source not found: {source_rel}"));
+    }
+    let probe = media::probe_media(app, &source_abs).await?;
+    if probe.kind != "video" {
+        return Err("only videos can be edited".into());
+    }
+    let fps = if probe.fps > 0.0 { probe.fps } else { 60.0 };
+    Ok(EditDoc {
+        version: EDIT_VERSION,
+        name: name.to_owned(),
+        sources: vec![EditSource {
+            id: "s1".into(),
+            rel: source_rel.to_owned(),
+            width: probe.width,
+            height: probe.height,
+            fps: probe.fps,
+            duration_ms: probe.duration_ms,
+            abs: String::new(),
+        }],
+        settings: EditSettings {
+            width: probe.width,
+            height: probe.height,
+            fps,
+        },
+        clips: vec![EditClip {
+            id: "c1".into(),
+            source_id: "s1".into(),
+            in_ms: 0,
+            out_ms: probe.duration_ms,
+            speed: 1.0,
+            start_ms: 0,
+        }],
+    })
+}
+
+/// Open the editor on an EXISTING edit by name; the media library's "Open in editor" action on a rendered `assets/<name>-edited.mp4` maps back to its document.
+#[tauri::command]
+pub fn open_edit_named(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    editor: State<'_, EditorState>,
+    slug: String,
+    name: String,
+) -> Result<String, String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    workspace::validate_slug(&name)?;
+    let doc = read_doc(&edit_path(&root, &slug, &name))?;
+    let source_rel = doc
+        .sources
+        .first()
+        .map(|s| s.rel.clone())
+        .unwrap_or_default();
+    let target = EditTarget {
+        slug: slug.clone(),
+        name: name.clone(),
+        path: root.join(&slug).to_string_lossy().into_owned(),
+        source_rel,
+    };
+    *editor.0.lock().map_err(|_| "editor state poisoned")? = Some(target.clone());
+    open_editor_window(&app, &target)?;
+    Ok(name)
+}
+
+/// Recovery for a corrupt/incompatible `edit.json`: keep the broken file beside it as `<name>.json.bak`, recreate the default document from the source, return it.
+#[tauri::command]
+pub async fn reset_edit(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    slug: String,
+    name: String,
+    source_rel: String,
+) -> Result<EditDoc, String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    workspace::validate_slug(&name)?;
+    let path = edit_path(&root, &slug, &name);
+    if path.is_file() {
+        let _ = std::fs::rename(&path, path.with_extension("json.bak"));
+    }
+    let doc = create_default_doc(&app, &root, &slug, &name, &source_rel).await?;
+    write_doc(&path, &doc)?;
+    Ok(doc)
+}
+
+/// The pending editor target (read once by the editor window on boot).
+#[tauri::command]
+pub fn get_editor_target(editor: State<'_, EditorState>) -> Result<Option<EditTarget>, String> {
+    Ok(editor.0.lock().map_err(|_| "editor state poisoned")?.clone())
+}
+
+/// Load an edit document (schema-validated by serde; a corrupt file returns a readable error).
+#[tauri::command]
+pub fn load_edit(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    slug: String,
+    name: String,
+) -> Result<EditDoc, String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    workspace::validate_slug(&name)?;
+    read_doc(&edit_path(&root, &slug, &name))
+}
+
+/// Persist an edit document (autosave); the name is fixed at creation, the doc's own `name` must match, so a rename can't write outside its file.
+#[tauri::command]
+pub fn save_edit(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    slug: String,
+    name: String,
+    doc: EditDoc,
+) -> Result<(), String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    workspace::validate_slug(&name)?;
+    write_doc(&edit_path(&root, &slug, &name), &doc)
+}
+
+/// Names of a project's saved edits.
+#[tauri::command]
+pub fn list_edits(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    slug: String,
+) -> Result<Vec<String>, String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    let mut names = Vec::new();
+    if let Ok(read) = std::fs::read_dir(edits_dir(&root, &slug)) {
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    names.push(stem.to_owned());
+                }
+            }
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+/// Frames an output clip contributes: its retimed duration at the output fps.
+fn clip_output_frames(clip: &EditClip, fps: f64) -> u32 {
+    let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+    let span_ms = clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed;
+    ((span_ms / 1000.0) * fps).round().max(0.0) as u32
+}
+
+/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black.
+fn build_render_args(doc: &EditDoc, output: &str) -> Result<(Vec<String>, u32), String> {
+    if doc.clips.is_empty() {
+        return Err("this edit has no clips to render".into());
+    }
+    let (w, h) = (doc.settings.width, doc.settings.height);
+    let fps = if doc.settings.fps > 0.0 {
+        doc.settings.fps
+    } else {
+        60.0
+    };
+
+    // Each source used by a clip becomes ONE `-i` in stable order; ffmpeg auto-splits a reused *input stream specifier* like `[idx:v]` so we decode each source once, but reusing a *filter output* label (e.g. `[v0]`) would error, don't "fix" this into one `-i` per clip.
+    let mut input_order: Vec<&EditSource> = Vec::new();
+    let mut input_index = std::collections::HashMap::new();
+    let clips_sorted = {
+        let mut c: Vec<&EditClip> = doc.clips.iter().collect();
+        c.sort_by_key(|clip| clip.start_ms);
+        c
+    };
+    for clip in &clips_sorted {
+        if !input_index.contains_key(&clip.source_id) {
+            let source = doc
+                .sources
+                .iter()
+                .find(|s| s.id == clip.source_id)
+                .ok_or_else(|| format!("clip references unknown source {}", clip.source_id))?;
+            input_index.insert(clip.source_id.clone(), input_order.len());
+            input_order.push(source);
+        }
+    }
+
+    let mut filter = String::new();
+    let mut labels = Vec::new();
+    let mut total_frames = 0u32;
+    for (i, clip) in clips_sorted.iter().enumerate() {
+        let idx = input_index[&clip.source_id];
+        let in_s = clip.in_ms as f64 / 1000.0;
+        let out_s = clip.out_ms as f64 / 1000.0;
+        let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+        let label = format!("v{i}");
+        filter.push_str(&format!(
+            "[{idx}:v]trim=start={in_s:.6}:end={out_s:.6},setpts=(PTS-STARTPTS)/{speed},\
+             fps={fps},scale={w}:{h}:force_original_aspect_ratio=decrease,\
+             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
+        ));
+        labels.push(label);
+        total_frames += clip_output_frames(clip, fps);
+    }
+    for label in &labels {
+        filter.push_str(&format!("[{label}]"));
+    }
+    filter.push_str(&format!("concat=n={}:v=1:a=0[outv]", labels.len()));
+
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+    ];
+    for source in &input_order {
+        args.push("-i".into());
+        args.push(source.abs.clone());
+    }
+    args.extend([
+        "-filter_complex".into(),
+        filter,
+        "-map".into(),
+        "[outv]".into(),
+        "-c:v".into(),
+        "libx264".into(),
+        "-preset".into(),
+        "veryfast".into(),
+        "-crf".into(),
+        "18".into(),
+        "-pix_fmt".into(),
+        "yuv420p".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-an".into(),
+        output.into(),
+    ]);
+    Ok((args, total_frames.max(1)))
+}
+
+/// Render an edit to `assets/<name>-edited.mp4` and return the project-relative path.
+/// Progress is streamed over `on_progress` (parsed from ffmpeg `-progress`).
+#[tauri::command]
+pub async fn render_edit(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    slug: String,
+    name: String,
+    on_progress: Channel<RenderProgress>,
+) -> Result<String, String> {
+    let root = workspace::require_root(&app, &settings)?;
+    workspace::validate_slug(&slug)?;
+    workspace::validate_slug(&name)?;
+    let mut doc = read_doc(&edit_path(&root, &slug, &name))?;
+
+    // Resolve every referenced source to an absolute path up front (traversal-hardened), stashing it on a throwaway field the arg builder reads.
+    for source in &mut doc.sources {
+        source.abs = media::resolve_asset(&root, &slug, &source.rel)?
+            .to_string_lossy()
+            .into_owned();
+    }
+
+    let assets = root.join(&slug).join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    let rel = format!("assets/{name}-edited.mp4");
+    let output = assets.join(format!("{name}-edited.mp4"));
+    let output_str = output.to_string_lossy().into_owned();
+
+    let (args, total) = build_render_args(&doc, &output_str)?;
+
+    let (mut rx, _child) = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+        .args(args)
+        .spawn()
+        .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
+
+    let mut code: Option<i32> = None;
+    let mut last_error: Option<String> = None;
+    let mut buffer = String::new();
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(bytes) => {
+                // ffmpeg `-progress pipe:1` emits `key=value` lines; pull `frame=N`.
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(nl) = buffer.find('\n') {
+                    let line: String = buffer.drain(..=nl).collect();
+                    if let Some(v) = line.trim().strip_prefix("frame=") {
+                        if let Ok(frame) = v.trim().parse::<u32>() {
+                            let _ = on_progress.send(RenderProgress {
+                                frame: frame.min(total),
+                                total,
+                            });
+                        }
+                    }
+                }
+            }
+            CommandEvent::Terminated(payload) => {
+                code = payload.code;
+                break;
+            }
+            CommandEvent::Error(e) => last_error = Some(e),
+            _ => {}
+        }
+    }
+
+    if code != Some(0) {
+        let _ = std::fs::remove_file(&output);
+        return Err(last_error.unwrap_or_else(|| format!("ffmpeg render exited with {code:?}")));
+    }
+    let _ = on_progress.send(RenderProgress { frame: total, total });
+    // Warm the media-preview cache for the output now: by the time the editor closes and the library refreshes, poster/scrub frames already exist, no stale card, no pop-in; failure is non-fatal (the library regenerates on view).
+    if let Err(e) = media::ensure_media_cache(&app, &output, &rel).await {
+        eprintln!("[edit] preview warm-up failed for {rel}: {e}");
+    }
+    Ok(rel)
+}

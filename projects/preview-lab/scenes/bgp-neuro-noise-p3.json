@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Coral Shallows",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#fdf9f6", "#ecc9bc", "#f7e8e0"],
+    "speed": 0.5,
+    "params": {
+      "brightness": 0.05,
+      "contrast": 0.4
+    },
+    "preset": "p3"
+  }
+}

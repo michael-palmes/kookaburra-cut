@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Kimberley Night",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#85503c", "#301c15", "#100a08"],
+    "speed": 0.35,
+    "params": {
+      "brightness": 0.06,
+      "contrast": 0.45
+    },
+    "preset": "p7"
+  }
+}

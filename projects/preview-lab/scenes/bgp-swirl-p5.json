@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Morning Tide",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#edf4f0", "#d5e6df", "#bfd9cf", "#e2eee8"],
+    "speed": 0.45,
+    "params": {
+      "bandCount": 9,
+      "twist": 0.14,
+      "softness": 0.35
+    },
+    "preset": "p5"
+  }
+}

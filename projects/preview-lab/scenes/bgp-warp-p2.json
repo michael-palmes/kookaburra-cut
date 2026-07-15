@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 warp Banksia",
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#f7efe6", "#eccdb0", "#f2e0d0", "#e4b990"],
+    "speed": 0.35,
+    "params": {
+      "shape": 1,
+      "shapeScale": 0.25,
+      "swirl": 0.5,
+      "softness": 0.85
+    },
+    "preset": "p2"
+  }
+}

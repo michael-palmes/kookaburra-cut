@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "Image backdrop",
+  "themeId": "kookaburra-studio-white",
+  "text": {
+    "headline": "Set the scene"
+  },
+  "backdrop": { "type": "image", "src": "assets/backdrop.jpg" },
+  "lighting": {
+    "key": { "azimuthDeg": -40, "elevationDeg": 20, "intensity": 2.0 },
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.4,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#101418"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Kookaburra Cut",
+  "version": "0.1.0",
+  "identifier": "com.mpalmes.kookaburracut",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Kookaburra Cut",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1200,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundThrottling": "disabled",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 23
+        },
+        "theme": "Dark",
+        "backgroundColor": "#0D1016"
+      }
+    ],
+    "security": {
+      "dangerousDisableAssetCspModification": ["style-src"],
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$APPDATA/cache/**", "$HOME/Kookaburra Cut/**"],
+          "requireLiteralLeadingDot": false
+        }
+      },
+      "csp": "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: asset: http://asset.localhost; connect-src 'self' blob: ipc: http://ipc.localhost asset: http://asset.localhost",
+      "devCsp": "default-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' data: blob: asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' blob: 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' data: asset: http://asset.localhost; connect-src 'self' blob: ipc: http://ipc.localhost asset: http://asset.localhost ws://localhost:1420 http://localhost:1420"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "macOS": {
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "13.0"
+    },
+    "externalBin": ["bin/ffmpeg", "bin/ffprobe"],
+    "resources": {
+      "../projects": "projects",
+      "../.claude/skills": "claude-skills"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

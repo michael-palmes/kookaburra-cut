@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an idea for Kookaburra Cut.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kookaburra Cut follows a fairly opinionated internal roadmap, so requests
+        are considered case by case rather than accepted by default. Still, they're
+        useful to hear.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that Kookaburra Cut doesn't do today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How do you imagine it working?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways you've worked around it, or other shapes the feature could take.

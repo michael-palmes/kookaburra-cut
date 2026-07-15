@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "id": "ctv",
+  "name": "Connected TV",
+  "description": "Broadcast-style 1080p for TV screens — steady bitrate and TV loudness.",
+  "platform": "CTV",
+  "favouredAspect": "16:9",
+  "allowedAspects": ["16:9"],
+  "video": {
+    "codec": "libx264",
+    "scaleShortEdgeTo": 1080,
+    "fps": 30,
+    "rate": { "targetKbps": 8000, "maxKbps": 10000, "bufsizeKbps": 16000, "twoPass": true },
+    "profile": "high",
+    "level": "4.0",
+    "gopSeconds": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 192 }, "loudnessTarget": -24 }
+}

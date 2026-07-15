@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Ember · warm device",
+  "themeId": "kookaburra-ember",
+  "text": {
+    "headline": "Warm studio"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "cosmic-orange",
+      "media": { "src": "assets/sample-phone-recording.mp4", "kind": "video", "startMs": 600 },
+      "placement": { "rotationDeg": [0, 0, 0] },
+      "motion": { "preset": "turntable", "degPerSec": 10 }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+import { AnimatedHeadline, Device, defineScene, SceneStage, useFormat, useSceneDevices, useSceneText, useTheme } from "@kookaburra/toolkit";
+
+/**
+ * __NAME__ — scaffolded device scene. The COMPOSITION lives here (layout, extra elements,
+ * anything creative); everything machine-editable lives in the sidecar
+ * `scenes/__STEM__.json` (name, text map, devices, camera, duration mode) — edit that, in
+ * the app or by hand, rather than hard-coding values here. See the kookaburra-scene-authoring
+ * skill ("Scene documents").
+ */
+export default defineScene({
+  id: "__SCENE_ID__",
+  durationMs: __DURATION_MS__,
+  Scene() {
+    const theme = useTheme();
+    const format = useFormat();
+    const portrait = format.aspect < 1;
+    const headline = useSceneText("headline");
+    const devices = useSceneDevices();
+    return (
+      <SceneStage>
+        <color attach="background" args={[theme.colors.background]} />
+        {headline ? (
+          <AnimatedHeadline
+            text={headline}
+            from={200}
+            to={900}
+            position={[0, portrait ? 1.9 : 1.72, 0]}
+            fontSize={portrait ? 0.23 : 0.42}
+          />
+        ) : null}
+        {devices.map((d) => (
+          <Device
+            key={d.id}
+            {...d}
+            placement={{
+              ...d.placement,
+              scale: (d.placement?.scale ?? 1) * (portrait ? 0.8 : 0.92),
+            }}
+          />
+        ))}
+      </SceneStage>
+    );
+  },
+});

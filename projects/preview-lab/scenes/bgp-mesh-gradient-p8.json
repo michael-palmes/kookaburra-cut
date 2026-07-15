@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Karri",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#0e1912", "#2b4a36", "#43684d", "#16281c"],
+    "speed": 0.45,
+    "params": {
+      "distortion": 0.85,
+      "swirl": 0.1,
+      "grainOverlay": 0.15
+    },
+    "preset": "p8"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-paper",
+  "name": "Paper",
+  "mode": "light",
+  "colors": {
+    "background": "#f7f1e3",
+    "text": "#2b2119",
+    "accent": "#b4552d",
+    "muted": "#8a7d6b"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#f7f1e3", 0], ["#eadfc8", 1]]
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "Playfair Display",
+      "weight": 600
+    },
+    "body": {
+      "family": "Lora",
+      "weight": 400
+    },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": {
+      "fast": 220,
+      "base": 550,
+      "slow": 1000
+    },
+    "easings": {
+      "standard": "outCubic",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "mask-reveal",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 22,
+      "elevationDeg": 24,
+      "intensity": 1.8,
+      "color": "#fff3df"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -140,
+        "elevationDeg": 30,
+        "intensity": 0.6
+      }
+    ],
+    "ambient": 0.8,
+    "shadow": {
+      "technique": "map",
+      "softness": 1.0,
+      "opacity": 0.22,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#4a3a28"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:story-studio",
+    "intensity": 0.8,
+    "rotationDeg": 0
+  },
+  "backdrop": {
+    "type": "floor",
+    "color": "#fbf6ea",
+    "filletRadius": 3
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

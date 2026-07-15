@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — none",
+  "text": {
+    "headline": "Make it move"
+  },
+  "textAnimation": { "in": "none", "out": "none", "staggerMs": 0 }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Uluru Dusk",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#170d0d", "#2e1a18", "#472a24", "#613b31", "#7c4c3e"],
+    "speed": 0.45,
+    "params": {
+      "stepsPerColor": 5,
+      "softness": 0.35
+    },
+    "preset": "p8"
+  }
+}

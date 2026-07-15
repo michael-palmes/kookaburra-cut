@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Sun Shower",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#f8f4ea", "#dcc9a0"],
+    "speed": 0.3,
+    "params": {
+      "thickness": 0.85,
+      "radius": 0.2,
+      "innerShape": 0.4,
+      "noiseScale": 3.8
+    },
+    "preset": "p5"
+  }
+}

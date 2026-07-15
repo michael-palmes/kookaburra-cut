@@ -1,0 +1,83 @@
+{
+  "version": 2,
+  "id": "kookaburra-midnight",
+  "name": "Midnight",
+  "mode": "dark",
+  "colors": {
+    "background": "#0a0e1a",
+    "text": "#f2f5fa",
+    "accent": "#3ad1c4",
+    "muted": "#8a93a6"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#0a0e1a", 0], ["#141d33", 1]]
+    },
+    "glow": {
+      "type": "linear",
+      "angleDeg": 160,
+      "stops": [["#3d4d7a", 0], ["#131a2c", 1]]
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "Space Grotesk",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 500,
+      "slow": 900
+    },
+    "easings": {
+      "standard": "outQuad",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "startScale": 0.9,
+    "shine": true
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.9,
+      "color": "#dbe4ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 12,
+        "intensity": 0.5,
+        "color": "#6a7dbd"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 38,
+        "intensity": 0.9,
+        "color": "#9fb4e8"
+      }
+    ],
+    "ambient": 0.4
+  },
+  "environment": {
+    "source": "kookaburra:ferndale-studio",
+    "intensity": 0.7,
+    "rotationDeg": 0
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "glow",
+    "parallax": 0.04
+  }
+}

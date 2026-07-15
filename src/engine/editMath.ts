@@ -1,0 +1,169 @@
+import type { EditClip } from "./edit";
+
+/** Pure timeline math for the video editor. The timeline is magnetic/gapless (locked): clips always butt together end-to-end, so a clip's `startMs` is derived state, array order is timeline order, and every mutation returns a relaid-out array. "Timeline" times are output-video ms (source spans retimed by `speed`); "source" times index into the source file. Persisted fields stay integers (u64 on the Rust side). Functions that read `startMs` expect a relaid array (every mutator returns one; the editor also relays on load). */
+
+/** Source-span floor so a trim or split can never produce an invisible sliver. */
+export const MIN_CLIP_SOURCE_MS = 100;
+
+function effectiveSpeed(speed: number): number {
+  return speed > 0 ? speed : 1;
+}
+
+/** A clip's duration on the timeline: its source span retimed by speed. */
+export function clipTimelineMs(clip: EditClip): number {
+  return Math.max(0, clip.outMs - clip.inMs) / effectiveSpeed(clip.speed);
+}
+
+/** Magnetic layout: each clip starts where the previous one ends, the first at 0. */
+export function relayout(clips: EditClip[]): EditClip[] {
+  let t = 0;
+  return clips.map((clip) => {
+    const laid = { ...clip, startMs: Math.round(t) };
+    t += clipTimelineMs(clip);
+    return laid;
+  });
+}
+
+export function timelineDurationMs(clips: EditClip[]): number {
+  return clips.reduce((sum, clip) => sum + clipTimelineMs(clip), 0);
+}
+
+/** Index of the clip under timeline time t (start inclusive, end exclusive), or -1. */
+export function clipIndexAt(clips: EditClip[], tMs: number): number {
+  let start = 0;
+  for (let i = 0; i < clips.length; i++) {
+    const end = start + clipTimelineMs(clips[i]);
+    if (tMs >= start && tMs < end) return i;
+    start = end;
+  }
+  return -1;
+}
+
+/** Source time at timeline time t inside `clip` (clamped to the clip's source span). */
+export function timelineToSource(clip: EditClip, tMs: number): number {
+  const offset = (tMs - clip.startMs) * effectiveSpeed(clip.speed);
+  return Math.min(clip.outMs, Math.max(clip.inMs, clip.inMs + offset));
+}
+
+/** Splits the clip under t into two at that point (the right half gets `newId`); returns null when t misses every clip or either half would fall under the source-span floor. */
+export function splitAt(clips: EditClip[], tMs: number, newId: string): EditClip[] | null {
+  const i = clipIndexAt(clips, tMs);
+  if (i < 0) return null;
+  const clip = clips[i];
+  const srcSplit = Math.round(clip.inMs + (tMs - clip.startMs) * effectiveSpeed(clip.speed));
+  if (srcSplit - clip.inMs < MIN_CLIP_SOURCE_MS || clip.outMs - srcSplit < MIN_CLIP_SOURCE_MS) {
+    return null;
+  }
+  const left = { ...clip, outMs: srcSplit };
+  const right = { ...clip, id: newId, inMs: srcSplit };
+  return relayout([...clips.slice(0, i), left, right, ...clips.slice(i + 1)]);
+}
+
+export function removeClip(clips: EditClip[], id: string): EditClip[] {
+  return relayout(clips.filter((clip) => clip.id !== id));
+}
+
+/** Reorder: lift the clip at `from` and re-insert it at `to` (indices in array order). */
+export function moveClip(clips: EditClip[], from: number, to: number): EditClip[] {
+  if (from === to || from < 0 || from >= clips.length) return clips;
+  const next = [...clips];
+  const [lifted] = next.splice(from, 1);
+  next.splice(Math.max(0, Math.min(next.length, to)), 0, lifted);
+  return relayout(next);
+}
+
+export function setClipSpeed(clips: EditClip[], id: string, speed: number): EditClip[] {
+  return relayout(
+    clips.map((clip) => (clip.id === id ? { ...clip, speed: effectiveSpeed(speed) } : clip)),
+  );
+}
+
+/** Move a clip's in-point (left trim), clamped to [0, outMs - floor]. */
+export function trimClipIn(clips: EditClip[], id: string, inMs: number): EditClip[] {
+  return relayout(
+    clips.map((clip) =>
+      clip.id === id
+        ? {
+            ...clip,
+            inMs: Math.max(0, Math.min(Math.round(inMs), clip.outMs - MIN_CLIP_SOURCE_MS)),
+          }
+        : clip,
+    ),
+  );
+}
+
+/** Move a clip's out-point (right trim), clamped to [inMs + floor, source duration]. */
+export function trimClipOut(
+  clips: EditClip[],
+  id: string,
+  outMs: number,
+  sourceDurationMs: number,
+): EditClip[] {
+  return relayout(
+    clips.map((clip) =>
+      clip.id === id
+        ? {
+            ...clip,
+            outMs: Math.min(
+              sourceDurationMs,
+              Math.max(Math.round(outMs), clip.inMs + MIN_CLIP_SOURCE_MS),
+            ),
+          }
+        : clip,
+    ),
+  );
+}
+
+/** Every clip boundary (0 and each clip end); the playhead's snap targets. */
+export function edgeTargetsMs(clips: EditClip[]): number[] {
+  const targets = [0];
+  let t = 0;
+  for (const clip of clips) {
+    t += clipTimelineMs(clip);
+    targets.push(t);
+  }
+  return targets;
+}
+
+/** Snap t to the nearest target within the threshold; t unchanged when none is close. */
+export function snapMs(tMs: number, targets: number[], thresholdMs: number): number {
+  let best = tMs;
+  let bestDistance = thresholdMs;
+  for (const target of targets) {
+    const distance = Math.abs(target - tMs);
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = target;
+    }
+  }
+  return best;
+}
+
+function nextPrefixedId(prefix: string, ids: string[]): string {
+  let max = 0;
+  const pattern = new RegExp(`^${prefix}(\\d+)$`);
+  for (const id of ids) {
+    const m = pattern.exec(id);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  const taken = new Set(ids);
+  let n = max + 1;
+  while (taken.has(`${prefix}${n}`)) n++;
+  return `${prefix}${n}`;
+}
+
+/** Next free "c<n>" id (Rust seeds docs with "c1"); collision-checked against all ids. */
+export function nextClipId(clips: EditClip[]): string {
+  return nextPrefixedId(
+    "c",
+    clips.map((clip) => clip.id),
+  );
+}
+
+/** Next free "s<n>" source id (Rust seeds docs with "s1"). */
+export function nextSourceId(sources: { id: string }[]): string {
+  return nextPrefixedId(
+    "s",
+    sources.map((source) => source.id),
+  );
+}

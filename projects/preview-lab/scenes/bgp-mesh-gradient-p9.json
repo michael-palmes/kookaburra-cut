@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Bush Dusk",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#1a1024", "#3d2b56", "#6b5490", "#241736"],
+    "speed": 0.5,
+    "params": {
+      "distortion": 0.9,
+      "swirl": 0.35
+    },
+    "preset": "p9"
+  }
+}

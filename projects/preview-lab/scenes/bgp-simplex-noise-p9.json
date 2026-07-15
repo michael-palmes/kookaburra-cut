@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Tasman Deep",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#0d1218", "#1b232d", "#2a3542", "#3a4858", "#4b5c6f"],
+    "speed": 0.5,
+    "params": {
+      "stepsPerColor": 1,
+      "softness": 0.95
+    },
+    "preset": "p9"
+  }
+}

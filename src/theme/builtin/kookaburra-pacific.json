@@ -1,0 +1,92 @@
+{
+  "version": 2,
+  "id": "kookaburra-pacific",
+  "name": "Pacific",
+  "mode": "light",
+  "colors": {
+    "background": "#ffffff",
+    "text": "#0b1440",
+    "accent": "#1333d4",
+    "muted": "#6b7394"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#1333d4", 0], ["#3b5bff", 1]]
+    },
+    "backdrop": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#b9c9ff", 0], ["#ffffff", 0.85], ["#ffffff", 1]]
+    },
+    "wash": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#eef2ff", 0], ["#ffffff", 1]]
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "Inter",
+      "weight": 600
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 500,
+      "slow": 900
+    },
+    "easings": {
+      "standard": "outQuad",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 60,
+    "startScale": 0.94
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 30,
+      "elevationDeg": 50,
+      "intensity": 2.0
+    },
+    "fills": [
+      {
+        "azimuthDeg": -130,
+        "elevationDeg": 15,
+        "intensity": 0.7,
+        "color": "#dbe6ff"
+      }
+    ],
+    "ambient": 0.9,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.7,
+      "opacity": 0.2,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#1c2a5e"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:softbox",
+    "intensity": 1.0,
+    "rotationDeg": 0
+  },
+  "backdrop": {
+    "type": "gradient",
+    "gradient": "backdrop"
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "wash",
+    "parallax": 0.03
+  }
+}

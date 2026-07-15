@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Nullarbor Night",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#0b101d", "#151e31", "#223048", "#334666", "#47608c"],
+    "speed": 0.4,
+    "params": {
+      "stepsPerColor": 2,
+      "softness": 0.6
+    },
+    "preset": "p6"
+  }
+}

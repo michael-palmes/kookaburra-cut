@@ -1,0 +1,10 @@
+{
+  "name": "@kookaburra/chrome",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kookaburra Cut chrome kit — typed bindings over the app's real stylesheet (src/styles.css). Design-sync surface only; not imported by the app.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts"
+}

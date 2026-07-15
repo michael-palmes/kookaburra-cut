@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Abyss · camera drift",
+  "themeId": "kookaburra-abyss",
+  "text": {
+    "headline": "Down in the deep"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/sample-phone-recording.mp4", "kind": "video", "startMs": 2000 },
+      "placement": { "rotationDeg": [0, 0, 0] },
+      "motion": { "preset": "float", "amplitude": 0.05, "hz": 0.3 }
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": -20, "elevationDeg": 8, "distance": 6.2 }
+      },
+      {
+        "id": "k2",
+        "tMs": 2700,
+        "pose": { "target": [0, 0.15, 0], "azimuthDeg": 6, "elevationDeg": 3, "distance": 5.0 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "id": "web",
+  "name": "Web",
+  "description": "An all-round web video — great picture that starts playing the moment the page loads.",
+  "platform": "Web",
+  "favouredAspect": "16:9",
+  "allowedAspects": ["16:9", "9:16", "1:1", "4:5"],
+  "notes": "Constant-quality CRF — file size varies with content.",
+  "video": {
+    "codec": "libx264",
+    "scaleShortEdgeTo": 1080,
+    "fps": 60,
+    "rate": { "crf": 21 },
+    "profile": "high",
+    "level": "4.2",
+    "gopSeconds": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 128 } }
+}

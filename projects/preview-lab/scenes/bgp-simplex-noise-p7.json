@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Billabong",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#081411", "#12251f", "#1d3a30", "#2a5244", "#386b59"],
+    "speed": 0.35,
+    "params": {
+      "stepsPerColor": 3,
+      "softness": 0.2
+    },
+    "preset": "p7"
+  }
+}

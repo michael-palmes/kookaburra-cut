@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Lilly Pilly",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#f5ecf2", "#e9d5e4", "#dcc2d6", "#efe0ea"],
+    "speed": 0.5,
+    "params": {
+      "bandCount": 7,
+      "twist": 0.2,
+      "softness": 0.2
+    },
+    "preset": "p3"
+  }
+}

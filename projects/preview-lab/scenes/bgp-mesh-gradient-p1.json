@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Shell Beach",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#f6e9e4", "#eed7cf", "#e9cec7", "#f4e3da"],
+    "speed": 0.4,
+    "params": {
+      "distortion": 0.5,
+      "swirl": 0.08
+    },
+    "preset": "p1"
+  }
+}

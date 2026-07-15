@@ -1,0 +1,77 @@
+{
+  "id": "transition-spike",
+  "name": "Transition FX",
+  "themeId": "kookaburra-default",
+  "formats": ["16:9", "9:16", "1:1"],
+  "scenes": [
+    {
+      "file": "scenes/01-base.tsx",
+      "durationMs": 1800
+    },
+    {
+      "file": "scenes/02-crossfade.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/03-dip.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "dip",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/04-blur.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "blur",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/05-push.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "push",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/06-zoom.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "zoom",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/07-whip.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "whip",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/08-luma.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "luma",
+        "durationMs": 600,
+        "shape": "iris"
+      }
+    },
+    {
+      "file": "scenes/09-glitch.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "glitch",
+        "durationMs": 600
+      }
+    }
+  ]
+}

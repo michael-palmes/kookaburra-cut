@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Yarra Night",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#0a0c14", "#525c9c"],
+    "speed": 0.5,
+    "params": {
+      "thickness": 0.5,
+      "radius": 0.32,
+      "innerShape": 1.3,
+      "noiseScale": 2.2
+    },
+    "preset": "p8"
+  }
+}

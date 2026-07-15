@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Tea Tree",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#fbfdf9", "#c3d9c0", "#e8f1e5"],
+    "speed": 0.45,
+    "params": {
+      "brightness": 0.06,
+      "contrast": 0.3
+    },
+    "preset": "p2"
+  }
+}

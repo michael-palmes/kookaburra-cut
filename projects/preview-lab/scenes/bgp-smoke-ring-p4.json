@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Opal",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#f1f2f6", "#b3bedd"],
+    "speed": 0.5,
+    "params": {
+      "thickness": 0.55,
+      "radius": 0.3,
+      "innerShape": 1,
+      "noiseScale": 1.6,
+      "noiseIterations": 3
+    },
+    "preset": "p4"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Brindabella",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#545a96", "#282b4d", "#0c0d18"],
+    "speed": 0.5,
+    "params": {
+      "brightness": 0.05,
+      "contrast": 0.5
+    },
+    "preset": "p9"
+  }
+}

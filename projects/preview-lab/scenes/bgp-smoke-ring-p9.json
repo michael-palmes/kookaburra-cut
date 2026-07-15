@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Red Centre",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#120b08", "#8f4c39"],
+    "speed": 0.4,
+    "params": {
+      "thickness": 0.75,
+      "radius": 0.24,
+      "innerShape": 0.55,
+      "noiseScale": 4.2,
+      "noiseIterations": 5
+    },
+    "preset": "p9"
+  }
+}

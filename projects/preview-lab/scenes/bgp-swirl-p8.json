@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Mangrove",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#0d1410", "#24422e", "#3f6a4c", "#16251a"],
+    "speed": 0.45,
+    "params": {
+      "bandCount": 8,
+      "twist": 0.1,
+      "softness": 0.45,
+      "noise": 0.12,
+      "noiseFrequency": 0.25
+    },
+    "preset": "p8"
+  }
+}

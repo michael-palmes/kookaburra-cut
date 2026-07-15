@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Abyss (fixed gradient)",
+  "themeId": "kookaburra-abyss",
+  "text": {
+    "headline": "Hold the frame"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "backdrop",
+    "parallax": 0.03
+  }
+}

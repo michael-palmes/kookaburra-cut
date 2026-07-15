@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Jacaranda",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#ede7f5", "#ded3ed", "#cfc0e2", "#e5dcf1"],
+    "speed": 0.45,
+    "params": {
+      "distortion": 0.95,
+      "swirl": 0.2
+    },
+    "preset": "p5"
+  }
+}

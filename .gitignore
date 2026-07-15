@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Frontend build output
+dist/
+dist-ssr/
+
+# Rust / Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Release artefacts (signed .app / .dmg / .zip) and the DMG staging scratch
+release/
+.build/
+
+# Bundled ffmpeg/ffprobe sidecar binaries (provisioned via scripts/setup-ffmpeg.sh; never committed)
+src-tauri/bin/ffmpeg-*
+src-tauri/bin/ffprobe-*
+
+# Licensed third-party assets — bundled into app builds, never committed
+src/assets/models/licensed/
+
+# Env & local agent state
+.env
+.env.*
+.claude/scheduled_tasks.lock
+
+# Logs & caches
+*.log
+.vite/
+coverage/
+
+# design-sync (claude.ai/design) — staged scripts, build output, machine state
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+
+# Editor / OS
+.DS_Store
+*.local
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.idea/
+.vscode/*
+!.vscode/extensions.json

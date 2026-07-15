@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Gradient (long shadow)",
+  "text": {
+    "headline": "Cast long"
+  },
+  "backdrop": {
+    "type": "gradient",
+    "gradient": "glow"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 22,
+      "elevationDeg": 16,
+      "intensity": 2.2,
+      "color": "#dbe4ff"
+    },
+    "shadow": {
+      "technique": "map",
+      "softness": 0.45,
+      "opacity": 0.5,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "background": {
+    "type": "color",
+    "color": "#2a1e3f"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Paperbark",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#f9f5ee", "#f1e9db", "#e9dcc8", "#e1d0b5", "#d9c4a3"],
+    "speed": 0.3,
+    "params": {
+      "stepsPerColor": 4,
+      "softness": 0.25
+    },
+    "preset": "p4"
+  }
+}

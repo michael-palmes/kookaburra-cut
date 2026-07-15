@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Rock Pool",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#edf4f4", "#a5cbc9"],
+    "speed": 0.45,
+    "params": {
+      "thickness": 0.8,
+      "radius": 0.22,
+      "innerShape": 0.5,
+      "noiseScale": 3.4,
+      "noiseIterations": 6
+    },
+    "preset": "p3"
+  }
+}

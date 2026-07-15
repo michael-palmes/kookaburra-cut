@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "name": "Background — simplex-noise",
+  "background": { "type": "shader", "shader": "simplex-noise", "speed": 1 }
+}

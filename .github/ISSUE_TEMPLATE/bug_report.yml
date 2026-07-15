@@ -1,0 +1,90 @@
+name: Bug report
+description: Something didn't work as expected. Tell us what happened.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. The more precise the details, the faster the fix.
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "e.g. macOS 15.1"
+    validations:
+      required: true
+  - type: input
+    id: mac-model
+    attributes:
+      label: Mac model (Apple Silicon)
+      placeholder: "e.g. MacBook Pro 14-inch, M3 Pro"
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in the About panel, or `version` in `package.json` if running from source.
+      placeholder: "e.g. 0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: run-method
+    attributes:
+      label: Running from source or a packaged build?
+      options:
+        - Source (pnpm tauri dev)
+        - Packaged build (.app)
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect to see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the project
+        2. ...
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        ### Export issue? (skip if this isn't about export)
+
+        Kookaburra Cut renders deterministically — the same project should export
+        byte-identical every time. `docs/determinism.md` explains `Verify ×2`, the
+        in-app check that proves it. If this bug is about an export, the fields
+        below help narrow it down fast.
+  - type: input
+    id: project-aspect
+    attributes:
+      label: Project and aspect ratio
+      placeholder: "e.g. launch-2026, 16:9"
+  - type: input
+    id: codec
+    attributes:
+      label: Codec
+      placeholder: "e.g. libx264, ProRes 422 HQ, libx265"
+  - type: dropdown
+    id: verify-result
+    attributes:
+      label: Does Verify ×2 pass for this project/aspect?
+      options:
+        - "Yes — passes"
+        - "No — fails / hashes differ"
+        - "Haven't run it"
+        - Not applicable
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Optional. Include any console or terminal output that looks relevant.
+      render: shell

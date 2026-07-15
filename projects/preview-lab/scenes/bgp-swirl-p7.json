@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Ironbark",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#140f0c", "#3a2c1e", "#66513a", "#241b13"],
+    "speed": 0.3,
+    "params": {
+      "bandCount": 3,
+      "twist": 0.28,
+      "softness": 0.15,
+      "proportion": 0.55
+    },
+    "preset": "p7"
+  }
+}

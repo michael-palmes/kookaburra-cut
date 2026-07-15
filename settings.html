@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kookaburra Cut — Settings</title>
+    <style>
+      /* Pre-paint guard (M5.7): the page background exists before any bundle loads;
+         the app fades in when mounted (engine/reveal.ts adds .ready). */
+      html {
+        background: #0d1016;
+      }
+      #root {
+        opacity: 0;
+        transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1);
+      }
+      #root.ready {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/settingsMain.tsx"></script>
+  </body>
+</html>

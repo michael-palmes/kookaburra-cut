@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — fade-scale",
+  "text": {
+    "headline": "Make it move"
+  },
+  "textAnimation": { "in": "fade-scale", "out": "none", "staggerMs": 0 }
+}

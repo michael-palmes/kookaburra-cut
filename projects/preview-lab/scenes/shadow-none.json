@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Shadow — none",
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-15-pro",
+      "colour": "natural-titanium",
+      "media": { "src": "assets/screen.png", "kind": "image" },
+      "placement": { "rotationDeg": [0, 12, 0] },
+      "motion": { "preset": "none" },
+      "shadow": "none"
+    }
+  ]
+}

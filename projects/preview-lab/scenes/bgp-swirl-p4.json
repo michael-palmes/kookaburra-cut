@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Dune",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#f6f1e7", "#eadfc5", "#ded0ab", "#f0e8d6"],
+    "speed": 0.3,
+    "params": {
+      "bandCount": 5,
+      "twist": 0.08,
+      "softness": 0.5,
+      "noise": 0.15,
+      "noiseFrequency": 0.3
+    },
+    "preset": "p4"
+  }
+}

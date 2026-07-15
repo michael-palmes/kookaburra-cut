@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Bluegum",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#f9fbfd", "#b5c7d8", "#e2eaf1"],
+    "speed": 0.4,
+    "params": {
+      "brightness": 0.07,
+      "contrast": 0.25
+    },
+    "preset": "p5"
+  }
+}

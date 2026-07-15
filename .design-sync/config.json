@@ -1,0 +1,43 @@
+{
+  "projectId": "5a4ba874-7f12-4e8d-ad20-81bc05b87a7c",
+  "pkg": "@kookaburra/chrome",
+  "globalName": "KookaburraCutUI",
+  "shape": "package",
+  "buildCmd": "npx tsc -p .design-sync/kit/tsconfig.json && cp src/styles.css .design-sync/kit/dist/styles.css",
+  "cssEntry": "dist/styles.css",
+  "docsDir": "../docs",
+  "guidelinesGlob": ["../../docs/design.md"],
+  "runtimeFontPrefixes": ["SF Pro", "SF Mono", "SFMono"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "ChipRow": "src/Chip.tsx",
+    "MenuItem": "src/Menu.tsx",
+    "TextArea": "src/TextInput.tsx",
+    "Timecode": "src/PlaybackBar.tsx"
+  },
+  "overrides": {
+    "Field": {
+      "cardMode": "column"
+    },
+    "Modal": {
+      "cardMode": "single",
+      "viewport": "760x560"
+    },
+    "Menu": {
+      "cardMode": "single",
+      "viewport": "380x280"
+    },
+    "Toast": {
+      "cardMode": "column"
+    },
+    "Titlebar": {
+      "cardMode": "column"
+    },
+    "PlaybackBar": {
+      "cardMode": "column"
+    },
+    "SettingsRow": {
+      "cardMode": "column"
+    }
+  }
+}

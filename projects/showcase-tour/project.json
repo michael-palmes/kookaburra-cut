@@ -1,0 +1,34 @@
+{
+  "id": "showcase-tour",
+  "name": "Showcase · Theme Tour",
+  "themeId": "kookaburra-midnight",
+  "formats": ["16:9", "9:16", "1:1"],
+  "scenes": [
+    { "file": "scenes/01-pacific-open.tsx", "durationMs": 2800 },
+    {
+      "file": "scenes/02-paper-editorial.tsx",
+      "durationMs": 3000,
+      "transition": { "type": "crossfade", "durationMs": 600 }
+    },
+    {
+      "file": "scenes/03-neon-type.tsx",
+      "durationMs": 2600,
+      "transition": { "type": "crossfade", "durationMs": 600 }
+    },
+    {
+      "file": "scenes/04-ember-device.tsx",
+      "durationMs": 3200,
+      "transition": { "type": "crossfade", "durationMs": 600 }
+    },
+    {
+      "file": "scenes/05-abyss-camera.tsx",
+      "durationMs": 3000,
+      "transition": { "type": "crossfade", "durationMs": 600 }
+    },
+    {
+      "file": "scenes/06-sunrise-close.tsx",
+      "durationMs": 2600,
+      "transition": { "type": "crossfade", "durationMs": 600 }
+    }
+  ]
+}

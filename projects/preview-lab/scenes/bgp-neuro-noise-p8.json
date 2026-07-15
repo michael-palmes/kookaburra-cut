@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Deep Reef",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#2f6660", "#1a3835", "#081211"],
+    "speed": 0.45,
+    "params": {
+      "brightness": 0.08,
+      "contrast": 0.4
+    },
+    "preset": "p8"
+  }
+}

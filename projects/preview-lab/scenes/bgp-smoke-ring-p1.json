@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Ghost Gum",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#f2f4f1", "#b9c6bb"],
+    "speed": 0.4,
+    "params": {
+      "thickness": 0.7,
+      "radius": 0.25,
+      "innerShape": 0.7,
+      "noiseScale": 2.6
+    },
+    "preset": "p1"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "version": 2,
+  "id": "kookaburra-gallery",
+  "name": "Gallery",
+  "mode": "light",
+  "colors": {
+    "background": "#eef0f3",
+    "text": "#23272c",
+    "accent": "#475569",
+    "muted": "#8b939e"
+  },
+  "gradients": {
+    "brand": {
+      "type": "linear",
+      "angleDeg": 135,
+      "stops": [["#f4f6f8", 0], ["#dde2e8", 1]]
+    },
+    "backdrop": {
+      "type": "linear",
+      "angleDeg": 180,
+      "stops": [["#f4f6f8", 0], ["#d9dee5", 1]]
+    }
+  },
+  "typography": {
+    "headline": {
+      "family": "Space Grotesk",
+      "weight": 400
+    },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": {
+      "fast": 200,
+      "base": 500,
+      "slow": 900
+    },
+    "easings": {
+      "standard": "outQuad",
+      "emphasized": "outExpo"
+    }
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -10,
+      "elevationDeg": 62,
+      "intensity": 2.4
+    },
+    "fills": [
+      {
+        "azimuthDeg": 150,
+        "elevationDeg": 10,
+        "intensity": 0.4
+      }
+    ],
+    "ambient": 0.55,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.5,
+      "opacity": 0.32,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#262b33"
+    }
+  },
+  "environment": {
+    "source": "kookaburra:monochrome-studio",
+    "intensity": 0.9,
+    "rotationDeg": 0
+  },
+  "backdrop": {
+    "type": "gradient",
+    "gradient": "backdrop"
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "backdrop",
+    "parallax": 0.03
+  }
+}

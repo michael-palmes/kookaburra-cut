@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "Capabilities for the Kookaburra Cut settings window (v6 · M5.6)",
+  "windows": ["settings"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Spinifex",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#f7f2e2", "#f0e7c8", "#e9dcae", "#e2d194", "#dcc77e"],
+    "speed": 0.45,
+    "params": {
+      "stepsPerColor": 3,
+      "softness": 0.15
+    },
+    "preset": "p2"
+  }
+}

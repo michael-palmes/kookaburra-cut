@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — slide",
+  "text": {
+    "headline": "Make it move"
+  },
+  "textAnimation": { "in": "slide", "out": "none", "staggerMs": 0 }
+}

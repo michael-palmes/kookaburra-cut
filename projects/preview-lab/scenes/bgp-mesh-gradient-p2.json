@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Coastal Mist",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#e8eff4", "#d6e2eb", "#c8d8e4", "#dfe9f0"],
+    "speed": 0.3,
+    "params": {
+      "distortion": 0.9,
+      "swirl": 0.05,
+      "grainOverlay": 0.12
+    },
+    "preset": "p2"
+  }
+}

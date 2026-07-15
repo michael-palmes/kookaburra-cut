@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — blur-in",
+  "text": {
+    "headline": "Make it move"
+  },
+  "textAnimation": { "in": "blur-in", "out": "none", "staggerMs": 0 }
+}

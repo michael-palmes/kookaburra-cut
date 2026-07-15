@@ -1,0 +1,24 @@
+import { defineScene, SceneStage, TitleBlock, useSceneText, useTheme } from "@kookaburra/toolkit";
+
+/**
+ * __NAME__ — scaffolded title scene. The composition lives here; user-visible text lives
+ * in the sidecar `scenes/__STEM__.json` text map (see the kookaburra-scene-authoring skill,
+ * "Scene documents"). `<SceneStage>` mounts the theme's staging (lights, backdrop, shadows)
+ * and honours the sidecar's stage overrides. `<TitleBlock>` sizes the pair from the theme
+ * scale and aligns via the sidecar's `textLayout`; an empty subtitle recentres the title.
+ */
+export default defineScene({
+  id: "__SCENE_ID__",
+  durationMs: __DURATION_MS__,
+  Scene() {
+    const theme = useTheme();
+    const title = useSceneText("title", "__NAME__");
+    const subtitle = useSceneText("subtitle", "");
+    return (
+      <SceneStage>
+        <color attach="background" args={[theme.colors.background]} />
+        <TitleBlock title={title} subtitle={subtitle} />
+      </SceneStage>
+    );
+  },
+});

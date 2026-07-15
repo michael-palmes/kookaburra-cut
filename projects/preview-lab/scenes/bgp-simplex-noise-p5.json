@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Daintree Mist",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#f0f5ee", "#dfe9da", "#cdddc6", "#bcd1b2", "#abc59f"],
+    "speed": 0.5,
+    "params": {
+      "stepsPerColor": 1,
+      "softness": 1
+    },
+    "preset": "p5"
+  }
+}

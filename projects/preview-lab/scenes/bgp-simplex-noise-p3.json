@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Sea Glass",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#eef6f3", "#d9ece6", "#c4e2d8", "#afd7ca", "#9acdbd"],
+    "speed": 0.4,
+    "params": {
+      "stepsPerColor": 2,
+      "softness": 0.5
+    },
+    "preset": "p3"
+  }
+}

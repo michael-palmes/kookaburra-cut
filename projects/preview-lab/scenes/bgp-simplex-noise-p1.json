@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 simplex-noise Salt Lake",
+  "background": {
+    "type": "shader",
+    "shader": "simplex-noise",
+    "colors": ["#f9f3f0", "#f3e6e0", "#edd9d1", "#e7ccc2", "#e2bfb3"],
+    "speed": 0.4,
+    "params": {
+      "stepsPerColor": 1,
+      "softness": 0.9
+    },
+    "preset": "p1"
+  }
+}

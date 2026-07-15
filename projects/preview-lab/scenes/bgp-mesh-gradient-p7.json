@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Jarrah",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#20130d", "#4f3021", "#7a5230", "#331f15"],
+    "speed": 0.3,
+    "params": {
+      "distortion": 0.55,
+      "swirl": 0.25,
+      "grainMixer": 0.2
+    },
+    "preset": "p7"
+  }
+}

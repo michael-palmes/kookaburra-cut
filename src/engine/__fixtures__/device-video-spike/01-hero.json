@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "Hero (camera gate)",
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": -12, "elevationDeg": 4, "distance": 5.8 }
+      },
+      {
+        "id": "k2",
+        "tMs": 900,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 }
+      },
+      {
+        "id": "k3",
+        "tMs": 1400,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 }
+      },
+      {
+        "id": "k4",
+        "tMs": 2000,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 10, "elevationDeg": 5, "distance": 4.8 }
+      },
+      {
+        "id": "k5",
+        "tMs": 2400,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 24, "elevationDeg": 10, "distance": 4.6 }
+      }
+    ],
+    "segments": [
+      { "from": "k1", "to": "k2", "ease": "outCubic" },
+      { "from": "k3", "to": "k4", "ease": "inOutQuad" },
+      { "from": "k4", "to": "k5", "ease": "jump" }
+    ]
+  }
+}

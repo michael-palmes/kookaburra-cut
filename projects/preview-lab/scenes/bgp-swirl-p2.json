@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Frangipani",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#f8f3ea", "#f5e9cd", "#f2dcd4", "#f6efe0"],
+    "speed": 0.35,
+    "params": {
+      "bandCount": 3,
+      "twist": 0.06,
+      "softness": 0.7,
+      "proportion": 0.6
+    },
+    "preset": "p2"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 smoke-ring Bunya",
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#0a0f0a", "#46683d"],
+    "speed": 0.35,
+    "params": {
+      "thickness": 0.85,
+      "radius": 0.2,
+      "innerShape": 0.45,
+      "noiseScale": 3.6,
+      "noiseIterations": 7
+    },
+    "preset": "p7"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Bass Strait",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#0d1826", "#26425c", "#406285", "#16293c"],
+    "speed": 0.4,
+    "params": {
+      "distortion": 0.7,
+      "swirl": 0.12
+    },
+    "preset": "p6"
+  }
+}

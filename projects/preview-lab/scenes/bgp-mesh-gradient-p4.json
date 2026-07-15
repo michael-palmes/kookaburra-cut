@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Eucalypt",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#e6eee7", "#d3e2d6", "#c2d6c7", "#dce8dd"],
+    "speed": 0.35,
+    "params": {
+      "distortion": 0.75,
+      "swirl": 0.15,
+      "grainMixer": 0.15
+    },
+    "preset": "p4"
+  }
+}

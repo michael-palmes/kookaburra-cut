@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Turntable (camera gate)",
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 8, "elevationDeg": -2, "distance": 5.5 }
+      },
+      {
+        "id": "k2",
+        "tMs": 800,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "outQuad" }]
+  }
+}

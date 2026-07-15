@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 mesh-gradient Wattle",
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#f7f0d9", "#efe3ba", "#e9d9a6", "#f3ead0"],
+    "speed": 0.5,
+    "params": {
+      "distortion": 0.6,
+      "swirl": 0.3
+    },
+    "preset": "p3"
+  }
+}

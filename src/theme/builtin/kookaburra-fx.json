@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "id": "kookaburra-fx",
+  "name": "Kookaburra FX",
+  "mode": "dark",
+  "colors": {
+    "background": "#0b0f14",
+    "text": "#f5f7fa",
+    "accent": "#3ad1c4",
+    "muted": "#8a97a6"
+  },
+  "gradients": {
+    "brand": { "type": "linear", "angleDeg": 135, "stops": [["#0b0f14", 0], ["#16323a", 1]] }
+  },
+  "typography": { "headline": "Inter", "body": "Inter", "scale": 1.25 },
+  "motion": {
+    "durations": { "fast": 200, "base": 500, "slow": 900 },
+    "easings": { "standard": "outQuad", "emphasized": "outExpo" }
+  },
+  "effects": {
+    "bloom": { "intensity": 1.1, "luminanceThreshold": 0.55, "luminanceSmoothing": 0.2 },
+    "vignette": { "offset": 0.3, "darkness": 0.55 }
+  }
+}

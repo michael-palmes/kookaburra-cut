@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — twist-scale",
+  "text": {
+    "headline": "Make it move"
+  },
+  "textAnimation": { "in": "twist-scale", "out": "none", "staggerMs": 0 }
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 neuro-noise Basalt",
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#52616f", "#232a32", "#0b0e12"],
+    "speed": 0.4,
+    "params": {
+      "brightness": 0.07,
+      "contrast": 0.35
+    },
+    "preset": "p6"
+  }
+}

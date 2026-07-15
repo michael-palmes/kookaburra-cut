@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Whitsunday",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#eaf4f6", "#cfe7ec", "#bcdde5", "#dceef1"],
+    "speed": 0.4,
+    "params": {
+      "bandCount": 4,
+      "twist": 0.1,
+      "softness": 0.4
+    },
+    "preset": "p1"
+  }
+}

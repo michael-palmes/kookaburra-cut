@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "Studio (light)",
+  "themeId": "kookaburra-studio-white",
+  "text": {
+    "headline": "Hello daylight"
+  },
+  "background": {
+    "type": "color",
+    "color": "#dfe6ee"
+  }
+}

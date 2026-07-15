@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 warp Freshwater",
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#edf5f5", "#c2e0e0", "#dcedec", "#a9d2d2"],
+    "speed": 0.5,
+    "params": {
+      "proportion": 0.45,
+      "softness": 1,
+      "distortion": 0.15,
+      "swirl": 0.45
+    },
+    "preset": "p5"
+  }
+}

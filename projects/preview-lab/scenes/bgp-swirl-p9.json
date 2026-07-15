@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 swirl Cradle Night",
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#110f1e", "#2d2950", "#514a85", "#1b1830"],
+    "speed": 0.5,
+    "params": {
+      "bandCount": 6,
+      "twist": 0.22,
+      "softness": 0.25
+    },
+    "preset": "p9"
+  }
+}

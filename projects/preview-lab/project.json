@@ -1,0 +1,316 @@
+{
+  "id": "preview-lab",
+  "name": "Preview Lab (dev-only)",
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/tm-none.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-fade.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-fade-up.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-blur-in.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-slide.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-mask-reveal.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-fade-scale.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-twist-scale.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-scatter-scale.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/shadow-soft.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-long.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-sun.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-none.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/stage-theme.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/stage-none.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/stage-floor.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/stage-gradient.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bg-mesh-gradient.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-simplex-noise.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-swirl.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-neuro-noise.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-warp.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-smoke-ring.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-warp-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

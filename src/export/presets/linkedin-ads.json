@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "id": "linkedin-ads",
+  "name": "LinkedIn Ads",
+  "description": "Feed-filling video for LinkedIn ad campaigns — tuned to stay under LinkedIn's 200 MB ad limit.",
+  "platform": "LinkedIn",
+  "favouredAspect": "4:5",
+  "allowedAspects": ["4:5", "1:1", "16:9"],
+  "maxFileSizeMB": 200,
+  "video": {
+    "codec": "libx264",
+    "scaleShortEdgeTo": 1080,
+    "fps": 30,
+    "rate": { "targetKbps": 8000, "maxKbps": 10000, "bufsizeKbps": 16000 },
+    "profile": "high",
+    "level": "4.2",
+    "gopSeconds": 2,
+    "bFrames": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 128 }, "loudnessTarget": -14 }
+}

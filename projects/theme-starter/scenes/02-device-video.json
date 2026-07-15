@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "Device + video",
+  "text": {
+    "headline": "Show the product"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/sample-phone-recording.mp4", "kind": "video", "startMs": 0 },
+      "placement": { "rotationDeg": [0, 0, 0] },
+      "motion": { "preset": "turntable", "degPerSec": 12 }
+    }
+  ]
+}
