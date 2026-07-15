@@ -56,13 +56,12 @@ if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-prev
   exit 2
 fi
 if [[ -n "$APP" ]]; then
-  # Packaged mode: the .app carries its own sidecars; resolve the inner binary.
-  APP_BIN="$APP/Contents/MacOS/Kookaburra Cut"
-  if [[ ! -x "$APP_BIN" ]]; then
-    APP_BIN="$(find "$APP/Contents/MacOS" -maxdepth 1 -type f -perm +111 2>/dev/null | head -n 1 || true)"
-  fi
-  if [[ -z "$APP_BIN" || ! -x "$APP_BIN" ]]; then
-    echo "kookaburra:run: no executable found inside '$APP' (expected Contents/MacOS/Kookaburra Cut)" >&2
+  # Packaged mode: the sidecars sit beside the main binary, so resolve it from
+  # Info.plist rather than guessing (a bare find can pick up ffmpeg instead).
+  APP_EXEC="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info.plist" 2>/dev/null || true)"
+  APP_BIN="$APP/Contents/MacOS/$APP_EXEC"
+  if [[ -z "$APP_EXEC" || ! -x "$APP_BIN" ]]; then
+    echo "kookaburra:run: no executable found inside '$APP' (CFBundleExecutable='${APP_EXEC:-unreadable}')" >&2
     exit 2
   fi
 elif [[ ! -x "$SIDECAR" ]]; then
@@ -85,7 +84,7 @@ if lsof -nP -iTCP:1420 -sTCP:LISTEN >/dev/null 2>&1; then
   echo "            stop it first." >&2
   exit 2
 fi
-if pgrep -f "Contents/MacOS/Kookaburra Cut" >/dev/null 2>&1; then
+if pgrep -f "Kookaburra Cut.app/Contents/MacOS/" >/dev/null 2>&1; then
   echo "kookaburra:run: a packaged Kookaburra Cut is already running — quit it first (shared caches)." >&2
   exit 2
 fi
