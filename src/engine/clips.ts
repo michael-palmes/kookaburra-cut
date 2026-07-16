@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { LinearFilter, type Object3D, type Scene, SRGBColorSpace, Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
+import { isExporting } from "./exportState";
 import { resolveAssetPath } from "./project";
 import { ProjectIdContext } from "./sceneContext";
 
@@ -19,6 +20,8 @@ export interface ClipInfo {
 
 /** Registry record for one source clip: its extraction promise and, once ready, its loader. */
 interface ClipEntry {
+  /** Absolute source path (the registry key also carries the lane). */
+  srcAbs: string;
   promise: Promise<ClipInfo>;
   info?: ClipInfo;
   frames?: ClipFrames;
@@ -30,8 +33,44 @@ interface ClipEntry {
 /** Number of decoded frame textures kept resident per clip (LRU window). */
 const LRU_CAPACITY = 12;
 
-/** Keyed by absolute source path so multiple `<VideoClip>`s of one source share extraction. */
+/** Keyed by `<lane>:<absolute source path>` so multiple `<VideoClip>`s of one source share extraction per lane. */
 const registry = new Map<string, ClipEntry>();
+
+/** Decode lane: `hw` (VideoToolbox) is the everyday default; `sw` is the software decode the standing baselines were recorded from. The two are NOT pixel-identical, so each owns its own cache dir and deterministic-codec exports pin to `sw`. */
+export type ClipLane = "hw" | "sw";
+
+let activeLane: ClipLane = "hw";
+
+const HARDWARE_EXPORT_CODECS = new Set([
+  "h264_videotoolbox",
+  "hevc_videotoolbox",
+  "prores_videotoolbox",
+]);
+
+/** The everyday (non-export) lane; follows the Settings hardware-video toggle. */
+let everydayLane: ClipLane = "hw";
+
+/** Fast-draft (hardware) export codecs read the everyday lane; deterministic codecs read the software lane so Verify and the baselines stay anchored. */
+export function laneForCodec(codec: string | undefined): ClipLane {
+  return codec && HARDWARE_EXPORT_CODECS.has(codec) ? everydayLane : "sw";
+}
+
+export function everydayClipLane(): ClipLane {
+  return everydayLane;
+}
+
+/** Apply the Settings hardware-video toggle; deferred to the export's own lane restore when a run is in flight (the registry must not bump mid-loop). */
+export function setHardwareVideo(enabled: boolean): void {
+  everydayLane = enabled ? "hw" : "sw";
+  if (!isExporting()) setClipLane(everydayLane);
+}
+
+/** Switch the active decode lane; mounted consumers re-register against it via the registry version bump. */
+export function setClipLane(lane: ClipLane): void {
+  if (lane === activeLane) return;
+  activeLane = lane;
+  notifyRegistry();
+}
 
 // A freshly added video's first extraction takes a while and the device screen stays black meanwhile, so the stage shows an honest "Preparing video" chip driven by this counter; UI-only plumbing, no clock reads or render-path change.
 let extracting = 0;
@@ -52,18 +91,24 @@ export function clipExtractionCount(): number {
   return extracting;
 }
 
-async function extract(srcAbs: string): Promise<{ info: ClipInfo; sha: string }> {
+async function extract(srcAbs: string, lane: ClipLane): Promise<{ info: ClipInfo; sha: string }> {
   const sha = await invoke<string>("hash_file", { path: srcAbs });
-  const info = await invoke<ClipInfo>("extract_clip_frames", { srcAbs, sha });
+  const info = await invoke<ClipInfo>("extract_clip_frames", {
+    srcAbs,
+    sha,
+    hardware: lane === "hw",
+  });
   return { info, sha };
 }
 
-/** Registers a clip for on-demand extraction (idempotent); kicks off the sidecar extraction once per unique source and memoizes the result. Safe to call during render, it does no work when the entry already exists. */
+/** Registers a clip for on-demand extraction in the active lane (idempotent); kicks off the sidecar extraction once per unique source+lane and memoizes the result. Safe to call during render, it does no work when the entry already exists. */
 export function registerClip(srcAbs: string): ClipEntry {
-  const existing = registry.get(srcAbs);
+  const lane = activeLane;
+  const key = `${lane}:${srcAbs}`;
+  const existing = registry.get(key);
   if (existing) return existing;
-  const entry: ClipEntry = { promise: undefined as unknown as Promise<ClipInfo> };
-  entry.promise = extract(srcAbs)
+  const entry: ClipEntry = { srcAbs, promise: undefined as unknown as Promise<ClipInfo> };
+  entry.promise = extract(srcAbs, lane)
     .then(({ info, sha }) => {
       entry.info = info;
       entry.sha = sha;
@@ -78,7 +123,7 @@ export function registerClip(srcAbs: string): ClipEntry {
   entry.promise.catch(() => {});
   bumpExtracting(1);
   entry.promise.catch(() => {}).finally(() => bumpExtracting(-1));
-  registry.set(srcAbs, entry);
+  registry.set(key, entry);
   return entry;
 }
 
@@ -94,8 +139,8 @@ export function clipRegistryVersion(): number {
   return registryVersion;
 }
 
-function evictEntry(srcAbs: string, entry: ClipEntry): void {
-  registry.delete(srcAbs);
+function evictEntry(key: string, entry: ClipEntry): void {
+  registry.delete(key);
   entry.frames?.retire();
 }
 
@@ -107,23 +152,24 @@ function notifyRegistry(): void {
 /** Evicts every registered clip (the clip-extraction cache was cleared on disk); consumers re-extract. */
 export function evictAllClips(): void {
   if (registry.size === 0) return;
-  for (const [srcAbs, entry] of registry) evictEntry(srcAbs, entry);
+  for (const [key, entry] of registry) evictEntry(key, entry);
   notifyRegistry();
 }
 
 /** The media-changed sweep: re-hashes every settled clip and evicts those whose file changed on disk (an edit render overwrote it) plus any failed extraction, so consumers re-extract instead of serving stale frames. */
 export async function invalidateChangedClips(): Promise<void> {
   const evicted = await Promise.all(
-    [...registry.entries()].map(async ([srcAbs, entry]) => {
+    [...registry.entries()].map(async ([key, entry]) => {
       if (!entry.info && !entry.error) return false; // still extracting, already fresh
       if (!entry.error) {
         try {
-          if ((await invoke<string>("hash_file", { path: srcAbs })) === entry.sha) return false;
+          if ((await invoke<string>("hash_file", { path: entry.srcAbs })) === entry.sha)
+            return false;
         } catch {
           // Unreadable now (deleted or moved): evict so consumers surface the error.
         }
       }
-      evictEntry(srcAbs, entry);
+      evictEntry(key, entry);
       return true;
     }),
   );
@@ -132,6 +178,9 @@ export async function invalidateChangedClips(): Promise<void> {
 
 /** Awaits extraction of every registered clip; called in the export preamble (beside font preload) so all frame sequences exist on disk before frame 0, the "await all assets before frame 0" determinism rule. */
 export function preextractClips(): Promise<void> {
+  // A lane switch may not have re-rendered consumers yet, so register every known source in the active lane here rather than trusting React's flush timing.
+  const sources = new Set([...registry.values()].map((e) => e.srcAbs));
+  for (const src of sources) registerClip(src);
   return Promise.all([...registry.values()].map((e) => e.promise.catch(() => {}))).then(
     () => undefined,
   );

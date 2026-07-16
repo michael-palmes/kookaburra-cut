@@ -17,7 +17,13 @@ import {
   baseCameraPose,
   type CameraKeyframe,
 } from "./cameraTrack";
-import { awaitVideoFramesReady, preextractClips } from "./clips";
+import {
+  awaitVideoFramesReady,
+  everydayClipLane,
+  laneForCodec,
+  preextractClips,
+  setClipLane,
+} from "./clips";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { preloadEffectLuts } from "./effects";
@@ -270,6 +276,8 @@ export async function exportProject(
   await preloadAppFonts(
     opts.theme ? collectThemeFontRefs([opts.theme, ...(opts.sceneThemes ?? [])]) : undefined,
   );
+  // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the loop's finally; a preamble throw leaves it on sw, corrected by the next export or preview re-registration.
+  setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));
   // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.
   await preextractClips();
   // Fetches + parses bundled 3D models and this project's screen images (and warms drei's caches) before frame 0, so a cold export never captures a still-loading DeviceMockup; no-op once cached. See docs/determinism.md.
@@ -400,6 +408,7 @@ export async function exportProject(
     throw err;
   } finally {
     setExporting(false);
+    setClipLane(everydayClipLane());
     gl.setPixelRatio(prevPixelRatio);
     gl.setSize(prevSize.x, prevSize.y, false);
     if (cam.isPerspectiveCamera) {

@@ -122,14 +122,60 @@ pub struct SidecarVersions {
     ffprobe: String,
 }
 
+/// What the bundled sidecar's VideoToolbox support actually covers, probed live so a swapped sidecar can't lie.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareVideoSupport {
+    decode: bool,
+    h264: bool,
+    hevc: bool,
+    prores: bool,
+}
+
+#[tauri::command]
+pub async fn hardware_video_support(app: AppHandle) -> Result<HardwareVideoSupport, String> {
+    let encoders = media::run_sidecar(
+        &app,
+        "ffmpeg",
+        vec!["-hide_banner".into(), "-encoders".into()],
+        media::SidecarPriority::Foreground,
+    )
+    .await?;
+    let hwaccels = media::run_sidecar(
+        &app,
+        "ffmpeg",
+        vec!["-hide_banner".into(), "-hwaccels".into()],
+        media::SidecarPriority::Foreground,
+    )
+    .await?;
+    Ok(HardwareVideoSupport {
+        decode: hwaccels.contains("videotoolbox"),
+        h264: encoders.contains("h264_videotoolbox"),
+        hevc: encoders.contains("hevc_videotoolbox"),
+        prores: encoders.contains("prores_videotoolbox"),
+    })
+}
+
 fn first_line(s: &str) -> String {
     s.lines().next().unwrap_or("").trim().to_owned()
 }
 
 #[tauri::command]
 pub async fn sidecar_versions(app: AppHandle) -> Result<SidecarVersions, String> {
-    let ffmpeg = media::run_sidecar(&app, "ffmpeg", vec!["-version".into()]).await?;
-    let ffprobe = media::run_sidecar(&app, "ffprobe", vec!["-version".into()]).await?;
+    let ffmpeg = media::run_sidecar(
+        &app,
+        "ffmpeg",
+        vec!["-version".into()],
+        media::SidecarPriority::Foreground,
+    )
+    .await?;
+    let ffprobe = media::run_sidecar(
+        &app,
+        "ffprobe",
+        vec!["-version".into()],
+        media::SidecarPriority::Foreground,
+    )
+    .await?;
     Ok(SidecarVersions {
         ffmpeg: first_line(&ffmpeg),
         ffprobe: first_line(&ffprobe),

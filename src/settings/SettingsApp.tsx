@@ -7,11 +7,13 @@ import {
   clearClipsCache,
   clearMediaCache,
   formatBytes,
+  type HardwareVideoSupport,
+  hardwareVideoSupport,
   type SidecarVersions,
   sidecarVersions,
 } from "../engine/appCache";
 import { revealApp } from "../engine/reveal";
-import { getSettings } from "../engine/workspace";
+import { getSettings, setHardwareVideoSetting } from "../engine/workspace";
 
 /** The Settings window: native titlebar, opened via the app menu (⌘,). V1: cache management (media previews + clip extractions) and read-only info (workspace path, sidecar versions, app version). */
 
@@ -27,6 +29,8 @@ export function SettingsApp() {
   const [appVersion, setAppVersion] = useState("");
   const [busy, setBusy] = useState<"media" | "clips" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hwEnabled, setHwEnabled] = useState<boolean | null>(null);
+  const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -40,12 +44,34 @@ export function SettingsApp() {
       .then(setVersions)
       .catch(() => setVersions(null));
     getSettings()
-      .then((s) => setWorkspace(s.workspaceRoot ?? null))
+      .then((s) => {
+        setWorkspace(s.workspaceRoot ?? null);
+        setHwEnabled(!s.disableHardwareVideo);
+      })
       .catch(() => setWorkspace(null));
+    hardwareVideoSupport()
+      .then(setHwSupport)
+      .catch(() => setHwSupport(null));
     getVersion()
       .then(setAppVersion)
       .catch(() => setAppVersion(""));
   }, [refreshStats]);
+
+  const toggleHardware = useCallback((enabled: boolean) => {
+    setHwEnabled(enabled);
+    setHardwareVideoSetting(enabled).catch((e) => setError(String(e)));
+  }, []);
+
+  const hwDetail = hwSupport
+    ? [
+        hwSupport.h264 && "H.264",
+        hwSupport.hevc && "HEVC",
+        hwSupport.prores && "ProRes",
+        hwSupport.decode && "decode",
+      ]
+        .filter(Boolean)
+        .join(" · ") || "not available in this ffmpeg build"
+    : "…";
 
   const clear = useCallback(
     (which: "media" | "clips") => {
@@ -100,6 +126,25 @@ export function SettingsApp() {
           >
             {busy === "clips" ? "Clearing…" : "Clear"}
           </button>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h2>Video</h2>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Hardware acceleration</span>
+            <span className="muted settings-row-detail">
+              {`VideoToolbox: ${hwDetail} — speeds up media previews, video prep and editor renders; deterministic exports always use software`}
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Hardware acceleration"
+            checked={hwEnabled ?? true}
+            disabled={hwEnabled === null}
+            onChange={(e) => toggleHardware(e.target.checked)}
+          />
         </div>
       </section>
 

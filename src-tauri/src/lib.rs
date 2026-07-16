@@ -1,5 +1,6 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+mod concurrency;
 mod edit;
 mod encode;
 mod export_presets;
@@ -522,19 +523,24 @@ async fn extract_clip_frames(
     src_abs: String,
     // F-005: client-supplied hash is untrusted, ignored below in favour of a native recompute.
     _sha: String,
+    // VideoToolbox decode is NOT pixel-identical to software, so each lane owns its own cache dir; the software dir is the one standing baselines were recorded from.
+    hardware: bool,
 ) -> Result<ClipInfo, String> {
+    // The Settings toggle can force everything onto the software lane.
+    let hardware = hardware && workspace::hardware_video_enabled(&app);
     // Confine the source before it reaches the sidecar (TAU-01); scene data can supply it.
     let src_path = workspace::confine_readable(&app, &settings, &src_abs)?;
     // Rebind the cache key to the confined file's own hash so a lying client can't collide with or poison another clip's cache entry; matches the client value for a legitimate file, so the cache key and output are unchanged.
     let sha = sha256_file(&src_path)?;
     let src_abs = src_path.to_string_lossy().into_owned();
+    let lane_suffix = if hardware { "-hw" } else { "" };
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
         .join("cache")
         .join("clips")
-        .join(format!("{sha}-{CLIP_FPS}fps"));
+        .join(format!("{sha}-{CLIP_FPS}fps{lane_suffix}"));
     let done = dir.join(".done");
 
     // Cache hit: a completed extraction for this exact source + rate.
@@ -548,26 +554,39 @@ async fn extract_clip_frames(
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let pattern = dir.join("frame-%05d.png");
-    let args: Vec<String> = vec![
-        "-y".into(),
+    let mut args: Vec<String> = vec!["-y".into()];
+    if hardware {
+        args.extend(["-hwaccel".into(), "videotoolbox".into()]);
+    }
+    args.extend([
         "-i".into(),
         src_abs,
         "-vf".into(),
         format!("fps={CLIP_FPS}"),
         "-fps_mode".into(),
         "cfr".into(),
+        // Cheap deflate + no predictor: identical pixels, ~2x faster writes, ~2x file size.
+        "-compression_level".into(),
+        "1".into(),
+        "-pred".into(),
+        "0".into(),
         "-start_number".into(),
         "0".into(),
         pattern.to_string_lossy().into_owned(),
-    ];
+    ]);
 
-    let (mut rx, _child) = app
+    let _permit = app
+        .state::<concurrency::BackgroundLimiter>()
+        .acquire()
+        .await?;
+    let (mut rx, child) = app
         .shell()
         .sidecar("ffmpeg")
         .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
+    concurrency::lower_priority(child.pid());
 
     // No stdin to feed, but the event channel (buffer 1) must still be drained.
     let mut code: Option<i32> = None;
@@ -669,6 +688,7 @@ pub fn run() {
         // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(ExportState::default())
+        .manage(concurrency::BackgroundLimiter::default())
         .manage(workspace::SettingsState::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
@@ -831,6 +851,7 @@ pub fn run() {
             workspace::list_project_assets,
             workspace::list_project_media,
             workspace::set_last_project,
+            workspace::set_hardware_video,
             workspace::rename_project,
             workspace::duplicate_project,
             workspace::delete_project,
@@ -885,6 +906,7 @@ pub fn run() {
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,
             settings_win::sidecar_versions,
+            settings_win::hardware_video_support,
             edit::open_edit,
             edit::open_edit_named,
             edit::reset_edit,

@@ -12,6 +12,8 @@ export interface AppSettings {
   /** Last export-modal pick per project id + the global fallback. */
   lastExportPresetByProject?: Record<string, string>;
   lastExportPreset?: string | null;
+  /** Inverted flag so its default (false) means hardware video ON. */
+  disableHardwareVideo?: boolean;
 }
 
 export interface WorkspaceProjectInfo {
@@ -65,6 +67,11 @@ export function deleteProject(slug: string): Promise<void> {
 
 export function setLastProject(projectId: string | null): Promise<void> {
   return invoke<void>("set_last_project", { projectId });
+}
+
+/** Toggle hardware video for the everyday paths (thumbnails, clip extraction, editor render); emits `kookaburra://hardware-video-changed`. */
+export function setHardwareVideoSetting(enabled: boolean): Promise<void> {
+  return invoke<void>("set_hardware_video", { enabled });
 }
 
 // ── Export presets: `~/Kookaburra Cut/export-presets/<slug>.json` ─────────

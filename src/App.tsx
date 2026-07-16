@@ -25,6 +25,7 @@ import {
   clipExtractionCount,
   evictAllClips,
   invalidateChangedClips,
+  setHardwareVideo,
   subscribeClipExtraction,
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
@@ -377,6 +378,19 @@ export default function App() {
       void unlisten.then((fn) => fn());
     };
   }, [isAutoRun]);
+
+  // The everyday clip-decode lane follows the Settings hardware-video toggle: seeded at boot, live-updated from the Settings window (deferred to the export's lane restore mid-run).
+  useEffect(() => {
+    getSettings()
+      .then((s) => setHardwareVideo(!s.disableHardwareVideo))
+      .catch(() => {});
+    const unlisten = listen<boolean>("kookaburra://hardware-video-changed", (e) =>
+      setHardwareVideo(e.payload),
+    );
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar or the Background video picker), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device slot only).
   const pendingRepointRef = useRef<{
