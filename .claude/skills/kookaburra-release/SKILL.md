@@ -25,10 +25,17 @@ multi-resolution TIFF, so the artwork is blurry on Retina — and cannot set a v
    xcrun notarytool store-credentials "kookaburra-cut" \
      --apple-id <email> --team-id <TEAMID>
    ```
-3. Export both, or the scripts refuse to start:
+3. An **updater keypair** for the auto-update lane (once; keep the private key out of git):
+   ```bash
+   pnpm tauri signer generate -w ~/.tauri/kookaburra-cut-updater.key
+   ```
+   Paste the printed public key into `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
+4. Export all of these, or the scripts refuse to start:
    ```bash
    export KOOKABURRA_SIGNING_IDENTITY="Developer ID Application: Your Name (<TEAMID>)"
    export KOOKABURRA_NOTARY_PROFILE="kookaburra-cut"
+   export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/kookaburra-cut-updater.key"
+   export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="<its password>"
    ```
 
 ## Cutting a release
@@ -40,8 +47,9 @@ multi-resolution TIFF, so the artwork is blurry on Retina — and cannot set a v
 3. **Commit** — `release.sh` refuses a dirty tree. Use `/ps-commit`.
 4. **`pnpm release`** (or `pnpm release --no-github` to build and tag locally only). It runs:
    guards (clean tree, untagged version, `pnpm build` + `test` + `lint`) → sign + notarise +
-   staple the app → styled DMG → notarise + staple the DMG → zip + sha256 → tag → draft GitHub
-   release. Publishing is skipped automatically when no git remote is configured.
+   staple the app → styled DMG → notarise + staple the DMG → updater tar + `.sig` → zip +
+   sha256 → `latest.json` → tag → draft GitHub release (DMG, zip, sha256, updater tar,
+   `latest.json`). Publishing is skipped automatically when no git remote is configured.
    - **Needs a GUI session**: Finder styles the DMG, so this cannot run headless or over SSH.
      Don't lock the screen while it runs.
    - Budget **5–15 minutes**, mostly waiting on Apple.
@@ -91,6 +99,13 @@ you have almost certainly introduced one of the above by accident — fix the ca
 
 **Artefacts go in `release/`, never `dist/`.** `dist/` is Vite's `frontendDist` and `vite build`
 empties it, deleting anything you leave there.
+
+**Never set `bundle.createUpdaterArtifacts`.** It tars the bundle during `tauri build`, BEFORE
+notarisation staples the ticket, so updater-installed copies would miss the offline Gatekeeper
+proof. `sign-and-notarize.sh` hand-rolls the tar from the stapled app and signs it with
+`pnpm tauri signer sign`; `release.sh` writes `latest.json` from that signature. Also note the
+in-app updater only sees a release once it is **published** — the draft 404s at
+`releases/latest/download/latest.json`, which the app reports calmly as a failed check.
 
 **The ffmpeg sidecar is GPL** (libx264). It ships as an arm's-length sidecar *process*, so the app
 is not forced GPL, but public distribution must offer the source — `release.sh`'s notes point at

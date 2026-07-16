@@ -21,10 +21,11 @@ byte-identical by design.
 <p align="center"><sub>Reworking a device scene from the embedded agent terminal. More at <a href="https://kookaburracut.com/">kookaburracut.com</a>.</sub></p>
 
 > Status: in active development, pre-release. Everything runs locally: no
-> telemetry, no cloud, no accounts. The one network exception is the optional
+> telemetry, no cloud, no accounts. Two opt-in network exceptions: the optional
 > embedded Claude Code terminal, which only ever runs when you explicitly
 > invoke it (it installs via a script shown in the terminal and talks to
-> Anthropic while you use it).
+> Anthropic while you use it), and the update check, off until you enable it,
+> which asks GitHub whether a newer release exists and sends no identifiers.
 
 ## What it does
 
