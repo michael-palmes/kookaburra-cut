@@ -915,13 +915,28 @@ bundled rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 |
 | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
-| `showcase-tour` (rolling gate) | `cd511715…` | stale | stale | stale |
+| `showcase-tour` (rolling gate) | `da74c52b…` | stale | stale | stale |
 
 > **2026-07-16:** `showcase-tour` re-recorded `226104ee…` → `cd511715…`: a
 > deliberate content change (device scenes moved to the iPhone 17 Pro model at
 > rotation 0), not drift; `ws:launch-2026` re-verified EQUAL at `b70c9788…` the
 > same session, so the engine paths (device registries/fallbacks, fit axis, lid
 > control) are pixel-null for legacy content.
+
+> **2026-07-16 (later, text-colour session):** `showcase-tour` re-recorded
+> `cd511715…` → `da74c52b…`. The cause is the licensed device glbs regenerated
+> on 2026-07-15 (dev already gave `da74c52b…` before this session; `cd511715…`
+> was not reproducible after the regen). Re-proven Verify ×2 EQUAL today with
+> the text-colour plumbing (`textKey`/`defaultColor`) and the mask-reveal
+> `clipRect` fix in tree, so both are pixel-null for the sequential export: the
+> stale-clip bug only ever bit seeks that jump a whole reveal (borrowed-clock
+> captures, scrubbing), never the frame-by-frame export loop. Mask-reveal
+> headlines used to keep their LAST concrete `clipRect` once the sweep completed
+> (r3f leaves a prop that becomes undefined at its previous value), leaving text
+> invisible after such a seek (the invisible Paper-theme preview titles); the
+> unclipped state is now spelled `null`. An extracted scene-2 frame was
+> eyeballed, and `ws:launch-2026` re-verified EQUAL at `b70c9788…` the same
+> session (the legacy path never sets `clipRect`).
 | `ws:emoji-spike` (emoji/symbol pipeline) | `fc772d5b…` | `3e0c8cfb…` | n/a | n/a |
 | `ws:shader-spike` (animated background pack) | `9ed15e3e…` | n/a | n/a | n/a |
 
