@@ -548,7 +548,7 @@ pub async fn scaffold_scene(
             "model": options.device_model.as_deref().unwrap_or("iphone-17-pro"),
             "colour": options.colour.as_deref().unwrap_or("silver"),
             "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
-            "motion": { "preset": options.motion_preset.as_deref().unwrap_or("push-in") },
+            "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
             "shadow": options.shadow.as_deref().unwrap_or("soft"),
         });
         if let (Some(rel), Some(kind)) = (&options.media_rel, &options.media_kind) {
