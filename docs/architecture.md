@@ -176,9 +176,14 @@ accumulated in JS, so peak memory is one frame buffer plus GPU resources.
 **Throughput bottlenecks.** (a) `gl.readPixels` forces a GPU/CPU sync stall:
 acceptable for offline export, unavoidable in WebGL2 on Safari. (b) ~33 MB/frame
 IPC: mitigated by raw bytes over `InvokeBody::Raw` and one reused buffer.
-(c) ffmpeg encode: hardware VideoToolbox keeps it off the CPU when selected.
-(d) WebKit's 2D-canvas pixel ceiling (16,777,216 px) does not bind a 4K WebGL
-drawing buffer (~8.3M px); keep any auxiliary 2D helper canvases small.
+(c) ffmpeg encode: hardware VideoToolbox keeps it off the CPU when selected
+(`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox` fast-draft
+lanes; the editor's flatten render is hardware by default). (d) WebKit's
+2D-canvas pixel ceiling (16,777,216 px) does not bind a 4K WebGL drawing buffer
+(~8.3M px); keep any auxiliary 2D helper canvases small. (e) Bulk background
+ffmpeg (thumbnails, clip extraction) queues on a 3-permit semaphore at lowered
+scheduling priority (`src-tauri/src/concurrency.rs`), so an import burst can't
+saturate every core under an active export or a responsive UI.
 
 **Encoder commands.**
 
@@ -279,8 +284,12 @@ Frame-accurate `HTMLVideoElement` seeking is unreliable, so the default is
 **pre-extraction**: before rendering, the ffmpeg sidecar extracts each clip to a
 deterministic constant-frame-rate image sequence; the `VideoClip` primitive
 samples a frame index as a pure function of the clock and binds that frame as a
-texture. Fully deterministic, accepts anything ffmpeg can read. (An in-memory
-WebCodecs decode path remains a possible later optimisation.)
+texture. Fully deterministic, accepts anything ffmpeg can read. Extraction is
+dual-lane (VideoToolbox decode for everyday preview and fast-draft exports,
+software decode for deterministic-codec exports; hardware decode is not
+pixel-identical, see docs/determinism.md "Embedded video"), and PNGs are written
+at low compression effort for speed. (An in-memory WebCodecs decode path remains
+a possible later optimisation.)
 
 ## 3D & devices
 
