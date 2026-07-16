@@ -1,6 +1,7 @@
+import banner from "../assets/update-banner.jpg";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** The update lane's two modals, in their own module so the Settings window can import them without dragging in dialogs.tsx's theme-picker graph (40 bundled preview images). */
+/** The update lane's two modals, in their own module so the Settings window can import them without dragging in dialogs.tsx's theme-picker graph (40 bundled preview images). Both share the moonlit-kookaburra banner (chrome-only imagery; exported pixels never touch the DOM). */
 
 /** One-time update-check consent ask (shown while the tri-state preference is undecided). Escape answers Not now, same as the trust gate; either answer settles it and the ask never repeats. */
 export function UpdateConsentDialog({ onAnswer }: { onAnswer: (on: boolean) => void }) {
@@ -12,7 +13,8 @@ export function UpdateConsentDialog({ onAnswer }: { onAnswer: (on: boolean) => v
       aria-modal="true"
       aria-label="Check for updates on launch?"
     >
-      <div className="modal">
+      <div className="modal modal-with-banner">
+        <img className="modal-banner" src={banner} alt="" />
         <h2>Check for updates on launch?</h2>
         <p className="muted">
           Kookaburra Cut can ask GitHub when it starts whether a newer release exists.
@@ -28,7 +30,7 @@ export function UpdateConsentDialog({ onAnswer }: { onAnswer: (on: boolean) => v
             Not now
           </button>
           <button type="button" className="btn primary" onClick={() => onAnswer(true)}>
-            Enable
+            Enable (recommended)
           </button>
         </div>
       </div>
@@ -60,7 +62,8 @@ export function UpdateAvailableDialog({
       aria-modal="true"
       aria-label={`Kookaburra Cut ${version} is available`}
     >
-      <div className="modal">
+      <div className="modal modal-with-banner">
+        <img className="modal-banner" src={banner} alt="" />
         <h2>Kookaburra Cut {version} is available</h2>
         <p className="muted">
           Installing downloads the release, verifies its signature and relaunches the app.
