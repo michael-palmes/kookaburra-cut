@@ -1453,6 +1453,21 @@ body {
   margin-top: var(--space-2);
 }
 
+.modal-list {
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Release notes in the update offer: plain text, clipped rather than unbounded. */
+.update-notes {
+  max-height: 10rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
 /* Template picker: selectable thumbnail cards; selected = accent border + subtle fill.
    (A <fieldset> for a11y grouping — hence the explicit resets.) */
 .template-grid {

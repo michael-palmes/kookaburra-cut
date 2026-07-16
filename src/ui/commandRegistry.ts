@@ -42,6 +42,7 @@ export interface CommandContext {
     openExport: () => void;
     verify: () => void;
     showShortcuts: () => void;
+    checkForUpdates: () => void;
   };
 }
 
@@ -185,6 +186,15 @@ export function buildCommands(ctx: CommandContext): Command[] {
       hint: "⌘/",
       enabled: true,
       run: a.showShortcuts,
+    },
+    {
+      id: "help.checkForUpdates",
+      title: "Check for updates",
+      group: "Help",
+      keywords: ["update", "version", "upgrade", "release", "new"],
+      // Not during an export: a mid-run install-and-relaunch would kill the encode.
+      enabled: !ctx.exporting,
+      run: a.checkForUpdates,
     },
   ];
   return commands;
