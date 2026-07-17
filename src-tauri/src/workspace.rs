@@ -235,10 +235,10 @@ pub fn confine_readable(
     confine_to_roots(path, &allowed_read_roots(app, state))
 }
 
-/// Where the bundled templates live: dev = the LIVE repo tree (baked in at compile time), packaged = the resource tree (`bundle.resources` maps ../projects → Resources/projects); the repo tree is checked FIRST because in dev, Tauri also copies resources beside the debug exe and that stale copy has previously shadowed newly added templates with outdated content, matching the frontend's dev-tree-first resolution (engine/project.ts).
+/// Where the bundled templates live: DEBUG binaries prefer the LIVE repo tree (baked in at compile time) because in dev, Tauri also copies resources beside the debug exe and that stale copy has previously shadowed newly added templates, matching the frontend's dev-tree-first resolution (engine/project.ts). RELEASE binaries prefer the resource tree (`bundle.resources` maps ../projects → Resources/projects): the packaged frontend resolves bundled assets against the resource dir, and preferring a dev checkout that happens to exist on the machine put that dir outside `allowed_read_roots`, silently failing clip extraction and breaking dev/packaged export parity on dev machines.
 fn templates_root(app: &AppHandle) -> PathBuf {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../projects");
-    if dev.is_dir() {
+    if cfg!(debug_assertions) && dev.is_dir() {
         return dev;
     }
     if let Ok(dir) = app.path().resource_dir() {
@@ -250,10 +250,10 @@ fn templates_root(app: &AppHandle) -> PathBuf {
     dev
 }
 
-/// Where the shipped project skills live (same dev-tree-first split as `templates_root`; bundled as the `claude-skills` resource so packaged apps provision projects exactly like dev).
+/// Where the shipped project skills live (same debug-tree-first / release-resource-first split as `templates_root`; bundled as the `claude-skills` resource so packaged apps provision projects exactly like dev).
 fn skills_root(app: &AppHandle) -> PathBuf {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.claude/skills");
-    if dev.is_dir() {
+    if cfg!(debug_assertions) && dev.is_dir() {
         return dev;
     }
     if let Ok(dir) = app.path().resource_dir() {

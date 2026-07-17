@@ -23,6 +23,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Terminal-triggered runs now resolve the packaged app binary from
   Info.plist rather than assuming its name.
+- The packaged app now reads bundled project assets from its own resources
+  rather than a dev checkout on the same machine, so device screen videos
+  export correctly instead of a placeholder.
 
 ## [0.1.0] - 2026-07-16
 
