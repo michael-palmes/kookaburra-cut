@@ -937,13 +937,21 @@ bundled rolling-gate project (`showcase-tour`):
 > control) are pixel-null for legacy content.
 
 > **2026-07-16 (later, text-colour session):** `showcase-tour` re-recorded
-> `cd511715…` → `da74c52b…`: the licensed device glbs were regenerated on
-> 2026-07-15, after which `cd511715…` was no longer reproducible. Re-proven
-> Verify ×2 EQUAL with the text-colour plumbing and the mask-reveal
-> `clipRect: null` fix in tree (both pixel-null for the sequential export);
-> `ws:launch-2026` re-verified EQUAL at `b70c9788…` the same session. This note
-> was restored on 2026-07-17 after the public-release history squash captured a
-> tree from just before the original doc commit.
+> `cd511715…` → `da74c52b…`. The cause is the licensed device glbs regenerated
+> on 2026-07-15 (dev already gave `da74c52b…` before this session; `cd511715…`
+> was not reproducible after the regen). Re-proven Verify ×2 EQUAL today with
+> the text-colour plumbing (`textKey`/`defaultColor`) and the mask-reveal
+> `clipRect` fix in tree, so both are pixel-null for the sequential export: the
+> stale-clip bug only ever bit seeks that jump a whole reveal (borrowed-clock
+> captures, scrubbing), never the frame-by-frame export loop. Mask-reveal
+> headlines used to keep their LAST concrete `clipRect` once the sweep completed
+> (r3f leaves a prop that becomes undefined at its previous value), leaving text
+> invisible after such a seek (the invisible Paper-theme preview titles); the
+> unclipped state is now spelled `null`. An extracted scene-2 frame was
+> eyeballed, and `ws:launch-2026` re-verified EQUAL at `b70c9788…` the same
+> session (the legacy path never sets `clipRect`). This note was restored on
+> 2026-07-17 after the public-release history squash captured a tree from just
+> before the original doc commit.
 | `ws:emoji-spike` (emoji/symbol pipeline) | `fc772d5b…` | `3e0c8cfb…` | n/a | n/a |
 | `ws:shader-spike` (animated background pack) | `9ed15e3e…` | n/a | n/a | n/a |
 

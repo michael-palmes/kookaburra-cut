@@ -51,11 +51,11 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
 ];
 
 export const MOTION_OPTIONS: { id: string; label: string }[] = [
+  { id: "none", label: "None" },
   { id: "push-in", label: "Push-in settle" },
   { id: "turntable", label: "Slow turntable" },
   { id: "float", label: "Float" },
   { id: "tilt-reveal", label: "Tilt reveal" },
-  { id: "none", label: "None" },
 ];
 
 export const SHADOW_OPTIONS: { id: string; label: string }[] = [
@@ -335,7 +335,7 @@ export function NewSceneWizard({
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
   const [media, setMedia] = useState<{ rel: string; kind: "video" | "image" } | null>(null);
-  const [motion, setMotion] = useState("push-in");
+  const [motion, setMotion] = useState("none");
   const [shadow, setShadow] = useState("soft");
   const [name, setName] = useState("");
   const [headline, setHeadline] = useState("");

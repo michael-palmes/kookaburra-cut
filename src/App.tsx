@@ -90,6 +90,7 @@ import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
+import { useUpdateCheck } from "./engine/updates";
 import {
   type AppSettings,
   createProject,
@@ -127,6 +128,7 @@ import {
   TitlebarIdentity,
   TitlebarProjects,
 } from "./ui/Titlebar";
+import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import { commitSceneDuration } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
 
@@ -226,6 +228,15 @@ export default function App() {
       return true; // malformed config is reported elsewhere; don't also block on first-run
     }
   }, []);
+
+  // The opt-in update lane: launch check in this window only, manual results land as toasts.
+  const onUpdateManualResult = useCallback(
+    (kind: "upToDate" | "devBuild" | "error", message: string) => {
+      setToast({ kind: kind === "error" ? "error" : "success", message });
+    },
+    [],
+  );
+  const updates = useUpdateCheck({ autoCheck: !isAutoRun, onManualResult: onUpdateManualResult });
 
   // View routing: welcome (project gallery) vs editor. Auto-run boots straight into the editor since the export loop needs the canvas mounted and nobody is present to click through Welcome.
   const [view, setView] = useState<"loading" | "welcome" | "editor">(
@@ -355,6 +366,15 @@ export default function App() {
       void unlisten.then((fn) => fn());
     };
   }, [isAutoRun]);
+
+  // The app menu's Check for Updates… item (emitted to this window only).
+  useEffect(() => {
+    if (isAutoRun) return;
+    const unlisten = listen("kookaburra://check-for-updates", () => void updates.runCheck());
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [isAutoRun, updates.runCheck]);
 
   // Autorun windows label themselves so a human who wanders past knows not to touch.
   useEffect(() => {
@@ -1675,6 +1695,20 @@ export default function App() {
           onChoose={handleChooseWorkspace}
         />
       )}
+      {/* Consent ask waits for a workspace so it never stacks on the first-run dialog. */}
+      {settings?.workspaceRoot && updates.consent === "undecided" && !isAutoRun && (
+        <UpdateConsentDialog onAnswer={(on) => void updates.answerConsent(on)} />
+      )}
+      {updates.offerVisible && updates.available && !isAutoRun && (
+        <UpdateAvailableDialog
+          version={updates.available.version}
+          notes={updates.available.notes}
+          installing={updates.phase === "installing"}
+          installError={updates.installError}
+          onLater={updates.dismissOffer}
+          onInstall={() => void updates.install()}
+        />
+      )}
       {pendingTrust && (
         <TrustGateModal
           name={pendingTrust.name}
@@ -1742,6 +1776,7 @@ export default function App() {
               openExport: () => setShowExport(true),
               verify: () => void handleVerify(),
               showShortcuts: () => setShowShortcuts(true),
+              checkForUpdates: () => void updates.runCheck(),
             },
           }}
           onClose={() => useUiStore.getState().setPaletteOpen(false)}

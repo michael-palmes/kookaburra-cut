@@ -43,6 +43,15 @@ pub struct AppSettings {
     /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
     #[serde(default)]
     pub disable_hardware_video: bool,
+    /// Tri-state auto-update consent: None = undecided (first-run ask still owed), Some(true) = on, Some(false) = off.
+    #[serde(default)]
+    pub update_check_consent: Option<bool>,
+    /// Unix-ms of the last update check; only written while consent is on (launch-check throttle marker).
+    #[serde(default)]
+    pub last_update_check_ms: Option<u64>,
+    /// Last version offered and declined ("Later"), so the same version isn't re-offered every launch.
+    #[serde(default)]
+    pub last_offered_version: Option<String>,
 }
 
 /// One consent grant: the sources fingerprint and project path it was given for.
@@ -88,7 +97,10 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// Load settings once into the managed cache (missing/corrupt file → defaults; a broken settings file re-offers first-run rather than wedging boot).
-fn load_settings(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<AppSettings, String> {
+pub(crate) fn load_settings(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+) -> Result<AppSettings, String> {
     let mut guard = state.0.lock().map_err(|_| "settings state poisoned")?;
     if let Some(settings) = guard.as_ref() {
         return Ok(settings.clone());
@@ -101,7 +113,7 @@ fn load_settings(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<Ap
     Ok(settings)
 }
 
-fn save_settings(
+pub(crate) fn save_settings(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
     settings: AppSettings,
@@ -291,7 +303,7 @@ fn manifest_summary(project_dir: &Path) -> Option<(String, u64)> {
     Some((name, total.max(0) as u64))
 }
 
-fn now_unix_ms() -> u64 {
+pub(crate) fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)

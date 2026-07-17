@@ -59,7 +59,7 @@ normally and simply shows no editing affordances.
       "colour": "natural-titanium",          // catalog colour id
       "media": { "src": "assets/demo.mp4", "kind": "video", "startMs": 0, "fit": "cover" },
       "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
-      "motion": { "preset": "push-in" },     // none|turntable|float|tilt-reveal|push-in (+ params)
+      "motion": { "preset": "none" },        // opt-in: none|turntable|float|tilt-reveal|push-in (+ params)
       "shadow": "soft",                      // soft | long | sun | none ("sun" = the Rotato-style
                                              // 45° silhouette sweep on a flat plane behind the device)
       "lidDeg": 90                           // laptops only: lid opening in degrees (0 closed, default 90)

@@ -14,6 +14,12 @@ export interface AppSettings {
   lastExportPreset?: string | null;
   /** Inverted flag so its default (false) means hardware video ON. */
   disableHardwareVideo?: boolean;
+  /** Tri-state auto-update consent: absent/null = undecided (first-run ask still owed). */
+  updateCheckConsent?: boolean | null;
+  /** Unix-ms of the last update check; only persisted while consent is on. */
+  lastUpdateCheckMs?: number | null;
+  /** Last version offered and declined, so it isn't re-offered every launch. */
+  lastOfferedVersion?: string | null;
 }
 
 export interface WorkspaceProjectInfo {

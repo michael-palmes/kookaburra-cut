@@ -1926,7 +1926,7 @@ export function SceneTab({
                               rotationDeg: [0, 0, 0],
                               scale: 1,
                             },
-                            motion: { preset: "push-in" },
+                            motion: { preset: "none" },
                             shadow: "soft",
                           },
                         ];

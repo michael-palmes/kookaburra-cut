@@ -1453,6 +1453,35 @@ body {
   margin-top: var(--space-2);
 }
 
+.modal-list {
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Release notes in the update offer: plain text, clipped rather than unbounded. */
+.update-notes {
+  max-height: 10rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+/* Full-bleed banner art at the top of a modal (negative margins swallow the modal padding). */
+.modal-with-banner {
+  overflow: hidden;
+}
+
+.modal-banner {
+  display: block;
+  width: calc(100% + 2 * var(--space-7));
+  margin: calc(-1 * var(--space-7)) calc(-1 * var(--space-7)) 0;
+  aspect-ratio: 3 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
 /* Template picker: selectable thumbnail cards; selected = accent border + subtle fill.
    (A <fieldset> for a11y grouping — hence the explicit resets.) */
 .template-grid {

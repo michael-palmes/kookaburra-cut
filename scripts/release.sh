@@ -10,6 +10,7 @@
 #
 #   KOOKABURRA_SIGNING_IDENTITY   Developer ID Application cert
 #   KOOKABURRA_NOTARY_PROFILE     notarytool keychain profile
+#   TAURI_SIGNING_PRIVATE_KEY / _PATH (+ _PASSWORD)   updater keypair for the .sig/latest.json
 #
 set -euo pipefail
 
@@ -32,6 +33,10 @@ APP_BUNDLE="$ROOT/release/$APP_NAME.app"
 APP_DMG="$ROOT/release/KookaburraCut-${VERSION}.dmg"
 APP_ZIP="$ROOT/release/KookaburraCut-${VERSION}.zip"
 APP_ZIP_SHA="$ROOT/release/KookaburraCut-${VERSION}.zip.sha256"
+UPDATER_TAR="$ROOT/release/KookaburraCut-${VERSION}-updater.app.tar.gz"
+LATEST_JSON="$ROOT/release/latest.json"
+# Must match plugins.updater.endpoints in src-tauri/tauri.conf.json.
+REPO_SLUG="michael-palmes/kookaburra-cut"
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "ERROR: working tree is dirty; commit or stash before releasing." >&2
@@ -66,6 +71,30 @@ rm -f "$APP_ZIP" "$APP_ZIP_SHA"
 # cd so the checksum records a bare filename and verifies wherever it is downloaded.
 (cd "$ROOT/release" && /usr/bin/shasum -a 256 "$(basename "$APP_ZIP")" > "$(basename "$APP_ZIP_SHA")")
 
+# The updater manifest the app polls at releases/latest/download/latest.json; it points
+# at this tag's versioned asset URL, so an already-downloaded manifest stays coherent
+# even after a newer release supersedes it.
+echo "==> Writing the updater manifest"
+[[ -f "$UPDATER_TAR" && -f "$UPDATER_TAR.sig" ]] || {
+  echo "ERROR: updater archive or signature missing; sign-and-notarize.sh should have built both." >&2
+  exit 1
+}
+PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+SIG=$(cat "$UPDATER_TAR.sig")
+cat > "$LATEST_JSON" <<EOF
+{
+  "version": "${VERSION}",
+  "notes": "See the GitHub release notes.",
+  "pub_date": "${PUB_DATE}",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "${SIG}",
+      "url": "https://github.com/${REPO_SLUG}/releases/download/${TAG}/$(basename "$UPDATER_TAR")"
+    }
+  }
+}
+EOF
+
 NOTES_FILE=$(mktemp "${TMPDIR:-/tmp}/kookaburra-release-notes.XXXXXX")
 trap 'rm -f "$NOTES_FILE"' EXIT
 PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
@@ -96,6 +125,8 @@ if [[ "$PUBLISH" != "1" ]]; then
   echo "  $APP_DMG"
   echo "  $APP_ZIP"
   echo "  $APP_ZIP_SHA"
+  echo "  $UPDATER_TAR (+ .sig)"
+  echo "  $LATEST_JSON"
   echo "Local tag $TAG created; push it when you are ready."
   exit 0
 fi
@@ -103,7 +134,7 @@ fi
 git push origin "$TAG"
 
 echo "==> Creating draft GitHub release $TAG"
-gh release create "$TAG" "$APP_DMG" "$APP_ZIP" "$APP_ZIP_SHA" \
+gh release create "$TAG" "$APP_DMG" "$APP_ZIP" "$APP_ZIP_SHA" "$UPDATER_TAR" "$LATEST_JSON" \
   --draft \
   --title "Kookaburra Cut ${VERSION}" \
   --notes-file "$NOTES_FILE"

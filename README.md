@@ -10,7 +10,8 @@ Kookaburra Cut renders every visual (animated text, graphics, and 3D) through a 
 react-three-fiber WebGL canvas, and exports video by stepping a manual clock
 frame-by-frame into a bundled **ffmpeg** sidecar (H.264 / H.265 / ProRes). It runs in
 pure WKWebView via Tauri 2, no Chromium. Two exports of the same project are
-byte-identical by design.
+byte-identical by design. Scenes can also be authored conversationally: the app
+embeds a Claude Code terminal that reads and rewrites your project's scene files.
 
 <p align="center">
   <a href="https://kookaburracut.com/">
@@ -20,45 +21,54 @@ byte-identical by design.
 
 <p align="center"><sub>Reworking a device scene from the embedded agent terminal. More at <a href="https://kookaburracut.com/">kookaburracut.com</a>.</sub></p>
 
-> Status: in active development, pre-release. Everything runs locally: no
-> telemetry, no cloud, no accounts. The one network exception is the optional
-> embedded Claude Code terminal, which only ever runs when you explicitly
-> invoke it (it installs via a script shown in the terminal and talks to
-> Anthropic while you use it).
+## Download
 
-## What it does
+<p align="center">
+  <a href="https://github.com/michael-palmes/kookaburra-cut/releases/latest">
+    <img src="docs/assets/download-macos.svg" width="252" alt="Download for macOS">
+  </a>
+</p>
 
-- **Projects and scenes**: a project is a folder (`project.json` + `scenes/*.tsx` +
-  assets); scenes are React components built from the `@kookaburra/toolkit`
-  primitives (animated text, counters, image cards, video clips, 3D devices,
-  staging).
+- A signed and notarised `.dmg`; macOS 13+ on **Apple Silicon** (arm64) only, no Intel build
+- Free and open source; everything runs locally (no accounts, no telemetry, no cloud)
+- The optional AI authoring path uses your own Claude Code install
+
+> Status: early release, in active development. Two opt-in network exceptions
+> to "fully local": the optional embedded Claude Code terminal, which only ever
+> runs when you explicitly invoke it (it installs via a script shown in the
+> terminal and talks to Anthropic while you use it), and the update check, off
+> until you enable it, which asks GitHub whether a newer release exists and
+> sends no identifiers.
+
+## Core features
+
+- **AI-authored scenes**: an embedded Claude Code terminal scoped to the open
+  project. The output is plain, editable TSX built on a typed toolkit, not a
+  black box.
+- **Deterministic export**: a manual clock stepped frame-by-frame through one
+  WebGL canvas into the ffmpeg sidecar. The same project produces the same
+  bytes, every time.
+- **Device mockups**: video and images play on a studio-lit 3D handset through
+  a deterministic frame-extraction pipeline, with per-scene camera orbits.
+- **Motion that looks finished**: headline presets, animated counters, a
+  transition pack with live preview, LUT grades and film grain.
+- **One project, every feed**: 16:9 / 9:16 / 1:1 / 4:5 from the same scenes,
+  plus platform export presets (social, CTV, web, ProRes master) with size
+  estimates and loudness targeting.
+- **Projects are just files**: a folder of `project.json` + `scenes/*.tsx` +
+  assets. Git-friendly, no opaque project format.
 - **Themes**: JSON documents covering colour, typography, lighting, staging and
   text-motion defaults; swappable per project or per scene.
-- **Devices & media**: video and images play on a 3D handset's screen through a
-  deterministic frame-extraction pipeline; per-scene camera moves ride orbit
-  keyframes.
-- **Transitions & sound**: a transition pack with a live-preview picker, and one
-  soundtrack per project with a sample-exact mux.
-- **Export presets**: platform presets (social, CTV, web, ProRes master) with
-  size estimates and loudness targeting, alongside the frozen deterministic
-  default path.
-- **Embedded agent terminal**: a built-in Claude Code session scoped to the open
-  project, for authoring scenes conversationally.
+- **Fully local**: preview and export never leave your Mac.
 
-## Stack
+## Building from source
 
-Tauri 2 · React 19 · react-three-fiber · troika SDF text · anime.js v4 · zustand ·
-ffmpeg/ffprobe sidecars. Package manager: **pnpm**. Full version list in
-[`docs/architecture.md`](docs/architecture.md).
-
-## Prerequisites
+Prerequisites:
 
 - macOS on Apple Silicon, Xcode command-line tools
 - Node ≥ 20.19, pnpm
 - Rust stable (`rustup default stable`)
 - ffmpeg on `PATH` (for the dev sidecar copy)
-
-## Quick start
 
 ```bash
 pnpm install
@@ -74,27 +84,15 @@ pnpm test             # vitest
 pnpm lint             # biome check .
 ```
 
+Stack: Tauri 2 · React 19 · react-three-fiber · troika SDF text · anime.js v4 ·
+zustand · ffmpeg/ffprobe sidecars. Package manager: **pnpm**. Full version list
+in [`docs/architecture.md`](docs/architecture.md).
+
 > Note: the photoreal device model is a licensed third-party asset and is
 > **not** included in this repository (see Licensing below). Clones build and
 > run against a bundled generic placeholder handset; dropping a licensed model
 > into `src/assets/models/licensed/` overrides it (see
 > `src/assets/models/README.md`).
-
-### Refreshing the app icon / identity in dev
-
-Tauri's build script embeds the icon set and the `Info.plist` (app name) into the dev
-binary at **compile time** and does not re-run when `src-tauri/icons/` changes, so
-`pnpm tauri dev` keeps showing the old icon/name until the shell recompiles.
-
-```bash
-pnpm setup:icon       # regenerate icons from the Icon Composer master; cleans the shell too
-pnpm clean:shell      # clean manually (e.g. after identity edits in tauri.conf.json)
-pnpm tauri dev        # first launch recompiles and re-embeds
-```
-
-If the Dock still shows the old icon after that, it's macOS's own icon cache:
-`killall Dock`. The icon master is the Icon Composer 1024px export, used verbatim:
-never re-mask it (see `scripts/make-icons.sh`).
 
 ## Layout
 

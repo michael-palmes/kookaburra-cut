@@ -10,8 +10,11 @@
 #   KOOKABURRA_NOTARY_PROFILE     notarytool keychain profile, created once with:
 #                                   xcrun notarytool store-credentials <name> \
 #                                     --apple-id <email> --team-id <TEAMID> --password <app-specific>
+#   TAURI_SIGNING_PRIVATE_KEY / _PATH   updater keypair (pnpm tauri signer generate);
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password, or the sign step prompts.
 #
-# Output: release/Kookaburra Cut.app and release/KookaburraCut-<version>.dmg
+# Output: release/Kookaburra Cut.app, release/KookaburraCut-<version>.dmg and
+#         release/KookaburraCut-<version>-updater.app.tar.gz (+ .sig)
 #
 set -euo pipefail
 
@@ -34,6 +37,11 @@ fi
 if [[ -z "${KOOKABURRA_NOTARY_PROFILE:-}" ]]; then
   echo "ERROR: KOOKABURRA_NOTARY_PROFILE is not set (a notarytool keychain profile)." >&2
   echo "       Create one once with: xcrun notarytool store-credentials <name> ..." >&2
+  exit 1
+fi
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -z "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]]; then
+  echo "ERROR: TAURI_SIGNING_PRIVATE_KEY (or _PATH) is not set (the updater keypair)." >&2
+  echo "       Generate once with: pnpm tauri signer generate -w ~/.tauri/kookaburra-cut-updater.key" >&2
   exit 1
 fi
 
@@ -111,4 +119,13 @@ xcrun stapler validate "$DMG"
 echo "==> Gatekeeper assessment (DMG)"
 spctl -a -t open --context context:primary-signature -vv "$DMG"
 
-echo "Done: $APP_BUNDLE and $DMG are signed, notarised and stapled."
+# The in-app updater downloads this tar of the STAPLED app (bundle.createUpdaterArtifacts
+# would tar the pre-staple bundle during `tauri build`, hence the hand-rolled step here).
+UPDATER_TAR="$ROOT/release/KookaburraCut-${VERSION}-updater.app.tar.gz"
+echo "==> Building and signing the updater archive"
+rm -f "$UPDATER_TAR" "$UPDATER_TAR.sig"
+(cd "$ROOT/release" && COPYFILE_DISABLE=1 /usr/bin/tar -czf "$UPDATER_TAR" "$APP_NAME.app")
+pnpm tauri signer sign "$UPDATER_TAR"
+[[ -f "$UPDATER_TAR.sig" ]] || { echo "ERROR: expected signature missing at $UPDATER_TAR.sig" >&2; exit 1; }
+
+echo "Done: $APP_BUNDLE, $DMG and $UPDATER_TAR are signed (app and DMG notarised and stapled)."
