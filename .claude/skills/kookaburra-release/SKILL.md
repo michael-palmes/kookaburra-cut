@@ -37,6 +37,9 @@ multi-resolution TIFF, so the artwork is blurry on Retina — and cannot set a v
    export TAURI_SIGNING_PRIVATE_KEY_PATH="$HOME/.tauri/kookaburra-cut-updater.key"
    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="<its password>"
    ```
+   The password export is optional once stored in the login keychain
+   (`security add-generic-password -a "$USER" -s kookaburra-cut-updater -U -w`);
+   `sign-and-notarize.sh` reads that item as a fallback.
 
 ## Cutting a release
 

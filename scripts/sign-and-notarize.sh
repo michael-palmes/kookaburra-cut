@@ -11,7 +11,8 @@
 #                                   xcrun notarytool store-credentials <name> \
 #                                     --apple-id <email> --team-id <TEAMID> --password <app-specific>
 #   TAURI_SIGNING_PRIVATE_KEY / _PATH   updater keypair (pnpm tauri signer generate);
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password, or the sign step prompts.
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password; falls back to the login-keychain
+#                                       item "kookaburra-cut-updater", else the sign step prompts.
 #
 # Output: release/Kookaburra Cut.app, release/KookaburraCut-<version>.dmg and
 #         release/KookaburraCut-<version>-updater.app.tar.gz (+ .sig)
@@ -43,6 +44,12 @@ if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -z "${TAURI_SIGNING_PRIVATE_KEY_PAT
   echo "ERROR: TAURI_SIGNING_PRIVATE_KEY (or _PATH) is not set (the updater keypair)." >&2
   echo "       Generate once with: pnpm tauri signer generate -w ~/.tauri/kookaburra-cut-updater.key" >&2
   exit 1
+fi
+# The key password lives in the login keychain; an exported env var still wins.
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" ]]; then
+  if pass=$(security find-generic-password -s kookaburra-cut-updater -w 2>/dev/null); then
+    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$pass"
+  fi
 fi
 
 # pnpm setup:ffmpeg copies the Homebrew ffmpeg, whose dylibs are absent on other Macs.
