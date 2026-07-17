@@ -316,7 +316,7 @@ pub fn duplicate_scene(
     // Display-name fallback mirrors the frontend: sidecar name, else the stem minus its numeric prefix.
     let base_name = source_name
         .clone()
-        .unwrap_or_else(|| stem_src.splitn(2, '-').nth(1).unwrap_or(stem_src).replace('-', " "));
+        .unwrap_or_else(|| stem_src.split_once('-').map_or(stem_src, |(_, rest)| rest).replace('-', " "));
     let base = slugify(&format!("{base_name} copy"));
     let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
     let new_file = format!("scenes/{stem}.tsx");

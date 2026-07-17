@@ -19,6 +19,8 @@ pub struct LoudnessInfo {
 
 /// Measure the project soundtrack THROUGH the export graph; `total_frames`/`fps` are the OUTPUT values (fps decimation changes the pad length and so the fade-out position).
 #[tauri::command]
+// Arg list mirrors the frontend invoke payload; bundling into a struct would change the IPC shape.
+#[allow(clippy::too_many_arguments)]
 pub async fn measure_loudness(
     app: AppHandle,
     file: String,

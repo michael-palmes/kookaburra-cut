@@ -137,7 +137,7 @@ pub fn list_system_fonts() -> Result<Vec<SystemFontListing>, String> {
             postscript: f.postscript,
         })
         .collect();
-    fonts.sort_by(|a, b| (a.family.to_lowercase(), a.weight).cmp(&(b.family.to_lowercase(), b.weight)));
+    fonts.sort_by_key(|f| (f.family.to_lowercase(), f.weight));
     Ok(fonts)
 }
 
