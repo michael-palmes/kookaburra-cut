@@ -78,6 +78,16 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
 
+      # tauri-build validates externalBin paths; the real sidecars are gitignored and check/clippy never run them.
+      - name: Stub ffmpeg sidecars
+        run: |
+          triple="$(rustc -vV | sed -n 's/host: //p')"
+          mkdir -p src-tauri/bin
+          for bin in ffmpeg ffprobe; do
+            printf '#!/bin/sh\nexit 0\n' > "src-tauri/bin/${bin}-${triple}"
+            chmod +x "src-tauri/bin/${bin}-${triple}"
+          done
+
       - name: cargo check
         working-directory: src-tauri
         run: cargo check --locked --all-targets
