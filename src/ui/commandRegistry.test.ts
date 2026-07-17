@@ -43,6 +43,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
       openExport: noop,
       verify: noop,
       showShortcuts: noop,
+      checkForUpdates: noop,
     },
     ...overrides,
   };
@@ -72,6 +73,7 @@ describe("buildCommands (the vocabulary pin)", () => {
       "playback.toggle",
       "playback.mute",
       "help.shortcuts",
+      "help.checkForUpdates",
     ]) {
       expect(ids, `missing command ${required}`).toContain(required);
     }

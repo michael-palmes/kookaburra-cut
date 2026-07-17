@@ -114,6 +114,7 @@ The full contract and its failure catalogue are in
 | DMG is ours | `bundle.targets` is `["app"]`; `scripts/make-dmg.sh` builds the installer | Tauri's DMG bundler takes only a png/jpg/gif background (no multi-resolution TIFF, so the art is blurry on Retina) and can't set a volume icon |
 | Trash via NSFileManager | Deletes route through `workspace::trash_path`, never `trash::delete` | The crate's default backend drives Finder over osascript; TCC blames the Apple Event on us, so a hardened-runtime build silently fails every delete |
 | No entitlements | Hardened runtime with an empty entitlement set | Nothing in the shell needs one: no in-process JIT (WebKit's lives in its own process), no `dlopen`, no `DYLD_*`, no Apple Events; sidecars are separate signed processes, not loaded code |
+| Auto-update (2026-07-16) | Opt-in via tauri-plugin-updater: tri-state consent asked once after first run; launch checks (20h throttle) only while enabled; manual checks work while opted out but persist nothing; installs verify the ed25519 signature, swap in place and relaunch; updater artefacts are hand-rolled post-staple in the release scripts (`createUpdaterArtifacts` would tar the pre-staple bundle) | Supersedes the "no auto-update" non-goal, on the SturtBar privacy model: no network until consent, no identifiers, one ordinary HTTPS request to GitHub; all checks run Rust-side so the webview CSP keeps zero external hosts |
 | Capture hygiene | Thumbnails/snapshots never run during export or autorun; list surfaces read cached thumbs only; the only legal live fallback captures the current frame without seeking | Borrowed-clock captures blip the playhead and race the exporter |
 
 ## Devices, media, camera & stage
@@ -197,9 +198,12 @@ fonts are OFL 1.1 (`src/assets/fonts/OFL.txt`); bundled HDRIs are CC0
 
 Deliberately out, still true today:
 
-- **No network surface beyond the embedded terminal.** Local-only otherwise: no
-  telemetry, auto-update or crash reporting. The optional embedded Claude Code
-  terminal talks to Anthropic only while explicitly in use.
+- **No network surface beyond the embedded terminal and the opt-in update
+  check.** Local-only otherwise: no telemetry, no crash reporting. The optional
+  embedded Claude Code terminal talks to Anthropic only while explicitly in
+  use; the update check (off by default, asked once, see the auto-update
+  decision above) asks GitHub for the release manifest and sends no
+  identifiers.
 - **No per-clip audio.** `VideoClip` and device screens are picture-only; one
   soundtrack per project is the audio model.
 - **No DOM for exported pixels**, ever. Editor chrome only.
