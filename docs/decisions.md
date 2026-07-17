@@ -124,6 +124,7 @@ The full contract and its failure catalogue are in
 | Device identity | Real product names with accurate licensed models ("iPhone 15 Pro, Natural Titanium") | Best UX; ubiquitous industry practice for mockup tooling |
 | Device asset | The handset glb is a purchased, licensed vendor asset. It is **not committed**; it lives in a gitignored folder and is bundled into app builds only | The licence covers app embedding, not source redistribution |
 | Colour variants | Material-name overrides on one glb, using the vendor's authored material values as exact replacements | Four glbs for four colours would quadruple the bundle for identical geometry |
+| Device motion | Opt-in only (2026-07-17): every scaffold path (Rust scaffolder, new-scene wizard, inspector quick-add) writes `preset: "none"`; motion is a deliberate per-device sidecar choice | A device should hold still until the author asks it to move |
 | Screen media | One shared clip-texture hook plays video/image media on the glb's `SCREEN` material, the same pre-extracted CFR frame pipeline as `VideoClip` | One clip pipeline for every consumer |
 | Clip playback | Sources pre-extract once to a cached CFR-60 PNG sequence; frame choice is a pure clock function (clamp to hold, modulo to loop) | Seeking an `HTMLVideoElement` is neither exact nor deterministic |
 | Device shadows | Procedural deterministic contact shadows by default; the stock accumulating helper was rejected | It jitters its light per frame, nondeterministic by design |
