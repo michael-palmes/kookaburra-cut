@@ -379,6 +379,16 @@ Where the live Tauri-2 setup matters for working in the code:
    "safari26"` (the macOS-26 WKWebView floor).
 7. **Rust target:** `aarch64-apple-darwin` is the host default: `rustup default
    stable` suffices, no `rustup target add`.
+8. **Icon / identity refresh in dev.** Tauri's build script embeds the icon set
+   and the `Info.plist` (app name) into the dev binary at **compile time** and
+   does not re-run when `src-tauri/icons/` changes, so `pnpm tauri dev` keeps
+   showing the old icon/name until the shell recompiles. `pnpm setup:icon`
+   regenerates icons from the Icon Composer master and cleans the shell;
+   `pnpm clean:shell` cleans manually (e.g. after identity edits in
+   `tauri.conf.json`); the next `pnpm tauri dev` recompiles and re-embeds. If
+   the Dock still shows the old icon after that, it's macOS's own icon cache:
+   `killall Dock`. The icon master is the Icon Composer 1024px export, used
+   verbatim: never re-mask it (see `scripts/make-icons.sh`).
 
 `src-tauri/tauri.conf.json` sidecar wiring (Tauri 2, no `plugins.shell.sidecar`
 block; the permission is handled Rust-side per note 1):

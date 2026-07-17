@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="252" height="48" viewBox="0 0 252 48" role="img" aria-label="Download for macOS">
+  <!-- night-chrome button with the dusty wing-blue accent (docs/design.md §4) -->
+  <rect x="1" y="1" width="250" height="46" rx="12" fill="#15181F" stroke="#6F93A8" stroke-opacity="0.55" stroke-width="1.5"/>
+  <g stroke="#9EBFD0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M40 13v13"/>
+    <path d="M34 21l6 6 6-6"/>
+    <path d="M31 33h18"/>
+  </g>
+  <text x="62" y="30" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#F0EFEB">Download for macOS</text>
+</svg>
