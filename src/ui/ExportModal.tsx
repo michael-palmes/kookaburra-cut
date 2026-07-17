@@ -29,6 +29,8 @@ import {
   estimateSizeMB,
   fitToCap,
   groupPresets,
+  isHardwareEncode,
+  isProRes,
   isVideotoolbox,
   KOOKABURRA_STANDARD_ID,
   type PresetRow,
@@ -422,7 +424,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                 </span>
                 {aspectRowFor(presetAspects(selectedRow.doc))}
                 {estimateFor(selectedRow.doc)}
-                {isVideotoolbox(selectedRow.doc.video.codec) && (
+                {isHardwareEncode(selectedRow.doc.video.codec) && (
                   <p className="export-notes">
                     Hardware encode — fast, but not byte-reproducible; excluded from Verify.
                   </p>
@@ -589,7 +591,7 @@ function CustomPanel({
     return Number.isFinite(n) ? n : fallback;
   };
   const videotoolbox = isVideotoolbox(draft.codec);
-  const prores = draft.codec === "prores_ks";
+  const prores = isProRes(draft.codec);
 
   return (
     <>
@@ -622,6 +624,7 @@ function CustomPanel({
             <option value="h264_videotoolbox">H.264 — hardware fast draft</option>
             <option value="hevc_videotoolbox">HEVC — hardware fast draft</option>
             <option value="prores_ks">ProRes 422 HQ (.mov)</option>
+            <option value="prores_videotoolbox">ProRes 422 HQ — hardware fast draft (.mov)</option>
           </select>
         </label>
         <label>

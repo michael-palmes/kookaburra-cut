@@ -69,10 +69,20 @@ const CODEC_LABEL: Record<EncodeSpec["codec"], string> = {
   h264_videotoolbox: "H.264",
   hevc_videotoolbox: "HEVC",
   prores_ks: "ProRes 422 HQ",
+  prores_videotoolbox: "ProRes 422 HQ",
 };
 
 export function isVideotoolbox(codec: EncodeSpec["codec"]): boolean {
   return codec === "h264_videotoolbox" || codec === "hevc_videotoolbox";
+}
+
+export function isProRes(codec: EncodeSpec["codec"]): boolean {
+  return codec === "prores_ks" || codec === "prores_videotoolbox";
+}
+
+/** Every hardware lane (fast draft, excluded from Verify), ProRes included. */
+export function isHardwareEncode(codec: EncodeSpec["codec"]): boolean {
+  return isVideotoolbox(codec) || codec === "prores_videotoolbox";
 }
 
 export function specChips(doc: ExportPresetDoc): string[] {
@@ -80,7 +90,7 @@ export function specChips(doc: ExportPresetDoc): string[] {
   const chips: string[] = [CODEC_LABEL[v.codec]];
   const res = v.scaleShortEdgeTo ? `${v.scaleShortEdgeTo}p` : "Native";
   chips.push(`${res} @ ${v.fps}fps`);
-  if (v.codec !== "prores_ks") {
+  if (!isProRes(v.codec)) {
     chips.push(
       "crf" in v.rate
         ? `CRF ${v.rate.crf}`
@@ -88,7 +98,7 @@ export function specChips(doc: ExportPresetDoc): string[] {
     );
   }
   if (doc.maxFileSizeMB) chips.push(`≤ ${doc.maxFileSizeMB} MB`);
-  if (isVideotoolbox(v.codec)) chips.push("fast draft — excluded from Verify");
+  if (isHardwareEncode(v.codec)) chips.push("fast draft — excluded from Verify");
   return chips;
 }
 

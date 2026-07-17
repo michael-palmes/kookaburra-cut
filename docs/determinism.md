@@ -41,7 +41,8 @@ GPU/driver, not across fleets.)
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
-| Hardware encoder (`h264_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); videotoolbox is opt-in and excluded from Verify. |
+| Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
+| Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/clips.ts` lane rule. |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
 
@@ -175,7 +176,19 @@ crossfade with a warning.
   This normalises variable-frame-rate sources (e.g. screen recordings) so
   sampling is exact. Frames land in `$APPDATA/cache/clips/<sha256>-60fps/` keyed
   by the source-file hash; a `.done` marker means a re-run reuses them.
+  PNGs are written with `-compression_level 1 -pred 0` (identical pixels,
+  roughly 2x faster and 2x larger; only decoded pixels matter downstream).
   `engine/clips.ts`.
+- **Two decode lanes.** VideoToolbox hardware decode is measurably NOT
+  pixel-identical to software decode, so extraction is lane-split: preview and
+  hardware fast-draft exports use the `hw` lane (`-hwaccel videotoolbox`, cache
+  dir `<sha256>-60fps-hw`); deterministic-codec exports — which includes every
+  Verify run — pin to the `sw` lane (software decode, the unchanged
+  `<sha256>-60fps` dir the standing baselines were recorded from). Separate dirs
+  make cross-lane cache poisoning impossible. The lane follows the export
+  codec's class (`laneForCodec`, `engine/clips.ts`); the accepted consequence is
+  that preview matches fast-draft exports bit-for-bit while deterministic
+  exports differ imperceptibly (Δ1–3/255) on clip pixels only.
 - **Sample purely.** `VideoClip` computes
   `frameIndex = floor((localMs − startMs)/1000 × 60)`, **clamped** to
   `[0, frameCount−1]`: it holds the first frame before the clip starts and the
@@ -936,7 +949,9 @@ bundled rolling-gate project (`showcase-tour`):
 > invisible after such a seek (the invisible Paper-theme preview titles); the
 > unclipped state is now spelled `null`. An extracted scene-2 frame was
 > eyeballed, and `ws:launch-2026` re-verified EQUAL at `b70c9788…` the same
-> session (the legacy path never sets `clipRect`).
+> session (the legacy path never sets `clipRect`). This note was restored on
+> 2026-07-17 after the public-release history squash captured a tree from just
+> before the original doc commit.
 | `ws:emoji-spike` (emoji/symbol pipeline) | `fc772d5b…` | `3e0c8cfb…` | n/a | n/a |
 | `ws:shader-spike` (animated background pack) | `9ed15e3e…` | n/a | n/a | n/a |
 
@@ -1008,3 +1023,11 @@ ProRes 422 HQ (`-profile:v 3`, `-vendor apl0` pinned so the bitstream can't drif
 across ffmpeg versions), 10-bit 4:2:2 in a `.mov` container: passes `Verify ×2`
 byte-identically; the output extension and pixel format are codec-dependent in
 `start_export`, and the same `bitexact` flags keep the MOV muxer reproducible.
+**Hardware ProRes:** `prores_videotoolbox`, a fast-draft lane on the media
+engine's dedicated ProRes blocks (`-profile:v 3`, `-pix_fmt p210le`, no
+`-vendor`, profile-only like `prores_ks`); same quality class as software ProRes
+but excluded from Verify like every VideoToolbox lane. The **editor's
+"Render to project"** flatten also defaults to hardware
+(`-hwaccel videotoolbox` decode + `h264_videotoolbox` at 0.25 bits/pixel,
+one software retry on failure): contract-exempt because downstream determinism
+derives from the rendered file's fixed bytes, re-extracted like any source.

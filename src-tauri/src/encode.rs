@@ -243,12 +243,14 @@ pub(crate) enum EncodeCodec {
     HevcVideotoolbox,
     #[serde(rename = "prores_ks")]
     ProresKs,
+    #[serde(rename = "prores_videotoolbox")]
+    ProresVideotoolbox,
 }
 
 impl EncodeCodec {
     pub(crate) fn container_ext(self) -> &'static str {
         match self {
-            EncodeCodec::ProresKs => "mov",
+            EncodeCodec::ProresKs | EncodeCodec::ProresVideotoolbox => "mov",
             _ => "mp4",
         }
     }
@@ -260,6 +262,9 @@ impl EncodeCodec {
             self,
             EncodeCodec::H264Videotoolbox | EncodeCodec::HevcVideotoolbox
         )
+    }
+    fn is_prores(self) -> bool {
+        matches!(self, EncodeCodec::ProresKs | EncodeCodec::ProresVideotoolbox)
     }
 }
 
@@ -348,6 +353,8 @@ impl EncodeSpec {
     fn pix_fmt(&self) -> &'static str {
         match self.codec {
             EncodeCodec::ProresKs => "yuv422p10le",
+            // The hardware surface format; the container still reports yuv422p10le.
+            EncodeCodec::ProresVideotoolbox => "p210le",
             EncodeCodec::Libx265 if self.ten_bit => "yuv420p10le",
             _ => "yuv420p",
         }
@@ -412,10 +419,19 @@ impl EncodeSpec {
                     "apl0".into(),
                 ]);
             }
+            // No -vendor: that's a prores_ks private option the hardware encoder ignores.
+            EncodeCodec::ProresVideotoolbox => {
+                args.extend([
+                    "-c:v".into(),
+                    "prores_videotoolbox".into(),
+                    "-profile:v".into(),
+                    "3".into(),
+                ]);
+            }
         }
         match &self.rate {
             RateControl::Crf { crf } => {
-                if !matches!(self.codec, EncodeCodec::ProresKs) {
+                if !self.codec.is_prores() {
                     args.extend(["-crf".into(), crf.to_string()]);
                 }
             }
@@ -933,6 +949,32 @@ mod spec_argv_goldens {
         assert!(args.contains(&"-b:v".to_string()) && args.contains(&"20000k".to_string()));
         assert!(!args.contains(&"-maxrate".to_string()));
         assert!(args.windows(2).any(|w| w == ["-tag:v", "hvc1"]));
+    }
+
+    /// Hardware ProRes: profile-only like prores_ks, hardware surface pix_fmt, no vendor tag.
+    #[test]
+    fn prores_videotoolbox_is_profile_only_p210le() {
+        let spec = EncodeSpec {
+            codec: EncodeCodec::ProresVideotoolbox,
+            scale_short_edge_to: None,
+            fps: 60,
+            rate: RateControl::Crf { crf: 18 },
+            profile: None,
+            level: None,
+            gop_seconds: None,
+            b_frames: None,
+            entropy: None,
+            ten_bit: false,
+            faststart: false,
+            colour_tags: false,
+            audio: None,
+        };
+        let args = spec_export_args(&options(), &spec, "/out/p.mov").unwrap();
+        assert!(args.windows(2).any(|w| w == ["-c:v", "prores_videotoolbox"]));
+        assert!(args.windows(2).any(|w| w == ["-profile:v", "3"]));
+        assert!(args.windows(2).any(|w| w == ["-pix_fmt", "p210le"]));
+        assert!(!args.contains(&"-crf".to_string()));
+        assert!(!args.contains(&"-vendor".to_string()));
     }
 
     /// The audio lane: OUTPUT-fps sample maths (30fps → 1600 samples/frame) and the loudness delta summed with the author gain into the ONE volume slot.

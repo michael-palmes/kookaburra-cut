@@ -31,6 +31,18 @@ export function sidecarVersions(): Promise<SidecarVersions> {
   return invoke<SidecarVersions>("sidecar_versions");
 }
 
+/** What the bundled sidecar's VideoToolbox support covers, probed live. */
+export interface HardwareVideoSupport {
+  decode: boolean;
+  h264: boolean;
+  hevc: boolean;
+  prores: boolean;
+}
+
+export function hardwareVideoSupport(): Promise<HardwareVideoSupport> {
+  return invoke<HardwareVideoSupport>("hardware_video_support");
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB", "TB"];

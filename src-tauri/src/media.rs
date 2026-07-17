@@ -113,19 +113,37 @@ pub(crate) fn resolve_asset(root: &Path, slug: &str, rel: &str) -> Result<PathBu
     Ok(root.join(slug).join(clean))
 }
 
-/// Run a sidecar to completion, returning its stdout (stderr is drained and discarded; the event channel has a 1-item buffer and MUST be drained or the child blocks).
+/// Whether a sidecar run competes for the background-ffmpeg cap or runs unthrottled.
+pub(crate) enum SidecarPriority {
+    Foreground,
+    Background,
+}
+
+/// Run a sidecar to completion, returning its stdout (stderr is drained and discarded; the event channel has a 1-item buffer and MUST be drained or the child blocks). Background runs queue on the shared limiter and drop scheduling priority.
 pub(crate) async fn run_sidecar(
     app: &AppHandle,
     name: &str,
     args: Vec<String>,
+    priority: SidecarPriority,
 ) -> Result<String, String> {
-    let (mut rx, _child) = app
+    let _permit = match priority {
+        SidecarPriority::Background => Some(
+            app.state::<crate::concurrency::BackgroundLimiter>()
+                .acquire()
+                .await?,
+        ),
+        SidecarPriority::Foreground => None,
+    };
+    let (mut rx, child) = app
         .shell()
         .sidecar(name)
         .map_err(|e| format!("{name} sidecar not found: {e}"))?
         .args(args)
         .spawn()
         .map_err(|e| format!("failed to start {name}: {e}"))?;
+    if matches!(priority, SidecarPriority::Background) {
+        crate::concurrency::lower_priority(child.pid());
+    }
     let mut stdout = String::new();
     let mut code: Option<i32> = None;
     let mut last_error: Option<String> = None;
@@ -238,6 +256,7 @@ pub async fn probe_audio(
             "-show_format".into(),
             abs.to_string_lossy().into_owned(),
         ],
+        SidecarPriority::Foreground,
     )
     .await?;
     let probe: serde_json::Value =
@@ -279,6 +298,7 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
             "-show_format".into(),
             abs_str,
         ],
+        SidecarPriority::Foreground,
     )
     .await?;
     let probe: serde_json::Value =
@@ -541,9 +561,15 @@ pub(crate) async fn ensure_media_cache(
     let duration_s = probe.duration_ms as f64 / 1000.0;
     let fps = probe.fps;
 
+    // UI-only JPGs, so hardware decode is free speed with zero determinism surface.
+    let hardware = video && workspace::hardware_video_enabled(app);
+
     // Poster: 25% in for videos (skips black lead-ins), the image itself otherwise.
     let poster = cache.join("poster.jpg");
     let mut poster_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
+    if hardware {
+        poster_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
+    }
     if video && duration_s > 0.0 {
         poster_args.extend(["-ss".into(), format!("{:.3}", duration_s * 0.25)]);
     }
@@ -556,29 +582,26 @@ pub(crate) async fn ensure_media_cache(
         format!("scale={POSTER_WIDTH}:-2"),
         poster.to_string_lossy().into_owned(),
     ]);
-    run_sidecar(app, "ffmpeg", poster_args).await?;
+    run_sidecar(app, "ffmpeg", poster_args, SidecarPriority::Background).await?;
 
     // Hover-scrub frames, evenly across the clip (videos only).
     let mut scrub_count = 0u32;
     if video && duration_s > 0.0 {
         let rate = f64::from(SCRUB_FRAMES) / duration_s;
-        run_sidecar(
-            app,
-            "ffmpeg",
-            vec![
-                "-y".into(),
-                "-loglevel".into(),
-                "error".into(),
-                "-i".into(),
-                abs_str,
-                "-vf".into(),
-                format!("fps={rate:.6},scale={SCRUB_WIDTH}:-2"),
-                "-frames:v".into(),
-                SCRUB_FRAMES.to_string(),
-                cache.join("scrub_%02d.jpg").to_string_lossy().into_owned(),
-            ],
-        )
-        .await?;
+        let mut scrub_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
+        if hardware {
+            scrub_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
+        }
+        scrub_args.extend([
+            "-i".into(),
+            abs_str,
+            "-vf".into(),
+            format!("fps={rate:.6},scale={SCRUB_WIDTH}:-2"),
+            "-frames:v".into(),
+            SCRUB_FRAMES.to_string(),
+            cache.join("scrub_%02d.jpg").to_string_lossy().into_owned(),
+        ]);
+        run_sidecar(app, "ffmpeg", scrub_args, SidecarPriority::Background).await?;
         scrub_count = std::fs::read_dir(&cache)
             .map_err(|e| e.to_string())?
             .flatten()

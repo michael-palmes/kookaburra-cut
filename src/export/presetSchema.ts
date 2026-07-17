@@ -4,7 +4,13 @@ import type { AspectName } from "../engine/format";
 
 /** The fully-resolved encode the backend consumes (mirrors Rust's `EncodeSpec`). */
 export interface EncodeSpec {
-  codec: "libx264" | "libx265" | "h264_videotoolbox" | "hevc_videotoolbox" | "prores_ks";
+  codec:
+    | "libx264"
+    | "libx265"
+    | "h264_videotoolbox"
+    | "hevc_videotoolbox"
+    | "prores_ks"
+    | "prores_videotoolbox";
   scaleShortEdgeTo?: number;
   fps: 30 | 60;
   rate:
@@ -122,7 +128,11 @@ export function resolvePresetToEncodeSpec(
   if (twoPass && v.codec !== "libx264" && v.codec !== "libx265") {
     throw new Error(`${doc.name}: two-pass needs libx264 or libx265`);
   }
-  if ("pcmBits" in doc.audio.codec && v.codec !== "prores_ks") {
+  if (
+    "pcmBits" in doc.audio.codec &&
+    v.codec !== "prores_ks" &&
+    v.codec !== "prores_videotoolbox"
+  ) {
     throw new Error(`${doc.name}: PCM audio requires the .mov (ProRes) container`);
   }
   return {

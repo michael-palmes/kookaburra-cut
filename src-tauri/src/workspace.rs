@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Folder name created inside the chosen parent ("~" becomes "~/Kookaburra Cut").
 pub const WORKSPACE_DIR_NAME: &str = "Kookaburra Cut";
@@ -40,6 +40,9 @@ pub struct AppSettings {
     /// Consented workspace projects (the F-001 trust gate), keyed by slug; a grant stands until the sources change outside a trusted session.
     #[serde(default)]
     pub trusted_projects: HashMap<String, TrustRecord>,
+    /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
+    #[serde(default)]
+    pub disable_hardware_video: bool,
     /// Tri-state auto-update consent: None = undecided (first-run ask still owed), Some(true) = on, Some(false) = off.
     #[serde(default)]
     pub update_check_consent: Option<bool>,
@@ -408,6 +411,26 @@ pub fn set_last_project(
     }
     settings.last_project = project_id;
     save_settings(&app, &state, settings)
+}
+
+/// Whether hardware video (VideoToolbox decode/encode on non-gated paths) is enabled; the everyday default is on.
+pub(crate) fn hardware_video_enabled(app: &AppHandle) -> bool {
+    let state = app.state::<SettingsState>();
+    load_settings(app, &state).map_or(true, |s| !s.disable_hardware_video)
+}
+
+/// Toggle hardware video for the everyday paths (thumbnails, clip extraction, editor render) and tell the main window so its decode lane follows live.
+#[tauri::command]
+pub fn set_hardware_video(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = load_settings(&app, &state)?;
+    settings.disable_hardware_video = !enabled;
+    save_settings(&app, &state, settings)?;
+    let _ = app.emit("kookaburra://hardware-video-changed", enabled);
+    Ok(())
 }
 
 /// Rename a project's DISPLAY name; the slug/folder deliberately stays, since renaming it would orphan exports, Claude sessions (cwd), git history and settings.

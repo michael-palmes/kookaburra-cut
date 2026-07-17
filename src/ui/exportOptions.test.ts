@@ -85,6 +85,16 @@ describe("row chips", () => {
     doc.video.codec = "h264_videotoolbox";
     expect(specChips(doc)).toContain("fast draft — excluded from Verify");
   });
+
+  it("hardware ProRes is fast-draft labelled with no rate chip", () => {
+    const doc = structuredClone(bundled("kookaburra-master"));
+    doc.video.codec = "prores_videotoolbox";
+    expect(specChips(doc)).toEqual([
+      "ProRes 422 HQ",
+      "Native @ 60fps",
+      "fast draft — excluded from Verify",
+    ]);
+  });
 });
 
 describe("grouping + filtering", () => {

@@ -1,4 +1,4 @@
-//! Non-destructive mini video editor: an edit is a JSON document under a project's `edits/` folder describing trim/reorder/retime of clips cut from `assets/` source videos (never modified), edited in a second Tauri window (label `editor`); the flatten render uses `libx264 -crf 18 -preset veryfast` and is NOT part of the byte-identical export path, but re-entering as a `VideoClip` source deterministically re-extracts to a CFR-60 PNG sequence, so a rendered edit still passes `Verify ×2`.
+//! Non-destructive mini video editor: an edit is a JSON document under a project's `edits/` folder describing trim/reorder/retime of clips cut from `assets/` source videos (never modified), edited in a second Tauri window (label `editor`); the flatten render defaults to VideoToolbox decode + `h264_videotoolbox` at a generous bitrate (retrying once with the old `libx264 -crf 18 -preset veryfast` lane on failure) and is NOT part of the byte-identical export path, but re-entering as a `VideoClip` source deterministically re-extracts to a CFR-60 PNG sequence, so a rendered edit still passes `Verify ×2`.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -352,8 +352,8 @@ fn clip_output_frames(clip: &EditClip, fps: f64) -> u32 {
     ((span_ms / 1000.0) * fps).round().max(0.0) as u32
 }
 
-/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black.
-fn build_render_args(doc: &EditDoc, output: &str) -> Result<(Vec<String>, u32), String> {
+/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
+fn build_render_args(doc: &EditDoc, output: &str, hardware: bool) -> Result<(Vec<String>, u32), String> {
     if doc.clips.is_empty() {
         return Err("this edit has no clips to render".into());
     }
@@ -414,20 +414,35 @@ fn build_render_args(doc: &EditDoc, output: &str) -> Result<(Vec<String>, u32), 
         "pipe:1".into(),
     ];
     for source in &input_order {
+        if hardware {
+            args.push("-hwaccel".into());
+            args.push("videotoolbox".into());
+        }
         args.push("-i".into());
         args.push(source.abs.clone());
     }
+    args.extend(["-filter_complex".into(), filter, "-map".into(), "[outv]".into()]);
+    if hardware {
+        let target_kbps = ((f64::from(w) * f64::from(h) * fps * 0.25) / 1000.0)
+            .round()
+            .max(8_000.0) as u32;
+        args.extend([
+            "-c:v".into(),
+            "h264_videotoolbox".into(),
+            "-b:v".into(),
+            format!("{target_kbps}k"),
+        ]);
+    } else {
+        args.extend([
+            "-c:v".into(),
+            "libx264".into(),
+            "-preset".into(),
+            "veryfast".into(),
+            "-crf".into(),
+            "18".into(),
+        ]);
+    }
     args.extend([
-        "-filter_complex".into(),
-        filter,
-        "-map".into(),
-        "[outv]".into(),
-        "-c:v".into(),
-        "libx264".into(),
-        "-preset".into(),
-        "veryfast".into(),
-        "-crf".into(),
-        "18".into(),
         "-pix_fmt".into(),
         "yuv420p".into(),
         "-movflags".into(),
@@ -466,53 +481,165 @@ pub async fn render_edit(
     let output = assets.join(format!("{name}-edited.mp4"));
     let output_str = output.to_string_lossy().into_owned();
 
-    let (args, total) = build_render_args(&doc, &output_str)?;
+    // Hardware first; one software retry so an exotic input can never fail worse than the old lane. The Settings toggle drops the hardware attempt entirely.
+    let lanes: &[bool] = if workspace::hardware_video_enabled(&app) {
+        &[true, false]
+    } else {
+        &[false]
+    };
+    let mut rendered = false;
+    let mut render_err = String::new();
+    for &hardware in lanes {
+        let (args, total) = build_render_args(&doc, &output_str, hardware)?;
 
-    let (mut rx, _child) = app
-        .shell()
-        .sidecar("ffmpeg")
-        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
-        .args(args)
-        .spawn()
-        .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
+        let (mut rx, _child) = app
+            .shell()
+            .sidecar("ffmpeg")
+            .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+            .args(args)
+            .spawn()
+            .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
 
-    let mut code: Option<i32> = None;
-    let mut last_error: Option<String> = None;
-    let mut buffer = String::new();
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(bytes) => {
-                // ffmpeg `-progress pipe:1` emits `key=value` lines; pull `frame=N`.
-                buffer.push_str(&String::from_utf8_lossy(&bytes));
-                while let Some(nl) = buffer.find('\n') {
-                    let line: String = buffer.drain(..=nl).collect();
-                    if let Some(v) = line.trim().strip_prefix("frame=") {
-                        if let Ok(frame) = v.trim().parse::<u32>() {
-                            let _ = on_progress.send(RenderProgress {
-                                frame: frame.min(total),
-                                total,
-                            });
+        let mut code: Option<i32> = None;
+        let mut last_error: Option<String> = None;
+        let mut stderr_tail = String::new();
+        let mut buffer = String::new();
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    // ffmpeg `-progress pipe:1` emits `key=value` lines; pull `frame=N`.
+                    buffer.push_str(&String::from_utf8_lossy(&bytes));
+                    while let Some(nl) = buffer.find('\n') {
+                        let line: String = buffer.drain(..=nl).collect();
+                        if let Some(v) = line.trim().strip_prefix("frame=") {
+                            if let Ok(frame) = v.trim().parse::<u32>() {
+                                let _ = on_progress.send(RenderProgress {
+                                    frame: frame.min(total),
+                                    total,
+                                });
+                            }
                         }
                     }
                 }
+                // `-loglevel error` keeps this to genuine failure text.
+                CommandEvent::Stderr(bytes) => {
+                    stderr_tail.push_str(&String::from_utf8_lossy(&bytes));
+                }
+                CommandEvent::Terminated(payload) => {
+                    code = payload.code;
+                    break;
+                }
+                CommandEvent::Error(e) => last_error = Some(e),
+                _ => {}
             }
-            CommandEvent::Terminated(payload) => {
-                code = payload.code;
-                break;
-            }
-            CommandEvent::Error(e) => last_error = Some(e),
-            _ => {}
+        }
+
+        if code == Some(0) {
+            let _ = on_progress.send(RenderProgress { frame: total, total });
+            rendered = true;
+            break;
+        }
+        let _ = std::fs::remove_file(&output);
+        render_err = last_error
+            .or_else(|| {
+                let tail = stderr_tail.trim();
+                (!tail.is_empty()).then(|| tail.to_owned())
+            })
+            .unwrap_or_else(|| format!("ffmpeg render exited with {code:?}"));
+        if hardware {
+            eprintln!("[edit] hardware render failed, retrying with software: {render_err}");
         }
     }
-
-    if code != Some(0) {
-        let _ = std::fs::remove_file(&output);
-        return Err(last_error.unwrap_or_else(|| format!("ffmpeg render exited with {code:?}")));
+    if !rendered {
+        return Err(render_err);
     }
-    let _ = on_progress.send(RenderProgress { frame: total, total });
     // Warm the media-preview cache for the output now: by the time the editor closes and the library refreshes, poster/scrub frames already exist, no stale card, no pop-in; failure is non-fatal (the library regenerates on view).
     if let Err(e) = media::ensure_media_cache(&app, &output, &rel).await {
         eprintln!("[edit] preview warm-up failed for {rel}: {e}");
     }
     Ok(rel)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doc() -> EditDoc {
+        EditDoc {
+            version: 1,
+            name: "cut".into(),
+            sources: vec![EditSource {
+                id: "s1".into(),
+                rel: "assets/a.mp4".into(),
+                width: 1920,
+                height: 1080,
+                fps: 60.0,
+                duration_ms: 10_000,
+                abs: "/abs/a.mp4".into(),
+            }],
+            settings: EditSettings {
+                width: 1920,
+                height: 1080,
+                fps: 60.0,
+            },
+            clips: vec![EditClip {
+                id: "c1".into(),
+                source_id: "s1".into(),
+                in_ms: 0,
+                out_ms: 1000,
+                speed: 1.0,
+                start_ms: 0,
+            }],
+        }
+    }
+
+    #[test]
+    fn hardware_lane_hwaccels_each_input_and_encodes_by_bitrate() {
+        let (args, _) = build_render_args(&doc(), "/out/x.mp4", true).unwrap();
+        for (i, a) in args.iter().enumerate() {
+            if a == "-i" {
+                assert_eq!(args[i - 2], "-hwaccel");
+                assert_eq!(args[i - 1], "videotoolbox");
+            }
+        }
+        assert!(args.windows(2).any(|w| w == ["-c:v", "h264_videotoolbox"]));
+        assert!(args.windows(2).any(|w| w == ["-b:v", "31104k"]));
+        assert!(!args.contains(&"-crf".to_string()));
+        assert!(!args.contains(&"-preset".to_string()));
+    }
+
+    #[test]
+    fn software_lane_is_the_original_argv() {
+        let (args, total) = build_render_args(&doc(), "/out/x.mp4", false).unwrap();
+        assert_eq!(total, 60);
+        let expected: Vec<String> = [
+            "-y",
+            "-loglevel",
+            "error",
+            "-progress",
+            "pipe:1",
+            "-i",
+            "/abs/a.mp4",
+            "-filter_complex",
+            "[0:v]trim=start=0.000000:end=1.000000,setpts=(PTS-STARTPTS)/1,fps=60,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[v0];[v0]concat=n=1:v=1:a=0[outv]",
+            "-map",
+            "[outv]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            "-an",
+            "/out/x.mp4",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(args, expected);
+    }
 }

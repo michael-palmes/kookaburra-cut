@@ -77,6 +77,14 @@ describe("bundled export presets (the structure pin)", () => {
     expect(() => resolvePresetToEncodeSpec(doc)).toThrow(/\.mov/);
   });
 
+  it("hardware ProRes accepts PCM audio and resolves like prores_ks", () => {
+    const doc = structuredClone(bundled("kookaburra-master"));
+    doc.video.codec = "prores_videotoolbox";
+    const spec = resolvePresetToEncodeSpec(doc);
+    expect(spec.codec).toBe("prores_videotoolbox");
+    expect(doc.audio.codec).toEqual({ pcmBits: 24 });
+  });
+
   it("degrades bad documents to undefined, never throws", () => {
     expect(parseExportPreset(null, "t")).toBeUndefined();
     expect(parseExportPreset({ version: 99 }, "t")).toBeUndefined();
