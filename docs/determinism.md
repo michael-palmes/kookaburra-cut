@@ -779,10 +779,25 @@ stays deterministic):
 - **Boot failures can't be silent** (`engine/bootTrap.ts`): any pre-render crash
   renders as text in the window AND (in autorun mode) writes an error result: a
   packaged headless run always produces a verdict.
+- **Native allowed roots must match the frontend's asset roots.** The packaged
+  frontend resolves bundled-project assets against the resource dir, so
+  `workspace::allowed_read_roots` must include it: release binaries prefer
+  bundled resources, debug binaries the live repo tree (`templates_root`,
+  cfg-gated since #8). Before the gate, a release app on a dev machine preferred
+  the dev checkout, `confine_to_roots` rejected its own resource paths, clip
+  extraction failed silently and device screens exported the "Preparing video…"
+  card: deterministic, verifiable and wrong (`ef9ff1b2…` vs dev `da74c52b…`,
+  open from v0.1.0 to 2026-07-17). End-user machines never hit it, which is
+  exactly why it survived: only the dev machine could run the gate that catches
+  it.
 - **Diff the `renderStateFingerprint` FIRST** on any cross-build divergence: every
   verify result records tone mapping, real context attributes (AA grant, sample
   caps), environment/light state and lit-material specular values. It names a
-  missing texture class in one JSON diff before any pixel archaeology.
+  missing texture class in one JSON diff before any pixel archaeology. When the
+  fingerprint is clean apart from cosmetics (minified constructor names), go to
+  pixels next: export from both builds and map per-frame PSNR to scenes; a
+  contiguous diverging frame range names the failing subsystem faster than code
+  reading.
 
 ## Export presets & the encode-spec family
 
@@ -929,6 +944,13 @@ bundled rolling-gate project (`showcase-tour`):
 | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
 | `showcase-tour` (rolling gate) | `da74c52b…` | stale | stale | stale |
+
+> **2026-07-17 (v0.2.0 release session):** packaged parity restored on both
+> anchors: `showcase-tour` packaged EQUAL `da74c52b…` (byte-identical to dev for
+> the first time; was `ef9ff1b2…` since the v0.1.0 gates) and `ws:launch-2026`
+> packaged EQUAL `b70c9788…`, both on the signed v0.2.0 build. Root cause and
+> fix: the release-binary resource-root gate (PR #8; "Native allowed roots"
+> bullet above).
 
 > **2026-07-16:** `showcase-tour` re-recorded `226104ee…` → `cd511715…`: a
 > deliberate content change (device scenes moved to the iPhone 17 Pro model at
