@@ -6,6 +6,14 @@
   "license": "MIT OR Apache-2.0",
   "packageManager": "pnpm@11.0.4",
   "description": "Local, deterministic animated-video studio for macOS (Apple Silicon). Tauri 2 + React 19 + react-three-fiber, exporting via a bundled ffmpeg sidecar.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/michael-palmes/kookaburra-cut.git"
+  },
+  "bugs": {
+    "url": "https://github.com/michael-palmes/kookaburra-cut/issues"
+  },
+  "homepage": "https://kookaburracut.com/",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
