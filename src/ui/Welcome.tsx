@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useRef, useState } from "react";
 import { listProjectIds } from "../engine/project";
 import {
@@ -9,8 +10,6 @@ import {
   type WorkspaceProjectInfo,
 } from "../engine/workspace";
 import { NamePromptModal } from "./NamePromptModal";
-
-const APP_VERSION = "0.1.0";
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
@@ -223,6 +222,13 @@ export function Welcome({
 }) {
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
   const [showDevProjects, setShowDevProjects] = useState(false);
+  // From tauri.conf.json at runtime, the same source Settings shows; never hardcoded.
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(""));
+  }, []);
   /** Workspace scan failure, rendered as its own state, not as the empty grid: a broken workspace must not look like "no projects yet". */
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
@@ -339,7 +345,7 @@ export function Welcome({
             if (e.altKey) setShowDevProjects((v) => !v);
           }}
         >
-          Kookaburra Cut {APP_VERSION}
+          Kookaburra Cut {appVersion}
         </button>
       </footer>
     </div>

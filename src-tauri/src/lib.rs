@@ -12,6 +12,7 @@ mod scene_doc;
 mod objects;
 mod settings_win;
 mod theme;
+mod updater;
 mod workspace;
 
 use std::io::Read;
@@ -668,8 +669,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
         .manage(workspace::SettingsState::default())
+        .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
         .setup(|app| {
@@ -713,6 +716,9 @@ pub fn run() {
                     .native_icon(NativeIcon::PreferencesGeneral)
                     .accelerator("CmdOrCtrl+,")
                     .build(app)?;
+                let check_updates_item =
+                    MenuItemBuilder::with_id("check-for-updates", "Check for Updates…")
+                        .build(app)?;
                 if let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() {
                     // Menu::default() builds About/Hide/Quit with no explicit text, so muda fills them in from `NSRunningApplication::localizedName` (macos/mod.rs), the OS-reported app name, NOT our PackageInfo; in dev that's the unbundled process's binary name (the Cargo package, "kookaburra-cut"), so the menu reads "About kookaburra-cut" etc, so relabel them explicitly ("Hide Others"/"Show All"/"Services" don't interpolate a name and stay put).
                     const APP_NAME: &str = "Kookaburra Cut";
@@ -729,9 +735,10 @@ pub fn run() {
                             pred.set_text(format!("Quit {APP_NAME}"))?;
                         }
                     }
-                    // Default macOS app submenu: About(0), ─(1), Services…; Settings sits between, per the HIG.
-                    app_menu.insert(&settings_item, 2)?;
-                    app_menu.insert(&PredefinedMenuItem::separator(app.handle())?, 3)?;
+                    // Default macOS app submenu: About(0), ─(1), Services…; per the HIG the order becomes About, Check for Updates, ─, Settings, ─, Services.
+                    app_menu.insert(&check_updates_item, 1)?;
+                    app_menu.insert(&settings_item, 3)?;
+                    app_menu.insert(&PredefinedMenuItem::separator(app.handle())?, 4)?;
                 }
                 // Undo/Redo: the default Edit items send AppKit's undo: selector, which the menu swallows BEFORE the DOM sees ⌘Z, so the app history could never hear it; replace them with emitting items, and the frontend routes text-field focus back to the WebKit undo manager.
                 for item in menu.items()? {
@@ -793,6 +800,9 @@ pub fn run() {
                         let _ = app.emit("kookaburra://redo", ());
                     } else if event.id() == "show-shortcuts" {
                         let _ = app.emit("kookaburra://show-shortcuts", ());
+                    } else if event.id() == "check-for-updates" {
+                        // Main window only: it owns the update dialogs, and Settings has its own Check Now.
+                        let _ = app.emit_to("main", "kookaburra://check-for-updates", ());
                     } else if event.id() == "open-settings" {
                         if let Err(e) = settings_win::open_settings_window(app) {
                             eprintln!("[settings] open failed: {e}");
@@ -885,6 +895,10 @@ pub fn run() {
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,
             settings_win::sidecar_versions,
+            updater::check_for_update,
+            updater::set_update_consent,
+            updater::record_skipped_version,
+            updater::install_update_and_relaunch,
             edit::open_edit,
             edit::open_edit_named,
             edit::reset_edit,
