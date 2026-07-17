@@ -4,7 +4,27 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — Unreleased
+## [0.2.0] - 2026-07-17
+
+### Added
+
+- Opt-in auto-update. Turn on "Check for updates on launch" in Settings and
+  the app checks GitHub for new releases and installs them in one click.
+- Hardware video acceleration via VideoToolbox. Media, editing and clip prep
+  are hardware-accelerated by default (toggle in Settings), and hardware
+  fast-draft export lanes are available for H.264, HEVC and ProRes.
+  Deterministic exports still use the software path, so Verify is unaffected.
+
+### Changed
+
+- Device motion is now opt-in for new device scenes.
+
+### Fixed
+
+- Terminal-triggered runs now resolve the packaged app binary from
+  Info.plist rather than assuming its name.
+
+## [0.1.0] - 2026-07-16
 
 First public source release.
 
