@@ -12,7 +12,19 @@ exists, sends no identifiers, and downloads nothing without your say-so.
 Updates install only after their ed25519 signature verifies against the key
 baked into the app.
 
+## Reporting a vulnerability
+
 If you believe you've found a security issue (for example in the Tauri IPC
-surface, the bundled sidecar handling, or the embedded terminal), please open a
-GitHub issue. If the details feel sensitive, say so in the issue and a private
-channel can be arranged before specifics are shared.
+surface, the bundled sidecar handling, the update mechanism, or the embedded
+terminal), please report it privately through GitHub's private vulnerability
+reporting: open the
+[Security tab](https://github.com/michael-palmes/kookaburra-cut/security) and
+choose **Report a vulnerability**, or use the
+[report form](https://github.com/michael-palmes/kookaburra-cut/security/advisories/new)
+directly. That creates a draft advisory visible only to the maintainer, so
+details stay private until a fix ships. Please don't open a public issue for
+anything that looks like a security problem.
+
+## Supported versions
+
+Only the latest release is supported; please update before reporting.

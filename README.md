@@ -6,6 +6,12 @@
 
 <p align="center">A local, <strong>deterministic</strong> animated-video studio for macOS (Apple Silicon).</p>
 
+<p align="center">
+  <a href="https://github.com/michael-palmes/kookaburra-cut/actions/workflows/ci.yml"><img src="https://github.com/michael-palmes/kookaburra-cut/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/michael-palmes/kookaburra-cut/actions/workflows/codeql.yml"><img src="https://github.com/michael-palmes/kookaburra-cut/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/michael-palmes/kookaburra-cut"><img src="https://api.scorecard.dev/projects/github.com/michael-palmes/kookaburra-cut/badge" alt="OpenSSF Scorecard"></a>
+</p>
+
 Kookaburra Cut renders every visual (animated text, graphics, and 3D) through a single
 react-three-fiber WebGL canvas, and exports video by stepping a manual clock
 frame-by-frame into a bundled **ffmpeg** sidecar (H.264 / H.265 / ProRes). It runs in
