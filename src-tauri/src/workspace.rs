@@ -43,6 +43,9 @@ pub struct AppSettings {
     /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
     #[serde(default)]
     pub disable_hardware_video: bool,
+    /// Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off".
+    #[serde(default)]
+    pub lag_warning: Option<String>,
     /// Tri-state auto-update consent: None = undecided (first-run ask still owed), Some(true) = on, Some(false) = off.
     #[serde(default)]
     pub update_check_consent: Option<bool>,
@@ -430,6 +433,23 @@ pub fn set_hardware_video(
     settings.disable_hardware_video = !enabled;
     save_settings(&app, &state, settings)?;
     let _ = app.emit("kookaburra://hardware-video-changed", enabled);
+    Ok(())
+}
+
+/// Set the playback slowdown-badge sensitivity and tell the main window so the detector follows live.
+#[tauri::command]
+pub fn set_lag_warning(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    mode: String,
+) -> Result<(), String> {
+    if !["off", "sustained", "strict"].contains(&mode.as_str()) {
+        return Err(format!("unknown lag-warning mode: {mode}"));
+    }
+    let mut settings = load_settings(&app, &state)?;
+    settings.lag_warning = Some(mode.clone());
+    save_settings(&app, &state, settings)?;
+    let _ = app.emit("kookaburra://lag-warning-changed", mode);
     Ok(())
 }
 

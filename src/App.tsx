@@ -96,6 +96,7 @@ import {
   createProject,
   getSettings,
   initWorkspace,
+  type LagWarningMode,
   projectFingerprint,
   setLastExportPreset,
   setLastProject,
@@ -406,6 +407,20 @@ export default function App() {
       .catch(() => {});
     const unlisten = listen<boolean>("kookaburra://hardware-video-changed", (e) =>
       setHardwareVideo(e.payload),
+    );
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // The slowdown badge's sensitivity follows Settings the same way: seeded at boot, live-updated from the Settings window. Off by default; the badge is opt-in.
+  const [lagWarning, setLagWarningMode] = useState<LagWarningMode>("off");
+  useEffect(() => {
+    getSettings()
+      .then((s) => setLagWarningMode((s.lagWarning as LagWarningMode) ?? "off"))
+      .catch(() => {});
+    const unlisten = listen<string>("kookaburra://lag-warning-changed", (e) =>
+      setLagWarningMode(e.payload as LagWarningMode),
     );
     return () => {
       void unlisten.then((fn) => fn());
@@ -1163,9 +1178,29 @@ export default function App() {
     });
   }, [project, exporting]);
 
+  // Balanced/Performance thin preview clip decoding to every 2nd frame; pinned to full whenever an export could be running.
+  useEffect(() => {
+    setPreviewClipStride(!exporting && previewQuality !== "full" ? 2 : 1);
+  }, [exporting, previewQuality]);
+
+  // Playback binds the small preview JPEGs; pausing flips every consumer back to exact full frames.
+  useEffect(() => {
+    setPreviewPlaybackActive(playing && !exporting);
+  }, [playing, exporting]);
+
+  // Slowdown badge state: the EMA lives in refs (per-frame maths, no renders); the badge value updates at most every 200ms so the indicator never adds render work of its own.
+  const [lagFps, setLagFps] = useState<number | null>(null);
+  const lagEmaRef = useRef(0);
+  const lagUpdatedRef = useRef(0);
+
   // Playback advances the shared clock by real elapsed time so the preview animates. Preview only: the export loop (exporter.ts) drives the clock itself and never runs this, so reading the wall clock here can't affect determinism.
   useEffect(() => {
-    if (!playing) return;
+    if (!playing) {
+      lagEmaRef.current = 0;
+      lagUpdatedRef.current = 0;
+      setLagFps(null);
+      return;
+    }
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -1177,6 +1212,19 @@ export default function App() {
       const clock = useClockStore.getState();
       const dt = now - last;
       last = now;
+      if (lagWarning !== "off") {
+        const ema = lagEmaRef.current === 0 ? Math.min(dt, 17) : lagEmaRef.current * 0.9 + dt * 0.1;
+        lagEmaRef.current = ema;
+        if (now - lagUpdatedRef.current >= 200) {
+          lagUpdatedRef.current = now;
+          // Enter/exit thresholds differ (hysteresis) so the badge doesn't flicker at the edge.
+          const [on, off] = lagWarning === "strict" ? [20, 17.5] : [25, 20];
+          setLagFps((prev) => {
+            const lagging = prev !== null ? ema > off : ema > on;
+            return lagging ? Math.round(1000 / ema) : null;
+          });
+        }
+      }
       let next = clock.currentMs + dt;
       // A bounded replay pauses at its window's end and returns the playhead to where the panel session began; with no session mark it parks on the window's last moment.
       const stopAt = playUntilRef.current;
@@ -1192,7 +1240,7 @@ export default function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing]);
+  }, [playing, lagWarning]);
 
   // Never let preview playback run during an export/verify; they share the clock store.
   useEffect(() => {
@@ -1567,6 +1615,30 @@ export default function App() {
                     onDocChanged={handleDocChanged}
                   />
                 )}
+
+              {/* Slowdown badge: live fps in an amber warning triangle while playback can't hold full speed; click opens Playback options. */}
+              {lagFps !== null && !exporting && !isAutoRun && (
+                <button
+                  type="button"
+                  className="lag-badge"
+                  title={`Playback is running at about ${lagFps} fps. Click to open playback options.`}
+                  aria-label={`Playback at about ${lagFps} fps; open playback options`}
+                  onClick={() => useUiStore.getState().requestPlaybackOptions()}
+                >
+                  {/* Round-linejoin stroke in the fill colour rounds the triangle's points. */}
+                  <svg className="lag-badge-shape" viewBox="0 0 46 40" aria-hidden="true">
+                    <path
+                      d="M23 3L43 37H3Z"
+                      fill="var(--warning)"
+                      stroke="var(--warning)"
+                      strokeWidth="6"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className="lag-badge-fps">{lagFps}</span>
+                  <span className="lag-badge-unit">FPS</span>
+                </button>
+              )}
 
               {/* A freshly added video extracts its CFR frame sequence before the device screen can show it; say so instead of leaving the screen silently black. */}
               {!isAutoRun && !exporting && clipsExtracting > 0 && (

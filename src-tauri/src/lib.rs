@@ -855,6 +855,7 @@ pub fn run() {
             cancel_export,
             extract_clip_frames,
             read_clip_frame,
+            ensure_clip_previews,
             hash_file,
             reveal_in_finder,
             get_autorun_config,
