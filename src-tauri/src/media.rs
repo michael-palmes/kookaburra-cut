@@ -75,7 +75,7 @@ fn file_stamp(abs: &Path) -> Result<(u64, u64), String> {
 fn hashed_path_key(abs: &Path) -> String {
     let mut hasher = Sha256::new();
     hasher.update(abs.to_string_lossy().as_bytes());
-    format!("{:x}", hasher.finalize())
+    crate::hex_digest(hasher.finalize().as_slice())
 }
 
 fn extension_of(path: &Path) -> String {
@@ -100,7 +100,7 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         }
         hasher.update(&buf[..read]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(crate::hex_digest(hasher.finalize().as_slice()))
 }
 
 /// A project-relative asset path, hardened against traversal (`assets/...` only).
