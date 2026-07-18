@@ -23,7 +23,6 @@
     "noUncheckedSideEffectImports": true,
 
     /* Path aliases (mirror vite.config.ts resolve.alias) */
-    "baseUrl": ".",
     "paths": {
       "@kookaburra/toolkit": ["./src/toolkit/index.ts"]
     },
