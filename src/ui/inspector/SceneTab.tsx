@@ -40,6 +40,7 @@ import { sceneSections } from "../inspectorOptions";
 import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
+import { TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
 import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
@@ -912,7 +913,7 @@ export function SceneTab({
   };
 
   const header = (
-    <div className="inspector-scene-head inspector-scene-head-stacked">
+    <div className="inspector-scene-head">
       <div className="inspector-scene-preview">
         {previewSrc && <img src={previewSrc} alt="" draggable={false} />}
       </div>
@@ -1665,12 +1666,17 @@ export function SceneTab({
   }
   if (drillIn === "text.edit" && doc) {
     const textKeys = Object.keys(doc.text ?? {});
-    const pinnedKeys = ["title", "subtitle"].filter((key) => textKeys.includes(key));
+    const pinnedKeys = ["title", "subtitle", "headline"].filter((key) => textKeys.includes(key));
     const orderedKeys = [
       ...pinnedKeys,
       ...textKeys.filter((key) => !pinnedKeys.includes(key)).sort(),
     ];
-    const fieldLabels: Record<string, string> = { title: "Title", subtitle: "Subtitle" };
+    // Legacy device scenes keep their single line under `headline`; call it Title unless a real title coexists.
+    const fieldLabels: Record<string, string> = {
+      title: "Title",
+      subtitle: "Subtitle",
+      headline: textKeys.includes("title") ? "Headline" : "Title",
+    };
     const align = doc.textLayout?.align ?? "center";
     const textTheme = sceneTheme ?? project.theme;
     // Swatches come from the mounted primitives: a key gets a colour control exactly when its text primitive accepts a sidecar override (`textKey`), and the reset value is that primitive's registered default fill, tokens resolved through the scene's theme.
@@ -1720,50 +1726,43 @@ export function SceneTab({
                 ? { key: `${key}Color`, token: resolveFillToken(colourDefaults[key]) }
                 : undefined;
             return (
-              <div key={key} className="wizard-field">
-                <span className={`wizard-label${colour ? " wizard-label-with-colour" : ""}`}>
-                  {label}
-                  {colour && (
-                    <ColourPicker
-                      value={doc.textStyle?.[colour.key] ?? colour.token}
-                      label={`${label} colour`}
-                      defaultValue={colour.token}
-                      onReset={() =>
-                        void patchDoc(
-                          (next) => {
-                            const rest = { ...(next.textStyle ?? {}) };
-                            delete rest[colour.key];
-                            next.textStyle = Object.keys(rest).length > 0 ? rest : undefined;
-                          },
-                          { history: `${label.toLowerCase()} colour` },
-                        )
+              <TextFieldRow
+                key={key}
+                label={label}
+                value={value}
+                onChange={(text) => setTextValues((v) => ({ ...v, [key]: text }))}
+                onKeyDown={(e) => {
+                  // Cmd/Ctrl+Enter saves; plain Enter stays a newline (native textarea behaviour).
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    commitTextEdit();
+                  }
+                }}
+                colour={
+                  colour
+                    ? {
+                        value: doc.textStyle?.[colour.key] ?? colour.token,
+                        defaultValue: colour.token,
+                        onReset: () =>
+                          void patchDoc(
+                            (next) => {
+                              const rest = { ...(next.textStyle ?? {}) };
+                              delete rest[colour.key];
+                              next.textStyle = Object.keys(rest).length > 0 ? rest : undefined;
+                            },
+                            { history: `${label.toLowerCase()} colour` },
+                          ),
+                        onCommit: (hex) =>
+                          void patchDoc(
+                            (next) => {
+                              next.textStyle = { ...(next.textStyle ?? {}), [colour.key]: hex };
+                            },
+                            { history: `${label.toLowerCase()} colour` },
+                          ),
                       }
-                      onCommit={(hex) =>
-                        void patchDoc(
-                          (next) => {
-                            next.textStyle = { ...(next.textStyle ?? {}), [colour.key]: hex };
-                          },
-                          { history: `${label.toLowerCase()} colour` },
-                        )
-                      }
-                    />
-                  )}
-                </span>
-                <textarea
-                  className="modal-input wizard-textarea"
-                  aria-label={label}
-                  rows={Math.max(1, value.split("\n").length)}
-                  value={value}
-                  onChange={(e) => setTextValues((v) => ({ ...v, [key]: e.target.value }))}
-                  onKeyDown={(e) => {
-                    // Cmd/Ctrl+Enter saves; plain Enter stays a newline (native textarea behaviour).
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      commitTextEdit();
-                    }
-                  }}
-                />
-              </div>
+                    : undefined
+                }
+              />
             );
           })}
         </div>

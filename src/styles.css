@@ -306,6 +306,8 @@ body {
   font-weight: 510;
   /* Live values in button labels (export %) must not reflow — §5.3. */
   font-variant-numeric: tabular-nums;
+  /* Labels never wrap; narrow rows squeezed "↺ Replay" onto two lines. */
+  white-space: nowrap;
   color: var(--text-primary);
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
@@ -487,6 +489,51 @@ body {
   line-height: var(--lh-base);
 }
 
+/* New-scene name row: the generated name sits apart up top; the pencil pins an override. */
+.wizard-scene-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.wizard-scene-name-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.wizard-scene-name-value {
+  font-weight: 590;
+}
+
+.wizard-scene-name-edit {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.wizard-scene-name-edit:hover {
+  color: var(--text-primary);
+}
+
+.wizard-scene-name-input {
+  flex: 1;
+}
+
+/* Auto-grow headline field: JS sets the height from content, so no resize handle. */
+.wizard-autogrow {
+  min-height: var(--control-h-lg);
+  padding: var(--space-3) var(--space-4);
+  resize: none;
+  overflow: hidden;
+  font: inherit;
+  line-height: var(--lh-base);
+}
+
 .wizard-presets {
   display: flex;
   flex-wrap: wrap;
@@ -629,6 +676,11 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: var(--space-4);
   padding-right: 0;
+  /* Fill the panel and scroll; rows keep natural height instead of squashing. */
+  flex: 1 1 0;
+  min-height: 0;
+  grid-auto-rows: max-content;
+  align-content: start;
 }
 
 /* The whole card is the click target (v11 · M2): hand cursor + a hover lift; the
@@ -4527,14 +4579,10 @@ img.inspector-scene-thumb {
 }
 
 /* ── Scene-tab header preview + rename (M5 live round) ───────────────────── */
-.inspector-scene-head-stacked {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 9px;
-}
-
+/* Compact thumb beside the title row; the base head is already a flex row. */
 .inspector-scene-preview {
-  width: 100%;
+  width: 96px;
+  flex: none;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-sm);
   background: var(--surface-recessed);

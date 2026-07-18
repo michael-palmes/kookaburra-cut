@@ -12,8 +12,8 @@ export default defineScene({
   durationMs: __DURATION_MS__,
   Scene() {
     const theme = useTheme();
-    const title = useSceneText("title", "__NAME__");
-    const subtitle = useSceneText("subtitle", "");
+    const title = useSceneText("title");
+    const subtitle = useSceneText("subtitle");
     return (
       <SceneStage>
         <color attach="background" args={[theme.colors.background]} />

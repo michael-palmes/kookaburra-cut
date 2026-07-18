@@ -1442,6 +1442,7 @@ export default function App() {
                   startMs: s.startMs,
                   doc: project.sceneDocs[i],
                 }))}
+                theme={project.theme}
                 exporting={exporting}
                 getThumbs={() => ensureSceneThumbs(project)}
                 onProjectChanged={() => {

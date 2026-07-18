@@ -430,7 +430,9 @@ pub struct ScaffoldOptions {
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
-    pub headline: Option<String>,
+    pub title: Option<String>,
+    /// Title scenes only; other kinds ignore it.
+    pub subtitle: Option<String>,
     pub device_model: Option<String>,
     pub colour: Option<String>,
     /// Project-relative media path (e.g. "assets/demo.mp4").
@@ -535,12 +537,12 @@ pub async fn scaffold_scene(
         },
         "text": {},
     });
-    // Title scenes seed the TitleBlock pair (an empty subtitle keeps the panel field visible); other kinds keep the single headline key.
+    // Title scenes seed the TitleBlock pair (empty strings keep the panel fields visible); other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
     if options.kind == "title" {
-        doc["text"]["title"] = json!(options.headline.as_deref().unwrap_or(&options.name));
-        doc["text"]["subtitle"] = json!("");
-    } else if let Some(headline) = &options.headline {
-        doc["text"]["headline"] = json!(headline);
+        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
+        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
+    } else if let Some(title) = &options.title {
+        doc["text"]["title"] = json!(title);
     }
     if options.kind == "device" {
         let mut device = json!({
