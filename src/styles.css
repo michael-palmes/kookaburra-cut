@@ -306,6 +306,8 @@ body {
   font-weight: 510;
   /* Live values in button labels (export %) must not reflow — §5.3. */
   font-variant-numeric: tabular-nums;
+  /* Labels never wrap; narrow rows squeezed "↺ Replay" onto two lines. */
+  white-space: nowrap;
   color: var(--text-primary);
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
