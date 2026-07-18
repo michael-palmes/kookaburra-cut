@@ -1046,14 +1046,20 @@ pub fn list_project_assets(
     list_by_extension(&app, &state, &slug, IMAGE_EXTENSIONS)
 }
 
-/// Relative paths of ALL media in a project's assets/ (videos + images): used by the helper wizards' file dropdown and the media library's listing.
+/// Relative paths of ALL media in a project's assets/ (videos + images), newest modified first so every picker surfaces fresh imports/edits on top: used by the helper wizards' file dropdown and the media library's listing.
 #[tauri::command]
 pub fn list_project_media(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<String>, String> {
-    list_by_extension(&app, &state, &slug, MEDIA_EXTENSIONS)
+    let mut files = list_by_extension(&app, &state, &slug, MEDIA_EXTENSIONS)?;
+    let assets = require_root(&app, &state)?.join(&slug).join("assets");
+    // Stable sort, so the alphabetical pass breaks mtime ties; unreadable stamps sink last.
+    files.sort_by_cached_key(|rel| {
+        std::cmp::Reverse(std::fs::metadata(assets.join(rel)).and_then(|m| m.modified()).ok())
+    });
+    Ok(files)
 }
 
 fn list_by_extension(
