@@ -912,7 +912,7 @@ export function SceneTab({
   };
 
   const header = (
-    <div className="inspector-scene-head inspector-scene-head-stacked">
+    <div className="inspector-scene-head">
       <div className="inspector-scene-preview">
         {previewSrc && <img src={previewSrc} alt="" draggable={false} />}
       </div>

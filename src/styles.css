@@ -4534,14 +4534,10 @@ img.inspector-scene-thumb {
 }
 
 /* ── Scene-tab header preview + rename (M5 live round) ───────────────────── */
-.inspector-scene-head-stacked {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 9px;
-}
-
+/* Compact thumb beside the title row; the base head is already a flex row. */
 .inspector-scene-preview {
-  width: 100%;
+  width: 96px;
+  flex: none;
   aspect-ratio: 16 / 9;
   border-radius: var(--radius-sm);
   background: var(--surface-recessed);
