@@ -1022,6 +1022,7 @@ export default function App() {
 
   // Preview soundtrack follows the transport. Muting is preview-only; the flag lives in the ui store so palette commands and the playback bar share one switch.
   const audioMuted = useUiStore((s) => s.audioMuted);
+  const previewQuality = useUiStore((s) => s.previewQuality);
   useEffect(() => {
     syncPreviewAudioPlaying(playing);
   }, [playing]);
@@ -1461,6 +1462,14 @@ export default function App() {
               >
                 <Canvas
                   frameloop="demand"
+                  // Preview-only pixel ratio; the exporter pins its own (setPixelRatio(1)) per run.
+                  dpr={
+                    previewQuality === "performance"
+                      ? 1
+                      : previewQuality === "balanced"
+                        ? 1.5
+                        : [1, 2]
+                  }
                   // antialias is a request; WebKit decides silently (ANGLE/Metal). The onCreated truth log below records what the context actually granted, landing in the autorun dev.log on every gated run.
                   gl={{ preserveDrawingBuffer: true, antialias: true }}
                   // Shadow maps: enabled globally, inert until a SceneStage mounts a castShadow key light (see SHADOW_MAP_TYPE; regressions prove the inert case byte-neutral).

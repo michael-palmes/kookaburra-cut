@@ -5,6 +5,19 @@ import type { ThemeBackdrop, ThemeBackground } from "../theme/tokens";
 
 export type InspectorTab = "project" | "scene";
 
+export type PreviewQuality = "full" | "balanced" | "performance";
+
+const QUALITY_KEY = "kookaburra:preview-quality";
+
+function loadPreviewQuality(): PreviewQuality {
+  try {
+    const v = localStorage.getItem(QUALITY_KEY);
+    return v === "balanced" || v === "performance" ? v : "full";
+  } catch {
+    return "full";
+  }
+}
+
 /** A copied scene look (Copy background): raw override fields, so absent = "follow theme" pastes as absence. Cleared on project switch since image/video fills reference project assets. */
 export interface BackgroundClipboard {
   background?: ThemeBackground;
@@ -24,30 +37,46 @@ interface UiState {
   paletteOpen: boolean;
   /** Preview-soundtrack mute; preview-only, never touches export audio. */
   audioMuted: boolean;
+  /** Preview canvas resolution; preview-only, the exporter pins its own pixel ratio. */
+  previewQuality: PreviewQuality;
   inspector: InspectorState;
   /** A pending "open this wizard" request for the Claude rail (consumed by TerminalPanel). */
   railWizardRequest: "new-scene" | "edit-scene" | null;
+  /** Bumped by the stage's slowdown badge; the inspector opens the Playback options popover. */
+  playbackOptionsNonce: number;
   /** null = nothing copied yet (Paste disabled). */
   backgroundClipboard: BackgroundClipboard | null;
   setPaletteOpen: (open: boolean) => void;
   togglePalette: () => void;
   setAudioMuted: (muted: boolean) => void;
+  setPreviewQuality: (quality: PreviewQuality) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   setInspectorDrillIn: (id: string | null) => void;
   toggleInspectorSection: (id: string) => void;
   requestRailWizard: (wizard: "new-scene" | "edit-scene" | null) => void;
+  requestPlaybackOptions: () => void;
   setBackgroundClipboard: (clip: BackgroundClipboard | null) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
   paletteOpen: false,
   audioMuted: false,
+  previewQuality: loadPreviewQuality(),
   inspector: { tab: "project", drillIn: null, collapsed: [] },
   railWizardRequest: null,
+  playbackOptionsNonce: 0,
   backgroundClipboard: null,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
   setAudioMuted: (audioMuted) => set({ audioMuted }),
+  setPreviewQuality: (previewQuality) => {
+    try {
+      localStorage.setItem(QUALITY_KEY, previewQuality);
+    } catch {
+      // Storage unavailable: the choice still applies for this session.
+    }
+    set({ previewQuality });
+  },
   setInspectorTab: (tab) => set((s) => ({ inspector: { ...s.inspector, tab, drillIn: null } })),
   setInspectorDrillIn: (drillIn) => set((s) => ({ inspector: { ...s.inspector, drillIn } })),
   toggleInspectorSection: (id) =>
@@ -60,5 +89,6 @@ export const useUiStore = create<UiState>((set) => ({
       },
     })),
   requestRailWizard: (railWizardRequest) => set({ railWizardRequest }),
+  requestPlaybackOptions: () => set((s) => ({ playbackOptionsNonce: s.playbackOptionsNonce + 1 })),
   setBackgroundClipboard: (backgroundClipboard) => set({ backgroundClipboard }),
 }));

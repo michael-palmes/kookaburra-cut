@@ -42,6 +42,37 @@ export function NumericField({
   );
 }
 
+/** A detailed popover choice: icon, title and a plain-language description under it; the flat aspect-style items stay simple buttons. */
+export function PopoverChoice({
+  icon,
+  label,
+  description,
+  active,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  description: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={active}
+      className={`inspector-popover-item detailed${active ? " active" : ""}`}
+      onClick={onClick}
+    >
+      <span className="popover-choice-icon">{icon}</span>
+      <span className="popover-choice-text">
+        <span className="popover-choice-label">{label}</span>
+        <span className="popover-choice-desc">{description}</span>
+      </span>
+    </button>
+  );
+}
+
 /** Icon glyphs lifted from the design prototype (20-viewBox stroke SVGs). */
 export function RowIcon({ id }: { id: string }) {
   const paths: Record<string, ReactNode> = {
@@ -59,6 +90,12 @@ export function RowIcon({ id }: { id: string }) {
         <path d="M8 14V5l7-1.5V12" />
         <circle cx="6" cy="14.5" r="1.8" />
         <circle cx="13" cy="13" r="1.8" />
+      </>
+    ),
+    playback: (
+      <>
+        <rect x="3" y="4" width="14" height="12" rx="2" />
+        <path d="M8.5 7.5v5l4-2.5z" />
       </>
     ),
   };
