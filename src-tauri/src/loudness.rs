@@ -50,7 +50,7 @@ pub async fn measure_loudness(
     hasher.update(&bytes);
     hasher.update([0u8]);
     hasher.update(graph.as_bytes());
-    let key = format!("{:x}", hasher.finalize());
+    let key = crate::hex_digest(hasher.finalize().as_slice());
     let cache_dir = app
         .path()
         .app_data_dir()

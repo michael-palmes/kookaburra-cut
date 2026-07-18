@@ -409,6 +409,16 @@ fn cancel_export(state: State<'_, ExportState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Lowercase hex of a digest; sha2 0.11 outputs no longer implement LowerHex.
+pub(crate) fn hex_digest(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
 /// Streams a file in 64 KiB chunks through SHA-256 and returns the hex digest (shared by `hash_file` and the clip-cache rebind in `extract_clip_frames`, F-005).
 fn sha256_file(path: &std::path::Path) -> Result<String, String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
@@ -421,7 +431,7 @@ fn sha256_file(path: &std::path::Path) -> Result<String, String> {
         }
         hasher.update(&buf[..read]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex_digest(hasher.finalize().as_slice()))
 }
 
 /// Computes the SHA-256 (hex) of a file, used by the determinism check to compare two consecutive exports of the same project (the byte-identical threshold); the path is confined to the workspace-readable roots (TAU-01) so a shared project can't hash arbitrary local files.
