@@ -107,3 +107,29 @@ Operational anchors for any change:
   before exporting (dev copy), or `pnpm setup:ffmpeg:release` for the pinned
   self-contained static build (the dev copy OVERWRITES it). More Tauri-2
   mechanics: `docs/architecture.md` (Implementation notes).
+
+## Performance
+
+Preview slowdowns: measure first, never guess (the 2026-07 hunt disproved every
+intuition before the probe settled it).
+
+- **Probe:** `pnpm kookaburra:run --action perf --project ws:<slug>` plays every
+  scene under elimination passes (baseline / dpr-1 / no-shadows /
+  no-transmission / frozen-media / half-media / no-devices) and writes per-pass
+  fps and frame-time stats to `~/Kookaburra Cut/_autorun/last-run.json`. Needs
+  the app window visible (occluded WKWebView suspends rAF) and no other
+  `pnpm tauri dev` holding port 1420. New suspect: add a pass, don't theorise.
+- **Method:** one lever per change, re-run the probe, keep only what the data
+  keeps. Clip prefetching was reverted this way: decode work is main-thread, so
+  reading ahead made heavy scenes worse. Any clip or render-path change then
+  re-gates through the standard verifies (`docs/determinism.md`).
+- **Measured impactor:** clip frame decode dominates everything, roughly
+  25-30ms per operation (IPC read + PNG decode + texture upload). Shipped
+  fixes: off-playhead scenes hold their last frame; playback binds a lazy 960px
+  JPEG preview tier (`ensure_clip_previews`; paused, scrubbing and export
+  always bind exact full PNGs); Balanced/Performance halve the bind rate.
+  Preview-only knobs live in `src/engine/previewMedia.ts` and never leak into
+  exports (`isExporting()` guards plus App pinning).
+- **Measured non-factors:** device GLB complexity (94k tris holds 60fps),
+  transmission glass, VSM shadows, canvas pixel ratio. Low-poly device models
+  are not worth building.
