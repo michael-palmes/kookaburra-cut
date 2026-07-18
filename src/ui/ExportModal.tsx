@@ -636,7 +636,7 @@ function CustomPanel({
               set("shortEdge", e.target.value === "native" ? null : Number(e.target.value))
             }
           >
-            <option value="native">Native (render size)</option>
+            <option value="native">4K (native)</option>
             <option value="1440">1440p short edge</option>
             <option value="1080">1080p short edge</option>
             <option value="720">720p short edge</option>
