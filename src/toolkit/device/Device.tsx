@@ -523,6 +523,8 @@ export function Device(props: DeviceProps) {
     const aspect = size.y > 1e-6 ? size.x / size.y : 0.5;
     // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
     const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
+    // Perf-probe marker: the no-devices elimination pass hides these roots.
+    clone.userData.kookaburraDevice = true;
     return { root: clone, fit, screens, aspect, fittedHeight, lidNode, lidBaseX };
   }, [scene, activeSpec, colourSpec, screenMaterial]);
 

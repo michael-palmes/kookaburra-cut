@@ -51,8 +51,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews' or 'option-previews'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews' or 'perf'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then

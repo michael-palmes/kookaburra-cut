@@ -21,6 +21,7 @@ import {
 } from "./exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { captureOptionPreviews } from "./optionPreviews";
+import { runPerfProbe } from "./perfProbe";
 import { type LoadedProject, loadProject } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import {
@@ -31,7 +32,7 @@ import {
 
 /** Headless auto-run: `pnpm kookaburra:run` sets `KOOKABURRA_*` env vars read via native `get_autorun_config` (process env, not `import.meta.env`, which is baked at build time and unreadable in a packaged app); drives the store then calls the same `verifyDeterminism`/`exportProject` the UI buttons call, so it never bypasses the real WebGL/ffmpeg export path. See docs/determinism.md. */
 
-export type AutoRunAction = "verify" | "export" | "theme-previews" | "option-previews";
+export type AutoRunAction = "verify" | "export" | "theme-previews" | "option-previews" | "perf";
 
 export interface AutoRunConfig {
   action: AutoRunAction;
@@ -63,6 +64,17 @@ interface AutoRunResult {
   /** Render-state snapshot from verify's pass A; always present on verify rows, diffing it across builds/machines localizes hash divergence to a named value. */
   fingerprint?: RenderStateFingerprint;
   path?: string;
+  /** perf rows: one per scene × elimination pass (see engine/perfProbe.ts). */
+  scene?: string;
+  pass?: string;
+  frames?: number;
+  avgFps?: number;
+  avgMs?: number;
+  p95Ms?: number;
+  maxMs?: number;
+  drawCalls?: number;
+  triangles?: number;
+  texturesInMemory?: number;
 }
 
 /** The full run payload serialised to `~/Kookaburra Cut/_autorun/last-run.json`. */
@@ -148,10 +160,11 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "verify" &&
     action !== "export" &&
     action !== "theme-previews" &&
-    action !== "option-previews"
+    action !== "option-previews" &&
+    action !== "perf"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf)`,
     );
   }
   // The encode spec: --preset resolves through the bundled registry; --encode-json carries the spec inline (the wrapper cats the file, no fs scopes).
@@ -178,11 +191,13 @@ export function getAutoRunConfig(): AutoRunConfig | null {
         : action === "option-previews"
           ? "preview-lab"
           : useEditorStore.getState().projectId),
-    // --preset without --aspect exports the preset's favoured aspect.
+    // --preset without --aspect exports the preset's favoured aspect; perf defaults to one 16:9 pass.
     aspects:
       preset && !env.aspect?.trim()
         ? [FORMATS[preset.favouredAspect]]
-        : parseAspects(env.aspect ?? undefined),
+        : action === "perf" && !env.aspect?.trim()
+          ? [FORMATS["16:9"]]
+          : parseAspects(env.aspect ?? undefined),
     codec: parseCodec(env.codec ?? undefined),
     encode,
     loudnessTarget: preset?.audio.loudnessTarget,
@@ -297,6 +312,31 @@ export async function runAutoRun(
         await writeThemePreviews("autorun", themeId, frames);
         results.push({ aspect: "16:9", theme: themeId, path: `theme-previews/${themeId}` });
       }
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "perf") {
+    // Plays a window of every scene under elimination passes (baseline, dpr-1, no-shadows, no-transmission, frozen-media, no-devices); needs a visible window since WKWebView suspends rAF when occluded.
+    try {
+      const format = config.aspects[0];
+      useEditorStore.getState().setFormat(format);
+      await nextCommit();
+      await awaitSceneHostsCommitted(project.slots.length);
+      const rows = await runPerfProbe(project);
+      for (const row of rows) results.push({ aspect: format.name, ...row });
     } catch (e) {
       ok = false;
       error = String(e);

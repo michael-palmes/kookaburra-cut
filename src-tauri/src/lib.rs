@@ -691,6 +691,81 @@ fn read_clip_frame(app: AppHandle, path: String) -> Result<tauri::ipc::Response,
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// Generates a clip's preview JPEG set (lazy, once): `preview/frame-%05d.jpg` beside the full PNGs, long edge capped at 960. Preview playback decodes these instead of the full frames; exports always read the PNGs, so determinism is untouched. Reads the already-extracted sequence, never the source video.
+#[tauri::command]
+async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), String> {
+    let cache_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache")
+        .join("clips");
+    let dir = PathBuf::from(&cache_dir);
+    // Same confinement rule as read_clip_frame: the frontend only ever points inside the clip cache.
+    let has_traversal = dir
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir));
+    if has_traversal || !dir.starts_with(&cache_root) {
+        return Err(format!("refusing to touch outside the clip cache: {cache_dir}"));
+    }
+    if !dir.join(".done").exists() {
+        return Err("ensure_clip_previews: clip not fully extracted".into());
+    }
+    let preview = dir.join("preview");
+    let done = preview.join(".done");
+    if done.exists() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_dir_all(&preview);
+    std::fs::create_dir_all(&preview).map_err(|e| e.to_string())?;
+    let args: Vec<String> = vec![
+        "-y".into(),
+        "-f".into(),
+        "image2".into(),
+        "-start_number".into(),
+        "0".into(),
+        "-i".into(),
+        dir.join("frame-%05d.png").to_string_lossy().into_owned(),
+        "-vf".into(),
+        "scale=w=min(960\\,iw):h=min(960\\,ih):force_original_aspect_ratio=decrease".into(),
+        "-q:v".into(),
+        "4".into(),
+        "-start_number".into(),
+        "0".into(),
+        preview.join("frame-%05d.jpg").to_string_lossy().into_owned(),
+    ];
+    let _permit = app
+        .state::<concurrency::BackgroundLimiter>()
+        .acquire()
+        .await?;
+    let (mut rx, child) = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|e| format!("ffmpeg sidecar not found: {e}"))?
+        .args(args)
+        .spawn()
+        .map_err(|e| format!("failed to start ffmpeg sidecar: {e}"))?;
+    concurrency::lower_priority(child.pid());
+    let mut code: Option<i32> = None;
+    let mut last_error: Option<String> = None;
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Terminated(payload) => {
+                code = payload.code;
+                break;
+            }
+            CommandEvent::Error(e) => last_error = Some(e),
+            _ => {}
+        }
+    }
+    if code != Some(0) {
+        let _ = std::fs::remove_dir_all(&preview);
+        return Err(last_error.unwrap_or_else(|| format!("ffmpeg preview exited with {code:?}")));
+    }
+    std::fs::write(&done, []).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -873,6 +948,7 @@ pub fn run() {
             workspace::list_project_media,
             workspace::set_last_project,
             workspace::set_hardware_video,
+            workspace::set_lag_warning,
             workspace::rename_project,
             workspace::duplicate_project,
             workspace::delete_project,

@@ -56,6 +56,7 @@ import {
   setPreviewAudioProject,
   syncPreviewAudioPlaying,
 } from "./engine/previewAudio";
+import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
   bumpWorkspaceReloadToken,
