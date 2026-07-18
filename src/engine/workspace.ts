@@ -14,6 +14,8 @@ export interface AppSettings {
   lastExportPreset?: string | null;
   /** Inverted flag so its default (false) means hardware video ON. */
   disableHardwareVideo?: boolean;
+  /** Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off". */
+  lagWarning?: string | null;
   /** Tri-state auto-update consent: absent/null = undecided (first-run ask still owed). */
   updateCheckConsent?: boolean | null;
   /** Unix-ms of the last update check; only persisted while consent is on. */
@@ -78,6 +80,13 @@ export function setLastProject(projectId: string | null): Promise<void> {
 /** Toggle hardware video for the everyday paths (thumbnails, clip extraction, editor render); emits `kookaburra://hardware-video-changed`. */
 export function setHardwareVideoSetting(enabled: boolean): Promise<void> {
   return invoke<void>("set_hardware_video", { enabled });
+}
+
+export type LagWarningMode = "off" | "sustained" | "strict";
+
+/** Set the playback slowdown-badge sensitivity; emits `kookaburra://lag-warning-changed`. */
+export function setLagWarningSetting(mode: LagWarningMode): Promise<void> {
+  return invoke<void>("set_lag_warning", { mode });
 }
 
 // ── Export presets: `~/Kookaburra Cut/export-presets/<slug>.json` ─────────

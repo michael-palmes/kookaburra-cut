@@ -9,12 +9,14 @@ describe("projectRows (the Project-tab pin)", () => {
       themeName: "Editorial",
       aspect: "16:9",
       soundtrackName: null,
+      playbackLabel: "Full quality",
     });
-    expect(rows.map((r) => r.id)).toEqual(["media", "theme", "aspect", "music"]);
+    expect(rows.map((r) => r.id)).toEqual(["media", "theme", "aspect", "music", "playback"]);
     expect(rows.every((r) => r.chevron)).toBe(true);
     expect(rows.find((r) => r.id === "music")?.value).toBe("None");
     expect(rows.find((r) => r.id === "theme")?.value).toBe("Editorial");
     expect(rows.find((r) => r.id === "aspect")?.value).toBe("16:9");
+    expect(rows.find((r) => r.id === "playback")?.value).toBe("Full quality");
   });
 
   it("a soundtrack name replaces the Music 'None' value", () => {
@@ -23,20 +25,24 @@ describe("projectRows (the Project-tab pin)", () => {
       themeName: "Pacific",
       aspect: "9:16",
       soundtrackName: "sunrise.mp3",
+      playbackLabel: "Performance",
     });
     expect(rows.find((r) => r.id === "music")?.value).toBe("sunrise.mp3");
+    expect(rows.find((r) => r.id === "playback")?.value).toBe("Performance");
   });
 
-  it("bundled projects keep only Aspect ratio + a READ-ONLY Theme (decision 12)", () => {
+  it("bundled projects keep Aspect ratio, Playback options + a READ-ONLY Theme (decision 12)", () => {
     const rows = projectRows({
       isWorkspace: false,
       themeName: "Default",
       aspect: "1:1",
       soundtrackName: null,
+      playbackLabel: "Full quality",
     });
-    expect(rows.map((r) => r.id)).toEqual(["theme", "aspect"]);
+    expect(rows.map((r) => r.id)).toEqual(["theme", "aspect", "playback"]);
     expect(rows.find((r) => r.id === "theme")?.chevron).toBe(false);
     expect(rows.find((r) => r.id === "aspect")?.chevron).toBe(true);
+    expect(rows.find((r) => r.id === "playback")?.chevron).toBe(true);
   });
 });
 

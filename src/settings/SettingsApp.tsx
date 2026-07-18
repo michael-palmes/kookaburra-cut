@@ -14,7 +14,12 @@ import {
 } from "../engine/appCache";
 import { revealApp } from "../engine/reveal";
 import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
-import { getSettings, setHardwareVideoSetting } from "../engine/workspace";
+import {
+  getSettings,
+  type LagWarningMode,
+  setHardwareVideoSetting,
+  setLagWarningSetting,
+} from "../engine/workspace";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the opt-in update lane (toggle + Check now), and read-only info (workspace path, sidecar versions, app version). */
@@ -33,6 +38,7 @@ export function SettingsApp() {
   const [error, setError] = useState<string | null>(null);
   const [hwEnabled, setHwEnabled] = useState<boolean | null>(null);
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
+  const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -49,6 +55,7 @@ export function SettingsApp() {
       .then((s) => {
         setWorkspace(s.workspaceRoot ?? null);
         setHwEnabled(!s.disableHardwareVideo);
+        setLagWarning((s.lagWarning as LagWarningMode) ?? "off");
       })
       .catch(() => setWorkspace(null));
     hardwareVideoSupport()
@@ -62,6 +69,11 @@ export function SettingsApp() {
   const toggleHardware = useCallback((enabled: boolean) => {
     setHwEnabled(enabled);
     setHardwareVideoSetting(enabled).catch((e) => setError(String(e)));
+  }, []);
+
+  const changeLagWarning = useCallback((mode: LagWarningMode) => {
+    setLagWarning(mode);
+    setLagWarningSetting(mode).catch((e) => setError(String(e)));
   }, []);
 
   const hwDetail = hwSupport
@@ -150,6 +162,26 @@ export function SettingsApp() {
             disabled={hwEnabled === null}
             onChange={(e) => toggleHardware(e.target.checked)}
           />
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Playback slowdown badge</span>
+            <span className="muted settings-row-detail">
+              Shows the preview's framerate in a red badge when playback can't hold full speed.
+              Sustained ignores brief hiccups; Strict flags any missed frames.
+            </span>
+          </div>
+          <select
+            className="select"
+            aria-label="Playback slowdown badge"
+            value={lagWarning ?? "off"}
+            disabled={lagWarning === null}
+            onChange={(e) => changeLagWarning(e.target.value as LagWarningMode)}
+          >
+            <option value="off">None</option>
+            <option value="sustained">Sustained</option>
+            <option value="strict">Strict</option>
+          </select>
         </div>
       </section>
 

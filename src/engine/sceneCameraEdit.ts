@@ -209,6 +209,44 @@ export function setKeyPose(
   };
 }
 
+/** Snap a segment's start onto the previous animation's end key; the two merge into one shared key (the chained-motion model) carrying the previous end pose. Null when there's no previous segment, they already chain, or a stray key sits in the swallowed gap. */
+export function syncSegmentStartToPrevious(camera: CameraDoc, docIndex: number): CameraDoc | null {
+  if (!camera.segments[docIndex]) return null;
+  const layout = cameraLayout(camera);
+  const me = layout.segments.find((s) => s.docIndex === docIndex);
+  if (!me) return null;
+  let prev: CameraLayout["segments"][number] | null = null;
+  for (const seg of layout.segments) {
+    if (seg.docIndex === docIndex || seg.toTMs > me.fromTMs) continue;
+    if (!prev || seg.toTMs > prev.toTMs) prev = seg;
+  }
+  if (!prev || prev.toId === me.fromId) return null;
+  const stray = camera.keys.some(
+    (k) => k.id !== me.fromId && k.id !== prev.toId && k.tMs > prev.toTMs && k.tMs < me.fromTMs,
+  );
+  if (stray) return null;
+  const oldFromId = me.fromId;
+  const segments = camera.segments.map((s, i) => (i === docIndex ? { ...s, from: prev.toId } : s));
+  const referenced = new Set(segments.flatMap((s) => [s.from, s.to]));
+  return {
+    keys: camera.keys.filter((k) => k.id !== oldFromId || referenced.has(k.id)),
+    segments,
+  };
+}
+
+/** The 25%-from-the-nearer-end correction for `tMs` inside the middle half of its containing segment, else null; edits read best near an end, never exactly on it. */
+export function playheadDriftTarget(camera: CameraDoc, tMs: number): number | null {
+  for (const seg of cameraLayout(camera).segments) {
+    if (tMs <= seg.fromTMs || tMs >= seg.toTMs) continue;
+    const quarter = (seg.toTMs - seg.fromTMs) * 0.25;
+    const lo = seg.fromTMs + quarter;
+    const hi = seg.toTMs - quarter;
+    if (tMs < lo || tMs > hi) return null;
+    return Math.round(tMs - lo < hi - tMs ? lo : hi);
+  }
+  return null;
+}
+
 /** The key nearest to `tMs` (the move tools' default target), or null on an empty track. */
 export function nearestKey(camera: CameraDoc, tMs: number): SceneDocCameraKey | null {
   let best: SceneDocCameraKey | null = null;

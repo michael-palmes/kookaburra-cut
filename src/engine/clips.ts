@@ -33,6 +33,9 @@ interface ClipEntry {
 /** Number of decoded frame textures kept resident per clip (LRU window). */
 const LRU_CAPACITY = 12;
 
+/** Which frame set a consumer binds: `full` = the deterministic PNGs (export, paused, scrubbing); `preview` = the small JPEG set decoded during preview playback. */
+export type ClipTier = "full" | "preview";
+
 /** Keyed by `<lane>:<absolute source path>` so multiple `<VideoClip>`s of one source share extraction per lane. */
 const registry = new Map<string, ClipEntry>();
 
@@ -113,6 +116,10 @@ export function registerClip(srcAbs: string): ClipEntry {
       entry.info = info;
       entry.sha = sha;
       entry.frames = new ClipFrames(info);
+      // Preview JPEGs generate lazily in the background; playback binds full PNGs until they exist.
+      void invoke("ensure_clip_previews", { cacheDir: info.cacheDir })
+        .then(() => entry.frames?.setPreviewsReady())
+        .catch((e) => console.warn("[clips] preview generation failed:", e));
       return info;
     })
     .catch((e) => {
@@ -204,30 +211,47 @@ export function awaitVideoFramesReady(scene: Scene): Promise<void> {
 
 /** Streams a clip's frames from disk as three.js textures with an LRU cache (via the fs plugin + `createImageBitmap`, decoding deterministically); consumers pin their requested frame synchronously and their bound frame until replaced, since evicting and closing a bitmap that's still in flight or bound throws WebGL INVALID_VALUE and renders white. */
 export class ClipFrames {
-  private readonly cache = new Map<number, Texture>();
-  private order: number[] = [];
-  private readonly loading = new Map<number, Promise<Texture>>();
-  /** Consumer → its protected frames (see the pinning note above). */
-  private readonly pinned = new Map<object, { bound?: number; loading?: number }>();
+  private readonly cache = new Map<string, Texture>();
+  private order: string[] = [];
+  private readonly loading = new Map<string, Promise<Texture>>();
+  /** Consumer → its protected frames (see the pinning note above); keys are tier-qualified. */
+  private readonly pinned = new Map<object, { bound?: string; loading?: string }>();
+  private previewsReady = false;
 
   constructor(private readonly info: ClipInfo) {}
 
-  private path(i: number): string {
-    return `${this.info.cacheDir}/frame-${String(i).padStart(5, "0")}.png`;
+  /** The preview JPEG set finished generating; playback may bind the `preview` tier. */
+  setPreviewsReady(): void {
+    this.previewsReady = true;
+  }
+
+  hasPreviews(): boolean {
+    return this.previewsReady;
+  }
+
+  private path(i: number, tier: ClipTier): string {
+    const stem = `frame-${String(i).padStart(5, "0")}`;
+    return tier === "preview"
+      ? `${this.info.cacheDir}/preview/${stem}.jpg`
+      : `${this.info.cacheDir}/${stem}.png`;
+  }
+
+  private key(i: number, tier: ClipTier): string {
+    return `${tier}:${i}`;
   }
 
   /** Pin `i` as `owner`'s in-flight request. Call BEFORE `get(i)`, synchronously. */
-  request(owner: object, i: number): void {
+  request(owner: object, i: number, tier: ClipTier = "full"): void {
     const pins = this.pinned.get(owner) ?? {};
-    pins.loading = i;
+    pins.loading = this.key(i, tier);
     this.pinned.set(owner, pins);
   }
 
   /** Mark `i` as `owner`'s bound frame (its previous bound frame becomes evictable). */
-  markBound(owner: object, i: number): void {
+  markBound(owner: object, i: number, tier: ClipTier = "full"): void {
     const pins = this.pinned.get(owner) ?? {};
-    pins.bound = i;
-    if (pins.loading === i) pins.loading = undefined;
+    pins.bound = this.key(i, tier);
+    if (pins.loading === pins.bound) pins.loading = undefined;
     this.pinned.set(owner, pins);
   }
 
@@ -236,39 +260,41 @@ export class ClipFrames {
     this.pinned.delete(owner);
   }
 
-  private isPinned(i: number): boolean {
+  private isPinned(key: string): boolean {
     for (const pins of this.pinned.values()) {
-      if (pins.bound === i || pins.loading === i) return true;
+      if (pins.bound === key || pins.loading === key) return true;
     }
     return false;
   }
 
-  /** Resolve the texture for frame `i`, decoding + caching it if not already resident. */
-  get(i: number): Promise<Texture> {
-    const hit = this.cache.get(i);
+  /** Resolve the texture for frame `i` in `tier`, decoding + caching it if not already resident. */
+  get(i: number, tier: ClipTier = "full"): Promise<Texture> {
+    const key = this.key(i, tier);
+    const hit = this.cache.get(key);
     if (hit) {
       const img = hit.image as ImageBitmap | undefined;
       if (!img || img.width > 0) {
-        this.touch(i);
+        this.touch(key);
         return Promise.resolve(hit);
       }
       // The bitmap was detached under a live reference (evicted while bound; pinning prevents this now, but self-heal by reloading rather than rendering white).
-      const at = this.order.indexOf(i);
+      const at = this.order.indexOf(key);
       if (at >= 0) this.order.splice(at, 1);
-      this.cache.delete(i);
+      this.cache.delete(key);
       hit.dispose();
     }
-    let pending = this.loading.get(i);
+    let pending = this.loading.get(key);
     if (!pending) {
-      pending = this.load(i);
-      this.loading.set(i, pending);
+      pending = this.load(i, tier);
+      this.loading.set(key, pending);
     }
     return pending;
   }
 
-  private async load(i: number): Promise<Texture> {
+  private async load(i: number, tier: ClipTier): Promise<Texture> {
+    const key = this.key(i, tier);
     // Reads via the Rust command (not the fs plugin) so it works regardless of webview fs scope; `invoke` resolves a raw byte response to an ArrayBuffer.
-    const buffer = await invoke<ArrayBuffer>("read_clip_frame", { path: this.path(i) });
+    const buffer = await invoke<ArrayBuffer>("read_clip_frame", { path: this.path(i, tier) });
     // `imageOrientation: "flipY"` + `flipY = false` is the reliable upright combo for ImageBitmap textures in three (the texture's own flipY flag is ignored for bitmaps).
     const bitmap = await createImageBitmap(new Blob([buffer]), {
       imageOrientation: "flipY",
@@ -282,40 +308,40 @@ export class ClipFrames {
     tex.generateMipmaps = false;
     tex.flipY = false;
     tex.needsUpdate = true;
-    this.cache.set(i, tex);
-    this.loading.delete(i);
-    this.touch(i);
+    this.cache.set(key, tex);
+    this.loading.delete(key);
+    this.touch(key);
     this.evict();
     return tex;
   }
 
-  private touch(i: number): void {
-    const at = this.order.indexOf(i);
+  private touch(key: string): void {
+    const at = this.order.indexOf(key);
     if (at >= 0) this.order.splice(at, 1);
-    this.order.push(i);
+    this.order.push(key);
   }
 
   private evict(): void {
     // Oldest-first, skipping pinned frames (a bound frame must never be closed under the renderer); if everything old is pinned we simply hold more than LRU_CAPACITY, bounded by the number of mounted consumers.
     let scan = 0;
     while (this.order.length > LRU_CAPACITY && scan < this.order.length) {
-      const idx = this.order[scan];
-      if (this.isPinned(idx)) {
+      const key = this.order[scan];
+      if (this.isPinned(key)) {
         scan++;
         continue;
       }
       this.order.splice(scan, 1);
-      disposeTexture(this.cache.get(idx));
-      this.cache.delete(idx);
+      disposeTexture(this.cache.get(key));
+      this.cache.delete(key);
     }
   }
 
   /** Post-eviction cleanup: closes unpinned frames now; pinned ones stay alive for still-mounted consumers (closing a bound bitmap renders white) and fall to GC once they re-bind against the replacement entry. */
   retire(): void {
-    this.order = this.order.filter((i) => {
-      if (this.isPinned(i)) return true;
-      disposeTexture(this.cache.get(i));
-      this.cache.delete(i);
+    this.order = this.order.filter((key) => {
+      if (this.isPinned(key)) return true;
+      disposeTexture(this.cache.get(key));
+      this.cache.delete(key);
       return false;
     });
   }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useClockStore } from "../../engine/clock";
 import { type AspectName, FORMATS } from "../../engine/format";
 import {
@@ -16,10 +16,39 @@ import { mediaCardMenu } from "../mediaCardMenu";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
-import { ActionRow, DrillBack, RowIcon } from "./rows";
+import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
 import { SceneTab } from "./SceneTab";
 
 /** The right-hand inspector: a 312px panel with a Project/Scene segmented switch. Gating (decision 12): the host hides the whole panel during export/autorun; bundled dev projects get the Project tab only (no tab switch, no Scene tab) with Aspect ratio live and Theme read-only. The panel is the only scroll container in the chrome (`overflow-y: auto`). */
+/** Option glyphs for the Playback options popover (RowIcon's 20-viewBox stroke style). */
+function QualityIcon({ kind }: { kind: "full" | "balanced" | "performance" }) {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {kind === "full" ? (
+        <>
+          <rect x="3" y="4" width="14" height="12" rx="2" />
+          <path d="M6.5 12.5l2.5-3 2 2 2.5-3.5" />
+        </>
+      ) : kind === "balanced" ? (
+        <>
+          <path d="M4 13.5a6 6 0 0112 0" />
+          <path d="M10 13.5V9" />
+        </>
+      ) : (
+        <path d="M11 3L5 11.5h4L9 17l6-8.5h-4z" />
+      )}
+    </svg>
+  );
+}
+
 export function InspectorPanel({
   project,
   aspect,
@@ -74,7 +103,8 @@ export function InspectorPanel({
   const setTab = useUiStore((s) => s.setInspectorTab);
 
   // Which row's popover/menu is open; doubles as the row-selected state ("exactly one row selected at a time").
-  const [openRow, setOpenRow] = useState<"aspect" | "music" | null>(null);
+  const [openRow, setOpenRow] = useState<"aspect" | "music" | "playback" | null>(null);
+  const previewQuality = useUiStore((s) => s.previewQuality);
   const [confirmRemoveMusic, setConfirmRemoveMusic] = useState(false);
   useEscapeClose(() => setOpenRow(null), openRow !== null);
 
@@ -101,11 +131,31 @@ export function InspectorPanel({
     return () => window.clearTimeout(t);
   }, [confirmRemoveMusic]);
 
+  // The stage's slowdown badge: land on the Project tab first (the reset-on-switch effect above runs before this one), then open the Playback options popover.
+  const playbackNonce = useUiStore((s) => s.playbackOptionsNonce);
+  const handledPlaybackNonce = useRef(0);
+  useEffect(() => {
+    if (playbackNonce === 0 || handledPlaybackNonce.current === playbackNonce) return;
+    if (tab !== "project") {
+      setTab("project");
+      return;
+    }
+    handledPlaybackNonce.current = playbackNonce;
+    useUiStore.getState().setInspectorDrillIn(null);
+    setOpenRow("playback");
+  }, [playbackNonce, tab, setTab]);
+
   const rows = projectRows({
     isWorkspace,
     themeName: project.theme.name,
     aspect,
     soundtrackName,
+    playbackLabel:
+      previewQuality === "performance"
+        ? "Performance"
+        : previewQuality === "balanced"
+          ? "Balanced"
+          : "Full quality",
   });
 
   // Any pointer-down outside the open row's anchor dismisses its popover (the
@@ -163,6 +213,7 @@ export function InspectorPanel({
       : undefined,
     aspect: () => setOpenRow(openRow === "aspect" ? null : "aspect"),
     music: () => setOpenRow(openRow === "music" ? null : "music"),
+    playback: () => setOpenRow(openRow === "playback" ? null : "playback"),
   };
 
   return (
@@ -287,6 +338,40 @@ export function InspectorPanel({
                       {name}
                     </button>
                   ))}
+                </div>
+              )}
+              {row.id === "playback" && openRow === "playback" && (
+                <div className="inspector-popover inspector-popover-wide" role="menu">
+                  <PopoverChoice
+                    icon={<QualityIcon kind="full" />}
+                    label="Full quality"
+                    description="Sharp preview at your screen's full resolution. The right pick on most Macs."
+                    active={previewQuality === "full"}
+                    onClick={() => {
+                      useUiStore.getState().setPreviewQuality("full");
+                      setOpenRow(null);
+                    }}
+                  />
+                  <PopoverChoice
+                    icon={<QualityIcon kind="balanced" />}
+                    label="Balanced"
+                    description="A lighter render with screen video at half rate. Try it when playback stutters now and then."
+                    active={previewQuality === "balanced"}
+                    onClick={() => {
+                      useUiStore.getState().setPreviewQuality("balanced");
+                      setOpenRow(null);
+                    }}
+                  />
+                  <PopoverChoice
+                    icon={<QualityIcon kind="performance" />}
+                    label="Performance"
+                    description="Smoothest playback: lowest resolution, screen video at half rate. Great for reviewing timing and pace rather than polish. Exports are always full quality."
+                    active={previewQuality === "performance"}
+                    onClick={() => {
+                      useUiStore.getState().setPreviewQuality("performance");
+                      setOpenRow(null);
+                    }}
+                  />
                 </div>
               )}
               {row.id === "music" && openRow === "music" && (
