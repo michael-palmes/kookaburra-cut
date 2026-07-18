@@ -42,8 +42,9 @@ normally and simply shows no editing affordances.
                                              // mounted text, else the file stem (v13)
   "duration": { "mode": "follow-media", "sourceDeviceId": "d1" },  // or { "mode": "manual" }
   "text": {                                  // EVERY user-visible string (rule 7); values may
-    "headline": "Ship faster"                // carry \n (real line breaks); title scenes use
-  },                                         // the reserved "title"/"subtitle" pair (TitleBlock)
+    "title": "Ship faster"                   // carry \n (real line breaks); title scenes add the
+  },                                         // reserved "subtitle" (TitleBlock); "headline" is the
+                                             // legacy single-line key on pre-v13 device scenes
   "textLayout": { "align": "center" },       // left|center|right — consumed by TitleBlock;
                                              // inert on scenes that position text by hand
   "textStyle": { "titleColor": "#e8f0ff", "subtitleColor": "#9aa4b5" },

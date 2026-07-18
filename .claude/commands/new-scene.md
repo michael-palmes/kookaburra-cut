@@ -21,10 +21,11 @@ Steps:
    `projects/$1/scenes/<stem>.tsx`.
 4. Write the sidecar `projects/$1/scenes/<stem>.json` per the skill's schema: `version: 1`,
    `name`, `duration` (step 5), `text` — for the title kind seed `title` (the user's copy,
-   else the name) AND `subtitle: ""` (the empty string keeps the panel field visible;
-   TitleBlock recentres); other kinds get a `headline` if the user gave copy — and for the
-   device kind one `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`, `media` if
-   given, the template's default `placement`, `motion`, `shadow`).
+   else `""`) AND `subtitle: ""` (empty strings keep the panel fields visible; TitleBlock
+   recentres); other kinds get a `title` if the user gave copy (`headline` is the legacy
+   key on old scenes; never write it for new ones) — and for the device kind one
+   `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`, `media` if given, the
+   template's default `placement`, `motion`, `shadow`).
 5. Duration: video media → `{ "mode": "follow-media", "sourceDeviceId": "d1" }` and
    `durationMs` = the video's length (`ffprobe -v error -show_entries format=duration -of
    default=nw=1:nk=1 <file>`, seconds → ms, rounded). Otherwise `{ "mode": "manual" }` and

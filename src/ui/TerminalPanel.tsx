@@ -17,6 +17,7 @@ import {
   spawnTerminalSession,
 } from "../engine/terminal";
 import { useUiStore } from "../store/uiStore";
+import type { Theme } from "../theme/tokens";
 import { HelperWizard, type WizardKind } from "./HelperWizards";
 import { EditSceneWizard, NewSceneWizard, type WizardSceneInfo } from "./SceneWizards";
 
@@ -62,6 +63,7 @@ export function TerminalPanel({
   slug,
   cwd,
   scenes,
+  theme,
   exporting,
   getThumbs,
   onProjectChanged,
@@ -72,6 +74,8 @@ export function TerminalPanel({
   cwd: string;
   /** The loaded project's scenes, for the wizards (pickers + scene-aware dropdowns). */
   scenes: WizardSceneInfo[];
+  /** The project's theme, for the New-scene wizard's colour swatch defaults. */
+  theme: Theme;
   /** An export/verify is running; warn against concurrent edits. */
   exporting: boolean;
   /** Lazily capture/fetch scene-picker thumbnails. */
@@ -455,6 +459,7 @@ export function TerminalPanel({
           projectPath={cwd}
           scenes={scenes}
           thumbs={thumbs}
+          theme={theme}
           sessionRunning={status === "running"}
           onDone={(_result, prompt) => {
             setWizard(null);

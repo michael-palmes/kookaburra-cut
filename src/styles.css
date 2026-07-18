@@ -489,6 +489,51 @@ body {
   line-height: var(--lh-base);
 }
 
+/* New-scene name row: the generated name sits apart up top; the pencil pins an override. */
+.wizard-scene-name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.wizard-scene-name-label {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.wizard-scene-name-value {
+  font-weight: 590;
+}
+
+.wizard-scene-name-edit {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.wizard-scene-name-edit:hover {
+  color: var(--text-primary);
+}
+
+.wizard-scene-name-input {
+  flex: 1;
+}
+
+/* Auto-grow headline field: JS sets the height from content, so no resize handle. */
+.wizard-autogrow {
+  min-height: var(--control-h-lg);
+  padding: var(--space-3) var(--space-4);
+  resize: none;
+  overflow: hidden;
+  font: inherit;
+  line-height: var(--lh-base);
+}
+
 .wizard-presets {
   display: flex;
   flex-wrap: wrap;

@@ -14,14 +14,15 @@ export default defineScene({
     const theme = useTheme();
     const format = useFormat();
     const portrait = format.aspect < 1;
-    const headline = useSceneText("headline");
+    const title = useSceneText("title");
     const devices = useSceneDevices();
     return (
       <SceneStage>
         <color attach="background" args={[theme.colors.background]} />
-        {headline ? (
+        {title ? (
           <AnimatedHeadline
-            text={headline}
+            text={title}
+            textKey="title"
             from={200}
             to={900}
             position={[0, portrait ? 1.9 : 1.72, 0]}

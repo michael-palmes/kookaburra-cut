@@ -11,9 +11,11 @@ import {
 import { resyncFollowMediaDuration, writeSceneDoc } from "../engine/sceneDoc";
 import { parseSceneDoc, type SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
+import type { Theme } from "../theme/tokens";
 import { DEVICE_CATALOG, DEVICE_IDS, type DeviceId, deviceColour } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
 import { MediaBrowser } from "./MediaBrowser";
+import { TextFieldRow } from "./SceneTextFields";
 import { backgroundOptions } from "./stageOptions";
 import { defaultDraft, draftToSpec, TEXT_PRESET_CATALOG } from "./textAnimationOptions";
 import { useEscapeClose } from "./useEscapeClose";
@@ -46,7 +48,7 @@ type SceneKind = "device" | "title" | "blank";
 
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + media", blurb: "A phone playing your video or image" },
-  { id: "title", label: "Title", blurb: "A headline on the theme background" },
+  { id: "title", label: "Title", blurb: "A title on the theme background" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
 ];
 
@@ -76,6 +78,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+/** The key a scene's single text line lives under: `title` unless only a legacy `headline` exists. */
+function sceneTitleKey(doc: SceneDoc | undefined): "title" | "headline" {
+  return doc?.text && "headline" in doc.text && !("title" in doc.text) ? "headline" : "title";
 }
 
 function ChipSelect({
@@ -314,6 +321,7 @@ export function NewSceneWizard({
   projectPath,
   scenes,
   thumbs,
+  theme,
   sessionRunning,
   onDone,
   onCancel,
@@ -323,6 +331,8 @@ export function NewSceneWizard({
   scenes: WizardSceneInfo[];
   /** Scene-thumb paths by stem (host loads them lazily on open). */
   thumbs: Record<string, string>;
+  /** The project's theme, for the text-colour swatch defaults. */
+  theme: Theme;
   /** A Claude session is running; enables the polish-description paste. */
   sessionRunning: boolean;
   /** Scaffold succeeded; `prompt` is the polish paste when a description was given. */
@@ -337,8 +347,12 @@ export function NewSceneWizard({
   const [media, setMedia] = useState<{ rel: string; kind: "video" | "image" } | null>(null);
   const [motion, setMotion] = useState("none");
   const [shadow, setShadow] = useState("soft");
-  const [name, setName] = useState("");
-  const [headline, setHeadline] = useState("");
+  const [nameOverride, setNameOverride] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const [titleColor, setTitleColor] = useState<string | null>(null);
+  const [subtitleColor, setSubtitleColor] = useState<string | null>(null);
   const [background, setBackground] = useState("default");
   // A user click pins the chip; until then it tracks the placement's previous scene.
   const [backgroundTouched, setBackgroundTouched] = useState(false);
@@ -350,14 +364,23 @@ export function NewSceneWizard({
   const [error, setError] = useState<string | null>(null);
   const backgroundChips = useBackgroundChips();
 
-  const defaultName = kind === "device" ? "Device scene" : kind === "title" ? "Title" : "Scene";
-
   const position = useMemo(() => {
     if (placement === "start") return 0;
     if (placement === "end") return undefined;
     const after = Number(placement.replace(/^after:/, ""));
     return Number.isFinite(after) ? after + 1 : undefined;
   }, [placement]);
+
+  // Kind + insertion position, e.g. "Title 3"; a pencil edit pins the name instead.
+  const kindWord = kind === "device" ? "Device" : kind === "title" ? "Title" : "Blank";
+  const generatedName = `${kindWord} ${(position ?? scenes.length) + 1}`;
+  const sceneName = nameOverride ?? generatedName;
+  const titlePlaceholder =
+    kind === "title"
+      ? "e.g. Ship faster"
+      : kind === "device"
+        ? "Optional, sits above the device"
+        : "Optional";
 
   // Only an explicit doc.background is worth inheriting; an unset one already means theme default.
   const previousScene = position === undefined ? scenes[scenes.length - 1] : scenes[position - 1];
@@ -385,13 +408,14 @@ export function NewSceneWizard({
     setBusy(true);
     setError(null);
     try {
-      const finalName = name.trim() || defaultName;
+      const finalName = sceneName.trim() || generatedName;
       const result = await invoke<ScaffoldedScene>("scaffold_scene", {
         slug,
         options: {
           kind,
           name: finalName,
-          headline: headline.trim() || null,
+          title: title.trim() || null,
+          subtitle: kind === "title" ? subtitle.trim() || null : null,
           deviceModel: kind === "device" ? model : null,
           colour: kind === "device" ? colour : null,
           mediaRel: kind === "device" ? (media?.rel ?? null) : null,
@@ -403,7 +427,10 @@ export function NewSceneWizard({
       });
       const chosenBackground = backgroundChipsForNew.find((o) => o.id === background)?.value;
       const chosenTextAnim = TEXT_ANIMATION_CHIPS.find((o) => o.id === textAnim)?.value;
-      if (chosenBackground || chosenTextAnim) {
+      const textStyle: Record<string, string> = {};
+      if (titleColor) textStyle.titleColor = titleColor;
+      if (subtitleColor && kind === "title") textStyle.subtitleColor = subtitleColor;
+      if (chosenBackground || chosenTextAnim || Object.keys(textStyle).length > 0) {
         // The scaffolder doesn't know backgrounds/text motion; patch the fresh sidecar via the same validated write path as the edit bar, and never fail the scaffold if the patch fails.
         try {
           const docFile = result.file.replace(/\.tsx$/, ".json");
@@ -412,13 +439,14 @@ export function NewSceneWizard({
           if (parsed) {
             if (chosenBackground) parsed.background = chosenBackground;
             if (chosenTextAnim) parsed.textAnimation = chosenTextAnim;
+            if (Object.keys(textStyle).length > 0) parsed.textStyle = textStyle;
             await writeSceneDoc(slug, result.file, parsed);
           }
         } catch (e) {
           // The scene already exists at this point; block the close so the user learns the chips didn't apply instead of silently shipping a half-configured scene.
           console.warn("[wizard] sidecar patch failed:", e);
           setError(
-            `The scene was created, but its background/text-motion choices couldn't be ` +
+            `The scene was created, but its background/text choices couldn't be ` +
               `written: ${String(e)}. Close this and use Edit scene to apply them.`,
           );
           setBusy(false);
@@ -533,6 +561,43 @@ export function NewSceneWizard({
 
         {step === "details" && (
           <>
+            <div className="wizard-scene-name">
+              <span className="wizard-scene-name-label">Scene name</span>
+              {editingName ? (
+                <input
+                  className="modal-input wizard-scene-name-input"
+                  value={sceneName}
+                  // biome-ignore lint/a11y/noAutofocus: entered by clicking the pencil, so it IS the focus target
+                  autoFocus
+                  aria-label="Scene name"
+                  onChange={(e) => setNameOverride(e.target.value)}
+                  onBlur={() => {
+                    setEditingName(false);
+                    setNameOverride((v) => (v?.trim() ? v : null));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") {
+                      setNameOverride(null);
+                      setEditingName(false);
+                    }
+                  }}
+                />
+              ) : (
+                <>
+                  <span className="wizard-scene-name-value">{sceneName}</span>
+                  <button
+                    type="button"
+                    className="wizard-scene-name-edit"
+                    aria-label="Edit scene name"
+                    title="Edit scene name"
+                    onClick={() => setEditingName(true)}
+                  >
+                    ✎
+                  </button>
+                </>
+              )}
+            </div>
             {kind === "device" && (
               <>
                 {media && (
@@ -549,22 +614,32 @@ export function NewSceneWizard({
                 </Field>
               </>
             )}
-            <Field label="Name">
-              <input
-                className="modal-input"
-                value={name}
-                placeholder={defaultName}
-                onChange={(e) => setName(e.target.value)}
+            <TextFieldRow
+              label="Title"
+              value={title}
+              placeholder={titlePlaceholder}
+              onChange={setTitle}
+              colour={{
+                value: titleColor ?? theme.colors.text,
+                defaultValue: theme.colors.text,
+                onCommit: setTitleColor,
+                onReset: () => setTitleColor(null),
+              }}
+            />
+            {kind === "title" && (
+              <TextFieldRow
+                label="Subtitle"
+                value={subtitle}
+                placeholder="Optional supporting line"
+                onChange={setSubtitle}
+                colour={{
+                  value: subtitleColor ?? theme.colors.muted,
+                  defaultValue: theme.colors.muted,
+                  onCommit: setSubtitleColor,
+                  onReset: () => setSubtitleColor(null),
+                }}
               />
-            </Field>
-            <Field label="Headline (optional)">
-              <input
-                className="modal-input"
-                value={headline}
-                placeholder="e.g. Ship faster"
-                onChange={(e) => setHeadline(e.target.value)}
-              />
-            </Field>
+            )}
             <Field label="Background">
               <ChipSelect
                 options={backgroundChipsForNew}
@@ -655,7 +730,7 @@ export function EditSceneWizard({
 
   // Form state, seeded from the selected scene's sidecar when entering the form step.
   const [name, setName] = useState("");
-  const [headline, setHeadline] = useState("");
+  const [title, setTitle] = useState("");
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
   const [media, setMedia] = useState<{ rel: string; kind: "video" | "image" } | null>(null);
@@ -710,7 +785,7 @@ export function EditSceneWizard({
   function seedForm() {
     if (!doc) return;
     setName(doc.name ?? "");
-    setHeadline(doc.text?.headline ?? "");
+    setTitle(doc.text?.[sceneTitleKey(doc)] ?? "");
     // Seeded by type; an untouched chip leaves the sidecar's background exactly as-is so a custom colour/drift/image src is never clobbered by a wizard save.
     const bg = doc.background?.type ?? "default";
     setBackground(bg);
@@ -739,8 +814,10 @@ export function EditSceneWizard({
       // Patch a copy of the loaded doc; unknown fields (camera, extra text keys) ride through untouched, only the wizard's fields change.
       const next: SceneDoc = structuredClone(doc);
       next.name = name.trim() || undefined;
-      next.text = { ...next.text, headline: headline.trim() };
-      if (!headline.trim()) delete next.text.headline;
+      const titleKey = sceneTitleKey(doc);
+      next.text = { ...next.text, [titleKey]: title.trim() };
+      // An empty legacy headline is dropped as before; an empty `title` stays so the panel field remains visible.
+      if (!title.trim() && titleKey === "headline") delete next.text.headline;
       if (background !== backgroundSeed) {
         if (background === "default") next.background = undefined;
         else {
@@ -895,21 +972,14 @@ export function EditSceneWizard({
 
         {step === "form" && (
           <>
-            <Field label="Name">
+            <Field label="Scene name">
               <input
                 className="modal-input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
-            <Field label="Headline">
-              <input
-                className="modal-input"
-                value={headline}
-                placeholder="No headline"
-                onChange={(e) => setHeadline(e.target.value)}
-              />
-            </Field>
+            <TextFieldRow label="Title" value={title} placeholder="No title" onChange={setTitle} />
             <Field label="Background">
               <ChipSelect options={backgroundChips} value={background} onChange={setBackground} />
             </Field>
