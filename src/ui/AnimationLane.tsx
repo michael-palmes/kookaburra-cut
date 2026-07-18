@@ -11,9 +11,11 @@ import {
   moveKey,
   moveSegment,
   nearestKey,
+  playheadDriftTarget,
   removeKey,
   removeSegment,
   setSegmentEase,
+  syncSegmentStartToPrevious,
 } from "../engine/sceneCameraEdit";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
@@ -50,10 +52,12 @@ export function AnimationLane({
   project,
   sceneIndex,
   onDocChanged,
+  onSceneDuration,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
+  onSceneDuration: (sceneIndex: number, ms: number) => void;
 }) {
   const open = useCameraEditStore((s) => s.open);
   const { slot, camera, preview, commit, appliedPoseAt } = useCameraDoc(
@@ -70,6 +74,7 @@ export function AnimationLane({
   const [trackW, setTrackW] = useState(0);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [durEdit, setDurEdit] = useState<string | null>(null);
 
   useEffect(() => {
     const el = trackRef.current;
@@ -88,6 +93,14 @@ export function AnimationLane({
   const select = useCameraEditStore.getState().select;
 
   const xOf = (tMs: number) => PAD + Math.min(tMs, durationMs) * pxPerMs;
+
+  /** Seek to the 25% point of the containing animation when the playhead sits mid-span, where an edit is hard to see. */
+  function driftPlayhead() {
+    const target = playheadDriftTarget(camera, playheadLocal);
+    if (target === null) return;
+    const clock = useClockStore.getState();
+    clock.setCurrentMs(Math.min(clock.durationMs, slot.startMs + target));
+  }
 
   // Deselect/deletion/nudge keys, window-level so the lane needn't hold focus; the App frame-step handler stands down while a key is selected. Gated on `open` since the lane stays mounted through the collapse.
   useEffect(() => {
@@ -185,7 +198,10 @@ export function AnimationLane({
     }
     const dx = e.clientX - drag.startX;
     if (!drag.moved && Math.abs(dx) < MOVE_THRESHOLD_PX) return;
-    if (!drag.moved) setDrag({ ...drag, moved: true });
+    if (!drag.moved) {
+      setDrag({ ...drag, moved: true });
+      driftPlayhead();
+    }
     if (drag.kind === "key") {
       const origKey = drag.orig.keys.find((k) => k.id === drag.id);
       if (!origKey) return;
@@ -230,7 +246,10 @@ export function AnimationLane({
       }
     } else {
       if (drag.moved) void commit(camera);
-      else state.select(null, drag.docIndex); // click: select block → easing popover
+      else {
+        state.select(null, drag.docIndex); // click: select block → easing popover
+        driftPlayhead();
+      }
     }
     setDrag(null);
   }
@@ -254,14 +273,27 @@ export function AnimationLane({
     if (next) void commit(next);
   }
 
-  /** Right-click a segment: the reusable context menu, one danger item, instant delete (same as the Delete key). */
+  /** Right-click a segment: snap-to-previous plus instant delete (same as the Delete key). */
   function onSegmentContextMenu(e: React.MouseEvent, docIndex: number) {
     e.preventDefault();
     select(null, docIndex);
+    const canSync = syncSegmentStartToPrevious(camera, docIndex) !== null;
     setMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
+        {
+          id: "sync-prev",
+          label: "Snap start to previous animation",
+          disabled: !canSync,
+          title: canSync
+            ? "Move this animation's first keyframe onto the previous animation's end"
+            : "Already chained, or no animation before this one",
+          onSelect: () => {
+            const next = syncSegmentStartToPrevious(camera, docIndex);
+            if (next) void commit(next);
+          },
+        },
         {
           id: "delete",
           label: "Delete animation",
@@ -278,15 +310,26 @@ export function AnimationLane({
     });
   }
 
-  // The diamond nearest the playhead: "the key you'd edit now" (proximity emphasis).
-  const nearKeyId = nearestKey(camera, playheadLocal)?.id ?? null;
+  // What's in effect at the playhead: inside an animation both boundary keys glow and the bar tints; otherwise the single nearest diamond keeps the proximity emphasis.
+  const activeSegment =
+    layout.segments.find((s) => playheadLocal >= s.fromTMs && playheadLocal <= s.toTMs) ?? null;
+  const nearIds = activeSegment
+    ? [activeSegment.fromId, activeSegment.toId]
+    : [nearestKey(camera, playheadLocal)?.id ?? ""];
 
   const selectedSegmentLayout =
     selectedSegment !== null ? layout.segments.find((s) => s.docIndex === selectedSegment) : null;
 
-  const readout = `${(playheadLocal / 1000).toFixed(1).padStart(4, "0")} / ${(
-    durationMs / 1000
-  ).toFixed(1)}s`;
+  function finishDurationEdit(commitEdit: boolean) {
+    const text = durEdit;
+    setDurEdit(null);
+    if (!commitEdit || text === null) return;
+    const seconds = Number(text);
+    // The playback bar's floor: junk and sub-100ms values are dropped silently.
+    if (!Number.isFinite(seconds) || seconds < 0.1) return;
+    const ms = Math.round(seconds * 1000);
+    if (ms !== durationMs) onSceneDuration(sceneIndex, ms);
+  }
 
   return (
     <div className={`anim-lane${open ? " open" : ""}`} aria-hidden={!open}>
@@ -316,7 +359,7 @@ export function AnimationLane({
                 key={`${seg.fromId}-${seg.toId}`}
                 className={`anim-seg${selectedSegment === seg.docIndex ? " selected" : ""}${
                   seg.ease === "jump" ? " jump" : ""
-                }`}
+                }${activeSegment?.docIndex === seg.docIndex ? " at-playhead" : ""}`}
                 style={{ left, width }}
                 title={`Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`} — drag to move, click for easing, right-click to delete`}
                 onPointerDown={(e) => onSegmentPointerDown(e, seg.docIndex, seg.fromId, seg.toId)}
@@ -330,7 +373,7 @@ export function AnimationLane({
             <div
               key={key.id}
               className={`anim-key${selectedKeyId === key.id ? " selected" : ""}${
-                nearKeyId === key.id ? " near" : ""
+                nearIds.includes(key.id) ? " near" : ""
               }${key.tMs > durationMs ? " overhang" : ""}`}
               style={{ left: xOf(key.tMs) }}
               title={
@@ -346,7 +389,33 @@ export function AnimationLane({
           <span className="anim-playhead" style={{ left: xOf(playheadLocal) }} />
         </div>
 
-        <span className="anim-readout">{readout}</span>
+        <span className="anim-readout">
+          {`${(playheadLocal / 1000).toFixed(1).padStart(4, "0")} / `}
+          {durEdit !== null ? (
+            <input
+              className="anim-duration-input"
+              value={durEdit}
+              // biome-ignore lint/a11y/noAutofocus: entered by double-clicking the readout, so it IS the focus target
+              autoFocus
+              aria-label="Scene length in seconds"
+              onChange={(e) => setDurEdit(e.target.value)}
+              onBlur={() => finishDurationEdit(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") finishDurationEdit(false);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="anim-duration"
+              title="Scene length; double-click to type a new one"
+              onDoubleClick={() => setDurEdit((durationMs / 1000).toFixed(2))}
+            >
+              {`${(durationMs / 1000).toFixed(1)}s`}
+            </button>
+          )}
+        </span>
       </div>
 
       {writeError && (

@@ -1626,6 +1626,7 @@ export default function App() {
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
                   />
                 ) : null
               }

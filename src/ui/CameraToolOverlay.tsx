@@ -4,7 +4,7 @@ import { useClockStore } from "../engine/clock";
 import { CAMERA } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc } from "../engine/sceneCameraEdit";
-import { nearestKey, setKeyPose } from "../engine/sceneCameraEdit";
+import { nearestKey, playheadDriftTarget, setKeyPose } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose } from "../engine/sceneDocSchema";
 import { useCameraDoc } from "./cameraDoc";
 
@@ -48,10 +48,17 @@ export function CameraToolOverlay({
     if (e.button !== 0 || !armedTool) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const state = useCameraEditStore.getState();
-    const playheadLocal = Math.min(
+    let playheadLocal = Math.min(
       slot.durationMs,
       Math.max(0, useClockStore.getState().currentMs - slot.startMs),
     );
+    // Drift to the 25% point of the containing animation first, so the pose edit stays visible mid-span.
+    const drift = playheadDriftTarget(camera, playheadLocal);
+    if (drift !== null) {
+      const clock = useClockStore.getState();
+      clock.setCurrentMs(Math.min(clock.durationMs, slot.startMs + drift));
+      playheadLocal = drift;
+    }
     let cam = camera;
     let key = cam.keys.find((k) => k.id === state.selectedKeyId) ?? nearestKey(cam, playheadLocal);
     if (!key) {

@@ -2995,6 +2995,8 @@ body {
   position: relative;
   flex: 1;
   height: 40px;
+  /* The track scrubs the playhead exactly like the main timeline, so it shares its cursor. */
+  cursor: ew-resize;
   background:
     repeating-linear-gradient(
       90deg,
@@ -3009,11 +3011,22 @@ body {
   touch-action: none;
 }
 
+/* Invisible upward hit-area extension: the strip above the track (where the playhead's cap sits) scrubs too; pseudo-element hits land on the track, so the handlers ride along. */
+.anim-track::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+
 /* 20px segment rects, vertically centred; body drag = move. */
+/* Slim bar so most of the track surface falls through to the background scrub. */
 .anim-seg {
   position: absolute;
   top: 50%;
-  height: 20px;
+  height: 10px;
   transform: translateY(-50%);
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
@@ -3035,6 +3048,11 @@ body {
   border-style: dashed;
 }
 
+/* The animation under the playhead tints while scrubbing; its keys take .near. */
+.anim-seg.at-playhead {
+  border-color: var(--accent-border);
+}
+
 /* Boundary-key trim diamonds (13px rotated squares); the one nearest the playhead
    grows + gains an outline — "the key you'd edit now". */
 .anim-key {
@@ -3045,7 +3063,8 @@ body {
   background: var(--accent);
   border-radius: 2px;
   transform: translate(-50%, -50%) rotate(45deg);
-  cursor: ew-resize;
+  /* Move, distinct from both the bars' grab and the track's ew-resize, so hover says which of the three you're on. */
+  cursor: move;
   z-index: 2;
   transition:
     width var(--dur-fast) var(--ease-standard),
@@ -3090,6 +3109,30 @@ body {
   transform: translateX(-50%);
   background: var(--text-primary);
   border-radius: 2px;
+}
+
+/* The scene-length half of the readout doubles as the edit affordance (double-click to type). */
+.anim-duration {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: text;
+}
+
+.anim-duration:hover {
+  text-decoration: underline dotted;
+}
+
+.anim-duration-input {
+  width: 56px;
+  padding: 0 4px;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
 }
 
 .anim-readout {

@@ -8,9 +8,11 @@ import {
   moveSegment,
   nearestKey,
   nextKeyId,
+  playheadDriftTarget,
   removeKey,
   removeSegment,
   setSegmentEase,
+  syncSegmentStartToPrevious,
 } from "./sceneCameraEdit";
 import type { SceneDocCameraPose } from "./sceneDocSchema";
 
@@ -171,5 +173,39 @@ describe("ease + nearest", () => {
   it("nearestKey picks the closest key to a time", () => {
     expect(nearestKey(doc(), 1600)?.id).toBe("k2");
     expect(nearestKey(doc(), 2100)?.id).toBe("k3");
+  });
+});
+
+describe("syncSegmentStartToPrevious", () => {
+  it("merges the start onto the previous end key and drops the old key", () => {
+    const next = syncSegmentStartToPrevious(doc(), 1);
+    expect(next?.segments[1]).toMatchObject({ from: "k2", to: "k4" });
+    expect(next?.keys.some((k) => k.id === "k3")).toBe(false);
+  });
+
+  it("returns null when nothing precedes or already chained", () => {
+    expect(syncSegmentStartToPrevious(doc(), 0)).toBeNull();
+    const chained = syncSegmentStartToPrevious(doc(), 1);
+    expect(chained && syncSegmentStartToPrevious(chained, 1)).toBeNull();
+  });
+
+  it("refuses when a stray key sits in the swallowed gap", () => {
+    const withStray = doc();
+    withStray.keys.push({ id: "k9", tMs: 1800, pose: pose() });
+    expect(syncSegmentStartToPrevious(withStray, 1)).toBeNull();
+  });
+});
+
+describe("playheadDriftTarget", () => {
+  it("corrects a mid-animation playhead to the nearer 25% point", () => {
+    expect(playheadDriftTarget(doc(), 400)).toBe(250);
+    expect(playheadDriftTarget(doc(), 600)).toBe(750);
+  });
+
+  it("leaves the playhead alone near the ends, on keys, in gaps, and outside", () => {
+    expect(playheadDriftTarget(doc(), 100)).toBeNull();
+    expect(playheadDriftTarget(doc(), 950)).toBeNull();
+    expect(playheadDriftTarget(doc(), 0)).toBeNull();
+    expect(playheadDriftTarget(doc(), 1800)).toBeNull();
   });
 });
