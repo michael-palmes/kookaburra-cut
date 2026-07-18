@@ -102,7 +102,7 @@ export function AnimationLane({
     clock.setCurrentMs(Math.min(clock.durationMs, slot.startMs + target));
   }
 
-  // Deselect/deletion/nudge keys, window-level so the lane needn't hold focus; the App frame-step handler stands down while a key is selected. Gated on `open` since the lane stays mounted through the collapse.
+  // Tool-arming (O/P/Z), deselect/deletion/nudge keys, window-level so the lane needn't hold focus; the App frame-step handler stands down while a key is selected. Gated on `open` since the lane stays mounted through the collapse.
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -114,6 +114,19 @@ export function AnimationLane({
         if (state.armedTool) state.armTool(null);
         else state.select(null, null);
         return;
+      }
+      // Bare O / P / Z arm the camera tools (modifiers left alone: ⌘Z undo, ⌘P print…).
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tool = { o: "rotate", p: "pan", z: "zoom" }[e.key.toLowerCase()] as
+          | "rotate"
+          | "pan"
+          | "zoom"
+          | undefined;
+        if (tool) {
+          e.preventDefault();
+          state.armTool(tool);
+          return;
+        }
       }
       if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && state.selectedKeyId) {
         e.preventDefault();

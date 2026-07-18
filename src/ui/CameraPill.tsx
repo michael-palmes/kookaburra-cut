@@ -130,7 +130,7 @@ export function CameraPill({
         <div className="camera-pill-active" aria-hidden={!open}>
           {modeButton(
             "rotate",
-            "Orbit — drag in the preview to orbit around the target",
+            "Orbit (O) — drag in the preview to orbit around the target (or hold ⌥ while dragging)",
             <svg
               width="16"
               height="16"
@@ -147,7 +147,7 @@ export function CameraPill({
           )}
           {modeButton(
             "pan",
-            "Pan — drag in the preview to slide the camera target (or hold ⌘)",
+            "Pan (P) — drag in the preview to slide the camera target (or hold ⌘ while dragging)",
             <svg
               width="16"
               height="16"
@@ -162,7 +162,7 @@ export function CameraPill({
           )}
           {modeButton(
             "zoom",
-            "Zoom — drag vertically in the preview to dolly (or hold ⌃)",
+            "Zoom (Z) — drag vertically in the preview to dolly (or hold ⌃ while dragging)",
             <svg
               width="16"
               height="16"
@@ -190,7 +190,7 @@ export function CameraPill({
         </div>
       </div>
       <div className={`camera-pill-hint${open ? " visible" : ""}`} aria-hidden={!open}>
-        Hold ⌘ to pan · ⌃ to zoom
+        O · P · Z switch tools · hold ⌘ pan · ⌃ zoom · ⌥ orbit
       </div>
     </div>
   );
