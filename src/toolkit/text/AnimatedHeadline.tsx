@@ -6,8 +6,9 @@ import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
+import { parseFontString } from "../../theme/fontRef";
 import { fontUrl } from "../../theme/fonts";
-import type { Theme } from "../../theme/tokens";
+import type { FontRef, Theme } from "../../theme/tokens";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import type { EaseName, V3 } from "../types";
 import {
@@ -76,6 +77,8 @@ export interface AnimatedHeadlineProps {
   defaultColor?: "text" | "muted" | "accent" | (string & {});
   position?: V3;
   fontSize?: number;
+  /** Explicit font override replacing the theme face; also how the dispatcher applies a sidecar `<textKey>Font`. */
+  fontRef?: FontRef;
   /** Per-line alignment inside the measured block (visible on multi-line text only). */
   textAlign?: "left" | "center" | "right";
   /** Where `position` sits on the block's X axis (default "center", the legacy contract). */
@@ -101,7 +104,7 @@ function resolveFill(theme: Theme, color: string): string {
 /** Resolve the token-keyed face + fill for one headline (shared by all three paths). */
 function textStyle(theme: Theme, props: AnimatedHeadlineProps) {
   return {
-    font: fontUrl(theme.typography[props.face ?? "headline"]),
+    font: fontUrl(props.fontRef ?? theme.typography[props.face ?? "headline"]),
     fill: resolveFill(theme, props.color ?? "text"),
   };
 }
@@ -122,15 +125,44 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const { textKey, defaultColor } = props;
   const colorDefault = props.color === undefined && textKey ? (defaultColor ?? "text") : undefined;
   useLayoutEffect(() => {
-    if (sceneIndex === undefined || !textKey || colorDefault === undefined) return;
-    useTextKeyRegistry.getState().register(sceneIndex, textKey, colorDefault);
+    if (sceneIndex === undefined || !textKey) return;
+    useTextKeyRegistry.getState().register(sceneIndex, textKey, colorDefault, true);
     return () => useTextKeyRegistry.getState().unregister(sceneIndex, textKey);
   }, [sceneIndex, textKey, colorDefault]);
-  const fill =
-    props.color ?? (textKey ? doc?.textStyle?.[`${textKey}Color`] : undefined) ?? defaultColor;
+  const styleOf = (suffix: string) =>
+    textKey ? doc?.textStyle?.[`${textKey}${suffix}`] : undefined;
+  const fill = props.color ?? (styleOf("Color") as string | undefined) ?? defaultColor;
+  // Sidecar font/size/offset overrides fold into the dispatched props; absent overrides pass the originals through untouched (null-for-legacy).
+  const fontValue = styleOf("Font");
+  const sizeMul = styleOf("Size");
+  const offX = styleOf("OffsetX");
+  const offY = styleOf("OffsetY");
+  let styled = props;
+  if (
+    typeof fontValue === "string" ||
+    typeof sizeMul === "number" ||
+    typeof offX === "number" ||
+    typeof offY === "number"
+  ) {
+    const base = props.position ?? [0, 0, 0];
+    styled = {
+      ...props,
+      ...(typeof fontValue === "string" ? { fontRef: parseFontString(fontValue) } : {}),
+      ...(typeof sizeMul === "number" ? { fontSize: (props.fontSize ?? 0.6) * sizeMul } : {}),
+      ...(typeof offX === "number" || typeof offY === "number"
+        ? {
+            position: [
+              base[0] + (typeof offX === "number" ? offX : 0),
+              base[1] + (typeof offY === "number" ? offY : 0),
+              base[2],
+            ] as V3,
+          }
+        : {}),
+    };
+  }
   // Report the text + resolved size; the Scene tab derives its default scene name from the scene's largest mounted text. UI-only, an effect.
   const registeredText = props.text;
-  const registeredSize = props.fontSize ?? 0.6;
+  const registeredSize = styled.fontSize ?? 0.6;
   useEffect(() => {
     if (sceneIndex === undefined || typeof registeredText !== "string" || !registeredText.trim()) {
       return;
@@ -142,14 +174,14 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const prepared = useMemo(() => prepareEmojiText(props.text), [props.text]);
   const hasOut = anim !== null && anim.outPreset !== "none" && props.outAt !== undefined;
   if (anim === null || (anim.preset === "none" && !hasOut)) {
-    return <LegacyHeadline {...props} color={fill} theme={theme} prepared={prepared} />;
+    return <LegacyHeadline {...styled} color={fill} theme={theme} prepared={prepared} />;
   }
   if (anim.granularity && anim.staggerMs > 0) {
     return (
-      <StaggeredHeadline {...props} color={fill} theme={theme} anim={anim} prepared={prepared} />
+      <StaggeredHeadline {...styled} color={fill} theme={theme} anim={anim} prepared={prepared} />
     );
   }
-  return <BlockHeadline {...props} color={fill} theme={theme} anim={anim} prepared={prepared} />;
+  return <BlockHeadline {...styled} color={fill} theme={theme} anim={anim} prepared={prepared} />;
 }
 
 /** Shared caret capture: quads only mount once the first typeset reports positions. */

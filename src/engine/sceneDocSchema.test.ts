@@ -5,7 +5,7 @@ import themeSpikeStudioDoc from "./__fixtures__/theme-spike/02-studio.json";
 import themeSpikeGradientDoc from "./__fixtures__/theme-spike/03-gradient.json";
 import themeSpikeImageDoc from "./__fixtures__/theme-spike/04-image.json";
 import themeSpikeAbyssDoc from "./__fixtures__/theme-spike/05-abyss.json";
-import { parseSceneDoc, SCENE_DOC_VERSION } from "./sceneDocSchema";
+import { collectSceneDocFontRefs, parseSceneDoc, SCENE_DOC_VERSION } from "./sceneDocSchema";
 
 // parseSceneDoc must degrade (warn + ignore), never throw; a bad sidecar cannot tear down the canvas tree.
 describe("parseSceneDoc", () => {
@@ -112,6 +112,55 @@ describe("parseSceneDoc", () => {
     expect(stray?.textStyle).toEqual({ nameColor: "#654321" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("textStyle.headline"));
     warn.mockRestore();
+  });
+
+  it("parses textStyle font, size and offset overrides and drops bad values", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const good = parseSceneDoc(
+      {
+        version: 1,
+        textStyle: {
+          titleFont: "Avenir Next@600",
+          titleSize: 1.25,
+          titleOffsetX: -0.4,
+          titleOffsetY: 0.2,
+        },
+      },
+      "test",
+    );
+    expect(good?.textStyle).toEqual({
+      titleFont: "Avenir Next@600",
+      titleSize: 1.25,
+      titleOffsetX: -0.4,
+      titleOffsetY: 0.2,
+    });
+    const bad = parseSceneDoc(
+      {
+        version: 1,
+        textStyle: {
+          titleFont: "",
+          titleSize: 0,
+          subtitleSize: "big",
+          titleOffsetX: Number.NaN,
+          titleOffsetY: 0.1,
+        },
+      },
+      "test",
+    );
+    expect(bad?.textStyle).toEqual({ titleOffsetY: 0.1 });
+    warn.mockRestore();
+  });
+
+  it("collects distinct sidecar font refs across docs", () => {
+    const a = parseSceneDoc(
+      { version: 1, textStyle: { titleFont: "Avenir Next@600", subtitleFont: "Georgia" } },
+      "test",
+    );
+    const b = parseSceneDoc({ version: 1, textStyle: { titleFont: "Avenir Next@600" } }, "test");
+    expect(collectSceneDocFontRefs([a, b, undefined])).toEqual([
+      { family: "Avenir Next", weight: 600 },
+      { family: "Georgia", weight: 400 },
+    ]);
   });
 
   it("keeps a camera track only when keys AND segments are arrays", () => {

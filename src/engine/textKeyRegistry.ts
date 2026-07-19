@@ -4,17 +4,19 @@ import { create } from "zustand";
 interface TextKeyEntry {
   count: number;
   colorDefault?: string;
+  /** A primitive with a `textKey` is mounted, so sidecar font/size/offset overrides apply (colour-pinned mounts included). */
+  styleCapable?: boolean;
 }
 
 interface TextKeyRegistryState {
   keys: Record<number, Record<string, TextKeyEntry>>;
-  register: (index: number, key: string, colorDefault?: string) => void;
+  register: (index: number, key: string, colorDefault?: string, styleCapable?: boolean) => void;
   unregister: (index: number, key: string) => void;
 }
 
 export const useTextKeyRegistry = create<TextKeyRegistryState>((set) => ({
   keys: {},
-  register: (index, key, colorDefault) =>
+  register: (index, key, colorDefault, styleCapable) =>
     set((s) => {
       const prev = s.keys[index]?.[key];
       const entry: TextKeyEntry = {
@@ -23,6 +25,7 @@ export const useTextKeyRegistry = create<TextKeyRegistryState>((set) => ({
         ...((colorDefault ?? prev?.colorDefault) !== undefined
           ? { colorDefault: colorDefault ?? prev?.colorDefault }
           : {}),
+        ...((styleCapable || prev?.styleCapable) === true ? { styleCapable: true } : {}),
       };
       return { keys: { ...s.keys, [index]: { ...s.keys[index], [key]: entry } } };
     }),
@@ -63,4 +66,14 @@ export function textKeyColorDefaults(index: number): Record<string, string> {
     if (entry.colorDefault !== undefined) out[key] = entry.colorDefault;
   }
   return out;
+}
+
+/** Non-hook read for UI handlers: the text keys whose mounted primitive accepts sidecar font/size/offset overrides. */
+export function textKeyStyleCapable(index: number): Set<string> {
+  const scene = useTextKeyRegistry.getState().keys[index] ?? {};
+  return new Set(
+    Object.entries(scene)
+      .filter(([, entry]) => entry.styleCapable === true)
+      .map(([key]) => key),
+  );
 }

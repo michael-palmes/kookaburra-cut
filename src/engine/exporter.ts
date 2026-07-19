@@ -39,7 +39,7 @@ import {
 } from "./project";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
 import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
-import type { SceneDoc } from "./sceneDocSchema";
+import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
@@ -272,9 +272,14 @@ export async function exportProject(
   const { gl, scene, camera } = handle;
 
   configureDeterministicEngine();
-  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts); the no-theme form preloads the bundled defaults.
+  // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
-    opts.theme ? collectThemeFontRefs([opts.theme, ...(opts.sceneThemes ?? [])]) : undefined,
+    opts.theme
+      ? [
+          ...collectThemeFontRefs([opts.theme, ...(opts.sceneThemes ?? [])]),
+          ...collectSceneDocFontRefs(opts.sceneDocs ?? []),
+        ]
+      : undefined,
   );
   // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the loop's finally; a preamble throw leaves it on sw, corrected by the next export or preview re-registration.
   setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));

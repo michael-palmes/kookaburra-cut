@@ -1,6 +1,13 @@
 import { useState } from "react";
-import { DEVICE_CATALOG, DEVICE_IDS, type DeviceId } from "../../toolkit/device/catalog";
+import {
+  CUSTOM_COLOUR_PREFIX,
+  customColourHex,
+  DEVICE_CATALOG,
+  DEVICE_IDS,
+  type DeviceId,
+} from "../../toolkit/device/catalog";
 import type { DeviceMotionPreset } from "../../toolkit/device/Device";
+import { ColourPicker } from "../colour/ColourPicker";
 import { MOTION_OPTIONS } from "../SceneWizards";
 import { useEscapeClose } from "../useEscapeClose";
 import { DrillBack } from "./rows";
@@ -70,6 +77,13 @@ export function DeviceDrillIn({
                   onClick={() => setC(col.id)}
                 />
               ))}
+              <span className={`swatch-custom${customColourHex(c) ? " selected" : ""}`}>
+                <ColourPicker
+                  value={customColourHex(c) ?? "#8a93a6"}
+                  label="Custom colour"
+                  onCommit={(hex) => setC(CUSTOM_COLOUR_PREFIX + hex.toLowerCase())}
+                />
+              </span>
             </fieldset>
           </div>
         </div>

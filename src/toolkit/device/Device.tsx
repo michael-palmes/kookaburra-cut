@@ -456,7 +456,8 @@ export function Device(props: DeviceProps) {
 
   const { scene } = useGLTF((spec ?? DEVICE_CATALOG["iphone-15-pro"]).glbUrl);
   const activeSpec = spec ?? DEVICE_CATALOG["iphone-15-pro"];
-  const colourSpec = deviceColour(activeSpec, colour);
+  // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
+  const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
   // The media material is owned here (StrictMode-safe, see VideoClip) and starts black so a device with no media, or frames not yet bound, shows a dark plausible screen.
   const screenMaterial = useMemo(() => {

@@ -1,3 +1,4 @@
+import { parseFontString } from "../theme/fontRef";
 import {
   parseBackdropSpec,
   parseBackgroundSpec,
@@ -5,6 +6,7 @@ import {
   parseTextAnimationSpec,
 } from "../theme/schema";
 import type {
+  FontRef,
   TextAnimationSpec,
   ThemeBackdrop,
   ThemeBackground,
@@ -74,8 +76,8 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Raw-hex text fills keyed `<textKey>Color` (e.g. `titleColor`), the one narrow exception to "colours stay tokens"; consumed by text primitives given a matching `textKey`, inert otherwise. */
-  textStyle?: Record<string, string>;
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged) and `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  textStyle?: Record<string, string | number>;
   devices?: SceneDocDeviceSpec[];
   camera?: { keys: SceneDocCameraKey[]; segments: SceneDocCameraSegment[] };
   /** Theme override for this scene: a theme id that swaps the whole theme (colours, typography, lighting, backdrop, effects base); absent falls back to the project's theme, and unknown ids degrade rather than crash. */
@@ -143,12 +145,23 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const raw = doc.textStyle as Record<string, unknown>;
     const textStyle: NonNullable<SceneDoc["textStyle"]> = {};
     for (const [key, value] of Object.entries(raw)) {
-      if (!key.endsWith("Color")) {
-        console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color key, dropped`);
-      } else if (typeof value === "string" && value.length > 0) {
-        textStyle[key] = value;
+      if (key.endsWith("Color") || key.endsWith("Font")) {
+        if (typeof value === "string" && value.length > 0) textStyle[key] = value;
+        else
+          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a non-empty string, dropped`);
+      } else if (key.endsWith("Size")) {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+          textStyle[key] = value;
+        } else {
+          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a positive number, dropped`);
+        }
+      } else if (key.endsWith("OffsetX") || key.endsWith("OffsetY")) {
+        if (typeof value === "number" && Number.isFinite(value)) textStyle[key] = value;
+        else console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
       } else {
-        console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a non-empty string, dropped`);
+        console.warn(
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY key, dropped`,
+        );
       }
     }
     if (Object.keys(textStyle).length > 0) out.textStyle = textStyle;
@@ -194,4 +207,18 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     if (lighting) out.lighting = lighting;
   }
   return out;
+}
+
+/** The distinct font refs the docs' `textStyle.<key>Font` overrides reference; feeds the pin/preload pipeline beside the theme collector. */
+export function collectSceneDocFontRefs(docs: readonly (SceneDoc | undefined)[]): FontRef[] {
+  const seen = new Map<string, FontRef>();
+  for (const doc of docs) {
+    for (const [key, value] of Object.entries(doc?.textStyle ?? {})) {
+      if (key.endsWith("Font") && typeof value === "string") {
+        const ref = parseFontString(value);
+        seen.set(`${ref.family}:${ref.weight}`, ref);
+      }
+    }
+  }
+  return [...seen.values()];
 }

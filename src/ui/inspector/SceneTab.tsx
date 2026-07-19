@@ -14,9 +14,16 @@ import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTex
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import { useSceneStageBackdrop } from "../../engine/stageRegistry";
-import { textKeyColorDefaults, textKeysConsumedBy } from "../../engine/textKeyRegistry";
+import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import {
+  textKeyColorDefaults,
+  textKeyStyleCapable,
+  textKeysConsumedBy,
+} from "../../engine/textKeyRegistry";
 import { useSceneHasCodedTextMotion } from "../../engine/textMotionRegistry";
 import { useUiStore } from "../../store/uiStore";
+import { formatFontString, parseFontString } from "../../theme/fontRef";
+import { preloadAppFonts } from "../../theme/fonts";
 import type { TextAnimationSpec, Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
@@ -35,6 +42,7 @@ import { prepareEmojiText } from "../../toolkit/text/emojiText";
 import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
+import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { sceneSections } from "../inspectorOptions";
 import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
@@ -1664,6 +1672,57 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn?.startsWith("text.font:") && doc) {
+    const key = drillIn.slice("text.font:".length);
+    const label = key === "headline" && !doc.text?.title ? "Title" : key;
+    const themeFace = (sceneTheme ?? project.theme).typography.headline;
+    const override = doc.textStyle?.[`${key}Font`];
+    const currentRef = typeof override === "string" ? parseFontString(override) : themeFace;
+    const commitFont = (value: string | undefined) =>
+      void patchDoc(
+        (next) => {
+          const style = { ...(next.textStyle ?? {}) };
+          if (value === undefined) delete style[`${key}Font`];
+          else style[`${key}Font`] = value;
+          next.textStyle = Object.keys(style).length > 0 ? style : undefined;
+        },
+        { history: `${label.toLowerCase()} font` },
+      );
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Edit text" onClick={() => setDrillIn("text.edit")} />
+        <div className="inspector-drill-title">
+          {label.charAt(0).toUpperCase() + label.slice(1)} font
+        </div>
+        <div className="inspector-drill-body">
+          {typeof override === "string" && (
+            <button
+              type="button"
+              className="btn text-font-reset"
+              onClick={() => commitFont(undefined)}
+            >
+              Use theme font
+            </button>
+          )}
+          <FontPicker
+            value={currentRef}
+            onPick={(ref) => {
+              // Pin + preload before the sidecar write so the face renders the moment the doc patch lands.
+              void (async () => {
+                await ensureFontRefsPinned([ref]);
+                await preloadAppFonts([ref]);
+                commitFont(formatFontString(ref));
+              })();
+            }}
+          />
+          <p className="modal-hint">
+            System fonts are pinned into your workspace on first use, so exports never drift with
+            macOS updates.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (drillIn === "text.edit" && doc) {
     const textKeys = Object.keys(doc.text ?? {});
     const pinnedKeys = ["title", "subtitle", "headline"].filter((key) => textKeys.includes(key));
@@ -1681,8 +1740,28 @@ export function SceneTab({
     const textTheme = sceneTheme ?? project.theme;
     // Swatches come from the mounted primitives: a key gets a colour control exactly when its text primitive accepts a sidecar override (`textKey`), and the reset value is that primitive's registered default fill, tokens resolved through the scene's theme.
     const colourDefaults = textKeyColorDefaults(sceneIndex);
+    const styleCapable = textKeyStyleCapable(sceneIndex);
     const resolveFillToken = (fill: string): string =>
       fill === "text" || fill === "muted" || fill === "accent" ? textTheme.colors[fill] : fill;
+    const styleStr = (k: string): string | undefined => {
+      const v = doc.textStyle?.[k];
+      return typeof v === "string" ? v : undefined;
+    };
+    const styleNum = (k: string): number | undefined => {
+      const v = doc.textStyle?.[k];
+      return typeof v === "number" ? v : undefined;
+    };
+    // Default values delete their key, so untouched fields stay absent from the sidecar.
+    const patchStyle = (history: string, k: string, value: string | number | undefined) =>
+      void patchDoc(
+        (next) => {
+          const style = { ...(next.textStyle ?? {}) };
+          if (value === undefined) delete style[k];
+          else style[k] = value;
+          next.textStyle = Object.keys(style).length > 0 ? style : undefined;
+        },
+        { history },
+      );
     const commitTextEdit = () => {
       const merged = { ...(doc.text ?? {}), ...textValues };
       setDrillIn(null);
@@ -1725,44 +1804,90 @@ export function SceneTab({
               colourDefaults[key] !== undefined
                 ? { key: `${key}Color`, token: resolveFillToken(colourDefaults[key]) }
                 : undefined;
+            const fontOverride = styleStr(`${key}Font`);
             return (
-              <TextFieldRow
-                key={key}
-                label={label}
-                value={value}
-                onChange={(text) => setTextValues((v) => ({ ...v, [key]: text }))}
-                onKeyDown={(e) => {
-                  // Cmd/Ctrl+Enter saves; plain Enter stays a newline (native textarea behaviour).
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    commitTextEdit();
+              <div key={key} className="text-field-group">
+                <TextFieldRow
+                  label={label}
+                  value={value}
+                  onChange={(text) => setTextValues((v) => ({ ...v, [key]: text }))}
+                  onKeyDown={(e) => {
+                    // Cmd/Ctrl+Enter saves; plain Enter stays a newline (native textarea behaviour).
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      commitTextEdit();
+                    }
+                  }}
+                  colour={
+                    colour
+                      ? {
+                          value: styleStr(colour.key) ?? colour.token,
+                          defaultValue: colour.token,
+                          onReset: () =>
+                            patchStyle(`${label.toLowerCase()} colour`, colour.key, undefined),
+                          onCommit: (hex) =>
+                            patchStyle(`${label.toLowerCase()} colour`, colour.key, hex),
+                        }
+                      : undefined
                   }
-                }}
-                colour={
-                  colour
-                    ? {
-                        value: doc.textStyle?.[colour.key] ?? colour.token,
-                        defaultValue: colour.token,
-                        onReset: () =>
-                          void patchDoc(
-                            (next) => {
-                              const rest = { ...(next.textStyle ?? {}) };
-                              delete rest[colour.key];
-                              next.textStyle = Object.keys(rest).length > 0 ? rest : undefined;
-                            },
-                            { history: `${label.toLowerCase()} colour` },
-                          ),
-                        onCommit: (hex) =>
-                          void patchDoc(
-                            (next) => {
-                              next.textStyle = { ...(next.textStyle ?? {}), [colour.key]: hex };
-                            },
-                            { history: `${label.toLowerCase()} colour` },
-                          ),
+                />
+                {styleCapable.has(key) && (
+                  <div className="text-style-row">
+                    <span className="text-style-fontfield">
+                      <button
+                        type="button"
+                        className={`text-style-font${fontOverride ? " overridden" : ""}`}
+                        title={`${label} font`}
+                        onClick={() => setDrillIn(`text.font:${key}`)}
+                      >
+                        <span className="text-style-font-name">
+                          {fontOverride ? parseFontString(fontOverride).family : "Theme font"}
+                        </span>
+                        <span className="text-style-font-chevron" aria-hidden>
+                          ›
+                        </span>
+                      </button>
+                      <span className="inspector-pose-caption">Font</span>
+                    </span>
+                    <NumericField
+                      label="Size %"
+                      value={Math.round((styleNum(`${key}Size`) ?? 1) * 100)}
+                      decimals={0}
+                      onCommit={(n) =>
+                        patchStyle(
+                          `${label.toLowerCase()} size`,
+                          `${key}Size`,
+                          n === 100 || n <= 0 ? undefined : Math.min(1000, n) / 100,
+                        )
                       }
-                    : undefined
-                }
-              />
+                    />
+                    <NumericField
+                      label="X"
+                      value={styleNum(`${key}OffsetX`) ?? 0}
+                      decimals={2}
+                      onCommit={(n) =>
+                        patchStyle(
+                          `${label.toLowerCase()} position`,
+                          `${key}OffsetX`,
+                          n === 0 ? undefined : n,
+                        )
+                      }
+                    />
+                    <NumericField
+                      label="Y"
+                      value={styleNum(`${key}OffsetY`) ?? 0}
+                      decimals={2}
+                      onCommit={(n) =>
+                        patchStyle(
+                          `${label.toLowerCase()} position`,
+                          `${key}OffsetY`,
+                          n === 0 ? undefined : n,
+                        )
+                      }
+                    />
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

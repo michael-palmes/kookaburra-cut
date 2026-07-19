@@ -15,14 +15,14 @@ import { ensureProjectTrusted } from "./projectTrust";
 import { ensureSampleAssets } from "./sampleAssets";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
-import type { SceneDoc } from "./sceneDocSchema";
+import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import {
   buildSceneTimeline,
   type SceneSlot,
   type TransitionSpec,
   timelineTotalMs,
 } from "./sceneTimeline";
-import { ensureThemeFontsPinned } from "./systemFonts";
+import { ensureFontRefsPinned } from "./systemFonts";
 
 /** On-disk project manifest (`projects/<id>/project.json`). */
 export interface ProjectManifest {
@@ -426,11 +426,15 @@ export async function loadProject(
     sceneDocs.map((doc) => (doc?.themeId ? resolveTheme(doc.themeId, theme) : theme)),
   );
 
-  // System-font auto-pin: resolve every theme font BEFORE scenes render; bundled-only projects short-circuit without touching the native side.
-  await ensureThemeFontsPinned([theme, ...sceneThemes]);
+  // System-font auto-pin: resolve every theme font (and sidecar `<key>Font` overrides) BEFORE scenes render; bundled-only projects short-circuit without touching the native side.
+  const fontRefs = [
+    ...collectThemeFontRefs([theme, ...sceneThemes]),
+    ...collectSceneDocFontRefs(sceneDocs),
+  ];
+  await ensureFontRefsPinned(fontRefs);
 
   // Pre-generate every project's glyphs BEFORE the scenes mount: troika's shared SDF atlas assigns cells in typeset order, so mount-time typesets racing font loads would claim cells in per-boot order (the showcase-tour ±LSB hash lottery); the sequential preload pins the atlas layout so scenes' own typesets find every glyph already generated. See theme/fonts.ts and docs/determinism.md ("Fonts").
-  await preloadAppFonts(collectThemeFontRefs([theme, ...sceneThemes]));
+  await preloadAppFonts(fontRefs);
 
   // Colour-emoji rasters for every sidecar string settle before scenes mount, and this pins which project's cache receives new rasters (mirrors the export preamble).
   await preloadEmojiRasters(id, sceneDocs);
