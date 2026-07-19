@@ -3,7 +3,7 @@ import type { EditClip, EditSource } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
 
-/** The preview controller: one muted <video> per source, driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
+/** The preview controller: one muted <video> per source, driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. Freeze clips have no decode clock, so they advance on rAF frame time with the source parked on the pinned frame. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
 
 const SEEK_EPSILON_MS = 30; // don't spam sub-frame seeks on playhead scrubs
 const TRIM_SEEK_EPSILON_MS = 4; // trim scrubbing is frame-exact, seek on any real change
@@ -95,9 +95,12 @@ export function Preview({
     }
     let raf = 0;
     let disposed = false;
+    let lastTs: number | null = null;
 
-    const step = () => {
+    const step = (ts: number) => {
       if (disposed) return;
+      const dt = lastTs === null ? 0 : ts - lastTs;
+      lastTs = ts;
       const now = clipsRef.current;
       const total = timelineDurationMs(now);
       const t = playheadRef.current;
@@ -107,6 +110,30 @@ export function Preview({
         return;
       }
       const clip = now[idx];
+      if (clip.holdMs !== undefined) {
+        // Freeze: the source parks on the pinned frame (no decode clock), elapsed frame time advances the playhead instead.
+        const held = videos.current.get(clip.sourceId);
+        if (held) {
+          if (!held.paused) held.pause();
+          if (Math.abs(held.currentTime * 1000 - clip.inMs) > SEEK_EPSILON_MS) {
+            held.currentTime = clip.inMs / 1000;
+          }
+        }
+        const next = t + dt;
+        if (next >= clip.startMs + clip.holdMs) {
+          const following = now[idx + 1];
+          if (!following) {
+            onPlayhead(total);
+            onStop();
+            return;
+          }
+          onPlayhead(following.startMs);
+        } else {
+          onPlayhead(next);
+        }
+        raf = requestAnimationFrame(step);
+        return;
+      }
       const speed = effectiveSpeed(clip.speed);
       const video = videos.current.get(clip.sourceId);
       if (video) {
@@ -130,8 +157,8 @@ export function Preview({
               onStop();
               return;
             }
-            if (next.sourceId !== clip.sourceId) {
-              video.pause(); // the next clip's video starts (paused branch) next frame
+            if (next.sourceId !== clip.sourceId || next.holdMs !== undefined) {
+              video.pause(); // the next clip's video starts (paused branch) next frame; a freeze parks it
             } else if (Math.abs(next.inMs - clip.outMs) > SEEK_EPSILON_MS) {
               video.currentTime = next.inMs / 1000; // same source, discontiguous
             } // contiguous split: play straight through

@@ -10,9 +10,18 @@ describe("projectRows (the Project-tab pin)", () => {
       aspect: "16:9",
       soundtrackName: null,
       playbackLabel: "Full quality",
+      scenesCount: 3,
     });
-    expect(rows.map((r) => r.id)).toEqual(["media", "theme", "aspect", "music", "playback"]);
+    expect(rows.map((r) => r.id)).toEqual([
+      "media",
+      "scenes",
+      "theme",
+      "aspect",
+      "music",
+      "playback",
+    ]);
     expect(rows.every((r) => r.chevron)).toBe(true);
+    expect(rows.find((r) => r.id === "scenes")?.value).toBe("3 scenes");
     expect(rows.find((r) => r.id === "music")?.value).toBe("None");
     expect(rows.find((r) => r.id === "theme")?.value).toBe("Editorial");
     expect(rows.find((r) => r.id === "aspect")?.value).toBe("16:9");
@@ -26,6 +35,7 @@ describe("projectRows (the Project-tab pin)", () => {
       aspect: "9:16",
       soundtrackName: "sunrise.mp3",
       playbackLabel: "Performance",
+      scenesCount: 1,
     });
     expect(rows.find((r) => r.id === "music")?.value).toBe("sunrise.mp3");
     expect(rows.find((r) => r.id === "playback")?.value).toBe("Performance");
@@ -38,6 +48,7 @@ describe("projectRows (the Project-tab pin)", () => {
       aspect: "1:1",
       soundtrackName: null,
       playbackLabel: "Full quality",
+      scenesCount: 2,
     });
     expect(rows.map((r) => r.id)).toEqual(["theme", "aspect", "playback"]);
     expect(rows.find((r) => r.id === "theme")?.chevron).toBe(false);

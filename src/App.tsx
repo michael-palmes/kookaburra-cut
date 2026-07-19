@@ -72,6 +72,7 @@ import {
 } from "./engine/project";
 import {
   duplicateProjectScene,
+  moveProjectScene,
   readProjectManifestSnapshot,
   removeProjectScene,
   writeProjectManifestSnapshot,
@@ -86,6 +87,7 @@ import {
   writeSceneDoc,
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
+import { planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
@@ -584,6 +586,36 @@ export default function App() {
     try {
       // No history entry (delete's semantics: a manifest revert can't un-create files); a new TSX needs the full module reload.
       await duplicateProjectScene(workspaceSlug(current.id), sceneIndex, position);
+      bumpWorkspaceReloadToken();
+      setLoadNonce((n) => n + 1);
+    } catch (e) {
+      setToast({ kind: "error", message: `Duplicate failed: ${String(e)}` });
+    }
+  }, []);
+
+  // The scene manager's batch ops: sequential manifest edits, one reload at the end.
+  const handleReorderScenes = useCallback(async (desired: number[]) => {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    try {
+      for (const { from, to } of planMoves(desired)) {
+        await moveProjectScene(workspaceSlug(current.id), from, to);
+      }
+      bumpWorkspaceReloadToken();
+      setLoadNonce((n) => n + 1);
+    } catch (e) {
+      setToast({ kind: "error", message: `Reorder failed: ${String(e)}` });
+    }
+  }, []);
+
+  const handleDuplicateScenes = useCallback(async (indices: number[]) => {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    try {
+      // Descending, each copy after its original, so earlier indices stay valid.
+      for (const i of [...indices].sort((a, b) => b - a)) {
+        await duplicateProjectScene(workspaceSlug(current.id), i, i + 1);
+      }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
     } catch (e) {
@@ -1465,7 +1497,8 @@ export default function App() {
 
       {editorView && (
         <div className="editor-body">
-          {railOpen && project && isWorkspaceProjectId(project.id) && (
+          {/* The rail hides during export (task 24): the live-session registry keeps the PTY and buffer alive through the unmount, so it restores intact when the export ends. */}
+          {railOpen && !exporting && project && isWorkspaceProjectId(project.id) && (
             <aside className="terminal-rail">
               <div className="rail-header">
                 <span className="rail-title">Claude Code</span>
@@ -1493,7 +1526,6 @@ export default function App() {
                   doc: project.sceneDocs[i],
                 }))}
                 theme={project.theme}
-                exporting={exporting}
                 getThumbs={() => ensureSceneThumbs(project)}
                 onProjectChanged={() => {
                   bumpWorkspaceReloadToken();
@@ -1768,6 +1800,8 @@ export default function App() {
               onReplaySessionEnd={handleReplaySessionEnd}
               onApplyTheme={(id) => void handleApplyTheme(id)}
               onDeleteScene={(i) => void handleDeleteScene(i)}
+              onReorderScenes={handleReorderScenes}
+              onDuplicateScenes={handleDuplicateScenes}
             />
           )}
         </div>

@@ -17,6 +17,7 @@ import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
+import { ScenesDrillIn } from "./ScenesDrillIn";
 import { SceneTab } from "./SceneTab";
 
 /** The right-hand inspector: a 312px panel with a Project/Scene segmented switch. Gating (decision 12): the host hides the whole panel during export/autorun; bundled dev projects get the Project tab only (no tab switch, no Scene tab) with Aspect ratio live and Theme read-only. The panel is the only scroll container in the chrome (`overflow-y: auto`). */
@@ -69,6 +70,8 @@ export function InspectorPanel({
   onReplaySessionEnd,
   onApplyTheme,
   onDeleteScene,
+  onReorderScenes,
+  onDuplicateScenes,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -97,6 +100,10 @@ export function InspectorPanel({
   onApplyTheme: (themeId: string) => void;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
   onDeleteScene: (sceneIndex: number) => void;
+  /** Scene manager: apply a full desired order (original indices) to the manifest. */
+  onReorderScenes: (desired: number[]) => Promise<void>;
+  /** Scene manager: duplicate these scenes, each copy landing after its original. */
+  onDuplicateScenes: (indices: number[]) => Promise<void>;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
@@ -156,6 +163,7 @@ export function InspectorPanel({
         : previewQuality === "balanced"
           ? "Balanced"
           : "Full quality",
+    scenesCount: project.slots.length,
   });
 
   // Any pointer-down outside the open row's anchor dismisses its popover (the
@@ -179,8 +187,9 @@ export function InspectorPanel({
   const [mediaError, setMediaError] = useState<string | null>(null);
   useEscapeClose(
     () => setDrillIn(null),
-    drillIn === "project.theme" || drillIn === "project.media",
+    drillIn === "project.theme" || drillIn === "project.media" || drillIn === "project.scenes",
   );
+  const [scenesBusy, setScenesBusy] = useState(false);
 
   // Re-list whenever the drill opens or the ThemeMode modal closes over it: Manage no longer closes the drill, so edits must show up in place.
   useEffect(() => {
@@ -205,6 +214,7 @@ export function InspectorPanel({
       setMediaError(null);
       setDrillIn("project.media");
     },
+    scenes: () => setDrillIn("project.scenes"),
     theme: isWorkspace
       ? () => {
           setThemeDraft(project.theme.id);
@@ -308,6 +318,24 @@ export function InspectorPanel({
           </div>
           {themeMenu.menuElement}
         </div>
+      ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
+        <ScenesDrillIn
+          scenes={project.slots.map((slot, i) => ({
+            index: i,
+            name: project.sceneDocs[i]?.name ?? slot.id,
+            durationMs: slot.durationMs,
+          }))}
+          busy={scenesBusy}
+          onBack={() => setDrillIn(null)}
+          onReorder={(desired) => {
+            setScenesBusy(true);
+            void onReorderScenes(desired).finally(() => setScenesBusy(false));
+          }}
+          onDuplicate={(indices) => {
+            setScenesBusy(true);
+            void onDuplicateScenes(indices).finally(() => setScenesBusy(false));
+          }}
+        />
       ) : tab === "project" || !isWorkspace ? (
         <div className="inspector-rows">
           {rows.map((row) => (

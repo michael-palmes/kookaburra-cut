@@ -14,10 +14,12 @@ import {
   saveEdit,
 } from "../engine/edit";
 import {
+  freezeAt,
   nextClipId,
   nextSourceId,
   relayout,
   removeClip,
+  setClipHold,
   setClipSpeed,
   splitAt,
   timelineDurationMs,
@@ -347,10 +349,19 @@ export function EditorApp() {
     if (next) commit(next);
   }, [doc, playheadMs, commit]);
 
+  /** Freeze the frame under the playhead for a default beat; the Hold field retimes it. */
+  const DEFAULT_HOLD_MS = 2000;
+  const handleFreeze = useCallback(() => {
+    if (!doc) return;
+    const next = freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS);
+    if (next) commit(next);
+  }, [doc, playheadMs, commit]);
+
   const firstSource = doc?.sources[0] ?? null;
   const selectedClip = doc?.clips.find((c) => c.id === selectedId) ?? null;
   const totalMs = doc ? timelineDurationMs(doc.clips) : 0;
   const canSplit = doc ? splitAt(doc.clips, playheadMs, "probe") !== null : false;
+  const canFreeze = doc ? freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS) !== null : false;
 
   return (
     <div className="editor-window">
@@ -450,27 +461,60 @@ export function EditorApp() {
             <button
               type="button"
               className="btn"
+              onClick={handleFreeze}
+              disabled={!canFreeze}
+              title="Hold the frame under the playhead as its own clip"
+            >
+              Freeze
+            </button>
+            <button
+              type="button"
+              className="btn"
               onClick={() => selectedId && commit(removeClip(doc.clips, selectedId))}
               disabled={!selectedId}
               title="Delete the selected clip (⌫)"
             >
               Delete
             </button>
-            <select
-              className="select editor-speed"
-              value={selectedClip?.speed ?? 1}
-              disabled={!selectedClip}
-              onChange={(e) =>
-                selectedId && commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
-              }
-              title="Playback speed of the selected clip"
-            >
-              {SPEED_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}×
-                </option>
-              ))}
-            </select>
+            {selectedClip?.holdMs !== undefined ? (
+              <label className="editor-hold" title="Freeze length in seconds">
+                Hold
+                <input
+                  key={`${selectedClip.id}:${selectedClip.holdMs}`}
+                  className="editor-hold-input"
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  defaultValue={Number((selectedClip.holdMs / 1000).toFixed(1))}
+                  onBlur={(e) => {
+                    const s = Number(e.currentTarget.value);
+                    if (Number.isFinite(s) && s > 0 && selectedId) {
+                      commit(setClipHold(doc.clips, selectedId, Math.round(s * 1000)));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                />
+                s
+              </label>
+            ) : (
+              <select
+                className="select editor-speed"
+                value={selectedClip?.speed ?? 1}
+                disabled={!selectedClip}
+                onChange={(e) =>
+                  selectedId && commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
+                }
+                title="Playback speed of the selected clip"
+              >
+                {SPEED_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}×
+                  </option>
+                ))}
+              </select>
+            )}
             <span className="spacer" />
             <span className="muted editor-timecode">
               {(playheadMs / 1000).toFixed(2)}s / {(totalMs / 1000).toFixed(2)}s

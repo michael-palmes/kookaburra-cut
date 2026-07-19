@@ -9,8 +9,9 @@ function effectiveSpeed(speed: number): number {
   return speed > 0 ? speed : 1;
 }
 
-/** A clip's duration on the timeline: its source span retimed by speed. */
+/** A clip's duration on the timeline: its source span retimed by speed; a freeze holds one source frame for `holdMs`. */
 export function clipTimelineMs(clip: EditClip): number {
+  if (clip.holdMs !== undefined) return Math.max(0, clip.holdMs);
   return Math.max(0, clip.outMs - clip.inMs) / effectiveSpeed(clip.speed);
 }
 
@@ -39,8 +40,9 @@ export function clipIndexAt(clips: EditClip[], tMs: number): number {
   return -1;
 }
 
-/** Source time at timeline time t inside `clip` (clamped to the clip's source span). */
+/** Source time at timeline time t inside `clip` (clamped to the clip's source span); a freeze always reads its pinned frame. */
 export function timelineToSource(clip: EditClip, tMs: number): number {
+  if (clip.holdMs !== undefined) return clip.inMs;
   const offset = (tMs - clip.startMs) * effectiveSpeed(clip.speed);
   return Math.min(clip.outMs, Math.max(clip.inMs, clip.inMs + offset));
 }
@@ -50,6 +52,7 @@ export function splitAt(clips: EditClip[], tMs: number, newId: string): EditClip
   const i = clipIndexAt(clips, tMs);
   if (i < 0) return null;
   const clip = clips[i];
+  if (clip.holdMs !== undefined) return null; // a freeze has one frame, nothing to split
   const srcSplit = Math.round(clip.inMs + (tMs - clip.startMs) * effectiveSpeed(clip.speed));
   if (srcSplit - clip.inMs < MIN_CLIP_SOURCE_MS || clip.outMs - srcSplit < MIN_CLIP_SOURCE_MS) {
     return null;
@@ -74,15 +77,19 @@ export function moveClip(clips: EditClip[], from: number, to: number): EditClip[
 
 export function setClipSpeed(clips: EditClip[], id: string, speed: number): EditClip[] {
   return relayout(
-    clips.map((clip) => (clip.id === id ? { ...clip, speed: effectiveSpeed(speed) } : clip)),
+    clips.map((clip) =>
+      clip.id === id && clip.holdMs === undefined
+        ? { ...clip, speed: effectiveSpeed(speed) }
+        : clip,
+    ),
   );
 }
 
-/** Move a clip's in-point (left trim), clamped to [0, outMs - floor]. */
+/** Move a clip's in-point (left trim), clamped to [0, outMs - floor]; freezes have no span to trim. */
 export function trimClipIn(clips: EditClip[], id: string, inMs: number): EditClip[] {
   return relayout(
     clips.map((clip) =>
-      clip.id === id
+      clip.id === id && clip.holdMs === undefined
         ? {
             ...clip,
             inMs: Math.max(0, Math.min(Math.round(inMs), clip.outMs - MIN_CLIP_SOURCE_MS)),
@@ -92,7 +99,7 @@ export function trimClipIn(clips: EditClip[], id: string, inMs: number): EditCli
   );
 }
 
-/** Move a clip's out-point (right trim), clamped to [inMs + floor, source duration]. */
+/** Move a clip's out-point (right trim), clamped to [inMs + floor, source duration]; freezes have no span to trim. */
 export function trimClipOut(
   clips: EditClip[],
   id: string,
@@ -101,7 +108,7 @@ export function trimClipOut(
 ): EditClip[] {
   return relayout(
     clips.map((clip) =>
-      clip.id === id
+      clip.id === id && clip.holdMs === undefined
         ? {
             ...clip,
             outMs: Math.min(
@@ -109,6 +116,47 @@ export function trimClipOut(
               Math.max(Math.round(outMs), clip.inMs + MIN_CLIP_SOURCE_MS),
             ),
           }
+        : clip,
+    ),
+  );
+}
+
+/** Minimum freeze length: one comfortable beat, and safely clear of zero. */
+export const MIN_HOLD_MS = 100;
+
+/** Insert a freeze of the frame under t: splits the containing clip there (or slips in at its edge when a half would fall under the source floor) and holds that frame for `holdMs`. Null when t misses every clip or lands on an existing freeze. */
+export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditClip[] | null {
+  const i = clipIndexAt(clips, tMs);
+  if (i < 0) return null;
+  const clip = clips[i];
+  if (clip.holdMs !== undefined) return null;
+  const src = Math.round(timelineToSource(clip, tMs));
+  const freeze: EditClip = {
+    id: nextClipId(clips),
+    sourceId: clip.sourceId,
+    inMs: src,
+    outMs: src,
+    speed: 1,
+    holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)),
+    startMs: 0,
+  };
+  if (src - clip.inMs < MIN_CLIP_SOURCE_MS) {
+    return relayout([...clips.slice(0, i), freeze, ...clips.slice(i)]);
+  }
+  if (clip.outMs - src < MIN_CLIP_SOURCE_MS) {
+    return relayout([...clips.slice(0, i + 1), freeze, ...clips.slice(i + 1)]);
+  }
+  const left = { ...clip, outMs: src };
+  const right = { ...clip, id: nextClipId([...clips, freeze]), inMs: src };
+  return relayout([...clips.slice(0, i), left, freeze, right, ...clips.slice(i + 1)]);
+}
+
+/** Retime a freeze clip; non-freezes are untouched. */
+export function setClipHold(clips: EditClip[], id: string, holdMs: number): EditClip[] {
+  return relayout(
+    clips.map((clip) =>
+      clip.id === id && clip.holdMs !== undefined
+        ? { ...clip, holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)) }
         : clip,
     ),
   );

@@ -18,6 +18,8 @@ export interface EditClip {
   outMs: number;
   speed: number;
   startMs: number;
+  /** Freeze frame: hold the source frame at `inMs` (== `outMs`) for this long on the timeline. */
+  holdMs?: number;
 }
 
 export interface EditSettings {
