@@ -1,14 +1,23 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
 import { useClockStore } from "../engine/clock";
 import { CAMERA } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
+import { defaultOrbitPose } from "../engine/sceneCamera";
 import type { CameraDoc } from "../engine/sceneCameraEdit";
-import { nearestKey, playheadDriftTarget, setKeyPose } from "../engine/sceneCameraEdit";
+import {
+  nearestKey,
+  panCentreSnap,
+  playheadDriftTarget,
+  setKeyPose,
+} from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose } from "../engine/sceneDocSchema";
 import { useCameraDoc } from "./cameraDoc";
 
-/** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held mid-drag (⌘ pan, ⌃ zoom) rebase the drag from the current pose so the tool switch never jumps; ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. */
+/** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held (⌘ pan, ⌃ zoom, ⌥ orbit) swap the cursor while hovering and rebase mid-drag from the current pose so the tool switch never jumps; ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. Pan drags snap gently to the scene centre (guide lines flash while captured). */
+
+/** Pointer distance within which a pan drag captures onto the scene centre, per axis. */
+const CENTRE_SNAP_PX = 8;
 
 interface ToolDrag {
   keyId: string;
@@ -19,9 +28,13 @@ interface ToolDrag {
   startY: number;
 }
 
-/** The tool this event wants: ⌘ = pan, ⌃ = zoom, else whatever is armed. */
-function effectiveTool(e: React.PointerEvent, armed: CameraTool): CameraTool {
-  return e.metaKey ? "pan" : e.ctrlKey ? "zoom" : armed;
+/** The tool the held modifiers want: ⌘ = pan, ⌃ = zoom, ⌥ = orbit, else null. */
+function modifierTool(e: {
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+}): CameraTool | null {
+  return e.metaKey ? "pan" : e.ctrlKey ? "zoom" : e.altKey ? "rotate" : null;
 }
 
 export function CameraToolOverlay({
@@ -40,9 +53,29 @@ export function CameraToolOverlay({
     onDocChanged,
   );
   const [drag, setDrag] = useState<ToolDrag | null>(null);
+  const [guides, setGuides] = useState({ v: false, h: false });
+  const [heldTool, setHeldTool] = useState<CameraTool | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  // Cursor feedback while a modifier is held, before any drag starts.
+  useEffect(() => {
+    const update = (e: KeyboardEvent) => setHeldTool(modifierTool(e));
+    const clear = () => setHeldTool(null);
+    window.addEventListener("keydown", update);
+    window.addEventListener("keyup", update);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", update);
+      window.removeEventListener("keyup", update);
+      window.removeEventListener("blur", clear);
+    };
+  }, []);
+
   if (!armedTool) return null;
+
+  function setGuideState(v: boolean, h: boolean) {
+    setGuides((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
+  }
 
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0 || !armedTool) return;
@@ -68,7 +101,7 @@ export function CameraToolOverlay({
     }
     setDrag({
       keyId: key.id,
-      tool: effectiveTool(e, armedTool),
+      tool: modifierTool(e) ?? armedTool,
       origPose: { ...key.pose, target: [...key.pose.target] },
       origCamera: cam,
       startX: e.clientX,
@@ -82,7 +115,7 @@ export function CameraToolOverlay({
     const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return;
     // A modifier change mid-drag rebases the drag on the current pose; reinterpreting the accumulated delta under a new tool would jump.
-    const want = effectiveTool(e, armedTool);
+    const want = modifierTool(e) ?? armedTool;
     let base = drag;
     if (want !== drag.tool) {
       const key = camera.keys.find((k) => k.id === drag.keyId);
@@ -98,16 +131,23 @@ export function CameraToolOverlay({
     }
     const dx = e.clientX - base.startX;
     const dy = e.clientY - base.startY;
-    const next = setKeyPose(
-      base.origCamera,
-      base.keyId,
-      dragPose(base.tool, base.origPose, dx, dy, rect.width, rect.height),
-    );
+    let pose = dragPose(base.tool, base.origPose, dx, dy, rect.width, rect.height);
+    if (base.tool === "pan") {
+      // Keynote-style centre capture: light (a few pixels' worth), so it never fights the drag.
+      const worldPerPx = (2 * Math.tan((CAMERA.fov * Math.PI) / 360) * pose.distance) / rect.height;
+      const snap = panCentreSnap(pose, defaultOrbitPose().target, CENTRE_SNAP_PX * worldPerPx);
+      pose = snap.pose;
+      setGuideState(snap.snappedX, snap.snappedY);
+    } else {
+      setGuideState(false, false);
+    }
+    const next = setKeyPose(base.origCamera, base.keyId, pose);
     if (next) preview(next, false);
   }
 
   function onPointerUp() {
     if (!drag) return;
+    setGuideState(false, false);
     void commit(camera);
     setDrag(null);
   }
@@ -116,12 +156,15 @@ export function CameraToolOverlay({
     // biome-ignore lint/a11y/noStaticElementInteractions: a pure drag surface over the canvas — the contextmenu handler only swallows macOS ⌃-click during ⌃-zoom drags
     <div
       ref={overlayRef}
-      className={`camera-tool-overlay tool-${drag?.tool ?? armedTool}`}
+      className={`camera-tool-overlay tool-${drag?.tool ?? heldTool ?? armedTool}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onContextMenu={(e) => e.preventDefault()}
-    />
+    >
+      {guides.v && <div className="camera-centre-guide v" />}
+      {guides.h && <div className="camera-centre-guide h" />}
+    </div>
   );
 }
 

@@ -3384,6 +3384,38 @@ body {
   z-index: 6;
 }
 
+/* Centre guide lines while a pan drag is captured on the scene centre (Keynote yellow). */
+.camera-centre-guide {
+  position: absolute;
+  pointer-events: none;
+  background: #ffd60a;
+  box-shadow: 0 0 6px rgba(255, 214, 10, 0.55);
+  animation: centre-guide-in var(--dur-base) var(--ease-standard);
+}
+
+.camera-centre-guide.v {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+}
+
+.camera-centre-guide.h {
+  top: calc(50% - 0.5px);
+  right: 0;
+  left: 0;
+  height: 1px;
+}
+
+@keyframes centre-guide-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .tool-pan {
   cursor: grab;
 }

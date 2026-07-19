@@ -8,6 +8,7 @@ import {
   moveSegment,
   nearestKey,
   nextKeyId,
+  panCentreSnap,
   playheadDriftTarget,
   removeKey,
   removeSegment,
@@ -207,5 +208,57 @@ describe("playheadDriftTarget", () => {
     expect(playheadDriftTarget(doc(), 950)).toBeNull();
     expect(playheadDriftTarget(doc(), 0)).toBeNull();
     expect(playheadDriftTarget(doc(), 1800)).toBeNull();
+  });
+});
+
+describe("panCentreSnap", () => {
+  const centre = [0, 0, 0] as const;
+
+  it("captures both axes when the target sits within the threshold", () => {
+    const snap = panCentreSnap(pose({ target: [0.05, -0.03, 0] }), centre, 0.1);
+    expect(snap.snappedX).toBe(true);
+    expect(snap.snappedY).toBe(true);
+    expect(snap.pose.target[0]).toBeCloseTo(0);
+    expect(snap.pose.target[1]).toBeCloseTo(0);
+  });
+
+  it("leaves a target outside the threshold untouched", () => {
+    const p = pose({ target: [2, 1.5, 0] });
+    const snap = panCentreSnap(p, centre, 0.1);
+    expect(snap).toMatchObject({ snappedX: false, snappedY: false });
+    expect(snap.pose).toBe(p);
+  });
+
+  it("captures one axis independently of the other", () => {
+    const snap = panCentreSnap(pose({ target: [0.05, 2, 0] }), centre, 0.1);
+    expect(snap.snappedX).toBe(true);
+    expect(snap.snappedY).toBe(false);
+    expect(snap.pose.target[0]).toBeCloseTo(0);
+    expect(snap.pose.target[1]).toBeCloseTo(2);
+  });
+
+  it("never touches the view-axis (depth) component", () => {
+    // Azimuth 90°: the camera looks along -X, so world X is depth and world Z is screen-right.
+    const snap = panCentreSnap(pose({ target: [1.5, 0.02, -0.04], azimuthDeg: 90 }), centre, 0.1);
+    expect(snap.snappedX).toBe(true);
+    expect(snap.snappedY).toBe(true);
+    expect(snap.pose.target[0]).toBeCloseTo(1.5);
+    expect(snap.pose.target[1]).toBeCloseTo(0);
+    expect(snap.pose.target[2]).toBeCloseTo(0);
+  });
+
+  it("projects along the tilted camera plane at non-zero elevation", () => {
+    // Elevation 45°, offset straight up the camera's up axis by 0.05: within threshold, recentres fully.
+    const el = Math.PI / 4;
+    const up = [0, Math.cos(el), -Math.sin(el)] as const;
+    const snap = panCentreSnap(
+      pose({ target: [up[0] * 0.05, up[1] * 0.05, up[2] * 0.05], elevationDeg: 45 }),
+      centre,
+      0.1,
+    );
+    expect(snap.snappedY).toBe(true);
+    expect(snap.pose.target[0]).toBeCloseTo(0);
+    expect(snap.pose.target[1]).toBeCloseTo(0);
+    expect(snap.pose.target[2]).toBeCloseTo(0);
   });
 });
