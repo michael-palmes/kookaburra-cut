@@ -1,10 +1,11 @@
 ---
 description: Scaffold a new Kookaburra Cut scene (TSX + sidecar doc) and register it in its project.json
-argument-hint: <project> <scene-name> [device|title|blank]
+argument-hint: <project> <scene-name> [device|title|appversion|blank]
 ---
 
 Create a new scene for the Kookaburra Cut project `$1` named `$2`, of kind `$3` (default `device` if the
-user mentions a device/media, else `title`; `blank` only when asked).
+user mentions a device/media, `appversion` for an app icon + version lockup, else `title`;
+`blank` only when asked).
 
 The app's native scaffolder (`scaffold_scene` in `src-tauri/src/scene_doc.rs`) and this
 command emit IDENTICAL scenes from the SAME templates — never invent a different shape.
@@ -22,8 +23,10 @@ Steps:
 4. Write the sidecar `projects/$1/scenes/<stem>.json` per the skill's schema: `version: 1`,
    `name`, `duration` (step 5), `text` — for the title kind seed `title` (the user's copy,
    else `""`) AND `subtitle: ""` (empty strings keep the panel fields visible; TitleBlock
-   recentres); other kinds get a `title` if the user gave copy (`headline` is the legacy
-   key on old scenes; never write it for new ones) — and for the device kind one
+   recentres); for the appversion kind seed `title` (app name, else `"Your App"`) AND
+   `subtitle` (version, else `"1.0"`); other kinds get a `title` if the user gave copy
+   (`headline` is the legacy key on old scenes; never write it for new ones) — and for
+   the device kind one
    `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`, `media` if given, the
    template's default `placement`, `motion`, `shadow`).
 5. Duration: video media → `{ "mode": "follow-media", "sourceDeviceId": "d1" }` and
