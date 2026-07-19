@@ -14,6 +14,7 @@ import { canvasHandle } from "./exportBridge";
 import {
   awaitSceneHostsCommitted,
   type Codec,
+  captureScreenshot,
   type ExportProgress,
   exportProject,
   type FrameDelta,
@@ -22,7 +23,7 @@ import {
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { captureOptionPreviews } from "./optionPreviews";
 import { runPerfProbe } from "./perfProbe";
-import { type LoadedProject, loadProject } from "./project";
+import { type LoadedProject, loadProject, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import {
   awaitProjectCommitted,
@@ -32,7 +33,13 @@ import {
 
 /** Headless auto-run: `pnpm kookaburra:run` sets `KOOKABURRA_*` env vars read via native `get_autorun_config` (process env, not `import.meta.env`, which is baked at build time and unreadable in a packaged app); drives the store then calls the same `verifyDeterminism`/`exportProject` the UI buttons call, so it never bypasses the real WebGL/ffmpeg export path. See docs/determinism.md. */
 
-export type AutoRunAction = "verify" | "export" | "theme-previews" | "option-previews" | "perf";
+export type AutoRunAction =
+  | "verify"
+  | "export"
+  | "theme-previews"
+  | "option-previews"
+  | "perf"
+  | "screenshot";
 
 export interface AutoRunConfig {
   action: AutoRunAction;
@@ -45,6 +52,10 @@ export interface AutoRunConfig {
   codec: Codec;
   /** Output filename suffix: the preset id (`ws:` prefix stripped) or "custom" for --encode-json. Absent means the legacy name. */
   outputSuffix?: string;
+  /** screenshot: scene selector (index or file stem); absent means project-global time. */
+  scene?: string;
+  /** screenshot: seconds into the scene (or the project when no scene is given). */
+  atSeconds?: number;
 }
 
 /** A single aspect's outcome: determinism digests (verify) or the output path (export). */
@@ -119,6 +130,8 @@ interface AutoRunEnv {
   codec: string | null;
   preset: string | null;
   encodeJson: string | null;
+  scene: string | null;
+  at: string | null;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -147,6 +160,8 @@ export async function initAutoRunConfig(): Promise<void> {
       codec: null,
       preset: null,
       encodeJson: null,
+      scene: null,
+      at: null,
     };
   }
 }
@@ -161,11 +176,17 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "export" &&
     action !== "theme-previews" &&
     action !== "option-previews" &&
-    action !== "perf"
+    action !== "perf" &&
+    action !== "screenshot"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot)`,
     );
+  }
+  const at = env.at?.trim();
+  const atSeconds = at ? Number(at) : undefined;
+  if (at && !Number.isFinite(atSeconds)) {
+    throw new Error(`invalid KOOKABURRA_AT "${at}" (expected seconds)`);
   }
   // The encode spec: --preset resolves through the bundled registry; --encode-json carries the spec inline (the wrapper cats the file, no fs scopes).
   let encode: EncodeSpec | undefined;
@@ -191,17 +212,19 @@ export function getAutoRunConfig(): AutoRunConfig | null {
         : action === "option-previews"
           ? "preview-lab"
           : useEditorStore.getState().projectId),
-    // --preset without --aspect exports the preset's favoured aspect; perf defaults to one 16:9 pass.
+    // --preset without --aspect exports the preset's favoured aspect; perf and screenshot default to one 16:9 pass.
     aspects:
       preset && !env.aspect?.trim()
         ? [FORMATS[preset.favouredAspect]]
-        : action === "perf" && !env.aspect?.trim()
+        : (action === "perf" || action === "screenshot") && !env.aspect?.trim()
           ? [FORMATS["16:9"]]
           : parseAspects(env.aspect ?? undefined),
     codec: parseCodec(env.codec ?? undefined),
     encode,
     loudnessTarget: preset?.audio.loudnessTarget,
     outputSuffix,
+    scene: env.scene?.trim() || undefined,
+    atSeconds,
   };
 }
 
@@ -337,6 +360,65 @@ export async function runAutoRun(
       await awaitSceneHostsCommitted(project.slots.length);
       const rows = await runPerfProbe(project);
       for (const row of rows) results.push({ aspect: format.name, ...row });
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "screenshot") {
+    // One deterministic frame via the export path, written as a PNG under _autorun/.
+    try {
+      const format = config.aspects[0];
+      useEditorStore.getState().setFormat(format);
+      await nextCommit();
+      // --scene picks a slot (midpoint default); --at is seconds into it, or into the project without one.
+      let tMs: number;
+      if (config.scene !== undefined) {
+        const idx = /^\d+$/.test(config.scene)
+          ? Number(config.scene)
+          : project.sceneFiles.findIndex((f) => sceneFileStem(f) === config.scene);
+        const slot = project.slots[idx];
+        if (!slot) {
+          throw new Error(
+            `unknown KOOKABURRA_SCENE "${config.scene}" (expected a scene index 0-${project.slots.length - 1} or file stem)`,
+          );
+        }
+        const local =
+          config.atSeconds !== undefined ? config.atSeconds * 1000 : slot.durationMs / 2;
+        tMs = slot.startMs + Math.min(Math.max(0, local), Math.max(0, slot.durationMs - 1));
+      } else {
+        const t = (config.atSeconds ?? 0) * 1000;
+        tMs = Math.min(Math.max(0, t), Math.max(0, project.totalMs - 1));
+      }
+      const name = `screenshot-${project.id.replace(/^ws:/, "")}-${Math.round(tMs)}ms-${format.name.replace(":", "x")}`;
+      const path = await captureScreenshot(
+        {
+          projectId: project.id,
+          fps: FPS,
+          durationMs: project.totalMs,
+          slots: project.slots,
+          cameraTrack: project.cameraTrack,
+          sceneDocs: project.sceneDocs,
+          theme: project.theme,
+          sceneThemes: project.sceneThemes,
+          codec: config.codec,
+          format,
+        },
+        tMs,
+        name,
+      );
+      results.push({ aspect: format.name, path });
     } catch (e) {
       ok = false;
       error = String(e);

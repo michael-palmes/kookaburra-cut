@@ -21,8 +21,14 @@ pnpm format             # biome format --write .
 
 # Terminal-triggered (AFK) Verify ×2 / export: auto-runs in a fresh `pnpm tauri dev`,
 # writes ~/Kookaburra Cut/_autorun/last-run.json, exits 0=ok / 1=fail / 2=setup·timeout.
+# Bundled gate projects take NO prefix (showcase-tour); workspace fixtures take ws:.
 pnpm kookaburra:run --action verify --project ws:launch-2026 --aspect all
 pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:9 --codec libx264
+pnpm gate               # the standard two-leg gate pair (showcase-tour + ws:launch-2026, 16:9)
+
+# SEE a frame without driving the app: one deterministic frame via the export path → PNG
+# (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
+pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).

@@ -473,6 +473,10 @@ struct AutorunEnv {
     preset: Option<String>,
     /// Path to an EncodeSpec JSON file (Claude/CLI custom encodes).
     encode_json: Option<String>,
+    /// screenshot: scene selector (index or file stem).
+    scene: Option<String>,
+    /// screenshot: seconds into the scene (or the project when no scene is given).
+    at: Option<String>,
 }
 
 #[tauri::command]
@@ -490,6 +494,8 @@ fn get_autorun_config() -> AutorunEnv {
         codec: var("KOOKABURRA_CODEC"),
         preset: var("KOOKABURRA_PRESET"),
         encode_json: var("KOOKABURRA_ENCODE_JSON"),
+        scene: var("KOOKABURRA_SCENE"),
+        at: var("KOOKABURRA_AT"),
     }
 }
 
@@ -524,6 +530,108 @@ fn finish_autorun(app: AppHandle, result_json: String, ok: bool) -> Result<(), S
     println!("KOOKABURRA_AUTORUN_RESULT {result_json}");
     app.exit(if ok { 0 } else { 1 });
     Ok(())
+}
+
+/// Geometry + destination stashed by `begin_screenshot` for the raw-body `save_screenshot` that follows.
+struct PendingScreenshot {
+    width: u32,
+    height: u32,
+    out: std::path::PathBuf,
+}
+
+struct ScreenshotState(Mutex<Option<PendingScreenshot>>);
+
+/// Arms a screenshot write under `<workspace>/_autorun/`; autorun-gated (F-009), name sanitised to a bare stem.
+#[tauri::command]
+fn begin_screenshot(
+    app: AppHandle,
+    state: State<'_, ScreenshotState>,
+    width: u32,
+    height: u32,
+    name: String,
+) -> Result<String, String> {
+    let gated = std::env::var("KOOKABURRA_ACTION")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    if !gated {
+        return Err("begin_screenshot is only valid during an auto-run".into());
+    }
+    if width == 0 || height == 0 || width > 8192 || height > 8192 {
+        return Err(format!("implausible screenshot geometry {width}x{height}"));
+    }
+    let stem: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let dir = app
+        .path()
+        .home_dir()
+        .map_err(|e| e.to_string())?
+        .join(workspace::WORKSPACE_DIR_NAME)
+        .join("_autorun");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let out = dir.join(format!("{stem}.png"));
+    let path = out.to_string_lossy().into_owned();
+    *state.0.lock().map_err(|_| "screenshot state poisoned")? =
+        Some(PendingScreenshot { width, height, out });
+    Ok(path)
+}
+
+/// Writes the armed screenshot: one raw RGBA frame (bottom-up, hence vflip) to PNG via the ffmpeg sidecar.
+#[tauri::command]
+async fn save_screenshot(
+    app: AppHandle,
+    state: State<'_, ScreenshotState>,
+    request: tauri::ipc::Request<'_>,
+) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("save_screenshot expects a raw binary body".into());
+    };
+    let pending = state
+        .0
+        .lock()
+        .map_err(|_| "screenshot state poisoned")?
+        .take()
+        .ok_or("no screenshot armed (call begin_screenshot first)")?;
+    let expected = expected_frame_len(pending.width, pending.height);
+    if bytes.len() != expected {
+        return Err(format!(
+            "frame is {} bytes, expected {expected} for {}x{} RGBA",
+            bytes.len(),
+            pending.width,
+            pending.height
+        ));
+    }
+    let raw = pending.out.with_extension("rgba");
+    std::fs::write(&raw, bytes).map_err(|e| e.to_string())?;
+    let result = media::run_sidecar(
+        &app,
+        "ffmpeg",
+        vec![
+            "-y".into(),
+            "-hide_banner".into(),
+            "-loglevel".into(),
+            "error".into(),
+            "-f".into(),
+            "rawvideo".into(),
+            "-pix_fmt".into(),
+            "rgba".into(),
+            "-s".into(),
+            format!("{}x{}", pending.width, pending.height),
+            "-i".into(),
+            raw.to_string_lossy().into_owned(),
+            "-vf".into(),
+            "vflip".into(),
+            "-frames:v".into(),
+            "1".into(),
+            pending.out.to_string_lossy().into_owned(),
+        ],
+        media::SidecarPriority::Foreground,
+    )
+    .await;
+    let _ = std::fs::remove_file(&raw);
+    result?;
+    Ok(pending.out.to_string_lossy().into_owned())
 }
 
 /// Pre-extracts a source video to a deterministic constant-frame-rate PNG sequence for `VideoClip`; frames are cached under `$APPDATA/cache/clips/<sha>-<fps>fps/` keyed by the source-file hash and reused across runs (a `.done` marker guards against a partial extraction being mistaken for a complete one); the sidecar decodes the source, including variable-frame-rate screen recordings, into CFR frames via `fps=` + cfr.
@@ -775,6 +883,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
+        .manage(ScreenshotState(Mutex::new(None)))
         .manage(concurrency::BackgroundLimiter::default())
         .manage(workspace::SettingsState::default())
         .manage(updater::PendingUpdate::default())
@@ -935,6 +1044,8 @@ pub fn run() {
             reveal_in_finder,
             get_autorun_config,
             finish_autorun,
+            begin_screenshot,
+            save_screenshot,
             workspace::get_settings,
             workspace::init_workspace,
             workspace::list_projects,
