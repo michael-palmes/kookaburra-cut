@@ -68,6 +68,7 @@ export function ScenesDrillIn({
 
   function onRowPointerDown(e: React.PointerEvent, index: number) {
     if (busy || e.button !== 0) return;
+    e.preventDefault(); // suppress the compatibility mousedown, else the drag sweeps a text selection across the panel
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ index, startY: e.clientY, insertBefore: null });
   }
