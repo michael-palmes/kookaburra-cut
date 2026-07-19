@@ -11,10 +11,12 @@
 #   pnpm kookaburra:run --action theme-previews          # regenerate src/assets/theme-previews/
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
 #
-# Flags:  --action verify|export|theme-previews|option-previews (required)
+# Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot (required)
 #         --project <id>           (default: the app's default project; theme-previews →
 #                  theme-starter, option-previews → preview-lab)
-#         --aspect 16:9|9:16|1:1|all (default: all)
+#         --aspect 16:9|9:16|1:1|all (default: all; perf and screenshot default to 16:9)
+#         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
+#         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene)
 #         --codec  libx264|h264_videotoolbox|prores_ks (default: libx264)
 #         --preset <id>  export through a bundled/user export preset (v11 · M7);
 #                  without --aspect, the preset's favoured aspect is used
@@ -46,13 +48,15 @@ while [[ $# -gt 0 ]]; do
     --codec)  CODEC="${2:-}";  shift 2 ;;
     --preset) PRESET="${2:-}"; shift 2 ;;
     --encode-json) ENCODE_JSON="${2:-}"; shift 2 ;;
+    --scene)  SCENE="${2:-}";  shift 2 ;;
+    --at)     AT="${2:-}";     shift 2 ;;
     --app)    APP="${2:-}";    shift 2 ;;
     *) echo "kookaburra:run: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews' or 'perf'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf' or 'screenshot'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -116,6 +120,8 @@ fi
 export KOOKABURRA_CODEC="$CODEC"
 [ -n "${PRESET:-}" ] && export KOOKABURRA_PRESET="$PRESET"
 [ -n "${ENCODE_JSON:-}" ] && export KOOKABURRA_ENCODE_JSON="$(cat "$ENCODE_JSON")"
+[ -n "${SCENE:-}" ] && export KOOKABURRA_SCENE="$SCENE"
+[ -n "${AT:-}" ] && export KOOKABURRA_AT="$AT"
 
 echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
 echo "kookaburra:run: dev log → $DEV_LOG"
@@ -164,6 +170,12 @@ echo
 # `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail.
 if ! grep -q '"ok": true' "$RESULT_FILE"; then
   exit 1
+fi
+
+# screenshot: surface the PNG path.
+if [[ "$ACTION" == "screenshot" ]]; then
+  PNG="$(grep -o '"path": "[^"]*"' "$RESULT_FILE" | head -1 | sed 's/"path": "\(.*\)"/\1/')"
+  [[ -n "$PNG" ]] && echo "kookaburra:run: screenshot → $PNG"
 fi
 
 # theme-previews: promote the batch into the repo so the bundled previews can be committed

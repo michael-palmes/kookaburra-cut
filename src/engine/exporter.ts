@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { flushSync } from "react-dom";
-import type { Object3D, PerspectiveCamera, Scene } from "three";
+import type { Object3D, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import { Vector2 } from "three";
 import type { EncodeSpec } from "../export/presetSchema";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
@@ -257,20 +257,8 @@ export function awaitTextSync(scene: Scene): Promise<void> {
  *
  * @returns the output file path reported by the native side.
  */
-export async function exportProject(
-  opts: ExportOptions,
-  onProgress?: (p: ExportProgress) => void,
-  /** Diagnostic hook: called with each captured frame's pixels (the reused buffer) right after readback, before encode. Used by `verifyDeterminism` to hash frames in memory. */
-  onFrame?: (frame: number, rgba: Uint8Array) => void,
-  /** Diagnostic hook: called per frame with the clip-frame index of the texture actually bound on the scene's VideoClip at render time (-1 if none). Lets a failed Verify ×2 distinguish a stale texture bind from a pixel-content difference. */
-  onBoundClipFrame?: (frame: number, boundClipFrame: number) => void,
-  /** Diagnostic hook: called once, after the last frame renders, with the render-state fingerprint (engine/renderFingerprint.ts). */
-  onFingerprint?: (fp: RenderStateFingerprint) => void,
-): Promise<string> {
-  const handle = canvasHandle.current;
-  if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
-  const { gl, scene, camera } = handle;
-
+/** The deterministic preamble shared by exportProject and captureScreenshot; barrier order is pinned (docs/determinism.md). */
+async function exportPreamble(opts: ExportOptions, gl: WebGLRenderer): Promise<void> {
   configureDeterministicEngine();
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
@@ -304,6 +292,23 @@ export async function exportProject(
   await preloadEmojiRasters(opts.projectId, opts.sceneDocs ?? []);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);
+}
+
+export async function exportProject(
+  opts: ExportOptions,
+  onProgress?: (p: ExportProgress) => void,
+  /** Diagnostic hook: called with each captured frame's pixels (the reused buffer) right after readback, before encode. Used by `verifyDeterminism` to hash frames in memory. */
+  onFrame?: (frame: number, rgba: Uint8Array) => void,
+  /** Diagnostic hook: called per frame with the clip-frame index of the texture actually bound on the scene's VideoClip at render time (-1 if none). Lets a failed Verify ×2 distinguish a stale texture bind from a pixel-content difference. */
+  onBoundClipFrame?: (frame: number, boundClipFrame: number) => void,
+  /** Diagnostic hook: called once, after the last frame renders, with the render-state fingerprint (engine/renderFingerprint.ts). */
+  onFingerprint?: (fp: RenderStateFingerprint) => void,
+): Promise<string> {
+  const handle = canvasHandle.current;
+  if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
+  const { gl, scene, camera } = handle;
+
+  await exportPreamble(opts, gl);
 
   const { width, height } = opts.format;
   const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
@@ -411,6 +416,76 @@ export async function exportProject(
   } catch (err) {
     await invoke("cancel_export").catch(() => {});
     throw err;
+  } finally {
+    setExporting(false);
+    setClipLane(everydayClipLane());
+    gl.setPixelRatio(prevPixelRatio);
+    gl.setSize(prevSize.x, prevSize.y, false);
+    if (cam.isPerspectiveCamera) {
+      cam.aspect = prevAspect;
+      cam.updateProjectionMatrix();
+    }
+    flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+  }
+}
+
+/** Renders one deterministic frame at tMs through the export path and writes it as <workspace>/_autorun/<name>.png. */
+export async function captureScreenshot(
+  opts: ExportOptions,
+  tMs: number,
+  name: string,
+): Promise<string> {
+  const handle = canvasHandle.current;
+  if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
+  const { gl, scene, camera } = handle;
+
+  await exportPreamble(opts, gl);
+
+  const { width, height } = opts.format;
+  const ctx = gl.getContext();
+  const rgba = new Uint8Array(width * height * 4);
+
+  // Snapshot preview state to restore when the capture ends (the export loop's contract).
+  const prevSize = gl.getSize(new Vector2());
+  const prevPixelRatio = gl.getPixelRatio();
+  const prevClockMs = useClockStore.getState().currentMs;
+  const cam = camera as PerspectiveCamera;
+  const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
+
+  gl.setPixelRatio(1);
+  gl.setSize(width, height, false);
+  if (cam.isPerspectiveCamera) {
+    cam.aspect = width / height;
+    cam.updateProjectionMatrix();
+  }
+
+  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const sceneStates =
+    opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
+  if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
+    applyCameraPose(cam, baseCameraPose());
+  }
+
+  setExporting(true);
+  try {
+    // One iteration of the export loop's frame block, barrier for barrier.
+    flushSync(() => useClockStore.getState().setCurrentMs(tMs));
+    await awaitCanvasClockCommit(tMs);
+    await awaitVideoFramesReady(scene);
+    await awaitTextSync(scene);
+    await awaitEmojiRastersIdle();
+    if (cam.isPerspectiveCamera && cam.aspect !== width / height) {
+      cam.aspect = width / height;
+      cam.updateProjectionMatrix();
+    }
+    const resolved = resolveAt(opts.slots, tMs);
+    const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
+    if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
+    const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+    renderComposited(gl, scene, camera, getSceneHosts(), resolved, plan ?? undefined, statePlan);
+    ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
+    await invoke("begin_screenshot", { width, height, name });
+    return await invoke<string>("save_screenshot", rgba);
   } finally {
     setExporting(false);
     setClipLane(everydayClipLane());

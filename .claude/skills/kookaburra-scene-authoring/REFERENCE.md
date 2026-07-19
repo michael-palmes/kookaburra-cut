@@ -47,12 +47,18 @@ normally and simply shows no editing affordances.
                                              // legacy single-line key on pre-v13 device scenes
   "textLayout": { "align": "center" },       // left|center|right — consumed by TitleBlock;
                                              // inert on scenes that position text by hand
-  "textStyle": { "titleColor": "#e8f0ff", "subtitleColor": "#9aa4b5" },
-                                             // raw-hex fills keyed <textKey>Color, the one
-                                             // exception to "colours stay tokens": consumed by any
-                                             // text primitive given the matching textKey (TitleBlock
-                                             // owns title/subtitle); inert keys are harmless
-                                             // (the textLayout pattern)
+  "textStyle": {                             // per-element overrides, keyed <textKey><Suffix>:
+    "titleColor": "#e8f0ff",                 //   Color: raw hex fill
+    "titleFont": "Avenir Next@600",          //   Font: "Family" or "Family@weight"; any Font Book
+                                             //   family, pinned into ~/Kookaburra Cut/fonts/ on
+                                             //   first use so exports never drift
+    "titleSize": 1.25,                       //   Size: multiplier of the element's default (1 = as designed;
+                                             //   multiplies, so portrait/landscape defaults survive)
+    "titleOffsetX": 0.4, "titleOffsetY": -0.2, // OffsetX/Y: world-unit nudges from the scene's layout
+    "subtitleColor": "#9aa4b5"
+  },                                         // consumed by any text primitive given the matching
+                                             // textKey (TitleBlock owns title/subtitle); inert
+                                             // keys are harmless (the textLayout pattern)
   "devices": [                               // array from day one — UI edits [0]
     {
       "id": "d1",                            // stable per-scene id
@@ -243,7 +249,12 @@ Staging toggle writes `backdrop: {type:"none"}` to reveal image/video fills):
 ```
 
 Typography is `FontRef {family, weight}` resolved through the bundled OFL registry →
-workspace-pinned system fonts (auto-pinned by copy on first project load) → Inter. Theme
+workspace-pinned system fonts (auto-pinned by copy on first project load) → Inter. ANY
+family installed in Font Book works, at the theme level (`typography.headline`/`body`) or
+per text element (sidecar `<textKey>Font`): the first reference copies the exact face into
+`~/Kookaburra Cut/fonts/` (variable fonts instanced static), so projects stay portable and
+exports never follow a macOS font update; if a pinned file goes missing it re-pins by
+installed name, and an uninstalled family warns and falls back to Inter. Theme
 `textAnimation` (`{in, out, staggerMs, stagger?, startScale?, shine?, direction?,
 delivery?}`) drives AnimatedHeadline's default preset path — see Text primitives. Fonts note: troika shares ONE SDF atlas across all
 fonts and `preloadAppFonts` claims cells SEQUENTIALLY in canonical order — adding or

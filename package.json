@@ -36,6 +36,7 @@
     "assets:text3d-font": "node scripts/prepare-text3d-font.mjs",
     "assets:emoji-fonts": "node scripts/prepare-emoji-fonts.mjs",
     "kookaburra:run": "bash scripts/kookaburra-run.sh",
+    "gate": "bash scripts/gate.sh",
     "package:dmg": "bash scripts/make-dmg.sh",
     "package:signed": "bash scripts/sign-and-notarize.sh",
     "release": "bash scripts/release.sh",
