@@ -448,13 +448,14 @@ export function Timeline({
               const meta = metas[clip.sourceId] ?? null;
               const speed = effectiveSpeed(clip.speed);
               const name = (source?.rel ?? clip.sourceId).replace(/^assets\//, "");
+              const frozen = clip.holdMs !== undefined;
               return (
                 // biome-ignore lint/a11y/useSemanticElements: a real <button> won't paint img children in WKWebView
                 <div
                   key={stable.id}
                   role="button"
                   tabIndex={0}
-                  className={`timeline-clip${clip.id === selectedId ? " selected" : ""}${block.dragging ? " dragging" : ""}`}
+                  className={`timeline-clip${clip.id === selectedId ? " selected" : ""}${block.dragging ? " dragging" : ""}${frozen ? " frozen" : ""}`}
                   style={{ left: PAD_L + block.x, width: Math.max(4, block.w) }}
                   onPointerDown={(e) => {
                     e.stopPropagation();
@@ -470,7 +471,7 @@ export function Timeline({
                     }
                   }}
                 >
-                  {meta && meta.scrubPaths.length > 0 && source && (
+                  {meta && !frozen && meta.scrubPaths.length > 0 && source && (
                     <div
                       className="timeline-film"
                       aria-hidden
@@ -485,23 +486,27 @@ export function Timeline({
                     </div>
                   )}
                   <span className="timeline-clip-label">
-                    {name}
-                    {speed !== 1 ? ` · ${Number(speed.toFixed(2))}×` : ""}
+                    {frozen ? `❄ ${name}` : name}
+                    {!frozen && speed !== 1 ? ` · ${Number(speed.toFixed(2))}×` : ""}
                   </span>
-                  <div
-                    className="timeline-handle left"
-                    onPointerDown={(e) => onTrimPointerDown(e, clip.id, "trim-in")}
-                    onPointerMove={onTrimPointerMove}
-                    onPointerUp={onTrimPointerUp}
-                    onPointerCancel={cancelDrag}
-                  />
-                  <div
-                    className="timeline-handle right"
-                    onPointerDown={(e) => onTrimPointerDown(e, clip.id, "trim-out")}
-                    onPointerMove={onTrimPointerMove}
-                    onPointerUp={onTrimPointerUp}
-                    onPointerCancel={cancelDrag}
-                  />
+                  {!frozen && (
+                    <>
+                      <div
+                        className="timeline-handle left"
+                        onPointerDown={(e) => onTrimPointerDown(e, clip.id, "trim-in")}
+                        onPointerMove={onTrimPointerMove}
+                        onPointerUp={onTrimPointerUp}
+                        onPointerCancel={cancelDrag}
+                      />
+                      <div
+                        className="timeline-handle right"
+                        onPointerDown={(e) => onTrimPointerDown(e, clip.id, "trim-out")}
+                        onPointerMove={onTrimPointerMove}
+                        onPointerUp={onTrimPointerUp}
+                        onPointerCancel={cancelDrag}
+                      />
+                    </>
+                  )}
                 </div>
               );
             })}

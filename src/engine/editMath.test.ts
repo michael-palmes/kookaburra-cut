@@ -4,12 +4,15 @@ import {
   clipIndexAt,
   clipTimelineMs,
   edgeTargetsMs,
+  freezeAt,
   MIN_CLIP_SOURCE_MS,
+  MIN_HOLD_MS,
   moveClip,
   nextClipId,
   nextSourceId,
   relayout,
   removeClip,
+  setClipHold,
   setClipSpeed,
   snapMs,
   splitAt,
@@ -144,5 +147,61 @@ describe("nextClipId / nextSourceId", () => {
   it("continues the s<n> sequence for sources", () => {
     expect(nextSourceId([{ id: "s1" }, { id: "s3" }])).toBe("s4");
     expect(nextSourceId([])).toBe("s1");
+  });
+});
+
+describe("freeze frames", () => {
+  const freeze = (id: string, srcMs: number, holdMs: number, startMs = 0): EditClip => ({
+    id,
+    sourceId: "s1",
+    inMs: srcMs,
+    outMs: srcMs,
+    speed: 1,
+    holdMs,
+    startMs,
+  });
+
+  it("a freeze's timeline duration is its hold, and it always reads its pinned frame", () => {
+    const f = freeze("c2", 700, 2000, 500);
+    expect(clipTimelineMs(f)).toBe(2000);
+    expect(timelineToSource(f, 1600)).toBe(700);
+  });
+
+  it("freezeAt splits the containing clip and holds the frame under the playhead", () => {
+    const next = freezeAt(relayout([clip("c1", 0, 1000)]), 400, 2000);
+    expect(next?.map((c) => c.holdMs)).toEqual([undefined, 2000, undefined]);
+    expect(next?.[1]).toMatchObject({ inMs: 400, outMs: 400 });
+    expect(next?.[0].outMs).toBe(400);
+    expect(next?.[2].inMs).toBe(400);
+    expect(next?.map((c) => c.startMs)).toEqual([0, 400, 2400]);
+  });
+
+  it("freezeAt slips in at a clip edge instead of leaving a sliver", () => {
+    const atStart = freezeAt(relayout([clip("c1", 0, 1000)]), 50, 1000);
+    expect(atStart?.map((c) => c.holdMs)).toEqual([1000, undefined]);
+    const atEnd = freezeAt(relayout([clip("c1", 0, 1000)]), 960, 1000);
+    expect(atEnd?.map((c) => c.holdMs)).toEqual([undefined, 1000]);
+  });
+
+  it("freezeAt refuses off-timeline points and existing freezes", () => {
+    const laid = relayout([clip("c1", 0, 1000)]);
+    expect(freezeAt(laid, 1500, 1000)).toBeNull();
+    const frozen = freezeAt(laid, 400, 1000);
+    expect(frozen && freezeAt(frozen, 500, 1000)).toBeNull();
+  });
+
+  it("setClipHold retimes only freezes, with a floor", () => {
+    const laid = relayout([clip("c1", 0, 1000), freeze("c2", 500, 2000)]);
+    expect(setClipHold(laid, "c2", 3500)[1].holdMs).toBe(3500);
+    expect(setClipHold(laid, "c2", 10)[1].holdMs).toBe(MIN_HOLD_MS);
+    expect(setClipHold(laid, "c1", 3500)[0].holdMs).toBeUndefined();
+  });
+
+  it("split, trim and speed leave freezes untouched", () => {
+    const laid = relayout([freeze("c1", 500, 2000)]);
+    expect(splitAt(laid, 1000, "c9")).toBeNull();
+    expect(trimClipIn(laid, "c1", 100)[0].inMs).toBe(500);
+    expect(trimClipOut(laid, "c1", 900, 5000)[0].outMs).toBe(500);
+    expect(setClipSpeed(laid, "c1", 2)[0].speed).toBe(1);
   });
 });

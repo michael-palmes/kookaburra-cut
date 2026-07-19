@@ -27,7 +27,7 @@ pub struct EditSource {
     pub abs: String,
 }
 
-/// One clip on the single video track: a `[inMs, outMs)` slice of `sourceId`, retimed by `speed`, positioned at `startMs` on the timeline.
+/// One clip on the single video track: a `[inMs, outMs)` slice of `sourceId`, retimed by `speed`, positioned at `startMs` on the timeline. A freeze frame carries `holdMs`: the source frame at `inMs` (== `outMs`) held for that long.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditClip {
@@ -37,6 +37,8 @@ pub struct EditClip {
     pub out_ms: u64,
     pub speed: f64,
     pub start_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold_ms: Option<u64>,
 }
 
 /// Output geometry, taken from the first source when the edit is created, editable later.
@@ -232,6 +234,7 @@ async fn create_default_doc(
             out_ms: probe.duration_ms,
             speed: 1.0,
             start_ms: 0,
+            hold_ms: None,
         }],
     })
 }
@@ -345,10 +348,15 @@ pub fn list_edits(
     Ok(names)
 }
 
-/// Frames an output clip contributes: its retimed duration at the output fps.
+/// Frames an output clip contributes: its retimed duration at the output fps (a freeze contributes its hold).
 fn clip_output_frames(clip: &EditClip, fps: f64) -> u32 {
-    let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
-    let span_ms = clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed;
+    let span_ms = match clip.hold_ms {
+        Some(hold) => hold as f64,
+        None => {
+            let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+            clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed
+        }
+    };
     ((span_ms / 1000.0) * fps).round().max(0.0) as u32
 }
 
@@ -393,11 +401,22 @@ fn build_render_args(doc: &EditDoc, output: &str, hardware: bool) -> Result<(Vec
         let out_s = clip.out_ms as f64 / 1000.0;
         let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
         let label = format!("v{i}");
-        filter.push_str(&format!(
-            "[{idx}:v]trim=start={in_s:.6}:end={out_s:.6},setpts=(PTS-STARTPTS)/{speed},\
-             fps={fps},scale={w}:{h}:force_original_aspect_ratio=decrease,\
-             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
-        ));
+        if let Some(hold_ms) = clip.hold_ms {
+            // Freeze frame: select exactly the frame at inMs, clone it for the hold, then trim to the exact length after fps normalisation.
+            let hold_s = hold_ms as f64 / 1000.0;
+            filter.push_str(&format!(
+                "[{idx}:v]trim=start={in_s:.6}:duration=0.5,select=eq(n\\,0),setpts=PTS-STARTPTS,\
+                 tpad=stop_mode=clone:stop_duration={hold_s:.6},fps={fps},trim=duration={hold_s:.6},\
+                 setpts=PTS-STARTPTS,scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
+            ));
+        } else {
+            filter.push_str(&format!(
+                "[{idx}:v]trim=start={in_s:.6}:end={out_s:.6},setpts=(PTS-STARTPTS)/{speed},\
+                 fps={fps},scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
+            ));
+        }
         labels.push(label);
         total_frames += clip_output_frames(clip, fps);
     }
@@ -589,6 +608,7 @@ mod tests {
                 out_ms: 1000,
                 speed: 1.0,
                 start_ms: 0,
+                hold_ms: None,
             }],
         }
     }
@@ -641,5 +661,26 @@ mod tests {
         .map(|s| s.to_string())
         .collect();
         assert_eq!(args, expected);
+    }
+
+    #[test]
+    fn freeze_clips_clone_one_frame_and_count_hold_frames() {
+        let mut d = doc();
+        d.clips.push(EditClip {
+            id: "c2".into(),
+            source_id: "s1".into(),
+            in_ms: 500,
+            out_ms: 500,
+            speed: 1.0,
+            start_ms: 1000,
+            hold_ms: Some(2000),
+        });
+        let (args, total) = build_render_args(&d, "/out/x.mp4", false).unwrap();
+        assert_eq!(total, 60 + 120); // 1s of source + 2s hold at 60fps
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("select=eq(n\\,0)"));
+        assert!(filter.contains("tpad=stop_mode=clone:stop_duration=2.000000"));
+        assert!(filter.contains("trim=duration=2.000000"));
+        assert!(filter.contains("concat=n=2"));
     }
 }

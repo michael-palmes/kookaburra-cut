@@ -2174,6 +2174,35 @@ body {
   height: var(--control-h-md);
 }
 
+/* The freeze clip's Hold field (replaces the Speed select while one is selected). */
+.editor-hold {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.editor-hold-input {
+  width: 60px;
+  height: var(--control-h-md);
+  padding: 0 8px;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  text-align: right;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+/* A frozen clip: flat slate block, no filmstrip, snowflake label. */
+.timeline-clip.frozen {
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 8px, rgb(255 255 255 / 4%) 8px 16px),
+    var(--surface-recessed);
+}
+
 /* Fixed width so the ▶/⏸ glyph swap doesn't reflow the toolbar. */
 .editor-play {
   width: 44px;
