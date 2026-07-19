@@ -81,11 +81,18 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 - Skill `kookaburra-export-presets`: export preset schema + terminal flows.
 - Skill `kookaburra-release`: sign, notarise, DMG, packaged-parity gate, release flow.
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
+- Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
 
-**Use the `/ps-commit` skill to review and create commits.** It groups changes into clean conventional commits after a light review. Don't hand-roll `git commit` for substantive changes. Do not push unless asked.
+**ALWAYS use the `kookaburra-commit` skill to review and create commits.** It groups changes into clean conventional commits after a light review; never hand-roll `git commit` for substantive changes. Do not push unless asked.
+
+## Writing rules
+
+- **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
+- **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.
+- PR descriptions follow the same rules: short and concise, Australian English, no em dashes.
 
 ## Current state
 
