@@ -1,9 +1,9 @@
 import { defineScene, SceneStage, TitleBlock, useSceneText } from "@kookaburra/toolkit";
 
 /**
- * Theme starter scene 1 — the large title. Text animates with the THEME's preset defaults
+ * Theme starter scene 2, the large title. Text animates with the THEME's preset defaults
  * (`textAnimation`), so this one composition shows each theme's motion signature. Text
- * lives in the sidecar `scenes/01-title.json`; sizing and alignment come from TitleBlock
+ * lives in the sidecar `scenes/02-title.json`; sizing and alignment come from TitleBlock
  * (theme scale + the sidecar's `textLayout`).
  */
 export default defineScene({
