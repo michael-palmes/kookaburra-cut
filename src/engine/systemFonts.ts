@@ -40,9 +40,15 @@ export async function refreshWorkspaceFonts(): Promise<void> {
 export async function ensureThemeFontsPinned(
   themes: readonly (Theme | undefined)[],
 ): Promise<void> {
+  return ensureFontRefsPinned(collectThemeFontRefs(themes));
+}
+
+/** Ref-level core of the auto-pin: also called with sidecar `textStyle.<key>Font` refs (project load and the drill-in's font pick). */
+export async function ensureFontRefsPinned(
+  refs: readonly { family: string; weight: number }[],
+): Promise<void> {
   const resolved = (ref: { family: string; weight: number }) =>
     isBundledFamily(ref.family) || hasPinnedWeight(ref.family, ref.weight);
-  const refs = collectThemeFontRefs(themes);
   if (refs.every(resolved)) return;
   await refreshWorkspaceFonts();
   for (const ref of refs) {

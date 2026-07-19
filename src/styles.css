@@ -4524,6 +4524,71 @@ img.inspector-scene-thumb {
   text-align: center;
 }
 
+/* Per-text-element style row under each Edit-text field: font button + size % + x/y nudges. */
+.text-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.text-style-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: end;
+  padding: 0 6px;
+}
+
+.text-style-fontfield {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.text-style-fontfield .inspector-pose-caption {
+  text-align: center;
+}
+
+.text-style-font {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.text-style-font-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-style-font-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.text-style-font:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.text-style-font.overridden {
+  color: var(--text-primary);
+}
+
+.text-font-reset {
+  align-self: flex-start;
+}
+
 /* The Duration row: label + state + inline seconds field. */
 .inspector-duration-row {
   display: flex;
