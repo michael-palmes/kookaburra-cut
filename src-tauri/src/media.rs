@@ -224,6 +224,52 @@ pub fn import_audio(
     Ok(format!("assets/{name}"))
 }
 
+/// Set the project's app icon: the picked image lands as `assets/app-icon.png`, the canonical path every icon reference uses (BrandLockup's default, hand-authored ImageCards). PNG sources byte-copy; other image types convert via the ffmpeg sidecar. Both write a temp file then rename, so a failed convert never truncates the icon.
+#[tauri::command]
+pub async fn import_app_icon(
+    app: AppHandle,
+    state: State<'_, workspace::SettingsState>,
+    slug: String,
+    source_path: String,
+) -> Result<String, String> {
+    let root = workspace::require_root(&app, &state)?;
+    workspace::validate_slug(&slug)?;
+    let src = std::path::PathBuf::from(&source_path);
+    let ext = extension_of(&src);
+    // gif rides along since the media grid lists it as an image; ffmpeg takes frame one.
+    if !workspace::IMAGE_EXTENSIONS.contains(&ext.as_str()) && ext != "gif" {
+        return Err(format!("unsupported image type .{ext}"));
+    }
+    if !src.is_absolute() || !src.is_file() {
+        return Err(format!("image not found: {source_path}"));
+    }
+    let assets = root.join(&slug).join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    let dest = assets.join("app-icon.png");
+    let tmp = assets.join("app-icon.tmp.png");
+    if ext == "png" {
+        std::fs::copy(&src, &tmp).map_err(|e| format!("copying icon: {e}"))?;
+    } else {
+        let args: Vec<String> = vec![
+            "-y".into(),
+            "-loglevel".into(),
+            "error".into(),
+            "-i".into(),
+            src.to_string_lossy().into_owned(),
+            "-frames:v".into(),
+            "1".into(),
+            tmp.to_string_lossy().into_owned(),
+        ];
+        run_sidecar(&app, "ffmpeg", args, SidecarPriority::Foreground).await?;
+    }
+    // The old icon rides to the Trash (best-effort), so a replacement is recoverable.
+    if dest.is_file() {
+        let _ = workspace::trash_path(&dest);
+    }
+    std::fs::rename(&tmp, &dest).map_err(|e| format!("replacing icon: {e}"))?;
+    Ok("assets/app-icon.png".into())
+}
+
 /// Probe an audio file for the project-soundtrack loader: duration + stream facts only; a file with no audio stream is an error, the loader degrades to a silent project with a warning, never a crash.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

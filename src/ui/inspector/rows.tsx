@@ -90,6 +90,12 @@ export function RowIcon({ id }: { id: string }) {
       </>
     ),
     theme: <path d="M10 3s5 5.5 5 8.5a5 5 0 01-10 0C5 8.5 10 3 10 3z" />,
+    appIcon: (
+      <>
+        <rect x="3.5" y="3.5" width="13" height="13" rx="3.5" />
+        <circle cx="10" cy="10" r="2.4" />
+      </>
+    ),
     aspect: <rect x="3" y="6" width="14" height="8" rx="1.5" />,
     music: (
       <>

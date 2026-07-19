@@ -62,6 +62,7 @@ export function InspectorPanel({
   onThemeEdited,
   themesRefreshKey,
   soundtrackName,
+  onSetAppIcon,
   onSetSoundtrack,
   onRemoveSoundtrack,
   onOpenEditVideo,
@@ -94,6 +95,8 @@ export function InspectorPanel({
   /** Bumped when the ThemeMode modal closes; open drill-ins re-list their choices. */
   themesRefreshKey: number;
   soundtrackName: string | null;
+  /** Make a project image the app icon (`assets/app-icon.png`); App owns the write + reload. */
+  onSetAppIcon: (rel: string) => void;
   onSetSoundtrack: () => void;
   onRemoveSoundtrack: () => void;
   onOpenEditVideo: (sceneIndex: number, mediaRel: string, slot?: "device" | "background") => void;
@@ -236,6 +239,10 @@ export function InspectorPanel({
           setDrillIn("project.theme");
         }
       : undefined,
+    appIcon: () => {
+      setMediaError(null);
+      setDrillIn("project.appIcon");
+    },
     aspect: () => setOpenRow(openRow === "aspect" ? null : "aspect"),
     music: () => setOpenRow(openRow === "music" ? null : "music"),
     playback: () => setOpenRow(openRow === "playback" ? null : "playback"),
@@ -262,7 +269,38 @@ export function InspectorPanel({
         </div>
       )}
 
-      {(tab === "project" || !isWorkspace) && drillIn === "project.media" && isWorkspace ? (
+      {(tab === "project" || !isWorkspace) && drillIn === "project.appIcon" && isWorkspace ? (
+        <div className="inspector-drill">
+          <DrillBack label="Project" onClick={() => setDrillIn(null)} />
+          <div className="inspector-drill-title">App icon</div>
+          <div className="inspector-drill-body">
+            <div className="popover-row">
+              <span className="modal-hint bg-media-hint">
+                Pick an image; it becomes assets/app-icon.png everywhere.
+              </span>
+              <AddMediaButton
+                slug={workspaceSlug(project.id)}
+                kinds={["image"]}
+                onImported={() => setMediaRefresh((n) => n + 1)}
+              />
+            </div>
+            {mediaError && <p className="modal-error">{mediaError}</p>}
+            <div className="inspector-media-host">
+              <MediaBrowser
+                slug={workspaceSlug(project.id)}
+                projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                kinds={["image"]}
+                hideAdd
+                refreshKey={mediaRefreshKey + mediaRefresh}
+                onPick={(rel) => {
+                  setDrillIn(null);
+                  onSetAppIcon(rel);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (tab === "project" || !isWorkspace) && drillIn === "project.media" && isWorkspace ? (
         <div className="inspector-drill">
           <DrillBack label="Project" onClick={() => setDrillIn(null)} />
           <div className="inspector-drill-title">Media library</div>

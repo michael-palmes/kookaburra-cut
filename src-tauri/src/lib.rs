@@ -1033,6 +1033,7 @@ pub fn run() {
             media::delete_media,
             media::rename_media,
             loudness::measure_loudness,
+            media::import_app_icon,
             media::import_audio,
             push_frame,
             finish_export,

@@ -1,4 +1,4 @@
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useLoader, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -13,6 +13,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { TextureLoader } from "three";
 import {
   type AutoRunConfig,
   getAutoRunConfig,
@@ -65,6 +66,8 @@ import {
   listAllProjects,
   loadProject,
   type ProjectListing,
+  resolveAssetPath,
+  resolveAssetUrl,
   sceneFileStem,
   WORKSPACE_PROJECT_PREFIX,
   workspaceProjectPath,
@@ -463,6 +466,27 @@ export default function App() {
   );
   /** Audio types the soundtrack picker accepts; keep in sync with Rust AUDIO_EXTENSIONS. */
   const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg"];
+  /** Make a project image the app icon: the media drill-in picks a rel, the native side converts it over assets/app-icon.png. */
+  async function handleSetAppIcon(pickedRel: string) {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (pickedRel === "assets/app-icon.png") {
+      setToast({ kind: "success", message: "That image is already the app icon" });
+      return;
+    }
+    const slug = workspaceSlug(current.id);
+    try {
+      const source = resolveAssetPath(current.id, pickedRel);
+      const rel = await invoke<string>("import_app_icon", { slug, sourcePath: source });
+      // The icon's URL is stable, so the texture cache would keep serving the old pixels.
+      useLoader.clear(TextureLoader, resolveAssetUrl(current.id, rel));
+      handleTimingChanged();
+      setToast({ kind: "success", message: "App icon updated" });
+    } catch (e) {
+      setToast({ kind: "error", message: `App icon failed: ${String(e)}` });
+    }
+  }
+
   async function handleSetSoundtrack() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
@@ -1790,6 +1814,7 @@ export default function App() {
               onThemeEdited={handleThemeEdited}
               themesRefreshKey={themesRefreshKey}
               soundtrackName={project.audio ? (project.audio.file.split("/").pop() ?? null) : null}
+              onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
               onOpenEditVideo={(i, rel) => void handleOpenEditVideo(i, rel)}

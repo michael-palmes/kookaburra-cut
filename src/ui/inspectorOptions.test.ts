@@ -16,6 +16,7 @@ describe("projectRows (the Project-tab pin)", () => {
       "media",
       "scenes",
       "theme",
+      "appIcon",
       "aspect",
       "music",
       "playback",
