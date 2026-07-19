@@ -64,7 +64,6 @@ export function TerminalPanel({
   cwd,
   scenes,
   theme,
-  exporting,
   getThumbs,
   onProjectChanged,
 }: {
@@ -76,8 +75,6 @@ export function TerminalPanel({
   scenes: WizardSceneInfo[];
   /** The project's theme, for the New-scene wizard's colour swatch defaults. */
   theme: Theme;
-  /** An export/verify is running; warn against concurrent edits. */
-  exporting: boolean;
   /** Lazily capture/fetch scene-picker thumbnails. */
   getThumbs: () => Promise<Record<string, string>>;
   /** A native write changed project.json/scenes; reload the preview immediately. */
@@ -305,12 +302,6 @@ export function TerminalPanel({
 
   return (
     <div className="terminal-panel">
-      {exporting && (
-        <div className="rail-banner" role="status">
-          Export in progress — hold off on edits until it finishes.
-        </div>
-      )}
-
       <div className="rail-actions">
         {/* Scaffold/edit are native, available with no Claude session. */}
         <button

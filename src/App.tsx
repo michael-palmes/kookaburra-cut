@@ -1497,7 +1497,8 @@ export default function App() {
 
       {editorView && (
         <div className="editor-body">
-          {railOpen && project && isWorkspaceProjectId(project.id) && (
+          {/* The rail hides during export (task 24): the live-session registry keeps the PTY and buffer alive through the unmount, so it restores intact when the export ends. */}
+          {railOpen && !exporting && project && isWorkspaceProjectId(project.id) && (
             <aside className="terminal-rail">
               <div className="rail-header">
                 <span className="rail-title">Claude Code</span>
@@ -1525,7 +1526,6 @@ export default function App() {
                   doc: project.sceneDocs[i],
                 }))}
                 theme={project.theme}
-                exporting={exporting}
                 getThumbs={() => ensureSceneThumbs(project)}
                 onProjectChanged={() => {
                   bumpWorkspaceReloadToken();
