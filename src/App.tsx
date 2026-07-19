@@ -463,7 +463,6 @@ export default function App() {
   );
   /** Audio types the soundtrack picker accepts; keep in sync with Rust AUDIO_EXTENSIONS. */
   const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg"];
-
   async function handleSetSoundtrack() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
@@ -1802,6 +1801,10 @@ export default function App() {
               onDeleteScene={(i) => void handleDeleteScene(i)}
               onReorderScenes={handleReorderScenes}
               onDuplicateScenes={handleDuplicateScenes}
+              onRenameScene={(i, name) => void handleRenameScene(i, name)}
+              onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+              onPasteBackground={(i) => void handlePasteBackground(i)}
+              onDuplicateSceneAt={handleDuplicateScene}
             />
           )}
         </div>

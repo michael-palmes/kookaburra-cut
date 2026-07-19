@@ -4609,6 +4609,20 @@ img.inspector-scene-thumb {
   color: var(--text-tertiary);
 }
 
+/* Inline rename/duration inputs swapped into the row (the pb-label-input pattern). */
+.scene-manager-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  font-size: var(--text-sm);
+}
+
+.scene-manager-edit-duration {
+  flex: none;
+  width: 64px;
+  font-size: var(--text-xs);
+}
+
 
 .scene-manager-insert {
   position: absolute;

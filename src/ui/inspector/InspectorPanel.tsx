@@ -13,6 +13,7 @@ import { useUiStore } from "../../store/uiStore";
 import { projectRows } from "../inspectorOptions";
 import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
+import { DuplicateSceneDialog } from "../PlaybackBar";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
@@ -72,6 +73,10 @@ export function InspectorPanel({
   onDeleteScene,
   onReorderScenes,
   onDuplicateScenes,
+  onRenameScene,
+  onSceneDuration,
+  onPasteBackground,
+  onDuplicateSceneAt,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -104,6 +109,14 @@ export function InspectorPanel({
   onReorderScenes: (desired: number[]) => Promise<void>;
   /** Scene manager: duplicate these scenes, each copy landing after its original. */
   onDuplicateScenes: (indices: number[]) => Promise<void>;
+  /** Commit an in-place rename (the host writes `doc.name` + history). */
+  onRenameScene: (index: number, name: string) => void;
+  /** Commit a scene length in ms (the host writes project.json + the manual-mode flip). */
+  onSceneDuration: (index: number, ms: number) => void;
+  /** Write the copied background + staging onto a scene (the host owns the write + history). */
+  onPasteBackground: (index: number) => void;
+  /** Copy one scene to a chosen position (the Duplicate… placement dialog). */
+  onDuplicateSceneAt: (index: number, position?: number) => Promise<void>;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
@@ -182,6 +195,8 @@ export function InspectorPanel({
   const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
   const [themeDraft, setThemeDraft] = useState<string>("");
+  // The Duplicate… placement dialog for the Scenes drill-in's context menu.
+  const [duplicating, setDuplicating] = useState<number | null>(null);
   // The media drill-in: the modal's library, re-homed as a Project-tab sub-panel like Background ▸ Video.
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -319,23 +334,47 @@ export function InspectorPanel({
           {themeMenu.menuElement}
         </div>
       ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
-        <ScenesDrillIn
-          scenes={project.slots.map((slot, i) => ({
-            index: i,
-            name: project.sceneDocs[i]?.name ?? slot.id,
-            durationMs: slot.durationMs,
-          }))}
-          busy={scenesBusy}
-          onBack={() => setDrillIn(null)}
-          onReorder={(desired) => {
-            setScenesBusy(true);
-            void onReorderScenes(desired).finally(() => setScenesBusy(false));
-          }}
-          onDuplicate={(indices) => {
-            setScenesBusy(true);
-            void onDuplicateScenes(indices).finally(() => setScenesBusy(false));
-          }}
-        />
+        <>
+          <ScenesDrillIn
+            scenes={project.slots.map((slot, i) => ({
+              index: i,
+              name: project.sceneDocs[i]?.name ?? slot.id,
+              durationMs: slot.durationMs,
+              hasDoc: !!project.sceneDocs[i],
+            }))}
+            busy={scenesBusy}
+            onBack={() => setDrillIn(null)}
+            onReorder={(desired) => {
+              setScenesBusy(true);
+              void onReorderScenes(desired).finally(() => setScenesBusy(false));
+            }}
+            onDuplicate={(indices) => {
+              setScenesBusy(true);
+              void onDuplicateScenes(indices).finally(() => setScenesBusy(false));
+            }}
+            onRename={onRenameScene}
+            onDuration={onSceneDuration}
+            onDuplicateDialog={setDuplicating}
+            onCopyBackground={(i) => {
+              const doc = project.sceneDocs[i];
+              useUiStore.getState().setBackgroundClipboard({
+                background: doc?.background ? structuredClone(doc.background) : undefined,
+                backdrop: doc?.backdrop ? structuredClone(doc.backdrop) : undefined,
+              });
+            }}
+            onPasteBackground={onPasteBackground}
+            onDelete={onDeleteScene}
+          />
+          {duplicating !== null && (
+            <DuplicateSceneDialog
+              project={project}
+              index={duplicating}
+              sourceName={project.sceneDocs[duplicating]?.name ?? project.slots[duplicating]?.id}
+              onClose={() => setDuplicating(null)}
+              onDuplicate={onDuplicateSceneAt}
+            />
+          )}
+        </>
       ) : tab === "project" || !isWorkspace ? (
         <div className="inspector-rows">
           {rows.map((row) => (
