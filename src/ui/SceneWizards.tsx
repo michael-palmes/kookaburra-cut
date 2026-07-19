@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { fsUrl, type MediaMeta } from "../engine/media";
+import { optionPreviewStill } from "../engine/optionPreviews";
 import {
   moveProjectScene,
   readProjectManifestSnapshot,
@@ -511,18 +512,22 @@ export function NewSceneWizard({
         {step === "type" && (
           <>
             <div className="kind-picker">
-              {KIND_OPTIONS.map((k) => (
-                <button
-                  type="button"
-                  key={k.id}
-                  className={`kind-card${kind === k.id ? " selected" : ""}`}
-                  aria-pressed={kind === k.id}
-                  onClick={() => setKind(k.id)}
-                >
-                  <span className="kind-card-label">{k.label}</span>
-                  <span className="muted">{k.blurb}</span>
-                </button>
-              ))}
+              {KIND_OPTIONS.map((k) => {
+                const preview = optionPreviewStill(`kind-${k.id}`);
+                return (
+                  <button
+                    type="button"
+                    key={k.id}
+                    className={`kind-card${kind === k.id ? " selected" : ""}`}
+                    aria-pressed={kind === k.id}
+                    onClick={() => setKind(k.id)}
+                  >
+                    {preview && <img className="kind-card-preview" src={preview} alt="" />}
+                    <span className="kind-card-label">{k.label}</span>
+                    <span className="muted">{k.blurb}</span>
+                  </button>
+                );
+              })}
             </div>
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onCancel}>
