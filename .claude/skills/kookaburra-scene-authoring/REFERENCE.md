@@ -377,6 +377,29 @@ safe-area alignment. Prefer it over hand-positioning two `AnimatedHeadline`s.
 // `textStyle: { titleColor, subtitleColor }` steers the fills the same way (raw hex).
 ```
 
+### BrandLockup
+
+The app-icon + text hero: icon left, small muted title over a large hero subtitle to its
+right, revealed as ONE unit (fade-scale + a single shine sweep, the `AnimatedGroup`
+mechanism). Scales itself down for square and portrait frames. The theme-starter
+app-version slide is the worked example.
+
+```ts
+<BrandLockup
+  title: string               // useSceneText("title", ...): the small muted label
+  subtitle: string            // useSceneText("subtitle", ...): the hero line (version)
+  icon?: string               // project-relative path; default "assets/app-icon.png"
+  from?: number               // group reveal window (default 200)
+  to?: number                 // (default 1100)
+  position?: [x, y, z]        // offset added after the built-in optical centring
+  iconWidth?: number          // world units, height follows the image (default 1.4)
+  titleColor?: "text" | "muted" | "accent" | string    // beats textStyle.titleColor
+  subtitleColor?: "text" | "muted" | "accent" | string // beats textStyle.subtitleColor
+/>
+// Sidecar: title/subtitle text + textStyle fills work as on TitleBlock. The icon is a
+// plain ImageCard: PNG alpha shapes the corners, and it shines only where it has pixels.
+```
+
 **Emoji and symbols just work** in `AnimatedHeadline`/`AnimatedCounter` text — no special
 syntax. Colour emoji (🚀, ZWJ sequences, skin tones) render as system Apple Color Emoji
 composited in-canvas and animate as one unit under stagger; text-default symbols (→ ✓ ★ ⌘)

@@ -83,6 +83,8 @@ export { SceneStage } from "./stage/SceneStage";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
 // Text primitives
 export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
+// Horizontal app-icon + title/subtitle lockup revealed as one unit.
+export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
 // Text-animation presets: theme `textAnimation` defaults + per-primitive overrides.
 export {
   isTextPresetName,
