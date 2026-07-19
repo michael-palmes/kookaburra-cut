@@ -1,13 +1,18 @@
 import { useRef, useState } from "react";
 import { moveSelection } from "../../engine/sceneOrder";
+import { useUiStore } from "../../store/uiStore";
+import { ContextMenu, type ContextMenuState } from "../ContextMenu";
+import { sceneMenuItems } from "../sceneMenu";
 import { DrillBack } from "./rows";
 
-/** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; Duplicate copies the selection after itself. Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
+/** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; Duplicate copies the selection after itself. Double-click renames in place; right-click opens the shared scene menu (the timeline's). Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
 
 export interface SceneManagerRow {
   index: number;
   name: string;
   durationMs: number;
+  /** The scene has a sidecar document (rename writes `doc.name`). */
+  hasDoc: boolean;
 }
 
 interface DragState {
@@ -25,6 +30,12 @@ export function ScenesDrillIn({
   onBack,
   onReorder,
   onDuplicate,
+  onRename,
+  onDuration,
+  onDuplicateDialog,
+  onCopyBackground,
+  onPasteBackground,
+  onDelete,
 }: {
   scenes: SceneManagerRow[];
   /** An op is in flight; interactions disable rather than queue. */
@@ -32,10 +43,24 @@ export function ScenesDrillIn({
   onBack: () => void;
   onReorder: (desired: number[]) => void;
   onDuplicate: (indices: number[]) => void;
+  /** Commit an in-place rename (the host writes `doc.name` + history). */
+  onRename: (index: number, name: string) => void;
+  /** Commit a scene length in ms (the host writes project.json + the manual-mode flip). */
+  onDuration: (index: number, ms: number) => void;
+  /** Open the placement dialog for one scene (the host mounts DuplicateSceneDialog). */
+  onDuplicateDialog: (index: number) => void;
+  /** Snapshot a scene's background + staging onto the shared clipboard (the host owns the docs). */
+  onCopyBackground: (index: number) => void;
+  onPasteBackground: (index: number) => void;
+  /** Trash-recoverable scene removal (the host reloads; Rust guards the last scene). */
+  onDelete: (index: number) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
+  const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const select = (index: number, e: React.MouseEvent | React.PointerEvent) => {
@@ -67,7 +92,7 @@ export function ScenesDrillIn({
   }
 
   function onRowPointerDown(e: React.PointerEvent, index: number) {
-    if (busy || e.button !== 0) return;
+    if (busy || e.button !== 0 || renaming || timing) return;
     e.preventDefault(); // suppress the compatibility mousedown, else the drag sweeps a text selection across the panel
     e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ index, startY: e.clientY, insertBefore: null });
@@ -103,6 +128,54 @@ export function ScenesDrillIn({
     }
   }
 
+  const startRename = (scene: SceneManagerRow) => {
+    if (busy || !scene.hasDoc) return;
+    setRenaming({ index: scene.index, text: scene.name });
+  };
+
+  const finishRename = (commit: boolean) => {
+    const r = renaming;
+    setRenaming(null);
+    if (!commit || !r) return;
+    const text = r.text.trim();
+    const current = scenes.find((s) => s.index === r.index);
+    if (!text || text === current?.name) return;
+    onRename(r.index, text);
+  };
+
+  const finishTiming = (commit: boolean) => {
+    const t = timing;
+    setTiming(null);
+    if (!commit || !t) return;
+    const seconds = Number(t.text);
+    // The inspector DurationRow's floor: junk and sub-100ms values are dropped silently.
+    if (!Number.isFinite(seconds) || seconds < 0.1) return;
+    const ms = Math.round(seconds * 1000);
+    const current = scenes.find((s) => s.index === t.index);
+    if (ms !== current?.durationMs) onDuration(t.index, ms);
+  };
+
+  const openMenu = (e: React.MouseEvent, scene: SceneManagerRow) => {
+    if (busy) return;
+    e.preventDefault();
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: sceneMenuItems({
+        canRename: scene.hasDoc,
+        lastScene: scenes.length <= 1,
+        hasClipboard: !!useUiStore.getState().backgroundClipboard,
+        onRename: () => startRename(scene),
+        onDuplicate: () => onDuplicateDialog(scene.index),
+        onDuration: () =>
+          setTiming({ index: scene.index, text: (scene.durationMs / 1000).toFixed(2) }),
+        onCopyBackground: () => onCopyBackground(scene.index),
+        onPasteBackground: () => onPasteBackground(scene.index),
+        onDelete: () => onDelete(scene.index),
+      }),
+    });
+  };
+
   const selection = [...selected].sort((a, b) => a - b);
   return (
     <div className="inspector-drill">
@@ -122,14 +195,51 @@ export function ScenesDrillIn({
               onPointerDown={(e) => onRowPointerDown(e, i)}
               onPointerMove={onRowPointerMove}
               onPointerUp={(e) => onRowPointerUp(e, i)}
+              onContextMenu={(e) => openMenu(e, scene)}
+              onDoubleClick={() => startRename(scene)}
             >
               <span className="scene-manager-grip" aria-hidden>
                 ⠿
               </span>
-              <span className="scene-manager-name">{scene.name}</span>
-              <span className="scene-manager-duration">
-                {(scene.durationMs / 1000).toFixed(1)}s
-              </span>
+              {renaming?.index === scene.index ? (
+                <input
+                  className="modal-input scene-manager-edit"
+                  value={renaming.text}
+                  // biome-ignore lint/a11y/noAutofocus: entered by double-click or the menu, so it IS the focus target
+                  autoFocus
+                  aria-label="Scene name"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => setRenaming({ index: scene.index, text: e.target.value })}
+                  onBlur={() => finishRename(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") finishRename(false);
+                  }}
+                />
+              ) : (
+                <span className="scene-manager-name">{scene.name}</span>
+              )}
+              {timing?.index === scene.index ? (
+                <input
+                  className="modal-input scene-manager-edit scene-manager-edit-duration"
+                  value={timing.text}
+                  inputMode="decimal"
+                  // biome-ignore lint/a11y/noAutofocus: entered from the context menu, so it IS the focus target
+                  autoFocus
+                  aria-label="Scene duration in seconds"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => setTiming({ index: scene.index, text: e.target.value })}
+                  onBlur={() => finishTiming(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") finishTiming(false);
+                  }}
+                />
+              ) : (
+                <span className="scene-manager-duration">
+                  {(scene.durationMs / 1000).toFixed(1)}s
+                </span>
+              )}
             </div>
           ))}
           {drag?.insertBefore !== null && drag && (
@@ -139,7 +249,9 @@ export function ScenesDrillIn({
             />
           )}
         </div>
-        <p className="modal-hint">Drag to reorder. ⌘-click to multi-select, ⇧-click for a range.</p>
+        <p className="modal-hint">
+          Drag to reorder. ⌘-click to multi-select, ⇧-click for a range. Double-click renames.
+        </p>
       </div>
       <div className="inspector-drill-actions">
         <button
@@ -157,6 +269,7 @@ export function ScenesDrillIn({
             : `Duplicate${selection.length > 1 ? ` ${selection.length} scenes` : ""}`}
         </button>
       </div>
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
   );
 }

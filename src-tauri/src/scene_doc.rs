@@ -422,11 +422,12 @@ pub fn set_project_audio(
 const TSX_DEVICE: &str = include_str!("../templates/scenes/device.tsx.tmpl");
 const TSX_TITLE: &str = include_str!("../templates/scenes/title.tsx.tmpl");
 const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
+const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "title" | "blank".
+    /// "device" | "title" | "blank" | "appversion".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -501,6 +502,7 @@ pub async fn scaffold_scene(
         "device" => TSX_DEVICE,
         "title" => TSX_TITLE,
         "blank" => TSX_BLANK,
+        "appversion" => TSX_APP_VERSION,
         other => return Err(format!("unknown scene kind {other:?}")),
     };
 
@@ -537,10 +539,13 @@ pub async fn scaffold_scene(
         },
         "text": {},
     });
-    // Title scenes seed the TitleBlock pair (empty strings keep the panel fields visible); other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
+    // Title scenes seed the TitleBlock pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
     if options.kind == "title" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
+    } else if options.kind == "appversion" {
+        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
+        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
     } else if let Some(title) = &options.title {
         doc["text"]["title"] = json!(title);
     }

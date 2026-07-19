@@ -1,0 +1,23 @@
+import { BrandLockup, defineScene, SceneStage, useSceneText, useTheme } from "@kookaburra/toolkit";
+
+/**
+ * __NAME__: scaffolded app-version scene, the horizontal brand lockup (project icon left,
+ * app name over a hero version line, one reveal with a shine sweep). User-visible text
+ * lives in the sidecar `scenes/__STEM__.json` text map; the icon is the project's
+ * `assets/app-icon.png` (set it under Project, App icon).
+ */
+export default defineScene({
+  id: "__SCENE_ID__",
+  durationMs: __DURATION_MS__,
+  Scene() {
+    const theme = useTheme();
+    const title = useSceneText("title");
+    const subtitle = useSceneText("subtitle");
+    return (
+      <SceneStage>
+        <color attach="background" args={[theme.colors.background]} />
+        <BrandLockup title={title} subtitle={subtitle} />
+      </SceneStage>
+    );
+  },
+});

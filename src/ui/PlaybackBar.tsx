@@ -12,6 +12,7 @@ import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { ScenePicker, type WizardSceneInfo } from "./SceneWizards";
+import { sceneMenuItems } from "./sceneMenu";
 import { msFromTrackX, playheadFraction, sceneCellSpans } from "./scrubMath";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -85,66 +86,39 @@ export function PlaybackBar({
   const openSceneMenu = (e: ReactMouseEvent, index: number) => {
     if (!project || !isWorkspace || exporting || isExporting()) return;
     e.preventDefault();
-    const canRename = !!project.sceneDocs[index];
-    const lastScene = project.slots.length <= 1;
     // Menus build once per open, so a plain snapshot read is enough.
-    const clipboard = useUiStore.getState().backgroundClipboard;
     setMenu({
       x: e.clientX,
       y: e.clientY,
-      items: [
-        {
-          id: "rename",
-          label: "Rename",
-          disabled: !canRename,
-          title: canRename ? undefined : "This scene has no scene document yet",
-          onSelect: () => setRenaming({ index, text: sceneName(index) }),
+      items: sceneMenuItems({
+        canRename: !!project.sceneDocs[index],
+        lastScene: project.slots.length <= 1,
+        hasClipboard: !!useUiStore.getState().backgroundClipboard,
+        onRename: () => setRenaming({ index, text: sceneName(index) }),
+        onDuplicate: () => setDuplicating(index),
+        onDuration: () =>
+          setTiming({
+            index,
+            text: ((project.slots[index]?.durationMs ?? 0) / 1000).toFixed(2),
+          }),
+        onCopyBackground: () => {
+          const doc = project.sceneDocs[index];
+          useUiStore.getState().setBackgroundClipboard({
+            background: doc?.background ? structuredClone(doc.background) : undefined,
+            backdrop: doc?.backdrop ? structuredClone(doc.backdrop) : undefined,
+          });
         },
-        {
-          id: "duplicate",
-          label: "Duplicate…",
-          onSelect: () => setDuplicating(index),
-        },
-        {
-          id: "duration",
-          label: "Change duration…",
-          onSelect: () =>
-            setTiming({
-              index,
-              text: ((project.slots[index]?.durationMs ?? 0) / 1000).toFixed(2),
-            }),
-        },
-        "separator",
-        {
-          id: "copy-background",
-          label: "Copy background",
-          onSelect: () => {
-            const doc = project.sceneDocs[index];
-            useUiStore.getState().setBackgroundClipboard({
-              background: doc?.background ? structuredClone(doc.background) : undefined,
-              backdrop: doc?.backdrop ? structuredClone(doc.backdrop) : undefined,
-            });
-          },
-        },
-        {
-          id: "paste-background",
-          label: "Paste background",
-          disabled: !clipboard,
-          title: clipboard ? undefined : "Copy a scene's background first",
-          onSelect: () => onPasteBackground(index),
-        },
-        "separator",
-        {
-          id: "delete",
-          label: "Delete",
-          confirmLabel: "Really delete?",
-          danger: true,
-          disabled: lastScene,
-          title: lastScene ? "A project needs at least one scene" : undefined,
-          onSelect: () => onDeleteScene(index),
-        },
-      ],
+        onPasteBackground: () => onPasteBackground(index),
+        onDelete: () => onDeleteScene(index),
+      }),
     });
+  };
+
+  // Double-click renames in place (same guards as the context menu's Rename).
+  const startRename = (index: number) => {
+    if (!project || !isWorkspace || exporting || isExporting()) return;
+    if (!project.sceneDocs[index]) return;
+    setRenaming({ index, text: sceneName(index) });
   };
 
   const finishRename = (commit: boolean) => {
@@ -328,6 +302,7 @@ export function PlaybackBar({
                 style={{ flexGrow: span.weight }}
                 title={sceneName(span.index)}
                 onContextMenu={(e) => openSceneMenu(e, span.index)}
+                onDoubleClick={() => startRename(span.index)}
               >
                 {sceneName(span.index)}
               </span>
@@ -364,8 +339,8 @@ export function PlaybackBar({
   );
 }
 
-/** Placement dialog for Duplicate: the New-scene "Where?" picker seeded to "after the source"; thumbs are best-effort (`ensureSceneThumbs` returns what it has, cards degrade to placeholders). */
-function DuplicateSceneDialog({
+/** Placement dialog for Duplicate: the New-scene "Where?" picker seeded to "after the source"; thumbs are best-effort (`ensureSceneThumbs` returns what it has, cards degrade to placeholders). Shared with the Scenes drill-in's context menu. */
+export function DuplicateSceneDialog({
   project,
   index,
   sourceName,

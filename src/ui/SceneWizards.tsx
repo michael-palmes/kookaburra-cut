@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { fsUrl, type MediaMeta } from "../engine/media";
+import { optionPreviewStill } from "../engine/optionPreviews";
 import {
   moveProjectScene,
   readProjectManifestSnapshot,
@@ -52,11 +53,12 @@ export interface ScaffoldedScene {
   durationMs: number;
 }
 
-type SceneKind = "device" | "title" | "blank";
+type SceneKind = "device" | "title" | "appversion" | "blank";
 
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + media", blurb: "A phone playing your video or image" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
+  { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
 ];
 
@@ -393,15 +395,26 @@ export function NewSceneWizard({
   }, [placement]);
 
   // Kind + insertion position, e.g. "Title 3"; a pencil edit pins the name instead.
-  const kindWord = kind === "device" ? "Device" : kind === "title" ? "Title" : "Blank";
+  const kindWord =
+    kind === "device"
+      ? "Device"
+      : kind === "title"
+        ? "Title"
+        : kind === "appversion"
+          ? "App version"
+          : "Blank";
   const generatedName = `${kindWord} ${(position ?? scenes.length) + 1}`;
   const sceneName = nameOverride ?? generatedName;
   const titlePlaceholder =
     kind === "title"
       ? "e.g. Ship faster"
-      : kind === "device"
-        ? "Optional, sits above the device"
-        : "Optional";
+      : kind === "appversion"
+        ? "e.g. Your App"
+        : kind === "device"
+          ? "Optional, sits above the device"
+          : "Optional";
+  // The lockup's hero line is the version; its label is muted, the reverse of a title scene.
+  const isLockup = kind === "appversion";
 
   // Only an explicit doc.background is worth inheriting; an unset one already means theme default.
   const previousScene = position === undefined ? scenes[scenes.length - 1] : scenes[position - 1];
@@ -436,7 +449,7 @@ export function NewSceneWizard({
           kind,
           name: finalName,
           title: title.trim() || null,
-          subtitle: kind === "title" ? subtitle.trim() || null : null,
+          subtitle: kind === "title" || kind === "appversion" ? subtitle.trim() || null : null,
           deviceModel: kind === "device" ? model : null,
           colour: kind === "device" ? colour : null,
           mediaRel: kind === "device" ? (media?.rel ?? null) : null,
@@ -450,7 +463,9 @@ export function NewSceneWizard({
       const chosenTextAnim = TEXT_ANIMATION_CHIPS.find((o) => o.id === textAnim)?.value;
       const textStyle: Record<string, string> = {};
       if (titleColor) textStyle.titleColor = titleColor;
-      if (subtitleColor && kind === "title") textStyle.subtitleColor = subtitleColor;
+      if (subtitleColor && (kind === "title" || kind === "appversion")) {
+        textStyle.subtitleColor = subtitleColor;
+      }
       if (chosenBackground || chosenTextAnim || Object.keys(textStyle).length > 0) {
         // The scaffolder doesn't know backgrounds/text motion; patch the fresh sidecar via the same validated write path as the edit bar, and never fail the scaffold if the patch fails.
         try {
@@ -497,18 +512,22 @@ export function NewSceneWizard({
         {step === "type" && (
           <>
             <div className="kind-picker">
-              {KIND_OPTIONS.map((k) => (
-                <button
-                  type="button"
-                  key={k.id}
-                  className={`kind-card${kind === k.id ? " selected" : ""}`}
-                  aria-pressed={kind === k.id}
-                  onClick={() => setKind(k.id)}
-                >
-                  <span className="kind-card-label">{k.label}</span>
-                  <span className="muted">{k.blurb}</span>
-                </button>
-              ))}
+              {KIND_OPTIONS.map((k) => {
+                const preview = optionPreviewStill(`kind-${k.id}`);
+                return (
+                  <button
+                    type="button"
+                    key={k.id}
+                    className={`kind-card${kind === k.id ? " selected" : ""}`}
+                    aria-pressed={kind === k.id}
+                    onClick={() => setKind(k.id)}
+                  >
+                    {preview && <img className="kind-card-preview" src={preview} alt="" />}
+                    <span className="kind-card-label">{k.label}</span>
+                    <span className="muted">{k.blurb}</span>
+                  </button>
+                );
+              })}
             </div>
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onCancel}>
@@ -636,26 +655,26 @@ export function NewSceneWizard({
               </>
             )}
             <TextFieldRow
-              label="Title"
+              label={isLockup ? "App name" : "Title"}
               value={title}
               placeholder={titlePlaceholder}
               onChange={setTitle}
               colour={{
-                value: titleColor ?? theme.colors.text,
-                defaultValue: theme.colors.text,
+                value: titleColor ?? (isLockup ? theme.colors.muted : theme.colors.text),
+                defaultValue: isLockup ? theme.colors.muted : theme.colors.text,
                 onCommit: setTitleColor,
                 onReset: () => setTitleColor(null),
               }}
             />
-            {kind === "title" && (
+            {(kind === "title" || isLockup) && (
               <TextFieldRow
-                label="Subtitle"
+                label={isLockup ? "Version" : "Subtitle"}
                 value={subtitle}
-                placeholder="Optional supporting line"
+                placeholder={isLockup ? "e.g. 3.1.5" : "Optional supporting line"}
                 onChange={setSubtitle}
                 colour={{
-                  value: subtitleColor ?? theme.colors.muted,
-                  defaultValue: theme.colors.muted,
+                  value: subtitleColor ?? (isLockup ? theme.colors.text : theme.colors.muted),
+                  defaultValue: isLockup ? theme.colors.text : theme.colors.muted,
                   onCommit: setSubtitleColor,
                   onReset: () => setSubtitleColor(null),
                 }}

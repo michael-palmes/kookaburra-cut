@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { type LoadedProject, sceneFileStem } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
-/** Option previews: committed app-rendered preview assets for the inspector's option pickers (text-motion clips, shadow stills, stage/backdrop stills), rendered from the dev-only `projects/preview-lab` project via `pnpm kookaburra:run --action option-previews` and committed under `src/assets/option-previews/`; missing assets degrade to swatch placeholders, never a broken card. Set naming (pinned in tests): `textanim-<preset>` · `shadow-<mode>` · `stage-<type>`; clips ship as `<set>.mp4` + `<set>-poster.jpg`, stills as `<set>.jpg`. */
+/** Option previews: committed app-rendered preview assets for the inspector's option pickers (text-motion clips, shadow stills, stage/backdrop stills, New-scene kind stills), rendered from the dev-only `projects/preview-lab` project via `pnpm kookaburra:run --action option-previews` and committed under `src/assets/option-previews/`; missing assets degrade to swatch placeholders, never a broken card. Set naming (pinned in tests): `textanim-<preset>` · `shadow-<mode>` · `stage-<type>` · `kind-<sceneKind>`; clips ship as `<set>.mp4` + `<set>-poster.jpg`, stills as `<set>.jpg`. */
 
 /** Capture rate for clip sets; the generator captures one frame per 1000/fps ms. */
 export const OPTION_CLIP_FPS = 20;
@@ -36,7 +36,7 @@ export interface OptionPreviewJob {
   kind: "still" | "clip";
 }
 
-/** Map preview-lab's scene stems to capture jobs (pure; the autorun action and its tests share it): `tm-<preset>` scenes render text-motion CLIPS (except `tm-none`, which is motionless, so one still is honest); `bg-<shader>` scenes render animated-background CLIPS; `bgp-<shader>-<preset>` scenes render shader-preset STILLS (small tiles, motion already shown by the type card); `shadow-*` / `stage-*` scenes are stills. Unknown stems are skipped, so lab experiments never break the batch. */
+/** Map preview-lab's scene stems to capture jobs (pure; the autorun action and its tests share it): `tm-<preset>` scenes render text-motion CLIPS (except `tm-none`, which is motionless, so one still is honest); `bg-<shader>` scenes render animated-background CLIPS; `bgp-<shader>-<preset>` scenes render shader-preset STILLS (small tiles, motion already shown by the type card); `shadow-*` / `stage-*` / `kind-*` (New-scene kind cards) scenes are stills. Unknown stems are skipped, so lab experiments never break the batch. */
 export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
   const jobs: OptionPreviewJob[] = [];
   for (const stem of stems) {
@@ -51,7 +51,11 @@ export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
       jobs.push({ stem, set: stem, kind: "still" });
     } else if (stem.startsWith("bg-")) {
       jobs.push({ stem, set: stem, kind: "clip" });
-    } else if (stem.startsWith("shadow-") || stem.startsWith("stage-")) {
+    } else if (
+      stem.startsWith("shadow-") ||
+      stem.startsWith("stage-") ||
+      stem.startsWith("kind-")
+    ) {
       jobs.push({ stem, set: stem, kind: "still" });
     }
   }

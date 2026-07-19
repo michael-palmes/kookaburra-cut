@@ -311,6 +311,22 @@
     {
       "file": "scenes/bgp-smoke-ring-p9.tsx",
       "durationMs": 1000
+    },
+    {
+      "file": "scenes/kind-device.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-title.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-appversion.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-blank.tsx",
+      "durationMs": 3000
     }
   ]
 }

@@ -1048,7 +1048,7 @@ pub fn read_scene_source(
         .map_err(|e| format!("reading {slug}/{file}: {e}"))
 }
 
-const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
+pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
 pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v", "webm",
 ];

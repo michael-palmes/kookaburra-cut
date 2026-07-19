@@ -22,11 +22,12 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     ]);
   });
 
-  it("maps shadow-* and stage-* stems to same-named still sets", () => {
-    const jobs = optionPreviewJobs(["shadow-soft", "stage-gradient"]);
+  it("maps shadow-*, stage-* and kind-* stems to same-named still sets", () => {
+    const jobs = optionPreviewJobs(["shadow-soft", "stage-gradient", "kind-appversion"]);
     expect(jobs).toEqual([
       { stem: "shadow-soft", set: "shadow-soft", kind: "still" },
       { stem: "stage-gradient", set: "stage-gradient", kind: "still" },
+      { stem: "kind-appversion", set: "kind-appversion", kind: "still" },
     ]);
   });
 

@@ -4,7 +4,7 @@ import { fsUrl } from "./media";
 import type { LoadedProject } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
-/** Theme previews (locked decision 14): the middle frame of each of the 4 standard `theme-starter` scenes, 640px JPEG, captured off the live preview canvas via the borrowed clock (the scene-thumbs precedent, never the export loop). Bundled themes' previews are rendered by `kookaburra:run --action theme-previews` and committed under `src/assets/theme-previews/`; user themes cache at `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON. */
+/** Theme previews (locked decision 14): the middle frame of 4 representative `theme-starter` scenes, 640px JPEG, captured off the live preview canvas via the borrowed clock (the scene-thumbs precedent, never the export loop). Bundled themes' previews are rendered by `kookaburra:run --action theme-previews` and committed under `src/assets/theme-previews/`; user themes cache at `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON. */
 
 export const THEME_PREVIEW_WIDTH = 640;
 export const THEME_PREVIEW_COUNT = 4;
@@ -42,11 +42,23 @@ export async function awaitProjectCommitted(project: LoadedProject): Promise<voi
   }
 }
 
-/** Captures the loaded project's per-scene middle frames as JPEGs. The caller has already swapped the target project (with its theme override) into the canvas; null when capture isn't possible right now (export in progress, canvas unmounted). */
+/** The starter scenes the previews capture: app version, title, device video, device camera. Title 2 and the closing app version repeat looks already shown. */
+const THEME_PREVIEW_SCENES = [0, 1, 2, 4];
+
+/** The 4 capture points among the starter's scenes; the first 4 middles when a project is shorter than the standard starter. */
+export function themePreviewMiddles(project: LoadedProject): number[] {
+  const middles = sceneMiddles(project);
+  if (THEME_PREVIEW_SCENES.every((i) => i < middles.length)) {
+    return THEME_PREVIEW_SCENES.map((i) => middles[i]);
+  }
+  return middles.slice(0, THEME_PREVIEW_COUNT);
+}
+
+/** Captures the representative scene middle frames as JPEGs. The caller has already swapped the target project (with its theme override) into the canvas; null when capture isn't possible right now (export in progress, canvas unmounted). */
 export function captureThemePreviewFrames(project: LoadedProject): Promise<Uint8Array[] | null> {
   return withBorrowedClock(async () => {
     const frames: Uint8Array[] = [];
-    for (const tMs of sceneMiddles(project)) {
+    for (const tMs of themePreviewMiddles(project)) {
       const bytes = await captureFrameAt(tMs, THEME_PREVIEW_WIDTH, "jpeg");
       if (!bytes) throw new Error(`theme-preview capture failed at ${tMs}ms`);
       frames.push(bytes);

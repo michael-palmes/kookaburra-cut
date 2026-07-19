@@ -2576,7 +2576,7 @@ body {
 
 .kind-picker {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-4);
 }
 
@@ -2605,6 +2605,16 @@ body {
 
 .kind-card-label {
   font-weight: 590;
+}
+
+/* Bundled still from the option-previews pipeline; absent files simply drop the img. */
+.kind-card-preview {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--surface-recessed);
 }
 
 /* Device catalog cards: preview art follows the selected colour swatch. */
@@ -4597,6 +4607,20 @@ img.inspector-scene-thumb {
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
+}
+
+/* Inline rename/duration inputs swapped into the row (the pb-label-input pattern). */
+.scene-manager-edit {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  font-size: var(--text-sm);
+}
+
+.scene-manager-edit-duration {
+  flex: none;
+  width: 64px;
+  font-size: var(--text-xs);
 }
 
 .scene-manager-insert {

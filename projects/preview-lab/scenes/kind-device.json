@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Kind: device",
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/screen.png", "kind": "image" },
+      "placement": { "rotationDeg": [0, 12, 0] },
+      "motion": { "preset": "none" },
+      "shadow": "soft"
+    }
+  ]
+}

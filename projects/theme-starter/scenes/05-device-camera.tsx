@@ -9,18 +9,17 @@ import {
 } from "@kookaburra/toolkit";
 
 /**
- * Theme starter scene 2 — a catalog device turning under the headline, playing the demo
- * video on its screen (the deterministic clip-frame pipeline). Devices and text are
- * sidecar-driven; when a device has no explicit position it stands ON the stage floor
- * (base at −1.5, half the auto-fit height × scale).
+ * Theme starter scene 5, device + title with a camera move: the sidecar's per-scene
+ * camera keys orbit-push toward a floating device (v7 · M5). Composition here, camera and
+ * content in `scenes/05-device-camera.json`.
  */
 export default defineScene({
-  id: "starter-device-video",
-  durationMs: 3200,
+  id: "starter-device-camera",
+  durationMs: 3000,
   Scene() {
     const format = useFormat();
     const portrait = format.aspect < 1;
-    const headline = useSceneText("headline", "Show the product");
+    const headline = useSceneText("headline", "Get closer");
     const devices = useSceneDevices();
     return (
       <SceneStage>
