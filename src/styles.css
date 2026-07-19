@@ -4554,6 +4554,69 @@ img.inspector-scene-thumb {
 }
 
 /* Per-text-element style row under each Edit-text field: font button + size % + x/y nudges. */
+/* Scene manager (Project ▸ Scenes): a reorderable multi-select list. */
+.scene-manager {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  user-select: none;
+}
+
+.scene-manager-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  cursor: grab;
+}
+
+.scene-manager-row:hover {
+  background: var(--surface-hover);
+}
+
+.scene-manager-row.selected {
+  background: var(--accent-subtle);
+}
+
+.scene-manager-row.dragging {
+  opacity: 0.55;
+}
+
+.scene-manager-grip {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.scene-manager-name {
+  overflow: hidden;
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-manager-duration {
+  flex: none;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.scene-manager-insert {
+  position: absolute;
+  right: 4px;
+  left: 4px;
+  z-index: 1;
+  height: 2px;
+  pointer-events: none;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
 .text-field-group {
   display: flex;
   flex-direction: column;

@@ -5,7 +5,7 @@ import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
 
 export interface ProjectRowModel {
-  id: "media" | "theme" | "aspect" | "music" | "playback";
+  id: "media" | "scenes" | "theme" | "aspect" | "music" | "playback";
   label: string;
   /** Right-aligned value text (11px tertiary). */
   value?: string;
@@ -20,6 +20,7 @@ export function projectRows(input: {
   aspect: AspectName;
   soundtrackName: string | null;
   playbackLabel: string;
+  scenesCount: number;
 }): ProjectRowModel[] {
   if (!input.isWorkspace) {
     return [
@@ -30,6 +31,12 @@ export function projectRows(input: {
   }
   return [
     { id: "media", label: "Media library", chevron: true },
+    {
+      id: "scenes",
+      label: "Scenes",
+      value: `${input.scenesCount} scene${input.scenesCount === 1 ? "" : "s"}`,
+      chevron: true,
+    },
     { id: "theme", label: "Theme", value: input.themeName, chevron: true },
     { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },

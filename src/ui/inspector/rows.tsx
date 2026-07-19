@@ -83,6 +83,12 @@ export function RowIcon({ id }: { id: string }) {
         <path d="M4 14l4-3 4 3 3-2" />
       </>
     ),
+    scenes: (
+      <>
+        <rect x="3" y="3.5" width="14" height="5.5" rx="1.5" />
+        <rect x="3" y="11" width="14" height="5.5" rx="1.5" />
+      </>
+    ),
     theme: <path d="M10 3s5 5.5 5 8.5a5 5 0 01-10 0C5 8.5 10 3 10 3z" />,
     aspect: <rect x="3" y="6" width="14" height="8" rx="1.5" />,
     music: (
