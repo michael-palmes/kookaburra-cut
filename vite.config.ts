@@ -51,7 +51,12 @@ export default defineConfig({
     host: host || false,
     port: 1420,
     strictPort: true,
-    hmr: host ? { protocol: "ws", host, port: 1421 } : undefined,
+    // Long exports starve the HMR websocket and vite's reconnect reloads the page mid-run, so no HMR under autorun.
+    hmr: process.env.KOOKABURRA_ACTION
+      ? false
+      : host
+        ? { protocol: "ws", host, port: 1421 }
+        : undefined,
     fs: {
       // Dev-only: lets the dev server serve workspace projects (user-chosen at runtime,
       // so scoped to the home dir) through /@fs/ imports, alongside the repo itself.
