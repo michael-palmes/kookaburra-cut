@@ -4935,6 +4935,23 @@ img.inspector-scene-thumb {
   border-radius: var(--radius-sm);
 }
 
+/* The Custom device tint rides ColourPicker's trigger, restyled to match the finish dots. */
+.device-swatches .swatch-custom {
+  display: inline-flex;
+}
+
+.device-swatches .swatch-custom .colour-swatch-trigger {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+}
+
+.device-swatches .swatch-custom.selected .colour-swatch-trigger {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .colour-popover {
   position: fixed;
   /* Above .modal-overlay (20), below .context-menu (30) so chip menus stack on top. */

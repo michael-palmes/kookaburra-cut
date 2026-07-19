@@ -216,8 +216,85 @@ export function isDeviceId(id: string): id is DeviceId {
   return id in DEVICE_CATALOG;
 }
 
+/** Custom-tint colour ids: `"custom:#rrggbb"` in the sidecar's `colour` slot. */
+export const CUSTOM_COLOUR_PREFIX = "custom:";
+
+/** The hex behind a custom colour id, or undefined for catalogue ids. */
+export function customColourHex(colourId: string | undefined): string | undefined {
+  const hex = colourId?.startsWith(CUSTOM_COLOUR_PREFIX)
+    ? colourId.slice(CUSTOM_COLOUR_PREFIX.length)
+    : undefined;
+  return hex && /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : undefined;
+}
+
+type Hsl = { h: number; s: number; l: number };
+
+function hexToHsl(hex: string): Hsl {
+  const n = Number.parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 0xff) / 255;
+  const g = ((n >> 8) & 0xff) / 255;
+  const b = (n & 0xff) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d === 0) return { h: 0, s: 0, l };
+  const s = d / (1 - Math.abs(2 * l - 1));
+  let h: number;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return { h: (h * 60 + 360) % 360, s, l };
+}
+
+function hslToHex({ h, s, l }: Hsl): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  const [r, g, b] =
+    h < 60
+      ? [c, x, 0]
+      : h < 120
+        ? [x, c, 0]
+        : h < 180
+          ? [0, c, x]
+          : h < 240
+            ? [0, x, c]
+            : h < 300
+              ? [x, 0, c]
+              : [c, 0, x];
+  const to255 = (v: number) => Math.round((v + m) * 255);
+  return `#${((to255(r) << 16) | (to255(g) << 8) | to255(b)).toString(16).padStart(6, "0")}`;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** Custom tint: the model's first overriding finish supplies each material's saturation/lightness offset from its frame colour, re-applied around the user's hex, so the finish structure (polished lighter, antennas darker) survives an arbitrary hue. Pure maths, deterministic per (model, hex). */
+function customFinish(spec: DeviceSpec, hex: string): DeviceColourSpec {
+  const overrides: Record<string, DeviceMaterialOverride> = {};
+  const ref = spec.colours.find((c) => Object.keys(c.overrides).length > 0);
+  if (ref) {
+    const base = hexToHsl(ref.swatch);
+    const target = hexToHsl(hex);
+    for (const [material, override] of Object.entries(ref.overrides)) {
+      if (!override.color) continue;
+      const m = hexToHsl(override.color);
+      overrides[material] = {
+        color: hslToHex({
+          h: target.h,
+          s: clamp01(target.s + (m.s - base.s)),
+          l: clamp01(target.l + (m.l - base.l)),
+        }),
+      };
+    }
+  }
+  return { id: CUSTOM_COLOUR_PREFIX + hex, name: "Custom", overrides, swatch: hex };
+}
+
 /** Resolve a colour spec, degrading to the model's default on unknown ids. */
 export function deviceColour(spec: DeviceSpec, colourId: string | undefined): DeviceColourSpec {
+  const custom = customColourHex(colourId);
+  if (custom) return customFinish(spec, custom);
   const found = colourId && spec.colours.find((c) => c.id === colourId);
   return found || spec.colours.find((c) => c.id === spec.defaultColour) || spec.colours[0];
 }

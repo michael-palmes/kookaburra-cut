@@ -12,8 +12,16 @@ import { resyncFollowMediaDuration, writeSceneDoc } from "../engine/sceneDoc";
 import { parseSceneDoc, type SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
-import { DEVICE_CATALOG, DEVICE_IDS, type DeviceId, deviceColour } from "../toolkit/device/catalog";
+import {
+  CUSTOM_COLOUR_PREFIX,
+  customColourHex,
+  DEVICE_CATALOG,
+  DEVICE_IDS,
+  type DeviceId,
+  deviceColour,
+} from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
+import { ColourPicker } from "./colour/ColourPicker";
 import { MediaBrowser } from "./MediaBrowser";
 import { TextFieldRow } from "./SceneTextFields";
 import { backgroundOptions } from "./stageOptions";
@@ -158,7 +166,11 @@ function DevicePicker({
               aria-pressed={active}
               onClick={() => onChange(id, activeColour.id)}
             >
-              <img src={spec.previews[activeColour.id]} alt="" draggable={false} />
+              <img
+                src={spec.previews[activeColour.id] ?? spec.previews[spec.defaultColour]}
+                alt=""
+                draggable={false}
+              />
               <span className="device-card-name">{spec.name}</span>
               <span className="muted">{activeColour.name}</span>
             </button>
@@ -176,6 +188,15 @@ function DevicePicker({
                   onClick={() => onChange(id, c.id)}
                 />
               ))}
+              <span
+                className={`swatch-custom${active && customColourHex(colour) ? " selected" : ""}`}
+              >
+                <ColourPicker
+                  value={(active ? customColourHex(colour) : undefined) ?? "#8a93a6"}
+                  label="Custom colour"
+                  onCommit={(hex) => onChange(id, CUSTOM_COLOUR_PREFIX + hex.toLowerCase())}
+                />
+              </span>
             </fieldset>
           </div>
         );
