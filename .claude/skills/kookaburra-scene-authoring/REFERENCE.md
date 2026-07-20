@@ -816,6 +816,32 @@ byte-identical composer-free paths):
 
 All of a project's `.cube` LUTs must share one `LUT_3D_SIZE`. See `docs/determinism.md`.
 
+### Project settings (inspector parity)
+
+Every row of the app's Project tab maps to files you can edit directly:
+
+- **Media library** → the `assets/` folder (the copy-in/check/grep-before-delete rules in
+  SKILL.md rule 7).
+- **Scenes** (reorder / delete) → the ORDER of `project.json`'s `scenes` array is the
+  timeline order; deleting a scene = remove its manifest entry AND its
+  `scenes/<stem>.tsx` + `<stem>.json` pair (a manifest entry pointing at a missing file
+  fails the load, and orphaned scene files are dead weight).
+- **Theme** → `project.json.themeId` (`kookaburra-*` bundled, `ws:<slug>` workspace; edit
+  workspace themes with `theme.py`).
+- **App icon** → the FIXED path `assets/app-icon.png` (the app converts any picked image
+  to PNG at that exact path; `BrandLockup`/app-version scenes read it by default).
+  Replace the file to change it, keep it square.
+- **Aspect ratio** → `project.json.formats` lists the aspects the project targets
+  (`"16:9" | "9:16" | "1:1" | "4:5"`); which one is CURRENTLY previewed is app-side
+  state, not a file.
+- **Music** → `project.json.audio`:
+  `{ "file": "assets/track.mp3", "gainDb"?, "fadeInMs"?, "fadeOutMs"?, "startOffsetMs"? }`.
+  `file` is assets-relative (copy the track in first); the soundtrack auto-fades over the
+  timeline's last second unless `fadeOutMs` says otherwise (`0` disables). One soundtrack
+  per project; remove the block to remove the music.
+- **Playback options** → app-side PREVIEW quality knobs only; they never touch exports
+  and have no file to edit — leave them alone.
+
 ## Persistent (morph) modules — v3 · M3
 
 The ONE exception to the `defineScene` rule: the module named by `project.json`'s `persistent`
