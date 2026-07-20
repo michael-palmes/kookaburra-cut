@@ -6,10 +6,12 @@ import { TextureLoader } from "three";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
 import type { EffectsConfig, EffectsOverride, Theme } from "../theme/tokens";
+import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
 import type { CameraKeyframe } from "./cameraTrack";
 import { preloadEffectLuts } from "./effects";
+import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
 import { fsUrl } from "./media";
 import { ensureProjectTrusted } from "./projectTrust";
 import { ensureSampleAssets } from "./sampleAssets";
@@ -48,6 +50,8 @@ export interface ProjectManifest {
   camera?: CameraKeyframe[];
   /** Project-relative module path (e.g. `"scenes/persistent-orb.tsx"`) whose default export is a plain component hosted OUTSIDE every scene in a `<PersistentLayer>`; it reads global time and morphs across scene seams. Absent means no persistent layer (byte-identical path). */
   persistent?: string;
+  /** Deck-wide overlay: a camera-locked panel with a shaped cutout the scene renders through, merged with each scene's sidecar `frame` (see `mergeFrameSpec`). Absent means no overlay anywhere, the byte-identical legacy path. */
+  frame?: FrameSpec;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -108,6 +112,8 @@ export interface LoadedProject {
   sceneFiles: string[];
   /** Each scene's RESOLVED theme, index-parallel to `scenes`: the project theme unless the scene's sidecar overrides `themeId`. `SceneHost` provides it to the scene's tree; render seams read it for per-scene state (background/environment). */
   sceneThemes: Theme[];
+  /** Each scene's RESOLVED overlay, index-parallel to `scenes`: the manifest's deck frame merged with the sidecar's override, `undefined` where the scene has no frame or opted out. Every entry undefined means the project never enters the overlay render path. */
+  sceneFrames: (FrameSpec | undefined)[];
   /** Present only when the manifest declares (and the probe accepted) a soundtrack. */
   audio?: ProjectAudio;
   /** BASE effect stacks for scenes whose sidecar swaps the theme (sparse, keyed by scene index); a wholesale replacement of the project default for that scene, LUT urls already resolved. See `sceneBaseEffects` (engine/effectParams.ts). */
@@ -437,6 +443,14 @@ export async function loadProject(
     sceneDocs.map((doc) => (doc?.themeId ? resolveTheme(doc.themeId, theme) : theme)),
   );
 
+  // Per-scene overlay resolution: the sidecar's frame merges over the manifest's deck frame; a scene that resolves to `enabled:false` drops out so it renders full-bleed. The manifest is raw JSON.parse, so its frame parses here (sidecar frames already parsed through `parseSceneDoc`).
+  const deckFrame =
+    manifest.frame === undefined ? undefined : parseFrameSpec(manifest.frame, `${id}/project.json`);
+  const sceneFrames = sceneDocs.map((doc) => {
+    const merged = mergeFrameSpec(deckFrame, doc?.frame);
+    return merged?.enabled === false ? undefined : merged;
+  });
+
   // System-font auto-pin: resolve every theme font (and sidecar `<key>Font` overrides) BEFORE scenes render; bundled-only projects short-circuit without touching the native side.
   const fontRefs = [
     ...collectThemeFontRefs([theme, ...sceneThemes]),
@@ -527,6 +541,7 @@ export async function loadProject(
     sceneDocs,
     sceneFiles: manifest.scenes.map((entry) => entry.file),
     sceneThemes,
+    sceneFrames,
     sceneEffectDefaults,
   };
 }
