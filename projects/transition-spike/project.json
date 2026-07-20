@@ -1,15 +1,12 @@
 {
   "id": "transition-spike",
   "name": "Transition FX",
+  "version": 2,
   "themeId": "kookaburra-default",
   "formats": ["16:9", "9:16", "1:1"],
   "scenes": [
     {
       "file": "scenes/01-base.tsx",
-      "durationMs": 1800
-    },
-    {
-      "file": "scenes/02-crossfade.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "crossfade",
@@ -17,7 +14,7 @@
       }
     },
     {
-      "file": "scenes/03-dip.tsx",
+      "file": "scenes/02-crossfade.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "dip",
@@ -25,7 +22,7 @@
       }
     },
     {
-      "file": "scenes/04-blur.tsx",
+      "file": "scenes/03-dip.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "blur",
@@ -33,7 +30,7 @@
       }
     },
     {
-      "file": "scenes/05-push.tsx",
+      "file": "scenes/04-blur.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "push",
@@ -41,7 +38,7 @@
       }
     },
     {
-      "file": "scenes/06-zoom.tsx",
+      "file": "scenes/05-push.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "zoom",
@@ -49,7 +46,7 @@
       }
     },
     {
-      "file": "scenes/07-whip.tsx",
+      "file": "scenes/06-zoom.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "whip",
@@ -57,7 +54,7 @@
       }
     },
     {
-      "file": "scenes/08-luma.tsx",
+      "file": "scenes/07-whip.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "luma",
@@ -66,12 +63,16 @@
       }
     },
     {
-      "file": "scenes/09-glitch.tsx",
+      "file": "scenes/08-luma.tsx",
       "durationMs": 1800,
       "transition": {
         "type": "glitch",
         "durationMs": 600
       }
+    },
+    {
+      "file": "scenes/09-glitch.tsx",
+      "durationMs": 1800
     }
   ]
 }

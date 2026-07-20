@@ -34,7 +34,7 @@ export interface TransitionParams {
   parallax: number;
 }
 
-/** A transition INTO a scene from the previous one, as authored in project.json. */
+/** A transition OUT of a scene into the next one, as authored in project.json (manifest v2; legacy files stored it on the incoming scene and are shifted by the loader). */
 export interface TransitionSpec extends Partial<TransitionParams> {
   type: TransitionType;
   /** Overlap duration in ms. Clamped to the neighbouring scene durations when built. */
@@ -49,7 +49,7 @@ export interface TransitionSpec extends Partial<TransitionParams> {
 export interface TimelineSceneInput {
   id: string;
   durationMs: number;
-  /** Transition into this scene from the previous one (ignored on the first scene). */
+  /** Transition out of this scene into the next one (ignored on the last scene). */
   transition?: TransitionSpec;
 }
 
@@ -162,7 +162,7 @@ export function resolveTransitionParams(spec: TransitionSpec): TransitionParams 
   };
 }
 
-/** Places scenes on the global timeline; each transition pulls its scene's start back by the overlap, clamped so it never exceeds either neighbour's duration (so starts stay ≥ 0). */
+/** Places scenes on the global timeline; the previous scene's outgoing transition pulls this scene's start back by the overlap, clamped so it never exceeds either neighbour's duration (so starts stay ≥ 0). */
 export function buildSceneTimeline(scenes: TimelineSceneInput[]): SceneSlot[] {
   const slots: SceneSlot[] = [];
   for (let i = 0; i < scenes.length; i++) {
@@ -171,14 +171,15 @@ export function buildSceneTimeline(scenes: TimelineSceneInput[]): SceneSlot[] {
     let transitionIn: TransitionSpec | undefined;
     if (i > 0) {
       const prev = slots[i - 1];
-      const requested = sc.transition?.durationMs ?? 0;
+      const spec = scenes[i - 1].transition;
+      const requested = spec?.durationMs ?? 0;
       const overlap = Math.max(0, Math.min(requested, prev.durationMs, sc.durationMs));
       startMs = prev.endMs - overlap;
       transitionIn =
-        sc.transition && overlap > 0
+        spec && overlap > 0
           ? {
-              ...sc.transition,
-              type: normalizeTransitionType(sc.transition.type),
+              ...spec,
+              type: normalizeTransitionType(spec.type),
               durationMs: overlap,
             }
           : undefined;

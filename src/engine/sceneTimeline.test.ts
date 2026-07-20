@@ -34,8 +34,8 @@ describe("buildSceneTimeline — hard cuts (no transition)", () => {
 describe("buildSceneTimeline — overlap (cross-dissolve) timing", () => {
   const slots = buildSceneTimeline(
     scenes(
-      { id: "a", durationMs: 5000 },
-      { id: "b", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
+      { id: "a", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
+      { id: "b", durationMs: 5000 },
     ),
   );
 
@@ -55,9 +55,9 @@ describe("buildSceneTimeline — overlap (cross-dissolve) timing", () => {
   it("subtracts every overlap across a chain", () => {
     const chain = buildSceneTimeline(
       scenes(
-        { id: "a", durationMs: 5000 },
-        { id: "b", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
-        { id: "c", durationMs: 5000, transition: { type: "wipe", durationMs: 500 } },
+        { id: "a", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
+        { id: "b", durationMs: 5000, transition: { type: "wipe", durationMs: 500 } },
+        { id: "c", durationMs: 5000 },
       ),
     );
     expect(timelineTotalMs(chain)).toBe(14000);
@@ -66,12 +66,23 @@ describe("buildSceneTimeline — overlap (cross-dissolve) timing", () => {
   it("clamps an over-long transition to the neighbouring durations (never negative starts)", () => {
     const tiny = buildSceneTimeline(
       scenes(
-        { id: "a", durationMs: 1000 },
-        { id: "b", durationMs: 1000, transition: { type: "crossfade", durationMs: 5000 } },
+        { id: "a", durationMs: 1000, transition: { type: "crossfade", durationMs: 5000 } },
+        { id: "b", durationMs: 1000 },
       ),
     );
     expect(tiny[1].startMs).toBeGreaterThanOrEqual(0);
     expect(tiny[1].transitionIn?.durationMs).toBe(1000);
+  });
+
+  it("ignores a transition on the last scene (nothing to exit into)", () => {
+    const slots = buildSceneTimeline(
+      scenes(
+        { id: "a", durationMs: 5000 },
+        { id: "b", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
+      ),
+    );
+    expect(slots[1].transitionIn).toBeUndefined();
+    expect(timelineTotalMs(slots)).toBe(10000);
   });
 });
 
@@ -104,12 +115,12 @@ describe("resolveAt — single active scene (fast path)", () => {
 describe("resolveAt — during an overlap (two active scenes + transition)", () => {
   const slots = buildSceneTimeline(
     scenes(
-      { id: "a", durationMs: 5000 },
       {
-        id: "b",
+        id: "a",
         durationMs: 5000,
         transition: { type: "slide", durationMs: 500, direction: [1, 0] },
       },
+      { id: "b", durationMs: 5000 },
     ),
   );
 
@@ -140,8 +151,8 @@ describe("resolveAt — during an overlap (two active scenes + transition)", () 
 describe("resolveAt — determinism contract", () => {
   const slots = buildSceneTimeline(
     scenes(
-      { id: "a", durationMs: 5000 },
-      { id: "b", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
+      { id: "a", durationMs: 5000, transition: { type: "crossfade", durationMs: 500 } },
+      { id: "b", durationMs: 5000 },
     ),
   );
 
@@ -175,12 +186,12 @@ describe("normalizeTransitionType (v10 M2)", () => {
 
   it("normalizes inside buildSceneTimeline so slots never carry unknown types", () => {
     const slots = buildSceneTimeline([
-      { id: "a", durationMs: 2000 },
       {
-        id: "b",
+        id: "a",
         durationMs: 2000,
         transition: { type: "warpspeed" as never, durationMs: 500 },
       },
+      { id: "b", durationMs: 2000 },
     ]);
     expect(slots[1].transitionIn?.type).toBe("crossfade");
   });
@@ -228,8 +239,8 @@ describe("resolveTransitionParams (v10 M2)", () => {
 
   it("resolveAt carries baked params on the resolved transition", () => {
     const slots = buildSceneTimeline([
-      { id: "a", durationMs: 2000 },
-      { id: "b", durationMs: 2000, transition: { type: "blur", durationMs: 500 } },
+      { id: "a", durationMs: 2000, transition: { type: "blur", durationMs: 500 } },
+      { id: "b", durationMs: 2000 },
     ]);
     const mid = resolveAt(slots, 1750);
     expect(mid.transition?.type).toBe("blur");
@@ -250,8 +261,8 @@ describe("activeSceneIndex (the editing chrome's dominant scene — moved from E
   it("prefers the LATER scene inside a transition overlap", () => {
     const slots = buildSceneTimeline(
       scenes(
-        { id: "a", durationMs: 2000 },
-        { id: "b", durationMs: 2000, transition: { type: "crossfade", durationMs: 600 } },
+        { id: "a", durationMs: 2000, transition: { type: "crossfade", durationMs: 600 } },
+        { id: "b", durationMs: 2000 },
       ),
     );
     // Overlap window is [1400, 2000): both scenes are live; the incoming one wins.

@@ -1,37 +1,53 @@
 {
   "id": "theme-starter",
   "name": "Theme Starter",
+  "version": 2,
   "themeId": "kookaburra-studio-white",
   "formats": ["16:9", "9:16", "1:1"],
   "scenes": [
     {
       "file": "scenes/01-app-version.tsx",
-      "durationMs": 2600
+      "durationMs": 2600,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
     },
     {
       "file": "scenes/02-title.tsx",
       "durationMs": 2600,
-      "transition": { "type": "crossfade", "durationMs": 600 }
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
     },
     {
       "file": "scenes/03-device-video.tsx",
       "durationMs": 3200,
-      "transition": { "type": "crossfade", "durationMs": 600 }
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
     },
     {
       "file": "scenes/04-title-2.tsx",
       "durationMs": 2600,
-      "transition": { "type": "crossfade", "durationMs": 600 }
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
     },
     {
       "file": "scenes/05-device-camera.tsx",
       "durationMs": 3000,
-      "transition": { "type": "crossfade", "durationMs": 600 }
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
     },
     {
       "file": "scenes/06-app-version-end.tsx",
-      "durationMs": 2600,
-      "transition": { "type": "crossfade", "durationMs": 600 }
+      "durationMs": 2600
     }
   ]
 }

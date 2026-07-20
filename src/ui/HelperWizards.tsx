@@ -147,7 +147,7 @@ export function HelperWizard({
         const enter =
           transition === "none"
             ? "with no transition"
-            : `entering with a ${TRANSITIONS.find((t) => t.id === transition)?.label.toLowerCase()}`;
+            : `with the previous scene exiting into it via a ${TRANSITIONS.find((t) => t.id === transition)?.label.toLowerCase()} (the transition goes on the previous scene's entry)`;
         return `Add a new scene to this video: ${desc}. Place it ${where} in project.json, about ${seconds} seconds long, ${enter}.`;
       }
       case "pacing": {

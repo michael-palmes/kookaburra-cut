@@ -107,6 +107,13 @@ model: a transition pulls the next scene's start back, so
 enclosing `<SceneHost>`'s start. All scenes mount at once; the compositor gates
 per-frame `visible`.
 
+Transition ownership is manifest-versioned: v2 stores each transition on the
+OUTGOING scene (it plays at that scene's end); legacy unversioned manifests
+stored it on the incoming scene. `outgoingSceneTransitions` shifts legacy files
+in memory so both render byte-identically (the flip is a pure relabel, proven by
+the standing baselines holding EQUAL), and any native scenes-array edit migrates
+the file on disk before mutating it.
+
 Rendering goes through **one** function, `engine/compositor.ts#renderComposited`,
 called by both the preview (`CompositorDriver`, a `useFrame` priority-1 takeover)
 and the exporter, so they cannot drift. Two paths:
@@ -944,6 +951,13 @@ bundled rolling-gate project (`showcase-tour`):
 | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
 | `showcase-tour` (rolling gate) | `da74c52b…` | stale | stale | stale |
+| `transition-spike` (transition gate) | `3cad687f…` | `8447d8e9…` | — | — |
+
+> **2026-07-20 (transition ownership flip, manifest v2):** both anchors held
+> EQUAL through the flip (`da74c52b…` on the migrated v2 manifest, `b70c9788…`
+> through the legacy shim), proving the relabel moves no pixels; the
+> `transition-spike` baselines above were first recorded this session (Verify ×2
+> EQUAL in both aspects, same change set).
 
 > **2026-07-17 (v0.2.0 release session):** packaged parity restored on both
 > anchors: `showcase-tour` packaged EQUAL `da74c52b…` (byte-identical to dev for

@@ -34,7 +34,9 @@ export interface ProjectManifest {
   themeId: string;
   /** Aspect ratios this project targets. */
   formats: string[];
-  /** Ordered scenes; `transition` (optional) is how a scene enters from the previous one. */
+  /** Manifest schema version; absent = 1. v2 flips transition ownership to the outgoing scene. */
+  version?: number;
+  /** Ordered scenes; `transition` (optional) is how a scene EXITS into the next one (v2). Legacy unversioned files stored it on the incoming scene; `outgoingSceneTransitions` shifts them so both render identically. */
   scenes: {
     file: string;
     durationMs: number;
@@ -46,6 +48,14 @@ export interface ProjectManifest {
   camera?: CameraKeyframe[];
   /** Project-relative module path (e.g. `"scenes/persistent-orb.tsx"`) whose default export is a plain component hosted OUTSIDE every scene in a `<PersistentLayer>`; it reads global time and morphs across scene seams. Absent means no persistent layer (byte-identical path). */
   persistent?: string;
+}
+
+/** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
+export function outgoingSceneTransitions(
+  manifest: Pick<ProjectManifest, "version" | "scenes">,
+): (TransitionSpec | undefined)[] {
+  if ((manifest.version ?? 1) >= 2) return manifest.scenes.map((s) => s.transition);
+  return manifest.scenes.map((_, i) => manifest.scenes[i + 1]?.transition);
 }
 
 /** A project with its scene modules imported and theme resolved, ready to render/export. */
@@ -410,12 +420,13 @@ export async function loadProject(
     manifest.scenes.map((entry) => loadSceneDoc(id, entry.file, sceneDocGlob)),
   );
 
-  // Overlap-aware placement: a transition pulls its scene's start back, shortening the project.
+  // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.
+  const outgoing = outgoingSceneTransitions(manifest);
   const slots = buildSceneTimeline(
-    manifest.scenes.map((entry, i) => ({
+    manifest.scenes.map((_, i) => ({
       id: scenes[i].id,
       durationMs: scenes[i].durationMs,
-      transition: entry.transition,
+      transition: outgoing[i],
     })),
   );
   const totalMs = timelineTotalMs(slots);

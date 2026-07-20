@@ -29,8 +29,8 @@ function makeTheme(overrides: Partial<Theme> = {}): Theme {
 
 /** Two 1000ms scenes crossfading over 400ms (transition window 600-1000ms global). */
 const slots = buildSceneTimeline([
-  { id: "a", durationMs: 1000 },
-  { id: "b", durationMs: 1000, transition: { type: "crossfade", durationMs: 400 } },
+  { id: "a", durationMs: 1000, transition: { type: "crossfade", durationMs: 400 } },
+  { id: "b", durationMs: 1000 },
 ]);
 
 describe("usesThemedSceneState / buildSceneRenderStates (the null-for-legacy gate)", () => {
