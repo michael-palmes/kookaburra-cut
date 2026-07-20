@@ -18,8 +18,12 @@ export type DeviceForm = "phone" | "laptop" | "tablet";
 
 /** Named-material overrides a colour variant applies to the cloned model. */
 export interface DeviceMaterialOverride {
-  /** sRGB hex for `material.color` (the baseColorFactor slot); replaces the colour exactly when there's no baseColorTexture, else multiplies it. */
+  /** sRGB hex for `material.color` (the baseColorFactor slot); replaces the colour exactly when there's no baseColorTexture, else multiplies it. On a metal (metalness 1) this is the reflectance, so it also sets how bright the surface reads. */
   color?: string;
+  /** Overrides the material's roughness (0 mirror, 1 fully diffuse); higher softens specular flashes off the lighting rig. */
+  roughness?: number;
+  /** Overrides the material's metalness (0 dielectric, 1 metal). */
+  metalness?: number;
 }
 
 export interface DeviceColourSpec {
@@ -146,13 +150,20 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     // 3456 x 2234 display, landscape; matches the measured screen mesh (0.3456 x 0.2234 m).
     screen: { material: "SCREEN.001", aspect: 3456 / 2234 },
     colours: [
-      // Silver is the authored (no-override) finish; Space Grey per the vendor's colour .blend (same extraction as the iPhones).
-      { id: "silver", name: "Silver", overrides: {}, swatch: "#898989" },
+      // The vendor authored the aluminium dark (0.25 reflectance) and glossy (0.35) for its own studio HDRI; under our Lightformer rig a metal that dark reads flat and dim with hot specular flashes, so both finishes lift the reflectance and soften the roughness. Space Grey per the vendor's colour .blend (same extraction as the iPhones).
+      {
+        id: "silver",
+        name: "Silver",
+        overrides: {
+          "ALUMINUM Silver": { color: "#cfcfcf", roughness: 0.45 },
+        },
+        swatch: "#898989",
+      },
       {
         id: "space-grey",
         name: "Space Grey",
         overrides: {
-          "ALUMINUM Silver": { color: "#5e5e61" },
+          "ALUMINUM Silver": { color: "#5e5e61", roughness: 0.45 },
           TRACKPAD: { color: "#5e5e61" },
         },
         swatch: "#5e5e61",

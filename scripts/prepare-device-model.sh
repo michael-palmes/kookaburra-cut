@@ -45,7 +45,8 @@ case "$DEVICE" in
     OUT="src/assets/models/licensed/b30d3bc4-a66b-4376-95d1-30978b87212c.glb"
     YAW=0
     # Join/flatten would merge the lid into the body; the DISPLAY hinge node must survive for the lid-angle control.
-    EXTRA_FLAGS="--join false --flatten false"
+    # Simplify OFF: even with locked borders it creases the wide keycaps (spacebar, right shift, F3, F5).
+    EXTRA_FLAGS="--join false --flatten false --simplify false"
     ;;
   *)
     echo "[assets:$DEVICE] unknown device id: $DEVICE" >&2
@@ -79,12 +80,16 @@ echo "[assets:$DEVICE] optimising -> $OUT"
 # sharp needs its native postinstall; pnpm dlx blocks build scripts unless allowed.
 # Palette OFF: it fuses materials into anonymous PaletteMaterialNNN, destroying the
 # material names the catalog's colour overrides and screen lookup key on.
+# Simplify keeps its topological borders locked and its error budget near zero: the
+# defaults (borders free, error 0.0001) collapse keycap rims and speaker perforations.
 # shellcheck disable=SC2086 -- EXTRA_FLAGS is a deliberate word-split flag list
 pnpm dlx --allow-build=sharp @gltf-transform/cli@latest optimize "$RAW" "$OUT" \
   --compress false \
   --palette false \
   --texture-compress webp \
   --texture-size "$TEXTURE_SIZE" \
+  --simplify-lock-border true \
+  --simplify-error 0.00001 \
   $EXTRA_FLAGS
 
 echo "[assets:$DEVICE] done:"

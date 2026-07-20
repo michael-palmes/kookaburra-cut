@@ -512,6 +512,9 @@ export function Device(props: DeviceProps) {
         if (override?.color) {
           (preparedMaterial as unknown as { color?: Color }).color?.set(override.color);
         }
+        const std = preparedMaterial as MeshStandardMaterial;
+        if (override?.roughness !== undefined) std.roughness = override.roughness;
+        if (override?.metalness !== undefined) std.metalness = override.metalness;
         applyDeviceGsaa(preparedMaterial);
         prepared.set(mesh.material, preparedMaterial);
       }
