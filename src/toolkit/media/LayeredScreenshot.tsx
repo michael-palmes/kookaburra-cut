@@ -29,6 +29,7 @@ import type {
   SceneDoc,
 } from "../../engine/sceneDocSchema";
 import { presentSlideshowActive } from "../../engine/presentMode";
+import { useStageRegistry } from "../../engine/stageRegistry";
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
@@ -54,6 +55,10 @@ const SHADOW_OPACITY = 0.3;
 const SHADOW_Z = 0.03;
 /** Text items: font size as a share of the solved text-box height. */
 const TEXT_FONT_RATIO = 0.34;
+/** SceneStage's default cyc-floor height (its `floorY` prop can override; unsupported here). */
+const STAGE_FLOOR_Y = -1.5;
+/** Clearance above a staged floor: keeps the cards AND their dropped soft shadows off the surface. */
+const FLOOR_CLEARANCE = 0.28;
 
 const cardRadius = (rect: SolvedItemRect, theme: Theme): number =>
   (theme.card?.radius ?? CARD_RADIUS_FRACTION) * Math.min(rect.width, rect.height);
@@ -299,6 +304,11 @@ function StackRenderer({
   const format = useFormat();
   const theme = useTheme();
   const projectId = useResolvedProjectId();
+  const sceneIndex = useSceneContext()?.index;
+  // The staged cyc floor is an opaque, depth-writing plane; anything below its surface culls, so the fit region stops above it (clearance covers the dropped soft shadows).
+  const stagedBackdrop = useStageRegistry((s) =>
+    sceneIndex !== undefined ? (s.stages[sceneIndex]?.backdropType ?? null) : null,
+  );
 
   const layers = useMemo(
     () =>
@@ -348,11 +358,17 @@ function StackRenderer({
   }, [images, textures, clipAspects]);
 
   const layouts = useMemo(() => layers.map((l) => solveLayerLayout(l, aspects)), [layers, aspects]);
+  const safeTop = format.frame.height / 2 - format.safe.top;
+  const rawBottom = -format.frame.height / 2 + format.safe.bottom;
+  const safeBottom =
+    stagedBackdrop === "floor" ? Math.max(rawBottom, STAGE_FLOOR_Y + FLOOR_CLEARANCE) : rawBottom;
   const fit = fitStackScale(
     layouts,
     format.frame.width - format.safe.left - format.safe.right,
-    format.frame.height - format.safe.top - format.safe.bottom,
+    safeTop - safeBottom,
   );
+  // Floorless scenes centre on 0 exactly (byte-safe for every recorded baseline).
+  const centreY = (safeTop + safeBottom) / 2;
 
   // Slideshow holds loop the animation when it asks for it; the flag is realm-local, so preview and export stay on the play-once sample by construction.
   const loop = animatedTrack === "layeredScreenshot" ? normalized.track?.presentLoop : undefined;
@@ -365,7 +381,7 @@ function StackRenderer({
   if (layers.length === 0) return null;
   return (
     <group
-      position={[pose.pan[0], pose.pan[1], 0]}
+      position={[pose.pan[0], pose.pan[1] + centreY, 0]}
       // The pose reads as the viewer's orbit (the scene-camera convention); the stack counter-rotates.
       rotation={[pose.elevationDeg * DEG2RAD, -pose.azimuthDeg * DEG2RAD, 0]}
       scale={fit * pose.zoom}
