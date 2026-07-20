@@ -16,6 +16,7 @@ import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditSt
 import {
   DEFAULT_ITEM_GAP,
   fitStackScale,
+  type MeasuredAspect,
   solveLayerLayout,
   type SolvedLayerLayout,
 } from "../engine/layeredScreenshotLayout";
@@ -131,34 +132,42 @@ export function LayeredScreenshotBuilder({
   const slug = workspaceSlug(project.id);
   const projectPath = workspaceProjectPath(slug) ?? "";
 
-  // Video thumbnails ride the media cache's posters (images embed the asset file directly).
-  const [posters, setPosters] = useState<Record<string, string>>({});
-  const videoSrcs = useMemo(
+  // One mediaMeta per screen item: width/height give the schematic (and the preset fit) each screen's true aspect, and video posters double as thumbnails.
+  const [metas, setMetas] = useState<Record<string, MediaMeta>>({});
+  const screenSrcs = useMemo(
     () =>
-      (layer?.items ?? [])
-        .filter((i): i is LayeredScreenshotItem & { kind: "screen" } => i.kind === "screen")
-        .filter((i) => i.media === "video")
-        .map((i) => i.src),
-    [layer],
+      ordered.flatMap((l) =>
+        l.items
+          .filter((i): i is LayeredScreenshotItem & { kind: "screen" } => i.kind === "screen")
+          .map((i) => i.src),
+      ),
+    [ordered],
   );
   useEffect(() => {
     let cancelled = false;
-    for (const src of videoSrcs) {
-      if (posters[src]) continue;
+    for (const src of screenSrcs) {
+      if (metas[src]) continue;
       mediaMeta(slug, src)
         .then((meta: MediaMeta) => {
-          if (!cancelled) setPosters((prev) => ({ ...prev, [src]: meta.posterPath }));
+          if (!cancelled) setMetas((prev) => ({ ...prev, [src]: meta }));
         })
         .catch(() => {});
     }
     return () => {
       cancelled = true;
     };
-  }, [videoSrcs, slug, posters]);
+  }, [screenSrcs, slug, metas]);
+
+  const aspectsOf = (l: LayeredScreenshotLayer): MeasuredAspect[] =>
+    l.items.flatMap((i) => {
+      if (i.kind !== "screen") return [];
+      const meta = metas[i.src];
+      return meta && meta.height > 0 ? [{ id: i.id, aspect: meta.width / meta.height }] : [];
+    });
 
   if (!layer) return null;
 
-  const layout: SolvedLayerLayout = solveLayerLayout(layer, []);
+  const layout: SolvedLayerLayout = solveLayerLayout(layer, aspectsOf(layer));
 
   const commitBlock = (next: SceneDocLayeredScreenshot | null) => {
     if (next) void commit(next);
@@ -170,7 +179,7 @@ export function LayeredScreenshotBuilder({
   const thumbSrc = (it: LayeredScreenshotItem): string | null => {
     if (it.kind !== "screen") return null;
     if (it.media === "video") {
-      const poster = posters[it.src];
+      const poster = metas[it.src]?.posterPath;
       return poster ? fsUrl(poster) : null;
     }
     return projectPath ? fsUrl(`${projectPath}/${it.src}`) : null;
@@ -469,7 +478,7 @@ export function LayeredScreenshotBuilder({
               const zoomRect = item ? layout.items.find((r) => r.id === item.id) : undefined;
               const visible = ordered.filter((l) => l.visible && l.items.length > 0);
               const fit = fitStackScale(
-                visible.map((l) => solveLayerLayout(l, [])),
+                visible.map((l) => solveLayerLayout(l, aspectsOf(l))),
                 format.frame.width - format.safe.left - format.safe.right,
                 format.frame.height - format.safe.top - format.safe.bottom,
               );

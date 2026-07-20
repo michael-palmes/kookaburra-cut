@@ -50,7 +50,7 @@ const CARD_STROKE_ALPHA = 0.18;
 /** Soft shadow: sized/offset relative to the card's short edge, opacity of the black quad. */
 const SHADOW_BLUR_FRACTION = 0.14;
 const SHADOW_DROP_FRACTION = 0.05;
-const SHADOW_OPACITY = 0.3;
+const SHADOW_OPACITY = 0.2;
 /** Shadow Z sits behind its card but MUST stay inside layeredScreenshotLayout's MIN_LAYER_STEP. */
 const SHADOW_Z = 0.03;
 /** Text items: font size as a share of the solved text-box height. */
