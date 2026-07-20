@@ -2,6 +2,7 @@
 
 mod concurrency;
 mod edit;
+mod present;
 mod encode;
 mod export_presets;
 mod loudness;
@@ -880,7 +881,12 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // The present window's geometry is re-derived from the modal's display pick every launch; restoring a stale fullscreen rect (possibly on an unplugged display) would fight it.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_denylist(&["present"])
+                .build(),
+        )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
         .manage(ScreenshotState(Mutex::new(None)))
@@ -889,6 +895,7 @@ pub fn run() {
         .manage(updater::PendingUpdate::default())
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
+        .manage(present::PresentState::default())
         .setup(|app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
@@ -1127,7 +1134,10 @@ pub fn run() {
             edit::load_edit,
             edit::save_edit,
             edit::list_edits,
-            edit::render_edit
+            edit::render_edit,
+            present::open_present,
+            present::get_present_target,
+            workspace::set_present_options
         ])
         .run(tauri::generate_context!())
         .expect("error while running Kookaburra Cut");

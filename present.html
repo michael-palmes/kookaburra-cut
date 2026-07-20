@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kookaburra Cut — Present</title>
+    <style>
+      /* Pre-paint guard: pure black exists before any bundle loads; the app fades in when mounted (engine/reveal.ts adds .ready). */
+      html {
+        background: #000;
+      }
+      #root {
+        opacity: 0;
+        transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1);
+      }
+      #root.ready {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/presentMain.tsx"></script>
+  </body>
+</html>

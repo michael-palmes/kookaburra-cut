@@ -55,6 +55,22 @@ pub struct AppSettings {
     /// Last version offered and declined ("Later"), so the same version isn't re-offered every launch.
     #[serde(default)]
     pub last_offered_version: Option<String>,
+    /// Last Present-modal selection per project id, restored on modal open.
+    #[serde(default)]
+    pub present_options_by_project: HashMap<String, PresentOptionsDoc>,
+    /// Cross-project default, written by the modal's "Save as default".
+    #[serde(default)]
+    pub present_options_default: Option<PresentOptionsDoc>,
+}
+
+/// The Present modal's remembered options (mode/quality strings are frontend enums, nothing Rust-side branches on them).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresentOptionsDoc {
+    pub mode: String,
+    pub quality: String,
+    pub soundtrack: bool,
+    pub fullscreen: bool,
 }
 
 /// One consent grant: the sources fingerprint and project path it was given for.
@@ -571,6 +587,25 @@ pub fn set_last_export_preset(
         .last_export_preset_by_project
         .insert(project_id, preset_id.clone());
     settings.last_export_preset = Some(preset_id);
+    save_settings(&app, &state, settings)
+}
+
+/// Remember the Present modal's selection per project (and, on request, as the cross-project default).
+#[tauri::command]
+pub fn set_present_options(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    project_id: String,
+    options: PresentOptionsDoc,
+    save_as_default: bool,
+) -> Result<(), String> {
+    let mut settings = load_settings(&app, &state)?;
+    settings
+        .present_options_by_project
+        .insert(project_id, options.clone());
+    if save_as_default {
+        settings.present_options_default = Some(options);
+    }
     save_settings(&app, &state, settings)
 }
 

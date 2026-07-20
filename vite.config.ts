@@ -79,6 +79,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         editor: fileURLToPath(new URL("./editor.html", import.meta.url)),
+        present: fileURLToPath(new URL("./present.html", import.meta.url)),
         settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
       },
     },

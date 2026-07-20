@@ -109,7 +109,7 @@ export interface Resolved {
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /** Default enter axis for directional transitions. */
-function defaultDirection(type: TransitionType): [number, number] {
+export function defaultDirection(type: TransitionType): [number, number] {
   switch (type) {
     case "slide":
     case "wipe":

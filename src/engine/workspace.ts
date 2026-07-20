@@ -22,6 +22,17 @@ export interface AppSettings {
   lastUpdateCheckMs?: number | null;
   /** Last version offered and declined, so it isn't re-offered every launch. */
   lastOfferedVersion?: string | null;
+  /** Last Present-modal pick per project id + the cross-project default. */
+  presentOptionsByProject?: Record<string, PresentOptions>;
+  presentOptionsDefault?: PresentOptions | null;
+}
+
+/** The Present modal's remembered options (mirrors PresentOptionsDoc in workspace.rs). */
+export interface PresentOptions {
+  mode: "video" | "slideshow";
+  quality: "full" | "smooth";
+  soundtrack: boolean;
+  fullscreen: boolean;
 }
 
 export interface WorkspaceProjectInfo {
@@ -112,6 +123,15 @@ export function deleteExportPreset(slug: string): Promise<void> {
 /** Remember the export modal's pick, per project, with the global pick as fallback. */
 export function setLastExportPreset(projectId: string, presetId: string): Promise<void> {
   return invoke<void>("set_last_export_preset", { projectId, presetId });
+}
+
+/** Remember the Present modal's pick per project; saveAsDefault also writes the cross-project default. */
+export function setPresentOptions(
+  projectId: string,
+  options: PresentOptions,
+  saveAsDefault: boolean,
+): Promise<void> {
+  return invoke<void>("set_present_options", { projectId, options, saveAsDefault });
 }
 
 /** Change fingerprint of a project's sources (project.json + scenes/**); see workspace.rs. */
