@@ -467,6 +467,36 @@ result. The invariants:
   stands down for the entire export (`isExporting`), so the export loop samples
   only what the sidecar declares.
 
+## Layered screenshot
+
+A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
+screen/text cards) and `animatedTrack` naming which one keyed track, camera or
+stack pose, animates that scene. The invariants:
+
+- **The null path is the old path, exactly.** The host-side
+  `LayeredScreenshotFallback` renders nothing when the sidecar has no block (and
+  stands down entirely when the scene's TSX consumes it via
+  `useSceneLayeredScreenshot`), so every existing project mounts zero new nodes
+  and renders byte-identically.
+- **One animated track per scene.** `animatedTrack: "layeredScreenshot"` stands
+  the scene's camera track down at track-build time (`buildSceneCameraTracks`
+  returns null for that scene; its camera keys stay on disk untouched); absent
+  or `"camera"` leaves the camera path exactly as before.
+- **Everything samples pure.** Validation (`sceneLayeredScreenshot.ts`), layout
+  (`layeredScreenshotLayout.ts`) and pose sampling share the camera track's
+  semantics (half-open segments, hold outside, golden-pinned eases) as pure
+  functions with no clock or three.js, so preview and export agree by
+  construction.
+- **Drafts are UI-only.** Builder gestures preview through
+  `layeredScreenshotEditStore`; the primitive merges a draft in React only
+  behind an `isExporting()` guard, and the export samples only the sidecar.
+- **Media rides the existing pipelines.** Image cards suspend on the shared
+  texture loader (settled by the export preamble); video cards bind the
+  pre-extracted CFR clip frames and publish the standard readiness flag. Video
+  intrinsics land behind the extract barrier before frame 0, so card layout is
+  settled at capture. Text items are `useSceneText` strings under `ls-<id>`
+  keys.
+
 ## Themes & per-scene render state
 
 Themes (JSON documents, `src/theme/schema.ts`) may declare `lighting`,

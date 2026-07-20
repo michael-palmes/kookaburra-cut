@@ -7,6 +7,7 @@ Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loa
 - [Scene registration](#scene-registration)
 - [Scene documents (sidecars)](#scene-documents-sidecars)
 - [Per-scene camera tracks](#per-scene-camera-tracks-v7--m5)
+- [Layered screenshot](#layered-screenshot)
 - [Themes & staging](#themes--staging-v8)
 - [Hooks](#hooks)
 - [Text primitives](#text-primitives)
@@ -77,7 +78,10 @@ normally and simply shows no editing affordances.
       { "id": "k1", "tMs": 0, "pose": { "target": [0,0,0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5 } }
     ],
     "segments": [ { "from": "k1", "to": "k2", "ease": "inOutQuad" } ]  // ease: engine/ease.ts name or "jump"
-  }
+  },
+  "layeredScreenshot": { /* the 3D screen stack — see "Layered screenshot" */ },
+  "animatedTrack": "camera"                  // which keyed track animates this scene:
+                                             // "camera" (also the absent default) or "layeredScreenshot"
 }
 ```
 
@@ -144,6 +148,67 @@ Worked example — settle in, hold, then a jump cut to a close-up:
 
 (`jump` holds the `from` pose for the segment's whole span and lands `to` exactly at the
 `to` key's time — a jump segment IS the hold before the cut, no extra keys needed.)
+
+## Layered screenshot
+
+The sidecar's `layeredScreenshot` block is a 3D stack of app screens (and text labels)
+the scene renders as one posed group. It is app-editable via the builder; the TSX either
+mounts `<LayeredScreenshot />` explicitly or lets the host-side fallback render it (any
+scene, no TSX change). Validation, layout and sampling are pure
+(`engine/sceneLayeredScreenshot.ts`, `engine/layeredScreenshotLayout.ts`).
+
+```jsonc
+{
+  "layeredScreenshot": {
+    "layers": [                              // stacking order by z (higher = closer)
+      {
+        "id": "l1", "visible": true, "z": 0,
+        "gap": 0.18,                         // optional layer default chain gap, world units
+        "flat": false,                       // optional: skip the card treatment layer-wide
+        "items": [
+          // EXACTLY ONE root per layer (attach: null); every other item chains off a
+          // neighbour's side. Unrooted/cyclic/duplicate items drop with a console note.
+          { "id": "i1", "kind": "screen", "src": "assets/home.png", "media": "image", "attach": null },
+          { "id": "i2", "kind": "screen", "src": "assets/detail.mp4", "media": "video", "startMs": 0,
+            "attach": { "to": "i1", "side": "right" }, "gap": 0.3, "flat": false },
+          { "id": "i3", "kind": "text", "width": 2.2, "attach": { "to": "i1", "side": "bottom" } }
+        ]
+      }
+    ],
+    "pose": {                                // the REST pose: what a non-animated scene renders
+      "spread": 0,                           // 0 = flattest legal stack … 1 = fully expanded
+      "azimuthDeg": 0, "elevationDeg": 0,    // the viewer's orbit; 0/0 = front-on
+      "zoom": 1,                             // multiplier on the auto-fit (1 = fitted)
+      "pan": [0, 0]                          // world-unit offset of the stack centre
+    },
+    "animation": {                           // optional keyed pose track, camera-track shape
+      "keys": [ { "id": "k1", "tMs": 0, "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] } } ],
+      "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ]
+    }
+  },
+  "animatedTrack": "layeredScreenshot"       // the ONE animated track per scene; absent = camera.
+                                             // Setting it stands the camera track down (keys kept on disk).
+}
+```
+
+Semantics:
+
+- **Chained strips.** Screens share a common height per layer (widths follow each
+  item's measured aspect: image intrinsics, the video probe, or the text box); the
+  solver places chains outward side by side with `item.gap ?? layer.gap ?? default`,
+  re-centres the chain, and auto-fits the whole stack to the safe frame at spread 0.
+- **The pose is the stack's own transform**, never the world camera, so it composes
+  with per-scene camera tracks on OTHER scenes and never touches the compositor.
+  Animation sampling matches the camera track exactly (half-open segments, hold
+  outside, `engine/ease.ts` names + `jump`).
+- **Cards by default**: theme-radius rounded corners (`Theme.card.radius`, a fraction
+  of the short edge, with a tuned fallback), hairline stroke, soft shadow; `flat`
+  (per item or per layer) opts out.
+- **Text items** render theme type; the string lives in `doc.text["ls-<id>"]`
+  (`useSceneText`), so Edit text and `textStyle` overrides work unchanged.
+- **Global screenshots**: the picker's Global tab browses `~/Kookaburra Cut/screenshots/`
+  and always copies into the project's `assets/` on pick; reference project-relative
+  paths only, as ever.
 
 ## Themes & staging (v8)
 
@@ -753,3 +818,4 @@ Add new tokens here; never hard-code values in scenes.
 | `Device` (catalog + media screens + presets + shadows) | v7 · M1 | implemented + gated — `ws:device-video-spike` project |
 | Scene documents (sidecars, `useSceneText`/`useSceneDevices`, scaffolder) | v7 · M2 | implemented |
 | Per-scene camera track (orbit keys/segments, mini-timeline UI) | v7 · M5 | implemented |
+| `LayeredScreenshot` (sidecar stack, cards, global screenshots, wizard) | slides · PR 2 | in progress: rest pose + engine + wizard shipped; builder/lane UI landing |
