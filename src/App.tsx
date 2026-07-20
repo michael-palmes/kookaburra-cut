@@ -22,6 +22,7 @@ import {
 } from "./engine/autorun";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
+import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import {
   clipExtractionCount,
   evictAllClips,
@@ -119,6 +120,9 @@ import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
+import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
+import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
+import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
 import { FirstRunDialog, NewProjectDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
@@ -1044,20 +1048,26 @@ export default function App() {
   useEffect(() => {
     void project;
     useCameraEditStore.getState().clearCommittedDraft();
+    useLayeredScreenshotEditStore.getState().clearCommittedDraft();
   }, [project]);
   const loadedProjectId = project?.id;
   useEffect(() => {
     void loadedProjectId;
     useCameraEditStore.getState().reset();
+    useLayeredScreenshotEditStore.getState().reset();
   }, [loadedProjectId]);
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
+  const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
+  const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
   const pendingTrust = useTrustStore((s) => s.pending);
   const camSceneIndex = useClockStore((s) =>
     project ? activeSceneIndex(project.slots, s.currentMs) : 0,
   );
+  // Which keyed track animates the active scene decides the lane/pill/overlay family mounted.
+  const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
@@ -1652,18 +1662,26 @@ export default function App() {
                     </Suspense>
                   </ProjectIdContext.Provider>
                 </Canvas>
-                {/* Armed move-camera tool drag surface: DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. */}
+                {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. */}
                 {project &&
                   isWorkspaceProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
-                  cameraEditOpen && (
-                    <CameraToolOverlay
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      onDocChanged={handleDocChanged}
-                    />
-                  )}
+                  (lsActive
+                    ? lsEditOpen && (
+                        <LayeredScreenshotToolOverlay
+                          project={project}
+                          sceneIndex={camSceneIndex}
+                          onDocChanged={handleDocChanged}
+                        />
+                      )
+                    : cameraEditOpen && (
+                        <CameraToolOverlay
+                          project={project}
+                          sceneIndex={camSceneIndex}
+                          onDocChanged={handleDocChanged}
+                        />
+                      ))}
               </div>
 
               {!isAutoRun && !error && (
@@ -1679,13 +1697,20 @@ export default function App() {
                 isWorkspaceProjectId(project.id) &&
                 projectReady &&
                 !exporting &&
-                !isAutoRun && (
+                !isAutoRun &&
+                (lsActive ? (
+                  <LayeredScreenshotPill
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                  />
+                ) : (
                   <CameraPill
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
                   />
-                )}
+                ))}
 
               {/* Slowdown badge: live fps in an amber warning triangle while playback can't hold full speed; click opens Playback options. */}
               {lagFps !== null && !exporting && !isAutoRun && (
@@ -1770,16 +1795,25 @@ export default function App() {
 
             {/* The timeline dock: the animation lane self-collapses on cameraEditStore.open; the dock draws the lane-to-cell connector. */}
             <TimelineDock
-              connectorActive={cameraEditOpen}
+              connectorActive={lsActive ? lsLaneOpen : cameraEditOpen}
               activeIndex={camSceneIndex}
               lane={
                 project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-                  <AnimationLane
-                    project={project}
-                    sceneIndex={camSceneIndex}
-                    onDocChanged={handleDocChanged}
-                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                  />
+                  lsActive ? (
+                    <LayeredScreenshotAnimationLane
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                    />
+                  ) : (
+                    <AnimationLane
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                    />
+                  )
                 ) : null
               }
             >

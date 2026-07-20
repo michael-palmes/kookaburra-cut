@@ -18,14 +18,21 @@ export interface LayeredScreenshotDraft {
 interface LayeredScreenshotEditState {
   /** The builder panel's open toggle. */
   open: boolean;
+  /** The animation lane's open toggle (the cameraEditStore `open` analogue). */
+  laneOpen: boolean;
   selectedLayerId: string | null;
   selectedItemId: string | null;
+  /** The animation lane's selection (key id / segment doc index). */
+  selectedKeyId: string | null;
+  selectedSegment: number | null;
   armedTool: LayeredScreenshotTool | null;
   draft: LayeredScreenshotDraft | null;
   /** Last sidecar-write failure, shown in the strip; otherwise the on-screen stack lies while the disk write silently failed. */
   writeError: string | null;
   setOpen: (open: boolean) => void;
+  setLaneOpen: (laneOpen: boolean) => void;
   select: (layerId: string | null, itemId: string | null) => void;
+  selectKey: (keyId: string | null, segment: number | null) => void;
   armTool: (tool: LayeredScreenshotTool | null) => void;
   setDraft: (draft: LayeredScreenshotDraft | null) => void;
   setWriteError: (writeError: string | null) => void;
@@ -35,8 +42,11 @@ interface LayeredScreenshotEditState {
 
 export const useLayeredScreenshotEditStore = create<LayeredScreenshotEditState>((set) => ({
   open: false,
+  laneOpen: false,
   selectedLayerId: null,
   selectedItemId: null,
+  selectedKeyId: null,
+  selectedSegment: null,
   armedTool: null,
   draft: null,
   writeError: null,
@@ -46,7 +56,20 @@ export const useLayeredScreenshotEditStore = create<LayeredScreenshotEditState>(
         ? { open }
         : { open, selectedLayerId: null, selectedItemId: null, armedTool: null, writeError: null },
     ),
+  setLaneOpen: (laneOpen) =>
+    set(
+      laneOpen
+        ? { laneOpen }
+        : {
+            laneOpen,
+            selectedKeyId: null,
+            selectedSegment: null,
+            armedTool: null,
+            writeError: null,
+          },
+    ),
   select: (selectedLayerId, selectedItemId) => set({ selectedLayerId, selectedItemId }),
+  selectKey: (selectedKeyId, selectedSegment) => set({ selectedKeyId, selectedSegment }),
   armTool: (armedTool) => set({ armedTool }),
   setDraft: (draft) => set({ draft }),
   setWriteError: (writeError) => set((s) => (s.writeError === writeError ? {} : { writeError })),
@@ -54,8 +77,11 @@ export const useLayeredScreenshotEditStore = create<LayeredScreenshotEditState>(
   reset: () =>
     set({
       open: false,
+      laneOpen: false,
       selectedLayerId: null,
       selectedItemId: null,
+      selectedKeyId: null,
+      selectedSegment: null,
       armedTool: null,
       draft: null,
       writeError: null,

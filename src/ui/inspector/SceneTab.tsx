@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
+import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { useClockStore } from "../../engine/clock";
 import { pushHistory } from "../../engine/history";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -401,14 +402,21 @@ function CameraSectionBody({
   onDocChanged,
   collapsed,
   onToggle,
+  patchDoc,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   collapsed: boolean;
   onToggle: () => void;
+  patchDoc: (patch: (next: SceneDoc) => void) => Promise<void>;
 }) {
-  const { slot, camera, commit, appliedPoseAt } = useCameraDoc(project, sceneIndex, onDocChanged);
+  const { doc, slot, camera, commit, appliedPoseAt } = useCameraDoc(
+    project,
+    sceneIndex,
+    onDocChanged,
+  );
+  const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const cameraOpen = useCameraEditStore((s) => s.open);
   // Re-render only when the target key changes, not per playhead tick; for a trackless scene, follow the playhead in coarse quarter-second buckets (display only, commits snapshot the live clock).
@@ -471,6 +479,46 @@ function CameraSectionBody({
       />
       {collapsed ? null : (
         <div className="inspector-section-body">
+          {doc?.layeredScreenshot && (
+            <>
+              {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
+              <div className="wizard-presets">
+                <button
+                  type="button"
+                  className={`chip${lsAnimated ? "" : " selected"}`}
+                  title="Animate this scene with the camera track"
+                  onClick={() => {
+                    if (!lsAnimated) return;
+                    useLayeredScreenshotEditStore.getState().setLaneOpen(false);
+                    void patchDoc((next) => {
+                      delete next.animatedTrack;
+                    });
+                  }}
+                >
+                  Camera
+                </button>
+                <button
+                  type="button"
+                  className={`chip${lsAnimated ? " selected" : ""}`}
+                  title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
+                  onClick={() => {
+                    if (lsAnimated) return;
+                    useCameraEditStore.getState().setOpen(false);
+                    void patchDoc((next) => {
+                      next.animatedTrack = "layeredScreenshot";
+                    });
+                  }}
+                >
+                  Screenshot stack
+                </button>
+              </div>
+              {lsAnimated && (
+                <p className="modal-hint">
+                  This scene animates the screenshot stack; the camera track is standing down.
+                </p>
+              )}
+            </>
+          )}
           <div className="inspector-pose-grid">
             <NumericField
               label="orbit °"
@@ -2040,6 +2088,7 @@ export function SceneTab({
                 onDocChanged={onDocChanged}
                 collapsed={isCollapsed}
                 onToggle={() => toggleSection(section.id)}
+                patchDoc={patchDoc}
               />
             ) : (
               <SectionHeader

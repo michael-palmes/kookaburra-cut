@@ -3477,6 +3477,10 @@ body {
   cursor: ns-resize;
 }
 
+.tool-spread {
+  cursor: row-resize;
+}
+
 /* ── Motion floor (§9): reduced motion collapses all transitions ───────────── */
 
 @media (prefers-reduced-motion: reduce) {
