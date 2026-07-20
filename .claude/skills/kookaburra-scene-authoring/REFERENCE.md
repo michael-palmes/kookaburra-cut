@@ -212,11 +212,69 @@ Semantics:
 - **Global screenshots**: the picker's Global tab browses `~/Kookaburra Cut/screenshots/`
   and always copies into the project's `assets/` on pick; reference project-relative
   paths only, as ever.
-- **In the app**: the builder (inspector's Screenshot stack section, or the ⌘K palette)
-  edits layers/chains/pose; the animated-track toggle lives in the Camera section when a
-  block exists; the LS lane and pill mirror the camera's (O/P/Z plus the S spread tool);
-  four presets (Expand to isometric, Flatten, Zoom to screen, Slow drift) scaffold
-  editable keys from the current pose (`engine/layeredScreenshotPresets.ts`).
+- **In the app**: the builder (the Screens & devices section's Edit screenshot stack
+  drill-in, or the ⌘K palette) edits layers/chains/pose; the animated-track toggle lives
+  in the Camera section when a block exists; the LS lane and pill mirror the camera's
+  (O/P/Z plus the S spread tool); four presets (Expand to isometric, Flatten, Zoom to
+  screen, Slow drift) scaffold editable keys from the current pose.
+
+### Editing a stack from the terminal (full inspector parity)
+
+Everything the builder does is a sidecar edit; `sidecar.py` handles any of it by dotted
+path, and the app live-reloads on write. Adding a stack to ANY scene needs no TSX change
+(the host fallback renders it; staged template scenes mount `<LayeredScreenshot />`
+explicitly, same output):
+
+```bash
+# Add a minimal stack (root screen only), then grow it:
+python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 03-tour set layeredScreenshot \
+  '{"layers":[{"id":"l1","visible":true,"z":0,"items":[{"id":"i1","kind":"screen","src":"assets/sample-screenshot-1.jpg","media":"image","attach":null}]}],"pose":{"spread":0,"azimuthDeg":0,"elevationDeg":0,"zoom":1,"pan":[0,0]}}'
+python3 …/sidecar.py 03-tour set layeredScreenshot.pose.spread 0.6      # the builder's Spread slider
+python3 …/sidecar.py 03-tour set layeredScreenshot.pose.azimuthDeg 18   # Isometric snap = az 18, el 12; Front-on = 0/0
+python3 …/sidecar.py 03-tour set animatedTrack '"layeredScreenshot"'    # the one-animated-track toggle
+```
+
+`sidecar.py` dotted paths traverse OBJECTS only: never write through an array index
+(`layeredScreenshot.layers.0.visible` would REPLACE the layers array with an object).
+For anything inside `layers`/`items`/`keys`, `get layeredScreenshot`, edit the JSON, and
+`set layeredScreenshot` whole; object-valued paths like `layeredScreenshot.pose.spread`
+are safe to set directly.
+
+Inspector parity map (builder control → sidecar path):
+
+| Builder control | Sidecar path |
+| --- | --- |
+| Spread slider | `layeredScreenshot.pose.spread` (0..1) |
+| Front-on / Isometric snap | `pose.azimuthDeg` + `pose.elevationDeg` (0/0 vs 18/12) |
+| Zoom stepper / pan gestures | `pose.zoom` (1 = auto-fit) / `pose.pan` ([x, y] world units) |
+| Layer eye / reorder / delete | `layers[i].visible` / `layers[i].z` (back→front) / remove the entry |
+| Chain plus-buttons | append an item with `attach: { to, side }` (one `attach: null` root per layer) |
+| Gap field / Flat toggle | `items[j].gap` or `layers[i].gap` (world units) / `flat` per item or layer |
+| Change media | `items[j].src` + `media: "image"\|"video"` (+ `startMs` for video) |
+| Text item content / colour / size | `text["ls-<itemId>"]` + `textStyle["ls-<itemId>Color"]` etc (the standard textStyle suffixes) |
+| Animation lane keys/segments | `layeredScreenshot.animation.keys/segments` (the camera-track shape) |
+| Loop in slideshow holds | `layeredScreenshot.animation.presentLoop` (`{"mode":"jump"}` or `{"mode":"smooth","blendMs":2000}`) |
+
+Beyond the inspector: **card corner radius** is the theme's `card.radius` token (a
+fraction of the card's short edge, 0..0.5; absent = the tuned default), so
+`theme.py set card.radius 0.08` restyles every card in a workspace theme — there is no
+per-scene radius. **Card shadows** on stack cards are fixed constants (only `flat`
+removes them); DEVICE shadows stay the sidecar's `devices[0].shadow`
+(`"soft" | "long" | "sun" | "none"`). Preset recipes when scaffolding animations by hand:
+Expand to isometric = two keys 0→1200ms, `inOutCubic`, landing `{spread: 1, azimuthDeg:
+18, elevationDeg: 12}` with zoom/pan kept; Flatten is the inverse to `{0, 0, 0}`; Zoom to
+screen = two keys 0→1000ms landing front-on with a bigger `zoom` and `pan` centring the
+target; Slow drift = four keys over ~7s whose LAST pose equals the FIRST (small az/el/zoom
+wobbles between) plus `presentLoop: {"mode":"jump"}` so slideshow holds repeat seamlessly.
+
+Media rules for stacks match devices: copy files into `assets/` first (never reference
+outside the project), check the path + extension before writing it into the sidecar, and
+`ffprobe` any video you attach. Screen sizing is automatic (measured image intrinsics /
+the video probe set each card's aspect); text items take `width` (world units) instead. A
+video screen holds its last frame when the clip ends (`startMs` offsets its start,
+scene-local ms); exports pre-extract every sidecar-declared stack video before frame 0,
+so nothing else is needed. Deleting an asset a stack references leaves a silently missing
+card: grep the sidecars first.
 
 ## Themes & staging (v8)
 
