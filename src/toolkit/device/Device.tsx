@@ -24,6 +24,7 @@ import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
+import { presentSlideshowActive } from "../../engine/presentMode";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -90,6 +91,8 @@ export interface DeviceProps {
 
 const DEG2RAD = Math.PI / 180;
 const TWO_PI = Math.PI * 2;
+/** Present-slideshow turntable sway amplitude: 45 degrees each way. */
+const TURNTABLE_SWAY_RAD = Math.PI / 4;
 /** World-space height devices auto-fit to; the framing constant shared with DeviceMockup. */
 const TARGET_WORLD_HEIGHT = 2.6;
 /** Ground plane sits just under the auto-fit device's bottom edge. */
@@ -568,9 +571,14 @@ export function Device(props: DeviceProps) {
   let introRotX = 0;
   let introRotY = 0;
   switch (motion.preset) {
-    case "turntable":
-      spinY = (motion.degPerSec ?? 18) * t * DEG2RAD;
+    case "turntable": {
+      const rate = (motion.degPerSec ?? 18) * DEG2RAD;
+      // Slideshow holds are open-ended, where an endless 360 spin distracts; sway 45 degrees each way instead, with the peak sway speed matching the authored spin rate. Video playback and export keep the true turntable.
+      spinY = presentSlideshowActive()
+        ? TURNTABLE_SWAY_RAD * Math.sin((rate / TURNTABLE_SWAY_RAD) * t)
+        : rate * t;
       break;
+    }
     case "float":
       floatY = (motion.amplitude ?? 0.12) * Math.sin(TWO_PI * (motion.hz ?? 0.4) * t);
       break;

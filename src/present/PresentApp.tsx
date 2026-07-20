@@ -7,6 +7,7 @@ import { useClockStore } from "../engine/clock";
 import { useEffectsStore } from "../engine/effectsStore";
 import { type AspectName, CAMERA, FORMATS, SHADOW_MAP_TYPE } from "../engine/format";
 import { PersistentLayer } from "../engine/PersistentLayer";
+import { setPresentSlideshowActive } from "../engine/presentMode";
 import { setPreviewAudioProject, syncPreviewAudioPlaying } from "../engine/previewAudio";
 import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previewMedia";
 import { type LoadedProject, loadProject } from "../engine/project";
@@ -129,6 +130,7 @@ export function PresentApp() {
       setPreviewPlaybackActive(true);
       setPreviewClipStride(2);
     }
+    setPresentSlideshowActive(target.mode === "slideshow");
     const spec = FORMATS[target.aspect as AspectName] ?? FORMATS["16:9"];
     useEditorStore.getState().setFormat(spec);
     void loadProject(target.projectId)
