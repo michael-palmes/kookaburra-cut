@@ -4,6 +4,27 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-21
+
+### Added
+
+- Layered screenshot stacks. Chain screen and text cards into a layered
+  arrangement with a drill-in builder, four presets, an animation lane of
+  its own and present-mode hold looping.
+- A full-frame video scene kind in the new-scene wizard: the scene is a
+  background video with no stage, and its length follows the video.
+- A global screenshots folder (~/Kookaburra Cut/screenshots) with
+  copy-on-use picking; new projects seed sample screenshots and an app
+  icon.
+
+### Fixed
+
+- The MacBook Pro 16" device renders correctly again: readable keycaps
+  with legends, solid speaker grilles and a brighter aluminium finish.
+  Source builds regenerate the model with "pnpm assets:macbook-pro-16".
+- Release DMG builds report the failing line instead of dying silently
+  when a volume of the same name is already mounted.
+
 ## [0.3.0] - 2026-07-20
 
 ### Added
