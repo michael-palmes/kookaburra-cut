@@ -74,6 +74,92 @@ export interface SceneDocCameraPresentLoop {
 /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
 export type SceneTextAlign = "left" | "center" | "right";
 
+export type LayeredScreenshotAttachSide = "left" | "right" | "top" | "bottom";
+
+/** Where a chained item hangs off its neighbour; the layer's one root item has attach: null. */
+export interface LayeredScreenshotAttach {
+  /** Another item's id within the same layer. */
+  to: string;
+  side: LayeredScreenshotAttachSide;
+}
+
+interface LayeredScreenshotItemBase {
+  id: string;
+  attach: LayeredScreenshotAttach | null;
+  /** World-unit gap to the attached neighbour; falls back to the layer's gap, then the tuned default. */
+  gap?: number;
+}
+
+export interface LayeredScreenshotScreenItem extends LayeredScreenshotItemBase {
+  kind: "screen";
+  /** Project-relative asset path. */
+  src: string;
+  media: "image" | "video";
+  /** Video only, scene-local ms. */
+  startMs?: number;
+  /** Card treatment override for this one item; default follows the layer's flat. */
+  flat?: boolean;
+}
+
+/** The string itself lives in doc.text["ls-<id>"] via useSceneText, so textStyle overrides apply for free. */
+export interface LayeredScreenshotTextItem extends LayeredScreenshotItemBase {
+  kind: "text";
+  /** Wrap width in world units (screens size from their media aspect; text needs an explicit box). */
+  width?: number;
+}
+
+export type LayeredScreenshotItem = LayeredScreenshotScreenItem | LayeredScreenshotTextItem;
+
+export interface LayeredScreenshotLayer {
+  id: string;
+  name?: string;
+  visible: boolean;
+  items: LayeredScreenshotItem[];
+  /** This layer's default chain gap, world units. */
+  gap?: number;
+  /** This layer's default card treatment. */
+  flat?: boolean;
+  /** Stack order offset within the spread; builder-authored. */
+  z: number;
+}
+
+/** The rest pose: exactly what a non-animated scene renders, and the builder's saved view. */
+export interface LayeredScreenshotPose {
+  /** 0 = flattest legal stack, 1 = fully expanded; mapped through a tuned Z step so layers never clip. */
+  spread: number;
+  azimuthDeg: number;
+  elevationDeg: number;
+  /** Multiplier, 1 = the auto-fit default. */
+  zoom: number;
+  /** World-unit offset of the stack's centre. */
+  pan: [number, number];
+}
+
+export interface LayeredScreenshotKey {
+  id: string;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: LayeredScreenshotPose;
+}
+
+export interface LayeredScreenshotSegment {
+  from: string;
+  to: string;
+  /** An `engine/ease.ts` name or `"jump"`. */
+  ease: string;
+}
+
+export interface SceneDocLayeredScreenshot {
+  layers: LayeredScreenshotLayer[];
+  pose: LayeredScreenshotPose;
+  animation?: {
+    keys: LayeredScreenshotKey[];
+    segments: LayeredScreenshotSegment[];
+    /** Slideshow holds only, the camera's presentLoop semantics; preview and export never loop. */
+    presentLoop?: SceneDocCameraPresentLoop;
+  };
+}
+
 export interface SceneDoc {
   version: number;
   /** Human name shown by pickers (scenes have no display name otherwise). */
@@ -103,6 +189,44 @@ export interface SceneDoc {
   textAnimationForce?: boolean;
   /** Partial lighting override: each present field fully replaces the theme's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `key` + `shadow` override rather than a whole new theme. */
   lighting?: Partial<ThemeLighting>;
+  /** The layered-screenshot composition (one per scene; layers carry the multiplicity). Deep graph validation lives in `sceneLayeredScreenshot.ts`. */
+  layeredScreenshot?: SceneDocLayeredScreenshot;
+  /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other track's keys. */
+  animatedTrack?: "camera" | "layeredScreenshot";
+}
+
+export function validLayeredScreenshotPose(raw: unknown): raw is LayeredScreenshotPose {
+  const pose = raw as LayeredScreenshotPose | null;
+  return (
+    !!pose &&
+    typeof pose === "object" &&
+    Number.isFinite(pose.spread) &&
+    Number.isFinite(pose.azimuthDeg) &&
+    Number.isFinite(pose.elevationDeg) &&
+    Number.isFinite(pose.zoom) &&
+    Array.isArray(pose.pan) &&
+    pose.pan.length === 2 &&
+    pose.pan.every((n) => Number.isFinite(n))
+  );
+}
+
+/** Shallow structural check, the camera-block pattern: layers + a finite pose keep the block, anything else drops it whole; per-item degrade lives in sceneLayeredScreenshot.ts. */
+function validLayeredScreenshot(raw: unknown): raw is SceneDocLayeredScreenshot {
+  const ls = raw as SceneDocLayeredScreenshot | null;
+  if (!ls || typeof ls !== "object") return false;
+  if (!Array.isArray(ls.layers)) return false;
+  if (!validLayeredScreenshotPose(ls.pose)) return false;
+  if (ls.animation !== undefined) {
+    if (
+      !ls.animation ||
+      typeof ls.animation !== "object" ||
+      !Array.isArray(ls.animation.keys) ||
+      !Array.isArray(ls.animation.segments)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
@@ -234,6 +358,18 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.lighting !== undefined) {
     const lighting = parseLightingOverride(doc.lighting, source);
     if (lighting) out.lighting = lighting;
+  }
+  if (doc.layeredScreenshot !== undefined) {
+    if (validLayeredScreenshot(doc.layeredScreenshot)) {
+      out.layeredScreenshot = doc.layeredScreenshot;
+    } else {
+      console.warn(`[sceneDoc] ${source}: layeredScreenshot is malformed, dropped`);
+    }
+  }
+  if (doc.animatedTrack === "camera" || doc.animatedTrack === "layeredScreenshot") {
+    out.animatedTrack = doc.animatedTrack;
+  } else if (doc.animatedTrack !== undefined) {
+    console.warn(`[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot, dropped`);
   }
   return out;
 }

@@ -1,0 +1,20 @@
+import { defineScene, LayeredScreenshot, SceneStage, useTheme } from "@kookaburra/toolkit";
+
+/**
+ * __NAME__ — scaffolded layered-screenshot scene. The stack itself (layers, screens,
+ * text labels, pose, animation) lives in the sidecar `scenes/__STEM__.json` and is
+ * edited with the builder; compose anything extra around it with toolkit primitives.
+ */
+export default defineScene({
+  id: "__SCENE_ID__",
+  durationMs: __DURATION_MS__,
+  Scene() {
+    const theme = useTheme();
+    return (
+      <SceneStage>
+        <color attach="background" args={[theme.colors.background]} />
+        <LayeredScreenshot />
+      </SceneStage>
+    );
+  },
+});

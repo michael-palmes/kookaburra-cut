@@ -33,6 +33,7 @@ export interface CommandContext {
     openProject: (id: string) => void;
     openMedia: () => void;
     openTheme: () => void;
+    editScreenshotStack: () => void;
     setSoundtrack: () => void;
     removeSoundtrack: () => void;
     toggleRail: () => void;
@@ -110,6 +111,14 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keywords: ["style", "look", "colours", "colors", "fonts", "apply"],
       enabled: editor && ctx.isWorkspace && !ctx.exporting,
       run: a.openTheme,
+    },
+    {
+      id: "project.layeredScreenshot",
+      title: "Edit screenshot stack…",
+      group: "Project",
+      keywords: ["layered", "screenshot", "stack", "builder", "layers", "screens"],
+      enabled: editor && ctx.isWorkspace && !ctx.exporting,
+      run: a.editScreenshotStack,
     },
     {
       id: "project.soundtrack.set",

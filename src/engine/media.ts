@@ -46,6 +46,32 @@ export function deleteMedia(slug: string, rel: string): Promise<void> {
   return invoke("delete_media", { slug, rel });
 }
 
+// ── Global screenshots (~/Kookaburra Cut/screenshots/, copy-on-use) ────────────
+
+export interface GlobalScreenshot {
+  name: string;
+  absPath: string;
+}
+
+export function listGlobalScreenshots(): Promise<GlobalScreenshot[]> {
+  return invoke<GlobalScreenshot[]>("list_global_screenshots");
+}
+
+/** Copy external files into the global folder; returns the stored names. */
+export function importGlobalScreenshots(paths: string[]): Promise<string[]> {
+  return invoke<string[]>("import_global_screenshots", { paths });
+}
+
+/** Probe + thumbnail one global screenshot (the shared content-hash cache). */
+export function globalScreenshotMeta(name: string): Promise<MediaMeta> {
+  return invoke<MediaMeta>("global_screenshot_meta", { name });
+}
+
+/** Copy a project asset out to the global folder; returns the stored name. */
+export function copyToGlobalScreenshots(slug: string, rel: string): Promise<string> {
+  return invoke<string>("copy_to_global_screenshots", { slug, rel });
+}
+
 /** Rename an asset within assets/ (same extension); returns the new rel. */
 export function renameMedia(slug: string, rel: string, newName: string): Promise<string> {
   return invoke("rename_media", { slug, rel, newName });

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { ThemeBackdrop } from "../theme/tokens";
 
-/** Which mounted scenes stage a backdrop, and of what resolved type: the unified Background editor reads this to warn that an image/video background will sit hidden behind world-space staging (scenes are opaque compiled components, so mount-time reporting is the only ground truth). Count-based like textMotionRegistry; registered from inside the canvas (an effect, never the render path); read only by UI chrome, so export purity is untouched. */
+/** Which mounted scenes stage a backdrop, and of what resolved type: the unified Background editor reads this to warn that an image/video background will sit hidden behind world-space staging, and the layered-screenshot stack reads it to keep its fit above a staged cyc floor (scenes are opaque compiled components, so mount-time reporting is the only ground truth). Count-based like textMotionRegistry; registered from inside the canvas (an effect, never the render path), so it settles with the mount and is identical across export runs by construction. */
 interface StageRegistryState {
   stages: Record<number, { count: number; backdropType: ThemeBackdrop["type"] }>;
   register: (index: number, backdropType: ThemeBackdrop["type"]) => void;

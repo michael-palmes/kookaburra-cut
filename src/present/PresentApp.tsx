@@ -17,6 +17,7 @@ import { ProjectIdContext } from "../engine/sceneContext";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
 import { DevicesFallback } from "../toolkit/device/Device";
+import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { PresentCompositorDriver } from "./PresentCompositorDriver";
@@ -346,6 +347,7 @@ export function PresentApp() {
                       <SceneBackground />
                       <SceneComponent />
                       <DevicesFallback />
+                      <LayeredScreenshotFallback />
                       <TextFallback />
                     </SceneHost>
                   );

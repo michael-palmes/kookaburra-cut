@@ -1,5 +1,5 @@
 import { openEdit, openEditNamed } from "../engine/edit";
-import { deleteMedia, type MediaMeta } from "../engine/media";
+import { copyToGlobalScreenshots, deleteMedia, type MediaMeta } from "../engine/media";
 import type { ContextMenuItem } from "./ContextMenu";
 import type { MediaActionContext } from "./MediaBrowser";
 
@@ -40,6 +40,15 @@ export function mediaCardMenu(opts: {
         id: "primary",
         label: opts.primaryLabel,
         onSelect: () => opts.onPrimary(rel, meta),
+      },
+      {
+        id: "add-global",
+        label: "Add to global screenshots",
+        title: "Copy this file into ~/Kookaburra Cut/screenshots for reuse in any project",
+        onSelect: () => {
+          opts.onError(null);
+          copyToGlobalScreenshots(opts.slug, rel).catch((e) => opts.onError(String(e)));
+        },
       },
       {
         id: "delete",

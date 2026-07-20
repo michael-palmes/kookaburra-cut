@@ -143,6 +143,11 @@ The full contract and its failure catalogue are in
 | Effects | A project declaring any effect routes every frame through one composer built from the project-wide effect union; per-scene overrides drive uniforms only; only allow-listed time-free effects exist | No mid-project shader recompiles; no effect knows the time |
 | Colour grades | 3D LUTs apply post-tone-map (LDR sRGB domain); mid-project swaps are uniform writes; one LUT size per project | Standard `.cube` grades are authored for LDR input; the public setter recompiles |
 | Persistent layers | A project's persistent module mounts once outside all scene groups and is drawn exactly once per frame, never into both transition targets | An always-visible object would cross-fade against itself |
+| Layered-screenshot storage | One singular sidecar block (`layeredScreenshot`) whose `layers[]` carries the multiplicity, plus `animatedTrack: "camera" \| "layeredScreenshot"` (absent = camera) | Closer to the singular `camera` block than the `devices` array; the toggle stands one track down without deleting the other's keys |
+| Layered-screenshot layout | Chained strips: one root per layer (`attach: null`), every other item hangs off a neighbour's side; the pure solver walks the graph, re-centres on the bounding box and auto-fits the safe frame at spread 0 | Rows and columns grow in any direction under one invariant (rooted, acyclic), which validation can actually enforce |
+| Layered-screenshot pose | The pose (`spread/azimuth/elevation/zoom/pan`) is the stack group's own scene-local transform, sampled from `localMs` inside the primitive, never the world camera | Zero compositor/exporter changes; the camera track keeps its one meaning |
+| Card treatment | Rounded-rect SDF mask + hairline stroke patched into the stock material, analytic soft-shadow quads; radius from an optional `Theme.card` token with a tuned constant fallback | Cards follow any theme that opts in without editing the bundled themes |
+| Global screenshots | Flat `~/Kookaburra Cut/screenshots/` folder behind a Project/Global picker toggle; picking always copies into the project's `assets/` (copy-on-use) | Projects stay self-contained; deleting a global file can never break one |
 
 ## Transitions, audio & export presets
 
