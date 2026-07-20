@@ -510,7 +510,11 @@ export function NewSceneWizard({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className={`modal wizard-wide${step === "media" ? " wizard-media-wide" : ""}`}>
+      <div
+        className={`modal wizard-wide${step === "media" ? " wizard-media-wide" : ""}${
+          step === "type" ? " wizard-kind-wide" : ""
+        }`}
+      >
         <h2 id={titleId}>New scene</h2>
 
         {step === "type" && (

@@ -2589,8 +2589,13 @@ body {
 
 .kind-picker {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
+}
+
+/* The type step: three kind cards per row need the media step's width. */
+.wizard-kind-wide {
+  width: min(56rem, calc(100% - 2rem));
 }
 
 .kind-card {
@@ -3481,13 +3486,13 @@ body {
   cursor: row-resize;
 }
 
-/* ── Screenshot-stack builder: a left-docked panel over the live stage ─────── */
+/* ── Screenshot-stack builder: docked on the right, beside the inspector, over the live stage ── */
 
 .ls-builder {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 0;
+  right: 0;
   z-index: 7;
   display: flex;
   flex-direction: column;
@@ -3496,7 +3501,7 @@ body {
   padding: 12px;
   overflow-y: auto;
   background: var(--surface-panel);
-  border-right: 1px solid var(--border-default);
+  border-left: 1px solid var(--border-default);
 }
 
 .ls-builder-head {

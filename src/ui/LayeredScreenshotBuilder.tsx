@@ -42,7 +42,7 @@ import { MediaBrowser } from "./MediaBrowser";
 import { useEscapeClose } from "./useEscapeClose";
 import { useSceneDocPatch } from "./useSceneDocPatch";
 
-/** The layered-screenshot builder: a full-height panel docked LEFT over the live stage (Michael's call: no scrim, no second canvas — the stage is the preview). Layer list, a 2D chain schematic of the selected layer with plus-buttons on free sides, an inline item inspector, the front-on/isometric snap and the spread slider. Every gesture commits through the `useLayeredScreenshotDoc` funnel; closing just hides the panel. */
+/** The layered-screenshot builder: a full-height sub-panel docked on the RIGHT beside the inspector, over the live stage (Michael's 2026-07-20 revision of the original left-dock call; still no scrim, no second canvas, the stage is the preview). Layer list, a 2D chain schematic of the selected layer with plus-buttons on free sides, an inline item inspector, the front-on/isometric snap and the spread slider. Every gesture commits through the `useLayeredScreenshotDoc` funnel; closing just hides the panel. */
 
 const SIDES: LayeredScreenshotAttachSide[] = ["left", "right", "top", "bottom"];
 

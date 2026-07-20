@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "name": "Kind: layered screenshot",
+  "layeredScreenshot": {
+    "layers": [
+      {
+        "id": "l1",
+        "visible": true,
+        "z": 0,
+        "items": [
+          {
+            "id": "a",
+            "kind": "screen",
+            "src": "assets/ls-shot-a.png",
+            "media": "image",
+            "attach": null
+          },
+          {
+            "id": "b",
+            "kind": "screen",
+            "src": "assets/ls-shot-b.png",
+            "media": "image",
+            "attach": { "to": "a", "side": "right" }
+          }
+        ]
+      },
+      {
+        "id": "l2",
+        "visible": true,
+        "z": 1,
+        "items": [
+          {
+            "id": "c",
+            "kind": "screen",
+            "src": "assets/ls-shot-c.png",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      }
+    ],
+    "pose": {
+      "spread": 0.55,
+      "azimuthDeg": 18,
+      "elevationDeg": 12,
+      "zoom": 0.92,
+      "pan": [0, 0]
+    }
+  }
+}
