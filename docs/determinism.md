@@ -990,7 +990,12 @@ bundled rolling-gate project (`showcase-tour`):
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
 | `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `ade1b666…` | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — |
+
+> **2026-07-21 (softer stack shadows):** the card shadow opacity dropped 0.3 →
+> 0.2 during Michael's hands-on pass, a deliberate visual change: re-recorded
+> the spike `ade1b666…` → `4ec7b223…` (Verify ×2 EQUAL) after eyeballing the
+> frame. Anchors untouched (no LS content).
 
 > **2026-07-20 (layered screenshot):** the Layered Screenshot feature landed
 > with both anchors EQUAL (`97af238c…` / `b70c9788…`): the fallback mounts
