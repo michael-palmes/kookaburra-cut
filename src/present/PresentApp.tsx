@@ -14,6 +14,7 @@ import { revealApp } from "../engine/reveal";
 import { SceneHost } from "../engine/SceneHost";
 import { ProjectIdContext } from "../engine/sceneContext";
 import { useEditorStore } from "../store/editorStore";
+import { useTrustStore } from "../store/trustStore";
 import { DevicesFallback } from "../toolkit/device/Device";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { TextFallback } from "../toolkit/text/TitleBlock";
@@ -103,6 +104,16 @@ export function PresentApp() {
     };
   }, []);
 
+  // No trust UI exists in this window: deny any pending consent request so loadProject fails readably instead of hanging forever. The modal re-stamps trust before opening, so this only fires if the gate is genuinely stale.
+  useEffect(() => {
+    const deny = () => {
+      const trust = useTrustStore.getState();
+      if (trust.pending) trust.answer(false);
+    };
+    deny();
+    return useTrustStore.subscribe(deny);
+  }, []);
+
   // A re-present while the window is open lands a fresh target; a full reboot is the simplest correct restart.
   useEffect(() => {
     const un = listen("kookaburra://present-target", () => window.location.reload());
@@ -147,7 +158,11 @@ export function PresentApp() {
       })
       .catch((e) => {
         if (!live) return;
-        setError(String(e));
+        setError(
+          (e as Error)?.name === "TrustDeniedError"
+            ? "This project's files changed since it was opened. Reopen it in the editor, then present again."
+            : String(e),
+        );
         revealApp();
       });
     return () => {
