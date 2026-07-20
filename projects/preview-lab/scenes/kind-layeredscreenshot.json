@@ -11,14 +11,14 @@
           {
             "id": "a",
             "kind": "screen",
-            "src": "assets/ls-shot-a.png",
+            "src": "assets/sample-screenshot-2.jpg",
             "media": "image",
             "attach": null
           },
           {
             "id": "b",
             "kind": "screen",
-            "src": "assets/ls-shot-b.png",
+            "src": "assets/sample-screenshot-4.jpg",
             "media": "image",
             "attach": { "to": "a", "side": "right" }
           }
@@ -32,7 +32,7 @@
           {
             "id": "c",
             "kind": "screen",
-            "src": "assets/ls-shot-c.png",
+            "src": "assets/sample-screenshot-1.jpg",
             "media": "image",
             "attach": null
           }

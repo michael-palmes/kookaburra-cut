@@ -20,6 +20,26 @@ pub(crate) const MANIFEST_FILENAME: &str = "project.json";
 const PROJECT_CLAUDE_MD: &str = include_str!("../templates/project-CLAUDE.md");
 const PROJECT_CLAUDE_SETTINGS: &str = include_str!("../templates/project-claude-settings.json");
 
+/// Sample screenshots seeded into every new project's assets (screen pickers never start empty).
+const SAMPLE_SCREENSHOTS: [(&str, &[u8]); 4] = [
+    (
+        "sample-screenshot-1.jpg",
+        include_bytes!("../templates/samples/sample-screenshot-1.jpg"),
+    ),
+    (
+        "sample-screenshot-2.jpg",
+        include_bytes!("../templates/samples/sample-screenshot-2.jpg"),
+    ),
+    (
+        "sample-screenshot-3.jpg",
+        include_bytes!("../templates/samples/sample-screenshot-3.jpg"),
+    ),
+    (
+        "sample-screenshot-4.jpg",
+        include_bytes!("../templates/samples/sample-screenshot-4.jpg"),
+    ),
+];
+
 /// Persisted app settings (`$APPDATA/settings.json`); absent `workspace_root` means the first-run dialog has not completed yet.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -816,6 +836,12 @@ pub fn create_project(
     // Always present even when the template ships none (e.g. "blank", since empty dirs don't survive git): media import and relative asset references expect the folder.
     std::fs::create_dir_all(dir.join("assets")).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir.join("edits")).map_err(|e| e.to_string())?;
+    for (name, bytes) in SAMPLE_SCREENSHOTS {
+        let dest = dir.join("assets").join(name);
+        if !dest.exists() {
+            std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
+        }
+    }
 
     // Manifest: copy with id/name rewritten (id must match the folder slug).
     let manifest_text =
