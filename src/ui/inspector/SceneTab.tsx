@@ -879,10 +879,11 @@ export function SceneTab({
   }
 
   const sections = sceneSections({ doc, slotsCount: project.slots.length });
-  const boundaryIndex = sceneIndex === 0 ? 1 : sceneIndex;
+  // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
+  const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
   const transitionValue =
     project.slots.length > 1
-      ? (project.slots[boundaryIndex]?.transitionIn?.type ?? "none")
+      ? (project.slots[boundaryIndex + 1]?.transitionIn?.type ?? "none")
       : undefined;
   const durationMode =
     doc?.duration?.mode === "manual"
@@ -1641,7 +1642,7 @@ export function SceneTab({
     return (
       <div className="inspector-drill">
         <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
-        <div className="inspector-drill-title">{`Transition into scene ${boundaryIndex + 1}`}</div>
+        <div className="inspector-drill-title">{`Transition out of scene ${boundaryIndex + 1}`}</div>
         <div className="inspector-drill-body">
           <TransitionModal
             embedded

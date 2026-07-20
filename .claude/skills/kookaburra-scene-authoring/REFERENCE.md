@@ -634,10 +634,14 @@ slide(t: SceneTime, range: [startMs, endMs], axis: "x" | "y"): { offset: number 
 
 ## Cross-scene transitions (project.json)
 
-Declared on the INCOMING scene: `"transition": { "type", "durationMs", ... }` — the scene
-starts early by the (clamped) overlap. Ten types (v10 · M2); unknown types degrade to
-`crossfade` with a console warning. All params are optional (defaults shown); every value
-is clamped on load.
+Declared on the OUTGOING scene (manifest `"version": 2`): `"transition": { "type",
+"durationMs", ... }` plays at that scene's END, pulling the NEXT scene's start back by the
+(clamped) overlap; the last scene never carries one. Always write `"version": 2` at the
+manifest top level when authoring transitions. Legacy unversioned manifests stored each
+transition on the incoming scene instead; the loader shifts them (identical output) and any
+app edit migrates the file in place, so never mix the two placements in one file. Ten types
+(v10 · M2); unknown types degrade to `crossfade` with a console warning. All params are
+optional (defaults shown); every value is clamped on load.
 
 | type | family | params (beyond `durationMs`) | notes |
 |---|---|---|---|

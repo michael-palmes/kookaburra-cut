@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { TransitionSpec } from "./sceneTimeline";
 
-/** Set or remove the incoming transition of `project.slots[index]` (ws projects only). `null` removes the key, a hard cut which also returns the overlap to the timeline (the project gets LONGER). Index 0 is rejected natively (no incoming transition). */
+/** Set or remove the OUTGOING transition of `project.slots[index]` (ws projects only, manifest v2). `null` removes the key, a hard cut which also returns the overlap to the timeline (the project gets LONGER). The last scene is rejected natively (nothing to exit into). */
 export async function updateSceneTransition(
   slug: string,
   index: number,

@@ -1,6 +1,7 @@
 {
   "id": "preview-lab",
   "name": "Preview Lab (dev-only)",
+  "version": 2,
   "themeId": "kookaburra-studio-white",
   "formats": ["16:9"],
   "scenes": [

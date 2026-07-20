@@ -85,6 +85,30 @@ pub fn write_scene_doc(
     atomic_write_json(&path, &doc)
 }
 
+/// Manifest v2: transitions live on the OUTGOING scene. Legacy files stored each one on the incoming scene; shifting every transition one scene earlier reproduces the same boundaries, so migration never changes rendered output. Runs before any scenes-array edit so a file can never mix the two models; history snapshots stay verbatim (undo of a legacy file restores the legacy file).
+fn migrate_manifest_transitions(manifest: &mut Value) {
+    let version = manifest.get("version").and_then(Value::as_u64).unwrap_or(1);
+    if version >= 2 {
+        return;
+    }
+    if let Some(scenes) = manifest.get_mut("scenes").and_then(Value::as_array_mut) {
+        for i in 0..scenes.len() {
+            let next = scenes.get(i + 1).and_then(|s| s.get("transition")).cloned();
+            if let Some(obj) = scenes[i].as_object_mut() {
+                match next {
+                    Some(spec) => {
+                        obj.insert("transition".into(), spec);
+                    }
+                    None => {
+                        obj.remove("transition");
+                    }
+                }
+            }
+        }
+    }
+    manifest["version"] = json!(2);
+}
+
 /// Patch one scene's `durationMs` in `project.json` (atomic); project.json stays the sequencing source of truth, the sidecar's `duration.mode` only tells the app whether to keep it synced (duration-follow).
 #[tauri::command]
 pub fn update_project_scene(
@@ -100,6 +124,7 @@ pub fn update_project_scene(
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut manifest);
     let scenes = manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)
@@ -111,7 +136,7 @@ pub fn update_project_scene(
     atomic_write_json(&path, &manifest)
 }
 
-/// Set or remove one scene's incoming `transition` in `project.json` (atomic), the transition picker's write surface; `None` removes the key (a hard cut, which also restores the overlap to the timeline), index 0 is rejected since the first scene has no incoming transition, and the spec is schema-light on shape (the `set_project_theme` precedent: the loader normalises and degrades unknown types) but must be an object carrying a string `type` so a garbage write can't land.
+/// Set or remove one scene's outgoing `transition` in `project.json` (atomic, manifest v2), the transition picker's write surface; `None` removes the key (a hard cut, which also restores the overlap to the timeline), the last scene is rejected since it has nothing to exit into, and the spec is schema-light on shape (the `set_project_theme` precedent: the loader normalises and degrades unknown types) but must be an object carrying a string `type` so a garbage write can't land.
 #[tauri::command]
 pub fn update_project_scene_transition(
     app: AppHandle,
@@ -122,9 +147,6 @@ pub fn update_project_scene_transition(
 ) -> Result<(), String> {
     let root = workspace::require_root(&app, &state)?;
     workspace::validate_slug(&slug)?;
-    if index == 0 {
-        return Err("the first scene has no incoming transition".into());
-    }
     if let Some(spec) = &transition {
         let ok = spec
             .as_object()
@@ -139,10 +161,14 @@ pub fn update_project_scene_transition(
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut manifest);
     let scenes = manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)
         .ok_or("project.json has no scenes array")?;
+    if index + 1 >= scenes.len() {
+        return Err("the last scene has no outgoing transition".into());
+    }
     let scene = scenes
         .get_mut(index)
         .ok_or_else(|| format!("project.json has no scene at index {index}"))?;
@@ -205,6 +231,7 @@ pub fn remove_project_scene(
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut manifest);
     let scenes = manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)
@@ -233,7 +260,7 @@ pub fn remove_project_scene(
     Ok(())
 }
 
-/// Move a scene within the project; each scene's incoming `transition` travels with it, predictable and reversible by moving back.
+/// Move a scene within the project; each scene's outgoing `transition` travels with it, predictable and reversible by moving back.
 #[tauri::command]
 pub fn move_project_scene(
     app: AppHandle,
@@ -248,6 +275,7 @@ pub fn move_project_scene(
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut manifest);
     let scenes = manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)
@@ -280,6 +308,7 @@ pub fn duplicate_scene(
         std::fs::read_to_string(&manifest_path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut manifest);
     let source = manifest
         .get("scenes")
         .and_then(Value::as_array)
@@ -343,8 +372,9 @@ pub fn duplicate_scene(
         .and_then(Value::as_u64)
         .unwrap_or(DEFAULT_SCENE_DURATION_MS);
     let mut entry = json!({ "file": new_file, "durationMs": duration_ms });
-    // The first scene has no incoming transition; anywhere else the source's rides along (the move_project_scene convention).
-    if !matches!(position, Some(0)) {
+    // The last scene has no outgoing transition; anywhere else the source's rides along (the move_project_scene convention).
+    let lands_last = !matches!(position, Some(i) if i < scenes.len());
+    if !lands_last {
         if let Some(transition) = source.get("transition") {
             entry["transition"] = transition.clone();
         }
@@ -583,6 +613,7 @@ pub async fn scaffold_scene(
         std::fs::read_to_string(&manifest_path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut manifest);
     let scenes = manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)

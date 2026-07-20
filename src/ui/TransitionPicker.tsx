@@ -286,7 +286,7 @@ export function TransitionModal({
   embedded = false,
 }: {
   project: LoadedProject;
-  /** The incoming scene's index (>= 1). */
+  /** The OUTGOING scene's index (0..slots.length-2): the boundary this scene exits through. */
   boundaryIndex: number;
   /** Scene thumb paths by file stem (may be empty; flat fallbacks render instead). */
   thumbs: Record<string, string>;
@@ -296,20 +296,20 @@ export function TransitionModal({
   /** Render without the modal chrome; the inspector drill-in hosts the same body (decision 8) with a compact stacked layout. */
   embedded?: boolean;
 }) {
-  const existing = project.slots[boundaryIndex]?.transitionIn ?? null;
+  const existing = project.slots[boundaryIndex + 1]?.transitionIn ?? null;
   const [draft, setDraft] = useState<TransitionSpec | null>(existing ? { ...existing } : null);
   useEscapeClose(onCancel);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { fsUrlA, fsUrlB } = useMemo(() => {
-    const a = thumbs[sceneStem(project, boundaryIndex - 1)];
-    const b = thumbs[sceneStem(project, boundaryIndex)];
+    const a = thumbs[sceneStem(project, boundaryIndex)];
+    const b = thumbs[sceneStem(project, boundaryIndex + 1)];
     return { fsUrlA: a ? fsUrl(a) : null, fsUrlB: b ? fsUrl(b) : null };
   }, [thumbs, boundaryIndex, project]);
 
-  const themeIn = project.sceneThemes[boundaryIndex] ?? project.theme;
-  const themeOut = project.sceneThemes[boundaryIndex - 1] ?? project.theme;
+  const themeIn = project.sceneThemes[boundaryIndex + 1] ?? project.theme;
+  const themeOut = project.sceneThemes[boundaryIndex] ?? project.theme;
   const meta = draft ? TRANSITION_CATALOG.find((m) => m.type === draft.type) : null;
 
   const pick = (type: TransitionType | null) => {
@@ -491,7 +491,7 @@ export function TransitionModal({
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Transition">
       <div className="modal wizard-wide transition-modal">
         <h2 className="modal-title">
-          Transition into scene {boundaryIndex + 1} — {sceneStem(project, boundaryIndex)}
+          Transition out of scene {boundaryIndex + 1} — {sceneStem(project, boundaryIndex)}
         </h2>
         {content}
       </div>

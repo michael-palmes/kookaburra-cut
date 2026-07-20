@@ -1,6 +1,7 @@
 {
   "id": "blank",
   "name": "Blank",
+  "version": 2,
   "themeId": "kookaburra-default",
   "formats": ["16:9", "9:16", "1:1"],
   "scenes": [

@@ -149,6 +149,7 @@ The full contract and its failure catalogue are in
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Transition pack | Crossfade, dip, slide/push, wipe, blur, zoom, whip, procedural luma/iris, glitch: normalised specs with per-type defaults; unknown types degrade to crossfade with a warning | Hand-editable JSON must degrade, never throw |
+| Transition ownership | Manifest v2 stores a transition on the OUTGOING scene (plays at its end); legacy files are read-shimmed to identical output and migrated on the first scenes-array write | The authoring model matches editing intuition without moving a single rendered pixel |
 | Glitch randomness | Integer hash (PCG), never `fract(sin)` | Integer ops are exact across shader compiles |
 | Shader generations | Extended transitions are separate GLSL3 materials; the original programs stay source-identical | Legacy-project byte-identity is structural |
 | Transition picker | One small live-GL preview drives the real shipping shaders over cached scene thumbs; no committed preview assets, no capture | Previews cannot drift from the shaders; capture would scrub the stage |
