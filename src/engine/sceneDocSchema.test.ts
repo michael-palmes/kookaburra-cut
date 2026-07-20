@@ -169,6 +169,38 @@ describe("parseSceneDoc", () => {
     const bad = parseSceneDoc({ version: 1, camera: { keys: [] } }, "test");
     expect(bad?.camera).toBeUndefined();
   });
+
+  it("keeps a valid camera.presentLoop and drops invalid ones without losing the track", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const smooth = parseSceneDoc(
+      {
+        version: 1,
+        camera: { keys: [], segments: [], presentLoop: { mode: "smooth", blendMs: 1500 } },
+      },
+      "test",
+    );
+    expect(smooth?.camera?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
+    const jump = parseSceneDoc(
+      { version: 1, camera: { keys: [], segments: [], presentLoop: { mode: "jump" } } },
+      "test",
+    );
+    expect(jump?.camera?.presentLoop).toEqual({ mode: "jump" });
+    const badMode = parseSceneDoc(
+      { version: 1, camera: { keys: [], segments: [], presentLoop: { mode: "bounce" } } },
+      "test",
+    );
+    expect(badMode?.camera).toEqual({ keys: [], segments: [] });
+    const badBlend = parseSceneDoc(
+      {
+        version: 1,
+        camera: { keys: [], segments: [], presentLoop: { mode: "smooth", blendMs: -5 } },
+      },
+      "test",
+    );
+    expect(badBlend?.camera).toEqual({ keys: [], segments: [] });
+    expect(badBlend?.camera?.presentLoop).toBeUndefined();
+    warn.mockRestore();
+  });
   it("keeps a non-empty string themeId and drops other shapes (v8)", () => {
     expect(parseSceneDoc({ version: 1, themeId: "kookaburra-studio-white" }, "test")?.themeId).toBe(
       "kookaburra-studio-white",

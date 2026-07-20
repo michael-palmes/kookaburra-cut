@@ -124,6 +124,7 @@ import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
+import { PresentModal } from "./ui/PresentModal";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { TerminalPanel } from "./ui/TerminalPanel";
 import { ThemeMode } from "./ui/ThemeMode";
@@ -131,6 +132,7 @@ import { TimelineDock } from "./ui/TimelineDock";
 import {
   ExportIcon,
   PaletteTrigger,
+  PresentIcon,
   Titlebar,
   TitlebarIdentity,
   TitlebarProjects,
@@ -219,6 +221,7 @@ export default function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   // The export modal resolves preset/custom to an EncodeSpec; the Titlebar codec select is subsumed, and Kookaburra Standard is the frozen path.
   const [showExport, setShowExport] = useState(false);
+  const [showPresent, setShowPresent] = useState(false);
   const [playing, setPlaying] = useState(false);
   const playBtnRef = useRef<HTMLButtonElement>(null);
   // Auto-run latch: `started` guards the single run through StrictMode's double-invoke; error reporting is deduped in engine/autorun.
@@ -1487,6 +1490,16 @@ export default function App() {
             <span className="titlebar-divider" aria-hidden />
             <button
               type="button"
+              className="btn titlebar-present"
+              title="Play this project live: click-through slideshow or video, windowed or fullscreen"
+              onClick={() => setShowPresent(true)}
+              disabled={!project || exporting}
+            >
+              <PresentIcon />
+              Present
+            </button>
+            <button
+              type="button"
               className="btn primary titlebar-export"
               onClick={() => setShowExport(true)}
               disabled={!project || exporting}
@@ -1935,6 +1948,13 @@ export default function App() {
           busy={exporting}
           onExport={handleExport}
           onClose={() => setShowExport(false)}
+        />
+      )}
+      {showPresent && project && (
+        <PresentModal
+          project={project}
+          currentAspect={format.name}
+          onClose={() => setShowPresent(false)}
         />
       )}
     </div>

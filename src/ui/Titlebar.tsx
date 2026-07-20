@@ -99,3 +99,25 @@ export function ExportIcon() {
     </svg>
   );
 }
+
+/** A projection screen with a play mark, the Present CTA's glyph. */
+export function PresentIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 3h15" />
+      <path d="M4 3v9.5a1 1 0 001 1h10a1 1 0 001-1V3" />
+      <path d="M8.6 6.2v4.1l3.5-2.05-3.5-2.05z" />
+      <path d="M10 13.5V17M7.5 17.5L10 17l2.5.5" />
+    </svg>
+  );
+}

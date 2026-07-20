@@ -1,5 +1,7 @@
 import { Text } from "@react-three/drei";
 import { useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useHeldLocalMs } from "../../engine/presentHold";
+import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
@@ -173,6 +175,12 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   // Emoji clusters swap to placeholder codepoints before troika sees the string; identical text for emoji-free strings, so legacy bytes stay safe (the registry above keeps the ORIGINAL text).
   const prepared = useMemo(() => prepareEmojiText(props.text), [props.text]);
   const hasOut = anim !== null && anim.outPreset !== "none" && props.outAt !== undefined;
+  const holdToMs = props.to ?? 600;
+  const holdOutMs = hasOut ? props.outAt : undefined;
+  useEffect(() => {
+    if (sceneIndex === undefined) return;
+    return registerPresentTiming(sceneIndex, { kind: "text", toMs: holdToMs, outAtMs: holdOutMs });
+  }, [sceneIndex, holdToMs, holdOutMs]);
   if (anim === null || (anim.preset === "none" && !hasOut)) {
     return <LegacyHeadline {...styled} color={fill} theme={theme} prepared={prepared} />;
   }
@@ -192,7 +200,8 @@ function LegacyHeadline(
   props: AnimatedHeadlineProps & { theme: Theme; prepared: PreparedEmojiText },
 ) {
   const { from = 0, to = 600, position = [0, 0, 0], fontSize = 0.6, theme, prepared } = props;
-  const { localMs } = useTimeline();
+  const { localMs: rawLocalMs } = useTimeline();
+  const localMs = useHeldLocalMs(rawLocalMs);
   const group = useContext(GroupAnimationContext);
   const { font, fill } = textStyle(theme, props);
   const reveal = to <= from ? 1 : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
@@ -281,7 +290,8 @@ function BlockHeadline(
     anim,
     prepared,
   } = props;
-  const { localMs } = useTimeline();
+  const { localMs: rawLocalMs } = useTimeline();
+  const localMs = useHeldLocalMs(rawLocalMs);
   const group = useContext(GroupAnimationContext);
   const [bounds, setBounds] = useState<Bounds | null>(null);
   const hasEmoji = prepared.clusters.length > 0;
@@ -424,7 +434,8 @@ function StaggeredHeadline(
   const text = prepared.text;
   const hasEmoji = prepared.clusters.length > 0;
   const [carets, setCarets] = useState<Float32Array | null>(null);
-  const { localMs } = useTimeline();
+  const { localMs: rawLocalMs } = useTimeline();
+  const localMs = useHeldLocalMs(rawLocalMs);
   const group = useContext(GroupAnimationContext);
   const granularity = anim.granularity ?? "word";
   // Variant flags are mount-constant (the resolved animation cannot change without a scene remount): the walk axis follows the granularity (paragraphs are vertically disjoint, so the walk keys on −Y), twist mounts the per-unit card turn, and shine stays ELEMENT-level (one band over the whole text, driven by unit 0); a shine-capable `AnimatedGroup` also mounts the shine variant, the child's OWN shine wins the single band slot, else the group band lands pre-folded.
@@ -440,6 +451,14 @@ function StaggeredHeadline(
   useEffect(() => () => holder.dispose(), [holder]);
   const [units, setUnits] = useState<StaggerUnits | null>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
+
+  // The stagger spread is only known after the first typeset; the dispatcher's entry covers the base window meanwhile.
+  const sceneIndex = useSceneContext()?.index;
+  const spreadMs = units ? Math.max(0, units.count - 1) * anim.staggerMs : null;
+  useEffect(() => {
+    if (sceneIndex === undefined || spreadMs === null || spreadMs <= 0) return;
+    return registerPresentTiming(sceneIndex, { kind: "text", toMs: to, staggerSpreadMs: spreadMs });
+  }, [sceneIndex, spreadMs, to]);
 
   const timing: TextAnimTiming = { anim, from, to, outAt };
   const { font, fill } = textStyle(theme, props);

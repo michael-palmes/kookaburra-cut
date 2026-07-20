@@ -1,4 +1,6 @@
 import { type ReactNode, useContext, useEffect } from "react";
+import { useHeldLocalMs } from "../../engine/presentHold";
+import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { useTimeline } from "../../engine/timeline";
@@ -53,7 +55,8 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
   const doc = useContext(SceneDocContext);
   const parent = useContext(GroupAnimationContext);
   const sceneIndex = useSceneContext()?.index;
-  const { localMs } = useTimeline();
+  const { localMs: rawLocalMs } = useTimeline();
+  const localMs = useHeldLocalMs(rawLocalMs);
 
   // Report coded motion to the registry, same rule as the headline.
   const coded = hasOwnAnimationProps(props);
@@ -65,6 +68,12 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
 
   const anim = resolveGroupAnimation(props, theme, doc);
   const hasOut = anim !== null && anim.outPreset !== "none" && outAt !== undefined;
+  const animated = anim !== null && (anim.preset !== "none" || hasOut);
+  const holdOutMs = hasOut ? outAt : undefined;
+  useEffect(() => {
+    if (!animated || sceneIndex === undefined) return;
+    return registerPresentTiming(sceneIndex, { kind: "group", toMs: to, outAtMs: holdOutMs });
+  }, [animated, sceneIndex, to, holdOutMs]);
   if (anim === null || (anim.preset === "none" && !hasOut)) {
     // Plain positioned group; a parent group's context (if any) passes straight through.
     return <group position={position}>{children}</group>;

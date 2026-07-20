@@ -1,11 +1,16 @@
 import { DEFAULT_EASE } from "./ease";
-import type { SceneDocCameraKey, SceneDocCameraPose } from "./sceneDocSchema";
+import type {
+  SceneDocCameraKey,
+  SceneDocCameraPose,
+  SceneDocCameraPresentLoop,
+} from "./sceneDocSchema";
 
 /** Pure edit math for a sidecar camera track: the mini-timeline's mutations. Operates on the raw doc shape (`{ keys, segments }`, ids referencing keys) and returns a NEW object per mutation; the UI keeps a draft during a drag and writes the committed value through `writeSceneDoc` on pointer-up. The layout model is GAP-PRESERVING with HARD WALLS, the opposite of the video editor's magnetic timeline: nothing reflows, a drag simply clamps against its neighbouring keys and the scene edges (existing overhang keys stay legal, but drags never create new positions past the end or before 0). Sampling semantics live in `sceneCamera.ts`; this module never interprets eases. */
 
 export interface CameraDoc {
   keys: SceneDocCameraKey[];
   segments: { from: string; to: string; ease: string }[];
+  presentLoop?: SceneDocCameraPresentLoop;
 }
 
 /** The minimum span between neighbouring keys (and of a segment): one 60fps frame. */
@@ -159,6 +164,7 @@ export function addSegmentAt(
   const withFrom = shared ? camera.keys : [...camera.keys, from];
   const to = { id: nextKeyId({ ...camera, keys: withFrom }), tMs: Math.round(end), pose: poseTo };
   return {
+    ...camera,
     keys: [...withFrom, to],
     segments: [...camera.segments, { from: from.id, to: to.id, ease: DEFAULT_EASE }],
   };
@@ -171,6 +177,7 @@ export function removeSegment(camera: CameraDoc, docIndex: number): CameraDoc | 
   const segments = camera.segments.filter((_, i) => i !== docIndex);
   const referenced = new Set(segments.flatMap((s) => [s.from, s.to]));
   return {
+    ...camera,
     keys: camera.keys.filter((k) => (k.id !== seg.from && k.id !== seg.to) || referenced.has(k.id)),
     segments,
   };
@@ -180,6 +187,7 @@ export function removeSegment(camera: CameraDoc, docIndex: number): CameraDoc | 
 export function removeKey(camera: CameraDoc, keyId: string): CameraDoc | null {
   if (!camera.keys.some((k) => k.id === keyId)) return null;
   return {
+    ...camera,
     keys: camera.keys.filter((k) => k.id !== keyId),
     segments: camera.segments.filter((s) => s.from !== keyId && s.to !== keyId),
   };
@@ -229,6 +237,7 @@ export function syncSegmentStartToPrevious(camera: CameraDoc, docIndex: number):
   const segments = camera.segments.map((s, i) => (i === docIndex ? { ...s, from: prev.toId } : s));
   const referenced = new Set(segments.flatMap((s) => [s.from, s.to]));
   return {
+    ...camera,
     keys: camera.keys.filter((k) => k.id !== oldFromId || referenced.has(k.id)),
     segments,
   };
