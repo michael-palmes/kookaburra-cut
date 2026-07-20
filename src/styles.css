@@ -3481,6 +3481,258 @@ body {
   cursor: row-resize;
 }
 
+/* ── Screenshot-stack builder: a left-docked panel over the live stage ─────── */
+
+.ls-builder {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 316px;
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--surface-panel);
+  border-right: 1px solid var(--border-default);
+}
+
+.ls-builder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ls-builder-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ls-builder-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ls-builder-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ls-builder-hint {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.ls-builder-spread {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.ls-builder-spread input[type="range"] {
+  flex: 1;
+}
+
+.ls-builder-readout {
+  min-width: 34px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ls-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.ls-layer-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.ls-layer-row:hover {
+  background: var(--accent-subtle);
+}
+
+.ls-layer-row.selected {
+  background: var(--accent-muted);
+}
+
+.ls-layer-eye {
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.ls-layer-eye.off {
+  opacity: 0.45;
+}
+
+.ls-layer-name {
+  flex: 1;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ls-layer-count {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.ls-layer-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.ls-layer-tool {
+  padding: 1px 5px;
+  font-size: 11px;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.ls-layer-tool:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.ls-layer-tool.danger {
+  color: var(--danger);
+}
+
+.ls-schematic {
+  position: relative;
+  align-self: center;
+  overflow: hidden;
+  background: var(--accent-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.ls-schematic-seed {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.ls-schem-item {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  overflow: visible;
+  font-size: 10px;
+  cursor: pointer;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.ls-schem-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ls-schem-item.text {
+  font-style: italic;
+  border-style: dashed;
+}
+
+.ls-schem-item.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ls-schem-plus {
+  position: absolute;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--accent-text);
+  cursor: pointer;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-full);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ls-schem-item:hover .ls-schem-plus,
+.ls-schem-item.selected .ls-schem-plus {
+  opacity: 1;
+}
+
+.ls-schem-plus.left {
+  top: calc(50% - 8px);
+  left: -8px;
+}
+
+.ls-schem-plus.right {
+  top: calc(50% - 8px);
+  right: -8px;
+}
+
+.ls-schem-plus.top {
+  top: -8px;
+  left: calc(50% - 8px);
+}
+
+.ls-schem-plus.bottom {
+  bottom: -8px;
+  left: calc(50% - 8px);
+}
+
+.ls-builder-wide {
+  width: 100%;
+}
+
+.ls-builder-fields {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.ls-builder-field {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.ls-builder-field .modal-input {
+  width: 72px;
+}
+
 /* ── Motion floor (§9): reduced motion collapses all transitions ───────────── */
 
 @media (prefers-reduced-motion: reduce) {

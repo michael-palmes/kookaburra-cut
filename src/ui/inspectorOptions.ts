@@ -45,7 +45,13 @@ export function projectRows(input: {
   ];
 }
 
-export type SceneSectionId = "text" | "device" | "style" | "camera" | "motion";
+export type SceneSectionId =
+  | "text"
+  | "device"
+  | "layeredScreenshot"
+  | "style"
+  | "camera"
+  | "motion";
 
 export interface SceneRowModel {
   id: string;
@@ -110,6 +116,18 @@ export function sceneSections(input: {
       id: "device",
       label: "Media & device",
       rows: [{ id: "device.add", label: "Add device", chevron: false }],
+    });
+  }
+
+  if (doc) {
+    sections.push({
+      id: "layeredScreenshot",
+      label: "Screenshot stack",
+      rows: [
+        doc.layeredScreenshot
+          ? { id: "layeredScreenshot.edit", label: "Edit stack", chevron: false }
+          : { id: "layeredScreenshot.add", label: "Add screenshot stack", chevron: false },
+      ],
     });
   }
 

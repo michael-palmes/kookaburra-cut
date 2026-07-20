@@ -67,7 +67,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "video", src: "assets/a.mp4" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 3 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "layeredScreenshot",
+      "style",
+      "camera",
+      "motion",
+    ]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows.map((r) => r.id);
     expect(deviceRows).toEqual([
       "device.media",
@@ -83,7 +90,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "image", src: "assets/a.png" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "layeredScreenshot",
+      "style",
+      "camera",
+      "motion",
+    ]);
     const textRows = sections.find((s) => s.id === "text")?.rows;
     expect(textRows?.map((r) => r.id)).toEqual(["text.add"]);
     expect(textRows?.[0].chevron).toBe(false);
@@ -96,7 +110,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
   it("no device → the device section offers a single Add device row and no Shadow row", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "layeredScreenshot",
+      "style",
+      "camera",
+      "motion",
+    ]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows;
     expect(deviceRows?.map((r) => r.id)).toEqual(["device.add"]);
     expect(deviceRows?.[0].chevron).toBe(false);

@@ -2179,6 +2179,11 @@ export function SceneTab({
                       });
                     },
                     "device.rotation": () => setDrillIn("device.rotation"),
+                    // Both paths open the builder; it seeds the first layer for scenes without a block.
+                    "layeredScreenshot.edit": () =>
+                      useLayeredScreenshotEditStore.getState().setOpen(true),
+                    "layeredScreenshot.add": () =>
+                      useLayeredScreenshotEditStore.getState().setOpen(true),
                     "device.remove": () => {
                       if (!confirmRemove) {
                         setConfirmRemove(true);
