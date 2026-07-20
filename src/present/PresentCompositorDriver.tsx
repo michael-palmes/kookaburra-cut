@@ -27,6 +27,9 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 /** End-of-deck fade length, ms. */
 const END_FADE_MS = 600;
 
+/** Unrevealed settle time before the first scene jumps straight to its hold (mounts and typesets need a few frames to report their timing windows). */
+const INITIAL_SETTLE_GRACE_MS = 300;
+
 interface LeaveState {
   fromIndex: number;
   /** Raw scene-local ms when the leave began (the outro re-bases onto it). */
@@ -61,6 +64,7 @@ export function PresentCompositorDriver({
   const leaveRef = useRef<LeaveState | null>(null);
   const holdsRef = useRef<Record<number, DerivedHold>>({});
   const appliedHoldRef = useRef<Record<number, number | null>>({});
+  const initialJumpRef = useRef(false);
 
   useFrame((s) => {
     const clockMs = useClockStore.getState().currentMs;
@@ -91,11 +95,25 @@ export function PresentCompositorDriver({
         leaveRef.current = null;
         store.setEndFade(0);
         if (anchors[i] === undefined) store.setAnchor(i, anchor);
-        const hold = deriveHold(i);
-        if (raw >= hold.holdMs) {
-          holdsRef.current[i] = hold;
-          applyHold(i, hold.holdMs);
-          store.dispatch({ type: "settled" });
+        if (!initialJumpRef.current && i === 0) {
+          // First open: settle behind the pre-paint black, then land on the stable hold (text settled, camera rested) so the reveal never shows a mid-intro frame.
+          if (raw >= INITIAL_SETTLE_GRACE_MS) {
+            const hold = deriveHold(0);
+            const track = sceneTracks[0];
+            const camEndMs = track ? (track.keys[track.keys.length - 1]?.tMs ?? 0) : 0;
+            store.setAnchor(0, clockMs - Math.max(hold.holdMs, camEndMs));
+            holdsRef.current[0] = hold;
+            applyHold(0, hold.holdMs);
+            initialJumpRef.current = true;
+            store.dispatch({ type: "settled" });
+          }
+        } else {
+          const hold = deriveHold(i);
+          if (raw >= hold.holdMs) {
+            holdsRef.current[i] = hold;
+            applyHold(i, hold.holdMs);
+            store.dispatch({ type: "settled" });
+          }
         }
       } else if (deck.phase === "holding") {
         leaveRef.current = null;

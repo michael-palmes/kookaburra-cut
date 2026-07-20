@@ -131,7 +131,8 @@ export function PresentApp() {
         }
         clock.setCurrentMs(0);
         setProject(loaded);
-        revealApp();
+        // Slideshow reveals once the first scene is settled at its hold (see the effect below); the failsafe still caps a wedged settle.
+        if (target.mode === "video") revealApp();
       })
       .catch((e) => {
         if (!live) return;
@@ -143,6 +144,18 @@ export function PresentApp() {
       stopPresentAmbience();
     };
   }, [target]);
+
+  // Slideshow first paint: fade in on the stable hold, never a mid-intro frame.
+  useEffect(() => {
+    if (!project || mode !== "slideshow") return;
+    if (usePresentStore.getState().deck.phase !== "entering") {
+      revealApp();
+      return;
+    }
+    return usePresentStore.subscribe((s) => {
+      if (s.deck.phase !== "entering") revealApp();
+    });
+  }, [project, mode]);
 
   // The session clock: monotonic wall-delta advance; video mode caps at the end and parks.
   useEffect(() => {
