@@ -159,11 +159,15 @@ export function sampleSceneCamera(track: SceneCameraTrack, localMs: number): Sce
   return { ...held.pose, target: [...held.pose.target] };
 }
 
-/** Normalize every scene doc's camera once per project load (index-aligned with the slots). */
+/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes no camera track (its keys stay on disk untouched; the toggle just stands the camera down). */
 export function buildSceneCameraTracks(
   sceneDocs: readonly (SceneDoc | undefined)[],
 ): (SceneCameraTrack | null)[] {
-  return sceneDocs.map((doc, i) => normalizeSceneCamera(doc?.camera, `scene ${i}`));
+  return sceneDocs.map((doc, i) =>
+    doc?.animatedTrack === "layeredScreenshot"
+      ? null
+      : normalizeSceneCamera(doc?.camera, `scene ${i}`),
+  );
 }
 
 export function hasSceneCameraTracks(

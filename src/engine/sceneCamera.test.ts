@@ -294,3 +294,31 @@ describe("resolveFrameCameras", () => {
     expect(tracked?.solo?.fov).toBe(30); // scene tracks never own fov
   });
 });
+
+describe("buildSceneCameraTracks with animatedTrack", () => {
+  it("stands the camera down when a scene's animated track is the layered screenshot", () => {
+    const camera = {
+      keys: [
+        {
+          id: "k1",
+          tMs: 0,
+          pose: {
+            target: [0, 0, 0] as [number, number, number],
+            azimuthDeg: 0,
+            elevationDeg: 0,
+            distance: 5,
+          },
+        },
+      ],
+      segments: [],
+    };
+    const tracks = buildSceneCameraTracks([
+      { version: 1, camera },
+      { version: 1, camera, animatedTrack: "layeredScreenshot" },
+      { version: 1, camera, animatedTrack: "camera" },
+    ]);
+    expect(tracks[0]?.keys).toHaveLength(1);
+    expect(tracks[1]).toBeNull();
+    expect(tracks[2]?.keys).toHaveLength(1);
+  });
+});

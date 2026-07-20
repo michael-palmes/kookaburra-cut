@@ -201,6 +201,41 @@ describe("parseSceneDoc", () => {
     expect(badBlend?.camera?.presentLoop).toBeUndefined();
     warn.mockRestore();
   });
+  it("keeps a structurally sound layeredScreenshot block and drops malformed ones whole", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const posed = { spread: 0, azimuthDeg: 0, elevationDeg: 0, zoom: 1, pan: [0, 0] };
+    const good = parseSceneDoc(
+      { version: 1, layeredScreenshot: { layers: [], pose: posed } },
+      "test",
+    );
+    expect(good?.layeredScreenshot).toEqual({ layers: [], pose: posed });
+    const badPose = parseSceneDoc(
+      { version: 1, layeredScreenshot: { layers: [], pose: { spread: "wide" } } },
+      "test",
+    );
+    expect(badPose?.layeredScreenshot).toBeUndefined();
+    const badAnimation = parseSceneDoc(
+      { version: 1, layeredScreenshot: { layers: [], pose: posed, animation: { keys: 7 } } },
+      "test",
+    );
+    expect(badAnimation?.layeredScreenshot).toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it("keeps only the two known animatedTrack values", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(parseSceneDoc({ version: 1, animatedTrack: "camera" }, "test")?.animatedTrack).toBe(
+      "camera",
+    );
+    expect(
+      parseSceneDoc({ version: 1, animatedTrack: "layeredScreenshot" }, "test")?.animatedTrack,
+    ).toBe("layeredScreenshot");
+    expect(
+      parseSceneDoc({ version: 1, animatedTrack: "both" }, "test")?.animatedTrack,
+    ).toBeUndefined();
+    warn.mockRestore();
+  });
+
   it("keeps a non-empty string themeId and drops other shapes (v8)", () => {
     expect(parseSceneDoc({ version: 1, themeId: "kookaburra-studio-white" }, "test")?.themeId).toBe(
       "kookaburra-studio-white",
