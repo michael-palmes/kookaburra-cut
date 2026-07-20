@@ -990,6 +990,16 @@ bundled rolling-gate project (`showcase-tour`):
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
 | `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `ade1b666…` | — | — | — |
+
+> **2026-07-20 (layered screenshot):** the Layered Screenshot feature landed
+> with both anchors EQUAL (`97af238c…` / `b70c9788…`): the fallback mounts
+> nothing without a sidecar block, and the one exporter change (registering
+> sidecar-declared screen videos before the extract barrier, closing the
+> Suspense race the first spike eyeball exposed) walks an empty list for every
+> existing project. The new `ws:layered-screenshot-spike` fixture (image/video
+> cards, text item, all four presets, a transition and a legacy-camera scene)
+> recorded `ade1b666…` Verify ×2 EQUAL after frame eyeballs.
 
 > **2026-07-20 (present mode, float fix):** the Present feature landed with the
 > legacy sentinel EQUAL throughout (`b70c9788…`; the hold clamp, timing registry
