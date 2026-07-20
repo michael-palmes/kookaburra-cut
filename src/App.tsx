@@ -132,6 +132,7 @@ import { TimelineDock } from "./ui/TimelineDock";
 import {
   ExportIcon,
   PaletteTrigger,
+  PresentIcon,
   Titlebar,
   TitlebarIdentity,
   TitlebarProjects,
@@ -1494,6 +1495,7 @@ export default function App() {
               onClick={() => setShowPresent(true)}
               disabled={!project || exporting}
             >
+              <PresentIcon />
               Present
             </button>
             <button

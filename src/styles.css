@@ -286,7 +286,8 @@ body {
 }
 
 /* The Export CTA — the ONLY accent-filled control in the titlebar (§4.4). */
-.titlebar-export {
+.titlebar-export,
+.titlebar-present {
   height: 32px;
   gap: 7px;
 }
@@ -3945,6 +3946,25 @@ body {
 .export-btn-icon {
   inline-size: 15px;
   block-size: 15px;
+}
+
+/* Present modal: option chips carry a small icon; the footer separates the
+   save-as-default toggle from the primary action. */
+.present-modal .export-footer {
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.present-modal .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.present-chip-icon {
+  inline-size: 13px;
+  block-size: 13px;
+  flex: none;
 }
 
 /* ── Command palette (v13 · M1, §8.8) ─────────────────────────────────────── */

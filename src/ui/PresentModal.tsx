@@ -2,10 +2,20 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { availableMonitors } from "@tauri-apps/api/window";
+import type { ReactElement } from "react";
 import { useEffect, useState } from "react";
 import type { AspectName } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import { getSettings, type PresentOptions, setPresentOptions } from "../engine/workspace";
+import {
+  DISPLAY_ICON,
+  FULL_QUALITY_ICON,
+  FULLSCREEN_ICON,
+  SLIDESHOW_ICON,
+  SMOOTH_ICON,
+  VIDEO_ICON,
+  WINDOW_ICON,
+} from "./presentIcons";
 import { useEscapeClose } from "./useEscapeClose";
 
 const DEFAULT_OPTIONS: PresentOptions = {
@@ -97,7 +107,13 @@ export function PresentModal({
       .catch((e) => setError(String(e)));
   };
 
-  const chip = (selected: boolean, label: string, onClick: () => void, title?: string) => (
+  const chip = (
+    selected: boolean,
+    icon: ReactElement,
+    label: string,
+    onClick: () => void,
+    title?: string,
+  ) => (
     <button
       type="button"
       key={label}
@@ -105,6 +121,7 @@ export function PresentModal({
       title={title}
       onClick={onClick}
     >
+      {icon}
       {label}
     </button>
   );
@@ -123,12 +140,14 @@ export function PresentModal({
         <div className="popover-row">
           {chip(
             options.mode === "slideshow",
+            SLIDESHOW_ICON,
             "Slideshow",
             () => set("mode", "slideshow"),
             "Each scene holds until you click, press space or arrow through",
           )}
           {chip(
             options.mode === "video",
+            VIDEO_ICON,
             "Video",
             () => set("mode", "video"),
             "Plays straight through with transitions and soundtrack",
@@ -141,12 +160,14 @@ export function PresentModal({
         <div className="popover-row">
           {chip(
             !options.fullscreen,
+            WINDOW_ICON,
             "Window",
             () => set("fullscreen", false),
             "A chromeless window, ideal for sharing in Zoom or Teams",
           )}
           {chip(
             options.fullscreen,
+            FULLSCREEN_ICON,
             "Fullscreen",
             () => set("fullscreen", true),
             "Takes over a display, ideal for a connected screen",
@@ -155,8 +176,11 @@ export function PresentModal({
         {options.fullscreen && monitors.length > 1 && (
           <div className="popover-row">
             {monitors.map((m, i) =>
-              chip(monitorIndex === i, `${m.name} (${m.physicalWidth}×${m.physicalHeight})`, () =>
-                setMonitorIndex(i),
+              chip(
+                monitorIndex === i,
+                DISPLAY_ICON,
+                `${m.name} (${m.physicalWidth}×${m.physicalHeight})`,
+                () => setMonitorIndex(i),
               ),
             )}
           </div>
@@ -184,12 +208,14 @@ export function PresentModal({
         <div className="popover-row">
           {chip(
             options.quality === "full",
+            FULL_QUALITY_ICON,
             "Full quality",
             () => set("quality", "full"),
             "Exact full-resolution frames; crispest on a big screen",
           )}
           {chip(
             options.quality === "smooth",
+            SMOOTH_ICON,
             "Smooth playback",
             () => set("quality", "smooth"),
             "Preview-tier frames while moving; smoother on clip-heavy projects",
