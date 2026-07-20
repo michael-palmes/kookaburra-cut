@@ -4,7 +4,13 @@ import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { resolveCutoutRender } from "./frameFormat";
-import { FormatContext, SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
+import {
+  FormatContext,
+  SceneContext,
+  SceneDocContext,
+  SceneTextClaimedContext,
+  SceneThemeContext,
+} from "./sceneContext";
 import type { SceneDoc } from "./sceneDocSchema";
 import { registerSceneHost, unregisterSceneHost } from "./sceneHostRegistry";
 
@@ -42,6 +48,8 @@ export function SceneHost({
     () => (frame ? resolveCutoutRender(format, frame).format : null),
     [frame, format],
   );
+  // The overlay claims the scene's headline unless it opted out; `TitleBlock` reads this and renders null so the title lives only in the panel.
+  const textClaimed = !!frame && frame.claimsSceneText !== false;
 
   useEffect(() => {
     const group = groupRef.current;
@@ -55,7 +63,9 @@ export function SceneHost({
       <SceneDocContext.Provider value={doc ?? null}>
         <SceneThemeContext.Provider value={theme ?? null}>
           <FormatContext.Provider value={cutoutFormat}>
-            <group ref={groupRef}>{children}</group>
+            <SceneTextClaimedContext.Provider value={textClaimed}>
+              <group ref={groupRef}>{children}</group>
+            </SceneTextClaimedContext.Provider>
           </FormatContext.Provider>
         </SceneThemeContext.Provider>
       </SceneDocContext.Provider>

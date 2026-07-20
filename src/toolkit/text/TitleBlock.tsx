@@ -1,5 +1,6 @@
+import { useContext } from "react";
 import { useFormat } from "../../engine/format";
-import { useSceneContext } from "../../engine/sceneContext";
+import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc } from "../../engine/sceneDoc";
 import type { SceneTextAlign } from "../../engine/sceneDocSchema";
 import { useSceneConsumesAnyTextKey } from "../../engine/textKeyRegistry";
@@ -48,7 +49,10 @@ export function TitleBlock(props: TitleBlockProps) {
   const theme = useTheme();
   const format = useFormat();
   const doc = useSceneDoc();
+  const claimed = useContext(SceneTextClaimedContext);
   const portrait = format.aspect < 1;
+  // The overlay panel renders the headline instead; suppress the in-world one.
+  if (claimed) return null;
   const align = props.align ?? doc?.textLayout?.align ?? "center";
   const titleSize = props.fontSize ?? (portrait ? 0.34 : 0.56);
   const subtitleSize = titleSize / theme.typography.scale ** SUBTITLE_SCALE_STEPS;

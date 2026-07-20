@@ -1,4 +1,4 @@
-import type { PerspectiveCamera } from "three";
+import type { Group, PerspectiveCamera } from "three";
 import {
   Camera,
   ClampToEdgeWrapping,
@@ -33,6 +33,7 @@ import {
 } from "./effects";
 import { getLoadedEnvironment } from "./environments";
 import { FPS, MSAA_SAMPLES } from "./format";
+import { getFramePanels } from "./framePanelRegistry";
 import type { ResolvedOverlay } from "./overlayPlan";
 import {
   CUTOUT_MODE_BOX,
@@ -353,6 +354,31 @@ function renderFramedScene(
   gl.render(st.slideScene, st.quadCamera);
 }
 
+/** Draw one scene's overlay panel (title/subtitle/chip, full-frame world content) over the slide already in `dest`. Everything except the panel group is hidden, depth is cleared so the text z-tests cleanly, and the composite's colour is preserved (background nulled, colour never cleared), mirroring the persistent-layer overlay draw. The real (full-aspect) camera is used, restored by `renderFramedScene` before this runs. */
+function drawFramePanelOver(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  hosts: SceneHostHandle[],
+  persistent: Group[],
+  panel: Group,
+  dest: WebGLRenderTarget | null,
+): void {
+  for (const h of hosts) h.group.visible = false;
+  for (const g of persistent) g.visible = false;
+  panel.visible = true;
+  const prevAutoClear = gl.autoClear;
+  const prevBackground = scene.background;
+  scene.background = null;
+  gl.autoClear = false;
+  gl.setRenderTarget(dest);
+  gl.clear(false, true, false);
+  gl.render(scene, camera);
+  scene.background = prevBackground;
+  gl.autoClear = prevAutoClear;
+  panel.visible = false;
+}
+
 /** `cameras` is the frame's per-scene camera plan, present only when the project has scene-doc camera tracks (solo/a/b/overlay applied per target, absent means the camera is never touched here); `states` is the analogous per-scene render-state plan (background, environment), whose values are always restored to the shared scene on return so root-scene state never leaks into the next-loaded project. `overlays` is the per-scene resolved overlay plan (panel colour), present only when some scene declares a frame; a scene with a null entry renders full-bleed on the legacy path. */
 export function renderComposited(
   gl: WebGLRenderer,
@@ -388,6 +414,11 @@ export function renderComposited(
   // Persistent (hoisted morph) layers; empty for every project without one.
   const persistent = getPersistentLayers();
   const prevPersistentVisible = persistent.map((g) => g.visible);
+  // Overlay panels; empty for every project with no framed scene, so the panel pass is a hard no-op.
+  const framePanels = getFramePanels();
+  const prevFramePanelVisible = framePanels.map((p) => p.group.visible);
+  const panelFor = (index: number): Group | null =>
+    framePanels.find((p) => p.index === index)?.group ?? null;
   const showOnly = (idx: number) => {
     for (const h of hosts) h.group.visible = h.index === idx;
   };
@@ -397,6 +428,9 @@ export function renderComposited(
     });
     persistent.forEach((g, i) => {
       g.visible = prevPersistentVisible[i];
+    });
+    framePanels.forEach((p, i) => {
+      p.group.visible = prevFramePanelVisible[i];
     });
   };
 
@@ -421,6 +455,8 @@ export function renderComposited(
       const size = gl.getDrawingBufferSize(_size);
       const st = ensureState(size.x, size.y);
       renderFramedScene(gl, scene, camera, st, overlay, size.x, size.y, null);
+      const panel = panelFor(idx);
+      if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
     } else if (fx) {
       const size = drawingBufferSize(gl);
       renderThroughComposer(gl, ensureComposer(gl, size.x, size.y), scene, camera, fx, seed);
@@ -461,6 +497,8 @@ export function renderComposited(
   if (states?.a) applyState(states.a);
   if (overlayA) {
     renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
+    const panelA = panelFor(tr.fromIndex);
+    if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
   } else {
     gl.setRenderTarget(tgtA);
     gl.render(scene, camera);
@@ -471,6 +509,8 @@ export function renderComposited(
   if (states?.b) applyState(states.b);
   if (overlayB) {
     renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
+    const panelB = panelFor(tr.toIndex);
+    if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
   } else {
     gl.setRenderTarget(tgtB);
     gl.render(scene, camera);

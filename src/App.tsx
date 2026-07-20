@@ -40,6 +40,7 @@ import {
   verifyAllFormats,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
+import { FramePanel } from "./engine/FramePanel";
 import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
 import {
   bindHistory,
@@ -1651,6 +1652,23 @@ export default function App() {
                           <project.persistent />
                         </PersistentLayer>
                       )}
+                      {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
+                      {project?.scenes.map((_, i) => {
+                        const frame = project.sceneFrames[i];
+                        if (!frame) return null;
+                        const slot = project.slots[i];
+                        return (
+                          <FramePanel
+                            key={`${project.id}:panel:${slot.id}`}
+                            index={i}
+                            startMs={slot.startMs}
+                            durationMs={slot.durationMs}
+                            doc={project.sceneDocs[i]}
+                            theme={project.sceneThemes[i]}
+                            frame={frame}
+                          />
+                        );
+                      })}
                     </Suspense>
                   </ProjectIdContext.Provider>
                 </Canvas>

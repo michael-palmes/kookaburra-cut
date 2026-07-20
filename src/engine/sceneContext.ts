@@ -28,3 +28,6 @@ export const SceneThemeContext = createContext<Theme | null>(null);
 
 /** A scene-scoped format override, supplied by `<SceneHost>` only when the scene renders through an overlay cutout, so `useFormat()` lays the scene out as if the cutout were the whole frame; null everywhere else, where `useFormat()` falls back to the editor store's export format (byte-identical to before overlays). */
 export const FormatContext = createContext<FormatInfo | null>(null);
+
+/** True inside a scene whose overlay claims its title/subtitle text: `<SceneHost>` sets it, and `TitleBlock` renders null under it so the headline appears only in the overlay panel, never in-world. False everywhere else (no frame, or `claimsSceneText: false`), so unframed scenes are byte-identical. */
+export const SceneTextClaimedContext = createContext<boolean>(false);
