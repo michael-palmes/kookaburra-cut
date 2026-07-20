@@ -58,6 +58,15 @@ async function applySurface(target: PresentTarget): Promise<void> {
   await win.setFullscreen(true);
 }
 
+/** Last child of the Suspense boundary: its effect runs after every scene subtree's effects in the same commit, so timing registrations are in place when this fires. */
+function CommittedProbe() {
+  useEffect(() => {
+    usePresentStore.getState().setScenesCommitted(true);
+    return () => usePresentStore.getState().setScenesCommitted(false);
+  }, []);
+  return null;
+}
+
 /** Re-renders one frame per clock change (the editor's PreviewClock, present flavour). */
 function PresentClock() {
   const invalidate = useThree((s) => s.invalidate);
@@ -77,6 +86,8 @@ export function PresentApp() {
   const anchors = usePresentStore((s) => s.anchors);
   const endFade = usePresentStore((s) => s.endFade);
   const videoPaused = usePresentStore((s) => s.videoPaused);
+  const committed = usePresentStore((s) => s.scenesCommitted);
+  const [stageReady, setStageReady] = useState(false);
   const mode = target?.mode ?? "slideshow";
 
   useEffect(() => {
@@ -131,8 +142,8 @@ export function PresentApp() {
         }
         clock.setCurrentMs(0);
         setProject(loaded);
-        // Slideshow reveals once the first scene is settled at its hold (see the effect below); the failsafe still caps a wedged settle.
-        if (target.mode === "video") revealApp();
+        // The loading overlay covers the settle; the window itself can fade in straight away.
+        revealApp();
       })
       .catch((e) => {
         if (!live) return;
@@ -145,17 +156,18 @@ export function PresentApp() {
     };
   }, [target]);
 
-  // Slideshow first paint: fade in on the stable hold, never a mid-intro frame.
+  // The loading overlay lifts on the stable first frame: slideshow once the first scene settles at its hold, video shortly after the scene tree commits.
   useEffect(() => {
-    if (!project || mode !== "slideshow") return;
-    if (usePresentStore.getState().deck.phase !== "entering") {
-      revealApp();
+    if (!project || stageReady) return;
+    if (mode === "slideshow") {
+      if (deck.phase !== "entering") setStageReady(true);
       return;
     }
-    return usePresentStore.subscribe((s) => {
-      if (s.deck.phase !== "entering") revealApp();
-    });
-  }, [project, mode]);
+    if (committed) {
+      const timer = window.setTimeout(() => setStageReady(true), 300);
+      return () => window.clearTimeout(timer);
+    }
+  }, [project, mode, deck.phase, committed, stageReady]);
 
   // The session clock: monotonic wall-delta advance; video mode caps at the end and parks.
   useEffect(() => {
@@ -172,7 +184,8 @@ export function PresentApp() {
       last = now;
       const clock = useClockStore.getState();
       if (mode === "video") {
-        if (!usePresentStore.getState().videoPaused) {
+        // Playback waits for the loading overlay so the opening frames are never hidden.
+        if (stageReady && !usePresentStore.getState().videoPaused) {
           clock.setCurrentMs(Math.min(clock.currentMs + dt, project.totalMs));
         }
       } else {
@@ -181,7 +194,7 @@ export function PresentApp() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [project, mode]);
+  }, [project, mode, stageReady]);
 
   // Video-mode soundtrack follows the transport.
   useEffect(() => {
@@ -189,6 +202,7 @@ export function PresentApp() {
   }, [mode, project, videoPaused]);
 
   const advance = useCallback(() => {
+    if (!stageReady) return;
     const present = usePresentStore.getState();
     if (mode === "video") {
       present.setVideoPaused(!present.videoPaused);
@@ -199,12 +213,12 @@ export function PresentApp() {
       return;
     }
     present.dispatch({ type: "advance" });
-  }, [mode]);
+  }, [mode, stageReady]);
 
   const back = useCallback(() => {
-    if (mode === "video") return;
+    if (!stageReady || mode === "video") return;
     usePresentStore.getState().dispatch({ type: "back" });
-  }, [mode]);
+  }, [mode, stageReady]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -271,9 +285,6 @@ export function PresentApp() {
           {error}
         </div>
       )}
-      {!error && !project && target && (
-        <div style={{ color: "#4a5560", font: "13px -apple-system, sans-serif" }}>Loading…</div>
-      )}
       {!error && !target && (
         <div style={{ color: "#4a5560", font: "13px -apple-system, sans-serif" }}>
           Present from a project window
@@ -328,6 +339,7 @@ export function PresentApp() {
                     <project.persistent />
                   </PersistentLayer>
                 )}
+                <CommittedProbe />
               </Suspense>
             </ProjectIdContext.Provider>
           </Canvas>
@@ -343,6 +355,28 @@ export function PresentApp() {
             pointerEvents: "none",
           }}
         />
+      )}
+      {target && !error && (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: a passive loading veil; keyboard input is guarded separately.
+        // biome-ignore lint/a11y/noStaticElementInteractions: the handlers only swallow clicks while loading.
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "#000",
+            display: "grid",
+            placeItems: "center",
+            color: "#4a5560",
+            font: "13px -apple-system, sans-serif",
+            opacity: stageReady ? 0 : 1,
+            transition: "opacity 350ms ease",
+            pointerEvents: stageReady ? "none" : "auto",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {`Opening ${project?.name ?? "…"}`}
+        </div>
       )}
       {target && !target.fullscreen && (
         // biome-ignore lint/a11y/useKeyWithClickEvents: an invisible OS drag handle, not an interactive control.

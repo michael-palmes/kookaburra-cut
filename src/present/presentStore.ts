@@ -11,11 +11,14 @@ interface PresentStore {
   endFade: number;
   /** Video mode transport. */
   videoPaused: boolean;
+  /** True once the Suspense scene tree has committed (all scene assets resolved and mounted). */
+  scenesCommitted: boolean;
   setSceneCount: (n: number) => void;
   dispatch: (e: DeckEvent) => void;
   setAnchor: (sceneIndex: number, clockMs: number) => void;
   setEndFade: (opacity: number) => void;
   setVideoPaused: (paused: boolean) => void;
+  setScenesCommitted: (committed: boolean) => void;
   reset: () => void;
 }
 
@@ -25,6 +28,7 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   anchors: {},
   endFade: 0,
   videoPaused: false,
+  scenesCommitted: false,
   setSceneCount: (n) => set({ sceneCount: n }),
   dispatch: (e) => set({ deck: stepDeck(get().deck, e, get().sceneCount) }),
   setAnchor: (sceneIndex, clockMs) =>
@@ -33,5 +37,13 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
     if (get().endFade !== opacity) set({ endFade: opacity });
   },
   setVideoPaused: (paused) => set({ videoPaused: paused }),
-  reset: () => set({ deck: initialDeckState(), anchors: {}, endFade: 0, videoPaused: false }),
+  setScenesCommitted: (committed) => set({ scenesCommitted: committed }),
+  reset: () =>
+    set({
+      deck: initialDeckState(),
+      anchors: {},
+      endFade: 0,
+      videoPaused: false,
+      scenesCommitted: false,
+    }),
 }));

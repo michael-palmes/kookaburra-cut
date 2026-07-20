@@ -27,8 +27,12 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 /** End-of-deck fade length, ms. */
 const END_FADE_MS = 600;
 
-/** Unrevealed settle time before the first scene jumps straight to its hold (mounts and typesets need a few frames to report their timing windows). */
-const INITIAL_SETTLE_GRACE_MS = 300;
+/** Minimum warm-up before the first scene may jump to its hold. */
+const INITIAL_SETTLE_MIN_MS = 250;
+/** The derived hold must sit unchanged this long before the jump (async typesets land their stagger spread late). */
+const INITIAL_SETTLE_STABLE_MS = 150;
+/** Give up waiting on a slow Suspense resolve and jump with whatever registered; holding self-heals upward after. */
+const INITIAL_SETTLE_CAP_MS = 2500;
 
 interface LeaveState {
   fromIndex: number;
@@ -65,6 +69,7 @@ export function PresentCompositorDriver({
   const holdsRef = useRef<Record<number, DerivedHold>>({});
   const appliedHoldRef = useRef<Record<number, number | null>>({});
   const initialJumpRef = useRef(false);
+  const settleProbeRef = useRef({ holdMs: -1, sinceRawMs: 0 });
 
   useFrame((s) => {
     const clockMs = useClockStore.getState().currentMs;
@@ -96,9 +101,17 @@ export function PresentCompositorDriver({
         store.setEndFade(0);
         if (anchors[i] === undefined) store.setAnchor(i, anchor);
         if (!initialJumpRef.current && i === 0) {
-          // First open: settle behind the pre-paint black, then land on the stable hold (text settled, camera rested) so the reveal never shows a mid-intro frame.
-          if (raw >= INITIAL_SETTLE_GRACE_MS) {
-            const hold = deriveHold(0);
+          // First open: wait behind the loading overlay until the Suspense tree has committed (registrations only land on commit) and the derived hold has stopped moving, then land on the stable hold (text settled, camera rested) so the reveal never shows a mid-intro frame.
+          const hold = deriveHold(0);
+          if (settleProbeRef.current.holdMs !== hold.holdMs) {
+            settleProbeRef.current = { holdMs: hold.holdMs, sinceRawMs: raw };
+          }
+          const stableForMs = raw - settleProbeRef.current.sinceRawMs;
+          const ready =
+            store.scenesCommitted &&
+            raw >= INITIAL_SETTLE_MIN_MS &&
+            stableForMs >= INITIAL_SETTLE_STABLE_MS;
+          if (ready || raw >= INITIAL_SETTLE_CAP_MS) {
             const track = sceneTracks[0];
             const camEndMs = track ? (track.keys[track.keys.length - 1]?.tMs ?? 0) : 0;
             store.setAnchor(0, clockMs - Math.max(hold.holdMs, camEndMs));
@@ -118,7 +131,10 @@ export function PresentCompositorDriver({
       } else if (deck.phase === "holding") {
         leaveRef.current = null;
         store.setEndFade(0);
-        if (!holdsRef.current[i]) holdsRef.current[i] = deriveHold(i);
+        // Self-heal upward: a late registration (slow typeset or Suspense resolve) may raise the derived hold; the clamp follows so text can never freeze mid-intro. Never lowered, to avoid jitter.
+        const derived = deriveHold(i);
+        const latched = holdsRef.current[i];
+        if (!latched || derived.holdMs > latched.holdMs) holdsRef.current[i] = derived;
         const hold = holdsRef.current[i];
         applyHold(i, hold.holdMs);
         const loop = project.sceneDocs[i]?.camera?.presentLoop;
