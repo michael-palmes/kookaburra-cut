@@ -17,9 +17,11 @@ import {
   UnsignedByteType,
   Vector2,
   Vector3,
+  Vector4,
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame/frameLayout";
 import { applyCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { grainSeed } from "./effectParams";
@@ -31,6 +33,13 @@ import {
 } from "./effects";
 import { getLoadedEnvironment } from "./environments";
 import { FPS, MSAA_SAMPLES } from "./format";
+import type { ResolvedOverlay } from "./overlayPlan";
+import {
+  CUTOUT_MODE_BOX,
+  CUTOUT_MODE_SUPERELLIPSE,
+  overlayFragmentShader,
+  overlayVertexShader,
+} from "./overlayShader";
 import { getPersistentLayers } from "./persistentLayerRegistry";
 import type { FrameCameraPlan } from "./sceneCamera";
 import type { SceneHostHandle } from "./sceneHostRegistry";
@@ -79,6 +88,11 @@ interface CompositorState {
   materialExt2Hdr: ShaderMaterial;
   /** The fullscreen quad, so the compositor can swap its material per frame. */
   mesh: Mesh;
+  /** Overlay ("frame") compositing: the scene renders here at the cutout aspect, sized lazily to the cutout's pixel rect (null until the first framed scene). */
+  sceneTarget: WebGLRenderTarget | null;
+  /** The overlay slide pass (panel + scene keyed through the cutout SDF); its own quad so it never touches the transition mesh's material. */
+  slideScene: Scene;
+  slideMaterial: ShaderMaterial;
 }
 
 let state: CompositorState | null = null;
@@ -131,6 +145,28 @@ function makeCompositeMaterial(fragment: string, glsl3 = false): ShaderMaterial 
   });
 }
 
+/** The overlay slide material: keys the scene target through the cutout SDF, fills the rest with the panel colour. Display-domain GLSL1, same semantics as the legacy transition composite. */
+function makeSlideMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      sceneTex: { value: null },
+      panelColor: { value: new Vector3(0, 0, 0) },
+      cutoutRect: { value: new Vector4(0, 0, 1, 1) },
+      cutoutCenter: { value: new Vector2(0.5, 0.5) },
+      cutoutHalf: { value: new Vector2(0.5, 0.5) },
+      cutoutRadius: { value: 0 },
+      cutoutExponent: { value: 4 },
+      cutoutMode: { value: CUTOUT_MODE_BOX },
+      aspect: { value: 1 },
+      softness: { value: 0.001 },
+    },
+    vertexShader: overlayVertexShader,
+    fragmentShader: overlayFragmentShader,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
 /** Set the composite uniforms on a material for a transition frame (any variant). */
 function setCompositeUniforms(
   u: ShaderMaterial["uniforms"],
@@ -171,6 +207,8 @@ function ensureState(w: number, h: number): CompositorState {
     state.targetBHdr?.dispose();
     state.targetAHdr = null; // re-allocated on the next fx transition frame
     state.targetBHdr = null;
+    state.sceneTarget?.dispose();
+    state.sceneTarget = null; // cutout-sized; re-allocated on the next framed scene
     state.size.set(w, h);
     return state;
   }
@@ -185,6 +223,12 @@ function ensureState(w: number, h: number): CompositorState {
   const mesh = new Mesh(new PlaneGeometry(2, 2), material);
   mesh.frustumCulled = false;
   quadScene.add(mesh);
+
+  const slideMaterial = makeSlideMaterial();
+  const slideScene = new Scene();
+  const slideMesh = new Mesh(new PlaneGeometry(2, 2), slideMaterial);
+  slideMesh.frustumCulled = false;
+  slideScene.add(slideMesh);
 
   state = {
     targetA: makeTarget(w, h, false),
@@ -201,6 +245,9 @@ function ensureState(w: number, h: number): CompositorState {
     materialExt2,
     materialExt2Hdr,
     mesh,
+    sceneTarget: null,
+    slideScene,
+    slideMaterial,
   };
   return state;
 }
@@ -234,7 +281,79 @@ function dipLinear(hex: string | undefined, scene: Scene): Vector3 {
   return new Vector3(_dip.r, _dip.g, _dip.b);
 }
 
-/** `cameras` is the frame's per-scene camera plan, present only when the project has scene-doc camera tracks (solo/a/b/overlay applied per target, absent means the camera is never touched here); `states` is the analogous per-scene render-state plan (background, environment), whose values are always restored to the shared scene on return so root-scene state never leaks into the next-loaded project. */
+/** Lazily (re)allocate the cutout-sized scene target. */
+function ensureSceneTarget(st: CompositorState, w: number, h: number): WebGLRenderTarget {
+  if (st.sceneTarget && st.sceneTarget.width === w && st.sceneTarget.height === h) {
+    return st.sceneTarget;
+  }
+  st.sceneTarget?.dispose();
+  st.sceneTarget = makeTarget(w, h, false);
+  return st.sceneTarget;
+}
+
+/** Set the slide material's cutout uniforms from the layout + its pixel rect in the destination buffer. The uv rect is derived from the pixel rect (not the normalised layout) so the mask and the scene sampling stay pixel-aligned; `bufferH` sets a ~1px edge softness. */
+function setSlideUniforms(
+  st: CompositorState,
+  overlay: ResolvedOverlay,
+  layout: FrameLayout,
+  px: { x: number; y: number; width: number; height: number },
+  bufferW: number,
+  bufferH: number,
+): void {
+  const u = st.slideMaterial.uniforms;
+  const aspect = bufferW / bufferH;
+  const uvX = px.x / bufferW;
+  const uvW = px.width / bufferW;
+  const uvH = px.height / bufferH;
+  const uvY = 1 - (px.y + px.height) / bufferH; // pixel rect is y-down, uv is y-up
+  u.sceneTex.value = st.sceneTarget?.texture ?? null;
+  (u.panelColor.value as Vector3).set(...overlay.panelColor);
+  (u.cutoutRect.value as Vector4).set(uvX, uvY, uvW, uvH);
+  (u.cutoutCenter.value as Vector2).set((uvX + uvW / 2) * aspect, uvY + uvH / 2);
+  (u.cutoutHalf.value as Vector2).set((uvW / 2) * aspect, uvH / 2);
+  u.cutoutRadius.value = layout.radius;
+  u.cutoutExponent.value = layout.exponent;
+  u.cutoutMode.value =
+    overlay.frame.cutout.shape === "squircle" ? CUTOUT_MODE_SUPERELLIPSE : CUTOUT_MODE_BOX;
+  u.aspect.value = aspect;
+  u.softness.value = 1 / bufferH;
+}
+
+/** Render one framed scene: the scene into the cutout target at the cutout aspect (FixedBackdrop tracks cam.aspect live, so it's set and restored around this render, symmetric within the call like every other state the compositor touches), then the slide pass keying it through the cutout into `dest`. */
+function renderFramedScene(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  st: CompositorState,
+  overlay: ResolvedOverlay,
+  bufferW: number,
+  bufferH: number,
+  dest: WebGLRenderTarget | null,
+): void {
+  const aspect = bufferW / bufferH;
+  const layout = frameLayout(aspect, overlay.frame.cutout);
+  const px = cutoutPixelRect(layout.cutout, bufferW, bufferH);
+
+  const target = ensureSceneTarget(st, px.width, px.height);
+  const cam = camera as PerspectiveCamera;
+  const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
+  if (cam.isPerspectiveCamera) {
+    cam.aspect = px.width / px.height;
+    cam.updateProjectionMatrix();
+  }
+  gl.setRenderTarget(target);
+  gl.render(scene, camera);
+  if (cam.isPerspectiveCamera) {
+    cam.aspect = prevAspect;
+    cam.updateProjectionMatrix();
+  }
+
+  setSlideUniforms(st, overlay, layout, px, bufferW, bufferH);
+  gl.setRenderTarget(dest);
+  gl.render(st.slideScene, st.quadCamera);
+}
+
+/** `cameras` is the frame's per-scene camera plan, present only when the project has scene-doc camera tracks (solo/a/b/overlay applied per target, absent means the camera is never touched here); `states` is the analogous per-scene render-state plan (background, environment), whose values are always restored to the shared scene on return so root-scene state never leaks into the next-loaded project. `overlays` is the per-scene resolved overlay plan (panel colour), present only when some scene declares a frame; a scene with a null entry renders full-bleed on the legacy path. */
 export function renderComposited(
   gl: WebGLRenderer,
   scene: Scene,
@@ -243,6 +362,7 @@ export function renderComposited(
   resolved: Resolved,
   cameras?: FrameCameraPlan,
   states?: FrameSceneStatePlan,
+  overlays?: readonly (ResolvedOverlay | null)[],
 ): void {
   // Snapshots the root-scene values the state plan owns, restored at every exit so root-scene state never leaks into the next-loaded project; the environment snapshot doubles as the explicit fallback for scenes whose theme declares none (legacy drei mounts keep working through it).
   const prevStateBackground = states ? scene.background : undefined;
@@ -295,7 +415,13 @@ export function renderComposited(
     showOnly(idx);
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     if (states?.solo) applyState(states.solo);
-    if (fx) {
+    const overlay = overlays?.[idx] ?? null;
+    if (overlay) {
+      // Overlay path: the scene renders into its cutout, then the slide keys it in over the panel. Effects don't yet compose onto a framed scene (docs/overlays.md open question), so this branch is taken ahead of fx.
+      const size = gl.getDrawingBufferSize(_size);
+      const st = ensureState(size.x, size.y);
+      renderFramedScene(gl, scene, camera, st, overlay, size.x, size.y, null);
+    } else if (fx) {
       const size = drawingBufferSize(gl);
       renderThroughComposer(gl, ensureComposer(gl, size.x, size.y), scene, camera, fx, seed);
     } else {
@@ -326,17 +452,29 @@ export function renderComposited(
   // Persistent layers must not bake into the A/B targets, they'd render into both and cross-fade against themselves (ghosting); hidden here, drawn exactly once over the composite below.
   for (const g of persistent) g.visible = false;
 
+  // The whole slide (panel + cutout) goes into each target, so a transition crossfades framed slides exactly as it does full-bleed scenes. Overlays don't compose through the fx (HDR) targets yet, so a framed scene under effects falls back to the plain scene render here.
+  const overlayA = !fx ? (overlays?.[tr.fromIndex] ?? null) : null;
+  const overlayB = !fx ? (overlays?.[tr.toIndex] ?? null) : null;
+
   showOnly(tr.fromIndex);
   if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
   if (states?.a) applyState(states.a);
-  gl.setRenderTarget(tgtA);
-  gl.render(scene, camera);
+  if (overlayA) {
+    renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
+  } else {
+    gl.setRenderTarget(tgtA);
+    gl.render(scene, camera);
+  }
 
   showOnly(tr.toIndex);
   if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
   if (states?.b) applyState(states.b);
-  gl.setRenderTarget(tgtB);
-  gl.render(scene, camera);
+  if (overlayB) {
+    renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
+  } else {
+    gl.setRenderTarget(tgtB);
+    gl.render(scene, camera);
+  }
 
   // The composite quad ignores `camera`; sets the dominant scene's pose here so both overlay branches below render the persistent layer with it, and the same for render state (which also feeds the dip-colour fallback in setCompositeUniforms below).
   if (cameras?.overlay) applyCameraPose(camera as PerspectiveCamera, cameras.overlay);

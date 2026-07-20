@@ -1388,6 +1388,7 @@ export default function App() {
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          sceneFrames: project.sceneFrames,
           audio: project.audio,
           codec: "libx264",
           encode: sel.encode,
@@ -1430,6 +1431,7 @@ export default function App() {
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          sceneFrames: project.sceneFrames,
           audio: project.audio,
           codec: "libx264",
         },
@@ -1613,6 +1615,7 @@ export default function App() {
                       sceneDocs={project.sceneDocs}
                       theme={project.theme}
                       sceneThemes={project.sceneThemes}
+                      sceneFrames={project.sceneFrames}
                       commitStamp={project}
                     />
                   )}

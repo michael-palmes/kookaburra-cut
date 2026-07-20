@@ -7,6 +7,7 @@ import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { preloadCatalogModels } from "../toolkit/device/catalog";
 import { preloadDeviceModels } from "../toolkit/device/models";
+import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadHeroModels } from "../toolkit/hero/models";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { awaitEmojiRastersIdle, preloadEmojiRasters } from "../toolkit/text/emojiRaster";
@@ -31,6 +32,7 @@ import { preloadEnvironments } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
 import type { FormatSpec } from "./format";
+import { resolveOverlays } from "./overlayPlan";
 import {
   isWorkspaceProjectId,
   type ProjectAudio,
@@ -66,6 +68,8 @@ export interface ExportOptions {
   /** The project's theme + resolved per-scene themes; drive the per-target scene-state plan (background/environment). Absent means the root scene is never touched (the byte-identical legacy paths). */
   theme?: Theme;
   sceneThemes?: Theme[];
+  /** Per-scene resolved overlays; absent (or all undefined) means no scene renders through a cutout, the byte-identical legacy path. */
+  sceneFrames?: (FrameSpec | undefined)[];
   /** Encoder; defaults to the deterministic libx264. */
   codec?: Codec;
   /** The resolved encode spec (presets/custom). Absent means the frozen legacy argv, byte-pinned in Rust; standing baselines and Verify never carry one. */
@@ -370,6 +374,11 @@ export async function exportProject(
   const sceneStates =
     opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
 
+  // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
+  const overlays = opts.sceneThemes
+    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
+    : null;
+
   // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
   if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
     applyCameraPose(cam, baseCameraPose());
@@ -405,7 +414,16 @@ export async function exportProject(
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
       // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
-      renderComposited(gl, scene, camera, getSceneHosts(), resolved, plan ?? undefined, statePlan);
+      renderComposited(
+        gl,
+        scene,
+        camera,
+        getSceneHosts(),
+        resolved,
+        plan ?? undefined,
+        statePlan,
+        overlays ?? undefined,
+      );
       if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
       ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
       onBoundClipFrame?.(frame, sampleBoundClipFrame(scene));
@@ -462,6 +480,9 @@ export async function captureScreenshot(
   const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
   const sceneStates =
     opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
+  const overlays = opts.sceneThemes
+    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
+    : null;
   if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
     applyCameraPose(cam, baseCameraPose());
   }
@@ -482,7 +503,16 @@ export async function captureScreenshot(
     const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
     if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-    renderComposited(gl, scene, camera, getSceneHosts(), resolved, plan ?? undefined, statePlan);
+    renderComposited(
+      gl,
+      scene,
+      camera,
+      getSceneHosts(),
+      resolved,
+      plan ?? undefined,
+      statePlan,
+      overlays ?? undefined,
+    );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
     await invoke("begin_screenshot", { width, height, name });
     return await invoke<string>("save_screenshot", rgba);
