@@ -56,6 +56,14 @@ covered by the repository licence and may not be reused outside this project
   textures ≤2048, metres scale, front (the screen) faces glTF +Z at identity
   rotation. gltf-transform's `palette` step stays OFF — it fuses materials
   into anonymous names, breaking colour overrides and the screen lookup.
+- **Simplify is a fidelity hazard on hard-surface models.** Its defaults
+  (borders free, error 0.0001) collapse exactly the fine features product
+  models are made of: the MacBook lost its keycap rims and speaker
+  perforations to it (264k keycap verts down to 37k). The pipeline now locks
+  topological borders and drops the error budget to 0.00001, and the MacBook
+  turns simplify off outright (locked borders still creased its spacebar,
+  right shift, F3 and F5). Check a rebuilt model's fine detail before
+  trusting a size win.
 - Catalogue colour variants are per-material `baseColorFactor` overrides
   applied by material name (`src/toolkit/device/catalog.ts`); names missing
   from a model simply don't apply (the placeholder ignores them). Vendors
