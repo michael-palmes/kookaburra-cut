@@ -447,6 +447,14 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
     const textAnimation = parseTextAnimationSpec(raw.textAnimation, source);
     if (textAnimation) theme.textAnimation = textAnimation;
   }
+  if (raw.card !== undefined) {
+    const card = raw.card;
+    if (isRecord(card) && isNum(card.radius) && card.radius >= 0 && card.radius <= 0.5) {
+      theme.card = { radius: card.radius };
+    } else {
+      console.warn(`[theme] ${source}: invalid "card", dropped`);
+    }
+  }
   if (raw.lighting !== undefined) {
     const lighting = parseLighting(raw.lighting, source);
     if (lighting) theme.lighting = lighting;

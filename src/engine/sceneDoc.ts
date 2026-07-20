@@ -1,12 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useContext, useLayoutEffect } from "react";
+import { useContext, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { useDeviceRegistry } from "./deviceRegistry";
 import { type HistoryChange, pushHistory } from "./history";
+import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
+import {
+  type NormalizedLayeredScreenshot,
+  normalizeLayeredScreenshot,
+} from "./sceneLayeredScreenshot";
 import { useTextKeyRegistry } from "./textKeyRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
@@ -73,6 +78,22 @@ export function useSceneDevices(): SceneDeviceProps[] {
     return () => useDeviceRegistry.getState().unregister(sceneIndex);
   }, [sceneIndex]);
   return (doc?.devices ?? []).map((d) => d as SceneDeviceProps);
+}
+
+/** The scene document's layeredScreenshot block, deep-validated, or null when absent; registers the scene as a consumer so `LayeredScreenshotFallback` stands down (the useSceneDevices pattern). */
+export function useSceneLayeredScreenshot(): NormalizedLayeredScreenshot | null {
+  const doc = useSceneDoc();
+  const sceneIndex = useSceneContext()?.index;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined) return;
+    useLayeredScreenshotRegistry.getState().register(sceneIndex);
+    return () => useLayeredScreenshotRegistry.getState().unregister(sceneIndex);
+  }, [sceneIndex]);
+  const block = doc?.layeredScreenshot;
+  return useMemo(
+    () => normalizeLayeredScreenshot(block, `scene ${sceneIndex ?? "?"}`),
+    [block, sceneIndex],
+  );
 }
 
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────

@@ -3,11 +3,12 @@
 export { useFormat } from "../engine/format";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
-// Scene-document hooks: the sidecar-driven text map + devices array.
+// Scene-document hooks: the sidecar-driven text map, devices array and layered-screenshot block.
 export {
   type SceneDeviceProps,
   useSceneDevices,
   useSceneDoc,
+  useSceneLayeredScreenshot,
   useSceneText,
 } from "../engine/sceneDoc";
 export type {
@@ -60,6 +61,7 @@ export { HeroObject, type HeroObjectProps } from "./hero/HeroObject";
 export { LightRig } from "./lighting/LightRig";
 // Flat image plane for icons/logos/stills: unlit, colour-exact, PNG alpha.
 export { ImageCard, type ImageCardProps } from "./media/ImageCard";
+export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredScreenshot";
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 // The 3D objects library: bundled + workspace manifests (structure first, objects later).
 export {
