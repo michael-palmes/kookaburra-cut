@@ -183,7 +183,10 @@ scene, no TSX change). Validation, layout and sampling are pure
     },
     "animation": {                           // optional keyed pose track, camera-track shape
       "keys": [ { "id": "k1", "tMs": 0, "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] } } ],
-      "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ]
+      "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ],
+      "presentLoop": { "mode": "jump" }      // optional: slideshow HOLDS loop the track
+                                             // (smooth blends over blendMs; jump restarts);
+                                             // preview and export always play once
     }
   },
   "animatedTrack": "layeredScreenshot"       // the ONE animated track per scene; absent = camera.
@@ -209,6 +212,11 @@ Semantics:
 - **Global screenshots**: the picker's Global tab browses `~/Kookaburra Cut/screenshots/`
   and always copies into the project's `assets/` on pick; reference project-relative
   paths only, as ever.
+- **In the app**: the builder (inspector's Screenshot stack section, or the ⌘K palette)
+  edits layers/chains/pose; the animated-track toggle lives in the Camera section when a
+  block exists; the LS lane and pill mirror the camera's (O/P/Z plus the S spread tool);
+  four presets (Expand to isometric, Flatten, Zoom to screen, Slow drift) scaffold
+  editable keys from the current pose (`engine/layeredScreenshotPresets.ts`).
 
 ## Themes & staging (v8)
 

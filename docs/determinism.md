@@ -496,6 +496,11 @@ stack pose, animates that scene. The invariants:
   intrinsics land behind the extract barrier before frame 0, so card layout is
   settled at capture. Text items are `useSceneText` strings under `ls-<id>`
   keys.
+- **Present looping never reaches the render contract.** The animation's
+  optional `presentLoop` samples through a looped wrapper only under the present
+  realm's slideshow flag (the Device-sway pattern); the flag is never set in
+  the editor or export realms, so preview and export always play the track
+  once and hold.
 
 ## Themes & per-scene render state
 
