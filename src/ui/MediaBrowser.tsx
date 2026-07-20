@@ -170,6 +170,8 @@ export interface MediaBrowserProps {
   globalToggle?: boolean;
   /** Show a Video/Images toggle in the toolbar, defaulting to video (Change media). */
   kindToggle?: boolean;
+  /** The kind tab the toggle starts on (default "video"). */
+  kindDefault?: "video" | "image";
   /** Hide the built-in Add button: the host renders `<AddMediaButton>` in its own title row and bumps `refreshKey` on import. */
   hideAdd?: boolean;
   /** Per-card ⋯/right-click menu items; omit for none (the editor panel drags instead). The browser hosts one ContextMenu, the house two-step confirm rides `confirmLabel` (see ui/mediaCardMenu.tsx for the shared Edit/Insert/Delete set). */
@@ -342,6 +344,7 @@ export function MediaBrowser({
   hint,
   kinds,
   kindToggle,
+  kindDefault,
   globalToggle,
   hideAdd,
   cardMenu,
@@ -355,7 +358,7 @@ export function MediaBrowser({
   const [metaFailed, setMetaFailed] = useState<ReadonlySet<string>>(new Set());
   const [edits, setEdits] = useState<string[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
-  const [kindTab, setKindTab] = useState<"video" | "image">("video");
+  const [kindTab, setKindTab] = useState<"video" | "image">(kindDefault ?? "video");
   const [sourceTab, setSourceTab] = useState<"project" | "global">("project");
   const [globalShots, setGlobalShots] = useState<GlobalScreenshot[] | null>(null);
   const [globalMetas, setGlobalMetas] = useState<Record<string, MediaMeta>>({});

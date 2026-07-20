@@ -453,11 +453,12 @@ const TSX_DEVICE: &str = include_str!("../templates/scenes/device.tsx.tmpl");
 const TSX_TITLE: &str = include_str!("../templates/scenes/title.tsx.tmpl");
 const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
+const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "title" | "blank" | "appversion".
+    /// "device" | "title" | "blank" | "appversion" | "layeredscreenshot".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -533,6 +534,7 @@ pub async fn scaffold_scene(
         "title" => TSX_TITLE,
         "blank" => TSX_BLANK,
         "appversion" => TSX_APP_VERSION,
+        "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
         other => return Err(format!("unknown scene kind {other:?}")),
     };
 
@@ -578,6 +580,20 @@ pub async fn scaffold_scene(
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
     } else if let Some(title) = &options.title {
         doc["text"]["title"] = json!(title);
+    }
+    if options.kind == "layeredscreenshot" {
+        // The optional first screen seeds the centre item; the builder grows the stack from there.
+        let mut items = Vec::new();
+        if let Some(rel) = &options.media_rel {
+            let media_kind = options.media_kind.as_deref().unwrap_or("image");
+            items.push(json!({
+                "id": "i1", "kind": "screen", "src": rel, "media": media_kind, "attach": null,
+            }));
+        }
+        doc["layeredScreenshot"] = json!({
+            "layers": [{ "id": "l1", "visible": true, "z": 0, "items": items }],
+            "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] },
+        });
     }
     if options.kind == "device" {
         let mut device = json!({

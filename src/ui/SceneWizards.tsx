@@ -53,12 +53,13 @@ export interface ScaffoldedScene {
   durationMs: number;
 }
 
-type SceneKind = "device" | "title" | "appversion" | "blank";
+type SceneKind = "device" | "title" | "appversion" | "blank" | "layeredscreenshot";
 
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + media", blurb: "A phone playing your video or image" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
+  { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
 ];
 
@@ -402,7 +403,9 @@ export function NewSceneWizard({
         ? "Title"
         : kind === "appversion"
           ? "App version"
-          : "Blank";
+          : kind === "layeredscreenshot"
+            ? "Layered screenshot"
+            : "Blank";
   const generatedName = `${kindWord} ${(position ?? scenes.length) + 1}`;
   const sceneName = nameOverride ?? generatedName;
   const titlePlaceholder =
@@ -452,8 +455,9 @@ export function NewSceneWizard({
           subtitle: kind === "title" || kind === "appversion" ? subtitle.trim() || null : null,
           deviceModel: kind === "device" ? model : null,
           colour: kind === "device" ? colour : null,
-          mediaRel: kind === "device" ? (media?.rel ?? null) : null,
-          mediaKind: kind === "device" ? (media?.kind ?? null) : null,
+          mediaRel: kind === "device" || kind === "layeredscreenshot" ? (media?.rel ?? null) : null,
+          mediaKind:
+            kind === "device" || kind === "layeredscreenshot" ? (media?.kind ?? null) : null,
           motionPreset: kind === "device" ? motion : null,
           shadow: kind === "device" ? shadow : null,
           position: position ?? null,
@@ -536,7 +540,15 @@ export function NewSceneWizard({
               <button
                 type="button"
                 className="btn primary"
-                onClick={() => setStep(kind === "device" ? "device" : "details")}
+                onClick={() =>
+                  setStep(
+                    kind === "device"
+                      ? "device"
+                      : kind === "layeredscreenshot"
+                        ? "media"
+                        : "details",
+                  )
+                }
               >
                 Next
               </button>
@@ -569,20 +581,34 @@ export function NewSceneWizard({
 
         {step === "media" && (
           <>
-            <Field label="What plays on the screen?">
+            <Field
+              label={
+                kind === "layeredscreenshot"
+                  ? "First screen (the builder grows the stack from here)"
+                  : "What plays on the screen?"
+              }
+            >
               <div className="wizard-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={projectPath}
+                  kindToggle={kind === "layeredscreenshot"}
+                  kindDefault={kind === "layeredscreenshot" ? "image" : undefined}
+                  globalToggle={kind === "layeredscreenshot"}
                   onPick={(rel, meta: MediaMeta | null) => {
-                    setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video" });
+                    const fallback = kind === "layeredscreenshot" ? "image" : "video";
+                    setMedia({ rel, kind: meta?.kind ?? fallback });
                     setStep("details");
                   }}
                 />
               </div>
             </Field>
             <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setStep("device")}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setStep(kind === "device" ? "device" : "type")}
+              >
                 Back
               </button>
               <button
@@ -593,7 +619,7 @@ export function NewSceneWizard({
                   setStep("details");
                 }}
               >
-                Skip (Empty screen)
+                {kind === "layeredscreenshot" ? "Skip (empty stack)" : "Skip (Empty screen)"}
               </button>
             </div>
           </>
