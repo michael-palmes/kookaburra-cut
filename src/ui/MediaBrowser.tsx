@@ -4,7 +4,11 @@ import { listEdits } from "../engine/edit";
 import {
   formatMediaDuration,
   fsUrl,
+  type GlobalScreenshot,
+  globalScreenshotMeta,
+  importGlobalScreenshots,
   importMedia,
+  listGlobalScreenshots,
   listProjectMedia,
   MEDIA_DRAG_TYPE,
   type MediaMeta,
@@ -86,6 +90,46 @@ export function AddMediaButton({
   );
 }
 
+/** The global-folder import button: same flow as AddMediaButton but into ~/Kookaburra Cut/screenshots. */
+function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const handleAdd = useCallback(async () => {
+    const picked = await openFilePicker({
+      multiple: true,
+      title: "Add to global screenshots",
+      filters: [{ name: "Media", extensions: [...MEDIA_PICKER_EXTENSIONS] }],
+    });
+    if (!picked) return;
+    const paths = Array.isArray(picked) ? picked : [picked];
+    if (paths.length === 0) return;
+    setImporting(true);
+    setError(null);
+    try {
+      await importGlobalScreenshots(paths);
+      onImported();
+    } catch (e) {
+      console.warn("[media] global screenshot import failed:", e);
+      setError(`Import failed: ${String(e)}`);
+    } finally {
+      setImporting(false);
+    }
+  }, [onImported]);
+  return (
+    <>
+      <button
+        type="button"
+        className="btn primary media-browser-add"
+        onClick={() => void handleAdd()}
+        disabled={importing}
+      >
+        {importing ? "Adding…" : "＋ Add screenshot"}
+      </button>
+      {error && <span className="modal-error media-add-error">{error}</span>}
+    </>
+  );
+}
+
 function VideoIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
@@ -122,6 +166,8 @@ export interface MediaBrowserProps {
   hint?: string;
   /** Restrict the browser to these kinds (e.g. background images). Filters the grid and the Add-media file picker; no toggle is shown. */
   kinds?: ("video" | "image")[];
+  /** Show a Project/Global source toggle: Global browses ~/Kookaburra Cut/screenshots and picking copies the file into this project's assets first (copy-on-use). */
+  globalToggle?: boolean;
   /** Show a Video/Images toggle in the toolbar, defaulting to video (Change media). */
   kindToggle?: boolean;
   /** Hide the built-in Add button: the host renders `<AddMediaButton>` in its own title row and bumps `refreshKey` on import. */
@@ -296,6 +342,7 @@ export function MediaBrowser({
   hint,
   kinds,
   kindToggle,
+  globalToggle,
   hideAdd,
   cardMenu,
   selectedRel,
@@ -309,6 +356,12 @@ export function MediaBrowser({
   const [edits, setEdits] = useState<string[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [kindTab, setKindTab] = useState<"video" | "image">("video");
+  const [sourceTab, setSourceTab] = useState<"project" | "global">("project");
+  const [globalShots, setGlobalShots] = useState<GlobalScreenshot[] | null>(null);
+  const [globalMetas, setGlobalMetas] = useState<Record<string, MediaMeta>>({});
+  const [globalFailed, setGlobalFailed] = useState<ReadonlySet<string>>(new Set());
+  /** Copy-on-use failures must never be silent (the pick just wouldn't land). */
+  const [pickError, setPickError] = useState<string | null>(null);
 
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
@@ -329,6 +382,67 @@ export function MediaBrowser({
     void refreshKey;
     refresh();
   }, [refresh, refreshKey]);
+
+  const refreshGlobal = useCallback(() => {
+    listGlobalScreenshots()
+      .then(setGlobalShots)
+      .catch(() => setGlobalShots([]));
+  }, []);
+
+  useEffect(() => {
+    void refreshKey;
+    if (globalToggle && sourceTab === "global") refreshGlobal();
+  }, [globalToggle, sourceTab, refreshGlobal, refreshKey]);
+
+  // The global grid's metadata pass, same one-at-a-time shape as the project pass below.
+  useEffect(() => {
+    if (!globalShots || sourceTab !== "global") return;
+    let cancelled = false;
+    (async () => {
+      for (const shot of globalShots) {
+        if (cancelled) return;
+        try {
+          const meta = await globalScreenshotMeta(shot.name);
+          if (cancelled) return;
+          setGlobalFailed((prev) => {
+            if (!prev.has(shot.name)) return prev;
+            const next = new Set(prev);
+            next.delete(shot.name);
+            return next;
+          });
+          setGlobalMetas((prev) => {
+            const old = prev[shot.name];
+            if (old && old.sha === meta.sha && old.posterPath === meta.posterPath) return prev;
+            return { ...prev, [shot.name]: meta };
+          });
+        } catch (e) {
+          console.warn(`[media] global screenshot metadata failed for ${shot.name}:`, e);
+          if (!cancelled) {
+            setGlobalFailed((prev) => (prev.has(shot.name) ? prev : new Set(prev).add(shot.name)));
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [globalShots, sourceTab]);
+
+  /** Copy-on-use: import the global file into this project's assets, then hand the pick to the host as a normal project rel. */
+  const pickGlobal = useCallback(
+    async (shot: GlobalScreenshot) => {
+      if (!onPick) return;
+      setPickError(null);
+      try {
+        const [rel] = await importMedia(slug, [shot.absPath]);
+        if (rel) onPick(rel, globalMetas[shot.name] ?? null);
+      } catch (e) {
+        console.warn(`[media] copy-on-use failed for ${shot.name}:`, e);
+        setPickError(`Couldn't copy into the project: ${String(e)}`);
+      }
+    },
+    [onPick, slug, globalMetas],
+  );
 
   // Metadata pass, one file at a time: first sight generates (ffprobe + ffmpeg); everything else revalidates against the backend's size+mtime stamp (hash-free, so this is cheap on every scan); a changed/re-rendered file regenerates on view. Old entries stay on screen until their replacement lands; identical results are dropped so unchanged cards never re-render.
   useEffect(() => {
@@ -373,16 +487,49 @@ export function MediaBrowser({
     [edits],
   );
 
-  const previewMeta = preview ? (metas[preview] ?? null) : null;
+  const previewMeta = preview
+    ? ((sourceTab === "global" ? globalMetas[preview] : metas[preview]) ?? null)
+    : null;
+  const previewSrc = preview
+    ? sourceTab === "global"
+      ? (globalShots?.find((s) => s.name === preview)?.absPath ?? null)
+      : `${projectPath}/${preview}`
+    : null;
 
   // The fullscreen preview is a layer of its own: the shared Escape stack closes it first, then a host modal on the next press.
   useEscapeClose(() => setPreview(null), preview !== null);
 
   return (
     <div className={`media-browser${compact ? " compact" : ""}`}>
-      {(kindToggle || hint || !hideAdd) && (
-        <div className={`media-browser-bar${kindToggle ? " centered" : ""}`}>
-          {kindToggle && (
+      {(kindToggle || globalToggle || hint || !hideAdd) && (
+        <div className={`media-browser-bar${kindToggle || globalToggle ? " centered" : ""}`}>
+          {globalToggle && (
+            <span className="wizard-presets">
+              <button
+                type="button"
+                className={`chip${sourceTab === "project" ? " selected" : ""}`}
+                title="This project's assets"
+                onClick={() => {
+                  setSourceTab("project");
+                  setPreview(null);
+                }}
+              >
+                Project
+              </button>
+              <button
+                type="button"
+                className={`chip${sourceTab === "global" ? " selected" : ""}`}
+                title="Your global screenshots (~/Kookaburra Cut/screenshots); picking copies into this project"
+                onClick={() => {
+                  setSourceTab("global");
+                  setPreview(null);
+                }}
+              >
+                Global
+              </button>
+            </span>
+          )}
+          {kindToggle && sourceTab === "project" && (
             <span className="wizard-presets">
               <button
                 type="button"
@@ -401,11 +548,42 @@ export function MediaBrowser({
             </span>
           )}
           {hint && <span className="muted media-browser-hint">{hint}</span>}
-          {!hideAdd && <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />}
+          {!hideAdd &&
+            (sourceTab === "global" ? (
+              <AddGlobalScreenshotButton onImported={refreshGlobal} />
+            ) : (
+              <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
+            ))}
         </div>
       )}
+      {pickError && <span className="modal-error media-add-error">{pickError}</span>}
 
-      {rels === null ? (
+      {sourceTab === "global" ? (
+        globalShots === null ? (
+          <p className="muted">Reading screenshots…</p>
+        ) : globalShots.length === 0 ? (
+          <p className="muted">
+            No global screenshots yet: add some here, or use "Add to global screenshots" on any
+            project's media card.
+          </p>
+        ) : (
+          <div className="media-grid">
+            {globalShots.map((shot) => (
+              <MediaCard
+                key={shot.name}
+                rel={shot.name}
+                meta={globalMetas[shot.name] ?? null}
+                metaFailed={globalFailed.has(shot.name)}
+                edited={false}
+                canDrag={false}
+                selected={false}
+                onPreview={() => setPreview(shot.name)}
+                onPick={onPick ? () => void pickGlobal(shot) : undefined}
+              />
+            ))}
+          </div>
+        )
+      ) : rels === null ? (
         <p className="muted">Reading assets…</p>
       ) : rels.length === 0 ? (
         <p className="muted">
@@ -448,7 +626,7 @@ export function MediaBrowser({
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
 
-      {preview && (
+      {preview && previewSrc && (
         <div className="media-preview" role="presentation">
           {/* Click-anywhere-to-close, as a real button so keyboards get it too. */}
           <button
@@ -458,10 +636,10 @@ export function MediaBrowser({
             onClick={() => setPreview(null)}
           />
           {previewMeta?.kind === "image" ? (
-            <img src={fsUrl(`${projectPath}/${preview}`)} alt={preview} />
+            <img src={fsUrl(previewSrc)} alt={preview} />
           ) : (
             // Preview-only playback (never the export path); custom minimal controls.
-            <VideoPlayer src={fsUrl(`${projectPath}/${preview}`)} fps={previewMeta?.fps} autoPlay />
+            <VideoPlayer src={fsUrl(previewSrc)} fps={previewMeta?.fps} autoPlay />
           )}
           <button
             type="button"
