@@ -16,6 +16,7 @@ import {
   VIDEO_ICON,
   WINDOW_ICON,
 } from "./presentIcons";
+import { PresentIcon } from "./Titlebar";
 import { useEscapeClose } from "./useEscapeClose";
 
 const DEFAULT_OPTIONS: PresentOptions = {
@@ -127,14 +128,22 @@ export function PresentModal({
   );
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Present">
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Present"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="modal present-modal">
         <div className="modal-title-row">
           <h2 className="modal-title">Present</h2>
           <button type="button" className="modal-close" aria-label="Close" onClick={onClose} />
         </div>
 
-        <div className="popover-row">
+        <div className="popover-row present-group">
           <span className="popover-group-label">Play as</span>
         </div>
         <div className="popover-row">
@@ -154,7 +163,7 @@ export function PresentModal({
           )}
         </div>
 
-        <div className="popover-row">
+        <div className="popover-row present-group">
           <span className="popover-group-label">Surface</span>
         </div>
         <div className="popover-row">
@@ -202,7 +211,7 @@ export function PresentModal({
           </div>
         )}
 
-        <div className="popover-row">
+        <div className="popover-row present-group">
           <span className="popover-group-label">Video clips</span>
         </div>
         <div className="popover-row">
@@ -234,6 +243,7 @@ export function PresentModal({
             Save as default
           </label>
           <button type="button" className="btn primary" onClick={present}>
+            <PresentIcon />
             Present
           </button>
         </div>
