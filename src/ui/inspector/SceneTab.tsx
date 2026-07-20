@@ -1059,18 +1059,21 @@ export function SceneTab({
     );
   };
 
-  /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. */
+  /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. Follow-media scenes sourced from the background re-sync their length to the new video. */
   const selectVideoBackground = (rel: string, meta: MediaMeta | null) => {
     if (meta && meta.kind !== "video") return;
     setBgTabOverride(null);
-    void patchDoc((next) => {
-      const parallax =
-        next.background && next.background.type !== "none" ? next.background.parallax : undefined;
-      next.background =
-        parallax !== undefined
-          ? { type: "video", src: rel, parallax }
-          : { type: "video", src: rel };
-    });
+    void patchDoc(
+      (next) => {
+        const parallax =
+          next.background && next.background.type !== "none" ? next.background.parallax : undefined;
+        next.background =
+          parallax !== undefined
+            ? { type: "video", src: rel, parallax }
+            : { type: "video", src: rel };
+      },
+      { resync: true },
+    );
   };
 
   const header = (

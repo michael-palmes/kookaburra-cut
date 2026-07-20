@@ -332,6 +332,10 @@
     {
       "file": "scenes/kind-layeredscreenshot.tsx",
       "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-video.tsx",
+      "durationMs": 3650
     }
   ]
 }

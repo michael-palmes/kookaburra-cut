@@ -53,15 +53,19 @@ export interface ScaffoldedScene {
   durationMs: number;
 }
 
-type SceneKind = "device" | "title" | "appversion" | "blank" | "layeredscreenshot";
+type SceneKind = "device" | "title" | "appversion" | "blank" | "layeredscreenshot" | "video";
 
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + media", blurb: "A phone playing your video or image" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
+  { id: "video", label: "Video", blurb: "A video filling the whole frame" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
 ];
+
+/** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
+const SAMPLE_LAPTOP_VIDEO = "assets/sample-laptop-recording.mp4";
 
 export const MOTION_OPTIONS: { id: string; label: string }[] = [
   { id: "none", label: "None" },
@@ -405,7 +409,9 @@ export function NewSceneWizard({
           ? "App version"
           : kind === "layeredscreenshot"
             ? "Layered screenshot"
-            : "Blank";
+            : kind === "video"
+              ? "Video"
+              : "Blank";
   const generatedName = `${kindWord} ${(position ?? scenes.length) + 1}`;
   const sceneName = nameOverride ?? generatedName;
   const titlePlaceholder =
@@ -455,16 +461,26 @@ export function NewSceneWizard({
           subtitle: kind === "title" || kind === "appversion" ? subtitle.trim() || null : null,
           deviceModel: kind === "device" ? model : null,
           colour: kind === "device" ? colour : null,
-          mediaRel: kind === "device" || kind === "layeredscreenshot" ? (media?.rel ?? null) : null,
+          mediaRel:
+            kind === "device" || kind === "layeredscreenshot" || kind === "video"
+              ? (media?.rel ?? null)
+              : null,
           mediaKind:
-            kind === "device" || kind === "layeredscreenshot" ? (media?.kind ?? null) : null,
+            kind === "device" || kind === "layeredscreenshot" || kind === "video"
+              ? (media?.kind ?? null)
+              : null,
           motionPreset: kind === "device" ? motion : null,
           shadow: kind === "device" ? shadow : null,
           position: position ?? null,
         },
       });
-      const chosenBackground = backgroundChipsForNew.find((o) => o.id === background)?.value;
-      const chosenTextAnim = TEXT_ANIMATION_CHIPS.find((o) => o.id === textAnim)?.value;
+      // The scaffolder already wrote a video scene's background (the video itself); the details step hides the chips, so nothing to patch.
+      const chosenBackground =
+        kind === "video"
+          ? undefined
+          : backgroundChipsForNew.find((o) => o.id === background)?.value;
+      const chosenTextAnim =
+        kind === "video" ? undefined : TEXT_ANIMATION_CHIPS.find((o) => o.id === textAnim)?.value;
       const textStyle: Record<string, string> = {};
       if (titleColor) textStyle.titleColor = titleColor;
       if (subtitleColor && (kind === "title" || kind === "appversion")) {
@@ -544,15 +560,19 @@ export function NewSceneWizard({
               <button
                 type="button"
                 className="btn primary"
-                onClick={() =>
+                onClick={() => {
+                  // The video kind's media step starts on the sample so "Use the sample video" is a one-click accept.
+                  if (kind === "video" && media?.kind !== "video") {
+                    setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video" });
+                  }
                   setStep(
                     kind === "device"
                       ? "device"
-                      : kind === "layeredscreenshot"
+                      : kind === "layeredscreenshot" || kind === "video"
                         ? "media"
                         : "details",
-                  )
-                }
+                  );
+                }}
               >
                 Next
               </button>
@@ -589,16 +609,20 @@ export function NewSceneWizard({
               label={
                 kind === "layeredscreenshot"
                   ? "First screen (the builder grows the stack from here)"
-                  : "What plays on the screen?"
+                  : kind === "video"
+                    ? "What fills the frame?"
+                    : "What plays on the screen?"
               }
             >
               <div className="wizard-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={projectPath}
+                  kinds={kind === "video" ? ["video"] : undefined}
                   kindToggle={kind === "layeredscreenshot"}
                   kindDefault={kind === "layeredscreenshot" ? "image" : undefined}
                   globalToggle={kind === "layeredscreenshot"}
+                  selectedRel={kind === "video" ? (media?.rel ?? null) : undefined}
                   onPick={(rel, meta: MediaMeta | null) => {
                     const fallback = kind === "layeredscreenshot" ? "image" : "video";
                     setMedia({ rel, kind: meta?.kind ?? fallback });
@@ -615,16 +639,22 @@ export function NewSceneWizard({
               >
                 Back
               </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  setMedia(null);
-                  setStep("details");
-                }}
-              >
-                {kind === "layeredscreenshot" ? "Skip (empty stack)" : "Skip (Empty screen)"}
-              </button>
+              {kind === "video" ? (
+                <button type="button" className="btn" onClick={() => setStep("details")}>
+                  Use the sample video
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setMedia(null);
+                    setStep("details");
+                  }}
+                >
+                  {kind === "layeredscreenshot" ? "Skip (empty stack)" : "Skip (Empty screen)"}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -668,6 +698,12 @@ export function NewSceneWizard({
                 </>
               )}
             </div>
+            {kind === "video" && media && (
+              <p className="modal-hint">
+                Background video: {media.rel.replace(/^assets\//, "")} (the scene will follow its
+                length)
+              </p>
+            )}
             {kind === "device" && (
               <>
                 {media && (
@@ -684,18 +720,20 @@ export function NewSceneWizard({
                 </Field>
               </>
             )}
-            <TextFieldRow
-              label={isLockup ? "App name" : "Title"}
-              value={title}
-              placeholder={titlePlaceholder}
-              onChange={setTitle}
-              colour={{
-                value: titleColor ?? (isLockup ? theme.colors.muted : theme.colors.text),
-                defaultValue: isLockup ? theme.colors.muted : theme.colors.text,
-                onCommit: setTitleColor,
-                onReset: () => setTitleColor(null),
-              }}
-            />
+            {kind !== "video" && (
+              <TextFieldRow
+                label={isLockup ? "App name" : "Title"}
+                value={title}
+                placeholder={titlePlaceholder}
+                onChange={setTitle}
+                colour={{
+                  value: titleColor ?? (isLockup ? theme.colors.muted : theme.colors.text),
+                  defaultValue: isLockup ? theme.colors.muted : theme.colors.text,
+                  onCommit: setTitleColor,
+                  onReset: () => setTitleColor(null),
+                }}
+              />
+            )}
             {(kind === "title" || isLockup) && (
               <TextFieldRow
                 label={isLockup ? "Version" : "Subtitle"}
@@ -710,19 +748,27 @@ export function NewSceneWizard({
                 }}
               />
             )}
-            <Field label="Background">
-              <ChipSelect
-                options={backgroundChipsForNew}
-                value={background}
-                onChange={(id) => {
-                  setBackgroundTouched(true);
-                  setBackground(id);
-                }}
-              />
-            </Field>
-            <Field label="Text motion">
-              <ChipSelect options={TEXT_ANIMATION_CHIPS} value={textAnim} onChange={setTextAnim} />
-            </Field>
+            {kind !== "video" && (
+              <>
+                <Field label="Background">
+                  <ChipSelect
+                    options={backgroundChipsForNew}
+                    value={background}
+                    onChange={(id) => {
+                      setBackgroundTouched(true);
+                      setBackground(id);
+                    }}
+                  />
+                </Field>
+                <Field label="Text motion">
+                  <ChipSelect
+                    options={TEXT_ANIMATION_CHIPS}
+                    value={textAnim}
+                    onChange={setTextAnim}
+                  />
+                </Field>
+              </>
+            )}
             <Field label="Where?">
               <ScenePicker
                 scenes={scenes}
@@ -752,7 +798,7 @@ export function NewSceneWizard({
               <button
                 type="button"
                 className="btn"
-                onClick={() => setStep(kind === "device" ? "media" : "type")}
+                onClick={() => setStep(kind === "device" || kind === "video" ? "media" : "type")}
               >
                 Back
               </button>
