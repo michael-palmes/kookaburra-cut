@@ -1631,6 +1631,7 @@ export default function App() {
                             durationMs={slot.durationMs}
                             doc={project.sceneDocs[i]}
                             theme={project.sceneThemes[i]}
+                            frame={project.sceneFrames[i]}
                           >
                             {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
                             <SceneBackground />

@@ -1,6 +1,8 @@
+import { useContext } from "react";
 import { VSMShadowMap } from "three";
 import { useEditorStore } from "../store/editorStore";
 import type { FormatInfo } from "../toolkit/types";
+import { FormatContext } from "./sceneContext";
 
 export type AspectName = "16:9" | "9:16" | "1:1" | "4:5";
 
@@ -62,8 +64,9 @@ export function computeFormat(spec: FormatSpec): FormatInfo {
   };
 }
 
-/** Reactive format info for the currently selected export aspect. */
+/** Reactive format info for the currently selected export aspect. Inside a scene rendering through an overlay cutout, `<SceneHost>` supplies a cutout-scoped override (the cutout as its own frame); everywhere else this is null and it falls back to the export format, byte-identical to before overlays. Mirrors the context-first/store-fallback shape of `useTheme()`. */
 export function useFormat(): FormatInfo {
+  const override = useContext(FormatContext);
   const spec = useEditorStore((s) => s.format);
-  return computeFormat(spec);
+  return override ?? computeFormat(spec);
 }

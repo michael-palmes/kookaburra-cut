@@ -342,6 +342,7 @@ export function PresentApp() {
                       }
                       doc={project.sceneDocs[i]}
                       theme={project.sceneThemes[i]}
+                      frame={project.sceneFrames[i]}
                     >
                       <SceneBackground />
                       <SceneComponent />

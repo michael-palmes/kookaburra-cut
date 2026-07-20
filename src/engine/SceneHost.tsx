@@ -1,7 +1,10 @@
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef } from "react";
 import type { Group } from "three";
+import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
-import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
+import type { FrameSpec } from "../toolkit/frame/types";
+import { resolveCutoutRender } from "./frameFormat";
+import { FormatContext, SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import type { SceneDoc } from "./sceneDocSchema";
 import { registerSceneHost, unregisterSceneHost } from "./sceneHostRegistry";
 
@@ -14,6 +17,8 @@ interface SceneHostProps {
   doc?: SceneDoc;
   /** The scene's resolved theme (`LoadedProject.sceneThemes[index]`). */
   theme?: Theme;
+  /** The scene's resolved overlay (`LoadedProject.sceneFrames[index]`); narrows `useFormat()` to the cutout so the scene lays out inside it. */
+  frame?: FrameSpec;
   children: ReactNode;
 }
 
@@ -25,10 +30,18 @@ export function SceneHost({
   durationMs,
   doc,
   theme,
+  frame,
   children,
 }: SceneHostProps) {
   const key = useId();
   const groupRef = useRef<Group>(null);
+
+  // The cutout as its own frame: null (no override, store fallback) unless the scene has an overlay. Recomputed only when the export format or this scene's frame changes, so a framed scene lays out stably, never per render.
+  const format = useEditorStore((s) => s.format);
+  const cutoutFormat = useMemo(
+    () => (frame ? resolveCutoutRender(format, frame).format : null),
+    [frame, format],
+  );
 
   useEffect(() => {
     const group = groupRef.current;
@@ -41,7 +54,9 @@ export function SceneHost({
     <SceneContext.Provider value={{ index, startMs, durationMs }}>
       <SceneDocContext.Provider value={doc ?? null}>
         <SceneThemeContext.Provider value={theme ?? null}>
-          <group ref={groupRef}>{children}</group>
+          <FormatContext.Provider value={cutoutFormat}>
+            <group ref={groupRef}>{children}</group>
+          </FormatContext.Provider>
         </SceneThemeContext.Provider>
       </SceneDocContext.Provider>
     </SceneContext.Provider>
