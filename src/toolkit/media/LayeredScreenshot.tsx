@@ -11,6 +11,7 @@ import {
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
 import { useFormat } from "../../engine/format";
+import { useLayeredScreenshotDraft } from "../../engine/layeredScreenshotEditStore";
 import {
   fitStackScale,
   type MeasuredAspect,
@@ -18,8 +19,8 @@ import {
   solveLayerLayout,
   spreadZToLocal,
 } from "../../engine/layeredScreenshotLayout";
-import { useLayeredScreenshotDraft } from "../../engine/layeredScreenshotEditStore";
 import { useSceneConsumesLayeredScreenshot } from "../../engine/layeredScreenshotRegistry";
+import { presentSlideshowActive } from "../../engine/presentMode";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc, useSceneLayeredScreenshot, useSceneText } from "../../engine/sceneDoc";
@@ -28,14 +29,13 @@ import type {
   LayeredScreenshotTextItem,
   SceneDoc,
 } from "../../engine/sceneDocSchema";
-import { presentSlideshowActive } from "../../engine/presentMode";
-import { useStageRegistry } from "../../engine/stageRegistry";
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
   resolveLayeredScreenshotPose,
   sampleLoopedLayeredScreenshotTrack,
 } from "../../engine/sceneLayeredScreenshot";
+import { useStageRegistry } from "../../engine/stageRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { type Theme, useTheme } from "../../theme";

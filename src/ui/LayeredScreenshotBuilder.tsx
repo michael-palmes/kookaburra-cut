@@ -17,8 +17,8 @@ import {
   DEFAULT_ITEM_GAP,
   fitStackScale,
   type MeasuredAspect,
-  solveLayerLayout,
   type SolvedLayerLayout,
+  solveLayerLayout,
 } from "../engine/layeredScreenshotLayout";
 import {
   expandToIsometric,

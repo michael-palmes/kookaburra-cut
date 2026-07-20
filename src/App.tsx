@@ -22,7 +22,6 @@ import {
 } from "./engine/autorun";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
-import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import {
   clipExtractionCount,
   evictAllClips,
@@ -51,6 +50,7 @@ import {
   takeRedo,
   takeUndo,
 } from "./engine/history";
+import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { importMedia } from "./engine/media";
 import { PersistentLayer } from "./engine/PersistentLayer";
 import {
@@ -120,13 +120,13 @@ import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
-import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
-import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
-import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
 import { FirstRunDialog, NewProjectDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
+import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
+import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
+import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";

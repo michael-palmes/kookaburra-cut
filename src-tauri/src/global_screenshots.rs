@@ -94,7 +94,7 @@ pub fn list_global_screenshots(
             },
         ));
     }
-    entries.sort_by(|a, b| b.0.cmp(&a.0));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.0));
     Ok(entries.into_iter().map(|(_, s)| s).collect())
 }
 

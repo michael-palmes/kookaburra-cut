@@ -12,8 +12,8 @@ import type { LayeredScreenshotPose } from "./sceneDocSchema";
 import {
   defaultLayeredScreenshotPose,
   normalizeLayeredScreenshot,
-  sampleLoopedLayeredScreenshotTrack,
   sampleLayeredScreenshotTrack,
+  sampleLoopedLayeredScreenshotTrack,
 } from "./sceneLayeredScreenshot";
 
 const pose = (over: Partial<LayeredScreenshotPose> = {}): LayeredScreenshotPose => ({

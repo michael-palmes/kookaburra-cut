@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
-import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
-import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { useClockStore } from "../../engine/clock";
 import { pushHistory } from "../../engine/history";
+import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
@@ -48,6 +47,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { sceneSections } from "../inspectorOptions";
+import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
