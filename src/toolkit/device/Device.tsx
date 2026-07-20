@@ -580,7 +580,8 @@ export function Device(props: DeviceProps) {
       break;
     }
     case "float":
-      floatY = (motion.amplitude ?? 0.12) * Math.sin(TWO_PI * (motion.hz ?? 0.4) * t);
+      // Rises from the resting pose to amplitude and back, never below it: devices sit on the stage floor, so the old symmetric sine clipped through on the down half.
+      floatY = (motion.amplitude ?? 0.12) * 0.5 * (1 - Math.cos(TWO_PI * (motion.hz ?? 0.4) * t));
       break;
     case "tilt-reveal": {
       // Entrance: eases from tilted-away to the resting pose, then holds.
