@@ -200,4 +200,72 @@ describe("sampleLayeredScreenshotTrack + resolveLayeredScreenshotPose", () => {
     expect(resolveLayeredScreenshotPose(n, undefined, 500).azimuthDeg).toBe(-5);
     expect(resolveLayeredScreenshotPose(n, "camera", 500).azimuthDeg).toBe(-5);
   });
+
+  // The camera sampling goldens, byte for byte: clamp, gap hold, jump, end hold.
+  const goldens = () => {
+    const n = normalizeLayeredScreenshot(
+      doc({
+        animation: {
+          keys: [
+            { id: "a", tMs: 1000, pose: pose() },
+            { id: "b", tMs: 2000, pose: pose({ azimuthDeg: 40, zoom: 2, pan: [2, 4] }) },
+            { id: "c", tMs: 4000, pose: pose({ azimuthDeg: 40, zoom: 2, pan: [2, 4] }) },
+            { id: "d", tMs: 5000, pose: pose({ azimuthDeg: 40, zoom: 2, elevationDeg: 20 }) },
+          ],
+          segments: [
+            { from: "a", to: "b", ease: "linear" },
+            { from: "c", to: "d", ease: "jump" },
+          ],
+        },
+      }),
+      "test",
+    );
+    if (!n?.track) throw new Error("track expected");
+    return n.track;
+  };
+
+  it("holds the first key before it (clamp at scene start)", () => {
+    expect(sampleLayeredScreenshotTrack(goldens(), 0)).toEqual(pose());
+  });
+
+  it("lerps every pose component inside a linear segment, pan included", () => {
+    const mid = sampleLayeredScreenshotTrack(goldens(), 1500);
+    expect(mid.azimuthDeg).toBeCloseTo(20, 12);
+    expect(mid.zoom).toBeCloseTo(1.5, 12);
+    expect(mid.pan[0]).toBeCloseTo(1, 12);
+    expect(mid.pan[1]).toBeCloseTo(2, 12);
+  });
+
+  it("holds the segment's end pose through a gap (b to c gap at 2000-4000)", () => {
+    expect(sampleLayeredScreenshotTrack(goldens(), 3000)).toEqual(
+      pose({ azimuthDeg: 40, zoom: 2, pan: [2, 4] }),
+    );
+  });
+
+  it("jump holds `from` for the whole segment and lands `to` exactly at its end", () => {
+    expect(sampleLayeredScreenshotTrack(goldens(), 4999).elevationDeg).toBe(0);
+    expect(sampleLayeredScreenshotTrack(goldens(), 5000).elevationDeg).toBe(20);
+  });
+
+  it("holds the last key after the track ends", () => {
+    expect(sampleLayeredScreenshotTrack(goldens(), 99999).elevationDeg).toBe(20);
+  });
+
+  it("eased golden value (inOutQuad at 25% progress)", () => {
+    const n = normalizeLayeredScreenshot(
+      doc({
+        animation: {
+          keys: [
+            { id: "a", tMs: 0, pose: pose() },
+            { id: "b", tMs: 1000, pose: pose({ azimuthDeg: 80 }) },
+          ],
+          segments: [{ from: "a", to: "b", ease: "inOutQuad" }],
+        },
+      }),
+      "test",
+    );
+    if (!n?.track) throw new Error("track expected");
+    // inOutQuad(0.25) = 0.125 -> 80 * 0.125 = 10
+    expect(sampleLayeredScreenshotTrack(n.track, 250).azimuthDeg).toBeCloseTo(10, 12);
+  });
 });
