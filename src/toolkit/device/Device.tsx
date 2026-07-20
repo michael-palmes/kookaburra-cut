@@ -1,5 +1,5 @@
 import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
-import { useCallback, useContext, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
   Box3,
   type BufferAttribute,
@@ -24,6 +24,7 @@ import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
+import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
@@ -442,6 +443,18 @@ export function Device(props: DeviceProps) {
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;
   const groupRef = useRef<Group>(null);
+
+  const sceneIndex = useSceneContext()?.index;
+  const introMs =
+    motion.preset === "tilt-reveal"
+      ? (motion.durationMs ?? 1000)
+      : motion.preset === "push-in"
+        ? (motion.durationMs ?? 1200)
+        : null;
+  useEffect(() => {
+    if (sceneIndex === undefined || introMs === null) return;
+    return registerPresentTiming(sceneIndex, { kind: "device-motion", toMs: introMs });
+  }, [sceneIndex, introMs]);
 
   // Staged scenes light themselves; the bundled lit set stands down by default.
   const staged = useSceneStaged();
