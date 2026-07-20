@@ -69,3 +69,15 @@ covered by the repository licence and may not be reused outside this project
   from a model simply don't apply (the placeholder ignores them). Vendors
   using the Blender Metallic BSDF are converted to Principled at export
   (`scripts/blender-export-glb.py`) so their colours survive.
+- **Mix Shaders do not exist in glTF.** A vendor material that mixes two
+  Principled BSDFs through an image (the MacBook's `PLASTIC Keyboard`, whose
+  mask carries the key legends) exports with no texture at all and then
+  dedups into a neighbouring plain material, taking its name with it. The
+  export script composites the mask into a single base-colour texture so one
+  Principled carries it.
+- **Perforated grilles need a backing.** The MacBook's speaker grilles are
+  holes through the top case, so through them you see the internal shell and
+  ports (a busy, inconsistent mess). The export script drops an opaque dark
+  quad just under each perforated strip (placement derived from the casing and
+  keyboard-tray bounds, so it self-skips any device without them) to give the
+  holes a flat, consistent dark field.
