@@ -99,6 +99,30 @@ export const TRANSITION_CATALOG: TransitionMeta[] = [
     needsColor: false,
     defaultDurationMs: 400,
   },
+  {
+    type: "slice",
+    label: "Slice",
+    hint: "Staggered strips slide away",
+    needsDirection: true,
+    needsColor: false,
+    defaultDurationMs: 600,
+  },
+  {
+    type: "dissolve",
+    label: "Dissolve",
+    hint: "Organic noise wipe",
+    needsDirection: false,
+    needsColor: false,
+    defaultDurationMs: 700,
+  },
+  {
+    type: "warp",
+    label: "Warp",
+    hint: "Lens pull with a subtle split",
+    needsDirection: false,
+    needsColor: false,
+    defaultDurationMs: 500,
+  },
 ];
 
 /** The four authorable axes, labelled by the on-screen travel of the incoming scene. */

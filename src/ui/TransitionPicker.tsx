@@ -20,15 +20,19 @@ import {
 import { fsUrl } from "../engine/media";
 import type { LoadedProject } from "../engine/project";
 import {
+  applyTransitionEase,
   resolveTransitionParams,
+  type TransitionEase,
   type TransitionSpec,
   type TransitionType,
 } from "../engine/sceneTimeline";
 import { DIRECTION_OPTIONS, TRANSITION_CATALOG } from "../engine/transitionCatalog";
 import {
+  EXT2_MIN_TYPE,
   EXTENDED_MIN_TYPE,
   fragmentShader,
   fragmentShaderExt,
+  fragmentShaderExt2,
   SHAPE_ID,
   TYPE_ID,
   vertexShader,
@@ -129,6 +133,7 @@ interface PreviewHandles {
   mesh: Mesh;
   matSdr: ShaderMaterial;
   matExt: ShaderMaterial;
+  matExt2: ShaderMaterial;
   texA: Texture;
   texB: Texture;
   raf: number;
@@ -171,6 +176,7 @@ function TransitionPreview({
     const camera = new Camera();
     const matSdr = makePreviewMaterial(fragmentShader, false);
     const matExt = makePreviewMaterial(fragmentShaderExt, true);
+    const matExt2 = makePreviewMaterial(fragmentShaderExt2, true);
     const mesh = new Mesh(new PlaneGeometry(2, 2), matSdr);
     mesh.frustumCulled = false;
     scene.add(mesh);
@@ -182,6 +188,7 @@ function TransitionPreview({
       mesh,
       matSdr,
       matExt,
+      matExt2,
       texA: sampleSlideTexture(fallbackA, "a"),
       texB: sampleSlideTexture(fallbackB, "b"),
       raf: 0,
@@ -224,9 +231,14 @@ function TransitionPreview({
       const s = specRef.current;
       // None: a hard cut at the midpoint, rendered through the crossfade branch at 0/1.
       const type: TransitionType = s?.type ?? "crossfade";
-      const p = s ? progress : progress < 0.5 ? 0 : 1;
-      const ext = TYPE_ID[type] >= EXTENDED_MIN_TYPE;
-      const mat = ext ? handles.matExt : handles.matSdr;
+      const p = s ? applyTransitionEase(s.ease, progress) : progress < 0.5 ? 0 : 1;
+      const id = TYPE_ID[type];
+      const mat =
+        id >= EXT2_MIN_TYPE
+          ? handles.matExt2
+          : id >= EXTENDED_MIN_TYPE
+            ? handles.matExt
+            : handles.matSdr;
       handles.mesh.material = mat;
       const u = mat.uniforms;
       const params = resolveTransitionParams(s ?? { type: "crossfade", durationMs: 600 });
@@ -236,7 +248,11 @@ function TransitionPreview({
       u.type.value = TYPE_ID[type];
       const dir =
         s?.direction ??
-        (type === "slide" || type === "wipe" || type === "push" || type === "whip"
+        (type === "slide" ||
+        type === "wipe" ||
+        type === "push" ||
+        type === "whip" ||
+        type === "slice"
           ? [1, 0]
           : [0, 0]);
       (u.direction.value as Vector2).set(dir[0], dir[1]);
@@ -260,6 +276,7 @@ function TransitionPreview({
       handles.texB.dispose();
       matSdr.dispose();
       matExt.dispose();
+      matExt2.dispose();
       mesh.geometry.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -269,6 +286,13 @@ function TransitionPreview({
 
   return <div ref={containerRef} className="transition-preview" />;
 }
+
+/** Progress-feel choices; Linear removes the key so untouched specs keep exact bytes. */
+const EASE_OPTIONS: { id: TransitionEase; label: string }[] = [
+  { id: "linear", label: "Linear" },
+  { id: "smooth", label: "Smooth" },
+  { id: "snappy", label: "Snappy" },
+];
 
 const ARROWS: Record<string, string> = {
   Left: "M14 4 L6 10 L14 16",
@@ -325,6 +349,8 @@ export function TransitionModal({
       durationMs: prev?.durationMs ?? m.defaultDurationMs,
       ...(m.needsDirection && prev?.direction ? { direction: prev.direction } : {}),
       ...(m.needsColor && prev?.color ? { color: prev.color } : {}),
+      // A fresh transition defaults to the smooth feel; an existing spec keeps its stored ease (absent = linear, the byte contract).
+      ...(prev ? (prev.ease ? { ease: prev.ease } : {}) : { ease: "smooth" as TransitionEase }),
       ...(m.presets ?? {}),
     }));
   };
@@ -442,6 +468,30 @@ export function TransitionModal({
                   })}
                 </span>
               )}
+
+              <span className="transition-ease" title="Progress feel">
+                {EASE_OPTIONS.map((opt) => {
+                  const active = (draft.ease ?? "linear") === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`btn btn-small${active ? " selected" : ""}`}
+                      aria-pressed={active}
+                      onClick={() => {
+                        if (opt.id === "linear") {
+                          const { ease: _drop, ...rest } = draft;
+                          setDraft(rest);
+                        } else {
+                          setDraft({ ...draft, ease: opt.id });
+                        }
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </span>
 
               {meta?.needsColor && (
                 <span className="transition-dip">

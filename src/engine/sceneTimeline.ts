@@ -1,6 +1,6 @@
 /** Pure global → local time mapping for a sequence of scenes (no React, no clock): scenes lay back-to-back, but a transition makes the next scene start early by its clamped duration (the overlap/cross-dissolve model, so total = Σdurations − Σoverlaps); resolveAt maps a global ms onto the 1 (solo) or 2 (mid-transition) active scenes and their scene-local times. Pure functions, so preview and export agree by construction (see docs/determinism.md). */
 
-/** The composite transition types (see engine/transitionShader.ts): the legacy four (crossfade/dip/slide/wipe) render through the v1 GLSL1 materials, the extended pack (blur/push/zoom/whip/luma/glitch) through the GLSL3 materials. */
+/** The composite transition types (see engine/transitionShader.ts): the legacy four (crossfade/dip/slide/wipe) render through the v1 GLSL1 materials, the extended pack (blur/push/zoom/whip/luma/glitch) through the GLSL3 materials, and the v14 pack (slice/dissolve/warp) through a third material generation so earlier programs stay source-identical. */
 export type TransitionType =
   | "crossfade"
   | "dip"
@@ -11,7 +11,20 @@ export type TransitionType =
   | "zoom"
   | "whip"
   | "luma"
-  | "glitch";
+  | "glitch"
+  | "slice"
+  | "dissolve"
+  | "warp";
+
+/** Progress easing names; absent means linear, so stored specs without one keep exact bytes. */
+export type TransitionEase = "linear" | "smooth" | "snappy";
+
+/** Endpoint-preserving progress easing (0 stays 0, 1 stays 1), applied CPU-side so shaders never know the curve; seams stay byte-equal to the solo neighbours. */
+export function applyTransitionEase(ease: TransitionEase | undefined, t: number): number {
+  if (ease === "smooth") return t * t * (3 - 2 * t);
+  if (ease === "snappy") return 1 - (1 - t) ** 3;
+  return t;
+}
 
 /** Procedural luma-wipe ramp shapes. */
 export type TransitionShape = "linear" | "radial" | "iris";
@@ -39,10 +52,12 @@ export interface TransitionSpec extends Partial<TransitionParams> {
   type: TransitionType;
   /** Overlap duration in ms. Clamped to the neighbouring scene durations when built. */
   durationMs: number;
-  /** Unit axis for slide/wipe/push/whip/luma:linear (B enters along +direction). */
+  /** Unit axis for slide/wipe/push/whip/slice/luma:linear (B enters along +direction). */
   direction?: [number, number];
   /** Dip colour (sRGB hex) for `dip`; defaults to the theme background at composite time. */
   color?: string;
+  /** Progress easing; absent = linear (the stored-spec byte contract). */
+  ease?: TransitionEase;
 }
 
 /** Minimal scene shape the timeline needs (decoupled from LoadedProject for testability). */
@@ -101,6 +116,7 @@ function defaultDirection(type: TransitionType): [number, number] {
     case "push":
     case "whip":
     case "luma":
+    case "slice":
       return [1, 0];
     default:
       return [0, 0];
@@ -118,6 +134,9 @@ const KNOWN_TYPES: readonly TransitionType[] = [
   "whip",
   "luma",
   "glitch",
+  "slice",
+  "dissolve",
+  "warp",
 ];
 
 /** Per-type `intensity` defaults (unused types keep 0). */
@@ -126,6 +145,9 @@ const INTENSITY_DEFAULTS: Partial<Record<TransitionType, number>> = {
   zoom: 0.35,
   whip: 0.12,
   glitch: 0.5,
+  slice: 0.35,
+  dissolve: 0.35,
+  warp: 0.2,
 };
 
 /** Normalizes an authored spec: unknown types degrade to `crossfade` with a warning, since workspace project.json is hand- or Claude-edited and a typo must never feed an undefined uniform, so the timeline only ever carries known types. */
@@ -231,7 +253,8 @@ export function resolveAt(slots: SceneSlot[], tMs: number): Resolved {
     return { active: [{ index: b.index, localMs: clamp(t - b.startMs, 0, b.durationMs) }] };
   }
 
-  const progress = spec.durationMs > 0 ? clamp((t - b.startMs) / spec.durationMs, 0, 1) : 1;
+  const linear = spec.durationMs > 0 ? clamp((t - b.startMs) / spec.durationMs, 0, 1) : 1;
+  const progress = applyTransitionEase(spec.ease, linear);
   return {
     active: [
       { index: a.index, localMs: clamp(t - a.startMs, 0, a.durationMs) },

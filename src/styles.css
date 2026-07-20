@@ -321,6 +321,18 @@ body {
   border-color: var(--border-strong);
 }
 
+/* Toggle-style buttons (transition direction/ease, aria-pressed rows): the chip.selected look. */
+.btn.selected {
+  color: var(--text-primary);
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+}
+
+.btn.selected:hover:not(:disabled) {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+}
+
 .btn:active:not(:disabled) {
   background: var(--surface-active);
 }
@@ -3568,6 +3580,11 @@ body {
 }
 
 .transition-directions {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.transition-ease {
   display: inline-flex;
   gap: 0.25rem;
 }

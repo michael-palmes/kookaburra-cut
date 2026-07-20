@@ -639,9 +639,11 @@ Declared on the OUTGOING scene (manifest `"version": 2`): `"transition": { "type
 (clamped) overlap; the last scene never carries one. Always write `"version": 2` at the
 manifest top level when authoring transitions. Legacy unversioned manifests stored each
 transition on the incoming scene instead; the loader shifts them (identical output) and any
-app edit migrates the file in place, so never mix the two placements in one file. Ten types
-(v10 · M2); unknown types degrade to `crossfade` with a console warning. All params are
-optional (defaults shown); every value is clamped on load.
+app edit migrates the file in place, so never mix the two placements in one file. Thirteen
+types; unknown types degrade to `crossfade` with a console warning. All params are
+optional (defaults shown); every value is clamped on load. Any transition may also carry
+`ease`: `"linear"` (absent, the byte contract for stored specs) | `"smooth"` | `"snappy"`,
+applied CPU-side to progress with endpoints preserved.
 
 | type | family | params (beyond `durationMs`) | notes |
 |---|---|---|---|
@@ -655,9 +657,13 @@ optional (defaults shown); every value is clamped on load.
 | `whip` | move | `direction` [1,0] · `intensity` 0.12 | full-travel push under 16-tap directional blur |
 | `luma` | mask | `shape` "linear"\|"radial"\|"iris" · `softness` 0.08 · `center` · `direction` (linear) | procedural ramp, soft edge |
 | `glitch` | mix | `intensity` 0.5 · `blocks` [24,14] · `steps` 12 | hashed block displacement + RGB split; every block lands on B by progress 0.85 |
+| `slice` | move | `direction` [1,0] · `intensity` 0.35 (stagger) · `blocks[0]` strip count | hash-staggered strips slide out revealing B |
+| `dissolve` | mask | `intensity` 0.35 (noise scale) · `softness` 0.08 | organic value-noise threshold, soft edge |
+| `warp` | mix | `intensity` 0.2 · `center` [0.5,0.5] | lens pull toward centre, restrained RGB split at mid |
 
-`direction` is one of the four unit axes. Gate project: `projects/transition-spike` (all
-eight non-slide/wipe seams); `ws:launch-2026` keeps slide/wipe coverage.
+`direction` is one of the four unit axes. Gate project: `projects/transition-spike` (every
+non-slide/wipe seam incl. the v14 pack + eased boundaries); `ws:launch-2026` keeps
+slide/wipe coverage.
 
 ## Project manifest v3 fields (effects · camera · persistent)
 

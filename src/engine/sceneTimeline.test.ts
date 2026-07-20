@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeSceneIndex,
+  applyTransitionEase,
   buildSceneTimeline,
   normalizeTransitionType,
   resolveAt,
@@ -174,13 +175,16 @@ describe("normalizeTransitionType (v10 M2)", () => {
       "whip",
       "luma",
       "glitch",
+      "slice",
+      "dissolve",
+      "warp",
     ] as const) {
       expect(normalizeTransitionType(t)).toBe(t);
     }
   });
 
   it("degrades unknown types to crossfade", () => {
-    expect(normalizeTransitionType("dissolve")).toBe("crossfade");
+    expect(normalizeTransitionType("sparkle")).toBe("crossfade");
     expect(normalizeTransitionType("")).toBe("crossfade");
   });
 
@@ -278,5 +282,39 @@ describe("activeSceneIndex (the editing chrome's dominant scene — moved from E
     expect(activeSceneIndex(slots, 1999)).toBe(1);
     expect(activeSceneIndex(slots, 2000)).toBe(0);
     expect(activeSceneIndex(slots, 99999)).toBe(0);
+  });
+});
+
+describe("applyTransitionEase (v14)", () => {
+  it("preserves endpoints for every curve (the seam byte contract)", () => {
+    for (const ease of ["linear", "smooth", "snappy"] as const) {
+      expect(applyTransitionEase(ease, 0)).toBe(0);
+      expect(applyTransitionEase(ease, 1)).toBe(1);
+    }
+    expect(applyTransitionEase(undefined, 0.25)).toBe(0.25);
+  });
+
+  it("smooth is smoothstep and snappy front-loads", () => {
+    expect(applyTransitionEase("smooth", 0.5)).toBeCloseTo(0.5, 10);
+    expect(applyTransitionEase("smooth", 0.25)).toBeCloseTo(0.15625, 10);
+    expect(applyTransitionEase("snappy", 0.25)).toBeCloseTo(1 - 0.75 ** 3, 10);
+    expect(applyTransitionEase("snappy", 0.25)).toBeGreaterThan(0.25);
+  });
+
+  it("resolveAt eases the reported progress; absent ease stays linear", () => {
+    const eased = buildSceneTimeline([
+      {
+        id: "a",
+        durationMs: 2000,
+        transition: { type: "crossfade", durationMs: 500, ease: "smooth" },
+      },
+      { id: "b", durationMs: 2000 },
+    ]);
+    expect(resolveAt(eased, 1625).transition?.progress).toBeCloseTo(0.15625, 10);
+    const plain = buildSceneTimeline([
+      { id: "a", durationMs: 2000, transition: { type: "crossfade", durationMs: 500 } },
+      { id: "b", durationMs: 2000 },
+    ]);
+    expect(resolveAt(plain, 1625).transition?.progress).toBeCloseTo(0.25, 10);
   });
 });
