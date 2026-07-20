@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
+import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { useClockStore } from "../../engine/clock";
 import { pushHistory } from "../../engine/history";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -2045,6 +2046,17 @@ export function SceneTab({
     );
   }
 
+  if (drillIn === "layeredScreenshot.edit") {
+    return (
+      <LayeredScreenshotBuilder
+        project={project}
+        sceneIndex={sceneIndex}
+        onDocChanged={onDocChanged}
+        onBack={() => setDrillIn(null)}
+      />
+    );
+  }
+
   if (drillIn === "device.rotation" && device) {
     return (
       <RotationDrillIn
@@ -2179,11 +2191,9 @@ export function SceneTab({
                       });
                     },
                     "device.rotation": () => setDrillIn("device.rotation"),
-                    // Both paths open the builder; it seeds the first layer for scenes without a block.
-                    "layeredScreenshot.edit": () =>
-                      useLayeredScreenshotEditStore.getState().setOpen(true),
-                    "layeredScreenshot.add": () =>
-                      useLayeredScreenshotEditStore.getState().setOpen(true),
+                    // Both paths drill into the builder; it seeds the first layer for scenes without a block.
+                    "layeredScreenshot.edit": () => setDrillIn("layeredScreenshot.edit"),
+                    "layeredScreenshot.add": () => setDrillIn("layeredScreenshot.edit"),
                     "device.remove": () => {
                       if (!confirmRemove) {
                         setConfirmRemove(true);

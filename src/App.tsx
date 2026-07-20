@@ -121,7 +121,6 @@ import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
-import { LayeredScreenshotBuilder } from "./ui/LayeredScreenshotBuilder";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -1683,14 +1682,6 @@ export default function App() {
                           onDocChanged={handleDocChanged}
                         />
                       ))}
-                {/* The screenshot-stack builder: a left-docked panel over the live stage (self-gated on its store's open flag). */}
-                {project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun && (
-                  <LayeredScreenshotBuilder
-                    project={project}
-                    sceneIndex={camSceneIndex}
-                    onDocChanged={handleDocChanged}
-                  />
-                )}
               </div>
 
               {!isAutoRun && !error && (
@@ -1971,7 +1962,12 @@ export default function App() {
               openProject,
               openMedia: () => setShowMedia(true),
               openTheme: () => setThemeMode({}),
-              editScreenshotStack: () => useLayeredScreenshotEditStore.getState().setOpen(true),
+              editScreenshotStack: () => {
+                // The builder is a Scene-tab drill-in; setInspectorTab clears drillIn, so order matters.
+                const ui = useUiStore.getState();
+                ui.setInspectorTab("scene");
+                ui.setInspectorDrillIn("layeredScreenshot.edit");
+              },
               setSoundtrack: () => void handleSetSoundtrack(),
               removeSoundtrack: () => void handleRemoveSoundtrack(),
               toggleRail: () => setRailOpen((v) => !v),
