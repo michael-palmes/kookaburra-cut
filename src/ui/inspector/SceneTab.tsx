@@ -21,6 +21,7 @@ import {
   textKeysConsumedBy,
 } from "../../engine/textKeyRegistry";
 import { useSceneHasCodedTextMotion } from "../../engine/textMotionRegistry";
+import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
@@ -521,6 +522,77 @@ function CameraSectionBody({
             selected={cameraOpen}
             onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
           />
+          {camera.keys.length > 1 && (
+            <>
+              <div className="popover-row">
+                <label
+                  className="popover-inline"
+                  title="While a slideshow holds, loop the camera back to its first key; video playback and export are untouched"
+                >
+                  <input
+                    type="checkbox"
+                    checked={camera.presentLoop !== undefined}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        void commit({
+                          ...camera,
+                          presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
+                        });
+                      } else {
+                        const { presentLoop: _drop, ...rest } = camera;
+                        void commit(rest);
+                      }
+                    }}
+                  />
+                  Loop in Present
+                </label>
+              </div>
+              {camera.presentLoop && (
+                <div className="popover-row">
+                  <button
+                    type="button"
+                    className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
+                    title="Ease back to the first key, then replay"
+                    onClick={() =>
+                      void commit({
+                        ...camera,
+                        presentLoop: {
+                          mode: "smooth",
+                          blendMs: camera.presentLoop?.blendMs ?? DEFAULT_LOOP_BLEND_MS,
+                        },
+                      })
+                    }
+                  >
+                    Smooth
+                  </button>
+                  <button
+                    type="button"
+                    className={`chip${camera.presentLoop.mode === "jump" ? " selected" : ""}`}
+                    title="Jump cut back to the first key each cycle"
+                    onClick={() => void commit({ ...camera, presentLoop: { mode: "jump" } })}
+                  >
+                    Jump
+                  </button>
+                  {camera.presentLoop.mode === "smooth" && (
+                    <NumericField
+                      label="blend s"
+                      value={(camera.presentLoop.blendMs ?? DEFAULT_LOOP_BLEND_MS) / 1000}
+                      decimals={1}
+                      onCommit={(n) =>
+                        void commit({
+                          ...camera,
+                          presentLoop: {
+                            mode: "smooth",
+                            blendMs: Math.max(100, Math.round(n * 1000)),
+                          },
+                        })
+                      }
+                    />
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </>
