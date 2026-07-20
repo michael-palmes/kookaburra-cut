@@ -18,6 +18,7 @@ import {
   solveLayerLayout,
   spreadZToLocal,
 } from "../../engine/layeredScreenshotLayout";
+import { useLayeredScreenshotDraft } from "../../engine/layeredScreenshotEditStore";
 import { useSceneConsumesLayeredScreenshot } from "../../engine/layeredScreenshotRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -278,6 +279,12 @@ function TextCard({ item, rect }: { item: LayeredScreenshotTextItem; rect: Solve
   );
 }
 
+function useResolvedProjectId(): string {
+  const contextProjectId = useContext(ProjectIdContext);
+  const storeProjectId = useEditorStore((s) => s.projectId);
+  return contextProjectId ?? storeProjectId;
+}
+
 /** The stack at its resolved pose: visible layers sorted by `z`, each solved on its own plane, auto-fitted to the safe frame at spread 0, then posed as one group (pan / orbit counter-rotation / fitted zoom). Scene-local by construction: the pose is this group's own transform, never the world camera. */
 function StackRenderer({
   normalized,
@@ -289,9 +296,7 @@ function StackRenderer({
   const { localMs } = useTimeline();
   const format = useFormat();
   const theme = useTheme();
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  const projectId = contextProjectId ?? storeProjectId;
+  const projectId = useResolvedProjectId();
 
   const layers = useMemo(
     () =>
@@ -401,24 +406,29 @@ export interface LayeredScreenshotProps {
   _reserved?: never;
 }
 
-/** The scene document's layered-screenshot stack at its resolved pose (rest pose, or the sampled animation when the scene's animated track is the layered screenshot). Registers the scene as a consumer so the host-side fallback stands down. */
+/** The scene document's layered-screenshot stack at its resolved pose (rest pose, or the sampled animation when the scene's animated track is the layered screenshot). Registers the scene as a consumer so the host-side fallback stands down. In-flight builder drafts merge here in React behind the store's export guard, so the export path only ever sees the sidecar. */
 export function LayeredScreenshot(_props: LayeredScreenshotProps = {}) {
-  const normalized = useSceneLayeredScreenshot();
+  const fromDoc = useSceneLayeredScreenshot();
   const doc = useSceneDoc();
+  const sceneIndex = useSceneContext()?.index;
+  const draft = useLayeredScreenshotDraft(useResolvedProjectId(), sceneIndex);
+  const normalized = draft ? draft.normalized : fromDoc;
   if (!normalized) return null;
   return <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />;
 }
 
-/** Host-side stack for scenes whose TSX never wires `useSceneLayeredScreenshot` (mounted by SceneHost, the DevicesFallback pattern): reads the doc directly so it can't register as a consumer itself. */
+/** Host-side stack for scenes whose TSX never wires `useSceneLayeredScreenshot` (mounted by SceneHost, the DevicesFallback pattern): reads the doc directly so it can't register as a consumer itself; drafts merge exactly as in the primitive. */
 export function LayeredScreenshotFallback() {
   const doc = useContext(SceneDocContext);
   const sceneIndex = useSceneContext()?.index;
   const consumed = useSceneConsumesLayeredScreenshot(sceneIndex);
+  const draft = useLayeredScreenshotDraft(useResolvedProjectId(), sceneIndex);
   const block = doc?.layeredScreenshot;
-  const normalized = useMemo(
+  const fromDoc = useMemo(
     () => normalizeLayeredScreenshot(block, `scene ${sceneIndex ?? "?"}`),
     [block, sceneIndex],
   );
+  const normalized = draft ? draft.normalized : fromDoc;
   if (consumed || !normalized) return null;
   return <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />;
 }
