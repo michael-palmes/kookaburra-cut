@@ -953,8 +953,17 @@ bundled rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 |
 | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
-| `showcase-tour` (rolling gate) | `da74c52b…` | stale | stale | stale |
+| `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
+
+> **2026-07-20 (present mode, float fix):** the Present feature landed with the
+> legacy sentinel EQUAL throughout (`b70c9788…`; the hold clamp, timing registry
+> and present-mode flag are realm-inert on the export path). The float motion
+> preset now rises from the resting pose instead of dipping below it (the old
+> symmetric sine clipped devices through the stage floor), a deliberate visual
+> change: re-recorded `showcase-tour` `da74c52b…` → `97af238c…` (Verify ×2
+> EQUAL) after eyeballing the abyss scene's raised device via
+> `--action screenshot`.
 
 > **2026-07-20 (transition ownership flip, manifest v2):** both anchors held
 > EQUAL through the flip (`da74c52b…` on the migrated v2 manifest, `b70c9788…`
