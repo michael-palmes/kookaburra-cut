@@ -42,9 +42,12 @@ import {
 } from "./sceneState";
 import type { Resolved, ResolvedTransition } from "./sceneTimeline";
 import {
+  EXT2_MIN_TYPE,
   EXTENDED_MIN_TYPE,
   fragmentShader,
   fragmentShaderExt,
+  fragmentShaderExt2,
+  fragmentShaderExt2Hdr,
   fragmentShaderExtHdr,
   fragmentShaderHdr,
   SHAPE_ID,
@@ -71,6 +74,9 @@ interface CompositorState {
   /** Extended-pack (types 4-9, GLSL3) variants of the two above; separate materials so adding a type never recompiles the legacy GLSL1 programs. */
   materialExt: ShaderMaterial;
   materialExtHdr: ShaderMaterial;
+  /** v14 pack (types 10-12, GLSL3), its own generation for the same reason. */
+  materialExt2: ShaderMaterial;
+  materialExt2Hdr: ShaderMaterial;
   /** The fullscreen quad, so the compositor can swap its material per frame. */
   mesh: Mesh;
 }
@@ -173,6 +179,8 @@ function ensureState(w: number, h: number): CompositorState {
   const materialHdr = makeCompositeMaterial(fragmentShaderHdr);
   const materialExt = makeCompositeMaterial(fragmentShaderExt, true);
   const materialExtHdr = makeCompositeMaterial(fragmentShaderExtHdr, true);
+  const materialExt2 = makeCompositeMaterial(fragmentShaderExt2, true);
+  const materialExt2Hdr = makeCompositeMaterial(fragmentShaderExt2Hdr, true);
   const quadScene = new Scene();
   const mesh = new Mesh(new PlaneGeometry(2, 2), material);
   mesh.frustumCulled = false;
@@ -190,6 +198,8 @@ function ensureState(w: number, h: number): CompositorState {
     materialHdr,
     materialExt,
     materialExtHdr,
+    materialExt2,
+    materialExt2Hdr,
     mesh,
   };
   return state;
@@ -335,14 +345,19 @@ export function renderComposited(
   gl.toneMapping = prevToneMapping;
 
   // Effects: composites in linear into the composer (which owns tone-map + sRGB encode); no effects: composites straight to the default FB with sRGB encode, the original path, unchanged.
-  const ext = TYPE_ID[tr.type] >= EXTENDED_MIN_TYPE;
-  const activeMaterial = ext
-    ? fx
-      ? st.materialExtHdr
-      : st.materialExt
-    : fx
-      ? st.materialHdr
-      : st.material;
+  const id = TYPE_ID[tr.type];
+  const activeMaterial =
+    id >= EXT2_MIN_TYPE
+      ? fx
+        ? st.materialExt2Hdr
+        : st.materialExt2
+      : id >= EXTENDED_MIN_TYPE
+        ? fx
+          ? st.materialExtHdr
+          : st.materialExt
+        : fx
+          ? st.materialHdr
+          : st.material;
   st.mesh.material = activeMaterial;
   setCompositeUniforms(
     activeMaterial.uniforms,

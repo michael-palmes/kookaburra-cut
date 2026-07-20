@@ -14,10 +14,16 @@ export const TYPE_ID: Record<TransitionType, number> = {
   whip: 7,
   luma: 8,
   glitch: 9,
+  slice: 10,
+  dissolve: 11,
+  warp: 12,
 };
 
 /** Types >= this id render through the extended (GLSL3) materials. */
 export const EXTENDED_MIN_TYPE = 4;
+
+/** Types >= this id render through the v14 (third-generation GLSL3) materials, keeping the earlier programs source-identical. */
+export const EXT2_MIN_TYPE = 10;
 
 /** Procedural luma-wipe ramp shapes (see the extended fragment shaders). */
 export const SHAPE_ID: Record<TransitionShape, number> = { linear: 0, radial: 1, iris: 2 };
@@ -273,6 +279,134 @@ export const fragmentShaderExt = /* glsl */ `
     bool isSelect = false;
     ${extBody}
     fragColor = vec4(isSelect ? outSelect : outDisplay, 1.0);
+  }
+`;
+
+// The v14 pack (types 10-12): its own body so the earlier generations stay source-identical. Every distortion gates on `bell = 4p(1-p)` (identity at both seams) and slice/dissolve reach pure A/B selection at progress 0/1, so the first/last transition frames equal the solo neighbours exactly. Randomness is the shared PCG hash; the value-noise lattice interpolation uses fixed smoothstep weights.
+const ext2Body = /* glsl */ `
+  float bell = 4.0 * progress * (1.0 - progress);
+
+  if (type == 10) {                  // slice: hash-staggered strips slide out along +direction
+    float count = max(blocks.x, 2.0);
+    float across = abs(direction.x) > 0.5 ? vUv.y : vUv.x;
+    float idx = floor(across * count);
+    float st = intensity;            // stagger fraction of the travel
+    float h = hash01(uvec3(uint(idx), 191u, 73u));
+    float lp = clamp(progress * (1.0 + st) - h * st, 0.0, 1.0);
+    vec2 uvA = vUv - lp * direction;
+    if (any(lessThan(uvA, vec2(0.0))) || any(greaterThan(uvA, vec2(1.0)))) {
+      outSelect = SEL_RAW(texB, vUv);
+    } else {
+      outSelect = SEL_RAW(texA, uvA);
+    }
+    isSelect = true;
+  } else if (type == 11) {           // dissolve: organic value-noise threshold, soft edge
+    float scale = mix(4.0, 16.0, intensity);
+    vec2 p = vec2(vUv.x * aspect, vUv.y) * scale;
+    vec2 i0 = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    float n00 = hash01(uvec3(uvec2(i0), 11u));
+    float n10 = hash01(uvec3(uvec2(i0 + vec2(1.0, 0.0)), 11u));
+    float n01 = hash01(uvec3(uvec2(i0 + vec2(0.0, 1.0)), 11u));
+    float n11 = hash01(uvec3(uvec2(i0 + vec2(1.0, 1.0)), 11u));
+    float n = mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y);
+    vec2 p2 = p * 2.7;
+    vec2 j0 = floor(p2);
+    vec2 g = fract(p2);
+    vec2 v = g * g * (3.0 - 2.0 * g);
+    float m00 = hash01(uvec3(uvec2(j0), 29u));
+    float m10 = hash01(uvec3(uvec2(j0 + vec2(1.0, 0.0)), 29u));
+    float m01 = hash01(uvec3(uvec2(j0 + vec2(0.0, 1.0)), 29u));
+    float m11 = hash01(uvec3(uvec2(j0 + vec2(1.0, 1.0)), 29u));
+    n = n * 0.7 + mix(mix(m00, m10, v.x), mix(m01, m11, v.x), v.y) * 0.3;
+    // Interpolated value noise clusters around 0.5; stretching it spreads the threshold sweep so the front advances instead of the whole frame blending at once.
+    n = clamp((n - 0.5) * 1.8 + 0.5, 0.0, 1.0);
+    float pp = mix(-softness, 1.0 + softness, progress);
+    float m = 1.0 - smoothstep(pp - softness, pp + softness, n);
+    if (m <= 0.0) {
+      outSelect = SEL_RAW(texA, vUv);
+      isSelect = true;
+    } else if (m >= 1.0) {
+      outSelect = SEL_RAW(texB, vUv);
+      isSelect = true;
+    } else {
+      outDisplay = mix(S(texA, vUv), S(texB, vUv), m);
+    }
+  } else {                           // warp: lens pull toward centre, restrained RGB split at mid
+    vec2 q = vUv - center;
+    float w = intensity * bell;
+    float sA = 1.0 + w * 0.6;        // A lenses away
+    float sB = 1.0 - w * 0.4;        // B settles in
+    float split = 0.012 * w;
+    vec3 a = vec3(
+      S(texA, center + q * (sA - split)).r,
+      S(texA, center + q * sA).g,
+      S(texA, center + q * (sA + split)).b);
+    vec3 b = vec3(
+      S(texB, center + q * (sB - split)).r,
+      S(texB, center + q * sB).g,
+      S(texB, center + q * (sB + split)).b);
+    outDisplay = mix(a, b, progress);
+  }
+`;
+
+/** v14 SDR composite (GLSL3): same display-domain semantics as the extended pack, its own program. */
+export const fragmentShaderExt2 = /* glsl */ `
+  precision highp float;
+  in vec2 vUv;
+  out vec4 fragColor;
+  ${extCommon}
+
+  vec3 linearToSrgb(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+  }
+  vec3 S(sampler2D t, vec2 uv) {
+    return linearToSrgb(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
+  }
+  vec3 SEL_RAW(sampler2D t, vec2 uv) { return S(t, uv); }
+
+  void main() {
+    vec3 outDisplay = vec3(0.0);
+    vec3 outSelect = vec3(0.0);
+    bool isSelect = false;
+    ${ext2Body}
+    fragColor = vec4(isSelect ? outSelect : outDisplay, 1.0);
+  }
+`;
+
+/** v14 HDR composite (GLSL3, fx path): the extended pack's ACES round-trip semantics, its own program; selections pass raw linear HDR untouched. */
+export const fragmentShaderExt2Hdr = /* glsl */ `
+  precision highp float;
+  in vec2 vUv;
+  out vec4 fragColor;
+  ${extCommon}
+
+  vec3 srgbToLinear(vec3 c) {
+    return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+  }
+  vec3 linearToSrgb(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+  }
+  ${ACES_FORWARD_GLSL}
+  ${ACES_INVERSE_GLSL}
+
+  vec3 S(sampler2D t, vec2 uv) {
+    return linearToSrgb(acesForward(texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb));
+  }
+  vec3 SEL_RAW(sampler2D t, vec2 uv) {
+    return texture(t, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+  }
+  vec3 tmInv(vec3 e) { return acesInverse(srgbToLinear(clamp(e, 0.0, 0.999))); }
+
+  void main() {
+    vec3 outDisplay = vec3(0.0);
+    vec3 outSelect = vec3(0.0);
+    bool isSelect = false;
+    ${ext2Body}
+    fragColor = vec4(isSelect ? outSelect : tmInv(outDisplay), 1.0);
   }
 `;
 

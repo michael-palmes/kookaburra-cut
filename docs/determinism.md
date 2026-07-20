@@ -167,11 +167,14 @@ Determinism rules specific to the composite path:
 
 The extended transition types (blur, push, zoom, whip, procedural luma/iris,
 glitch) live in **separate GLSL3 materials** (`engine/transitionShader.ts`) so
-the original crossfade/dip/slide/wipe programs stay source-identical; legacy
-projects' byte-identity is structural. Glitch randomness is an integer PCG hash
-(never `fract(sin)`: integer ops are exact across compiles); all tap counts and
-per-type defaults are export contract; unknown transition types degrade to
-crossfade with a warning.
+the original crossfade/dip/slide/wipe programs stay source-identical, and the
+v14 pack (slice, dissolve, warp) is a third generation for the same reason;
+legacy projects' byte-identity is structural. Glitch/slice/dissolve randomness
+is an integer PCG hash (never `fract(sin)`: integer ops are exact across
+compiles); all tap counts and per-type defaults are export contract; unknown
+transition types degrade to crossfade with a warning. Progress easing
+(`ease: smooth | snappy`) is applied CPU-side before the uniforms, endpoints
+preserved; absent means linear, so stored specs keep exact bytes.
 
 ## Embedded video
 
@@ -951,13 +954,20 @@ bundled rolling-gate project (`showcase-tour`):
 | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
 | `showcase-tour` (rolling gate) | `da74c52b…` | stale | stale | stale |
-| `transition-spike` (transition gate) | `3cad687f…` | `8447d8e9…` | — | — |
+| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
 
 > **2026-07-20 (transition ownership flip, manifest v2):** both anchors held
 > EQUAL through the flip (`da74c52b…` on the migrated v2 manifest, `b70c9788…`
 > through the legacy shim), proving the relabel moves no pixels; the
-> `transition-spike` baselines above were first recorded this session (Verify ×2
-> EQUAL in both aspects, same change set).
+> `transition-spike` baselines were first recorded this session (`3cad687f…` /
+> `8447d8e9…`, Verify ×2 EQUAL in both aspects, same change set).
+
+> **2026-07-20 (later, v14 transition pack):** slice/dissolve/warp + progress
+> easing landed with both anchors still EQUAL (stored specs carry no `ease`, so
+> the identity path is byte-stable). `transition-spike` gained three scenes
+> covering the new seams and both easing curves, a deliberate content change:
+> re-recorded `3cad687f…` → `6b058e1b…` (16:9) and `8447d8e9…` → `74e02850…`
+> (9:16) after eyeballing all three seams mid-transition.
 
 > **2026-07-17 (v0.2.0 release session):** packaged parity restored on both
 > anchors: `showcase-tour` packaged EQUAL `da74c52b…` (byte-identical to dev for

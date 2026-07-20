@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DIRECTION_OPTIONS, TRANSITION_CATALOG } from "./transitionCatalog";
-import { EXTENDED_MIN_TYPE, TYPE_ID } from "./transitionShader";
+import { EXT2_MIN_TYPE, EXTENDED_MIN_TYPE, TYPE_ID } from "./transitionShader";
 
 // Structure pin: the picker's vocabulary and the shader registry cannot drift; a type added to one without the other fails here before it fails in a modal.
 describe("transitionCatalog", () => {
@@ -19,13 +19,16 @@ describe("transitionCatalog", () => {
     }
   });
 
-  it("marks the legacy/extended boundary consistently with the shader registry", () => {
-    // Every catalog type maps to a numeric id; the extended ones sit at >= the split.
+  it("marks the generation boundaries consistently with the shader registry", () => {
+    // Every catalog type maps to a numeric id; each generation sits in its own id band.
     for (const m of TRANSITION_CATALOG) {
       const id = TYPE_ID[m.type];
       expect(typeof id).toBe("number");
-      if (["blur", "push", "zoom", "whip", "luma", "glitch"].includes(m.type)) {
+      if (["slice", "dissolve", "warp"].includes(m.type)) {
+        expect(id).toBeGreaterThanOrEqual(EXT2_MIN_TYPE);
+      } else if (["blur", "push", "zoom", "whip", "luma", "glitch"].includes(m.type)) {
         expect(id).toBeGreaterThanOrEqual(EXTENDED_MIN_TYPE);
+        expect(id).toBeLessThan(EXT2_MIN_TYPE);
       } else {
         expect(id).toBeLessThan(EXTENDED_MIN_TYPE);
       }

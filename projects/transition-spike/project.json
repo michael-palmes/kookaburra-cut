@@ -72,6 +72,32 @@
     },
     {
       "file": "scenes/09-glitch.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "slice",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/10-slice.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "dissolve",
+        "durationMs": 700,
+        "ease": "smooth"
+      }
+    },
+    {
+      "file": "scenes/11-dissolve.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "warp",
+        "durationMs": 500,
+        "ease": "snappy"
+      }
+    },
+    {
+      "file": "scenes/12-warp.tsx",
       "durationMs": 1800
     }
   ]
