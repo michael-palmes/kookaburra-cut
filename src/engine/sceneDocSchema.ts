@@ -152,7 +152,12 @@ export interface LayeredScreenshotSegment {
 export interface SceneDocLayeredScreenshot {
   layers: LayeredScreenshotLayer[];
   pose: LayeredScreenshotPose;
-  animation?: { keys: LayeredScreenshotKey[]; segments: LayeredScreenshotSegment[] };
+  animation?: {
+    keys: LayeredScreenshotKey[];
+    segments: LayeredScreenshotSegment[];
+    /** Slideshow holds only, the camera's presentLoop semantics; preview and export never loop. */
+    presentLoop?: SceneDocCameraPresentLoop;
+  };
 }
 
 export interface SceneDoc {

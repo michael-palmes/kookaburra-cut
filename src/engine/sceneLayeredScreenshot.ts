@@ -1,6 +1,6 @@
 /** Layered-screenshot engine core: deep validation of the sidecar block (degrade-don't-crash, the sceneCamera pattern; the attach graph must be rooted and acyclic), pose sampling for the LS animation track, and rest-pose resolution honouring `animatedTrack`. Pure (no three.js, no clock reads) so preview and export agree by construction. */
 
-import { ease, isEaseName } from "./ease";
+import { DEFAULT_EASE, ease, isEaseName } from "./ease";
 import { lerp } from "./keyframes";
 import type {
   LayeredScreenshotAttach,
@@ -9,6 +9,7 @@ import type {
   LayeredScreenshotLayer,
   LayeredScreenshotPose,
   SceneDoc,
+  SceneDocCameraPresentLoop,
 } from "./sceneDocSchema";
 import { validLayeredScreenshotPose } from "./sceneDocSchema";
 
@@ -24,6 +25,8 @@ export interface LayeredScreenshotTrackSegment {
 export interface LayeredScreenshotTrack {
   keys: LayeredScreenshotKey[];
   segments: LayeredScreenshotTrackSegment[];
+  /** Slideshow holds only (the camera's presentLoop semantics); preview and export never read it. */
+  presentLoop?: SceneDocCameraPresentLoop;
 }
 
 /** A validated composition: layers whose attach graphs are rooted and acyclic, plus the optional normalized track. */
@@ -164,7 +167,16 @@ function normalizeTrack(
     }
     ordered.push(seg);
   }
-  return { keys, segments: ordered };
+  const loop = raw.presentLoop;
+  const validLoop =
+    !!loop &&
+    typeof loop === "object" &&
+    (loop.mode === "smooth" || loop.mode === "jump") &&
+    (loop.blendMs === undefined || (Number.isFinite(loop.blendMs) && loop.blendMs > 0));
+  if (loop !== undefined && !validLoop) {
+    console.warn(`[layeredScreenshot] ${source}: invalid animation presentLoop, dropped`);
+  }
+  return { keys, segments: ordered, ...(validLoop ? { presentLoop: loop } : {}) };
 }
 
 /** Validate + normalize a sidecar layeredScreenshot value. Null only when absent; a present block always normalizes (possibly to empty layers), so the builder can edit what survived. */
@@ -241,6 +253,28 @@ export function sampleLayeredScreenshotTrack(
     else break;
   }
   return { ...held.pose, pan: [...held.pose.pan] };
+}
+
+/** Present-hold looping past the last key (the cameraLoop semantics, pose-generic): smooth blends back to the first key over blendMs then replays; jump restarts each cycle. Applied ONLY under the present realm's slideshow flag; inside the authored span it matches sampleLayeredScreenshotTrack exactly. */
+export function sampleLoopedLayeredScreenshotTrack(
+  track: LayeredScreenshotTrack,
+  localMs: number,
+  loop: SceneDocCameraPresentLoop,
+): LayeredScreenshotPose {
+  const first = track.keys[0];
+  const last = track.keys[track.keys.length - 1];
+  const cycleMs = last.tMs - first.tMs;
+  if (cycleMs <= 0 || localMs < last.tMs) return sampleLayeredScreenshotTrack(track, localMs);
+  const pastMs = localMs - last.tMs;
+  if (loop.mode === "jump") {
+    return sampleLayeredScreenshotTrack(track, first.tMs + (pastMs % cycleMs));
+  }
+  const blendMs = Math.max(1, loop.blendMs ?? 2000);
+  const phase = pastMs % (cycleMs + blendMs);
+  if (phase < blendMs) {
+    return mixPose(last.pose, first.pose, ease(DEFAULT_EASE, phase / blendMs));
+  }
+  return sampleLayeredScreenshotTrack(track, first.tMs + (phase - blendMs));
 }
 
 /** The pose a scene's stack renders with: the sampled animation when this scene's animated track is the layered screenshot, else the saved rest pose regardless of what is on disk. */

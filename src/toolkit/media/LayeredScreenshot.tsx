@@ -28,10 +28,12 @@ import type {
   LayeredScreenshotTextItem,
   SceneDoc,
 } from "../../engine/sceneDocSchema";
+import { presentSlideshowActive } from "../../engine/presentMode";
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
   resolveLayeredScreenshotPose,
+  sampleLoopedLayeredScreenshotTrack,
 } from "../../engine/sceneLayeredScreenshot";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
@@ -352,7 +354,12 @@ function StackRenderer({
     format.frame.height - format.safe.top - format.safe.bottom,
   );
 
-  const pose = resolveLayeredScreenshotPose(normalized, animatedTrack, localMs);
+  // Slideshow holds loop the animation when it asks for it; the flag is realm-local, so preview and export stay on the play-once sample by construction.
+  const loop = animatedTrack === "layeredScreenshot" ? normalized.track?.presentLoop : undefined;
+  const pose =
+    loop && normalized.track && presentSlideshowActive()
+      ? sampleLoopedLayeredScreenshotTrack(normalized.track, localMs, loop)
+      : resolveLayeredScreenshotPose(normalized, animatedTrack, localMs);
   const zOffsets = spreadZToLocal(pose.spread, layers.length);
 
   if (layers.length === 0) return null;

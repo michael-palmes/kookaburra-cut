@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useClockStore } from "../engine/clock";
 import {
   addItem,
   addLayer,
@@ -26,6 +27,16 @@ import type {
   SceneDocLayeredScreenshot,
 } from "../engine/sceneDocSchema";
 import type { MediaMeta } from "../engine/media";
+import { useFormat } from "../engine/format";
+import {
+  expandToIsometric,
+  flattenToFrontOn,
+  ISO_AZIMUTH_DEG,
+  ISO_ELEVATION_DEG,
+  slowDrift,
+  zoomToItem,
+} from "../engine/layeredScreenshotPresets";
+import { fitStackScale } from "../engine/layeredScreenshotLayout";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 import { MediaBrowser } from "./MediaBrowser";
 import { useEscapeClose } from "./useEscapeClose";
@@ -34,9 +45,6 @@ import { useSceneDocPatch } from "./useSceneDocPatch";
 /** The layered-screenshot builder: a full-height panel docked LEFT over the live stage (Michael's call: no scrim, no second canvas — the stage is the preview). Layer list, a 2D chain schematic of the selected layer with plus-buttons on free sides, an inline item inspector, the front-on/isometric snap and the spread slider. Every gesture commits through the `useLayeredScreenshotDoc` funnel; closing just hides the panel. */
 
 const SIDES: LayeredScreenshotAttachSide[] = ["left", "right", "top", "bottom"];
-/** The isometric snap's tuned angles (the spike fixture's eyeballed pose). */
-const ISO_AZIMUTH = 18;
-const ISO_ELEVATION = 12;
 
 /** Sides of `itemId` nothing occupies: neither a child attached there nor its own parent hanging on that side. */
 function freeSides(layer: LayeredScreenshotLayer, itemId: string): LayeredScreenshotAttachSide[] {
@@ -76,7 +84,12 @@ export function LayeredScreenshotBuilder({
   const selectedLayerId = useLayeredScreenshotEditStore((s) => s.selectedLayerId);
   const selectedItemId = useLayeredScreenshotEditStore((s) => s.selectedItemId);
   const writeError = useLayeredScreenshotEditStore((s) => s.writeError);
-  const { block, preview, commit } = useLayeredScreenshotDoc(project, sceneIndex, onDocChanged);
+  const format = useFormat();
+  const { block, preview, commit, appliedPoseAt } = useLayeredScreenshotDoc(
+    project,
+    sceneIndex,
+    onDocChanged,
+  );
   // Text strings live in doc.text, outside the block; they route through the standard patch funnel.
   const { doc, patchDoc } = useSceneDocPatch(project, sceneIndex, onDocChanged, () => {});
   const select = useLayeredScreenshotEditStore.getState().select;
@@ -198,7 +211,9 @@ export function LayeredScreenshotBuilder({
             type="button"
             className={`chip${frontOn ? "" : " selected"}`}
             title="Snap the stack to the isometric view"
-            onClick={() => setPose({ azimuthDeg: ISO_AZIMUTH, elevationDeg: ISO_ELEVATION })}
+            onClick={() =>
+              setPose({ azimuthDeg: ISO_AZIMUTH_DEG, elevationDeg: ISO_ELEVATION_DEG })
+            }
           >
             Isometric
           </button>
@@ -384,6 +399,97 @@ export function LayeredScreenshotBuilder({
               );
             })
           )}
+        </div>
+      </div>
+
+      <div className="ls-builder-section">
+        <div className="ls-builder-row-head">
+          <span>Animate</span>
+          <span className="muted ls-builder-hint">scaffolds editable keys in the lane</span>
+        </div>
+        <div className="wizard-presets">
+          {(() => {
+            const slot = project.slots[sceneIndex];
+            const applyPreset = (
+              animation: NonNullable<SceneDocLayeredScreenshot["animation"]>,
+            ) => {
+              void patchDoc((d) => {
+                d.layeredScreenshot = { ...block, animation };
+                d.animatedTrack = "layeredScreenshot";
+              }).then(() => {
+                const state = useLayeredScreenshotEditStore.getState();
+                state.setLaneOpen(true);
+                state.selectKey(null, null);
+              });
+            };
+            const seed = () => {
+              const local = Math.min(
+                slot.durationMs,
+                Math.max(0, useClockStore.getState().currentMs - slot.startMs),
+              );
+              return appliedPoseAt(local);
+            };
+            const zoomRect = item ? layout.items.find((r) => r.id === item.id) : undefined;
+            const visible = ordered.filter((l) => l.visible && l.items.length > 0);
+            const fit = fitStackScale(
+              visible.map((l) => solveLayerLayout(l, [])),
+              format.frame.width - format.safe.left - format.safe.right,
+              format.frame.height - format.safe.top - format.safe.bottom,
+            );
+            return (
+              <>
+                <button
+                  type="button"
+                  className="chip"
+                  title="Fan the stack out to the isometric view over 1.2s"
+                  onClick={() => applyPreset(expandToIsometric(seed(), slot.durationMs))}
+                >
+                  Expand to isometric
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  title="Collapse to the flat, front-on stack over 1.2s"
+                  onClick={() => applyPreset(flattenToFrontOn(seed(), slot.durationMs))}
+                >
+                  Flatten
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  title={
+                    zoomRect
+                      ? "Push in on the selected screen over 1s"
+                      : "Select an item in the chain first"
+                  }
+                  disabled={!zoomRect}
+                  onClick={() =>
+                    zoomRect &&
+                    applyPreset(
+                      zoomToItem(
+                        seed(),
+                        zoomRect,
+                        fit,
+                        format.frame.width - format.safe.left - format.safe.right,
+                        format.frame.height - format.safe.top - format.safe.bottom,
+                        slot.durationMs,
+                      ),
+                    )
+                  }
+                >
+                  Zoom to screen
+                </button>
+                <button
+                  type="button"
+                  className="chip"
+                  title="A slow closed drift loop; slideshow holds repeat it seamlessly"
+                  onClick={() => applyPreset(slowDrift(seed(), slot.durationMs))}
+                >
+                  Slow drift
+                </button>
+              </>
+            );
+          })()}
         </div>
       </div>
 
