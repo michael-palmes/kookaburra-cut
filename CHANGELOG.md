@@ -4,6 +4,43 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-20
+
+### Added
+
+- Present mode. Play a project as a click-through slideshow in its own
+  window, holding on each scene until you advance, with per-scene camera
+  loops, a gentle device turntable and a straight video mode.
+- Three new transitions (slice, dissolve and warp) and an optional feel
+  control (smooth or snappy easing) per transition.
+- Freeze frames. A toolbar button holds the frame under the playhead as
+  its own clip, with an editable hold time.
+- A scene manager: drill into a reorderable scene list with multi-select
+  drag, duplicate and rename.
+- A brand lockup primitive, a six-scene starter template arc and a
+  project app icon picker.
+- Per-text-element font, size and position overrides, and custom device
+  tints via a colour picker.
+- Camera centre guides with gentle snapping, and redesigned camera
+  keyboard shortcuts.
+- A playback quality picker (Balanced and Performance) and an opt-in
+  fps slowdown badge.
+
+### Changed
+
+- A transition now belongs to the scene it plays at the end of, blending
+  into the next; existing projects read identically through a legacy shim.
+- The new-scene wizard shares text fields across scene kinds and shows
+  preview stills; media pickers sort newest first.
+- Preview playback is much smoother on media-heavy projects: playing
+  clips bind a lightweight preview tier while exports keep the exact
+  full-resolution path.
+
+### Fixed
+
+- The editor media list scrolls instead of squashing, and button labels
+  no longer wrap onto two lines.
+
 ## [0.2.0] - 2026-07-17
 
 ### Added
