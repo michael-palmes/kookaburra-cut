@@ -145,6 +145,37 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M15 12v5M12.5 14.5h5" />
         </svg>
       );
+    case "layeredScreenshot.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M8.5 3.5l5.5 2.6-5.5 2.6L3 6.1l5.5-2.6z" />
+          <path d="M3 9.4l5.5 2.6 5.5-2.6" />
+          <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "layeredScreenshot.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M10 3l6.5 3-6.5 3-6.5-3 6.5-3z" />
+          <path d="M3.5 9.8l6.5 3 6.5-3M3.5 13.3L10 16.3l6.5-3" />
+        </svg>
+      );
     case "text.add":
       return (
         <svg

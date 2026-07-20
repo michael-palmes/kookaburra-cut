@@ -45,13 +45,7 @@ export function projectRows(input: {
   ];
 }
 
-export type SceneSectionId =
-  | "text"
-  | "device"
-  | "layeredScreenshot"
-  | "style"
-  | "camera"
-  | "motion";
+export type SceneSectionId = "text" | "device" | "style" | "camera" | "motion";
 
 export interface SceneRowModel {
   id: string;
@@ -97,6 +91,11 @@ export function sceneSections(input: {
     });
   }
 
+  // The screenshot stack shares the screens & devices section: one home for every add-able "show your app" item.
+  const stackRow: SceneRowModel = doc?.layeredScreenshot
+    ? { id: "layeredScreenshot.edit", label: "Edit screenshot stack", chevron: true }
+    : { id: "layeredScreenshot.add", label: "Add screenshot stack", chevron: false };
+
   if (device) {
     const rows: SceneRowModel[] = [{ id: "device.media", label: "Change media", chevron: true }];
     if (device.media?.kind === "video") {
@@ -109,25 +108,14 @@ export function sceneSections(input: {
     if (isDeviceId(device.model) && DEVICE_CATALOG[device.model].lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });
     }
+    rows.push(stackRow);
     rows.push({ id: "device.remove", label: "Remove device", danger: true, chevron: false });
-    sections.push({ id: "device", label: "Media & device", rows });
+    sections.push({ id: "device", label: "Screens & devices", rows });
   } else if (doc) {
     sections.push({
       id: "device",
-      label: "Media & device",
-      rows: [{ id: "device.add", label: "Add device", chevron: false }],
-    });
-  }
-
-  if (doc) {
-    sections.push({
-      id: "layeredScreenshot",
-      label: "Screenshot stack",
-      rows: [
-        doc.layeredScreenshot
-          ? { id: "layeredScreenshot.edit", label: "Edit stack", chevron: false }
-          : { id: "layeredScreenshot.add", label: "Add screenshot stack", chevron: false },
-      ],
+      label: "Screens & devices",
+      rows: [{ id: "device.add", label: "Add device", chevron: false }, stackRow],
     });
   }
 
