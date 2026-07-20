@@ -262,3 +262,22 @@ describe("panCentreSnap", () => {
     expect(snap.pose.target[2]).toBeCloseTo(0);
   });
 });
+
+describe("presentLoop preservation", () => {
+  const looped = (): CameraDoc => ({ ...doc(), presentLoop: { mode: "smooth", blendMs: 1500 } });
+
+  it("survives every mutation that rebuilds the doc", () => {
+    const added = addSegmentAt(looped(), 1500, pose(), pose({ azimuthDeg: 10 }), 4000, 800);
+    expect(added?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
+    expect(removeSegment(looped(), 0)?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
+    expect(removeKey(looped(), "k2")?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
+    expect(syncSegmentStartToPrevious(looped(), 1)?.presentLoop).toEqual({
+      mode: "smooth",
+      blendMs: 1500,
+    });
+    expect(moveKey(looped(), "k2", 1200, 4000)?.presentLoop).toEqual({
+      mode: "smooth",
+      blendMs: 1500,
+    });
+  });
+});

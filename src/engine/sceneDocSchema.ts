@@ -64,6 +64,13 @@ export interface SceneDocCameraSegment {
   ease: string;
 }
 
+/** Present-slideshow hold looping for the camera track: once the authored keys finish during a hold, smooth eases back to the first key over blendMs then replays, jump restarts each cycle. Never read by preview or export sampling. */
+export interface SceneDocCameraPresentLoop {
+  mode: "smooth" | "jump";
+  /** Smooth return-leg length in ms (the present window defaults it when absent). */
+  blendMs?: number;
+}
+
 /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
 export type SceneTextAlign = "left" | "center" | "right";
 
@@ -79,7 +86,11 @@ export interface SceneDoc {
   /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged) and `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   devices?: SceneDocDeviceSpec[];
-  camera?: { keys: SceneDocCameraKey[]; segments: SceneDocCameraSegment[] };
+  camera?: {
+    keys: SceneDocCameraKey[];
+    segments: SceneDocCameraSegment[];
+    presentLoop?: SceneDocCameraPresentLoop;
+  };
   /** Theme override for this scene: a theme id that swaps the whole theme (colours, typography, lighting, backdrop, effects base); absent falls back to the project's theme, and unknown ids degrade rather than crash. */
   themeId?: string;
   /** Staging override: replaces the theme's backdrop for this scene. */
@@ -92,6 +103,16 @@ export interface SceneDoc {
   textAnimationForce?: boolean;
   /** Partial lighting override: each present field fully replaces the theme's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `key` + `shadow` override rather than a whole new theme. */
   lighting?: Partial<ThemeLighting>;
+}
+
+function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
+  const loop = raw as SceneDocCameraPresentLoop | null;
+  if (!loop || typeof loop !== "object") return false;
+  if (loop.mode !== "smooth" && loop.mode !== "jump") return false;
+  if (loop.blendMs !== undefined && !(Number.isFinite(loop.blendMs) && loop.blendMs > 0)) {
+    return false;
+  }
+  return true;
 }
 
 /** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */
@@ -184,8 +205,16 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     out.devices = devices;
   }
   if (typeof doc.camera === "object" && doc.camera !== null) {
-    const camera = doc.camera as SceneDoc["camera"];
-    if (Array.isArray(camera?.keys) && Array.isArray(camera?.segments)) out.camera = camera;
+    const camera = doc.camera as NonNullable<SceneDoc["camera"]>;
+    if (Array.isArray(camera?.keys) && Array.isArray(camera?.segments)) {
+      if (camera.presentLoop !== undefined && !validPresentLoop(camera.presentLoop)) {
+        console.warn(`[sceneDoc] ${source}: camera.presentLoop is invalid, dropped`);
+        const { presentLoop: _dropped, ...rest } = camera;
+        out.camera = rest;
+      } else {
+        out.camera = camera;
+      }
+    }
   }
   if (typeof doc.themeId === "string" && doc.themeId.length > 0) out.themeId = doc.themeId;
   if (doc.backdrop !== undefined) {
