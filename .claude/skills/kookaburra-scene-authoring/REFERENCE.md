@@ -91,8 +91,11 @@ Rules for Claude:
   preset, shadow, camera keys); **composition changes go in the TSX** (layout, extra
   primitives, custom motion). Both hot-reload.
 - `duration.mode: "follow-media"` means the app keeps the scene's `project.json`
-  `durationMs` synced to the source video's length. If YOU swap that video's `src`,
-  update `durationMs` in `project.json` too (ffprobe the new file; seconds → ms).
+  `durationMs` synced to the source video's length. The source is the `sourceDeviceId`
+  device's video (falling back to the first device), else the sidecar's video
+  `background` (the video scene kind: no devices, no `sourceDeviceId`). If YOU swap
+  that video's `src`, update `durationMs` in `project.json` too (ffprobe the new file;
+  seconds → ms).
 - `project.json` stays the sequencing source of truth — the sidecar never stores duration.
 - Malformed sidecars degrade to "no doc" with a console warning; never rely on partial
   parsing. Bump nothing: `version` stays `1` until the schema changes upstream.

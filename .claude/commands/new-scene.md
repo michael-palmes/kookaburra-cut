@@ -1,11 +1,12 @@
 ---
 description: Scaffold a new Kookaburra Cut scene (TSX + sidecar doc) and register it in its project.json
-argument-hint: <project> <scene-name> [device|title|appversion|layeredscreenshot|blank]
+argument-hint: <project> <scene-name> [device|title|appversion|layeredscreenshot|video|blank]
 ---
 
 Create a new scene for the Kookaburra Cut project `$1` named `$2`, of kind `$3` (default `device` if the
 user mentions a device/media, `appversion` for an app icon + version lockup,
-`layeredscreenshot` for a 3D stack of app screens, else `title`; `blank` only when asked).
+`layeredscreenshot` for a 3D stack of app screens, `video` for a full-frame background
+video, else `title`; `blank` only when asked).
 
 The app's native scaffolder (`scaffold_scene` in `src-tauri/src/scene_doc.rs`) and this
 command emit IDENTICAL scenes from the SAME templates — never invent a different shape.
@@ -33,11 +34,14 @@ Steps:
    "items": [...] }`, the first screen as `{ "id": "i1", "kind": "screen", "src":
    "assets/<file>", "media": "image"|"video", "attach": null }` when media was given, else
    an empty items array) and the default pose `{ "spread": 0, "azimuthDeg": 0,
-   "elevationDeg": 0, "zoom": 1, "pan": [0, 0] }`.
-5. Duration: video media → `{ "mode": "follow-media", "sourceDeviceId": "d1" }` and
-   `durationMs` = the video's length (`ffprobe -v error -show_entries format=duration -of
-   default=nw=1:nk=1 <file>`, seconds → ms, rounded). Otherwise `{ "mode": "manual" }` and
-   **4000ms**.
+   "elevationDeg": 0, "zoom": 1, "pan": [0, 0] }`; for the video kind no text keys and a
+   `background` block `{ "type": "video", "src": "assets/<file>" }` (the media the user
+   gave, else the bundled `assets/sample-laptop-recording.mp4`).
+5. Duration: video media → follow-media and `durationMs` = the video's length
+   (`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 <file>`,
+   seconds → ms, rounded): `{ "mode": "follow-media", "sourceDeviceId": "d1" }` for the
+   device kind, `{ "mode": "follow-media" }` (no source device) for the video kind.
+   Otherwise `{ "mode": "manual" }` and **4000ms**.
 6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
    `durationMs`, in order.
 7. Verify: `pnpm build`, `pnpm test`, `pnpm lint` — fix and rerun until clean.

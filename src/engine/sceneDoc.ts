@@ -154,7 +154,7 @@ interface MediaMetaLike {
   durationMs: number;
 }
 
-/** Re-syncs one follow-media scene's `project.json` duration from its source video's probed length (no-op for manual mode, image, or missing media); returns whether `project.json` was rewritten so UI callers know a timing refresh is needed, since sidecar-only edits patch in memory and never reload. */
+/** Re-syncs one follow-media scene's `project.json` duration from its source video's probed length (no-op for manual mode, image, or missing media); the source is the sidecar's device video when it has one, else its video background (the video scene kind). Returns whether `project.json` was rewritten so UI callers know a timing refresh is needed, since sidecar-only edits patch in memory and never reload. */
 export async function resyncFollowMediaDuration(
   slug: string,
   index: number,
@@ -165,9 +165,14 @@ export async function resyncFollowMediaDuration(
   if (duration?.mode !== "follow-media") return false;
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === duration.sourceDeviceId) ?? devices[0];
-  const media = device?.media;
-  if (media?.kind !== "video") return false;
-  const meta = await invoke<MediaMetaLike>("media_meta", { slug, rel: media.src });
+  const src =
+    device?.media?.kind === "video"
+      ? device.media.src
+      : doc?.background?.type === "video"
+        ? doc.background.src
+        : null;
+  if (!src) return false;
+  const meta = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {
     await invoke("update_project_scene", { slug, index, durationMs: meta.durationMs });
     return true;
