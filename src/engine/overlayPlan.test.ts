@@ -20,9 +20,16 @@ describe("resolveOverlays", () => {
     expect(out?.[1]).toBeNull();
   });
 
-  it("defaults the panel to the theme background (white -> linear 1,1,1)", () => {
-    const out = resolveOverlays([frame], [theme]);
-    expect(out?.[0]?.panelColor).toEqual([1, 1, 1]);
+  it("defaults the panel to a neutral surface lifted off the background toward the text", () => {
+    const dark = {
+      colors: { background: "#000000", text: "#ffffff", accent: "#ff0000", muted: "#808080" },
+    } as Theme;
+    const [r, g, b] = resolveOverlays([frame], [dark])?.[0]?.panelColor ?? [0, 0, 0];
+    // Black lifted 10% toward white: a dark grey, equal on all channels, strictly between.
+    expect(r).toBeGreaterThan(0);
+    expect(r).toBeLessThan(1);
+    expect(g).toBeCloseTo(r, 10);
+    expect(b).toBeCloseTo(r, 10);
   });
 
   it("resolves a token to its theme colour in linear space", () => {
