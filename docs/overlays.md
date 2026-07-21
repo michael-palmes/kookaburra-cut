@@ -176,6 +176,24 @@ config serves all four formats:
 The cutout rect is a pure function of `(aspect, size, side, inset)`, unit-tested
 and golden-pinned like `fixedQuadSize`, since it feeds the export contract.
 
+### Panel content
+
+The panel column stacks top down: icon, title, subtitle, then bullets, with the
+chip anchored to the column bottom. Every block is budgeted at a worst case (the
+title and subtitle each reserve two lines, since troika wraps async), and the
+whole stack scales by one factor to fit the column height, so a dense slide never
+runs its bullets into the chip. Without an icon, the title and subtitle keep their
+title-slide positions.
+
+Bullets are the sidecar `bullets` string split on newlines, one reveal-staggered
+line each. The chip is a rounded capsule (an SDF injected into a `MeshBasicMaterial`,
+the `ImageCard` precedent) sized to its measured label, filled with the chip colour
+(a theme token, a hex, or the accent default) and labelled in whichever of the
+theme's text/background reads better on that fill. The icon and the chip's mark
+route by `isAssetReference`: a project asset path (`assets/...` or an image
+extension) draws through `ImageCard`, anything else (an emoji, a "✓" tick) draws
+as text.
+
 ## Determinism
 
 This is an export-path change and gates through `docs/determinism.md`.
