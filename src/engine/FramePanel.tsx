@@ -39,6 +39,8 @@ const CHIP_GAP = 1.4;
 const CHIP_HEIGHT_FRAC = 0.059;
 /** The body (bullets + chip) stacks directly under the header, this gap below it (title-heights). */
 const HEADER_BODY_GAP = 0.5;
+/** Nudges the whole editorial column (title/subtitle/bullets/chip, not the decorations) left, as a fraction of the column width. */
+const CONTENT_LEFT_SHIFT = 0.06;
 
 function splitBullets(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -103,7 +105,8 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const bulletSize = baseBullet * fit;
   const iconSize = baseIcon * fit;
   const chipHeight = baseChip * fit;
-  const at = (worldY: number): V3 => [col.left, worldY, 0];
+  const contentX = col.left - CONTENT_LEFT_SHIFT * col.width;
+  const at = (worldY: number): V3 => [contentX, worldY, 0];
 
   // Header, top-anchored.
   let y = col.top;
@@ -177,7 +180,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
       {frame.chip && (
         <FrameChip
           chip={frame.chip}
-          position={[col.left, chipBottom, 0]}
+          position={[contentX, chipBottom, 0]}
           height={chipHeight}
           from={700}
           to={1300}
