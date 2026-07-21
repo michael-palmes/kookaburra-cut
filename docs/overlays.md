@@ -178,21 +178,24 @@ and golden-pinned like `fixedQuadSize`, since it feeds the export contract.
 
 ### Panel content
 
-The panel column stacks top down: icon, title, subtitle, then bullets, with the
-chip anchored to the column bottom. Every block is budgeted at a worst case (the
-title and subtitle each reserve two lines, since troika wraps async), and the
-whole stack scales by one factor to fit the column height, so a dense slide never
-runs its bullets into the chip. Without an icon, the title and subtitle keep their
-title-slide positions.
+The panel splits into two zones, following the reference slides. The header
+(icon, title, subtitle) anchors to the column top; the body (bullets, then the
+chip) sits in the upper-middle, so the lower panel stays clear for a breakout
+illustration. Each block's height is budgeted (the title's from an estimate of its
+wrapped line count, the subtitle at a two-line worst case, since troika wraps
+async) and the stack scales by one factor to fit the column, so the header and
+body never overlap. Bullets and titles are short by design here, like the
+reference decks; a very long title is capped and shrunk by the fit scale rather
+than measured.
 
 Bullets are the sidecar `bullets` string split on newlines, one reveal-staggered
-line each. The chip is a rounded capsule (an SDF injected into a `MeshBasicMaterial`,
-the `ImageCard` precedent) sized to its measured label, filled with the chip colour
-(a theme token, a hex, or the accent default) and labelled in whichever of the
-theme's text/background reads better on that fill. The icon and the chip's mark
-route by `isAssetReference`: a project asset path (`assets/...` or an image
-extension) draws through `ImageCard`, anything else (an emoji, a "✓" tick) draws
-as text.
+line each, sized well under the title as small body copy. The chip is a rounded
+rectangle (an SDF injected into a `MeshBasicMaterial`, the `ImageCard` precedent)
+sized to its measured label, filled with the chip colour (a theme token, a hex, or
+the accent default) and labelled in whichever of the theme's text/background reads
+better on that fill. The icon and the chip's mark route by `isAssetReference`: a
+project asset path (`assets/...` or an image extension) draws through `ImageCard`,
+anything else (an emoji, a "✓" tick) draws as text.
 
 ### Decorations
 

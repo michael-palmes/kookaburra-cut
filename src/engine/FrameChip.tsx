@@ -105,7 +105,8 @@ export function FrameChip({
   pill.material.color.set(fill);
   pill.material.opacity = fade;
   pill.half.value.set(pillWidth / 2, height / 2);
-  pill.radius.value = height / 2;
+  // A rounded rectangle, not a full capsule, matching the reference chips.
+  pill.radius.value = height * 0.34;
   pill.feather.value = height * 0.045;
 
   return (
