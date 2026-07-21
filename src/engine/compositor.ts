@@ -160,6 +160,7 @@ function makeSlideMaterial(): ShaderMaterial {
       cutoutMode: { value: CUTOUT_MODE_BOX },
       aspect: { value: 1 },
       softness: { value: 0.001 },
+      encodeToLinear: { value: 0 },
     },
     vertexShader: overlayVertexShader,
     fragmentShader: overlayFragmentShader,
@@ -350,6 +351,8 @@ function renderFramedScene(
   }
 
   setSlideUniforms(st, overlay, layout, px, bufferW, bufferH);
+  // A non-null dest is a hardware-sRGB A/B target that encodes on write; emit the linear precursor so it lands the same display bytes as the solo path (default FB, no encode).
+  st.slideMaterial.uniforms.encodeToLinear.value = dest ? 1 : 0;
   gl.setRenderTarget(dest);
   gl.render(st.slideScene, st.quadCamera);
 }
