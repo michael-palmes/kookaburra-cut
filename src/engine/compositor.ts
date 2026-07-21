@@ -10,6 +10,7 @@ import {
   NearestFilter,
   NoToneMapping,
   PlaneGeometry,
+  Quaternion,
   RGBAFormat,
   Scene,
   ShaderMaterial,
@@ -22,7 +23,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame/frameLayout";
-import { applyCameraPose } from "./cameraTrack";
+import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { grainSeed } from "./effectParams";
 import {
@@ -99,6 +100,8 @@ interface CompositorState {
 let state: CompositorState | null = null;
 const _size = new Vector2();
 const _dip = new Color();
+const _camPos = new Vector3();
+const _camQuat = new Quaternion();
 
 function makeTarget(w: number, h: number, hdr: boolean): WebGLRenderTarget {
   const t = new WebGLRenderTarget(w, h, {
@@ -357,7 +360,7 @@ function renderFramedScene(
   gl.render(st.slideScene, st.quadCamera);
 }
 
-/** Draw one scene's overlay panel (title/subtitle/chip, full-frame world content) over the slide already in `dest`. Everything except the panel group is hidden, depth is cleared so the text z-tests cleanly, and the composite's colour is preserved (background nulled, colour never cleared), mirroring the persistent-layer overlay draw. The real (full-aspect) camera is used, restored by `renderFramedScene` before this runs. */
+/** Draw one scene's overlay panel (title/subtitle/chip, full-frame world content) over the slide already in `dest`. Everything except the panel group is hidden, depth is cleared so the text z-tests cleanly, and the composite's colour is preserved (background nulled, colour never cleared), mirroring the persistent-layer overlay draw. The panel is screen-locked: it renders from the BASE pose (the one `format.frame` is laid out for), not the scene's animated camera, so the editorial content stays put while the cutout scene orbits; the animated pose is saved and restored around the draw. */
 function drawFramePanelOver(
   gl: WebGLRenderer,
   scene: Scene,
@@ -374,9 +377,20 @@ function drawFramePanelOver(
   const prevBackground = scene.background;
   scene.background = null;
   gl.autoClear = false;
+  const cam = camera as PerspectiveCamera;
+  _camPos.copy(cam.position);
+  _camQuat.copy(cam.quaternion);
+  const prevFov = cam.isPerspectiveCamera ? cam.fov : 0;
+  applyCameraPose(cam, baseCameraPose());
   gl.setRenderTarget(dest);
   gl.clear(false, true, false);
   gl.render(scene, camera);
+  cam.position.copy(_camPos);
+  cam.quaternion.copy(_camQuat);
+  if (cam.isPerspectiveCamera && cam.fov !== prevFov) {
+    cam.fov = prevFov;
+    cam.updateProjectionMatrix();
+  }
   scene.background = prevBackground;
   gl.autoClear = prevAutoClear;
   panel.visible = false;
