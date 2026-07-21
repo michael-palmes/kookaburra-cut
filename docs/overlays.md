@@ -194,6 +194,20 @@ route by `isAssetReference`: a project asset path (`assets/...` or an image
 extension) draws through `ImageCard`, anything else (an emoji, a "✓" tick) draws
 as text.
 
+### Decorations
+
+Decorations are positioned images in the panel: `position` is frame-relative
+(-1..1 on both axes), `size` is a fraction of the frame width, `shape: "circle"`
+crops to a disc (an SDF alpha on the plane uv, expecting a roughly square source)
+and `layer` orders them. They draw in the panel's over-slide pass, so they always
+sit above the cutout scene: `above` (the default) draws over the editorial text
+and may cross the cutout edge (the breakout), `below` tucks behind the text as a
+panel flourish. True behind-the-cutout layering would need the slide pass split
+into panel-fill, below-decorations and an alpha scene key, and is deferred (the
+locked decision is "above everything"). Textures are drei-cached and never
+mutated (so sharing an asset across scenes is safe) and settle in the export
+preamble via `preloadProjectImages`.
+
 ## Determinism
 
 This is an export-path change and gates through `docs/determinism.md`.

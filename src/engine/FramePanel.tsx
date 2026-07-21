@@ -6,6 +6,7 @@ import type { FrameSpec } from "../toolkit/frame/types";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { V3 } from "../toolkit/types";
 import { FrameChip } from "./FrameChip";
+import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
 import { framePanelLayout } from "./framePanelLayout";
@@ -52,8 +53,9 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const title = doc?.text?.title ?? "";
   const subtitle = doc?.text?.subtitle ?? "";
   const bullets = splitBullets(doc?.text?.bullets);
+  const decorations = frame.decorations ?? [];
   const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
-  if (!hasText && !frame.icon && !frame.chip) return null;
+  if (!hasText && !frame.icon && !frame.chip && decorations.length === 0) return null;
 
   const col = framePanelLayout(format, frame);
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
@@ -147,6 +149,15 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           to={1300}
         />
       )}
+      {decorations.map((decoration) => (
+        <FrameDecoration
+          key={decoration.id}
+          decoration={decoration}
+          format={format}
+          from={250}
+          to={950}
+        />
+      ))}
     </>
   );
 }
