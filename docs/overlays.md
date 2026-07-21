@@ -180,22 +180,26 @@ and golden-pinned like `fixedQuadSize`, since it feeds the export contract.
 
 The panel splits into two zones, following the reference slides. The header
 (icon, title, subtitle) anchors to the column top; the body (bullets, then the
-chip) sits in the upper-middle, so the lower panel stays clear for a breakout
-illustration. Each block's height is budgeted (the title's from an estimate of its
-wrapped line count, the subtitle at a two-line worst case, since troika wraps
-async) and the stack scales by one factor to fit the column, so the header and
-body never overlap. Bullets and titles are short by design here, like the
+chip) stacks directly beneath it, so the lower panel stays clear for a breakout
+illustration. Each block's height is budgeted (the title's from a word-wrap
+estimate of its line count, the subtitle at a two-line worst case, since troika
+wraps async) and the stack scales by one factor to fit the column, so the header
+and body never overlap. Bullets and titles are short by design here, like the
 reference decks; a very long title is capped and shrunk by the fit scale rather
 than measured.
 
 Bullets are the sidecar `bullets` string split on newlines, one reveal-staggered
 line each, sized well under the title as small body copy. The chip is a rounded
 rectangle (an SDF injected into a `MeshBasicMaterial`, the `ImageCard` precedent)
-sized to its measured label, filled with the chip colour (a theme token, a hex, or
-the accent default) and labelled in whichever of the theme's text/background reads
-better on that fill. The icon and the chip's mark route by `isAssetReference`: a
-project asset path (`assets/...` or an image extension) draws through `ImageCard`,
-anything else (an emoji, a "✓" tick) draws as text.
+sized to its measured label at a fixed reference height (about 64px on a 1080p
+frame: a 30px label, a 10px corner), filled with the chip colour (a theme token, a
+hex, or the accent default) and labelled in whichever of the theme's
+text/background reads better on that fill. The chip's mark is a drawn SDF
+`checkmark.circle` lookalike (a lighter ring plus a full check, one colour at two
+alphas, so it reads hierarchical) for a `✓`/`checkmark` icon; any other icon and
+the panel icon route by `isAssetReference`, a project asset path (`assets/...` or
+an image extension) drawing through `ImageCard` and anything else (an emoji) as
+text.
 
 ### Decorations
 

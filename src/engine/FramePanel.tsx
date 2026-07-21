@@ -35,11 +35,10 @@ const TITLE_GAP = 0.35;
 /** Extra gap between bullet lines, and the chip's gap above the bullets, in bullet-heights. */
 const BULLET_LINE_GAP = 0.6;
 const CHIP_GAP = 1.4;
-/** Chip pill height as a multiple of the bullet size (so its label matches the bullets). */
-const CHIP_OF_BULLET = 2.3;
-/** The body (bullets + chip) starts this far down the column (upper-middle, leaving the lower panel for a breakout illustration), or just below the header when it runs long. The header clearance is in title-heights. */
-const BODY_TOP = 0.34;
-const HEADER_BODY_GAP = 0.6;
+/** Chip pill height as a fraction of the frame height (about 64px on a 1080p reference frame). */
+const CHIP_HEIGHT_FRAC = 0.059;
+/** The body (bullets + chip) stacks directly under the header, this gap below it (title-heights). */
+const HEADER_BODY_GAP = 0.5;
 
 function splitBullets(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -49,13 +48,23 @@ function splitBullets(raw: string | undefined): string[] {
     .filter((line) => line.length > 0);
 }
 
-/** Estimates how many lines a title wraps to at `size` in `width` world units, so its vertical budget adapts to length (troika wraps async, so this cannot be measured at layout time). */
+/** Estimates how many lines a title wraps to at `size` in `width` world units, so its vertical budget adapts to length (troika wraps async, so this cannot be measured at layout time). Simulates troika's greedy word-wrap (whole words per line) rather than dividing by characters, so a two long-word title like "Repository Standard" reads as two lines, not three. */
 function estimateTitleLines(text: string, size: number, width: number): number {
   const perLine = Math.max(1, Math.floor(width / (size * AVG_CHAR_ADVANCE)));
-  return Math.min(TITLE_MAX_LINES, Math.max(1, Math.ceil(text.trim().length / perLine)));
+  let lines = 1;
+  let filled = 0;
+  for (const word of text.trim().split(/\s+/)) {
+    if (filled === 0) filled = word.length;
+    else if (filled + 1 + word.length <= perLine) filled += 1 + word.length;
+    else {
+      lines++;
+      filled = word.length;
+    }
+  }
+  return Math.min(TITLE_MAX_LINES, lines);
 }
 
-/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top; the body (bullets + chip) sits in the upper-middle, so the lower panel is free for a breakout illustration. Every block's height is budgeted (title/subtitle at a 2-line worst case) and the stack scales to fit the column, so the header and body never overlap. Reads the sidecar text DIRECTLY (like `TextFallback`) so it never registers as a text-key consumer, and lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
+/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Every block's height is budgeted (title from a length estimate, subtitle at a 2-line worst case) and the stack scales to fit the column, so the header and body never overlap. Reads the sidecar text DIRECTLY (like `TextFallback`) so it never registers as a text-key consumer, and lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
 function PanelContent({ frame }: { frame: FrameSpec }) {
   const doc = useSceneDoc();
   const format = useFormat();
@@ -71,7 +80,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const baseSub = baseTitle * SUBTITLE_OF_TITLE;
   const baseBullet = baseTitle * BULLET_OF_TITLE;
   const baseIcon = baseTitle * ICON_SIZE;
-  const baseChip = baseBullet * CHIP_OF_BULLET;
+  const baseChip = CHIP_HEIGHT_FRAC * format.frame.height;
 
   // One fit scale from worst-case budgets keeps the top-anchored header and the body apart.
   const iconBudget = frame.icon ? baseIcon + ICON_GAP * baseTitle : 0;
@@ -107,16 +116,13 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   if (subtitle.trim()) y -= SUBTITLE_LINE_BUDGET * LINE_HEIGHT * subtitleSize;
   const headerBottom = y;
 
-  // Body (bullets + chip): upper-middle, but dropped below a long header, and kept inside the bottom edge.
+  // Body (bullets + chip): stacked directly under the header, kept inside the bottom edge.
   const bulletAdv = (LINE_HEIGHT + BULLET_LINE_GAP) * bulletSize;
   const bulletsHeight =
     bullets.length > 0 ? (bullets.length - 1) * bulletAdv + LINE_HEIGHT * bulletSize : 0;
   const chipGap = bullets.length > 0 && frame.chip ? CHIP_GAP * bulletSize : 0;
   const bodyHeight = bulletsHeight + chipGap + (frame.chip ? chipHeight : 0);
-  let bodyTop = Math.min(
-    headerBottom - HEADER_BODY_GAP * titleSize,
-    col.top - BODY_TOP * col.height,
-  );
+  let bodyTop = headerBottom - HEADER_BODY_GAP * titleSize;
   bodyTop = Math.max(bodyTop, col.bottom + bodyHeight);
   const chipBottom = bodyTop - bulletsHeight - chipGap - chipHeight;
 

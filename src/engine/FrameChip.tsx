@@ -6,12 +6,16 @@ import { fontUrl } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import type { FrameChipSpec } from "../toolkit/frame/types";
 import type { V3 } from "../toolkit/types";
+import { FrameCheckMark } from "./FrameCheckMark";
 import { FrameIcon } from "./FrameIcon";
 import { useHeldLocalMs } from "./presentHold";
 import { useTimeline } from "./timeline";
 
 const COLOUR_TOKENS = ["background", "text", "accent", "muted"] as const;
 type ColourToken = (typeof COLOUR_TOKENS)[number];
+
+/** Chip icons that render as the drawn checkmark.circle rather than as a glyph. */
+const CHECK_ICONS = ["✓", "✔", "checkmark", "check"];
 
 /** Chip fill: a theme token, a hex, or the accent default. */
 function resolveChipColour(theme: Theme, colour: string | undefined): string {
@@ -92,21 +96,22 @@ export function FrameChip({
   const labelColour = contrastToken(theme, fill);
   const fade = to <= from ? 1 : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
 
-  const padX = height * 0.5;
-  const labelSize = height * 0.42;
-  const markSize = height * 0.52;
-  const markGap = height * 0.26;
+  // Proportions from the reference chip (~64px tall): 30px label, 38px mark, 10px corner.
+  const padX = height * 0.55;
+  const labelSize = height * 0.47;
+  const markSize = height * 0.594;
+  const markGap = height * 0.34;
   const markAdvance = chip.icon ? markSize + markGap : 0;
   const centreY = position[1] + height / 2;
   const labelLeft = position[0] + padX + markAdvance;
   const labelWidth = bounds ? bounds[2] - bounds[0] : 0;
   const pillWidth = padX + markAdvance + labelWidth + padX;
+  const isCheck = chip.icon !== undefined && CHECK_ICONS.includes(chip.icon);
 
   pill.material.color.set(fill);
   pill.material.opacity = fade;
   pill.half.value.set(pillWidth / 2, height / 2);
-  // A rounded rectangle, not a full capsule, matching the reference chips.
-  pill.radius.value = height * 0.34;
+  pill.radius.value = height * 0.15625;
   pill.feather.value = height * 0.045;
 
   return (
@@ -136,7 +141,16 @@ export function FrameChip({
       >
         {chip.label}
       </Text>
-      {chip.icon && (
+      {chip.icon && isCheck && (
+        <FrameCheckMark
+          position={[position[0] + padX + markSize / 2, centreY, position[2] + 0.01]}
+          size={markSize}
+          color={labelColour}
+          from={from}
+          to={to}
+        />
+      )}
+      {chip.icon && !isCheck && (
         <FrameIcon
           icon={chip.icon}
           position={[position[0] + padX, centreY + markSize / 2, position[2] + 0.01]}
