@@ -7,6 +7,7 @@ import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { preloadCatalogModels } from "../toolkit/device/catalog";
 import { preloadDeviceModels } from "../toolkit/device/models";
+import { preloadChipIcons } from "../toolkit/frame/chipIcons";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadHeroModels } from "../toolkit/hero/models";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
@@ -292,6 +293,8 @@ async function exportPreamble(opts: ExportOptions, gl: WebGLRenderer): Promise<v
   }
   // Bundled backdrop images load through an awaited module cache, never suspense (the loft-1 stale-capture lesson); settle them before frame 0.
   await preloadBundledBackdrops();
+  // Bundled chip icon PNGs (the frame chip's mark) settle before frame 0, alongside the other bundled assets.
+  await preloadChipIcons();
   // Colour-emoji rasters for every sidecar string settle before frame 0 (write-once per-project cache; docs/determinism.md "Emoji").
   await preloadEmojiRasters(opts.projectId, opts.sceneDocs ?? []);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.

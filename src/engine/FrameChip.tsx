@@ -4,18 +4,16 @@ import { Color, MeshBasicMaterial, SRGBColorSpace, Vector2 } from "three";
 import { useTheme } from "../theme";
 import { fontUrl } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
+import { resolveChipIconId } from "../toolkit/frame/chipIcons";
 import type { FrameChipSpec } from "../toolkit/frame/types";
 import type { V3 } from "../toolkit/types";
-import { FrameCheckMark } from "./FrameCheckMark";
 import { FrameIcon } from "./FrameIcon";
+import { FrameSymbol } from "./FrameSymbol";
 import { useHeldLocalMs } from "./presentHold";
 import { useTimeline } from "./timeline";
 
 const COLOUR_TOKENS = ["background", "text", "accent", "muted"] as const;
 type ColourToken = (typeof COLOUR_TOKENS)[number];
-
-/** Chip icons that render as the drawn checkmark.circle rather than as a glyph. */
-const CHECK_ICONS = ["✓", "✔", "checkmark", "check"];
 
 /** Chip fill: a theme token, a hex, or the accent default. */
 function resolveChipColour(theme: Theme, colour: string | undefined): string {
@@ -106,7 +104,7 @@ export function FrameChip({
   const labelLeft = position[0] + padX + markAdvance;
   const labelWidth = bounds ? bounds[2] - bounds[0] : 0;
   const pillWidth = padX + markAdvance + labelWidth + padX;
-  const isCheck = chip.icon !== undefined && CHECK_ICONS.includes(chip.icon);
+  const symbolId = resolveChipIconId(chip.icon);
 
   pill.material.color.set(fill);
   pill.material.opacity = fade;
@@ -141,8 +139,9 @@ export function FrameChip({
       >
         {chip.label}
       </Text>
-      {chip.icon && isCheck && (
-        <FrameCheckMark
+      {chip.icon && symbolId && (
+        <FrameSymbol
+          id={symbolId}
           position={[position[0] + padX + markSize / 2, centreY, position[2] + 0.01]}
           size={markSize}
           color={labelColour}
@@ -150,7 +149,7 @@ export function FrameChip({
           to={to}
         />
       )}
-      {chip.icon && !isCheck && (
+      {chip.icon && !symbolId && (
         <FrameIcon
           icon={chip.icon}
           position={[position[0] + padX, centreY + markSize / 2, position[2] + 0.01]}
