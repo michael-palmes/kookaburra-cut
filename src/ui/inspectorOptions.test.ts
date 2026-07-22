@@ -76,6 +76,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.change",
       "device.rotation",
       "layeredScreenshot.add",
+      "videoWindow.add",
       "device.remove",
     ]);
   });
@@ -100,7 +101,11 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const sections = sceneSections({ doc, slotsCount: 2 });
     expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows;
-    expect(deviceRows?.map((r) => r.id)).toEqual(["device.add", "layeredScreenshot.add"]);
+    expect(deviceRows?.map((r) => r.id)).toEqual([
+      "device.add",
+      "layeredScreenshot.add",
+      "videoWindow.add",
+    ]);
     expect(deviceRows?.[0].chevron).toBe(false);
     expect(deviceRows?.[0].danger).toBeUndefined();
     expect(sections.find((s) => s.id === "style")?.rows.map((r) => r.id)).toEqual([
@@ -154,8 +159,24 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.rotation",
       "device.lid",
       "layeredScreenshot.add",
+      "videoWindow.add",
       "device.remove",
     ]);
+  });
+
+  it("a videoWindow block swaps the Add row for an Edit row", () => {
+    const doc = docWith({
+      videoWindow: {
+        media: { src: "assets/a.mp4" },
+        stage: { type: "color", color: "#111" },
+        radius: "macos",
+      },
+    });
+    const rows = sceneSections({ doc, slotsCount: 1 })
+      .find((s) => s.id === "device")
+      ?.rows.map((r) => r.id);
+    expect(rows).toContain("videoWindow.edit");
+    expect(rows).not.toContain("videoWindow.add");
   });
 
   it("Remove device is the only danger row and carries no chevron", () => {

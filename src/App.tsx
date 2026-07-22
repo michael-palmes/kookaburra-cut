@@ -117,6 +117,7 @@ import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
 import { DevicesFallback } from "./toolkit/device/Device";
 import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
+import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
 import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
 import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
@@ -1678,6 +1679,7 @@ export default function App() {
                             {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
                             <DevicesFallback />
                             <LayeredScreenshotFallback />
+                            <VideoWindowFallback />
                             <TextFallback />
                           </SceneHost>
                         );

@@ -63,6 +63,8 @@ export { LightRig } from "./lighting/LightRig";
 export { ImageCard, type ImageCardProps } from "./media/ImageCard";
 export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredScreenshot";
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
+// A macOS screen recording as a floating window over a backing stage, animated in 3D.
+export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
 // The 3D objects library: bundled + workspace manifests (structure first, objects later).
 export {
   isWorkspaceObjectId,

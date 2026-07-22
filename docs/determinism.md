@@ -502,6 +502,38 @@ stack pose, animates that scene. The invariants:
   the editor or export realms, so preview and export always play the track
   once and hold.
 
+## Video window
+
+A scene's sidecar may declare a `videoWindow` block: a macOS screen recording as a
+floating rounded window with an analytic drop shadow, over a full-bleed backing
+stage (colour / gradient / image). The invariants:
+
+- **The null path is the old path, exactly.** The host-side `VideoWindowFallback`
+  renders nothing when the sidecar has no block (and stands down entirely when the
+  scene's TSX consumes it via `useSceneVideoWindow`), so every existing project
+  mounts zero new nodes and renders byte-identically (`ws:launch-2026` stays EQUAL).
+- **Genuine world-space layers, not an overlay.** The backing stage, shadow and
+  window are meshes at distinct depths inside one group; the per-scene camera track
+  moves through them with real parallax. The stage plane is oversized
+  (`STAGE_OVERSCAN`) so it stays full-bleed within a limited orbit; past that the
+  stage edge can enter frame (the documented ceiling).
+- **Everything samples pure.** Validation, radius resolution and motion sampling
+  (`engine/sceneVideoWindow.ts`) are pure functions with no clock or three.js;
+  the window's motion presets are `f(localMs)` like `DeviceMotionSpec`.
+- **Media rides the existing pipeline.** The window binds the pre-extracted CFR
+  clip frames via `useClipTexture` and publishes the standard readiness flag, so
+  the export preamble's `awaitVideoFramesReady` barrier gates capture; intrinsics
+  land behind the extract barrier before frame 0, so window layout is settled at
+  capture. No new decode/preload path.
+- **Radius, rim and shadow are analytic.** A rounded-box SDF alpha mask + hairline
+  stroke (shared with `LayeredScreenshot`, `applyCardMask`) and a blurred round-box
+  shadow quad (`SHADOW_VERT`/`SHADOW_FRAG`): fixed-function per-pixel math on fixed
+  geometry, the class MSAA 4× already covers; no shadow map. The stage is an unlit
+  exact-colour material (`useExactMaterial`) / deterministic `gradientTexture`
+  raster / cover-cropped image. New tuned constants (radius fractions, shadow
+  defaults, `STAGE_GAP`/`SHADOW_BEHIND`/`STAGE_OVERSCAN`, default `scale`) add a
+  baseline rather than rebasing existing ones.
+
 ## Themes & per-scene render state
 
 Themes (JSON documents, `src/theme/schema.ts`) may declare `lighting`,
@@ -991,6 +1023,20 @@ bundled rolling-gate project (`showcase-tour`):
 | `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — |
+
+> **2026-07-23 (video window):** the VideoWindow feature landed with both anchors
+> EQUAL (`97af238c…` / `b70c9788…`): the host-side `VideoWindowFallback` mounts
+> nothing without a sidecar block, and exposing the LayeredScreenshot card-mask /
+> shadow shader helpers is an `export`-only change (no pixels move). The
+> `ws:video-window-spike` fixture (a screen recording in a bordered window over a
+> gradient stage, and over a gradient stage with a drift + camera orbit) recorded
+> `d67eb1d4…` Verify ×2 EQUAL after eyeballing the frames via `--action
+> screenshot`. The hands-on inspector pass (full-height media/stage sub-menus,
+> border controls, live-drag sliders that write history-less and record one undo
+> on release, tilt-reveal riding forward so it clears the stage) is editor-only
+> or additive: the border default is the old hairline byte-for-byte and the
+> tilt-reveal `posZ` is inert unless that preset is used, so anchors held.
 
 > **2026-07-21 (softer stack shadows):** the card shadow opacity dropped 0.3 →
 > 0.2 during Michael's hands-on pass, a deliberate visual change: re-recorded
