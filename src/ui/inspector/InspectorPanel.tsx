@@ -290,12 +290,23 @@ export function InspectorPanel({
                 slug={workspaceSlug(project.id)}
                 projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                 kinds={["image"]}
+                globalToggle
                 hideAdd
                 refreshKey={mediaRefreshKey + mediaRefresh}
                 onPick={(rel) => {
                   setDrillIn(null);
                   onSetAppIcon(rel);
                 }}
+                cardMenu={mediaCardMenu({
+                  slug: workspaceSlug(project.id),
+                  primaryLabel: "Set as icon",
+                  onPrimary: (rel) => {
+                    setDrillIn(null);
+                    onSetAppIcon(rel);
+                  },
+                  onChanged: () => setMediaRefresh((n) => n + 1),
+                  onError: setMediaError,
+                })}
               />
             </div>
           </div>
@@ -305,22 +316,13 @@ export function InspectorPanel({
           <DrillBack label="Project" onClick={() => setDrillIn(null)} />
           <div className="inspector-drill-title">Media library</div>
           <div className="inspector-drill-body">
-            <div className="popover-row">
-              <span className="modal-hint bg-media-hint">
-                Everything stays in this project's assets folder.
-              </span>
-              <AddMediaButton
-                slug={workspaceSlug(project.id)}
-                onImported={() => setMediaRefresh((n) => n + 1)}
-              />
-            </div>
             {mediaError && <p className="modal-error">{mediaError}</p>}
             <div className="inspector-media-host">
               <MediaBrowser
                 slug={workspaceSlug(project.id)}
                 projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                 kindToggle
-                hideAdd
+                globalToggle
                 refreshKey={mediaRefreshKey + mediaRefresh}
                 cardMenu={mediaCardMenu({
                   slug: workspaceSlug(project.id),

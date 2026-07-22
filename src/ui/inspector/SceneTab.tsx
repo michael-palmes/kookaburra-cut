@@ -1424,6 +1424,19 @@ export function SceneTab({
     );
   };
 
+  const selectImageBackground = (rel: string, meta: MediaMeta | null) => {
+    if (meta && meta.kind !== "image") return;
+    setBgTabOverride(null);
+    void patchDoc((next) => {
+      const parallax =
+        next.background && next.background.type !== "none" ? next.background.parallax : undefined;
+      next.background =
+        parallax !== undefined
+          ? { type: "image", src: rel, parallax }
+          : { type: "image", src: rel };
+    });
+  };
+
   const header = (
     <div className="inspector-scene-head">
       <div className="inspector-scene-preview">
@@ -1467,6 +1480,44 @@ export function SceneTab({
 
   // The media picker, shared by the device-media row and the decorations drill-in. Defined here
   // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
+  const pickMediaModal = (rel: string, meta: MediaMeta | null) => {
+    setModal(null);
+    if (mediaTarget.kind === "device") {
+      const isVideo = meta?.kind !== "image";
+      void patchDoc(
+        (next) => {
+          const d = next.devices?.[0];
+          if (d) {
+            d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
+            // A device video defaults the scene length to the clip, unless it was locked manually.
+            if (isVideo && next.duration?.mode !== "manual") {
+              next.duration = { mode: "follow-media", sourceDeviceId: d.id };
+            }
+          }
+        },
+        { resync: true },
+      );
+      return;
+    }
+    const decos = sceneFrame?.decorations ?? [];
+    const { replaceId } = mediaTarget;
+    const nextDecos: FrameDecorationSpec[] = replaceId
+      ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+      : [
+          ...decos,
+          {
+            id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
+            src: rel,
+            position: [0.45, -0.5],
+            size: 0.15,
+            shape: "none",
+            layer: "above",
+          },
+        ];
+    void patchDoc((next) => {
+      next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
+    });
+  };
   const mediaModal = modal === "media" && (
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal wizard-wide media-modal-wide">
@@ -1484,46 +1535,17 @@ export function SceneTab({
             projectPath={workspaceProjectPath(slug) ?? ""}
             kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
             kindToggle={mediaTarget.kind === "device"}
+            globalToggle
             hideAdd
             refreshKey={mediaRefresh}
-            onPick={(rel, meta) => {
-              setModal(null);
-              if (mediaTarget.kind === "device") {
-                const isVideo = meta?.kind !== "image";
-                void patchDoc(
-                  (next) => {
-                    const d = next.devices?.[0];
-                    if (d) {
-                      d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
-                      // A device video defaults the scene length to the clip, unless it was locked manually.
-                      if (isVideo && next.duration?.mode !== "manual") {
-                        next.duration = { mode: "follow-media", sourceDeviceId: d.id };
-                      }
-                    }
-                  },
-                  { resync: true },
-                );
-                return;
-              }
-              const decos = sceneFrame?.decorations ?? [];
-              const { replaceId } = mediaTarget;
-              const nextDecos: FrameDecorationSpec[] = replaceId
-                ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
-                : [
-                    ...decos,
-                    {
-                      id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
-                      src: rel,
-                      position: [0.45, -0.5],
-                      size: 0.15,
-                      shape: "none",
-                      layer: "above",
-                    },
-                  ];
-              void patchDoc((next) => {
-                next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
-              });
-            }}
+            onPick={pickMediaModal}
+            cardMenu={mediaCardMenu({
+              slug,
+              primaryLabel: "Select",
+              onPrimary: pickMediaModal,
+              onChanged: () => setMediaRefresh((n) => n + 1),
+              onError: setError,
+            })}
           />
         </div>
         <div className="modal-actions">
@@ -2978,23 +3000,18 @@ export function SceneTab({
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["image"]}
+                  globalToggle
                   hideAdd
                   refreshKey={mediaRefresh}
                   selectedRel={doc?.background?.type === "image" ? doc.background.src : null}
-                  onPick={(rel, meta) => {
-                    if (meta && meta.kind !== "image") return;
-                    setBgTabOverride(null);
-                    void patchDoc((next) => {
-                      const parallax =
-                        next.background && next.background.type !== "none"
-                          ? next.background.parallax
-                          : undefined;
-                      next.background =
-                        parallax !== undefined
-                          ? { type: "image", src: rel, parallax }
-                          : { type: "image", src: rel };
-                    });
-                  }}
+                  onPick={selectImageBackground}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: selectImageBackground,
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </>
@@ -3017,6 +3034,7 @@ export function SceneTab({
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["video"]}
+                  globalToggle
                   hideAdd
                   refreshKey={mediaRefresh}
                   selectedRel={doc?.background?.type === "video" ? doc.background.src : null}

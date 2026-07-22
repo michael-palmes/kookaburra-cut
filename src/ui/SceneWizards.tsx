@@ -24,6 +24,7 @@ import {
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
 import { ColourPicker } from "./colour/ColourPicker";
 import { MediaBrowser } from "./MediaBrowser";
+import { mediaCardMenu } from "./mediaCardMenu";
 import { TextFieldRow } from "./SceneTextFields";
 import { backgroundOptions } from "./stageOptions";
 import { defaultDraft, draftToSpec, TEXT_PRESET_CATALOG } from "./textAnimationOptions";
@@ -390,6 +391,12 @@ export function NewSceneWizard({
   const [busy, setBusy] = useState(false);
   useEscapeClose(onCancel, !busy);
   const [error, setError] = useState<string | null>(null);
+  const [mediaRefresh, setMediaRefresh] = useState(0);
+  const pickWizardMedia = (rel: string, meta: MediaMeta | null) => {
+    const fallback = kind === "layeredscreenshot" ? "image" : "video";
+    setMedia({ rel, kind: meta?.kind ?? fallback });
+    setStep("details");
+  };
   const backgroundChips = useBackgroundChips();
 
   const position = useMemo(() => {
@@ -621,13 +628,17 @@ export function NewSceneWizard({
                   kinds={kind === "video" ? ["video"] : undefined}
                   kindToggle={kind === "layeredscreenshot"}
                   kindDefault={kind === "layeredscreenshot" ? "image" : undefined}
-                  globalToggle={kind === "layeredscreenshot"}
+                  globalToggle
+                  refreshKey={mediaRefresh}
                   selectedRel={kind === "video" ? (media?.rel ?? null) : undefined}
-                  onPick={(rel, meta: MediaMeta | null) => {
-                    const fallback = kind === "layeredscreenshot" ? "image" : "video";
-                    setMedia({ rel, kind: meta?.kind ?? fallback });
-                    setStep("details");
-                  }}
+                  onPick={pickWizardMedia}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: pickWizardMedia,
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </Field>
@@ -859,6 +870,11 @@ export function EditSceneWizard({
   const [busy, setBusy] = useState(false);
   useEscapeClose(onCancel, !busy);
   const [error, setError] = useState<string | null>(null);
+  const [mediaRefresh, setMediaRefresh] = useState(0);
+  const pickEditMedia = (rel: string, meta: MediaMeta | null) => {
+    setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video" });
+    setStep("form");
+  };
   const backgroundChips = useBackgroundChips();
   // Scene management: move within the project or delete to the Trash; both land through onSaved because a scene-set change needs the host's full reload.
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
@@ -1163,10 +1179,16 @@ export function EditSceneWizard({
                 <MediaBrowser
                   slug={slug}
                   projectPath={projectPath}
-                  onPick={(rel, meta: MediaMeta | null) => {
-                    setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video" });
-                    setStep("form");
-                  }}
+                  globalToggle
+                  refreshKey={mediaRefresh}
+                  onPick={pickEditMedia}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: pickEditMedia,
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </Field>
