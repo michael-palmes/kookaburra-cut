@@ -1254,6 +1254,9 @@ body {
 /* Per-cell labels: same flex weights as the track so names sit under their cells. */
 .pb-labels {
   display: flex;
+  align-items: center;
+  /* Reserve the in-place field's height so a rename/duration edit never grows the row. */
+  min-height: 18px;
 }
 
 .pb-label {
@@ -1272,8 +1275,9 @@ body {
   color: var(--text-primary);
 }
 
-/* Inline rename (right-click ▸ Rename): the label cell becomes the field in place. */
-.pb-label-input {
+/* Inline rename/duration edit in place; the descendant selector beats .modal-input's height so the row holds. */
+.pb-labels .pb-label-input {
+  box-sizing: border-box;
   flex-basis: 0;
   min-width: 0;
   height: 18px;
@@ -3282,13 +3286,17 @@ body {
   border-radius: 2px;
 }
 
-/* The scene-length half of the readout doubles as the edit affordance (double-click to type). */
+/* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */
 .anim-duration {
-  padding: 0;
-  border: 0;
-  background: transparent;
+  box-sizing: border-box;
+  width: 56px;
+  padding: 0 4px;
   color: inherit;
   font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
   cursor: text;
 }
 
@@ -3297,9 +3305,11 @@ body {
 }
 
 .anim-duration-input {
+  box-sizing: border-box;
   width: 56px;
   padding: 0 4px;
   font: inherit;
+  text-align: left;
   color: var(--text-primary);
   background: var(--surface-recessed);
   border: 1px solid var(--border-strong);
