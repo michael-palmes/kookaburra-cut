@@ -111,6 +111,7 @@ describe("grouping + filtering", () => {
       "Telegram",
       "CTV",
       "Web",
+      "Sharing",
     ]);
     expect(present(groups.find((g) => g.platform === "Meta")).rows.map((r) => r.id)).toEqual([
       "meta-reels",

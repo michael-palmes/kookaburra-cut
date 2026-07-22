@@ -123,9 +123,20 @@ const SLIDERS = stroked(
 /** User presets: a bookmark, "yours". */
 const BOOKMARK = stroked(<path d="M7 3.5h10a1 1 0 0 1 1 1V20.5l-6-4-6 4V4.5a1 1 0 0 1 1-1z" />);
 
+/** Sharing: an upload arrow out of a tray, the "send it to a chat" lane. */
+const SHARE = stroked(
+  <>
+    <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+    <path d="M16 6l-4-4-4 4" />
+    <path d="M12 2v13" />
+  </>,
+);
+
 const BY_ID: Record<string, ReactElement> = {
   "kookaburra-standard": SEAL,
   "kookaburra-master": FILM,
+  "share-h264": SHARE,
+  "share-h265": SHARE,
   "meta-reels": INSTAGRAM,
   "meta-feed": FACEBOOK,
   tiktok: TIKTOK,

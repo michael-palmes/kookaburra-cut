@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "share-h264",
+  "name": "Share (H.264)",
+  "description": "A compact share-ready clip for Slack, Confluence or GitHub: small file, still crisp.",
+  "platform": "Sharing",
+  "favouredAspect": "16:9",
+  "allowedAspects": ["16:9", "9:16", "1:1", "4:5"],
+  "notes": "Constant-quality CRF 32 at native resolution, so file size varies with content.",
+  "video": {
+    "codec": "libx264",
+    "fps": 60,
+    "rate": { "crf": 32 },
+    "profile": "high",
+    "gopSeconds": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 128 } }
+}
