@@ -686,6 +686,32 @@ error, never a crash. Gate project: `ws:device-video-spike`.
 
 `DeviceMockup` (v3/v4) is the LEGACY pre-catalog device primitive (bundled glTF + static screen image, auto-fit, lit set) — kept for old projects; **prefer `Device` for all new scenes**. The bundled handset model is the LICENSED vendor asset (`src/assets/models/README.md` — gitignored, present locally only); the accurate-branded-model trade-dress decision is recorded in docs/decisions.md.
 
+```ts
+<VideoWindow />                                       // sidecar-driven; one per scene
+// scene sidecar (scenes/<stem>.json):
+"videoWindow": {
+  "media":  { "src": "assets/screencast.mp4", "startMs"?: 0, "loop"?: false },
+  "stage":  { "type": "color",    "color": "#1b2330" }        // OR
+            // { "type": "gradient", "spec": { GradientSpec } } OR
+            // { "type": "image",    "src": "assets/wall.jpg", "fit"?: "cover" }
+  "radius": "macos",              // "sharp" | "subtle" | "macos" | "rounded" | { "custom": 0..0.5 }
+  "shadow"?: { "opacity": 0.34, "blur": 0.16, "offset": [0, -0.06] },  // blur/offset are short-edge fractions
+  "motion"?: { "preset": "float", "amplitude"?, "hz"?, "durationMs"? }, // none|float|tilt-reveal|push-in|drift
+  "scale"?:  0.72                 // window size as a fraction of the frame's shorter axis
+}
+```
+
+`VideoWindow` presents a macOS screen recording (any aspect) as a floating window: a
+rounded-rect card with a hairline rim, an analytic drop shadow, over a bundled full-bleed
+backing "stage" (colour / gradient / image). The three layers sit in real world space at
+different depths, so the per-scene `camera` track orbits them with genuine parallax (not a
+camera-locked overlay); the stage is oversized so it stays full-bleed within a limited orbit.
+Video rides the SAME deterministic clip pipeline as `VideoClip` (`useClipTexture`); the window
+matches the recording's intrinsic aspect (contain, no crop). One window per scene, sidecar-driven
+(the `useSceneVideoWindow` consumer stands the host fallback down, the LayeredScreenshot pattern).
+Radius/shadow/stage are analytic per-pixel SDF + exact-colour materials, deterministic by
+construction. Gate project: `ws:video-window-spike`.
+
 ## 3D primitives (v3 · M4)
 
 ```ts
