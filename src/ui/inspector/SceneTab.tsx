@@ -888,7 +888,7 @@ function CameraSectionBody({
           />
           {camera.keys.length > 1 && (
             <>
-              <div className="popover-row">
+              <div className="popover-row camera-loop-indent">
                 <label
                   className="popover-inline"
                   title="While a slideshow holds, loop the camera back to its first key; video playback and export are untouched"
@@ -912,7 +912,7 @@ function CameraSectionBody({
                 </label>
               </div>
               {camera.presentLoop && (
-                <div className="popover-row">
+                <div className="popover-row camera-loop-indent">
                   <button
                     type="button"
                     className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
