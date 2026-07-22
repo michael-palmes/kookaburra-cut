@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "share-h265",
+  "name": "Share (H.265, smaller)",
+  "description": "The smallest share-ready clip for Slack, Confluence or GitHub, using H.265 to keep the file tiny.",
+  "platform": "Sharing",
+  "favouredAspect": "16:9",
+  "allowedAspects": ["16:9", "9:16", "1:1", "4:5"],
+  "notes": "Constant-quality CRF 32 at native resolution; H.265 makes a smaller file, though some apps prefer H.264.",
+  "video": {
+    "codec": "libx265",
+    "fps": 60,
+    "rate": { "crf": 32 },
+    "gopSeconds": 2,
+    "faststart": true,
+    "colourTags": true
+  },
+  "audio": { "codec": { "aacKbps": 128 } }
+}

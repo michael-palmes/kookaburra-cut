@@ -9,7 +9,7 @@ function bundled(id: string) {
   return preset;
 }
 
-/** The 13-preset 2026 marketing set (decision 21); the id list IS the contract. */
+/** The 2026 marketing set (decision 21) plus the two internal-sharing presets; the id list IS the contract. */
 const LINEUP = [
   "kookaburra-master",
   "meta-reels",
@@ -24,6 +24,8 @@ const LINEUP = [
   "telegram",
   "ctv",
   "web",
+  "share-h264",
+  "share-h265",
 ];
 
 describe("bundled export presets (the structure pin)", () => {
@@ -32,8 +34,8 @@ describe("bundled export presets (the structure pin)", () => {
     for (const doc of BUNDLED_EXPORT_PRESETS) {
       const spec = resolvePresetToEncodeSpec(doc);
       expect(spec.fps === 30 || spec.fps === 60).toBe(true);
-      // Every non-master lane converts + tags bt709 at the same filter.
-      if (doc.id !== "kookaburra-master") expect(spec.codec).toBe("libx264");
+      // Every non-master lane converts + tags bt709; software x264, or x265 for the smaller sharing lane.
+      if (doc.id !== "kookaburra-master") expect(["libx264", "libx265"]).toContain(spec.codec);
       expect(spec.colourTags).toBe(true);
     }
   });

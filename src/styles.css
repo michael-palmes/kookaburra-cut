@@ -2836,6 +2836,10 @@ body {
   align-items: center;
   gap: var(--space-2);
 }
+/* Align the Present-loop toggle + mode chips under the Animate-scene row label (8px pad + 17px icon + 11px gap). */
+.popover-row.camera-loop-indent {
+  padding-left: 36px;
+}
 .popover-group-label {
   min-width: 82px;
   font-size: 11px;

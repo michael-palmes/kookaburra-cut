@@ -1,4 +1,4 @@
-import { Canvas, useLoader, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -13,7 +13,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { TextureLoader } from "three";
 import {
   type AutoRunConfig,
   getAutoRunConfig,
@@ -70,7 +69,6 @@ import {
   loadProject,
   type ProjectListing,
   resolveAssetPath,
-  resolveAssetUrl,
   sceneFileStem,
   WORKSPACE_PROJECT_PREFIX,
   workspaceProjectPath,
@@ -111,6 +109,7 @@ import {
   setLastProject,
   slugifyName,
 } from "./engine/workspace";
+import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
@@ -496,8 +495,8 @@ export default function App() {
     try {
       const source = resolveAssetPath(current.id, pickedRel);
       const rel = await invoke<string>("import_app_icon", { slug, sourcePath: source });
-      // The icon's URL is stable, so the texture cache would keep serving the old pixels.
-      useLoader.clear(TextureLoader, resolveAssetUrl(current.id, rel));
+      // The icon overwrites a fixed path, so bump its cache-bust version to force a new URL.
+      useAssetVersionStore.getState().bump(current.id, rel);
       handleTimingChanged();
       setToast({ kind: "success", message: "App icon updated" });
     } catch (e) {

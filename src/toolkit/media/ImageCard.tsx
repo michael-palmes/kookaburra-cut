@@ -4,6 +4,7 @@ import { MeshBasicMaterial, SRGBColorSpace, type Texture, Vector2, Vector4 } fro
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
+import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
 import { useEditorStore } from "../../store/editorStore";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
@@ -26,10 +27,13 @@ export function ImageCard(props: ImageCardProps) {
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;
+  // Re-render when the asset is re-imported in place (app-icon swap) so the URL busts.
+  const version = useAssetVersionStore((s) => s.versions[assetVersionKey(projectId, src)] ?? 0);
   // A missing asset degrades to nothing; never tear down the canvas tree.
   let url: string | null = null;
   try {
     url = resolveAssetUrl(projectId, src);
+    if (version > 0) url += `?v=${version}`;
   } catch (e) {
     console.warn(`[image] "${src}" unresolved:`, e);
   }
