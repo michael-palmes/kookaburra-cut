@@ -34,6 +34,8 @@ export interface TitleBlockProps {
   subtitleColor?: "text" | "muted" | "accent" | (string & {});
   /** Subtitle reveal delay behind the title, ms (default 350). */
   subtitleDelayMs?: number;
+  /** Register the title/subtitle text keys (default true). `TextFallback` passes false so its own render can't flip the fallback's "is a consumer mounted" gate (which would mount/unmount-loop). */
+  register?: boolean;
 }
 
 /** Title + optional subtitle with theme-scale sizing and safe-area alignment: the standard top-of-scene text block. Alignment resolves prop → sidecar `textLayout.align` → centre, so the inspector can steer scenes that don't hard-code it. */
@@ -45,6 +47,7 @@ export function TitleBlock(props: TitleBlockProps) {
     to = 900,
     position = [0, 0, 0],
     subtitleDelayMs = SUBTITLE_DELAY_MS,
+    register = true,
   } = props;
   const theme = useTheme();
   const format = useFormat();
@@ -77,7 +80,7 @@ export function TitleBlock(props: TitleBlockProps) {
         position={at(titleY)}
         fontSize={titleSize}
         color={props.titleColor}
-        textKey="title"
+        textKey={register ? "title" : undefined}
         anchorX={align}
         textAlign={align}
         maxWidth={props.maxWidth}
@@ -91,7 +94,7 @@ export function TitleBlock(props: TitleBlockProps) {
           fontSize={subtitleSize}
           face="body"
           color={props.subtitleColor}
-          textKey="subtitle"
+          textKey={register ? "subtitle" : undefined}
           defaultColor="muted"
           anchorX={align}
           textAlign={align}
@@ -112,5 +115,5 @@ export function TextFallback() {
   const consumed = useSceneConsumesAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
   const title = doc?.text?.title ?? "";
   if (consumed || !title.trim()) return null;
-  return <TitleBlock title={title} subtitle={doc?.text?.subtitle ?? ""} />;
+  return <TitleBlock title={title} subtitle={doc?.text?.subtitle ?? ""} register={false} />;
 }
