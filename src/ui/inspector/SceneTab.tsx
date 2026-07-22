@@ -2716,6 +2716,61 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "style.background.media" && doc) {
+    const kind: "image" | "video" =
+      bgTabOverride === "image" || bgTabOverride === "video"
+        ? bgTabOverride
+        : doc.background?.type === "video"
+          ? "video"
+          : "image";
+    const selectedSrc = doc.background?.type === kind ? doc.background.src : null;
+    const selectBg = kind === "video" ? selectVideoBackground : selectImageBackground;
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Background" onClick={() => setDrillIn("style.background")} />
+        <div className="inspector-drill-title">
+          {kind === "video" ? "Background video" : "Background image"}
+        </div>
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <AddMediaButton
+              slug={slug}
+              kinds={[kind]}
+              onImported={() => setMediaRefresh((n) => n + 1)}
+            />
+          </div>
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={[kind]}
+              globalToggle
+              hideAdd
+              refreshKey={mediaRefresh}
+              selectedRel={selectedSrc}
+              onPick={selectBg}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: selectBg,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+                onEdit:
+                  kind === "video"
+                    ? (rel) => {
+                        if (doc?.background?.type !== "video" || doc.background.src !== rel)
+                          return false;
+                        onOpenEditVideo(sceneIndex, rel, "background");
+                        return true;
+                      }
+                    : undefined,
+              })}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (drillIn === "style.background" && doc) {
     const bgOpts = backgroundOptions(sceneTheme);
     const colourOpt = bgOpts.find((o) => o.value?.type === "color")?.value;
@@ -3016,77 +3071,32 @@ export function SceneTab({
           {bgTab === "image" && (
             <>
               {occlusionWarning("image")}
-              <div className="popover-row">
-                <span className="modal-hint bg-media-hint">
-                  Fills the frame behind everything and stays locked to the camera — pick an image
-                  with a safe centre (it cover-crops per aspect).
-                </span>
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["image"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["image"]}
-                  globalToggle
-                  hideAdd
-                  refreshKey={mediaRefresh}
-                  selectedRel={doc?.background?.type === "image" ? doc.background.src : null}
-                  onPick={selectImageBackground}
-                  cardMenu={mediaCardMenu({
-                    slug,
-                    primaryLabel: "Select",
-                    onPrimary: selectImageBackground,
-                    onChanged: () => setMediaRefresh((n) => n + 1),
-                    onError: setError,
-                  })}
-                />
-              </div>
+              <span className="modal-hint">
+                Fills the frame behind everything and stays locked to the camera; pick an image with
+                a safe centre (it cover-crops per aspect).
+              </span>
+              <ActionRow
+                icon={<SceneRowIcon id="style.background" />}
+                label={doc.background?.type === "image" ? "Change image" : "Choose an image"}
+                value={
+                  doc.background?.type === "image" ? doc.background.src.split("/").pop() : undefined
+                }
+                onClick={() => setDrillIn("style.background.media")}
+              />
             </>
           )}
           {bgTab === "video" && (
             <>
               {occlusionWarning("video")}
-              <div className="popover-row">
-                <span className="modal-hint bg-media-hint">
-                  Video that fills the frame behind everything.
-                </span>
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["video"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["video"]}
-                  globalToggle
-                  hideAdd
-                  refreshKey={mediaRefresh}
-                  selectedRel={doc?.background?.type === "video" ? doc.background.src : null}
-                  cardMenu={mediaCardMenu({
-                    slug,
-                    primaryLabel: "Select",
-                    onPrimary: (rel, meta) => selectVideoBackground(rel, meta),
-                    onChanged: () => setMediaRefresh((n) => n + 1),
-                    onError: setError,
-                    // Editing the scene's current background arms the re-point; other cards keep library semantics.
-                    onEdit: (rel) => {
-                      if (doc?.background?.type !== "video" || doc.background.src !== rel)
-                        return false;
-                      onOpenEditVideo(sceneIndex, rel, "background");
-                      return true;
-                    },
-                  })}
-                  onPick={selectVideoBackground}
-                />
-              </div>
+              <span className="modal-hint">Video that fills the frame behind everything.</span>
+              <ActionRow
+                icon={<SceneRowIcon id="style.background" />}
+                label={doc.background?.type === "video" ? "Change video" : "Choose a video"}
+                value={
+                  doc.background?.type === "video" ? doc.background.src.split("/").pop() : undefined
+                }
+                onClick={() => setDrillIn("style.background.media")}
+              />
               {doc.background?.type === "video" && (
                 <div className="popover-row">
                   <label className="popover-inline" title="Off holds the video's last frame">
