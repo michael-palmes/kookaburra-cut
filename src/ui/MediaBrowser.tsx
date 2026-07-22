@@ -90,14 +90,14 @@ export function AddMediaButton({
   );
 }
 
-/** The global-folder import button: same flow as AddMediaButton but into ~/Kookaburra Cut/screenshots. */
+/** The library import button: same flow as AddMediaButton but into the global media library folder (~/Kookaburra Cut/screenshots). */
 function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const handleAdd = useCallback(async () => {
     const picked = await openFilePicker({
       multiple: true,
-      title: "Add to global screenshots",
+      title: "Add to the media library",
       filters: [{ name: "Media", extensions: [...MEDIA_PICKER_EXTENSIONS] }],
     });
     if (!picked) return;
@@ -123,7 +123,7 @@ function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
         onClick={() => void handleAdd()}
         disabled={importing}
       >
-        {importing ? "Adding…" : "＋ Add screenshot"}
+        {importing ? "Adding…" : "＋ Add to library"}
       </button>
       {error && <span className="modal-error media-add-error">{error}</span>}
     </>
@@ -369,6 +369,10 @@ export function MediaBrowser({
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
   const visibleRels = rels?.filter((rel) => !allowedKinds || allowedKinds.includes(kindOfRel(rel)));
+  // The library grid honours the same kind filter, so an image-only picker never offers a video.
+  const visibleGlobal = globalShots?.filter(
+    (s) => !allowedKinds || allowedKinds.includes(kindOfRel(s.name)),
+  );
 
   const refresh = useCallback(() => {
     listProjectMedia(slug)
@@ -522,13 +526,13 @@ export function MediaBrowser({
               <button
                 type="button"
                 className={`chip${sourceTab === "global" ? " selected" : ""}`}
-                title="Your global screenshots (~/Kookaburra Cut/screenshots); picking copies into this project"
+                title="Your media library; picking copies the file into this project"
                 onClick={() => {
                   setSourceTab("global");
                   setPreview(null);
                 }}
               >
-                Global
+                Library
               </button>
             </span>
           )}
@@ -562,16 +566,16 @@ export function MediaBrowser({
       {pickError && <span className="modal-error media-add-error">{pickError}</span>}
 
       {sourceTab === "global" ? (
-        globalShots === null ? (
-          <p className="muted">Reading screenshots…</p>
-        ) : globalShots.length === 0 ? (
+        visibleGlobal === undefined ? (
+          <p className="muted">Reading your library…</p>
+        ) : visibleGlobal.length === 0 ? (
           <p className="muted">
-            No global screenshots yet: add some here, or use "Add to global screenshots" on any
-            project's media card.
+            Nothing in your library yet: add some here, or use "Add to library" on any project's
+            media card.
           </p>
         ) : (
           <div className="media-grid">
-            {globalShots.map((shot) => (
+            {visibleGlobal.map((shot) => (
               <MediaCard
                 key={shot.name}
                 rel={shot.name}
