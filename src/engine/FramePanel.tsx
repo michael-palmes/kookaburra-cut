@@ -70,9 +70,11 @@ function estimateTitleLines(text: string, size: number, width: number): number {
 function PanelContent({ frame }: { frame: FrameSpec }) {
   const doc = useSceneDoc();
   const format = useFormat();
-  const title = doc?.text?.title ?? "";
-  const subtitle = doc?.text?.subtitle ?? "";
-  const bullets = splitBullets(doc?.text?.bullets);
+  // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
+  const claimed = frame.claimsSceneText !== false;
+  const title = claimed ? (doc?.text?.title ?? "") : "";
+  const subtitle = claimed ? (doc?.text?.subtitle ?? "") : "";
+  const bullets = claimed ? splitBullets(doc?.text?.bullets) : [];
   const decorations = frame.decorations ?? [];
   const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
   if (!hasText && !frame.icon && !frame.chip && decorations.length === 0) return null;

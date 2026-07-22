@@ -1945,10 +1945,11 @@ export function SceneTab({
   }
   if (drillIn === "frame.text" && sceneFrame) {
     const align = sceneFrame.textAlign ?? "left";
+    const claimed = sceneFrame.claimsSceneText !== false;
     return (
       <div className="inspector-drill">
         <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
-        <div className="inspector-drill-title">Text alignment</div>
+        <div className="inspector-drill-title">Text</div>
         <div className="inspector-drill-body">
           <div className="popover-row">
             <span className="popover-inline slider-row-label">Align</span>
@@ -1972,6 +1973,27 @@ export function SceneTab({
             </div>
           </div>
           <p className="modal-hint">Aligns the panel title, subtitle, bullets and chip.</p>
+          <label
+            className="inspector-duration-row"
+            title="Show the scene's title, subtitle and bullets in the panel"
+          >
+            <span className="action-row-label">Use scene text in the panel</span>
+            <input
+              type="checkbox"
+              checked={claimed}
+              aria-label="Use scene text in the panel"
+              onChange={(e) =>
+                void patchDoc((next) => {
+                  next.frame = { ...(next.frame ?? {}) };
+                  if (e.target.checked) delete next.frame.claimsSceneText;
+                  else next.frame.claimsSceneText = false;
+                })
+              }
+            />
+          </label>
+          <p className="modal-hint">
+            When off, the scene's own headline shows in the frame instead.
+          </p>
         </div>
       </div>
     );
