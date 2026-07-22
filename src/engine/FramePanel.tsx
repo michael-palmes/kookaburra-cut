@@ -105,8 +105,17 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const bulletSize = baseBullet * fit;
   const iconSize = baseIcon * fit;
   const chipHeight = baseChip * fit;
-  const contentX = col.left - CONTENT_LEFT_SHIFT * col.width;
-  const at = (worldY: number): V3 => [contentX, worldY, 0];
+  // Text alignment: the anchor x sits at the column's left (nudged), centre or right edge, with the
+  // headlines and chip anchored to match. Default "left" reproduces the original contentX exactly.
+  const align = frame.textAlign ?? "left";
+  const alignX =
+    align === "center"
+      ? col.left + col.width / 2
+      : align === "right"
+        ? col.left + col.width
+        : col.left - CONTENT_LEFT_SHIFT * col.width;
+  const chipAnchor = align === "center" ? 0.5 : align === "right" ? 1 : 0;
+  const at = (worldY: number): V3 => [alignX, worldY, 0];
 
   // Header, top-anchored.
   let y = col.top;
@@ -132,7 +141,14 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   return (
     <>
       {frame.icon && (
-        <FrameIcon icon={frame.icon} position={at(iconTop)} size={iconSize} from={150} to={700} />
+        <FrameIcon
+          icon={frame.icon}
+          position={at(iconTop)}
+          size={iconSize}
+          from={150}
+          to={700}
+          anchorX={align}
+        />
       )}
       {title.trim() && (
         <AnimatedHeadline
@@ -141,9 +157,9 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           to={900}
           position={at(titleTop)}
           fontSize={titleSize}
-          anchorX="left"
+          anchorX={align}
           anchorY="top"
-          textAlign="left"
+          textAlign={align}
           maxWidth={col.width}
         />
       )}
@@ -156,9 +172,9 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           fontSize={subtitleSize}
           face="body"
           color="muted"
-          anchorX="left"
+          anchorX={align}
           anchorY="top"
-          textAlign="left"
+          textAlign={align}
           maxWidth={col.width}
         />
       )}
@@ -171,19 +187,20 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           position={at(bodyTop - i * bulletAdv)}
           fontSize={bulletSize}
           face="body"
-          anchorX="left"
+          anchorX={align}
           anchorY="top"
-          textAlign="left"
+          textAlign={align}
           maxWidth={col.width}
         />
       ))}
       {frame.chip && (
         <FrameChip
           chip={frame.chip}
-          position={[contentX, chipBottom, 0]}
+          position={[alignX, chipBottom, 0]}
           height={chipHeight}
           from={700}
           to={1300}
+          anchorFrac={chipAnchor}
         />
       )}
       {decorations.map((decoration, i) => (

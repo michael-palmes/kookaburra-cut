@@ -11,9 +11,10 @@ export function FrameIcon({
   from,
   to,
   color,
+  anchorX = "left",
 }: {
   icon: string;
-  /** Top-left anchor, world (y-up). */
+  /** The anchor point, world (y-up); `anchorX` picks which horizontal edge it pins, `anchorY` is always top. */
   position: V3;
   /** Icon box edge, world units. */
   size: number;
@@ -21,10 +22,13 @@ export function FrameIcon({
   to?: number;
   /** Fill for a glyph mark (e.g. a chip tick); ignored for emoji (own colour) and images. */
   color?: "text" | "muted" | "accent" | (string & {});
+  /** Which horizontal edge `position[0]` pins; default "left". */
+  anchorX?: "left" | "center" | "right";
 }) {
   if (isAssetReference(icon)) {
-    // ImageCard centres its plane on `position`; drop to the box centre so a square icon top-aligns with sibling text.
-    const centre: V3 = [position[0] + size / 2, position[1] - size / 2, position[2]];
+    // ImageCard centres its plane on `position`; offset by the anchor so the square box pins the chosen edge.
+    const f = anchorX === "left" ? 1 : anchorX === "center" ? 0 : -1;
+    const centre: V3 = [position[0] + (size / 2) * f, position[1] - size / 2, position[2]];
     return <ImageCard src={icon} position={centre} width={size} from={from} to={to} />;
   }
   return (
@@ -32,7 +36,7 @@ export function FrameIcon({
       text={icon}
       position={position}
       fontSize={size}
-      anchorX="left"
+      anchorX={anchorX}
       anchorY="top"
       {...(from !== undefined ? { from } : {})}
       {...(to !== undefined ? { to } : {})}

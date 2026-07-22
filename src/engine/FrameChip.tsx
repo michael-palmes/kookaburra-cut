@@ -74,6 +74,7 @@ export function FrameChip({
   height,
   from,
   to,
+  anchorFrac = 0,
 }: {
   chip: FrameChipSpec;
   position: V3;
@@ -81,6 +82,8 @@ export function FrameChip({
   height: number;
   from: number;
   to: number;
+  /** Horizontal anchor of `position[0]` against the pill: 0 = left edge (default), 0.5 = centre, 1 = right edge. */
+  anchorFrac?: number;
 }) {
   const theme = useTheme();
   const { localMs: rawLocalMs } = useTimeline();
@@ -101,9 +104,11 @@ export function FrameChip({
   const markGap = height * 0.34;
   const markAdvance = chip.icon ? markSize + markGap : 0;
   const centreY = position[1] + height / 2;
-  const labelLeft = position[0] + padX + markAdvance;
   const labelWidth = bounds ? bounds[2] - bounds[0] : 0;
   const pillWidth = padX + markAdvance + labelWidth + padX;
+  // Shift the pill so `position[0]` sits at its left edge (0), centre (0.5) or right edge (1).
+  const anchorLeft = position[0] - anchorFrac * pillWidth;
+  const labelLeft = anchorLeft + padX + markAdvance;
   const symbolId = resolveChipIconId(chip.icon);
 
   pill.material.color.set(fill);
@@ -117,7 +122,7 @@ export function FrameChip({
       {bounds && (
         <mesh
           material={pill.material}
-          position={[position[0] + pillWidth / 2, centreY, position[2]]}
+          position={[anchorLeft + pillWidth / 2, centreY, position[2]]}
           renderOrder={0}
         >
           <planeGeometry args={[pillWidth, height]} />
@@ -142,7 +147,7 @@ export function FrameChip({
       {chip.icon && symbolId && (
         <FrameSymbol
           id={symbolId}
-          position={[position[0] + padX + markSize / 2, centreY, position[2] + 0.01]}
+          position={[anchorLeft + padX + markSize / 2, centreY, position[2] + 0.01]}
           size={markSize}
           color={labelColour}
           from={from}
@@ -152,7 +157,7 @@ export function FrameChip({
       {chip.icon && !symbolId && (
         <FrameIcon
           icon={chip.icon}
-          position={[position[0] + padX, centreY + markSize / 2, position[2] + 0.01]}
+          position={[anchorLeft + padX, centreY + markSize / 2, position[2] + 0.01]}
           size={markSize}
           from={from}
           to={to}
