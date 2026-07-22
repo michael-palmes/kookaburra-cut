@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ComponentType } from "react";
 import { TextureLoader } from "three";
+import { assetVersionSuffix } from "../store/assetVersionStore";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
 import type { EffectsConfig, EffectsOverride, Theme } from "../theme/tokens";
@@ -306,7 +307,8 @@ export async function preloadProjectImages(projectId: string): Promise<void> {
     // The workspace equivalent of the eager glob: ask the native side for the project's image assets and load them at their asset-protocol URLs.
     const slug = workspaceSlug(projectId);
     const rels = await invoke<string[]>("list_project_assets", { slug });
-    urls = rels.map((rel) => projectAssetKey(projectId, rel));
+    // Match ImageCard's cache-bust suffix so a re-imported icon warms the URL it will request.
+    urls = rels.map((rel) => projectAssetKey(projectId, rel) + assetVersionSuffix(projectId, rel));
   } else {
     const prefix = `/projects/${projectId}/`;
     urls = Object.entries(assetUrlGlob)
