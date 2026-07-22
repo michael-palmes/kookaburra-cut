@@ -1,3 +1,4 @@
+import androidGlbUrl from "../../assets/models/android.glb?url";
 import placeholderPhoneUrl from "../../assets/models/placeholder-phone.glb?url";
 
 /** Resolves the bundled handset model URL: the LICENSED photoreal asset (gitignored, never committed) wins when present locally, else public clones build against the committed generic placeholder; `import.meta.glob` makes the licensed file OPTIONAL at build time since an empty match isn't an error, unlike a static import. */
@@ -24,6 +25,9 @@ export const iphone17ProModelUrl: string =
 /** Falls back to the placeholder PHONE when the licensed glb is absent; licence-less builds show a phone silhouette for the laptop rather than failing. */
 export const macbookPro16ModelUrl: string =
   licensedModelUrl(MACBOOK_PRO_16_GLB) ?? placeholderPhoneUrl;
+
+/** The generated Android (Pixel-style) handset; unlicensed, so it's committed directly (no licensed override). */
+export const androidModelUrl: string = androidGlbUrl;
 
 /** True when the licensed vendor model is present (used nowhere critical, informational). */
 export const usingLicensedPhoneModel = licensedModelUrl(IPHONE_15_PRO_GLB) !== null;

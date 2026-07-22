@@ -31,6 +31,7 @@
     "assets:phone": "bash scripts/prepare-device-model.sh iphone-15-pro",
     "assets:iphone-17-pro": "bash scripts/prepare-device-model.sh iphone-17-pro",
     "assets:macbook-pro-16": "bash scripts/prepare-device-model.sh macbook-pro-16",
+    "assets:android": "bash scripts/prepare-android-model.sh",
     "assets:devices": "bash scripts/prepare-device-model.sh iphone-15-pro && bash scripts/prepare-device-model.sh iphone-17-pro && bash scripts/prepare-device-model.sh macbook-pro-16",
     "assets:device-previews": "bash scripts/render-device-previews.sh",
     "assets:text3d-font": "node scripts/prepare-text3d-font.mjs",

@@ -1,6 +1,9 @@
 import { useGLTF } from "@react-three/drei";
 import type { Mesh, MeshStandardMaterial } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import previewAndroidBlack from "../../assets/device-previews/android/black.png?url";
+import previewAndroidGraphite from "../../assets/device-previews/android/graphite.png?url";
+import previewAndroidWhite from "../../assets/device-previews/android/white.png?url";
 import previewBlack from "../../assets/device-previews/iphone-15-pro/black-titanium.png?url";
 import previewBlue from "../../assets/device-previews/iphone-15-pro/blue-titanium.png?url";
 import previewNatural from "../../assets/device-previews/iphone-15-pro/natural-titanium.png?url";
@@ -10,7 +13,12 @@ import preview17Blue from "../../assets/device-previews/iphone-17-pro/deep-blue.
 import preview17Silver from "../../assets/device-previews/iphone-17-pro/silver.png?url";
 import previewMbpSilver from "../../assets/device-previews/macbook-pro-16/silver.png?url";
 import previewMbpGrey from "../../assets/device-previews/macbook-pro-16/space-grey.png?url";
-import { iphone17ProModelUrl, macbookPro16ModelUrl, phoneModelUrl } from "./modelUrl";
+import {
+  androidModelUrl,
+  iphone17ProModelUrl,
+  macbookPro16ModelUrl,
+  phoneModelUrl,
+} from "./modelUrl";
 
 /** The device catalog: devices keyed by stable id + colour id, geometry bundled as fingerprinted glTFs so a model swap never touches a project; real product names are a deliberate 2026-07-05 trade-dress-risk decision (see docs/decisions.md), and iphone-15-pro's model derives from a LICENSED vendor .blend (see src/assets/models/README.md) whose colour overrides are exact linear-to-sRGB baseColorFactor replacements, not approximate tints. */
 
@@ -65,7 +73,23 @@ export interface DeviceSpec {
   lid?: { node: string; openDeg: number; defaultDeg: number };
 }
 
-export type DeviceId = "iphone-15-pro" | "iphone-17-pro" | "macbook-pro-16";
+export type DeviceId = "iphone-15-pro" | "iphone-17-pro" | "macbook-pro-16" | "android";
+
+/** The generated Android's colour slots: the frame + camera metal share one finish, the back glass another; names match the OBJ's materials. */
+const ANDROID_FRAME_MATERIALS = [
+  "frame_metal",
+  "camera_bar",
+  "lens_ring",
+  "lens_ring_0",
+  "lens_ring_2",
+];
+
+function androidColour(id: string, name: string, frame: string, back: string): DeviceColourSpec {
+  const overrides: Record<string, DeviceMaterialOverride> = {};
+  for (const m of ANDROID_FRAME_MATERIALS) overrides[m] = { color: frame };
+  overrides.back_glass = { color: back };
+  return { id, name, overrides, swatch: frame };
+}
 
 /** The colour-varying material slots in the handset glb, per the vendor's four .blends: frame, two back-glass finishes, and antenna/inlay trim, eight materials, five distinct values. */
 interface TitaniumFinish {
@@ -217,6 +241,25 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
       "blue-titanium": previewBlue,
       "white-titanium": previewWhite,
       "black-titanium": previewBlack,
+    },
+  },
+  android: {
+    id: "android",
+    name: "Android",
+    form: "phone",
+    glbUrl: androidModelUrl,
+    // Generated Pixel-style handset; the "screen" mesh measures 0.0665 x 0.1478 m.
+    screen: { material: "screen", aspect: 0.0665 / 0.1478 },
+    colours: [
+      androidColour("graphite", "Graphite", "#4a4a4d", "#3a3a3c"),
+      androidColour("black", "Black", "#2c2c2e", "#202022"),
+      androidColour("white", "White", "#dcdcda", "#ededea"),
+    ],
+    defaultColour: "graphite",
+    previews: {
+      graphite: previewAndroidGraphite,
+      black: previewAndroidBlack,
+      white: previewAndroidWhite,
     },
   },
 };
