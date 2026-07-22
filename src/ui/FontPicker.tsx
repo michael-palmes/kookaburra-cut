@@ -31,7 +31,13 @@ function rememberPick(ref: FontRef): void {
   localStorage.setItem(RECENTS_KEY, JSON.stringify([ref, ...rest].slice(0, 8)));
 }
 
-export function FontPicker({ value, onPick }: { value: FontRef; onPick: (ref: FontRef) => void }) {
+export function FontPicker({
+  value,
+  onPick,
+}: {
+  value: FontRef;
+  onPick: (ref: FontRef, opts?: { fromRecent?: boolean }) => void;
+}) {
   const [faces, setFaces] = useState<FaceRow[]>([]);
   const [query, setQuery] = useState("");
 
@@ -71,9 +77,9 @@ export function FontPicker({ value, onPick }: { value: FontRef; onPick: (ref: Fo
     return list.slice(0, MAX_ROWS);
   }, [faces, q]);
 
-  const pick = (ref: FontRef) => {
+  const pick = (ref: FontRef, fromRecent = false) => {
     rememberPick(ref);
-    onPick(ref);
+    onPick(ref, { fromRecent });
   };
 
   return (
@@ -92,7 +98,7 @@ export function FontPicker({ value, onPick }: { value: FontRef; onPick: (ref: Fo
               type="button"
               key={`${r.family}:${r.weight}`}
               className="chip"
-              onClick={() => pick(r)}
+              onClick={() => pick(r, true)}
             >
               {r.family} · {r.weight}
             </button>

@@ -2732,12 +2732,14 @@ export function SceneTab({
           )}
           <FontPicker
             value={currentRef}
-            onPick={(ref) => {
+            onPick={(ref, opts) => {
               // Pin + preload before the sidecar write so the face renders the moment the doc patch lands.
               void (async () => {
                 await ensureFontRefsPinned([ref]);
                 await preloadAppFonts([ref]);
                 commitFont(formatFontString(ref));
+                // A recent chip is a committed choice, so step straight back to Edit text.
+                if (opts?.fromRecent) setDrillIn("text.edit");
               })();
             }}
           />
