@@ -2837,6 +2837,12 @@ body {
   text-transform: uppercase;
   color: var(--text-secondary);
 }
+/* A fixed-width label column so a row of sliders (icon + label + range) all line up. */
+.slider-row-label {
+  min-width: 116px;
+  flex-shrink: 0;
+}
+/* __RANGE_VALUE_CSS__ */
 .popover-inline {
   display: inline-flex;
   align-items: center;

@@ -112,6 +112,8 @@ export interface LoadedProject {
   sceneFiles: string[];
   /** Each scene's RESOLVED theme, index-parallel to `scenes`: the project theme unless the scene's sidecar overrides `themeId`. `SceneHost` provides it to the scene's tree; render seams read it for per-scene state (background/environment). */
   sceneThemes: Theme[];
+  /** The manifest's deck-wide overlay default (`project.json` `frame`), if declared; `undefined` means no overlay anywhere. The inspector reads this to know whether to offer the Overlay section (an override alone can't create a frame). */
+  deckFrame?: FrameSpec;
   /** Each scene's RESOLVED overlay, index-parallel to `scenes`: the manifest's deck frame merged with the sidecar's override, `undefined` where the scene has no frame or opted out. Every entry undefined means the project never enters the overlay render path. */
   sceneFrames: (FrameSpec | undefined)[];
   /** Present only when the manifest declares (and the probe accepted) a soundtrack. */
@@ -541,6 +543,7 @@ export async function loadProject(
     sceneDocs,
     sceneFiles: manifest.scenes.map((entry) => entry.file),
     sceneThemes,
+    deckFrame,
     sceneFrames,
     sceneEffectDefaults,
   };

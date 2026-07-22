@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { FrameSpec } from "../toolkit/frame/types";
 import { projectRows, sceneSections } from "./inspectorOptions";
 
 describe("projectRows (the Project-tab pin)", () => {
@@ -163,5 +164,41 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const danger = rows.filter((r) => r.danger);
     expect(danger.map((r) => r.id)).toEqual(["device.remove"]);
     expect(danger[0].chevron).toBe(false);
+  });
+});
+
+describe("sceneSections Overlay section", () => {
+  const cutoutFrame: FrameSpec = { cutout: { shape: "rounded-rect" } };
+
+  it("no deck frame → no Overlay section at all", () => {
+    const doc = docWith({ text: { headline: "Hi" } });
+    const sections = sceneSections({ doc, slotsCount: 2 });
+    expect(sections.map((s) => s.id)).not.toContain("frame");
+  });
+
+  it("a deck frame that resolves for this scene shows Overlay between device and style, with cutout + panel rows", () => {
+    const doc = docWith({ text: { headline: "Hi" } });
+    const sections = sceneSections({ doc, slotsCount: 2, deckFrame: true, frame: cutoutFrame });
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "frame",
+      "style",
+      "camera",
+      "motion",
+    ]);
+    expect(sections.find((s) => s.id === "frame")?.rows.map((r) => r.id)).toEqual([
+      "frame.enabled",
+      "frame.cutout",
+      "frame.panel",
+    ]);
+  });
+
+  it("a deck frame the scene opted out of shows only the enable toggle", () => {
+    const doc = docWith({ text: { headline: "Hi" } });
+    const sections = sceneSections({ doc, slotsCount: 2, deckFrame: true, frame: undefined });
+    const rows = sections.find((s) => s.id === "frame")?.rows;
+    expect(rows?.map((r) => r.id)).toEqual(["frame.enabled"]);
+    expect(rows?.[0].chevron).toBe(false);
   });
 });

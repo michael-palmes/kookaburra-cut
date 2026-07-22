@@ -28,6 +28,7 @@ import { preloadAppFonts } from "../../theme/fonts";
 import type { TextAnimationSpec, Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
+import type { FrameCutoutSpec, FrameShape, FrameSide } from "../../toolkit/frame/types";
 import {
   SHADER_BACKGROUND_IDS,
   SHADER_BACKGROUND_PRESETS,
@@ -64,6 +65,15 @@ import { RotationDrillIn } from "./RotationDrillIn";
 import { ActionRow, DrillBack, NumericField, SectionHeader } from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
+
+const FRAME_SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule"];
+const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
+  rect: "Rectangle",
+  "rounded-rect": "Rounded",
+  squircle: "Squircle",
+  circle: "Circle",
+  capsule: "Capsule",
+};
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
@@ -306,6 +316,51 @@ function SceneRowIcon({ id }: { id: string }) {
           <rect x="10" y="5" width="7" height="10" rx="1.2" opacity="0.45" />
         </svg>
       );
+    case "frame.enabled":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <rect x="5.5" y="6" width="5" height="8" rx="1" opacity="0.5" />
+        </svg>
+      );
+    case "frame.cutout":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <rect x="5.5" y="6" width="5.5" height="8" rx="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "frame.panel":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <circle cx="13" cy="10" r="2.2" fill="currentColor" stroke="none" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -391,6 +446,80 @@ function LidRow({
       />
       <span className="inspector-unit">{`${Math.round(v)}°`}</span>
     </div>
+  );
+}
+
+/** Inline toggle row for whether this scene shows the deck overlay: off writes `frame.enabled: false`, on clears it back to the deck default. */
+function FrameEnabledRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) => void }) {
+  return (
+    <label className="inspector-duration-row" title="Show the deck's overlay panel on this scene">
+      <span className="action-row-icon">
+        <SceneRowIcon id="frame.enabled" />
+      </span>
+      <span className="action-row-label">Show on this scene</span>
+      <input
+        type="checkbox"
+        checked={on}
+        aria-label="Show the overlay on this scene"
+        onChange={(e) => onToggle(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+/** Cutout-shape tiles, the `BgTypeIcon` sibling scoped to `FrameShape`. */
+function FrameShapeIcon({ id }: { id: FrameShape }) {
+  const shape = {
+    rect: <rect x="4" y="4" width="12" height="12" />,
+    "rounded-rect": <rect x="4" y="4" width="12" height="12" rx="3" />,
+    squircle: <path d="M10 4c4.5 0 6 1.5 6 6s-1.5 6-6 6-6-1.5-6-6 1.5-6 6-6z" />,
+    circle: <circle cx="10" cy="10" r="6.5" />,
+    capsule: <rect x="3" y="6" width="14" height="8" rx="4" />,
+  }[id];
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {shape}
+    </svg>
+  );
+}
+
+/** Small glyphs for the cutout sliders (size / corner radius / inset). */
+function CutoutSliderIcon({ id }: { id: "size" | "radius" | "inset" }) {
+  const glyph = {
+    size: (
+      <>
+        <path d="M4 8V4h4" />
+        <path d="M16 12v4h-4" />
+      </>
+    ),
+    radius: <path d="M5 16V9a4 4 0 0 1 4-4h7" />,
+    inset: (
+      <>
+        <rect x="3" y="3" width="14" height="14" rx="1.5" />
+        <rect x="6.5" y="6.5" width="7" height="7" rx="1" opacity="0.55" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
   );
 }
 
@@ -950,7 +1079,13 @@ export function SceneTab({
     setDrillIn(null);
   }
 
-  const sections = sceneSections({ doc, slotsCount: project.slots.length });
+  const sceneFrame = project.sceneFrames[sceneIndex];
+  const sections = sceneSections({
+    doc,
+    slotsCount: project.slots.length,
+    deckFrame: project.deckFrame !== undefined,
+    frame: sceneFrame,
+  });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
   const transitionValue =
@@ -1125,6 +1260,138 @@ export function SceneTab({
           </button>
         </div>
         {themeMenu.menuElement}
+      </div>
+    );
+  }
+  if (drillIn === "frame.cutout" && sceneFrame) {
+    const cutout = sceneFrame.cutout;
+    // The override replaces the deck's cutout whole, so materialise the resolved cutout then patch the field.
+    const patchCutout = (change: Partial<FrameCutoutSpec>) =>
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), cutout: { ...cutout, ...change } };
+      });
+    const sides: { id: FrameSide; label: string }[] = [
+      { id: "start", label: "Left" },
+      { id: "end", label: "Right" },
+    ];
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Cutout</div>
+        <div className="inspector-drill-body">
+          <div className="bg-type-grid" role="tablist" aria-label="Cutout shape">
+            {FRAME_SHAPES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={cutout.shape === s}
+                className={`bg-type-tile${cutout.shape === s ? " selected" : ""}`}
+                onClick={() => patchCutout({ shape: s })}
+              >
+                <FrameShapeIcon id={s} />
+                {FRAME_SHAPE_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          <div className="popover-row">
+            <span className="popover-inline">
+              Side
+              <div className="wizard-presets">
+                {sides.map((sd) => (
+                  <button
+                    key={sd.id}
+                    type="button"
+                    className={`chip${(cutout.side ?? "start") === sd.id ? " selected" : ""}`}
+                    onClick={() => patchCutout({ side: sd.id })}
+                  >
+                    {sd.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+          </div>
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">
+              <CutoutSliderIcon id="size" />
+              Size
+            </span>
+            <DebouncedRange
+              value={cutout.size ?? 0.56}
+              min={0.3}
+              max={0.85}
+              step={0.01}
+              label="Cutout size"
+              onCommit={(v) => patchCutout({ size: v })}
+            />
+          </div>
+          {cutout.shape === "rounded-rect" && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">
+                <CutoutSliderIcon id="radius" />
+                Corner radius
+              </span>
+              <DebouncedRange
+                value={cutout.radius ?? 0.12}
+                min={0}
+                max={0.5}
+                step={0.01}
+                label="Corner radius"
+                onCommit={(v) => patchCutout({ radius: v })}
+              />
+            </div>
+          )}
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">
+              <CutoutSliderIcon id="inset" />
+              Inset
+            </span>
+            <DebouncedRange
+              value={cutout.inset ?? 0}
+              min={0}
+              max={0.2}
+              step={0.01}
+              label="Inset"
+              onCommit={(v) => patchCutout({ inset: v })}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.panel" && sceneFrame) {
+    const resolveColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? sceneTheme?.colors.background ?? "#1e2226";
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Panel colour</div>
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <span className="popover-inline">
+              Colour
+              <ColourPicker
+                value={resolveColour(sceneFrame.background)}
+                label="Panel colour"
+                onCommit={(hex) =>
+                  void patchDoc((next) => {
+                    next.frame = { ...(next.frame ?? {}), background: hex };
+                  })
+                }
+                onReset={() =>
+                  void patchDoc((next) => {
+                    if (next.frame) delete next.frame.background;
+                  })
+                }
+              />
+            </span>
+          </div>
+          <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
+        </div>
       </div>
     );
   }
@@ -2079,6 +2346,23 @@ export function SceneTab({
                       />
                     );
                   }
+                  if (row.id === "frame.enabled") {
+                    return (
+                      <FrameEnabledRow
+                        key={row.id}
+                        on={sceneFrame !== undefined}
+                        onToggle={(on) =>
+                          void patchDoc((next) => {
+                            if (on) {
+                              if (next.frame) delete next.frame.enabled;
+                            } else {
+                              next.frame = { ...(next.frame ?? {}), enabled: false };
+                            }
+                          })
+                        }
+                      />
+                    );
+                  }
                   const onClick = {
                     "text.edit": () => {
                       setTextValues({});
@@ -2154,6 +2438,8 @@ export function SceneTab({
                       setDrillIn("style.background");
                     },
                     "style.shadow": () => setDrillIn("style.shadow"),
+                    "frame.cutout": () => setDrillIn("frame.cutout"),
+                    "frame.panel": () => setDrillIn("frame.panel"),
                   }[row.id];
                   const value = {
                     "text.motion": doc?.textAnimation
@@ -2188,6 +2474,10 @@ export function SceneTab({
                     "style.shadow": device
                       ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
                       : undefined,
+                    "frame.cutout": sceneFrame
+                      ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape]
+                      : undefined,
+                    "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
                   }[row.id];
                   return (
                     <ActionRow

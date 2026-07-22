@@ -1,6 +1,7 @@
 import type { AspectName } from "../engine/format";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
+import type { FrameSpec } from "../toolkit/frame/types";
 
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
 
@@ -45,7 +46,7 @@ export function projectRows(input: {
   ];
 }
 
-export type SceneSectionId = "text" | "device" | "style" | "camera" | "motion";
+export type SceneSectionId = "text" | "device" | "frame" | "style" | "camera" | "motion";
 
 export interface SceneRowModel {
   id: string;
@@ -63,12 +64,16 @@ export interface SceneSectionModel {
   rows: SceneRowModel[];
 }
 
-/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows need `doc.devices[0]` (Edit video additionally `media.kind === "video"`); style rows need a doc; Transition needs a second scene; Camera and Duration are always present. */
+/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows need `doc.devices[0]` (Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section needs the project to declare a deck frame (`deckFrame`), its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
 export function sceneSections(input: {
   doc: SceneDoc | undefined;
   slotsCount: number;
+  /** The project's deck-wide overlay is declared (project.json `frame`); an override alone can't create one, so this gates the Overlay section. Absent = no overlay anywhere. */
+  deckFrame?: boolean;
+  /** This scene's RESOLVED overlay (deck merged with the sidecar override), `undefined` when it renders full-bleed (opted out); drives the enabled state and the row set. */
+  frame?: FrameSpec | undefined;
 }): SceneSectionModel[] {
-  const { doc, slotsCount } = input;
+  const { doc, slotsCount, deckFrame = false, frame } = input;
   const device = doc?.devices?.[0];
   const hasText = Object.keys(doc?.text ?? {}).length > 0;
 
@@ -111,6 +116,21 @@ export function sceneSections(input: {
       label: "Media & device",
       rows: [{ id: "device.add", label: "Add device", chevron: false }],
     });
+  }
+
+  if (deckFrame) {
+    // The Overlay section: the enabled toggle opts this scene in/out of the deck frame; the cutout
+    // and panel rows appear only while it's shown. All edits write the sidecar `frame` override.
+    const rows: SceneRowModel[] = [
+      { id: "frame.enabled", label: "Show on this scene", chevron: false },
+    ];
+    if (frame) {
+      rows.push(
+        { id: "frame.cutout", label: "Cutout", chevron: true },
+        { id: "frame.panel", label: "Panel colour", chevron: true },
+      );
+    }
+    sections.push({ id: "frame", label: "Overlay", rows });
   }
 
   if (doc) {

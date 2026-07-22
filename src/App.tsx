@@ -42,6 +42,7 @@ import {
 import { isExporting } from "./engine/exportState";
 import { FramePanel } from "./engine/FramePanel";
 import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
+import { mergeFrameSpec } from "./engine/frameSchema";
 import {
   bindHistory,
   type HistoryChange,
@@ -458,11 +459,18 @@ export default function App() {
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
   const handleDocChanged = useCallback(
     (sceneIndex: number, doc: SceneDoc) => {
-      setProject((prev) =>
-        prev && sceneIndex < prev.sceneDocs.length
-          ? { ...prev, sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)) }
-          : prev,
-      );
+      setProject((prev) => {
+        if (!prev || sceneIndex >= prev.sceneDocs.length) return prev;
+        // Re-resolve this scene's overlay from the new sidecar override, mirroring loadProject:
+        // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
+        const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
+        const resolvedFrame = merged?.enabled === false ? undefined : merged;
+        return {
+          ...prev,
+          sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)),
+          sceneFrames: prev.sceneFrames.map((f, i) => (i === sceneIndex ? resolvedFrame : f)),
+        };
+      });
       const id = loadedProjectRef.current?.id;
       if (id && isWorkspaceProjectId(id)) armPollBaseline(workspaceSlug(id));
     },
