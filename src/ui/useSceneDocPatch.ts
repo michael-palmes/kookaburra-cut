@@ -76,6 +76,37 @@ export function useSceneDocPatch(
     }
   }
 
+  /** Commit a drag/gesture as ONE history entry: writes `patch` applied to `baseline` (the doc snapshotted at drag start) and records before=baseline, after. Live ticks during the drag go through `patchDoc(..., { history: false })`; this reconciles the final value and records the single undo step on release. */
+  async function commitFromBaseline(
+    baseline: SceneDoc,
+    patch: (next: SceneDoc) => void,
+  ): Promise<void> {
+    if (!slug || !sceneFile) return;
+    setError(null);
+    try {
+      const after = structuredClone(baseline);
+      patch(after);
+      await writeSceneDoc(slug, sceneFile, after);
+      onDocChanged(sceneIndex, after);
+      pushHistory({
+        label: "scene edit",
+        changes: [
+          {
+            kind: "sceneDoc",
+            slug,
+            file: sceneFile,
+            sceneIndex,
+            before: baseline,
+            after: structuredClone(after),
+            reload: baseline.themeId !== after.themeId,
+          },
+        ],
+      });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function commitDuration(ms: number) {
     setError(null);
     try {
@@ -85,7 +116,17 @@ export function useSceneDocPatch(
     }
   }
 
-  return { slug, doc, scene, sceneFile, error, setError, patchDoc, commitDuration };
+  return {
+    slug,
+    doc,
+    scene,
+    sceneFile,
+    error,
+    setError,
+    patchDoc,
+    commitFromBaseline,
+    commitDuration,
+  };
 }
 
 /** The hook-free scene-length writer (shared with the playback bar's right-click path): project.json write + the manual-mode flip as one compound history entry, then the nonce-only timing refresh; throws so each caller surfaces errors its own way. */

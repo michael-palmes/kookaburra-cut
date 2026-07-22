@@ -15,7 +15,7 @@ import {
 
 /** Text-motion panel: a docked live picker above the edit bar, no GL preview and no modal scrim because the real stage IS the preview; every pick patches `doc.textAnimation` immediately and auto-replays the scene, Cancel restores the spec captured at open; wall-clock use is fine here since the edit bar is unmounted during export/autorun. */
 
-/** Slider that live-updates its label but commits debounced (the ColourInput pattern); a sidecar write per drag tick would thrash the JSON file. Shared with the Background editor's Animated tab. */
+/** Slider that live-updates its label but commits debounced (the ColourInput pattern); a sidecar write per drag tick would thrash the JSON file. Shared with the Background editor's Animated tab. With `onInput`, the debounced ticks are live (history-less) writes and `onCommit` fires once on release, so a drag reads as ONE undo step. */
 export function DebouncedRange({
   value,
   min,
@@ -23,6 +23,7 @@ export function DebouncedRange({
   step,
   label,
   onCommit,
+  onInput,
 }: {
   value: number;
   min: number;
@@ -30,12 +31,16 @@ export function DebouncedRange({
   step: number;
   label: string;
   onCommit: (v: number) => void;
+  /** When present, the drag's debounced ticks call this (live, history-less) and `onCommit` fires only on release. */
+  onInput?: (v: number) => void;
 }) {
   const [v, setV] = useState(value);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const pending = useRef<number | null>(null);
   const latest = useRef(value);
+  const dragValue = useRef(value);
+  const dragged = useRef(false);
   const cancel = useRef(false);
   const editRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -56,14 +61,29 @@ export function DebouncedRange({
   );
   function schedule(next: number) {
     setV(next);
+    dragValue.current = next;
+    if (onInput) dragged.current = true;
     if (pending.current !== null) window.clearTimeout(pending.current);
-    pending.current = window.setTimeout(() => {
+    pending.current = window.setTimeout(
+      () => {
+        pending.current = null;
+        if (next !== latest.current) {
+          latest.current = next;
+          (onInput ?? onCommit)(next);
+        }
+      },
+      onInput ? 120 : 300,
+    );
+  }
+  // Release ends a drag: flush the pending live tick and record ONE history commit.
+  function release() {
+    if (!onInput || !dragged.current) return;
+    dragged.current = false;
+    if (pending.current !== null) {
+      window.clearTimeout(pending.current);
       pending.current = null;
-      if (next !== latest.current) {
-        latest.current = next;
-        onCommit(next);
-      }
-    }, 300);
+    }
+    onCommit(dragValue.current);
   }
   // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision.
   function finishEdit(commit: boolean) {
@@ -92,6 +112,8 @@ export function DebouncedRange({
         value={v}
         aria-label={label}
         onChange={(e) => schedule(Number(e.target.value))}
+        onPointerUp={release}
+        onKeyUp={release}
       />
       {editing ? (
         <input

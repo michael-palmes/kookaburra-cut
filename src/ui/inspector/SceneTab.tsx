@@ -11,9 +11,16 @@ import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { nearestKey, setKeyPose } from "../../engine/sceneCameraEdit";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
-import type { SceneDoc, SceneDocCameraPose, SceneTextAlign } from "../../engine/sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocCameraPose,
+  SceneDocVideoWindow,
+  SceneTextAlign,
+  VideoWindowMotionPreset,
+} from "../../engine/sceneDocSchema";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
+import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import { useSceneStageBackdrop } from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
@@ -194,6 +201,23 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <path d="M10 3l6.5 3-6.5 3-6.5-3 6.5-3z" />
           <path d="M3.5 9.8l6.5 3 6.5-3M3.5 13.3L10 16.3l6.5-3" />
+        </svg>
+      );
+    case "videoWindow.add":
+    case "videoWindow.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4" width="14" height="11" rx="2" />
+          <path d="M3 7.5h14" />
+          <path d="M8.5 10l3.2 1.7-3.2 1.7z" fill="currentColor" stroke="none" />
         </svg>
       );
     case "text.add":
@@ -1122,12 +1146,8 @@ export function SceneTab({
   /** Trash-recoverable scene removal (the bottom Delete row; Rust guards the last scene). */
   onDeleteScene: (sceneIndex: number) => void;
 }) {
-  const { slug, doc, scene, error, setError, patchDoc, commitDuration } = useSceneDocPatch(
-    project,
-    sceneIndex,
-    onDocChanged,
-    onTimingChanged,
-  );
+  const { slug, doc, scene, error, setError, patchDoc, commitFromBaseline, commitDuration } =
+    useSceneDocPatch(project, sceneIndex, onDocChanged, onTimingChanged);
   const drillIn = useUiStore((s) => s.inspector.drillIn);
   const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
@@ -1151,6 +1171,9 @@ export function SceneTab({
   >({ kind: "device" });
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
+  // Snapshot of the doc at the start of a videoWindow slider drag: live ticks write history-less, release records one entry.
+  const vwDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
@@ -2103,6 +2126,537 @@ export function SceneTab({
               />
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "videoWindow.media" && doc) {
+    const vw = doc.videoWindow;
+    const createFrom = (src: string) =>
+      void patchDoc(
+        (next) => {
+          next.videoWindow = {
+            media: { src },
+            stage: { type: "color", color: sceneTheme?.colors.background ?? "#1b2330" },
+            radius: "macos",
+          };
+        },
+        { resync: true },
+      );
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Video window" onClick={() => setDrillIn("videoWindow.edit")} />
+        <div className="inspector-drill-title">
+          <span>Recording</span>
+        </div>
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <AddMediaButton
+              slug={slug}
+              kinds={["video"]}
+              onImported={() => setMediaRefresh((n) => n + 1)}
+            />
+          </div>
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={["video"]}
+              hideAdd
+              refreshKey={mediaRefresh}
+              selectedRel={vw?.media.src ?? null}
+              onPick={(rel, meta) => {
+                if (meta && meta.kind !== "video") return;
+                if (vw)
+                  void patchDoc(
+                    (next) => {
+                      if (next.videoWindow)
+                        next.videoWindow.media = { ...next.videoWindow.media, src: rel };
+                    },
+                    { resync: true },
+                  );
+                else createFrom(rel);
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "videoWindow.stage" && doc?.videoWindow) {
+    const vw = doc.videoWindow;
+    const patchVW = (mutate: (v: SceneDocVideoWindow) => void) =>
+      void patchDoc((next) => {
+        if (next.videoWindow) mutate(next.videoWindow);
+      });
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Video window" onClick={() => setDrillIn("videoWindow.edit")} />
+        <div className="inspector-drill-title">
+          <span>Backing stage</span>
+        </div>
+        <div className="inspector-drill-body">
+          <div className="bg-type-grid" role="tablist" aria-label="Stage fill type">
+            {(["color", "gradient", "image"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={vw.stage.type === t}
+                className={`bg-type-tile${vw.stage.type === t ? " selected" : ""}`}
+                onClick={() =>
+                  patchVW((v) => {
+                    if (t === "color" && v.stage.type !== "color")
+                      v.stage = {
+                        type: "color",
+                        color: sceneTheme?.colors.background ?? "#1b2330",
+                      };
+                    else if (t === "gradient" && v.stage.type !== "gradient")
+                      v.stage = {
+                        type: "gradient",
+                        spec: {
+                          type: "linear",
+                          angleDeg: 20,
+                          stops: [
+                            ["#2b1055", 0],
+                            ["#7597de", 1],
+                          ],
+                        },
+                      };
+                    else if (t === "image" && v.stage.type !== "image")
+                      v.stage = { type: "image", src: "" };
+                  })
+                }
+              >
+                <BgTypeIcon id={t} />
+                {t === "color" ? "Colour" : t === "gradient" ? "Gradient" : "Image"}
+              </button>
+            ))}
+          </div>
+          {vw.stage.type === "color" && (
+            <div className="popover-row">
+              <span className="popover-inline">
+                Colour
+                <ColourPicker
+                  value={vw.stage.color}
+                  label="Stage colour"
+                  onCommit={(hex) =>
+                    patchVW((v) => {
+                      if (v.stage.type === "color") v.stage = { type: "color", color: hex };
+                    })
+                  }
+                />
+              </span>
+            </div>
+          )}
+          {vw.stage.type === "gradient" && (
+            <GradientPickerModal
+              embedded
+              current={{ type: "gradient", spec: vw.stage.spec }}
+              theme={sceneTheme}
+              onCancel={() => {}}
+              onApply={(value) => {
+                if (value.type !== "gradient") return;
+                // A theme gradient resolves to its spec so the stage stays self-contained (scene-doc only).
+                const spec =
+                  value.spec ??
+                  (value.gradient ? sceneTheme?.gradients?.[value.gradient] : undefined);
+                if (!spec) return;
+                patchVW((v) => {
+                  v.stage = { type: "gradient", spec };
+                });
+              }}
+            />
+          )}
+          {vw.stage.type === "image" && (
+            <>
+              <div className="popover-row">
+                <AddMediaButton
+                  slug={slug}
+                  kinds={["image"]}
+                  onImported={() => setMediaRefresh((n) => n + 1)}
+                />
+              </div>
+              <div className="inspector-media-host">
+                <MediaBrowser
+                  slug={slug}
+                  projectPath={workspaceProjectPath(slug) ?? ""}
+                  kinds={["image"]}
+                  hideAdd
+                  refreshKey={mediaRefresh}
+                  selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
+                  onPick={(rel, meta) => {
+                    if (meta && meta.kind !== "image") return;
+                    patchVW((v) => {
+                      v.stage = { type: "image", src: rel };
+                    });
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "videoWindow.edit" && doc) {
+    const vw = doc.videoWindow;
+    const patchVW = (mutate: (v: SceneDocVideoWindow) => void, opts?: { resync?: boolean }) =>
+      void patchDoc((next) => {
+        if (next.videoWindow) mutate(next.videoWindow);
+      }, opts);
+    // Live slider ticks write history-less; the release records one entry from the drag-start snapshot.
+    const vwLive = (mutate: (v: SceneDocVideoWindow) => void) => {
+      if (!vwDragBaseline.current && doc) vwDragBaseline.current = structuredClone(doc);
+      void patchDoc(
+        (next) => {
+          if (next.videoWindow) mutate(next.videoWindow);
+        },
+        { history: false },
+      );
+    };
+    const vwCommit = (mutate: (v: SceneDocVideoWindow) => void) => {
+      const baseline = vwDragBaseline.current;
+      vwDragBaseline.current = null;
+      if (baseline)
+        void commitFromBaseline(baseline, (next) => {
+          if (next.videoWindow) mutate(next.videoWindow);
+        });
+      else patchVW(mutate);
+    };
+    const createFrom = (src: string) =>
+      void patchDoc(
+        (next) => {
+          next.videoWindow = {
+            media: { src },
+            stage: { type: "color", color: sceneTheme?.colors.background ?? "#1b2330" },
+            radius: "macos",
+          };
+        },
+        { resync: true },
+      );
+    const RADII: { id: "sharp" | "subtle" | "macos" | "rounded"; label: string }[] = [
+      { id: "sharp", label: "Sharp" },
+      { id: "subtle", label: "Subtle" },
+      { id: "macos", label: "macOS" },
+      { id: "rounded", label: "Rounded" },
+    ];
+    const MOTIONS: { id: VideoWindowMotionPreset; label: string }[] = [
+      { id: "none", label: "None" },
+      { id: "float", label: "Float" },
+      { id: "drift", label: "Drift" },
+      { id: "tilt-reveal", label: "Tilt in" },
+      { id: "push-in", label: "Push in" },
+    ];
+    const radiusPreset = vw && typeof vw.radius === "string" ? vw.radius : null;
+    const shadow = vw?.shadow ?? {
+      opacity: 0.32,
+      blur: 0.14,
+      offset: [0, -0.05] as [number, number],
+    };
+    const border = vw?.border ?? { enabled: true, color: "#ffffff", width: 0.0035, opacity: 0.12 };
+    const motionPreset = vw?.motion?.preset ?? "none";
+    return (
+      <div className="inspector-drill">
+        <DrillBack
+          label="Scene"
+          onClick={() => {
+            setConfirmRemoveVideoWindow(false);
+            setDrillIn(null);
+          }}
+        />
+        <div className="inspector-drill-title">
+          <span>Video window</span>
+        </div>
+        <div className="inspector-drill-body">
+          {!vw ? (
+            <>
+              <p className="modal-hint">
+                Pick a screen recording to float in a window over a backing stage.
+              </p>
+              <div className="popover-row">
+                <AddMediaButton
+                  slug={slug}
+                  kinds={["video"]}
+                  onImported={() => setMediaRefresh((n) => n + 1)}
+                />
+              </div>
+              <div className="inspector-media-host">
+                <MediaBrowser
+                  slug={slug}
+                  projectPath={workspaceProjectPath(slug) ?? ""}
+                  kinds={["video"]}
+                  hideAdd
+                  refreshKey={mediaRefresh}
+                  onPick={(rel, meta) => {
+                    if (meta && meta.kind !== "video") return;
+                    createFrom(rel);
+                  }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <ActionRow
+                icon={<SceneRowIcon id="device.media" />}
+                label="Recording"
+                value={vw.media.src.split("/").pop() ?? "None"}
+                chevron
+                onClick={() => setDrillIn("videoWindow.media")}
+              />
+              <ActionRow
+                icon={<SceneRowIcon id="style.background" />}
+                label="Backing stage"
+                value={{ color: "Colour", gradient: "Gradient", image: "Image" }[vw.stage.type]}
+                chevron
+                onClick={() => setDrillIn("videoWindow.stage")}
+              />
+
+              <div className="popover-row">
+                <span className="popover-group-label">Corners</span>
+              </div>
+              <div className="popover-row">
+                <div className="wizard-presets">
+                  {RADII.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={`chip${radiusPreset === r.id ? " selected" : ""}`}
+                      onClick={() =>
+                        patchVW((v) => {
+                          v.radius = r.id;
+                        })
+                      }
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Corner radius</span>
+                <DebouncedRange
+                  value={resolveVideoWindowRadius(vw.radius)}
+                  min={0}
+                  max={0.2}
+                  step={0.005}
+                  label="Corner radius"
+                  onInput={(val) =>
+                    vwLive((v) => {
+                      v.radius = { custom: val };
+                    })
+                  }
+                  onCommit={(val) =>
+                    vwCommit((v) => {
+                      v.radius = { custom: val };
+                    })
+                  }
+                />
+              </div>
+
+              <div className="popover-row">
+                <span className="popover-group-label">Border</span>
+              </div>
+              <div className="popover-row">
+                <label className="popover-inline">
+                  <input
+                    type="checkbox"
+                    checked={border.enabled}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      patchVW((v) => {
+                        v.border = { ...border, enabled: on };
+                      });
+                    }}
+                  />
+                  Show border
+                </label>
+              </div>
+              {border.enabled && (
+                <>
+                  <div className="popover-row">
+                    <span className="popover-inline">
+                      Colour
+                      <ColourPicker
+                        value={border.color}
+                        label="Border colour"
+                        onCommit={(hex) =>
+                          patchVW((v) => {
+                            v.border = { ...border, color: hex };
+                          })
+                        }
+                      />
+                    </span>
+                  </div>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Width</span>
+                    <DebouncedRange
+                      value={border.width}
+                      min={0}
+                      max={0.02}
+                      step={0.0005}
+                      label="Border width"
+                      onInput={(val) =>
+                        vwLive((v) => {
+                          v.border = { ...border, width: val };
+                        })
+                      }
+                      onCommit={(val) =>
+                        vwCommit((v) => {
+                          v.border = { ...border, width: val };
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Strength</span>
+                    <DebouncedRange
+                      value={border.opacity}
+                      min={0}
+                      max={1}
+                      step={0.02}
+                      label="Border strength"
+                      onInput={(val) =>
+                        vwLive((v) => {
+                          v.border = { ...border, opacity: val };
+                        })
+                      }
+                      onCommit={(val) =>
+                        vwCommit((v) => {
+                          v.border = { ...border, opacity: val };
+                        })
+                      }
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="popover-row">
+                <span className="popover-group-label">Shadow</span>
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Strength</span>
+                <DebouncedRange
+                  value={shadow.opacity}
+                  min={0}
+                  max={0.8}
+                  step={0.02}
+                  label="Shadow strength"
+                  onInput={(val) =>
+                    vwLive((v) => {
+                      v.shadow = { ...shadow, opacity: val };
+                    })
+                  }
+                  onCommit={(val) =>
+                    vwCommit((v) => {
+                      v.shadow = { ...shadow, opacity: val };
+                    })
+                  }
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Softness</span>
+                <DebouncedRange
+                  value={shadow.blur}
+                  min={0}
+                  max={0.4}
+                  step={0.01}
+                  label="Shadow softness"
+                  onInput={(val) =>
+                    vwLive((v) => {
+                      v.shadow = { ...shadow, blur: val };
+                    })
+                  }
+                  onCommit={(val) =>
+                    vwCommit((v) => {
+                      v.shadow = { ...shadow, blur: val };
+                    })
+                  }
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Drop</span>
+                <DebouncedRange
+                  value={shadow.offset[1]}
+                  min={-0.2}
+                  max={0.2}
+                  step={0.01}
+                  label="Shadow drop"
+                  onInput={(val) =>
+                    vwLive((v) => {
+                      v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
+                    })
+                  }
+                  onCommit={(val) =>
+                    vwCommit((v) => {
+                      v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
+                    })
+                  }
+                />
+              </div>
+
+              <div className="popover-row">
+                <span className="popover-group-label">Motion</span>
+              </div>
+              <div className="popover-row">
+                <div className="wizard-presets">
+                  {MOTIONS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`chip${motionPreset === m.id ? " selected" : ""}`}
+                      onClick={() =>
+                        patchVW((v) => {
+                          v.motion = { preset: m.id };
+                        })
+                      }
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Window size</span>
+                <DebouncedRange
+                  value={vw.scale ?? 0.72}
+                  min={0.3}
+                  max={1}
+                  step={0.01}
+                  label="Window size"
+                  onInput={(val) =>
+                    vwLive((v) => {
+                      v.scale = val;
+                    })
+                  }
+                  onCommit={(val) =>
+                    vwCommit((v) => {
+                      v.scale = val;
+                    })
+                  }
+                />
+              </div>
+
+              <div className="inspector-section-divider" />
+              <ActionRow
+                icon={<SceneRowIcon id="device.remove" />}
+                label={confirmRemoveVideoWindow ? "Really remove?" : "Remove video window"}
+                chevron={false}
+                danger
+                onClick={() => {
+                  if (!confirmRemoveVideoWindow) {
+                    setConfirmRemoveVideoWindow(true);
+                    return;
+                  }
+                  setConfirmRemoveVideoWindow(false);
+                  void patchDoc((next) => {
+                    next.videoWindow = undefined;
+                  });
+                  setDrillIn(null);
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
     );
@@ -3118,6 +3672,9 @@ export function SceneTab({
                     // Both paths drill into the builder; it seeds the first layer for scenes without a block.
                     "layeredScreenshot.edit": () => setDrillIn("layeredScreenshot.edit"),
                     "layeredScreenshot.add": () => setDrillIn("layeredScreenshot.edit"),
+                    // Both paths drill into the editor; it creates the block on the first media pick.
+                    "videoWindow.edit": () => setDrillIn("videoWindow.edit"),
+                    "videoWindow.add": () => setDrillIn("videoWindow.edit"),
                     "device.remove": () => {
                       if (!confirmRemove) {
                         setConfirmRemove(true);
@@ -3164,6 +3721,11 @@ export function SceneTab({
                       ? (device.placement?.rotationDeg ?? [0, 0, 0])
                           .map((n) => `${Math.round(n)}°`)
                           .join(" ")
+                      : undefined,
+                    "videoWindow.edit": doc?.videoWindow
+                      ? { color: "Colour", gradient: "Gradient", image: "Image" }[
+                          doc.videoWindow.stage.type
+                        ]
                       : undefined,
                     "motion.transition": transitionValue,
                     "style.theme": sceneTheme?.name,
