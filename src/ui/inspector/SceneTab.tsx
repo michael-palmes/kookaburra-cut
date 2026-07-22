@@ -998,6 +998,15 @@ export function SceneTab({
   const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
+  const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
+  const requestDecoMedia = useDecorationEditStore((s) => s.requestMedia);
+  // The gizmo's "Change media" action routes through here to reuse the scene media picker.
+  useEffect(() => {
+    if (!decoMediaRequestId) return;
+    setMediaTarget({ kind: "decoration", replaceId: decoMediaRequestId });
+    setModal("media");
+    requestDecoMedia(null);
+  }, [decoMediaRequestId, requestDecoMedia]);
   const collapsed = useUiStore((s) => s.inspector.collapsed);
   const toggleSection = useUiStore((s) => s.toggleInspectorSection);
 
@@ -1784,6 +1793,17 @@ export function SceneTab({
                   step={0.01}
                   label="Size"
                   onCommit={(v) => patchDeco(d.id, { size: v })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Rotation</span>
+                <DebouncedRange
+                  value={d.rotationDeg ?? 0}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  label="Rotation"
+                  onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
                 />
               </div>
               <div className="popover-row">
