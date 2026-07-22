@@ -94,6 +94,10 @@ function parseDecoration(
   if (DECORATION_LAYERS.includes(raw.layer as FrameDecorationLayer)) {
     decoration.layer = raw.layer as FrameDecorationLayer;
   }
+  const rotationDeg = num(raw.rotationDeg);
+  if (rotationDeg !== undefined) {
+    decoration.rotationDeg = rotationDeg;
+  }
   return decoration;
 }
 

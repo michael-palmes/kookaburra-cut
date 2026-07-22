@@ -9,8 +9,8 @@ import { resolveAssetUrl } from "./project";
 import { ProjectIdContext } from "./sceneContext";
 import { useTimeline } from "./timeline";
 
-/** Layer draw order: "below" tucks behind the panel's editorial text, "above" (the default) draws over everything and may cross the cutout edge (the breakout). Both draw over the composited slide, so a decoration always sits above the cutout scene; true behind-the-cutout layering would need the slide pass split and is deferred (docs/overlays.md). */
-const RENDER_ORDER = { below: -10, above: 10 };
+/** Layer draw order: "below" tucks behind the panel's editorial text, "above" (the default) draws over everything and may cross the cutout edge (the breakout). Both draw over the composited slide, so a decoration always sits above the cutout scene; true behind-the-cutout layering would need the slide pass split and is deferred (docs/overlays.md). The band base plus the array index gives each decoration a distinct order so array position controls front/back stacking within a layer (equal renderOrder would fall to object-creation id, which array reorders don't change). */
+const RENDER_ORDER = { below: -1000, above: 1000 };
 
 /** Crops a square plane to a disc via an SDF alpha on the raw plane uv (not the map uv), the `ImageCard` shine precedent; a pure function of uv, so AA is compile-stable. A circle decoration expects a roughly square source. */
 function applyCircleMask(material: MeshBasicMaterial): void {
@@ -35,11 +35,14 @@ export function FrameDecoration({
   format,
   from,
   to,
+  order,
 }: {
   decoration: FrameDecorationSpec;
   format: FormatInfo;
   from?: number;
   to?: number;
+  /** Array index within the panel's decorations, added to the layer band for a stable front/back order. */
+  order?: number;
 }) {
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
@@ -51,7 +54,16 @@ export function FrameDecoration({
     console.warn(`[frame] decoration "${decoration.src}" unresolved:`, e);
   }
   if (!url) return null;
-  return <LoadedDecoration url={url} decoration={decoration} format={format} from={from} to={to} />;
+  return (
+    <LoadedDecoration
+      url={url}
+      decoration={decoration}
+      format={format}
+      from={from}
+      to={to}
+      order={order}
+    />
+  );
 }
 
 function LoadedDecoration({
@@ -60,12 +72,14 @@ function LoadedDecoration({
   format,
   from,
   to,
+  order,
 }: {
   url: string;
   decoration: FrameDecorationSpec;
   format: FormatInfo;
   from?: number;
   to?: number;
+  order?: number;
 }) {
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
@@ -90,14 +104,22 @@ function LoadedDecoration({
   const height = circle ? width : width * (img.height / img.width);
   const x = (decoration.position[0] * format.frame.width) / 2;
   const y = (decoration.position[1] * format.frame.height) / 2;
-  const renderOrder = decoration.layer === "below" ? RENDER_ORDER.below : RENDER_ORDER.above;
+  // Clockwise on screen is negative about +z (the viewer looks down -z); 0/absent leaves the mesh upright.
+  const rotZ = decoration.rotationDeg ? (-decoration.rotationDeg * Math.PI) / 180 : 0;
+  const renderOrder =
+    (decoration.layer === "below" ? RENDER_ORDER.below : RENDER_ORDER.above) + (order ?? 0);
   material.opacity =
     from === undefined || to === undefined || to <= from
       ? 1
       : Math.min(1, Math.max(0, (localMs - from) / (to - from)));
 
   return (
-    <mesh position={[x, y, 0]} material={material} renderOrder={renderOrder}>
+    <mesh
+      position={[x, y, 0]}
+      rotation={[0, 0, rotZ]}
+      material={material}
+      renderOrder={renderOrder}
+    >
       <planeGeometry args={[width, height]} />
     </mesh>
   );

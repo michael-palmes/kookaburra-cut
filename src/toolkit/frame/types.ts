@@ -39,6 +39,8 @@ export interface FrameDecorationSpec {
   position: [number, number];
   /** Width as a fraction of the frame width. */
   size: number;
+  /** Clockwise rotation in degrees about the decoration's centre; absent (or 0) is upright. */
+  rotationDeg?: number;
   shape?: FrameDecorationShape;
   layer?: FrameDecorationLayer;
 }

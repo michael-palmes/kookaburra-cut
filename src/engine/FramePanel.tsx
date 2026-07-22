@@ -186,13 +186,14 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           to={1300}
         />
       )}
-      {decorations.map((decoration) => (
+      {decorations.map((decoration, i) => (
         <FrameDecoration
           key={decoration.id}
           decoration={decoration}
           format={format}
           from={250}
           to={950}
+          order={i}
         />
       ))}
     </>

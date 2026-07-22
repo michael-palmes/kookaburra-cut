@@ -97,6 +97,16 @@ describe("parseFrameSpec decorations", () => {
     expect(spec?.decorations).toEqual([{ ...deco, shape: "circle", layer: "above" }]);
   });
 
+  it("keeps a finite rotationDeg and drops a non-finite one", () => {
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...deco, rotationDeg: -12 }] }, "t")?.decorations,
+    ).toEqual([{ ...deco, rotationDeg: -12 }]);
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...deco, rotationDeg: Number.NaN }] }, "t")
+        ?.decorations,
+    ).toEqual([deco]);
+  });
+
   it("drops only the bad entries", () => {
     const spec = parseFrameSpec(
       {
