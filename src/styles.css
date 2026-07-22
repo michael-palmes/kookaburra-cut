@@ -3568,6 +3568,15 @@ body {
   border: 1.5px solid var(--accent);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
+.deco-gizmo-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  border-radius: 2px;
+}
 
 /* Centre guide lines while a pan drag is captured on the scene centre (Keynote yellow). */
 .camera-centre-guide {
