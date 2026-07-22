@@ -191,6 +191,7 @@ describe("sceneSections Overlay section", () => {
       "frame.enabled",
       "frame.cutout",
       "frame.panel",
+      "frame.chip",
     ]);
   });
 

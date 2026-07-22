@@ -2876,6 +2876,32 @@ body {
 .range-value-edit:focus {
   border-color: var(--border-strong);
 }
+/* The chip-mark icon picker: a wrapping grid of icon tiles (the bg-type-tile look). */
+.chip-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: var(--space-2);
+}
+.chip-icon-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.chip-icon-tile:hover {
+  color: var(--text-primary);
+}
+.chip-icon-tile.selected {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
 .popover-inline {
   display: inline-flex;
   align-items: center;

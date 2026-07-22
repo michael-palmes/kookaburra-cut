@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
 import { pushHistory } from "../../engine/history";
@@ -28,7 +28,13 @@ import { preloadAppFonts } from "../../theme/fonts";
 import type { TextAnimationSpec, Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
-import type { FrameCutoutSpec, FrameShape, FrameSide } from "../../toolkit/frame/types";
+import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
+import type {
+  FrameChipSpec,
+  FrameCutoutSpec,
+  FrameShape,
+  FrameSide,
+} from "../../toolkit/frame/types";
 import {
   SHADER_BACKGROUND_IDS,
   SHADER_BACKGROUND_PRESETS,
@@ -361,6 +367,21 @@ function SceneRowIcon({ id }: { id: string }) {
           <circle cx="13" cy="10" r="2.2" fill="currentColor" stroke="none" />
         </svg>
       );
+    case "frame.chip":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="6.5" width="15" height="7" rx="3.5" />
+          <path d="M6 10l1.6 1.6L11 8.4" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -522,6 +543,72 @@ function CutoutSliderIcon({ id }: { id: "size" | "radius" | "inset" }) {
     </svg>
   );
 }
+
+/** Inline SVG previews for the chip icon set (the same Lucide paths the render's PNGs were rasterised from), tinted via currentColor. */
+const CHIP_ICON_GLYPHS: Record<ChipIconId, ReactNode> = {
+  "circle-check": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
+  "triangle-alert": (
+    <>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+  "circle-x": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m15 9-6 6" />
+      <path d="m9 9 6 6" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </>
+  ),
+  star: (
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </>
+  ),
+};
+
+function ChipIconPreview({ id }: { id: ChipIconId }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {CHIP_ICON_GLYPHS[id]}
+    </svg>
+  );
+}
+
+/** Quick status styles: each seeds the chip's label, colour and icon together. */
+const CHIP_PRESETS: { id: string; label: string; colour: string; icon: ChipIconId }[] = [
+  { id: "released", label: "Released", colour: "#2fb170", icon: "circle-check" },
+  { id: "testing", label: "In testing", colour: "#3b82f6", icon: "circle-check" },
+  { id: "warning", label: "Warning", colour: "#e0a020", icon: "triangle-alert" },
+  { id: "error", label: "Error", colour: "#e05656", icon: "circle-x" },
+];
 
 /** The Camera section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
 function CameraSectionBody({
@@ -1391,6 +1478,114 @@ export function SceneTab({
             </span>
           </div>
           <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.chip" && sceneFrame) {
+    const chip = sceneFrame.chip;
+    const accent = sceneTheme?.colors.accent ?? "#3ec6b0";
+    // Materialise the resolved chip then patch a field; `null` removes the chip entirely.
+    const setChip = (change: Partial<FrameChipSpec> | null) =>
+      void patchDoc((next) => {
+        if (change === null) {
+          if (next.frame) delete next.frame.chip;
+          return;
+        }
+        const base: FrameChipSpec = chip ?? { label: "Released" };
+        next.frame = { ...(next.frame ?? {}), chip: { ...base, ...change } };
+      });
+    const chipColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? accent;
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Chip</div>
+        <div className="inspector-drill-body">
+          {chip ? (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Preset</span>
+                <div className="wizard-presets">
+                  {CHIP_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="chip"
+                      onClick={() => setChip({ label: p.label, colour: p.colour, icon: p.icon })}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <TextFieldRow
+                label="Label"
+                value={chip.label}
+                placeholder="Released"
+                colour={{
+                  value: chipColour(chip.colour),
+                  defaultValue: accent,
+                  onCommit: (hex) => setChip({ colour: hex }),
+                  onReset: () => setChip({ colour: undefined }),
+                }}
+                onChange={(t) => setChip({ label: t })}
+              />
+              <div className="wizard-field">
+                <span className="wizard-label">Mark</span>
+                <div className="chip-icon-grid">
+                  <button
+                    type="button"
+                    className={`chip-icon-tile${!chip.icon ? " selected" : ""}`}
+                    title="No mark"
+                    onClick={() => setChip({ icon: undefined })}
+                  >
+                    <span className="chip-icon-none">None</span>
+                  </button>
+                  {CHIP_ICON_IDS.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`chip-icon-tile${resolveChipIconId(chip.icon) === id ? " selected" : ""}`}
+                      title={id}
+                      onClick={() => setChip({ icon: id })}
+                    >
+                      <ChipIconPreview id={id} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="wizard-field">
+                <span className="wizard-label">Custom mark</span>
+                <input
+                  className="modal-input"
+                  value={chip.icon && !resolveChipIconId(chip.icon) ? chip.icon : ""}
+                  placeholder="an emoji or assets/icon.png"
+                  aria-label="Custom chip mark"
+                  onChange={(e) => setChip({ icon: e.target.value.trim() || undefined })}
+                />
+              </div>
+              <div className="inspector-drill-actions">
+                <button type="button" className="btn danger" onClick={() => setChip(null)}>
+                  Remove chip
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                setChip({ label: "Released", colour: "#2fb170", icon: "circle-check" })
+              }
+            >
+              Add chip
+            </button>
+          )}
         </div>
       </div>
     );
@@ -2440,6 +2635,7 @@ export function SceneTab({
                     "style.shadow": () => setDrillIn("style.shadow"),
                     "frame.cutout": () => setDrillIn("frame.cutout"),
                     "frame.panel": () => setDrillIn("frame.panel"),
+                    "frame.chip": () => setDrillIn("frame.chip"),
                   }[row.id];
                   const value = {
                     "text.motion": doc?.textAnimation
@@ -2478,6 +2674,7 @@ export function SceneTab({
                       ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape]
                       : undefined,
                     "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
+                    "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
                   }[row.id];
                   return (
                     <ActionRow
