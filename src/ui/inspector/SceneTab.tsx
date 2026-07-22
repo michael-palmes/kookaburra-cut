@@ -2166,6 +2166,17 @@ export function SceneTab({
         },
         { resync: true },
       );
+    const pickVideoWindowMedia = (rel: string, meta: MediaMeta | null) => {
+      if (meta && meta.kind !== "video") return;
+      if (vw)
+        void patchDoc(
+          (next) => {
+            if (next.videoWindow) next.videoWindow.media = { ...next.videoWindow.media, src: rel };
+          },
+          { resync: true },
+        );
+      else createFrom(rel);
+    };
     return (
       <div className="inspector-drill">
         <DrillBack label="Video window" onClick={() => setDrillIn("videoWindow.edit")} />
@@ -2185,21 +2196,18 @@ export function SceneTab({
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={["video"]}
+              globalToggle
               hideAdd
               refreshKey={mediaRefresh}
               selectedRel={vw?.media.src ?? null}
-              onPick={(rel, meta) => {
-                if (meta && meta.kind !== "video") return;
-                if (vw)
-                  void patchDoc(
-                    (next) => {
-                      if (next.videoWindow)
-                        next.videoWindow.media = { ...next.videoWindow.media, src: rel };
-                    },
-                    { resync: true },
-                  );
-                else createFrom(rel);
-              }}
+              onPick={pickVideoWindowMedia}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: pickVideoWindowMedia,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
             />
           </div>
         </div>
@@ -2305,6 +2313,7 @@ export function SceneTab({
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["image"]}
+                  globalToggle
                   hideAdd
                   refreshKey={mediaRefresh}
                   selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
@@ -2314,6 +2323,18 @@ export function SceneTab({
                       v.stage = { type: "image", src: rel };
                     });
                   }}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: (rel, meta) => {
+                      if (meta && meta.kind !== "image") return;
+                      patchVW((v) => {
+                        v.stage = { type: "image", src: rel };
+                      });
+                    },
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </>
@@ -2409,12 +2430,23 @@ export function SceneTab({
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["video"]}
+                  globalToggle
                   hideAdd
                   refreshKey={mediaRefresh}
                   onPick={(rel, meta) => {
                     if (meta && meta.kind !== "video") return;
                     createFrom(rel);
                   }}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: (rel, meta) => {
+                      if (meta && meta.kind !== "video") return;
+                      createFrom(rel);
+                    },
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </>
