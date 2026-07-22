@@ -509,52 +509,54 @@ export function MediaBrowser({
   return (
     <div className={`media-browser${compact ? " compact" : ""}`}>
       {(kindToggle || globalToggle || hint || !hideAdd) && (
-        <div className={`media-browser-bar${kindToggle || globalToggle ? " centered" : ""}`}>
-          {globalToggle && (
-            <span className="wizard-presets">
-              <button
-                type="button"
-                className={`chip${sourceTab === "project" ? " selected" : ""}`}
-                title="This project's assets"
-                onClick={() => {
-                  setSourceTab("project");
-                  setPreview(null);
-                }}
-              >
-                Project
-              </button>
-              <button
-                type="button"
-                className={`chip${sourceTab === "global" ? " selected" : ""}`}
-                title="Your media library; picking copies the file into this project"
-                onClick={() => {
-                  setSourceTab("global");
-                  setPreview(null);
-                }}
-              >
-                Library
-              </button>
-            </span>
-          )}
-          {kindToggle && sourceTab === "project" && (
-            <span className="wizard-presets">
-              <button
-                type="button"
-                className={`chip chip-icon${kindTab === "video" ? " selected" : ""}`}
-                onClick={() => setKindTab("video")}
-              >
-                <VideoIcon /> Video
-              </button>
-              <button
-                type="button"
-                className={`chip chip-icon${kindTab === "image" ? " selected" : ""}`}
-                onClick={() => setKindTab("image")}
-              >
-                <ImageIcon /> Images
-              </button>
-            </span>
-          )}
-          {hint && <span className="muted media-browser-hint">{hint}</span>}
+        <div className="media-browser-bar">
+          <div className="media-browser-toggles">
+            {globalToggle && (
+              <span className="wizard-presets">
+                <button
+                  type="button"
+                  className={`chip${sourceTab === "project" ? " selected" : ""}`}
+                  title="This project's assets"
+                  onClick={() => {
+                    setSourceTab("project");
+                    setPreview(null);
+                  }}
+                >
+                  Project
+                </button>
+                <button
+                  type="button"
+                  className={`chip${sourceTab === "global" ? " selected" : ""}`}
+                  title="Your media library; picking copies the file into this project"
+                  onClick={() => {
+                    setSourceTab("global");
+                    setPreview(null);
+                  }}
+                >
+                  Library
+                </button>
+              </span>
+            )}
+            {kindToggle && sourceTab === "project" && (
+              <span className="wizard-presets">
+                <button
+                  type="button"
+                  className={`chip chip-icon${kindTab === "video" ? " selected" : ""}`}
+                  onClick={() => setKindTab("video")}
+                >
+                  <VideoIcon /> Video
+                </button>
+                <button
+                  type="button"
+                  className={`chip chip-icon${kindTab === "image" ? " selected" : ""}`}
+                  onClick={() => setKindTab("image")}
+                >
+                  <ImageIcon /> Images
+                </button>
+              </span>
+            )}
+            {hint && <span className="muted media-browser-hint">{hint}</span>}
+          </div>
           {!hideAdd &&
             (sourceTab === "global" ? (
               <AddGlobalScreenshotButton onImported={refreshGlobal} />
