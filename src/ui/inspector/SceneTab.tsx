@@ -1466,15 +1466,16 @@ export function SceneTab({
             onPick={(rel, meta) => {
               setModal(null);
               if (mediaTarget.kind === "device") {
+                const isVideo = meta?.kind !== "image";
                 void patchDoc(
                   (next) => {
                     const d = next.devices?.[0];
                     if (d) {
-                      d.media = {
-                        ...d.media,
-                        src: rel,
-                        kind: meta?.kind === "image" ? "image" : "video",
-                      };
+                      d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
+                      // A device video defaults the scene length to the clip, unless it was locked manually.
+                      if (isVideo && next.duration?.mode !== "manual") {
+                        next.duration = { mode: "follow-media", sourceDeviceId: d.id };
+                      }
                     }
                   },
                   { resync: true },
