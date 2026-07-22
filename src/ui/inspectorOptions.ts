@@ -129,6 +129,7 @@ export function sceneSections(input: {
         { id: "frame.cutout", label: "Cutout", chevron: true },
         { id: "frame.panel", label: "Panel colour", chevron: true },
         { id: "frame.chip", label: "Chip", chevron: true },
+        { id: "frame.decorations", label: "Decorations", chevron: true },
       );
     }
     sections.push({ id: "frame", label: "Overlay", rows });

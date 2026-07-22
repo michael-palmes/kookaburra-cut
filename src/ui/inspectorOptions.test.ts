@@ -192,6 +192,7 @@ describe("sceneSections Overlay section", () => {
       "frame.cutout",
       "frame.panel",
       "frame.chip",
+      "frame.decorations",
     ]);
   });
 

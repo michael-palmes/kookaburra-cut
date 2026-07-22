@@ -2902,6 +2902,54 @@ body {
   color: var(--text-primary);
   border-color: var(--accent);
 }
+/* One decoration's editor: a bordered card grouping its image, position, size, shape and layer. */
+.deco-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+.deco-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.deco-card-name {
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.deco-remove {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.deco-remove:hover {
+  color: var(--danger);
+}
+/* The card's extra padding leaves less width, so a decoration's slider rows use a narrower
+   label column and let the range fill and shrink, keeping the value on-screen. */
+.deco-card .slider-row-label {
+  min-width: 68px;
+}
+.deco-card .popover-row > .popover-inline:not(.slider-row-label) {
+  flex: 1;
+  min-width: 0;
+}
+.deco-card .popover-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
 .popover-inline {
   display: inline-flex;
   align-items: center;

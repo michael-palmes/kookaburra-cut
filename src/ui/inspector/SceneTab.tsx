@@ -32,6 +32,9 @@ import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit
 import type {
   FrameChipSpec,
   FrameCutoutSpec,
+  FrameDecorationLayer,
+  FrameDecorationShape,
+  FrameDecorationSpec,
   FrameShape,
   FrameSide,
 } from "../../toolkit/frame/types";
@@ -382,6 +385,22 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M6 10l1.6 1.6L11 8.4" />
         </svg>
       );
+    case "frame.decorations":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="6" width="10" height="10" rx="2" />
+          <path d="M5 14l2.5-2.5 1.8 1.8" />
+          <circle cx="14.5" cy="6" r="2.6" fill="currentColor" stroke="none" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -609,6 +628,20 @@ const CHIP_PRESETS: { id: string; label: string; colour: string; icon: ChipIconI
   { id: "warning", label: "Warning", colour: "#e0a020", icon: "triangle-alert" },
   { id: "error", label: "Error", colour: "#e05656", icon: "circle-x" },
 ];
+
+/** A decoration's display name: its asset basename. */
+function decorationLabel(src: string): string {
+  return src.split("/").pop() || src;
+}
+
+/** A unique decoration id from a picked asset's stem, deduped against the existing ids. */
+function nextDecorationId(src: string, taken: Set<string>): string {
+  const stem = decorationLabel(src).replace(/\.[^.]+$/, "") || "decoration";
+  if (!taken.has(stem)) return stem;
+  let n = 2;
+  while (taken.has(`${stem}-${n}`)) n++;
+  return `${stem}-${n}`;
+}
 
 /** The Camera section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
 function CameraSectionBody({
@@ -966,6 +999,10 @@ export function SceneTab({
   const toggleSection = useUiStore((s) => s.toggleInspectorSection);
 
   const [modal, setModal] = useState<"media" | null>(null);
+  // What a media pick targets: the scene device, or a decoration (append, or replace one by id).
+  const [mediaTarget, setMediaTarget] = useState<
+    { kind: "device" } | { kind: "decoration"; replaceId?: string }
+  >({ kind: "device" });
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
@@ -1251,6 +1288,75 @@ export function SceneTab({
         )}
         <div className="inspector-scene-sub">
           {`Scene ${sceneIndex + 1} · ${(scene.durationMs / 1000).toFixed(1)}s`}
+        </div>
+      </div>
+    </div>
+  );
+
+  // The media picker, shared by the device-media row and the decorations drill-in. Defined here
+  // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
+  const mediaModal = modal === "media" && (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal wizard-wide media-modal-wide">
+        <div className="modal-title-row">
+          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change media"}</h2>
+          <AddMediaButton
+            slug={slug}
+            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
+            onImported={() => setMediaRefresh((n) => n + 1)}
+          />
+        </div>
+        <div className="wizard-media-host">
+          <MediaBrowser
+            slug={slug}
+            projectPath={workspaceProjectPath(slug) ?? ""}
+            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
+            kindToggle={mediaTarget.kind === "device"}
+            hideAdd
+            refreshKey={mediaRefresh}
+            onPick={(rel, meta) => {
+              setModal(null);
+              if (mediaTarget.kind === "device") {
+                void patchDoc(
+                  (next) => {
+                    const d = next.devices?.[0];
+                    if (d) {
+                      d.media = {
+                        ...d.media,
+                        src: rel,
+                        kind: meta?.kind === "image" ? "image" : "video",
+                      };
+                    }
+                  },
+                  { resync: true },
+                );
+                return;
+              }
+              const decos = sceneFrame?.decorations ?? [];
+              const { replaceId } = mediaTarget;
+              const nextDecos: FrameDecorationSpec[] = replaceId
+                ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+                : [
+                    ...decos,
+                    {
+                      id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
+                      src: rel,
+                      position: [0.45, -0.5],
+                      size: 0.15,
+                      shape: "none",
+                      layer: "above",
+                    },
+                  ];
+              void patchDoc((next) => {
+                next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
+              });
+            }}
+          />
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={() => setModal(null)}>
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -1587,6 +1693,133 @@ export function SceneTab({
             </button>
           )}
         </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.decorations" && sceneFrame) {
+    const decos = sceneFrame.decorations ?? [];
+    // The override replaces the whole array, so materialise the resolved decorations then patch.
+    const writeDecos = (nextDecos: FrameDecorationSpec[]) =>
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
+      });
+    const patchDeco = (id: string, change: Partial<FrameDecorationSpec>) =>
+      writeDecos(decos.map((d) => (d.id === id ? { ...d, ...change } : d)));
+    const openImagePicker = (replaceId?: string) => {
+      setMediaTarget({ kind: "decoration", replaceId });
+      setModal("media");
+    };
+    const shapes: { id: FrameDecorationShape; label: string }[] = [
+      { id: "none", label: "Natural" },
+      { id: "circle", label: "Circle" },
+    ];
+    const layers: { id: FrameDecorationLayer; label: string }[] = [
+      { id: "below", label: "Behind" },
+      { id: "above", label: "In front" },
+    ];
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Decorations</div>
+        <div className="inspector-drill-body">
+          {decos.length === 0 && (
+            <p className="modal-hint">
+              Positioned images that break out of the panel, like a logo or avatar.
+            </p>
+          )}
+          {decos.map((d) => (
+            <div key={d.id} className="deco-card">
+              <div className="deco-card-head">
+                <span className="deco-card-name" title={d.src}>
+                  {decorationLabel(d.src)}
+                </span>
+                <button
+                  type="button"
+                  className="deco-remove"
+                  title="Remove decoration"
+                  aria-label="Remove decoration"
+                  onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
+                >
+                  Remove
+                </button>
+              </div>
+              <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
+                Replace image
+              </button>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Across</span>
+                <DebouncedRange
+                  value={d.position[0]}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  label="Horizontal position"
+                  onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Up/down</span>
+                <DebouncedRange
+                  value={d.position[1]}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  label="Vertical position"
+                  onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Size</span>
+                <DebouncedRange
+                  value={d.size}
+                  min={0.03}
+                  max={0.6}
+                  step={0.01}
+                  label="Size"
+                  onCommit={(v) => patchDeco(d.id, { size: v })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline">
+                  Shape
+                  <div className="wizard-presets">
+                    {shapes.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
+                        onClick={() => patchDeco(d.id, { shape: s.id })}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </span>
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline">
+                  Layer
+                  <div className="wizard-presets">
+                    {layers.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
+                        onClick={() => patchDeco(d.id, { layer: l.id })}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </span>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="btn" onClick={() => openImagePicker()}>
+            Add decoration
+          </button>
+        </div>
+        {mediaModal}
       </div>
     );
   }
@@ -2584,7 +2817,10 @@ export function SceneTab({
                         setDrillIn("text.edit");
                       });
                     },
-                    "device.media": () => setModal("media"),
+                    "device.media": () => {
+                      setMediaTarget({ kind: "device" });
+                      setModal("media");
+                    },
                     "device.editVideo": () =>
                       device?.media && onOpenEditVideo(sceneIndex, device.media.src),
                     "device.change": () => setDrillIn("device.change"),
@@ -2636,6 +2872,7 @@ export function SceneTab({
                     "frame.cutout": () => setDrillIn("frame.cutout"),
                     "frame.panel": () => setDrillIn("frame.panel"),
                     "frame.chip": () => setDrillIn("frame.chip"),
+                    "frame.decorations": () => setDrillIn("frame.decorations"),
                   }[row.id];
                   const value = {
                     "text.motion": doc?.textAnimation
@@ -2675,6 +2912,11 @@ export function SceneTab({
                       : undefined,
                     "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
                     "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
+                    "frame.decorations": sceneFrame
+                      ? sceneFrame.decorations?.length
+                        ? String(sceneFrame.decorations.length)
+                        : "None"
+                      : undefined,
                   }[row.id];
                   return (
                     <ActionRow
@@ -2719,46 +2961,7 @@ export function SceneTab({
       </div>
 
       {/* ── Modals (the EditBar's hosting, re-homed) ─────────────────────── */}
-      {modal === "media" && (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal wizard-wide media-modal-wide">
-            <div className="modal-title-row">
-              <h2>Change media</h2>
-              <AddMediaButton slug={slug} onImported={() => setMediaRefresh((n) => n + 1)} />
-            </div>
-            <div className="wizard-media-host">
-              <MediaBrowser
-                slug={slug}
-                projectPath={workspaceProjectPath(slug) ?? ""}
-                kindToggle
-                hideAdd
-                refreshKey={mediaRefresh}
-                onPick={(rel, meta) => {
-                  setModal(null);
-                  void patchDoc(
-                    (next) => {
-                      const d = next.devices?.[0];
-                      if (d) {
-                        d.media = {
-                          ...d.media,
-                          src: rel,
-                          kind: meta?.kind === "image" ? "image" : "video",
-                        };
-                      }
-                    },
-                    { resync: true },
-                  );
-                }}
-              />
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setModal(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {mediaModal}
     </>
   );
 }
