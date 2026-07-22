@@ -2913,6 +2913,9 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
 }
+.deco-card.selected {
+  border-color: var(--accent);
+}
 .deco-card-head {
   display: flex;
   align-items: center;
@@ -3541,6 +3544,29 @@ body {
   position: absolute;
   inset: 0;
   z-index: 6;
+}
+
+/* The decoration drag surface over the stage: a box per decoration, centred on its position, dragged to move. */
+.decoration-gizmo-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  touch-action: none;
+}
+.deco-gizmo-box {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: move;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.deco-gizmo-box:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.deco-gizmo-box.selected {
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 /* Centre guide lines while a pan drag is captured on the scene centre (Keynote yellow). */

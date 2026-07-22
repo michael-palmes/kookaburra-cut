@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
+import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { pushHistory } from "../../engine/history";
 import { fsUrl, type MediaMeta } from "../../engine/media";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
@@ -995,6 +996,8 @@ export function SceneTab({
   );
   const drillIn = useUiStore((s) => s.inspector.drillIn);
   const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
+  const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
+  const selectDeco = useDecorationEditStore((s) => s.select);
   const collapsed = useUiStore((s) => s.inspector.collapsed);
   const toggleSection = useUiStore((s) => s.toggleInspectorSection);
 
@@ -1728,7 +1731,11 @@ export function SceneTab({
             </p>
           )}
           {decos.map((d) => (
-            <div key={d.id} className="deco-card">
+            <div
+              key={d.id}
+              className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
+              onPointerDown={() => selectDeco(d.id)}
+            >
               <div className="deco-card-head">
                 <span className="deco-card-name" title={d.src}>
                   {decorationLabel(d.src)}

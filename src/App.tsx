@@ -121,6 +121,7 @@ import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
+import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { FirstRunDialog, NewProjectDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
@@ -1061,6 +1062,8 @@ export default function App() {
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
+  // The decoration gizmo arms while the inspector's Decorations drill-in is open.
+  const decorationEditOpen = useUiStore((s) => s.inspector.drillIn === "frame.decorations");
   // The F-001 consent request `loadProject` is currently blocked on, if any.
   const pendingTrust = useTrustStore((s) => s.pending);
   const camSceneIndex = useClockStore((s) =>
@@ -1689,6 +1692,19 @@ export default function App() {
                     <CameraToolOverlay
                       project={project}
                       sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {/* Decoration drag surface: DOM above the canvas, the letterboxed frame, armed while the Decorations drill-in is open. */}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  decorationEditOpen && (
+                    <DecorationGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
                       onDocChanged={handleDocChanged}
                     />
                   )}
