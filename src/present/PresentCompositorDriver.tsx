@@ -5,6 +5,7 @@ import { applyCameraTrack, sampleCameraTrack } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { renderComposited } from "../engine/compositor";
 import { preloadEnvironments } from "../engine/environments";
+import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
 import type { LoadedProject } from "../engine/project";
@@ -55,6 +56,10 @@ export function PresentCompositorDriver({
   const sceneTracks = useMemo(() => buildSceneCameraTracks(project.sceneDocs), [project]);
   const sceneStates = useMemo(
     () => buildSceneRenderStates(project.theme, project.sceneThemes),
+    [project],
+  );
+  const overlays = useMemo(
+    () => resolveOverlays(project.sceneFrames, project.sceneThemes),
     [project],
   );
 
@@ -217,7 +222,16 @@ export function PresentCompositorDriver({
     }
     if (!plan) applyCameraTrack(s.camera as PerspectiveCamera, project.cameraTrack, clockMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-    renderComposited(s.gl, s.scene, s.camera, getSceneHosts(), resolved, plan, statePlan);
+    renderComposited(
+      s.gl,
+      s.scene,
+      s.camera,
+      getSceneHosts(),
+      resolved,
+      plan,
+      statePlan,
+      overlays ?? undefined,
+    );
   }, 1);
 
   return null;

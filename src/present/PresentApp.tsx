@@ -5,6 +5,7 @@ import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { useEffectsStore } from "../engine/effectsStore";
+import { FramePanel } from "../engine/FramePanel";
 import { type AspectName, CAMERA, FORMATS, SHADOW_MAP_TYPE } from "../engine/format";
 import { PersistentLayer } from "../engine/PersistentLayer";
 import { setPresentSlideshowActive } from "../engine/presentMode";
@@ -343,6 +344,7 @@ export function PresentApp() {
                       }
                       doc={project.sceneDocs[i]}
                       theme={project.sceneThemes[i]}
+                      frame={project.sceneFrames[i]}
                     >
                       <SceneBackground />
                       <SceneComponent />
@@ -358,6 +360,25 @@ export function PresentApp() {
                     <project.persistent />
                   </PersistentLayer>
                 )}
+                {project.scenes.map((_, i) => {
+                  const frame = project.sceneFrames[i];
+                  if (!frame) return null;
+                  const slot = project.slots[i];
+                  const active = mode === "slideshow" && deck.sceneIndex === i;
+                  return (
+                    <FramePanel
+                      key={`${project.id}:panel:${slot.id}`}
+                      index={i}
+                      startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
+                      durationMs={
+                        active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
+                      }
+                      doc={project.sceneDocs[i]}
+                      theme={project.sceneThemes[i]}
+                      frame={frame}
+                    />
+                  );
+                })}
                 <CommittedProbe />
               </Suspense>
             </ProjectIdContext.Provider>

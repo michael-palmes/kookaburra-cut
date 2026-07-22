@@ -1,5 +1,6 @@
+import { useContext } from "react";
 import { useFormat } from "../../engine/format";
-import { useSceneContext } from "../../engine/sceneContext";
+import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc } from "../../engine/sceneDoc";
 import type { SceneTextAlign } from "../../engine/sceneDocSchema";
 import { useSceneConsumesAnyTextKey } from "../../engine/textKeyRegistry";
@@ -33,6 +34,8 @@ export interface TitleBlockProps {
   subtitleColor?: "text" | "muted" | "accent" | (string & {});
   /** Subtitle reveal delay behind the title, ms (default 350). */
   subtitleDelayMs?: number;
+  /** Register the title/subtitle text keys (default true). `TextFallback` passes false so its own render can't flip the fallback's "is a consumer mounted" gate (which would mount/unmount-loop). */
+  register?: boolean;
 }
 
 /** Title + optional subtitle with theme-scale sizing and safe-area alignment: the standard top-of-scene text block. Alignment resolves prop → sidecar `textLayout.align` → centre, so the inspector can steer scenes that don't hard-code it. */
@@ -44,11 +47,15 @@ export function TitleBlock(props: TitleBlockProps) {
     to = 900,
     position = [0, 0, 0],
     subtitleDelayMs = SUBTITLE_DELAY_MS,
+    register = true,
   } = props;
   const theme = useTheme();
   const format = useFormat();
   const doc = useSceneDoc();
+  const claimed = useContext(SceneTextClaimedContext);
   const portrait = format.aspect < 1;
+  // The overlay panel renders the headline instead; suppress the in-world one.
+  if (claimed) return null;
   const align = props.align ?? doc?.textLayout?.align ?? "center";
   const titleSize = props.fontSize ?? (portrait ? 0.34 : 0.56);
   const subtitleSize = titleSize / theme.typography.scale ** SUBTITLE_SCALE_STEPS;
@@ -73,7 +80,7 @@ export function TitleBlock(props: TitleBlockProps) {
         position={at(titleY)}
         fontSize={titleSize}
         color={props.titleColor}
-        textKey="title"
+        textKey={register ? "title" : undefined}
         anchorX={align}
         textAlign={align}
         maxWidth={props.maxWidth}
@@ -87,7 +94,7 @@ export function TitleBlock(props: TitleBlockProps) {
           fontSize={subtitleSize}
           face="body"
           color={props.subtitleColor}
-          textKey="subtitle"
+          textKey={register ? "subtitle" : undefined}
           defaultColor="muted"
           anchorX={align}
           textAlign={align}
@@ -108,5 +115,5 @@ export function TextFallback() {
   const consumed = useSceneConsumesAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
   const title = doc?.text?.title ?? "";
   if (consumed || !title.trim()) return null;
-  return <TitleBlock title={title} subtitle={doc?.text?.subtitle ?? ""} />;
+  return <TitleBlock title={title} subtitle={doc?.text?.subtitle ?? ""} register={false} />;
 }

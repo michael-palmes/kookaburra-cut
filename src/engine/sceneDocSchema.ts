@@ -18,6 +18,8 @@ import type {
   DevicePlacement,
   DeviceShadowMode,
 } from "../toolkit/device/Device";
+import type { FrameOverrideSpec } from "../toolkit/frame/types";
+import { parseFrameOverride } from "./frameSchema";
 
 /** The per-scene sidecar schema (`scenes/<stem>.json` beside a scene's TSX): holds everything machine-editable (name, text, devices, camera, duration), written atomically via `write_scene_doc`; this module is pure (types + validation only) so it's unit-testable and safe to import anywhere, with IO and hooks living in `sceneDoc.ts`. Field docs: the kookaburra-scene-authoring skill; rationale: docs/decisions.md. */
 
@@ -189,6 +191,8 @@ export interface SceneDoc {
   textAnimationForce?: boolean;
   /** Partial lighting override: each present field fully replaces the theme's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `key` + `shadow` override rather than a whole new theme. */
   lighting?: Partial<ThemeLighting>;
+  /** Overlay override: merges over the manifest's deck-wide `frame` for this scene (see `mergeFrameSpec`); `cutout` may be omitted to inherit the deck's shape, and `{enabled:false}` opts the scene out entirely. */
+  frame?: FrameOverrideSpec;
   /** The layered-screenshot composition (one per scene; layers carry the multiplicity). Deep graph validation lives in `sceneLayeredScreenshot.ts`. */
   layeredScreenshot?: SceneDocLayeredScreenshot;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other track's keys. */
@@ -358,6 +362,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.lighting !== undefined) {
     const lighting = parseLightingOverride(doc.lighting, source);
     if (lighting) out.lighting = lighting;
+  }
+  if (doc.frame !== undefined) {
+    const frame = parseFrameOverride(doc.frame, source);
+    if (frame) out.frame = frame;
   }
   if (doc.layeredScreenshot !== undefined) {
     if (validLayeredScreenshot(doc.layeredScreenshot)) {

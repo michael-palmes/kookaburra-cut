@@ -40,7 +40,9 @@ import {
   verifyAllFormats,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
+import { FramePanel } from "./engine/FramePanel";
 import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
+import { mergeFrameSpec } from "./engine/frameSchema";
 import {
   bindHistory,
   type HistoryChange,
@@ -121,6 +123,7 @@ import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
+import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { FirstRunDialog, NewProjectDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
@@ -462,11 +465,18 @@ export default function App() {
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
   const handleDocChanged = useCallback(
     (sceneIndex: number, doc: SceneDoc) => {
-      setProject((prev) =>
-        prev && sceneIndex < prev.sceneDocs.length
-          ? { ...prev, sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)) }
-          : prev,
-      );
+      setProject((prev) => {
+        if (!prev || sceneIndex >= prev.sceneDocs.length) return prev;
+        // Re-resolve this scene's overlay from the new sidecar override, mirroring loadProject:
+        // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
+        const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
+        const resolvedFrame = merged?.enabled === false ? undefined : merged;
+        return {
+          ...prev,
+          sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)),
+          sceneFrames: prev.sceneFrames.map((f, i) => (i === sceneIndex ? resolvedFrame : f)),
+        };
+      });
       const id = loadedProjectRef.current?.id;
       if (id && isWorkspaceProjectId(id)) armPollBaseline(workspaceSlug(id));
     },
@@ -1059,6 +1069,8 @@ export default function App() {
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
+  // The decoration gizmo arms while the inspector's Decorations drill-in is open.
+  const decorationEditOpen = useUiStore((s) => s.inspector.drillIn === "frame.decorations");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -1399,6 +1411,7 @@ export default function App() {
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          sceneFrames: project.sceneFrames,
           audio: project.audio,
           codec: "libx264",
           encode: sel.encode,
@@ -1441,6 +1454,7 @@ export default function App() {
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          sceneFrames: project.sceneFrames,
           audio: project.audio,
           codec: "libx264",
         },
@@ -1624,6 +1638,7 @@ export default function App() {
                       sceneDocs={project.sceneDocs}
                       theme={project.theme}
                       sceneThemes={project.sceneThemes}
+                      sceneFrames={project.sceneFrames}
                       commitStamp={project}
                     />
                   )}
@@ -1642,6 +1657,7 @@ export default function App() {
                             durationMs={slot.durationMs}
                             doc={project.sceneDocs[i]}
                             theme={project.sceneThemes[i]}
+                            frame={project.sceneFrames[i]}
                           >
                             {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
                             <SceneBackground />
@@ -1659,6 +1675,23 @@ export default function App() {
                           <project.persistent />
                         </PersistentLayer>
                       )}
+                      {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
+                      {project?.scenes.map((_, i) => {
+                        const frame = project.sceneFrames[i];
+                        if (!frame) return null;
+                        const slot = project.slots[i];
+                        return (
+                          <FramePanel
+                            key={`${project.id}:panel:${slot.id}`}
+                            index={i}
+                            startMs={slot.startMs}
+                            durationMs={slot.durationMs}
+                            doc={project.sceneDocs[i]}
+                            theme={project.sceneThemes[i]}
+                            frame={frame}
+                          />
+                        );
+                      })}
                     </Suspense>
                   </ProjectIdContext.Provider>
                 </Canvas>
@@ -1682,6 +1715,19 @@ export default function App() {
                           onDocChanged={handleDocChanged}
                         />
                       ))}
+                {/* Decoration drag surface: DOM above the canvas, the letterboxed frame, armed while the Decorations drill-in is open. */}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  decorationEditOpen && (
+                    <DecorationGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
               </div>
 
               {!isAutoRun && !error && (

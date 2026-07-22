@@ -85,6 +85,8 @@ export interface AnimatedHeadlineProps {
   textAlign?: "left" | "center" | "right";
   /** Where `position` sits on the block's X axis (default "center", the legacy contract). */
   anchorX?: "left" | "center" | "right";
+  /** Where `position` sits on the block's Y axis (default troika "middle"); "top" anchors multi-line blocks by their top edge so following content can budget below them. */
+  anchorY?: "top" | "middle" | "bottom";
   /** Wrap width in world units; unset means no wrapping, `\n` is the only line break. */
   maxWidth?: number;
 }
@@ -94,6 +96,7 @@ function layoutProps(props: AnimatedHeadlineProps) {
   return {
     ...(props.textAlign ? { textAlign: props.textAlign } : {}),
     ...(props.maxWidth !== undefined ? { maxWidth: props.maxWidth } : {}),
+    ...(props.anchorY ? { anchorY: props.anchorY } : {}),
   };
 }
 

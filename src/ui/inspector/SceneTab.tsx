@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
+import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -29,6 +30,16 @@ import { preloadAppFonts } from "../../theme/fonts";
 import type { TextAnimationSpec, Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
+import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
+import type {
+  FrameChipSpec,
+  FrameCutoutSpec,
+  FrameDecorationLayer,
+  FrameDecorationShape,
+  FrameDecorationSpec,
+  FrameShape,
+  FrameSide,
+} from "../../toolkit/frame/types";
 import {
   SHADER_BACKGROUND_IDS,
   SHADER_BACKGROUND_PRESETS,
@@ -66,6 +77,15 @@ import { RotationDrillIn } from "./RotationDrillIn";
 import { ActionRow, DrillBack, NumericField, SectionHeader } from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
+
+const FRAME_SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule"];
+const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
+  rect: "Rectangle",
+  "rounded-rect": "Rounded",
+  squircle: "Squircle",
+  circle: "Circle",
+  capsule: "Capsule",
+};
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
@@ -339,6 +359,116 @@ function SceneRowIcon({ id }: { id: string }) {
           <rect x="10" y="5" width="7" height="10" rx="1.2" opacity="0.45" />
         </svg>
       );
+    case "frame.enabled":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <rect x="5.5" y="6" width="5" height="8" rx="1" opacity="0.5" />
+        </svg>
+      );
+    case "frame.cutout":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <rect x="5.5" y="6" width="5.5" height="8" rx="1.4" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "frame.panel":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <circle cx="13" cy="10" r="2.2" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "frame.chip":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="6.5" width="15" height="7" rx="3.5" />
+          <path d="M6 10l1.6 1.6L11 8.4" />
+        </svg>
+      );
+    case "frame.decorations":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="6" width="10" height="10" rx="2" />
+          <path d="M5 14l2.5-2.5 1.8 1.8" />
+          <circle cx="14.5" cy="6" r="2.6" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "frame.icon":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <circle cx="10" cy="10" r="7" />
+          <circle cx="7.5" cy="8.5" r="0.6" fill="currentColor" stroke="none" />
+          <circle cx="12.5" cy="8.5" r="0.6" fill="currentColor" stroke="none" />
+          <path d="M7 12.3c.8 1 1.9 1.5 3 1.5s2.2-.5 3-1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "frame.text":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 6h12" />
+          <path d="M4 10h8" />
+          <path d="M4 14h11" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -425,6 +555,160 @@ function LidRow({
       <span className="inspector-unit">{`${Math.round(v)}°`}</span>
     </div>
   );
+}
+
+/** Inline toggle row for whether this scene shows the deck overlay: off writes `frame.enabled: false`, on clears it back to the deck default. */
+function FrameEnabledRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) => void }) {
+  return (
+    <label className="inspector-duration-row" title="Show the deck's overlay panel on this scene">
+      <span className="action-row-icon">
+        <SceneRowIcon id="frame.enabled" />
+      </span>
+      <span className="action-row-label">Show on this scene</span>
+      <input
+        type="checkbox"
+        checked={on}
+        aria-label="Show the overlay on this scene"
+        onChange={(e) => onToggle(e.target.checked)}
+      />
+    </label>
+  );
+}
+
+/** Cutout-shape tiles, the `BgTypeIcon` sibling scoped to `FrameShape`. */
+function FrameShapeIcon({ id }: { id: FrameShape }) {
+  const shape = {
+    rect: <rect x="4" y="4" width="12" height="12" />,
+    "rounded-rect": <rect x="4" y="4" width="12" height="12" rx="3" />,
+    squircle: <path d="M10 4c4.5 0 6 1.5 6 6s-1.5 6-6 6-6-1.5-6-6 1.5-6 6-6z" />,
+    circle: <circle cx="10" cy="10" r="6.5" />,
+    capsule: <rect x="3" y="6" width="14" height="8" rx="4" />,
+  }[id];
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {shape}
+    </svg>
+  );
+}
+
+/** Small glyphs for the cutout sliders (size / corner radius / inset). */
+function CutoutSliderIcon({ id }: { id: "size" | "radius" | "inset" }) {
+  const glyph = {
+    size: (
+      <>
+        <path d="M4 8V4h4" />
+        <path d="M16 12v4h-4" />
+      </>
+    ),
+    radius: <path d="M5 16V9a4 4 0 0 1 4-4h7" />,
+    inset: (
+      <>
+        <rect x="3" y="3" width="14" height="14" rx="1.5" />
+        <rect x="6.5" y="6.5" width="7" height="7" rx="1" opacity="0.55" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** Inline SVG previews for the chip icon set (the same Lucide paths the render's PNGs were rasterised from), tinted via currentColor. */
+const CHIP_ICON_GLYPHS: Record<ChipIconId, ReactNode> = {
+  "circle-check": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </>
+  ),
+  "triangle-alert": (
+    <>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+  "circle-x": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m15 9-6 6" />
+      <path d="m9 9 6 6" />
+    </>
+  ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </>
+  ),
+  star: (
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </>
+  ),
+};
+
+function ChipIconPreview({ id }: { id: ChipIconId }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {CHIP_ICON_GLYPHS[id]}
+    </svg>
+  );
+}
+
+/** Quick status styles: each seeds the chip's label, colour and icon together. */
+const CHIP_PRESETS: { id: string; label: string; colour: string; icon: ChipIconId }[] = [
+  { id: "released", label: "Released", colour: "#2fb170", icon: "circle-check" },
+  { id: "testing", label: "In testing", colour: "#3b82f6", icon: "circle-check" },
+  { id: "warning", label: "Warning", colour: "#e0a020", icon: "triangle-alert" },
+  { id: "error", label: "Error", colour: "#e05656", icon: "circle-x" },
+];
+
+/** A decoration's display name: its asset basename. */
+function decorationLabel(src: string): string {
+  return src.split("/").pop() || src;
+}
+
+/** A unique decoration id from a picked asset's stem, deduped against the existing ids. */
+function nextDecorationId(src: string, taken: Set<string>): string {
+  const stem = decorationLabel(src).replace(/\.[^.]+$/, "") || "decoration";
+  if (!taken.has(stem)) return stem;
+  let n = 2;
+  while (taken.has(`${stem}-${n}`)) n++;
+  return `${stem}-${n}`;
 }
 
 /** The Camera section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
@@ -686,6 +970,26 @@ const ALIGN_OPTIONS: { id: SceneTextAlign; label: string }[] = [
   { id: "right", label: "Right" },
 ];
 
+/** Common header emojis for app and product-release presentations; a pick replaces the icon field. */
+const HEADER_EMOJIS = [
+  "🚀",
+  "✨",
+  "🎉",
+  "🔥",
+  "⚡",
+  "🆕",
+  "📢",
+  "🎯",
+  "🛠️",
+  "🐛",
+  "🔒",
+  "💡",
+  "⭐",
+  "📦",
+  "✅",
+  "📈",
+];
+
 /** Background fill-type icons for the drill-in's tile grid; same 20-viewBox stroke style as SceneRowIcon. */
 function BgTypeIcon({ id }: { id: string }) {
   switch (id) {
@@ -826,10 +1130,25 @@ export function SceneTab({
   );
   const drillIn = useUiStore((s) => s.inspector.drillIn);
   const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
+  const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
+  const selectDeco = useDecorationEditStore((s) => s.select);
+  const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
+  const requestDecoMedia = useDecorationEditStore((s) => s.requestMedia);
+  // The gizmo's "Change media" action routes through here to reuse the scene media picker.
+  useEffect(() => {
+    if (!decoMediaRequestId) return;
+    setMediaTarget({ kind: "decoration", replaceId: decoMediaRequestId });
+    setModal("media");
+    requestDecoMedia(null);
+  }, [decoMediaRequestId, requestDecoMedia]);
   const collapsed = useUiStore((s) => s.inspector.collapsed);
   const toggleSection = useUiStore((s) => s.toggleInspectorSection);
 
   const [modal, setModal] = useState<"media" | null>(null);
+  // What a media pick targets: the scene device, or a decoration (append, or replace one by id).
+  const [mediaTarget, setMediaTarget] = useState<
+    { kind: "device" } | { kind: "decoration"; replaceId?: string }
+  >({ kind: "device" });
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
@@ -1030,7 +1349,13 @@ export function SceneTab({
     setDrillIn(null);
   }
 
-  const sections = sceneSections({ doc, slotsCount: project.slots.length });
+  const sceneFrame = project.sceneFrames[sceneIndex];
+  const sections = sceneSections({
+    doc,
+    slotsCount: project.slots.length,
+    deckFrame: project.deckFrame !== undefined,
+    frame: sceneFrame,
+  });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
   const transitionValue =
@@ -1112,6 +1437,75 @@ export function SceneTab({
         )}
         <div className="inspector-scene-sub">
           {`Scene ${sceneIndex + 1} · ${(scene.durationMs / 1000).toFixed(1)}s`}
+        </div>
+      </div>
+    </div>
+  );
+
+  // The media picker, shared by the device-media row and the decorations drill-in. Defined here
+  // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
+  const mediaModal = modal === "media" && (
+    <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div className="modal wizard-wide media-modal-wide">
+        <div className="modal-title-row">
+          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change media"}</h2>
+          <AddMediaButton
+            slug={slug}
+            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
+            onImported={() => setMediaRefresh((n) => n + 1)}
+          />
+        </div>
+        <div className="wizard-media-host">
+          <MediaBrowser
+            slug={slug}
+            projectPath={workspaceProjectPath(slug) ?? ""}
+            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
+            kindToggle={mediaTarget.kind === "device"}
+            hideAdd
+            refreshKey={mediaRefresh}
+            onPick={(rel, meta) => {
+              setModal(null);
+              if (mediaTarget.kind === "device") {
+                void patchDoc(
+                  (next) => {
+                    const d = next.devices?.[0];
+                    if (d) {
+                      d.media = {
+                        ...d.media,
+                        src: rel,
+                        kind: meta?.kind === "image" ? "image" : "video",
+                      };
+                    }
+                  },
+                  { resync: true },
+                );
+                return;
+              }
+              const decos = sceneFrame?.decorations ?? [];
+              const { replaceId } = mediaTarget;
+              const nextDecos: FrameDecorationSpec[] = replaceId
+                ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+                : [
+                    ...decos,
+                    {
+                      id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
+                      src: rel,
+                      position: [0.45, -0.5],
+                      size: 0.15,
+                      shape: "none",
+                      layer: "above",
+                    },
+                  ];
+              void patchDoc((next) => {
+                next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
+              });
+            }}
+          />
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={() => setModal(null)}>
+            Cancel
+          </button>
         </div>
       </div>
     </div>
@@ -1208,6 +1602,482 @@ export function SceneTab({
           </button>
         </div>
         {themeMenu.menuElement}
+      </div>
+    );
+  }
+  if (drillIn === "frame.cutout" && sceneFrame) {
+    const cutout = sceneFrame.cutout;
+    // The override replaces the deck's cutout whole, so materialise the resolved cutout then patch the field.
+    const patchCutout = (change: Partial<FrameCutoutSpec>) =>
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), cutout: { ...cutout, ...change } };
+      });
+    const sides: { id: FrameSide; label: string }[] = [
+      { id: "start", label: "Left" },
+      { id: "end", label: "Right" },
+    ];
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Cutout</div>
+        <div className="inspector-drill-body">
+          <div className="bg-type-grid" role="tablist" aria-label="Cutout shape">
+            {FRAME_SHAPES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={cutout.shape === s}
+                className={`bg-type-tile${cutout.shape === s ? " selected" : ""}`}
+                onClick={() => patchCutout({ shape: s })}
+              >
+                <FrameShapeIcon id={s} />
+                {FRAME_SHAPE_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          <div className="popover-row">
+            <span className="popover-inline">
+              Side
+              <div className="wizard-presets">
+                {sides.map((sd) => (
+                  <button
+                    key={sd.id}
+                    type="button"
+                    className={`chip${(cutout.side ?? "start") === sd.id ? " selected" : ""}`}
+                    onClick={() => patchCutout({ side: sd.id })}
+                  >
+                    {sd.label}
+                  </button>
+                ))}
+              </div>
+            </span>
+          </div>
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">
+              <CutoutSliderIcon id="size" />
+              Size
+            </span>
+            <DebouncedRange
+              value={cutout.size ?? 0.56}
+              min={0.3}
+              max={0.85}
+              step={0.01}
+              label="Cutout size"
+              onCommit={(v) => patchCutout({ size: v })}
+            />
+          </div>
+          {cutout.shape === "rounded-rect" && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">
+                <CutoutSliderIcon id="radius" />
+                Corner radius
+              </span>
+              <DebouncedRange
+                value={cutout.radius ?? 0.12}
+                min={0}
+                max={0.5}
+                step={0.01}
+                label="Corner radius"
+                onCommit={(v) => patchCutout({ radius: v })}
+              />
+            </div>
+          )}
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">
+              <CutoutSliderIcon id="inset" />
+              Inset
+            </span>
+            <DebouncedRange
+              value={cutout.inset ?? 0}
+              min={0}
+              max={0.2}
+              step={0.01}
+              label="Inset"
+              onCommit={(v) => patchCutout({ inset: v })}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.panel" && sceneFrame) {
+    const resolveColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? sceneTheme?.colors.background ?? "#1e2226";
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Panel colour</div>
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <span className="popover-inline">
+              Colour
+              <ColourPicker
+                value={resolveColour(sceneFrame.background)}
+                label="Panel colour"
+                onCommit={(hex) =>
+                  void patchDoc((next) => {
+                    next.frame = { ...(next.frame ?? {}), background: hex };
+                  })
+                }
+                onReset={() =>
+                  void patchDoc((next) => {
+                    if (next.frame) delete next.frame.background;
+                  })
+                }
+              />
+            </span>
+          </div>
+          <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.chip" && sceneFrame) {
+    const chip = sceneFrame.chip;
+    const accent = sceneTheme?.colors.accent ?? "#3ec6b0";
+    // Materialise the resolved chip then patch a field; `null` removes the chip entirely.
+    const setChip = (change: Partial<FrameChipSpec> | null) =>
+      void patchDoc((next) => {
+        if (change === null) {
+          if (next.frame) delete next.frame.chip;
+          return;
+        }
+        const base: FrameChipSpec = chip ?? { label: "Released" };
+        next.frame = { ...(next.frame ?? {}), chip: { ...base, ...change } };
+      });
+    const chipColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? accent;
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Chip</div>
+        <div className="inspector-drill-body">
+          {chip ? (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Preset</span>
+                <div className="wizard-presets">
+                  {CHIP_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="chip"
+                      onClick={() => setChip({ label: p.label, colour: p.colour, icon: p.icon })}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <TextFieldRow
+                label="Label"
+                value={chip.label}
+                placeholder="Released"
+                colour={{
+                  value: chipColour(chip.colour),
+                  defaultValue: accent,
+                  onCommit: (hex) => setChip({ colour: hex }),
+                  onReset: () => setChip({ colour: undefined }),
+                }}
+                onChange={(t) => setChip({ label: t })}
+              />
+              <div className="wizard-field">
+                <span className="wizard-label">Mark</span>
+                <div className="chip-icon-grid">
+                  <button
+                    type="button"
+                    className={`chip-icon-tile${!chip.icon ? " selected" : ""}`}
+                    title="No mark"
+                    onClick={() => setChip({ icon: undefined })}
+                  >
+                    <span className="chip-icon-none">None</span>
+                  </button>
+                  {CHIP_ICON_IDS.map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`chip-icon-tile${resolveChipIconId(chip.icon) === id ? " selected" : ""}`}
+                      title={id}
+                      onClick={() => setChip({ icon: id })}
+                    >
+                      <ChipIconPreview id={id} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="wizard-field">
+                <span className="wizard-label">Custom mark</span>
+                <input
+                  className="modal-input"
+                  value={chip.icon && !resolveChipIconId(chip.icon) ? chip.icon : ""}
+                  placeholder="an emoji or assets/icon.png"
+                  aria-label="Custom chip mark"
+                  onChange={(e) => setChip({ icon: e.target.value.trim() || undefined })}
+                />
+              </div>
+              <div className="inspector-drill-actions">
+                <button type="button" className="btn danger" onClick={() => setChip(null)}>
+                  Remove chip
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                setChip({ label: "Released", colour: "#2fb170", icon: "circle-check" })
+              }
+            >
+              Add chip
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.decorations" && sceneFrame) {
+    const decos = sceneFrame.decorations ?? [];
+    // The override replaces the whole array, so materialise the resolved decorations then patch.
+    const writeDecos = (nextDecos: FrameDecorationSpec[]) =>
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
+      });
+    const patchDeco = (id: string, change: Partial<FrameDecorationSpec>) =>
+      writeDecos(decos.map((d) => (d.id === id ? { ...d, ...change } : d)));
+    const openImagePicker = (replaceId?: string) => {
+      setMediaTarget({ kind: "decoration", replaceId });
+      setModal("media");
+    };
+    const shapes: { id: FrameDecorationShape; label: string }[] = [
+      { id: "none", label: "Natural" },
+      { id: "circle", label: "Circle" },
+    ];
+    const layers: { id: FrameDecorationLayer; label: string }[] = [
+      { id: "below", label: "Behind" },
+      { id: "above", label: "In front" },
+    ];
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Decorations</div>
+        <div className="inspector-drill-body">
+          {decos.length === 0 && (
+            <p className="modal-hint">
+              Positioned images that break out of the panel, like a logo or avatar.
+            </p>
+          )}
+          {decos.map((d) => (
+            <div
+              key={d.id}
+              className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
+              onPointerDown={() => selectDeco(d.id)}
+            >
+              <div className="deco-card-head">
+                <span className="deco-card-name" title={d.src}>
+                  {decorationLabel(d.src)}
+                </span>
+                <button
+                  type="button"
+                  className="deco-remove"
+                  title="Remove decoration"
+                  aria-label="Remove decoration"
+                  onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
+                >
+                  Remove
+                </button>
+              </div>
+              <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
+                Replace image
+              </button>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Across</span>
+                <DebouncedRange
+                  value={d.position[0]}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  label="Horizontal position"
+                  onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Up/down</span>
+                <DebouncedRange
+                  value={d.position[1]}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  label="Vertical position"
+                  onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Size</span>
+                <DebouncedRange
+                  value={d.size}
+                  min={0.03}
+                  max={0.6}
+                  step={0.01}
+                  label="Size"
+                  onCommit={(v) => patchDeco(d.id, { size: v })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Rotation</span>
+                <DebouncedRange
+                  value={d.rotationDeg ?? 0}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  label="Rotation"
+                  onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline">
+                  Shape
+                  <div className="wizard-presets">
+                    {shapes.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
+                        onClick={() => patchDeco(d.id, { shape: s.id })}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </span>
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline">
+                  Layer
+                  <div className="wizard-presets">
+                    {layers.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
+                        onClick={() => patchDeco(d.id, { layer: l.id })}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </span>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="btn" onClick={() => openImagePicker()}>
+            Add decoration
+          </button>
+        </div>
+        {mediaModal}
+      </div>
+    );
+  }
+  if (drillIn === "frame.icon" && sceneFrame) {
+    const setIcon = (v: string | undefined) =>
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}) };
+        if (v) next.frame.icon = v;
+        else delete next.frame.icon;
+      });
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Header icon</div>
+        <div className="inspector-drill-body">
+          <TextFieldRow
+            label="Icon"
+            value={sceneFrame.icon ?? ""}
+            placeholder="an emoji or assets/icon.png"
+            onChange={(t) => setIcon(t.trim() || undefined)}
+          />
+          <div className="wizard-field">
+            <span className="wizard-label">Common</span>
+            <div className="chip-icon-grid">
+              {HEADER_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  title={e}
+                  className={`chip-icon-tile emoji${sceneFrame.icon === e ? " selected" : ""}`}
+                  onClick={() => setIcon(e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="modal-hint">Drawn above the title. An emoji, or a project image path.</p>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.text" && sceneFrame) {
+    const align = sceneFrame.textAlign ?? "left";
+    const claimed = sceneFrame.claimsSceneText !== false;
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Text</div>
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Align</span>
+            <div className="wizard-presets">
+              {ALIGN_OPTIONS.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`chip${align === a.id ? " selected" : ""}`}
+                  onClick={() =>
+                    void patchDoc((next) => {
+                      next.frame = { ...(next.frame ?? {}) };
+                      if (a.id === "left") delete next.frame.textAlign;
+                      else next.frame.textAlign = a.id;
+                    })
+                  }
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="modal-hint">Aligns the panel title, subtitle, bullets and chip.</p>
+          <label
+            className="inspector-duration-row"
+            title="Show the scene's title, subtitle and bullets in the panel"
+          >
+            <span className="action-row-label">Use scene text in the panel</span>
+            <input
+              type="checkbox"
+              checked={claimed}
+              aria-label="Use scene text in the panel"
+              onChange={(e) =>
+                void patchDoc((next) => {
+                  next.frame = { ...(next.frame ?? {}) };
+                  if (e.target.checked) delete next.frame.claimsSceneText;
+                  else next.frame.claimsSceneText = false;
+                })
+              }
+            />
+          </label>
+          <p className="modal-hint">
+            When off, the scene's own headline shows in the frame instead.
+          </p>
+        </div>
       </div>
     );
   }
@@ -2174,6 +3044,23 @@ export function SceneTab({
                       />
                     );
                   }
+                  if (row.id === "frame.enabled") {
+                    return (
+                      <FrameEnabledRow
+                        key={row.id}
+                        on={sceneFrame !== undefined}
+                        onToggle={(on) =>
+                          void patchDoc((next) => {
+                            if (on) {
+                              if (next.frame) delete next.frame.enabled;
+                            } else {
+                              next.frame = { ...(next.frame ?? {}), enabled: false };
+                            }
+                          })
+                        }
+                      />
+                    );
+                  }
                   const onClick = {
                     "text.edit": () => {
                       setTextValues({});
@@ -2200,7 +3087,10 @@ export function SceneTab({
                         setDrillIn("text.edit");
                       });
                     },
-                    "device.media": () => setModal("media"),
+                    "device.media": () => {
+                      setMediaTarget({ kind: "device" });
+                      setModal("media");
+                    },
                     "device.editVideo": () =>
                       device?.media && onOpenEditVideo(sceneIndex, device.media.src),
                     "device.change": () => setDrillIn("device.change"),
@@ -2252,6 +3142,12 @@ export function SceneTab({
                       setDrillIn("style.background");
                     },
                     "style.shadow": () => setDrillIn("style.shadow"),
+                    "frame.cutout": () => setDrillIn("frame.cutout"),
+                    "frame.panel": () => setDrillIn("frame.panel"),
+                    "frame.chip": () => setDrillIn("frame.chip"),
+                    "frame.decorations": () => setDrillIn("frame.decorations"),
+                    "frame.icon": () => setDrillIn("frame.icon"),
+                    "frame.text": () => setDrillIn("frame.text"),
                   }[row.id];
                   const value = {
                     "text.motion": doc?.textAnimation
@@ -2285,6 +3181,21 @@ export function SceneTab({
                       : undefined,
                     "style.shadow": device
                       ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
+                      : undefined,
+                    "frame.cutout": sceneFrame
+                      ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape]
+                      : undefined,
+                    "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
+                    "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
+                    "frame.decorations": sceneFrame
+                      ? sceneFrame.decorations?.length
+                        ? String(sceneFrame.decorations.length)
+                        : "None"
+                      : undefined,
+                    "frame.icon": sceneFrame ? (sceneFrame.icon ?? "None") : undefined,
+                    "frame.text": sceneFrame
+                      ? (ALIGN_OPTIONS.find((a) => a.id === (sceneFrame.textAlign ?? "left"))
+                          ?.label ?? "Left")
                       : undefined,
                   }[row.id];
                   return (
@@ -2330,46 +3241,7 @@ export function SceneTab({
       </div>
 
       {/* ── Modals (the EditBar's hosting, re-homed) ─────────────────────── */}
-      {modal === "media" && (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal wizard-wide media-modal-wide">
-            <div className="modal-title-row">
-              <h2>Change media</h2>
-              <AddMediaButton slug={slug} onImported={() => setMediaRefresh((n) => n + 1)} />
-            </div>
-            <div className="wizard-media-host">
-              <MediaBrowser
-                slug={slug}
-                projectPath={workspaceProjectPath(slug) ?? ""}
-                kindToggle
-                hideAdd
-                refreshKey={mediaRefresh}
-                onPick={(rel, meta) => {
-                  setModal(null);
-                  void patchDoc(
-                    (next) => {
-                      const d = next.devices?.[0];
-                      if (d) {
-                        d.media = {
-                          ...d.media,
-                          src: rel,
-                          kind: meta?.kind === "image" ? "image" : "video",
-                        };
-                      }
-                    },
-                    { resync: true },
-                  );
-                }}
-              />
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setModal(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {mediaModal}
     </>
   );
 }

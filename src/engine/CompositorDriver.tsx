@@ -2,6 +2,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import type { PerspectiveCamera } from "three";
 import type { Theme } from "../theme/tokens";
+import type { FrameSpec } from "../toolkit/frame/types";
 import { useCameraEditStore } from "./cameraEditStore";
 import {
   applyCameraPose,
@@ -14,6 +15,7 @@ import { renderComposited } from "./compositor";
 import { preloadEnvironments } from "./environments";
 import { stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
+import { resolveOverlays } from "./overlayPlan";
 import {
   buildSceneCameraTracks,
   hasSceneCameraTracks,
@@ -33,6 +35,7 @@ export function CompositorDriver({
   sceneDocs,
   theme,
   sceneThemes,
+  sceneFrames,
   commitStamp,
 }: {
   /** The loaded project's id, guards the camera-edit draft against a mid-switch mismatch. */
@@ -44,6 +47,8 @@ export function CompositorDriver({
   /** The project's theme + resolved per-scene themes; drive the scene-state plan. */
   theme?: Theme;
   sceneThemes?: Theme[];
+  /** Per-scene resolved overlays; drive the cutout render seam. */
+  sceneFrames?: (FrameSpec | undefined)[];
   /** The LoadedProject identity, stamped on canvas commit (see exportBridge). */
   commitStamp?: unknown;
 }) {
@@ -61,6 +66,12 @@ export function CompositorDriver({
   const sceneStates = useMemo(
     () => (theme && sceneThemes ? buildSceneRenderStates(theme, sceneThemes) : null),
     [theme, sceneThemes],
+  );
+
+  // Per-scene overlays with panel colours resolved; null unless some scene declares a frame.
+  const overlays = useMemo(
+    () => (sceneThemes ? resolveOverlays(sceneFrames ?? [], sceneThemes) : null),
+    [sceneFrames, sceneThemes],
   );
 
   // Resolves theme environments for the preview (fire-and-forget; the export preamble awaits its own call); frames rendered before a texture lands take the shared-env fallback, and invalidate repaints with reflections once loaded.
@@ -118,6 +129,7 @@ export function CompositorDriver({
       resolved,
       plan ?? undefined,
       statePlan,
+      overlays ?? undefined,
     );
   }, 1);
 
