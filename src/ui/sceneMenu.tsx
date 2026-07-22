@@ -11,6 +11,8 @@ export function sceneMenuItems(opts: {
   onCopyBackground: () => void;
   onPasteBackground: () => void;
   onDelete: () => void;
+  /** Timeline surfaces pass this to add a jump to the Scenes manager; the manager omits it. */
+  onManage?: () => void;
 }): (ContextMenuItem | "separator")[] {
   return [
     {
@@ -22,6 +24,9 @@ export function sceneMenuItems(opts: {
     },
     { id: "duplicate", label: "Duplicate…", onSelect: opts.onDuplicate },
     { id: "duration", label: "Change duration…", onSelect: opts.onDuration },
+    ...(opts.onManage
+      ? [{ id: "manage", label: "Manage scenes…", onSelect: opts.onManage } as ContextMenuItem]
+      : []),
     "separator",
     { id: "copy-background", label: "Copy background", onSelect: opts.onCopyBackground },
     {

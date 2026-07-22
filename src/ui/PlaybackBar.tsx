@@ -110,6 +110,11 @@ export function PlaybackBar({
         },
         onPasteBackground: () => onPasteBackground(index),
         onDelete: () => onDeleteScene(index),
+        onManage: () => {
+          const ui = useUiStore.getState();
+          ui.setInspectorTab("project");
+          ui.setInspectorDrillIn("project.scenes");
+        },
       }),
     });
   };
