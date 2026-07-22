@@ -34,6 +34,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
       openProject: noop,
       openMedia: noop,
       openTheme: noop,
+      editScreenshotStack: noop,
       setSoundtrack: noop,
       removeSoundtrack: noop,
       toggleRail: noop,

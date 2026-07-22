@@ -133,6 +133,11 @@ export interface TextAnimationSpec {
   delivery?: "all-at-once" | "by-paragraph" | "by-paragraph-group";
 }
 
+/** Card surfaces (layered-screenshot screens): corner radius as a fraction of the card's short edge, clamped 0..0.5 at parse. Absent themes take the toolkit's tuned constant. */
+export interface ThemeCard {
+  radius: number;
+}
+
 /** A resolved font reference. `family` resolves through the bundled registry first, then workspace-pinned system fonts (`~/Kookaburra Cut/fonts/`, auto-pinned on first reference), else falls back to Inter with a warning. Weights snap to the nearest available static face. */
 export interface FontRef {
   family: string;
@@ -165,6 +170,7 @@ export interface Theme {
     easings: { standard: string; emphasized: string };
   };
   textAnimation?: TextAnimationSpec;
+  card?: ThemeCard;
   lighting?: ThemeLighting;
   environment?: ThemeEnvironment;
   backdrop?: ThemeBackdrop;

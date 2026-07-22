@@ -5,6 +5,7 @@ mod edit;
 mod present;
 mod encode;
 mod export_presets;
+mod global_screenshots;
 mod loudness;
 mod media;
 mod pty;
@@ -1118,6 +1119,10 @@ pub fn run() {
             pty::has_claude_session,
             media::import_media,
             media::media_meta,
+            global_screenshots::list_global_screenshots,
+            global_screenshots::import_global_screenshots,
+            global_screenshots::global_screenshot_meta,
+            global_screenshots::copy_to_global_screenshots,
             settings_win::cache_stats,
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,

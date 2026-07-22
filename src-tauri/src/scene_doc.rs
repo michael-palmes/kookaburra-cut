@@ -453,11 +453,16 @@ const TSX_DEVICE: &str = include_str!("../templates/scenes/device.tsx.tmpl");
 const TSX_TITLE: &str = include_str!("../templates/scenes/title.tsx.tmpl");
 const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
+const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
+const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
+
+/// The video kind's default background, shipped in every project (`ensure_sample_assets`).
+const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "title" | "blank" | "appversion".
+    /// "device" | "title" | "blank" | "appversion" | "layeredscreenshot" | "video".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -519,7 +524,7 @@ pub async fn scaffold_scene(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
-    options: ScaffoldOptions,
+    mut options: ScaffoldOptions,
 ) -> Result<ScaffoldResult, String> {
     let root = workspace::require_root(&app, &state)?;
     workspace::validate_slug(&slug)?;
@@ -533,8 +538,16 @@ pub async fn scaffold_scene(
         "title" => TSX_TITLE,
         "blank" => TSX_BLANK,
         "appversion" => TSX_APP_VERSION,
+        "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
+        "video" => TSX_VIDEO,
         other => return Err(format!("unknown scene kind {other:?}")),
     };
+
+    // A video scene without a pick starts on the bundled laptop sample.
+    if options.kind == "video" && options.media_rel.is_none() {
+        options.media_rel = Some(SAMPLE_LAPTOP_VIDEO.into());
+        options.media_kind = Some("video".into());
+    }
 
     let scenes_dir = project.join("scenes");
     std::fs::create_dir_all(&scenes_dir).map_err(|e| e.to_string())?;
@@ -544,7 +557,7 @@ pub async fn scaffold_scene(
     let doc_file = format!("scenes/{stem}.json");
 
     // Duration: follow the video when the scene owns one, else the wizard default.
-    let is_video = options.kind == "device"
+    let is_video = matches!(options.kind.as_str(), "device" | "video")
         && options.media_kind.as_deref() == Some("video")
         && options.media_rel.is_some();
     let mut duration_ms = DEFAULT_SCENE_DURATION_MS;
@@ -562,8 +575,11 @@ pub async fn scaffold_scene(
     let mut doc = json!({
         "version": SCENE_DOC_VERSION,
         "name": options.name,
-        "duration": if is_video {
+        "duration": if is_video && options.kind == "device" {
             json!({ "mode": "follow-media", "sourceDeviceId": "d1" })
+        } else if is_video {
+            // No device: the resync falls back to the video background as the source.
+            json!({ "mode": "follow-media" })
         } else {
             json!({ "mode": "manual" })
         },
@@ -578,6 +594,25 @@ pub async fn scaffold_scene(
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
     } else if let Some(title) = &options.title {
         doc["text"]["title"] = json!(title);
+    }
+    if options.kind == "layeredscreenshot" {
+        // The optional first screen seeds the centre item; the builder grows the stack from there.
+        let mut items = Vec::new();
+        if let Some(rel) = &options.media_rel {
+            let media_kind = options.media_kind.as_deref().unwrap_or("image");
+            items.push(json!({
+                "id": "i1", "kind": "screen", "src": rel, "media": media_kind, "attach": null,
+            }));
+        }
+        doc["layeredScreenshot"] = json!({
+            "layers": [{ "id": "l1", "visible": true, "z": 0, "items": items }],
+            "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] },
+        });
+    }
+    if options.kind == "video" {
+        if let Some(rel) = &options.media_rel {
+            doc["background"] = json!({ "type": "video", "src": rel });
+        }
     }
     if options.kind == "device" {
         let mut device = json!({

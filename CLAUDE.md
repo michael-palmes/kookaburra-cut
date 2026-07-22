@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in **Kookaburra Cut**, a local, deterministic animated-video studio for macOS (Apple Silicon).
+Guidance for Claude Code when working in **Kookaburra Cut**, an AI driven, deterministic animated-video studio for macOS (Apple Silicon).
 
 ## What this is
 

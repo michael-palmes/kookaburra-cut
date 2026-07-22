@@ -4,7 +4,7 @@
 
 <h1 align="center">Kookaburra Cut</h1>
 
-<p align="center">A local, <strong>deterministic</strong> animated-video studio for macOS (Apple Silicon).</p>
+<p align="center">An AI driven, <strong>deterministic</strong> animated-video studio for macOS (Apple Silicon).</p>
 
 <p align="center">
   <a href="https://github.com/michael-palmes/kookaburra-cut/actions/workflows/ci.yml"><img src="https://github.com/michael-palmes/kookaburra-cut/actions/workflows/ci.yml/badge.svg" alt="CI"></a>

@@ -467,6 +467,41 @@ result. The invariants:
   stands down for the entire export (`isExporting`), so the export loop samples
   only what the sidecar declares.
 
+## Layered screenshot
+
+A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
+screen/text cards) and `animatedTrack` naming which one keyed track, camera or
+stack pose, animates that scene. The invariants:
+
+- **The null path is the old path, exactly.** The host-side
+  `LayeredScreenshotFallback` renders nothing when the sidecar has no block (and
+  stands down entirely when the scene's TSX consumes it via
+  `useSceneLayeredScreenshot`), so every existing project mounts zero new nodes
+  and renders byte-identically.
+- **One animated track per scene.** `animatedTrack: "layeredScreenshot"` stands
+  the scene's camera track down at track-build time (`buildSceneCameraTracks`
+  returns null for that scene; its camera keys stay on disk untouched); absent
+  or `"camera"` leaves the camera path exactly as before.
+- **Everything samples pure.** Validation (`sceneLayeredScreenshot.ts`), layout
+  (`layeredScreenshotLayout.ts`) and pose sampling share the camera track's
+  semantics (half-open segments, hold outside, golden-pinned eases) as pure
+  functions with no clock or three.js, so preview and export agree by
+  construction.
+- **Drafts are UI-only.** Builder gestures preview through
+  `layeredScreenshotEditStore`; the primitive merges a draft in React only
+  behind an `isExporting()` guard, and the export samples only the sidecar.
+- **Media rides the existing pipelines.** Image cards suspend on the shared
+  texture loader (settled by the export preamble); video cards bind the
+  pre-extracted CFR clip frames and publish the standard readiness flag. Video
+  intrinsics land behind the extract barrier before frame 0, so card layout is
+  settled at capture. Text items are `useSceneText` strings under `ls-<id>`
+  keys.
+- **Present looping never reaches the render contract.** The animation's
+  optional `presentLoop` samples through a looped wrapper only under the present
+  realm's slideshow flag (the Device-sway pattern); the flag is never set in
+  the editor or export realms, so preview and export always play the track
+  once and hold.
+
 ## Themes & per-scene render state
 
 Themes (JSON documents, `src/theme/schema.ts`) may declare `lighting`,
@@ -955,6 +990,21 @@ bundled rolling-gate project (`showcase-tour`):
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
 | `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — |
+
+> **2026-07-21 (softer stack shadows):** the card shadow opacity dropped 0.3 →
+> 0.2 during Michael's hands-on pass, a deliberate visual change: re-recorded
+> the spike `ade1b666…` → `4ec7b223…` (Verify ×2 EQUAL) after eyeballing the
+> frame. Anchors untouched (no LS content).
+
+> **2026-07-20 (layered screenshot):** the Layered Screenshot feature landed
+> with both anchors EQUAL (`97af238c…` / `b70c9788…`): the fallback mounts
+> nothing without a sidecar block, and the one exporter change (registering
+> sidecar-declared screen videos before the extract barrier, closing the
+> Suspense race the first spike eyeball exposed) walks an empty list for every
+> existing project. The new `ws:layered-screenshot-spike` fixture (image/video
+> cards, text item, all four presets, a transition and a legacy-camera scene)
+> recorded `ade1b666…` Verify ×2 EQUAL after frame eyeballs.
 
 > **2026-07-20 (present mode, float fix):** the Present feature landed with the
 > legacy sentinel EQUAL throughout (`b70c9788…`; the hold clamp, timing registry

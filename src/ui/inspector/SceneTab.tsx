@@ -3,6 +3,7 @@ import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { pushHistory } from "../../engine/history";
+import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
@@ -57,6 +58,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { sceneSections } from "../inspectorOptions";
+import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
@@ -161,6 +163,37 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <rect x="4" y="3" width="8" height="14" rx="1.8" />
           <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "layeredScreenshot.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M8.5 3.5l5.5 2.6-5.5 2.6L3 6.1l5.5-2.6z" />
+          <path d="M3 9.4l5.5 2.6 5.5-2.6" />
+          <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "layeredScreenshot.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M10 3l6.5 3-6.5 3-6.5-3 6.5-3z" />
+          <path d="M3.5 9.8l6.5 3 6.5-3M3.5 13.3L10 16.3l6.5-3" />
         </svg>
       );
     case "text.add":
@@ -685,14 +718,21 @@ function CameraSectionBody({
   onDocChanged,
   collapsed,
   onToggle,
+  patchDoc,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   collapsed: boolean;
   onToggle: () => void;
+  patchDoc: (patch: (next: SceneDoc) => void) => Promise<void>;
 }) {
-  const { slot, camera, commit, appliedPoseAt } = useCameraDoc(project, sceneIndex, onDocChanged);
+  const { doc, slot, camera, commit, appliedPoseAt } = useCameraDoc(
+    project,
+    sceneIndex,
+    onDocChanged,
+  );
+  const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const cameraOpen = useCameraEditStore((s) => s.open);
   // Re-render only when the target key changes, not per playhead tick; for a trackless scene, follow the playhead in coarse quarter-second buckets (display only, commits snapshot the live clock).
@@ -755,6 +795,46 @@ function CameraSectionBody({
       />
       {collapsed ? null : (
         <div className="inspector-section-body">
+          {doc?.layeredScreenshot && (
+            <>
+              {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
+              <div className="wizard-presets">
+                <button
+                  type="button"
+                  className={`chip${lsAnimated ? "" : " selected"}`}
+                  title="Animate this scene with the camera track"
+                  onClick={() => {
+                    if (!lsAnimated) return;
+                    useLayeredScreenshotEditStore.getState().setLaneOpen(false);
+                    void patchDoc((next) => {
+                      delete next.animatedTrack;
+                    });
+                  }}
+                >
+                  Camera
+                </button>
+                <button
+                  type="button"
+                  className={`chip${lsAnimated ? " selected" : ""}`}
+                  title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
+                  onClick={() => {
+                    if (lsAnimated) return;
+                    useCameraEditStore.getState().setOpen(false);
+                    void patchDoc((next) => {
+                      next.animatedTrack = "layeredScreenshot";
+                    });
+                  }}
+                >
+                  Screenshot stack
+                </button>
+              </div>
+              {lsAnimated && (
+                <p className="modal-hint">
+                  This scene animates the screenshot stack; the camera track is standing down.
+                </p>
+              )}
+            </>
+          )}
           <div className="inspector-pose-grid">
             <NumericField
               label="orbit °"
@@ -1304,18 +1384,21 @@ export function SceneTab({
     );
   };
 
-  /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. */
+  /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. Follow-media scenes sourced from the background re-sync their length to the new video. */
   const selectVideoBackground = (rel: string, meta: MediaMeta | null) => {
     if (meta && meta.kind !== "video") return;
     setBgTabOverride(null);
-    void patchDoc((next) => {
-      const parallax =
-        next.background && next.background.type !== "none" ? next.background.parallax : undefined;
-      next.background =
-        parallax !== undefined
-          ? { type: "video", src: rel, parallax }
-          : { type: "video", src: rel };
-    });
+    void patchDoc(
+      (next) => {
+        const parallax =
+          next.background && next.background.type !== "none" ? next.background.parallax : undefined;
+        next.background =
+          parallax !== undefined
+            ? { type: "video", src: rel, parallax }
+            : { type: "video", src: rel };
+      },
+      { resync: true },
+    );
   };
 
   const header = (
@@ -2867,6 +2950,17 @@ export function SceneTab({
     );
   }
 
+  if (drillIn === "layeredScreenshot.edit") {
+    return (
+      <LayeredScreenshotBuilder
+        project={project}
+        sceneIndex={sceneIndex}
+        onDocChanged={onDocChanged}
+        onBack={() => setDrillIn(null)}
+      />
+    );
+  }
+
   if (drillIn === "device.rotation" && device) {
     return (
       <RotationDrillIn
@@ -2910,6 +3004,7 @@ export function SceneTab({
                 onDocChanged={onDocChanged}
                 collapsed={isCollapsed}
                 onToggle={() => toggleSection(section.id)}
+                patchDoc={patchDoc}
               />
             ) : (
               <SectionHeader
@@ -3020,6 +3115,9 @@ export function SceneTab({
                       });
                     },
                     "device.rotation": () => setDrillIn("device.rotation"),
+                    // Both paths drill into the builder; it seeds the first layer for scenes without a block.
+                    "layeredScreenshot.edit": () => setDrillIn("layeredScreenshot.edit"),
+                    "layeredScreenshot.add": () => setDrillIn("layeredScreenshot.edit"),
                     "device.remove": () => {
                       if (!confirmRemove) {
                         setConfirmRemove(true);

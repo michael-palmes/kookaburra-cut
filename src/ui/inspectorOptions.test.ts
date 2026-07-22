@@ -75,6 +75,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.editVideo",
       "device.change",
       "device.rotation",
+      "layeredScreenshot.add",
       "device.remove",
     ]);
   });
@@ -99,7 +100,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const sections = sceneSections({ doc, slotsCount: 2 });
     expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows;
-    expect(deviceRows?.map((r) => r.id)).toEqual(["device.add"]);
+    expect(deviceRows?.map((r) => r.id)).toEqual(["device.add", "layeredScreenshot.add"]);
     expect(deviceRows?.[0].chevron).toBe(false);
     expect(deviceRows?.[0].danger).toBeUndefined();
     expect(sections.find((s) => s.id === "style")?.rows.map((r) => r.id)).toEqual([
@@ -152,6 +153,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.change",
       "device.rotation",
       "device.lid",
+      "layeredScreenshot.add",
       "device.remove",
     ]);
   });

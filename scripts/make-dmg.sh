@@ -33,6 +33,9 @@ cleanup() {
   rm -rf "$STAGE"
 }
 trap cleanup EXIT
+# Most steps here fail silently under errexit (no message of their own), which strands a
+# release run with a bare exit code and nothing to act on. Name the line and code instead.
+trap 'code=$?; echo "ERROR: ${BASH_SOURCE[0]}:$LINENO failed (exit $code): $BASH_COMMAND" >&2' ERR
 
 [[ -d "$APP_BUNDLE" ]] || { echo "ERROR: $APP_BUNDLE missing; run sign-and-notarize.sh first." >&2; exit 1; }
 [[ -f "$BG_1X" && -f "$BG_2X" ]] || { echo "ERROR: DMG background art missing in src-tauri/dmg/." >&2; exit 1; }
@@ -48,11 +51,15 @@ check_dims() {
 check_dims "$BG_1X" 806 488
 check_dims "$BG_2X" 1612 976
 
-# Clear a volume left mounted by a crashed earlier run.
+# Clear a volume already mounted under our name: a crashed earlier run, or a released
+# DMG the user still has open. awk drains hdiutil instead of exiting at the first match,
+# so it can never SIGPIPE the pipeline into a pipefail exit.
 if [[ -d "/Volumes/$VOL_NAME" ]]; then
+  echo "==> Detaching the volume already mounted at /Volumes/$VOL_NAME"
   STRAY=$(hdiutil info | awk -v vol="/Volumes/$VOL_NAME" '
     /^\/dev\// { dev=$1 }
-    index($0, vol) { print dev; exit }')
+    index($0, vol) && found == "" { found=dev }
+    END { print found }')
   [[ -n "${STRAY:-}" ]] && hdiutil detach "$STRAY" -force >/dev/null 2>&1 || true
 fi
 

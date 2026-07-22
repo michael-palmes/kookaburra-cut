@@ -427,6 +427,16 @@ describe("parseThemeDoc degrade behaviour", () => {
     expect(parseThemeDoc({ ...validDoc(), motion: {} }, "t")).toBeUndefined();
   });
 
+  it("card parses a clamped radius fraction and drops invalid shapes", () => {
+    expect(parseThemeDoc({ ...validDoc(), card: { radius: 0.08 } }, "t")?.card).toEqual({
+      radius: 0.08,
+    });
+    expect(parseThemeDoc({ ...validDoc(), card: { radius: 0.9 } }, "t")?.card).toBeUndefined();
+    expect(parseThemeDoc({ ...validDoc(), card: { radius: -1 } }, "t")?.card).toBeUndefined();
+    expect(parseThemeDoc({ ...validDoc(), card: 0.08 }, "t")?.card).toBeUndefined();
+    expect(parseThemeDoc(validDoc(), "t")?.card).toBeUndefined();
+  });
+
   it("name falls back to id; unknown fields are ignored", () => {
     const doc = { ...validDoc(), name: undefined, futureField: { nested: true } };
     const theme = parseThemeDoc(doc, "t");

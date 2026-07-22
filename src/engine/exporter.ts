@@ -24,6 +24,7 @@ import {
   everydayClipLane,
   laneForCodec,
   preextractClips,
+  registerClip,
   setClipLane,
 } from "./clips";
 import { useClockStore } from "./clock";
@@ -38,6 +39,7 @@ import {
   isWorkspaceProjectId,
   type ProjectAudio,
   preloadProjectImages,
+  resolveAssetPath,
   workspaceSlug,
 } from "./project";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
@@ -276,6 +278,16 @@ async function exportPreamble(opts: ExportOptions, gl: WebGLRenderer): Promise<v
   );
   // Deterministic codecs read the software-decoded frame lane (the one baselines were recorded from); fast-draft hardware codecs keep the everyday hw lane. Restored in the loop's finally; a preamble throw leaves it on sw, corrected by the next export or preview re-registration.
   setClipLane(laneForCodec(opts.encode?.codec ?? opts.codec));
+  // Layered-screenshot video cards mount behind their image Suspense, so render-time registration can miss a cold run's extract barrier; every sidecar-declared screen video registers here explicitly (docs/determinism.md).
+  for (const doc of opts.sceneDocs ?? []) {
+    for (const layer of doc?.layeredScreenshot?.layers ?? []) {
+      for (const item of layer.items ?? []) {
+        if (item.kind === "screen" && item.media === "video" && typeof item.src === "string") {
+          registerClip(resolveAssetPath(opts.projectId, item.src));
+        }
+      }
+    }
+  }
   // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.
   await preextractClips();
   // Fetches + parses bundled 3D models and this project's screen images (and warms drei's caches) before frame 0, so a cold export never captures a still-loading DeviceMockup; no-op once cached. See docs/determinism.md.
