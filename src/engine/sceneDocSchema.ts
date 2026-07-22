@@ -7,6 +7,7 @@ import {
 } from "../theme/schema";
 import type {
   FontRef,
+  GradientSpec,
   TextAnimationSpec,
   ThemeBackdrop,
   ThemeBackground,
@@ -162,6 +163,56 @@ export interface SceneDocLayeredScreenshot {
   };
 }
 
+/** Corner radius for the video window: a named preset, or a custom short-edge fraction (clamped 0..0.5 at resolve). `macos` emulates a real macOS window's rounding. */
+export type VideoWindowRadius = "sharp" | "subtle" | "macos" | "rounded" | { custom: number };
+
+/** The window's analytic drop shadow onto the backing stage. `blur` and `offset` are fractions of the window's short edge (offset x right, y up); `opacity` is 0..1. */
+export interface VideoWindowShadow {
+  opacity: number;
+  blur: number;
+  offset: [number, number];
+}
+
+/** The window's edge stroke. `width` is a fraction of the short edge, `opacity` 0..1; `enabled: false` turns it off. */
+export interface VideoWindowBorder {
+  enabled: boolean;
+  color: string;
+  width: number;
+  opacity: number;
+}
+
+/** The flat backing "stage" the window sits in front of: a full-bleed wallpaper of a solid colour, a gradient, or a project image. */
+export type VideoWindowStage =
+  | { type: "color"; color: string }
+  | { type: "gradient"; spec: GradientSpec }
+  | { type: "image"; src: string; fit?: "cover" | "contain" };
+
+export type VideoWindowMotionPreset = "none" | "float" | "tilt-reveal" | "push-in" | "drift";
+
+/** Canned gentle motion for the window itself (pure functions of scene-local time); the per-scene camera track composes on top. */
+export interface VideoWindowMotion {
+  preset: VideoWindowMotionPreset;
+  /** `float`: world-unit bob amplitude (default 0.12). `drift`: sway in degrees (default 4). */
+  amplitude?: number;
+  /** `float`/`drift`: cycles per second (defaults 0.3 / 0.1). */
+  hz?: number;
+  /** `tilt-reveal`/`push-in`: intro length in ms (defaults 900 / 1000). */
+  durationMs?: number;
+}
+
+/** A macOS screen recording presented as a floating window (rounded corners + hairline edge) with an analytic drop shadow, over a bundled full-bleed backing stage; one per scene, sidecar-only (references a project asset, like video fills). Deep validation lives in `sceneVideoWindow.ts`. */
+export interface SceneDocVideoWindow {
+  /** Project-relative video, e.g. `"assets/screencast.mp4"`. */
+  media: { src: string; startMs?: number; loop?: boolean };
+  stage: VideoWindowStage;
+  radius: VideoWindowRadius;
+  border?: VideoWindowBorder;
+  shadow?: VideoWindowShadow;
+  motion?: VideoWindowMotion;
+  /** Window size as a fraction of the frame's shorter axis (default 0.72, clamped 0.1..1). */
+  scale?: number;
+}
+
 export interface SceneDoc {
   version: number;
   /** Human name shown by pickers (scenes have no display name otherwise). */
@@ -195,6 +246,8 @@ export interface SceneDoc {
   frame?: FrameOverrideSpec;
   /** The layered-screenshot composition (one per scene; layers carry the multiplicity). Deep graph validation lives in `sceneLayeredScreenshot.ts`. */
   layeredScreenshot?: SceneDocLayeredScreenshot;
+  /** The video-window composition (one per scene): a macOS screen recording as a floating window over a backing stage. Deep validation lives in `sceneVideoWindow.ts`. */
+  videoWindow?: SceneDocVideoWindow;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other track's keys. */
   animatedTrack?: "camera" | "layeredScreenshot";
 }
@@ -231,6 +284,13 @@ function validLayeredScreenshot(raw: unknown): raw is SceneDocLayeredScreenshot 
     }
   }
   return true;
+}
+
+/** Shallow structural check (the layeredScreenshot pattern): a media source keeps the block, anything else drops it whole; per-field degrade + defaults live in sceneVideoWindow.ts. */
+function validVideoWindow(raw: unknown): raw is SceneDocVideoWindow {
+  const vw = raw as SceneDocVideoWindow | null;
+  if (!vw || typeof vw !== "object") return false;
+  return !!vw.media && typeof vw.media.src === "string" && vw.media.src.length > 0;
 }
 
 function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
@@ -372,6 +432,13 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       out.layeredScreenshot = doc.layeredScreenshot;
     } else {
       console.warn(`[sceneDoc] ${source}: layeredScreenshot is malformed, dropped`);
+    }
+  }
+  if (doc.videoWindow !== undefined) {
+    if (validVideoWindow(doc.videoWindow)) {
+      out.videoWindow = doc.videoWindow;
+    } else {
+      console.warn(`[sceneDoc] ${source}: videoWindow is malformed, dropped`);
     }
   }
   if (doc.animatedTrack === "camera" || doc.animatedTrack === "layeredScreenshot") {

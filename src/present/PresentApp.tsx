@@ -19,6 +19,7 @@ import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
 import { DevicesFallback } from "../toolkit/device/Device";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
+import { VideoWindowFallback } from "../toolkit/media/VideoWindow";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { PresentCompositorDriver } from "./PresentCompositorDriver";
@@ -350,6 +351,7 @@ export function PresentApp() {
                       <SceneComponent />
                       <DevicesFallback />
                       <LayeredScreenshotFallback />
+                      <VideoWindowFallback />
                       <TextFallback />
                     </SceneHost>
                   );

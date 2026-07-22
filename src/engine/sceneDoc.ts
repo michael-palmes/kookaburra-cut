@@ -12,7 +12,9 @@ import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
 } from "./sceneLayeredScreenshot";
+import { type NormalizedVideoWindow, normalizeVideoWindow } from "./sceneVideoWindow";
 import { useTextKeyRegistry } from "./textKeyRegistry";
+import { useVideoWindowRegistry } from "./videoWindowRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
@@ -96,6 +98,22 @@ export function useSceneLayeredScreenshot(): NormalizedLayeredScreenshot | null 
   );
 }
 
+/** The scene document's videoWindow block, deep-validated, or null when absent; registers the scene as a consumer so `VideoWindowFallback` stands down (the useSceneLayeredScreenshot pattern). */
+export function useSceneVideoWindow(): NormalizedVideoWindow | null {
+  const doc = useSceneDoc();
+  const sceneIndex = useSceneContext()?.index;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined) return;
+    useVideoWindowRegistry.getState().register(sceneIndex);
+    return () => useVideoWindowRegistry.getState().unregister(sceneIndex);
+  }, [sceneIndex]);
+  const block = doc?.videoWindow;
+  return useMemo(
+    () => normalizeVideoWindow(block, `scene ${sceneIndex ?? "?"}`),
+    [block, sceneIndex],
+  );
+}
+
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
 
 /** Atomic, version-guarded sidecar write via the native command. */
@@ -168,9 +186,11 @@ export async function resyncFollowMediaDuration(
   const src =
     device?.media?.kind === "video"
       ? device.media.src
-      : doc?.background?.type === "video"
-        ? doc.background.src
-        : null;
+      : doc?.videoWindow?.media?.src
+        ? doc.videoWindow.media.src
+        : doc?.background?.type === "video"
+          ? doc.background.src
+          : null;
   if (!src) return false;
   const meta = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {

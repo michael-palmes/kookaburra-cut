@@ -63,8 +63,8 @@ const FLOOR_CLEARANCE = 0.28;
 const cardRadius = (rect: SolvedItemRect, theme: Theme): number =>
   (theme.card?.radius ?? CARD_RADIUS_FRACTION) * Math.min(rect.width, rect.height);
 
-/** The rounded-card uniform set: stable objects the compiled program holds (the image-shine pattern). */
-interface CardUniforms {
+/** The rounded-card uniform set: stable objects the compiled program holds (the image-shine pattern). Exported so other card primitives (VideoWindow) share one mask program. */
+export interface CardUniforms {
   uCardSize: { value: Vector2 };
   uCardRadius: { value: number };
   uCardStrokeColor: { value: Color };
@@ -72,7 +72,7 @@ interface CardUniforms {
   uCardStrokeAlpha: { value: number };
 }
 
-const cardUniforms = (): CardUniforms => ({
+export const cardUniforms = (): CardUniforms => ({
   uCardSize: { value: new Vector2(1, 1) },
   uCardRadius: { value: 0 },
   uCardStrokeColor: { value: new Color(1, 1, 1) },
@@ -103,7 +103,7 @@ const CARD_FRAGMENT = /* glsl */ `#include <opaque_fragment>
 }
 #endif`;
 
-function applyCardMask(material: MeshBasicMaterial, uniforms: CardUniforms): void {
+export function applyCardMask(material: MeshBasicMaterial, uniforms: CardUniforms): void {
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.fragmentShader = CARD_DEFS + shader.fragmentShader;
@@ -126,7 +126,8 @@ function refreshCardUniforms(uniforms: CardUniforms, rect: SolvedItemRect, theme
 }
 
 // language=GLSL
-const SHADOW_VERT = /* glsl */ `
+/** Shared rounded-rect shadow shaders (exported for VideoWindow): a blurred black round-box on a quad. */
+export const SHADOW_VERT = /* glsl */ `
 uniform vec2 uSize;
 varying vec2 vPos;
 void main() {
@@ -136,7 +137,7 @@ void main() {
 `;
 
 // language=GLSL
-const SHADOW_FRAG = /* glsl */ `
+export const SHADOW_FRAG = /* glsl */ `
 uniform vec2 uHalf;
 uniform float uRadius;
 uniform float uBlur;
