@@ -1088,6 +1088,7 @@ body {
    (`--stage-aspect`, set per format from App), letterbox the rest with the recessed
    matte. The preview therefore frames EXACTLY like the export. */
 .stage-frame {
+  position: relative;
   width: min(100cqw, calc(100cqh * var(--stage-aspect, 1.7777)));
   height: min(100cqh, calc(100cqw / var(--stage-aspect, 1.7777)));
   overflow: hidden;
