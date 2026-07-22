@@ -32,12 +32,22 @@ export function DebouncedRange({
   onCommit: (v: number) => void;
 }) {
   const [v, setV] = useState(value);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
   const pending = useRef<number | null>(null);
   const latest = useRef(value);
+  const cancel = useRef(false);
+  const editRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     setV(value);
     latest.current = value;
   }, [value]);
+  useEffect(() => {
+    if (editing) {
+      editRef.current?.focus();
+      editRef.current?.select();
+    }
+  }, [editing]);
   useEffect(
     () => () => {
       if (pending.current !== null) window.clearTimeout(pending.current);
@@ -55,6 +65,23 @@ export function DebouncedRange({
       }
     }, 300);
   }
+  // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision.
+  function finishEdit(commit: boolean) {
+    setEditing(false);
+    if (!commit) return;
+    const parsed = Number(text);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = Math.min(max, Math.max(min, parsed));
+    if (pending.current !== null) {
+      window.clearTimeout(pending.current);
+      pending.current = null;
+    }
+    setV(clamped);
+    if (clamped !== latest.current) {
+      latest.current = clamped;
+      onCommit(clamped);
+    }
+  }
   return (
     <span className="popover-inline">
       <input
@@ -66,7 +93,42 @@ export function DebouncedRange({
         aria-label={label}
         onChange={(e) => schedule(Number(e.target.value))}
       />
-      {v.toFixed(2)}
+      {editing ? (
+        <input
+          ref={editRef}
+          className="range-value range-value-edit"
+          value={text}
+          inputMode="decimal"
+          aria-label={`${label} value`}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => {
+            const commit = !cancel.current;
+            cancel.current = false;
+            finishEdit(commit);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              cancel.current = false;
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === "Escape") {
+              cancel.current = true;
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="range-value"
+          title="Double-click to type a value"
+          onDoubleClick={() => {
+            setText(v.toFixed(2));
+            setEditing(true);
+          }}
+        >
+          {v.toFixed(2)}
+        </button>
+      )}
     </span>
   );
 }

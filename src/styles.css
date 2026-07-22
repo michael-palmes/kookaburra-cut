@@ -2842,7 +2842,40 @@ body {
   min-width: 116px;
   flex-shrink: 0;
 }
-/* __RANGE_VALUE_CSS__ */
+/* The number beside a slider. It reserves a 1px TRANSPARENT border so double-clicking to
+   type only flips the border colour + background (via .range-value-edit) — the box never
+   changes size, so nothing shifts. */
+.range-value {
+  display: inline-block;
+  box-sizing: border-box;
+  /* A FIXED width, not min-width: an <input> has a large intrinsic default width that
+     min-width won't shrink, so the display button and edit field must be pinned equal. */
+  width: 52px;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  margin: 0;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: default;
+  user-select: none;
+}
+.range-value-edit {
+  color: var(--text-primary);
+  background: var(--surface-recessed);
+  border-color: var(--border-default);
+  cursor: text;
+  outline: none;
+  user-select: text;
+}
+.range-value-edit:focus {
+  border-color: var(--border-strong);
+}
 .popover-inline {
   display: inline-flex;
   align-items: center;
