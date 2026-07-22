@@ -193,6 +193,8 @@ describe("sceneSections Overlay section", () => {
       "frame.panel",
       "frame.chip",
       "frame.decorations",
+      "frame.icon",
+      "frame.text",
     ]);
   });
 

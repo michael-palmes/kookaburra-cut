@@ -2903,6 +2903,10 @@ body {
   color: var(--text-primary);
   border-color: var(--accent);
 }
+.chip-icon-tile.emoji {
+  font-size: 20px;
+  line-height: 1;
+}
 /* One decoration's editor: a bordered card grouping its image, position, size, shape and layer. */
 .deco-card {
   display: flex;

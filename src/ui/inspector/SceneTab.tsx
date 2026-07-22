@@ -402,6 +402,40 @@ function SceneRowIcon({ id }: { id: string }) {
           <circle cx="14.5" cy="6" r="2.6" fill="currentColor" stroke="none" />
         </svg>
       );
+    case "frame.icon":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <circle cx="10" cy="10" r="7" />
+          <circle cx="7.5" cy="8.5" r="0.6" fill="currentColor" stroke="none" />
+          <circle cx="12.5" cy="8.5" r="0.6" fill="currentColor" stroke="none" />
+          <path d="M7 12.3c.8 1 1.9 1.5 3 1.5s2.2-.5 3-1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "frame.text":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 6h12" />
+          <path d="M4 10h8" />
+          <path d="M4 14h11" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -854,6 +888,26 @@ const ALIGN_OPTIONS: { id: SceneTextAlign; label: string }[] = [
   { id: "left", label: "Left" },
   { id: "center", label: "Centre" },
   { id: "right", label: "Right" },
+];
+
+/** Common header emojis for app and product-release presentations; a pick replaces the icon field. */
+const HEADER_EMOJIS = [
+  "🚀",
+  "✨",
+  "🎉",
+  "🔥",
+  "⚡",
+  "🆕",
+  "📢",
+  "🎯",
+  "🛠️",
+  "🐛",
+  "🔒",
+  "💡",
+  "⭐",
+  "📦",
+  "✅",
+  "📈",
 ];
 
 /** Background fill-type icons for the drill-in's tile grid; same 20-viewBox stroke style as SceneRowIcon. */
@@ -1847,6 +1901,78 @@ export function SceneTab({
           </button>
         </div>
         {mediaModal}
+      </div>
+    );
+  }
+  if (drillIn === "frame.icon" && sceneFrame) {
+    const setIcon = (v: string | undefined) =>
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}) };
+        if (v) next.frame.icon = v;
+        else delete next.frame.icon;
+      });
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Header icon</div>
+        <div className="inspector-drill-body">
+          <TextFieldRow
+            label="Icon"
+            value={sceneFrame.icon ?? ""}
+            placeholder="an emoji or assets/icon.png"
+            onChange={(t) => setIcon(t.trim() || undefined)}
+          />
+          <div className="wizard-field">
+            <span className="wizard-label">Common</span>
+            <div className="chip-icon-grid">
+              {HEADER_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  title={e}
+                  className={`chip-icon-tile emoji${sceneFrame.icon === e ? " selected" : ""}`}
+                  onClick={() => setIcon(e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="modal-hint">Drawn above the title. An emoji, or a project image path.</p>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.text" && sceneFrame) {
+    const align = sceneFrame.textAlign ?? "left";
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <div className="inspector-drill-title">Text alignment</div>
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Align</span>
+            <div className="wizard-presets">
+              {ALIGN_OPTIONS.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`chip${align === a.id ? " selected" : ""}`}
+                  onClick={() =>
+                    void patchDoc((next) => {
+                      next.frame = { ...(next.frame ?? {}) };
+                      if (a.id === "left") delete next.frame.textAlign;
+                      else next.frame.textAlign = a.id;
+                    })
+                  }
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="modal-hint">Aligns the panel title, subtitle, bullets and chip.</p>
+        </div>
       </div>
     );
   }
@@ -2900,6 +3026,8 @@ export function SceneTab({
                     "frame.panel": () => setDrillIn("frame.panel"),
                     "frame.chip": () => setDrillIn("frame.chip"),
                     "frame.decorations": () => setDrillIn("frame.decorations"),
+                    "frame.icon": () => setDrillIn("frame.icon"),
+                    "frame.text": () => setDrillIn("frame.text"),
                   }[row.id];
                   const value = {
                     "text.motion": doc?.textAnimation
@@ -2943,6 +3071,11 @@ export function SceneTab({
                       ? sceneFrame.decorations?.length
                         ? String(sceneFrame.decorations.length)
                         : "None"
+                      : undefined,
+                    "frame.icon": sceneFrame ? (sceneFrame.icon ?? "None") : undefined,
+                    "frame.text": sceneFrame
+                      ? (ALIGN_OPTIONS.find((a) => a.id === (sceneFrame.textAlign ?? "left"))
+                          ?.label ?? "Left")
                       : undefined,
                   }[row.id];
                   return (
