@@ -33,6 +33,7 @@ import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
 import {
+  EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
   exportProject,
   revealInFinder,
@@ -153,10 +154,14 @@ function StageLoadingOverlay({
   active,
   name,
   step,
+  steps = SETTLE_STEPS,
+  verb = "Opening",
 }: {
   active: boolean;
   name: string;
   step: number;
+  steps?: readonly string[];
+  verb?: string;
 }) {
   const [mounted, setMounted] = useState(active);
   useEffect(() => {
@@ -167,7 +172,7 @@ function StageLoadingOverlay({
     <div
       className={`stage-loading${active ? "" : " stage-loading-done"}`}
       role="status"
-      aria-label={`Opening ${name}`}
+      aria-label={`${verb} ${name}`}
       onTransitionEnd={() => {
         if (!active) setMounted(false);
       }}
@@ -177,13 +182,11 @@ function StageLoadingOverlay({
         <span
           className="stage-loading-fill"
           style={{
-            width: `${Math.round((Math.min(step, SETTLE_STEPS.length) / SETTLE_STEPS.length) * 100)}%`,
+            width: `${Math.round((Math.min(step, steps.length) / steps.length) * 100)}%`,
           }}
         />
       </span>
-      <span className="stage-loading-step">
-        {active ? (SETTLE_STEPS[step] ?? "Opening…") : "Ready"}
-      </span>
+      <span className="stage-loading-step">{active ? (steps[step] ?? `${verb}…`) : "Ready"}</span>
     </div>
   );
 }
@@ -264,6 +267,8 @@ export default function App() {
   // False from a real project switch until the settle sequence paints the opening frame (the stage loading overlay renders while false); doc/timing/SWR reloads never reset it. Autorun never uses it.
   const [projectReady, setProjectReady] = useState(false);
   const [settleStep, setSettleStep] = useState(0);
+  // Coarse export-preamble phase (0..3) while an export is preparing, else null (drives the preparing-export overlay so a cold start isn't a silent 0%).
+  const [exportPrepStep, setExportPrepStep] = useState<number | null>(null);
 
   // Opens automatically when a workspace project loads (the panel itself is the "edit in Claude Code" prompt; the session only starts on explicit click), and via the titlebar button or native menu item.
   const [railOpen, setRailOpen] = useState(false);
@@ -1389,6 +1394,7 @@ export default function App() {
     setShowExport(false);
     setExporting(true);
     setProgress(null);
+    setExportPrepStep(0);
     setToast(null);
     try {
       const targetFormat = FORMATS[sel.aspect];
@@ -1416,7 +1422,14 @@ export default function App() {
           encode: sel.encode,
           outputSuffix: sel.outputSuffix,
         },
-        setProgress,
+        (p) => {
+          setExportPrepStep(null); // first frame progress: the preamble is done, hand off to the % counter
+          setProgress(p);
+        },
+        undefined,
+        undefined,
+        undefined,
+        setExportPrepStep,
       );
       setToast({
         kind: "success",
@@ -1433,6 +1446,7 @@ export default function App() {
     } finally {
       setExporting(false);
       setProgress(null);
+      setExportPrepStep(null);
     }
   }
 
@@ -1734,6 +1748,16 @@ export default function App() {
                   active={!project || !projectReady}
                   name={project?.name ?? projectId.replace(/^ws:/, "")}
                   step={settleStep}
+                />
+              )}
+
+              {!isAutoRun && !error && (
+                <StageLoadingOverlay
+                  active={exportPrepStep !== null}
+                  name={project?.name ?? "your cut"}
+                  step={exportPrepStep ?? 0}
+                  steps={EXPORT_PREAMBLE_STEPS}
+                  verb="Exporting"
                 />
               )}
 

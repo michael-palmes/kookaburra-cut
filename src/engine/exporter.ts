@@ -264,8 +264,20 @@ export function awaitTextSync(scene: Scene): Promise<void> {
  *
  * @returns the output file path reported by the native side.
  */
-/** The deterministic preamble shared by exportProject and captureScreenshot; barrier order is pinned (docs/determinism.md). */
-async function exportPreamble(opts: ExportOptions, gl: WebGLRenderer): Promise<void> {
+/** The export preamble's coarse phases, for the "preparing export" overlay (UI only; the preload order itself is authoritative). */
+export const EXPORT_PREAMBLE_STEPS = [
+  "Loading fonts and clips",
+  "Loading models and images",
+  "Loading effects and assets",
+  "Placing the scenes",
+] as const;
+
+/** The deterministic preamble shared by exportProject and captureScreenshot; barrier order is pinned (docs/determinism.md). `onStep` reports coarse-phase completion for the UI overlay only. */
+async function exportPreamble(
+  opts: ExportOptions,
+  gl: WebGLRenderer,
+  onStep?: (step: number) => void,
+): Promise<void> {
   configureDeterministicEngine();
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
@@ -290,11 +302,13 @@ async function exportPreamble(opts: ExportOptions, gl: WebGLRenderer): Promise<v
   }
   // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.
   await preextractClips();
+  onStep?.(1);
   // Fetches + parses bundled 3D models and this project's screen images (and warms drei's caches) before frame 0, so a cold export never captures a still-loading DeviceMockup; no-op once cached. See docs/determinism.md.
   await preloadDeviceModels();
   await preloadCatalogModels();
   await preloadHeroModels();
   await preloadProjectImages(opts.projectId);
+  onStep?.(2);
   // Parses the bundled typeface JSON for ExtrudedText (synchronous today; the barrier is kept so a future fetched font can't race frame 0).
   await preloadText3dFonts();
   // Preloads the project's LUT textures (usually cached by loadProject already) and forces their GPU upload before frame 0, since a mid-run first-use upload is exactly the async-asset race this preamble exists to prevent. See docs/determinism.md.
@@ -309,6 +323,7 @@ async function exportPreamble(opts: ExportOptions, gl: WebGLRenderer): Promise<v
   await preloadChipIcons();
   // Colour-emoji rasters for every sidecar string settle before frame 0 (write-once per-project cache; docs/determinism.md "Emoji").
   await preloadEmojiRasters(opts.projectId, opts.sceneDocs ?? []);
+  onStep?.(3);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);
 }
@@ -322,12 +337,14 @@ export async function exportProject(
   onBoundClipFrame?: (frame: number, boundClipFrame: number) => void,
   /** Diagnostic hook: called once, after the last frame renders, with the render-state fingerprint (engine/renderFingerprint.ts). */
   onFingerprint?: (fp: RenderStateFingerprint) => void,
+  /** UI overlay hook: reports each coarse export-preamble phase (1..3); UI only, never affects render. */
+  onPrepareStep?: (step: number) => void,
 ): Promise<string> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
 
-  await exportPreamble(opts, gl);
+  await exportPreamble(opts, gl, onPrepareStep);
 
   const { width, height } = opts.format;
   const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
