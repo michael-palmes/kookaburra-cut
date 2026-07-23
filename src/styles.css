@@ -2135,18 +2135,127 @@ body {
   touch-action: none;
 }
 
-/* The glow-dot animation, sized/faded inline from tapAnimation.ts. closest-side pins the gradient radius to half the element so scripts/generate-tap-dot.mjs can bake identical falloff stops. */
+/* The glow-dot animation: size, fade and the preset's closest-side gradient all arrive inline (tapAnimation.ts + tapPresets.generated.ts, matching the baked ffmpeg frames). */
 .tap-glow {
   position: absolute;
   aspect-ratio: 1;
   border-radius: 50%;
   pointer-events: none;
-  background: radial-gradient(
-    circle closest-side,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(255, 255, 255, 0.55) 45%,
-    rgba(255, 255, 255, 0) 70%
-  );
+}
+
+/* The floating tap-settings overlay: marker scope + style preset, camera-pill styling. */
+.tap-settings {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  box-shadow: var(--elev-popover);
+}
+
+.tap-settings-scope {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-recessed);
+  border-radius: var(--radius-full);
+}
+
+.tap-settings-seg {
+  padding: 2px 9px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.tap-settings-seg.selected {
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  box-shadow: 0 0 0 1px var(--border-default);
+}
+
+.tap-settings-style {
+  position: relative;
+}
+
+.tap-settings-style-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 4px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.tap-settings-style-btn:hover {
+  background: var(--surface-hover);
+}
+
+.tap-settings-chevron {
+  font-size: 8px;
+  color: var(--text-tertiary);
+}
+
+.tap-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  flex: none;
+}
+
+.tap-settings-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+}
+
+.tap-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tap-settings-option:hover {
+  background: var(--surface-hover);
+}
+
+.tap-settings-option.selected {
+  background: var(--accent-subtle);
 }
 
 /* A placed tap's edit affordance: subtle ring, stronger while the tool is armed. */

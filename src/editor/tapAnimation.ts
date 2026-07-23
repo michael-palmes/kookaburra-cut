@@ -8,6 +8,9 @@ export const TAP_DOT_SIZE_FRACTION = 0.07;
 /** Baked overlay frames at 60fps (600ms, comfortably past the duration). */
 export const TAP_DOT_FRAME_COUNT = 36;
 
+/** Edit-marker visibility margin around a tap's window in "near playhead" scope. */
+export const TAP_MARKER_NEAR_MS = 200;
+
 /** Progress 0..1 through the animation, or null outside it. */
 export function tapProgress(elapsedMs: number): number | null {
   if (elapsedMs < 0 || elapsedMs > TAP_ANIMATION_DURATION_MS) return null;

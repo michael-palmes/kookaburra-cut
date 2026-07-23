@@ -45,6 +45,8 @@ export interface EditDoc {
   settings: EditSettings;
   clips: EditClip[];
   taps?: EditTap[];
+  /** Tap style preset id (tapPresets.generated.ts); absent = the default preset. */
+  tapStyle?: string;
 }
 
 export interface EditTarget {

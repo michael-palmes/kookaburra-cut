@@ -39,6 +39,7 @@ import { MediaBrowser } from "../ui/MediaBrowser";
 import { Preview, type TrimScrub } from "./Preview";
 import { Timeline } from "./Timeline";
 import { TAP_ANIMATION_DURATION_MS } from "./tapAnimation";
+import { DEFAULT_TAP_PRESET_ID } from "./tapPresets.generated";
 
 /** The non-destructive video editor window: magnetic timeline (trim/split/reorder/speed/zoom, filmstrips), playhead-driven preview with spacebar transport and trim-edge live preview, debounced autosave with warn-on-close and corrupt-doc recovery, multi-clip assembly. Renders close the window on success. */
 
@@ -70,6 +71,7 @@ export function EditorApp() {
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [armedTap, setArmedTap] = useState(false);
   const [tapMenu, setTapMenu] = useState<ContextMenuState | null>(null);
+  const [tapMarkerScope, setTapMarkerScope] = useState<"near" | "all">("near");
 
   // Debounced autosave: rapid mutations coalesce into one save; flushSave() runs any pending write before renders (render_edit reads edit.json from disk) and on close. renderStaleRef backs the warn-on-close (changes not yet in a render).
   const saveTimer = useRef<number | null>(null);
@@ -373,6 +375,14 @@ export function EditorApp() {
     [doc, commitTaps],
   );
 
+  const handleTapStyle = useCallback(
+    (id: string) => {
+      if (!doc || !target) return;
+      commitDoc({ ...doc, tapStyle: id });
+    },
+    [doc, target, commitDoc],
+  );
+
   const firstSource = doc?.sources[0] ?? null;
   const selectedClip = doc?.clips.find((c) => c.id === selectedId) ?? null;
   const totalMs = doc ? timelineDurationMs(doc.clips) : 0;
@@ -547,6 +557,10 @@ export function EditorApp() {
               onPlaceTap={handlePlaceTap}
               onCommitTap={handleCommitTap}
               onTapContextMenu={handleTapContextMenu}
+              tapMarkerScope={tapMarkerScope}
+              onTapMarkerScope={setTapMarkerScope}
+              tapStyle={doc.tapStyle ?? DEFAULT_TAP_PRESET_ID}
+              onTapStyle={handleTapStyle}
             />
           )}
         </main>

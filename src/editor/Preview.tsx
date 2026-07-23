@@ -2,7 +2,14 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import type { EditClip, EditSource, EditTap } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
-import { TAP_DOT_SIZE_FRACTION, tapDotFrame, tapProgress } from "./tapAnimation";
+import { useEscapeClose } from "../ui/useEscapeClose";
+import {
+  TAP_DOT_SIZE_FRACTION,
+  TAP_MARKER_NEAR_MS,
+  tapDotFrame,
+  tapProgress,
+} from "./tapAnimation";
+import { DEFAULT_TAP_PRESET_ID, TAP_PRESETS } from "./tapPresets.generated";
 
 /** The preview controller: one muted <video> per source, driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. Freeze clips have no decode clock, so they advance on rAF frame time with the source parked on the pinned frame. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
 
@@ -32,6 +39,98 @@ export interface PreviewProps {
   onPlaceTap: (pos: [number, number]) => void; // pos normalised 0..1 across the source frame
   onCommitTap: (id: string, pos: [number, number]) => void; // one commit per drag gesture
   onTapContextMenu: (id: string, clientX: number, clientY: number) => void;
+  tapMarkerScope: "near" | "all"; // "near" shows edit markers only around the playhead
+  onTapMarkerScope: (scope: "near" | "all") => void;
+  tapStyle: string; // preset id (tapPresets.generated.ts)
+  onTapStyle: (id: string) => void;
+}
+
+/** The floating tap-settings overlay (camera-pill styling): marker scope + style preset dropdown with live swatches. */
+function TapSettings({
+  scope,
+  onScope,
+  styleId,
+  onStyle,
+}: {
+  scope: "near" | "all";
+  onScope: (scope: "near" | "all") => void;
+  styleId: string;
+  onStyle: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEscapeClose(() => setOpen(false), open);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [open]);
+  const current = TAP_PRESETS.find((p) => p.id === styleId) ?? TAP_PRESETS[0];
+  // The swatch backdrop splits light/dark so every preset's visibility is previewable.
+  const swatch = (gradient: string): CSSProperties => ({
+    backgroundImage: `${gradient}, linear-gradient(105deg, #f2f2f2 50%, #20262b 50%)`,
+  });
+  return (
+    <div className="tap-settings" ref={ref}>
+      <div className="tap-settings-scope">
+        <button
+          type="button"
+          className={`tap-settings-seg${scope === "near" ? " selected" : ""}`}
+          aria-pressed={scope === "near"}
+          onClick={() => onScope("near")}
+          title="Show tap markers near the playhead only"
+        >
+          Near
+        </button>
+        <button
+          type="button"
+          className={`tap-settings-seg${scope === "all" ? " selected" : ""}`}
+          aria-pressed={scope === "all"}
+          onClick={() => onScope("all")}
+          title="Show every tap marker on this source"
+        >
+          All
+        </button>
+      </div>
+      <div className="tap-settings-style">
+        <button
+          type="button"
+          className="tap-settings-style-btn"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          title="Tap highlight style (applies to the whole edit)"
+        >
+          <span className="tap-swatch" style={swatch(current.gradient)} />
+          <span className="tap-settings-style-label">{current.label}</span>
+          <span className="tap-settings-chevron" aria-hidden>
+            ▾
+          </span>
+        </button>
+        {open && (
+          <div className="tap-settings-menu">
+            {TAP_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`tap-settings-option${p.id === current.id ? " selected" : ""}`}
+                aria-pressed={p.id === current.id}
+                onClick={() => {
+                  onStyle(p.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="tap-swatch" style={swatch(p.gradient)} />
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -70,6 +169,10 @@ export function Preview({
   onPlaceTap,
   onCommitTap,
   onTapContextMenu,
+  tapMarkerScope,
+  onTapMarkerScope,
+  tapStyle,
+  onTapStyle,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
@@ -234,13 +337,30 @@ export function Preview({
     return () => cancelAnimationFrame(raf);
   }, [pulseFrame]);
 
+  const preset =
+    TAP_PRESETS.find((p) => p.id === tapStyle) ??
+    TAP_PRESETS.find((p) => p.id === DEFAULT_TAP_PRESET_ID) ??
+    TAP_PRESETS[0];
+
   const dotStyle = (pos: [number, number], opacity: number, scale: number): CSSProperties => ({
     left: `${pos[0] * 100}%`,
     top: `${pos[1] * 100}%`,
     width: `${TAP_DOT_SIZE_FRACTION * 100}cqmin`,
     opacity,
     transform: `translate(-50%, -50%) scale(${scale})`,
+    backgroundImage: preset.gradient,
   });
+
+  /** "Near" scope: an edit marker shows only while the playhead is within the margin of one of its windows; "all" also surfaces taps whose spans were trimmed out. */
+  const markerVisible = (tap: EditTap): boolean => {
+    if (tapMarkerScope === "all") return true;
+    return tapWindowList.some(
+      (w) =>
+        w.tap.id === tap.id &&
+        playheadMs >= w.startMs - TAP_MARKER_NEAR_MS &&
+        playheadMs <= w.endMs + TAP_MARKER_NEAR_MS,
+    );
+  };
 
   return (
     <div className="editor-preview">
@@ -303,6 +423,7 @@ export function Preview({
                 )}
                 {taps.map((tap) => {
                   if (tap.sourceId !== source.id) return null;
+                  if (dragPos?.id !== tap.id && !markerVisible(tap)) return null;
                   const pos = dragPos?.id === tap.id ? dragPos.pos : tap.pos;
                   return (
                     <button
@@ -346,6 +467,14 @@ export function Preview({
           </div>
         </div>
       ))}
+      {taps.length > 0 && (
+        <TapSettings
+          scope={tapMarkerScope}
+          onScope={onTapMarkerScope}
+          styleId={preset.id}
+          onStyle={onTapStyle}
+        />
+      )}
       {clips.length === 0 && <p className="muted">No clips to preview.</p>}
     </div>
   );

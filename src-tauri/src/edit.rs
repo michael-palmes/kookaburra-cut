@@ -72,6 +72,9 @@ pub struct EditDoc {
     pub clips: Vec<EditClip>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub taps: Vec<EditTap>,
+    /// Tap style preset id; absent = the default (first) preset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_style: Option<String>,
 }
 
 /// Which edit the editor window should open; stored in managed state and read by the editor on boot (`get_editor_target`) rather than smuggled through a URL query.
@@ -250,6 +253,7 @@ async fn create_default_doc(
             hold_ms: None,
         }],
         taps: Vec::new(),
+        tap_style: None,
     })
 }
 
@@ -380,9 +384,18 @@ const TAP_DOT_SIZE_FRACTION: f64 = 0.07;
 /// The baked frames leave pulse headroom around the scale-1 dot; the overlay scales up by the same factor so the dot lands at exactly TAP_DOT_SIZE_FRACTION of min(w, h).
 const TAP_DOT_CANVAS_HEADROOM: f64 = 1.15;
 /// Bump when the baked frames change to invalidate the materialised cache.
-const TAP_DOT_FRAMES_VERSION: u32 = 1;
+const TAP_DOT_FRAMES_VERSION: u32 = 2;
 
-/// Materialise the embedded glow-dot frames into `$APPDATA/cache/tapdot` once (versioned marker, the media-cache pattern) so ffmpeg's image2 reader can consume them; both encode lanes reference the same stable files.
+/// The doc's tap style, falling back to the default (first) preset when absent or unknown.
+fn tap_style_id(doc: &EditDoc) -> &str {
+    let presets = crate::tap_dot_frames::TAP_DOT_PRESETS;
+    match doc.tap_style.as_deref() {
+        Some(id) if presets.iter().any(|(k, _)| *k == id) => id,
+        _ => presets[0].0,
+    }
+}
+
+/// Materialise the embedded glow-dot frames into `$APPDATA/cache/tapdot/<preset>` once (versioned marker, the media-cache pattern) so ffmpeg's image2 reader can consume them; both encode lanes reference the same stable files.
 fn ensure_tap_dot_frames(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     let dir = app
         .path()
@@ -392,10 +405,13 @@ fn ensure_tap_dot_frames(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .join("tapdot");
     let done = dir.join(format!(".done-v{TAP_DOT_FRAMES_VERSION}"));
     if !done.is_file() {
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        for (i, bytes) in crate::tap_dot_frames::TAP_DOT_FRAMES.iter().enumerate() {
-            std::fs::write(dir.join(format!("tapdot_{i:02}.png")), bytes)
-                .map_err(|e| e.to_string())?;
+        for (preset, frames) in crate::tap_dot_frames::TAP_DOT_PRESETS {
+            let preset_dir = dir.join(preset);
+            std::fs::create_dir_all(&preset_dir).map_err(|e| e.to_string())?;
+            for (i, bytes) in frames.iter().enumerate() {
+                std::fs::write(preset_dir.join(format!("tapdot_{i:02}.png")), bytes)
+                    .map_err(|e| e.to_string())?;
+            }
         }
         std::fs::write(&done, []).map_err(|e| e.to_string())?;
     }
@@ -546,7 +562,11 @@ fn build_render_args(
         args.push(source.abs.clone());
     }
     if let Some(dir) = tap_dot_dir {
-        let seq = dir.join("tapdot_%02d.png").to_string_lossy().into_owned();
+        let seq = dir
+            .join(tap_style_id(doc))
+            .join("tapdot_%02d.png")
+            .to_string_lossy()
+            .into_owned();
         for (_, _, start_ms, _) in &windows {
             args.push("-itsoffset".into());
             args.push(format!("{:.6}", start_ms / 1000.0));
@@ -739,6 +759,7 @@ mod tests {
                 hold_ms: None,
             }],
             taps: Vec::new(),
+            tap_style: None,
         }
     }
 
@@ -833,7 +854,7 @@ mod tests {
                 "-framerate",
                 "60",
                 "-i",
-                "/cache/tapdot/tapdot_%02d.png"
+                "/cache/tapdot/glow-light/tapdot_%02d.png"
             ]
             .map(String::from)
         );
@@ -843,6 +864,25 @@ mod tests {
         assert!(filter.contains("[outv][dot0]overlay=x=480.000-overlay_w/2:y=810.000-overlay_h/2:"));
         assert!(filter.contains("eof_action=pass:enable='between(t\\,0.500000\\,1.000000)'[tapv0]"));
         assert!(args.windows(2).any(|w| w == ["-map", "[tapv0]"]));
+    }
+
+    #[test]
+    fn tap_style_picks_its_preset_dir_and_unknown_falls_back() {
+        let mut d = doc();
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            source_ms: 500,
+            pos: [0.5, 0.5],
+        });
+        d.tap_style = Some("ring-dark".into());
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        assert!(args.contains(&"/cache/tapdot/ring-dark/tapdot_%02d.png".to_string()));
+        d.tap_style = Some("not-a-preset".into());
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        assert!(args.contains(&"/cache/tapdot/glow-light/tapdot_%02d.png".to_string()));
     }
 
     #[test]
