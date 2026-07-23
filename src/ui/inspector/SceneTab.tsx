@@ -64,21 +64,15 @@ import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
-import { type SceneSectionId, type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
 
-/** Scene-tab top level: one drill row per section group (compact submenu list). */
-const GROUP_LABELS: Record<SceneSectionId, string> = {
+/** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
+const SCREEN_TITLES: Record<string, string> = {
   text: "Text",
-  device: "Screens & devices",
+  device: "Device",
   frame: "Overlay",
-  style: "Background & look",
   camera: "Camera",
   motion: "Timing",
-};
-
-/** Titles the DrillBack shows for the screen one level down; groups plus the detail screens that own children. */
-const SCREEN_TITLES: Record<string, string> = {
-  ...GROUP_LABELS,
   "text.edit": "Edit text",
   "style.background": "Background",
   "videoWindow.edit": "Video window",
@@ -116,6 +110,22 @@ const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
   switch (id) {
+    case "frame":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="14" height="13" rx="2" />
+          <rect x="6" y="6.5" width="8" height="2.6" rx="1" />
+          <path d="M6 12h8M6 14h5" />
+        </svg>
+      );
     case "text.edit":
       return (
         <svg
@@ -855,10 +865,12 @@ function CameraSectionBody({
         {doc?.layeredScreenshot && (
           <>
             {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
-            <div className="wizard-presets">
+            <div className="inspector-subtabs" role="tablist">
               <button
                 type="button"
-                className={`chip${lsAnimated ? "" : " selected"}`}
+                role="tab"
+                aria-selected={!lsAnimated}
+                className={`inspector-subtab${lsAnimated ? "" : " active"}`}
                 title="Animate this scene with the camera track"
                 onClick={() => {
                   if (!lsAnimated) return;
@@ -872,7 +884,9 @@ function CameraSectionBody({
               </button>
               <button
                 type="button"
-                className={`chip${lsAnimated ? " selected" : ""}`}
+                role="tab"
+                aria-selected={lsAnimated}
+                className={`inspector-subtab${lsAnimated ? " active" : ""}`}
                 title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
                 onClick={() => {
                   if (lsAnimated) return;
@@ -957,31 +971,32 @@ function CameraSectionBody({
         />
         {camera.keys.length > 1 && (
           <>
-            <div className="popover-row camera-loop-indent">
-              <label
-                className="popover-inline"
-                title="While a slideshow holds, loop the camera back to its first key; video playback and export are untouched"
-              >
-                <input
-                  type="checkbox"
-                  checked={camera.presentLoop !== undefined}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      void commit({
-                        ...camera,
-                        presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
-                      });
-                    } else {
-                      const { presentLoop: _drop, ...rest } = camera;
-                      void commit(rest);
-                    }
-                  }}
-                />
-                Loop in Present
-              </label>
-            </div>
+            <label className="inspector-toggle-row">
+              <input
+                type="checkbox"
+                checked={camera.presentLoop !== undefined}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    void commit({
+                      ...camera,
+                      presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
+                    });
+                  } else {
+                    const { presentLoop: _drop, ...rest } = camera;
+                    void commit(rest);
+                  }
+                }}
+              />
+              <span className="inspector-toggle-text">
+                <span className="inspector-toggle-label">Loop in Present</span>
+                <span className="inspector-toggle-desc">
+                  In slideshow Present mode, ease the camera back to its first key each cycle. Video
+                  playback and export are untouched.
+                </span>
+              </span>
+            </label>
             {camera.presentLoop && (
-              <div className="popover-row camera-loop-indent">
+              <div className="camera-loop-modes">
                 <button
                   type="button"
                   className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
@@ -1427,6 +1442,22 @@ export function SceneTab({
     deckFrame: project.deckFrame !== undefined,
     frame: sceneFrame,
   });
+
+  const addDevice = () =>
+    void patchDoc((next) => {
+      // The Rust scaffolder's device defaults, byte for byte.
+      next.devices = [
+        ...(next.devices ?? []),
+        {
+          id: "d1",
+          model: "iphone-17-pro",
+          colour: "silver",
+          placement: { position: [0, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
+          motion: { preset: "none" },
+          shadow: "soft",
+        },
+      ];
+    });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
   const transitionValue =
@@ -3684,26 +3715,7 @@ export function SceneTab({
         },
         "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
         "device.change": () => openDrill("device.change"),
-        "device.add": () => {
-          void patchDoc((next) => {
-            // The Rust scaffolder's device defaults, byte for byte.
-            next.devices = [
-              ...(next.devices ?? []),
-              {
-                id: "d1",
-                model: "iphone-17-pro",
-                colour: "silver",
-                placement: {
-                  position: [0, -0.3, 0],
-                  rotationDeg: [0, 0, 0],
-                  scale: 1,
-                },
-                motion: { preset: "none" },
-                shadow: "soft",
-              },
-            ];
-          });
-        },
+        "device.add": addDevice,
         "device.rotation": () => openDrill("device.rotation"),
         // Both paths drill into the builder; it seeds the first layer for scenes without a block.
         "layeredScreenshot.edit": () => openDrill("layeredScreenshot.edit"),
@@ -3821,6 +3833,113 @@ export function SceneTab({
     );
   }
 
+  const deviceName = device
+    ? DEVICE_CATALOG[(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId]
+        .name
+    : undefined;
+  const bgLabel = doc
+    ? doc.background === undefined
+      ? "Theme default"
+      : {
+          none: "None",
+          color: "Colour",
+          gradient: "Gradient",
+          shader: "Animated",
+          image: "Image",
+          video: "Video",
+        }[doc.background.type]
+    : undefined;
+  // The Scene tab's top level: a flat, ordered list of entries (some open a group panel, some a
+  // detail screen directly). Gating mirrors sceneSections; icons reuse the SceneRowIcon glyphs.
+  const topEntries: {
+    key: string;
+    label: string;
+    icon: string;
+    value?: string;
+    onClick: () => void;
+  }[] = [];
+  if (doc)
+    topEntries.push({
+      key: "text",
+      label: "Text",
+      icon: "text.edit",
+      onClick: () => openDrill("text"),
+    });
+  if (device)
+    topEntries.push({
+      key: "device",
+      label: "Device",
+      icon: "device.change",
+      value: deviceName,
+      onClick: () => openDrill("device"),
+    });
+  else if (doc)
+    topEntries.push({
+      key: "device.add",
+      label: "Add device",
+      icon: "device.add",
+      onClick: addDevice,
+    });
+  if (doc)
+    topEntries.push({
+      key: "stack",
+      label: doc.layeredScreenshot ? "Screenshot stack" : "Add screenshot stack",
+      icon: "layeredScreenshot.edit",
+      onClick: () => openDrill("layeredScreenshot.edit"),
+    });
+  if (doc)
+    topEntries.push({
+      key: "vw",
+      label: doc.videoWindow ? "Video window" : "Add video window",
+      icon: "videoWindow.edit",
+      value: doc.videoWindow
+        ? { color: "Colour", gradient: "Gradient", image: "Image" }[doc.videoWindow.stage.type]
+        : undefined,
+      onClick: () => openDrill("videoWindow.edit"),
+    });
+  if (project.deckFrame !== undefined)
+    topEntries.push({
+      key: "frame",
+      label: "Overlay",
+      icon: "frame",
+      onClick: () => openDrill("frame"),
+    });
+  if (doc) {
+    const themeId = doc.themeId ?? "";
+    topEntries.push({
+      key: "theme",
+      label: "Theme",
+      icon: "style.theme",
+      value: sceneTheme?.name,
+      onClick: () => {
+        setThemeDraft(themeId);
+        openDrill("style.theme");
+      },
+    });
+    topEntries.push({
+      key: "background",
+      label: "Background",
+      icon: "style.background",
+      value: bgLabel,
+      onClick: () => {
+        setBgTabOverride(null);
+        openDrill("style.background");
+      },
+    });
+  }
+  topEntries.push({
+    key: "camera",
+    label: "Camera",
+    icon: "camera.animate",
+    onClick: () => openDrill("camera"),
+  });
+  topEntries.push({
+    key: "motion",
+    label: "Timing",
+    icon: "motion.duration",
+    onClick: () => openDrill("motion"),
+  });
+
   return (
     <>
       {header}
@@ -3836,12 +3955,14 @@ export function SceneTab({
         </p>
       )}
       <div className="inspector-rows">
-        {sections.map((section) => (
+        {topEntries.map((entry) => (
           <ActionRow
-            key={section.id}
-            label={GROUP_LABELS[section.id]}
+            key={entry.key}
+            icon={<SceneRowIcon id={entry.icon} />}
+            label={entry.label}
+            value={entry.value}
             chevron
-            onClick={() => openDrill(section.id)}
+            onClick={entry.onClick}
           />
         ))}
       </div>

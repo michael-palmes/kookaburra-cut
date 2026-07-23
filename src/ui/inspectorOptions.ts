@@ -96,14 +96,8 @@ export function sceneSections(input: {
     });
   }
 
-  // The screenshot stack and video window share the screens & devices section: one home for every add-able "show your app" item.
-  const stackRow: SceneRowModel = doc?.layeredScreenshot
-    ? { id: "layeredScreenshot.edit", label: "Edit screenshot stack", chevron: true }
-    : { id: "layeredScreenshot.add", label: "Add screenshot stack", chevron: false };
-  const videoWindowRow: SceneRowModel = doc?.videoWindow
-    ? { id: "videoWindow.edit", label: "Edit video window", chevron: true }
-    : { id: "videoWindow.add", label: "Add video window", chevron: false };
-
+  // The Device panel: the device's own controls (media, model, pose, shadow). The screenshot stack
+  // and video window are their own top-level entries now, not device rows.
   if (device) {
     const rows: SceneRowModel[] = [{ id: "device.media", label: "Change media", chevron: true }];
     if (device.media?.kind === "video") {
@@ -116,14 +110,14 @@ export function sceneSections(input: {
     if (isDeviceId(device.model) && DEVICE_CATALOG[device.model].lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });
     }
-    rows.push(stackRow, videoWindowRow);
+    rows.push({ id: "style.shadow", label: "Shadow", chevron: true });
     rows.push({ id: "device.remove", label: "Remove device", danger: true, chevron: false });
-    sections.push({ id: "device", label: "Screens & devices", rows });
+    sections.push({ id: "device", label: "Device", rows });
   } else if (doc) {
     sections.push({
       id: "device",
-      label: "Screens & devices",
-      rows: [{ id: "device.add", label: "Add device", chevron: false }, stackRow, videoWindowRow],
+      label: "Device",
+      rows: [{ id: "device.add", label: "Add device", chevron: false }],
     });
   }
 
@@ -144,19 +138,6 @@ export function sceneSections(input: {
       );
     }
     sections.push({ id: "frame", label: "Overlay", rows });
-  }
-
-  if (doc) {
-    // The whole Style group is drill-ins: Background is the ONE surface for both the fixed layer and staging (colour/gradient write through to the stage), Shadow a card picker.
-    sections.push({
-      id: "style",
-      label: "Style",
-      rows: [
-        { id: "style.theme", label: "Theme", chevron: true },
-        { id: "style.background", label: "Background", chevron: true },
-        ...(device ? [{ id: "style.shadow", label: "Shadow", chevron: true }] : []),
-      ],
-    });
   }
 
   sections.push({
