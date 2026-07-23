@@ -11,7 +11,7 @@ import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
 import { projectRows } from "../inspectorOptions";
-import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
+import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { DuplicateSceneDialog } from "../PlaybackBar";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
@@ -274,16 +274,9 @@ export function InspectorPanel({
           <DrillBack label="Project" onClick={() => setDrillIn(null)} />
           <div className="inspector-drill-title">App icon</div>
           <div className="inspector-drill-body">
-            <div className="popover-row">
-              <span className="modal-hint bg-media-hint">
-                Pick an image; it becomes assets/app-icon.png everywhere.
-              </span>
-              <AddMediaButton
-                slug={workspaceSlug(project.id)}
-                kinds={["image"]}
-                onImported={() => setMediaRefresh((n) => n + 1)}
-              />
-            </div>
+            <span className="modal-hint">
+              Pick an image; it becomes assets/app-icon.png everywhere.
+            </span>
             {mediaError && <p className="modal-error">{mediaError}</p>}
             <div className="inspector-media-host">
               <MediaBrowser
@@ -291,7 +284,6 @@ export function InspectorPanel({
                 projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                 kinds={["image"]}
                 globalToggle
-                hideAdd
                 refreshKey={mediaRefreshKey + mediaRefresh}
                 onPick={(rel) => {
                   setDrillIn(null);

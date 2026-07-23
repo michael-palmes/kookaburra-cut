@@ -66,7 +66,7 @@ import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { sceneSections } from "../inspectorOptions";
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
-import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
+import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
 import { TextFieldRow } from "../SceneTextFields";
@@ -1523,11 +1523,6 @@ export function SceneTab({
       <div className="modal wizard-wide media-modal-wide">
         <div className="modal-title-row">
           <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change media"}</h2>
-          <AddMediaButton
-            slug={slug}
-            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
-            onImported={() => setMediaRefresh((n) => n + 1)}
-          />
         </div>
         <div className="wizard-media-host">
           <MediaBrowser
@@ -1536,7 +1531,6 @@ export function SceneTab({
             kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
             kindToggle={mediaTarget.kind === "device"}
             globalToggle
-            hideAdd
             refreshKey={mediaRefresh}
             onPick={pickMediaModal}
             cardMenu={mediaCardMenu({
@@ -2184,20 +2178,12 @@ export function SceneTab({
           <span>Recording</span>
         </div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <AddMediaButton
-              slug={slug}
-              kinds={["video"]}
-              onImported={() => setMediaRefresh((n) => n + 1)}
-            />
-          </div>
           <div className="inspector-media-host">
             <MediaBrowser
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={["video"]}
               globalToggle
-              hideAdd
               refreshKey={mediaRefresh}
               selectedRel={vw?.media.src ?? null}
               onPick={pickVideoWindowMedia}
@@ -2301,20 +2287,12 @@ export function SceneTab({
           )}
           {vw.stage.type === "image" && (
             <>
-              <div className="popover-row">
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["image"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
               <div className="inspector-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["image"]}
                   globalToggle
-                  hideAdd
                   refreshKey={mediaRefresh}
                   selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
                   onPick={(rel, meta) => {
@@ -2418,20 +2396,12 @@ export function SceneTab({
               <p className="modal-hint">
                 Pick a screen recording to float in a window over a backing stage.
               </p>
-              <div className="popover-row">
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["video"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
               <div className="inspector-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["video"]}
                   globalToggle
-                  hideAdd
                   refreshKey={mediaRefresh}
                   onPick={(rel, meta) => {
                     if (meta && meta.kind !== "video") return;
@@ -2732,20 +2702,12 @@ export function SceneTab({
           {kind === "video" ? "Background video" : "Background image"}
         </div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <AddMediaButton
-              slug={slug}
-              kinds={[kind]}
-              onImported={() => setMediaRefresh((n) => n + 1)}
-            />
-          </div>
           <div className="inspector-media-host">
             <MediaBrowser
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={[kind]}
               globalToggle
-              hideAdd
               refreshKey={mediaRefresh}
               selectedRel={selectedSrc}
               onPick={selectBg}

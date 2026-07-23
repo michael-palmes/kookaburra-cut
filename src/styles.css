@@ -603,8 +603,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
+  gap: var(--space-3);
 }
 /* The source + kind toggle rows stack on the left; the Add button keeps the right edge. */
 .media-browser-toggles {
@@ -4647,9 +4646,13 @@ body {
 
 .action-row-value {
   margin-left: auto;
-  flex: none;
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-row-chevron {
