@@ -42,8 +42,27 @@ import { DrillBack } from "./inspector/rows";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
+import { DebouncedRange } from "./TextAnimationPicker";
 import { useEscapeClose } from "./useEscapeClose";
 import { useSceneDocPatch } from "./useSceneDocPatch";
+
+/** View glyphs for the front-on/isometric toggle: a straight-on screen vs a tilted iso view. */
+function LsViewIcon({ iso }: { iso: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {iso ? <path d="M9 3l6 6-6 6-6-6z" /> : <rect x="4" y="4" width="10" height="10" rx="1.5" />}
+    </svg>
+  );
+}
 
 /** The layered-screenshot builder, an inspector DRILL-IN like Change device or Background (Michael's 2026-07-20 revision of the docked-panel design; the stage stays the live preview). Layer list, a 2D chain schematic of the selected layer (screenshot thumbnails, plus-buttons on free sides), an inline item inspector, the front-on/isometric snap, the spread slider and the animation presets. Every gesture commits through the `useLayeredScreenshotDoc` funnel; while mounted it opens the edit store so the stage pose tools stay armable. */
 
@@ -122,8 +141,6 @@ export function LayeredScreenshotBuilder({
     | { mode: "change" }
     | null
   >(null);
-  // Spread slider: preview while dragging, one commit on release.
-  const [spreadDraft, setSpreadDraft] = useState<number | null>(null);
   useEscapeClose(() => setAdding(null), adding !== null);
 
   // A block with no layers still opens: seed the first layer so the panel is never a dead end.
@@ -236,7 +253,7 @@ export function LayeredScreenshotBuilder({
 
   const front = ordered[ordered.length - 1]?.id === layer.id;
   const back = ordered[0]?.id === layer.id;
-  const spread = spreadDraft ?? block.pose.spread;
+  const spread = block.pose.spread;
   const frontOn = Math.abs(block.pose.azimuthDeg) < 0.5 && Math.abs(block.pose.elevationDeg) < 0.5;
 
   return (
@@ -245,51 +262,44 @@ export function LayeredScreenshotBuilder({
       <div className="inspector-drill-title">Screenshot stack</div>
       <div className="ls-builder">
         <div className="ls-builder-section">
-          <div className="wizard-presets">
+          <div className="inspector-tabs" role="tablist">
             <button
               type="button"
-              className={`chip${frontOn ? " selected" : ""}`}
+              role="tab"
+              aria-selected={frontOn}
+              className={`inspector-tab${frontOn ? " active" : ""}`}
               title="Snap the stack front-on"
               onClick={() => setPose({ azimuthDeg: 0, elevationDeg: 0 })}
             >
+              <LsViewIcon iso={false} />
               Front-on
             </button>
             <button
               type="button"
-              className={`chip${frontOn ? "" : " selected"}`}
+              role="tab"
+              aria-selected={!frontOn}
+              className={`inspector-tab${frontOn ? "" : " active"}`}
               title="Snap the stack to the isometric view"
               onClick={() =>
                 setPose({ azimuthDeg: ISO_AZIMUTH_DEG, elevationDeg: ISO_ELEVATION_DEG })
               }
             >
+              <LsViewIcon iso={true} />
               Isometric
             </button>
           </div>
-          <label className="ls-builder-spread">
+          <div className="ls-builder-spread">
             <span>Spread</span>
-            <input
-              type="range"
+            <DebouncedRange
+              value={spread}
               min={0}
               max={1}
               step={0.01}
-              value={spread}
-              aria-label="Layer spread"
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setSpreadDraft(v);
-                preview({ ...block, pose: { ...block.pose, spread: v } }, false);
-              }}
-              onPointerUp={() => {
-                if (spreadDraft !== null) setPose({ spread: spreadDraft });
-                setSpreadDraft(null);
-              }}
-              onKeyUp={() => {
-                if (spreadDraft !== null) setPose({ spread: spreadDraft });
-                setSpreadDraft(null);
-              }}
+              label="Layer spread"
+              onInput={(v) => preview({ ...block, pose: { ...block.pose, spread: v } }, false)}
+              onCommit={(v) => setPose({ spread: v })}
             />
-            <span className="ls-builder-readout">{Math.round(spread * 100)}%</span>
-          </label>
+          </div>
         </div>
 
         <div className="ls-builder-section">

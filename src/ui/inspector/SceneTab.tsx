@@ -3759,6 +3759,9 @@ export function SceneTab({
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={closeDrill} />
+        <div className="inspector-drill-title">
+          {SCREEN_TITLES[groupSection.id] ?? groupSection.label}
+        </div>
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
       </div>
     );
