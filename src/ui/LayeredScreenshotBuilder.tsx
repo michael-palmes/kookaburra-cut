@@ -242,6 +242,7 @@ export function LayeredScreenshotBuilder({
   return (
     <>
       <DrillBack label={backLabel} onClick={onBack} />
+      <div className="inspector-drill-title">Screenshot stack</div>
       <div className="ls-builder">
         <div className="ls-builder-section">
           <div className="wizard-presets">

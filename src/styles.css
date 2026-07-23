@@ -5405,37 +5405,21 @@ img.inspector-scene-thumb {
 /* Embedded transition picker: the modal body stacked for the panel — cards 2-up,
    preview above them at full panel width; full-height with the actions pinned
    at the bottom (M5 live round). */
-.transition-embedded {
-  display: flex;
+/* Transition drill (embedded): the list sits on top with the preview/params below; the whole stack
+   scrolls in the drill body while Cancel/Apply pin to the fixed .inspector-drill-actions bar. */
+.transition-embedded-body .transition-body {
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
 }
-
-.transition-embedded .transition-body {
-  flex-direction: column-reverse;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.transition-embedded .transition-grid {
+.transition-embedded-body .transition-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-
-.transition-embedded .transition-side {
+.transition-embedded-body .transition-side {
   width: 100%;
 }
-
-.transition-embedded .transition-preview-canvas,
-.transition-embedded canvas {
+.transition-embedded-body .transition-preview-canvas,
+.transition-embedded-body canvas {
   width: 100%;
   height: auto;
-}
-
-.transition-embedded .modal-actions {
-  flex: none;
-  margin-top: var(--space-4);
 }
 
 /* Embedded gradient picker: 2-up swatch grid at panel width. */

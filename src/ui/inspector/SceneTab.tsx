@@ -1012,6 +1012,7 @@ function CameraSectionBody({
   return (
     <div className="inspector-drill">
       <DrillBack label="Scene" onClick={onBack} />
+      <div className="inspector-drill-title">Camera</div>
       {camera.keys.length > 0 && (
         <div className="inspector-drill-reset">
           <button
@@ -1640,9 +1641,6 @@ export function SceneTab({
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Scene theme</div>
         <div className="inspector-drill-body">
-          <p className="modal-hint">
-            Overrides the project theme for THIS scene only — right-click a card for more.
-          </p>
           <div className="font-slot-row">
             <button
               type="button"
@@ -3228,33 +3226,31 @@ export function SceneTab({
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{`Transition out of scene ${boundaryIndex + 1}`}</div>
-        <div className="inspector-drill-body">
-          <TransitionModal
-            embedded
-            project={project}
-            boundaryIndex={boundaryIndex}
-            thumbs={thumbs ?? {}}
-            onCancel={() => closeDrill()}
-            onApply={async (spec) => {
-              const manifestBefore = await readProjectManifestSnapshot(slug);
-              await updateSceneTransition(slug, boundaryIndex, spec);
-              pushHistory({
-                label: "transition",
-                changes: [
-                  {
-                    kind: "manifest",
-                    slug,
-                    before: manifestBefore,
-                    after: await readProjectManifestSnapshot(slug),
-                    reload: false,
-                  },
-                ],
-              });
-              closeDrill();
-              onTimingChanged();
-            }}
-          />
-        </div>
+        <TransitionModal
+          embedded
+          project={project}
+          boundaryIndex={boundaryIndex}
+          thumbs={thumbs ?? {}}
+          onCancel={() => closeDrill()}
+          onApply={async (spec) => {
+            const manifestBefore = await readProjectManifestSnapshot(slug);
+            await updateSceneTransition(slug, boundaryIndex, spec);
+            pushHistory({
+              label: "transition",
+              changes: [
+                {
+                  kind: "manifest",
+                  slug,
+                  before: manifestBefore,
+                  after: await readProjectManifestSnapshot(slug),
+                  reload: false,
+                },
+              ],
+            });
+            closeDrill();
+            onTimingChanged();
+          }}
+        />
       </div>
     );
   }

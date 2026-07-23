@@ -379,7 +379,7 @@ export function TransitionModal({
     setDraft({ ...draft, durationMs: Math.round(seconds * 1000) });
   };
 
-  const content = (
+  const body = (
     <>
       <div className="transition-body">
         <div className="transition-grid" role="listbox" aria-label="Transition type">
@@ -525,25 +525,35 @@ export function TransitionModal({
       </div>
 
       {error && <p className="modal-error">{error}</p>}
-      <div className="modal-actions">
-        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-        <button type="button" className="btn primary" onClick={apply} disabled={busy}>
-          {busy ? "Applying…" : "Apply"}
-        </button>
-      </div>
     </>
   );
 
-  if (embedded) return <div className="transition-embedded">{content}</div>;
+  const actions = (
+    <>
+      <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+        Cancel
+      </button>
+      <button type="button" className="btn primary" onClick={apply} disabled={busy}>
+        {busy ? "Applying…" : "Apply"}
+      </button>
+    </>
+  );
+
+  if (embedded)
+    return (
+      <>
+        <div className="inspector-drill-body transition-embedded-body">{body}</div>
+        <div className="inspector-drill-actions">{actions}</div>
+      </>
+    );
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Transition">
       <div className="modal wizard-wide transition-modal">
         <h2 className="modal-title">
           Transition out of scene {boundaryIndex + 1} — {sceneStem(project, boundaryIndex)}
         </h2>
-        {content}
+        {body}
+        <div className="modal-actions">{actions}</div>
       </div>
     </div>
   );

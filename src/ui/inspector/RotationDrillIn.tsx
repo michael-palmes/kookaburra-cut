@@ -26,6 +26,7 @@ export function RotationDrillIn({
   return (
     <>
       <DrillBack label={backLabel} onClick={onBack} />
+      <div className="inspector-drill-title">Rotation</div>
       <div className="inspector-section-body">
         <div className="wizard-presets">
           {ROTATION_PRESETS.map((p) => (
