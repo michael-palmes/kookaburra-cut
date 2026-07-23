@@ -72,9 +72,12 @@ pub struct EditDoc {
     pub clips: Vec<EditClip>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub taps: Vec<EditTap>,
-    /// Tap style preset id; absent = the default (first) preset.
+    /// Tap style (shape) id; absent = the default (first) style.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_style: Option<String>,
+    /// Tap colour id; absent = the default (first) colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_color: Option<String>,
     /// Tap size multiplier on the default dot size; absent = 1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_size: Option<f64>,
@@ -257,6 +260,7 @@ async fn create_default_doc(
         }],
         taps: Vec::new(),
         tap_style: None,
+        tap_color: None,
         tap_size: None,
     })
 }
@@ -388,15 +392,25 @@ const TAP_DOT_SIZE_FRACTION: f64 = 0.07;
 /// The baked frames leave pulse headroom around the scale-1 dot; the overlay scales up by the same factor so the dot lands at exactly TAP_DOT_SIZE_FRACTION of min(w, h).
 const TAP_DOT_CANVAS_HEADROOM: f64 = 1.15;
 /// Bump when the baked frames change to invalidate the materialised cache.
-const TAP_DOT_FRAMES_VERSION: u32 = 2;
+const TAP_DOT_FRAMES_VERSION: u32 = 3;
 
-/// The doc's tap style, falling back to the default (first) preset when absent or unknown.
+/// The doc's tap style (shape), falling back to the default (first) style when absent or unknown.
 fn tap_style_id(doc: &EditDoc) -> &str {
-    let presets = crate::tap_dot_frames::TAP_DOT_PRESETS;
+    let styles = crate::tap_dot_frames::TAP_DOT_STYLES;
     match doc.tap_style.as_deref() {
-        Some(id) if presets.iter().any(|(k, _)| *k == id) => id,
-        _ => presets[0].0,
+        Some(id) if styles.iter().any(|(k, _)| *k == id) => id,
+        _ => styles[0].0,
     }
+}
+
+/// The doc's tap colour as channel multipliers over the white frames, defaulting to the first colour.
+fn tap_color_mult(doc: &EditDoc) -> [f64; 3] {
+    let colors = crate::tap_dot_frames::TAP_DOT_COLORS;
+    colors
+        .iter()
+        .find(|(k, _)| Some(*k) == doc.tap_color.as_deref())
+        .unwrap_or(&colors[0])
+        .1
 }
 
 /// Materialise the embedded glow-dot frames into `$APPDATA/cache/tapdot/<preset>` once (versioned marker, the media-cache pattern) so ffmpeg's image2 reader can consume them; both encode lanes reference the same stable files.
@@ -409,11 +423,11 @@ fn ensure_tap_dot_frames(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .join("tapdot");
     let done = dir.join(format!(".done-v{TAP_DOT_FRAMES_VERSION}"));
     if !done.is_file() {
-        for (preset, frames) in crate::tap_dot_frames::TAP_DOT_PRESETS {
-            let preset_dir = dir.join(preset);
-            std::fs::create_dir_all(&preset_dir).map_err(|e| e.to_string())?;
+        for (style, frames) in crate::tap_dot_frames::TAP_DOT_STYLES {
+            let style_dir = dir.join(style);
+            std::fs::create_dir_all(&style_dir).map_err(|e| e.to_string())?;
             for (i, bytes) in frames.iter().enumerate() {
-                std::fs::write(preset_dir.join(format!("tapdot_{i:02}.png")), bytes)
+                std::fs::write(style_dir.join(format!("tapdot_{i:02}.png")), bytes)
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -527,6 +541,7 @@ fn build_render_args(
         let dot_px = ((w.min(h) as f64) * TAP_DOT_SIZE_FRACTION * TAP_DOT_CANVAS_HEADROOM
             * tap_size)
             .round() as u32;
+        let [cr, cg, cb] = tap_color_mult(doc);
         for (i, (tap, clip, start_ms, end_ms)) in windows.iter().enumerate() {
             let source = doc
                 .sources
@@ -544,7 +559,8 @@ fn build_render_args(
             let end_s = end_ms / 1000.0;
             let next = format!("tapv{i}");
             filter.push_str(&format!(
-                ";[{idx}:v]format=rgba,scale={dot_px}:{dot_px}:flags=lanczos[dot{i}];\
+                ";[{idx}:v]format=rgba,colorchannelmixer=rr={cr:.6}:gg={cg:.6}:bb={cb:.6},\
+                 scale={dot_px}:{dot_px}:flags=lanczos[dot{i}];\
                  [{out_label}][dot{i}]overlay=x={px:.3}-overlay_w/2:y={py:.3}-overlay_h/2:\
                  eof_action=pass:enable='between(t\\,{start_s:.6}\\,{end_s:.6})'[{next}]"
             ));
@@ -766,6 +782,7 @@ mod tests {
             }],
             taps: Vec::new(),
             tap_style: None,
+            tap_color: None,
             tap_size: None,
         }
     }
@@ -861,20 +878,23 @@ mod tests {
                 "-framerate",
                 "60",
                 "-i",
-                "/cache/tapdot/glow-light/tapdot_%02d.png"
+                "/cache/tapdot/glow/tapdot_%02d.png"
             ]
             .map(String::from)
         );
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
         // 87 = round(1080 * 0.07 * 1.15); the window clamps at the 1s clip end.
-        assert!(filter.contains(";[1:v]format=rgba,scale=87:87:flags=lanczos[dot0];"));
+        assert!(filter.contains(
+            ";[1:v]format=rgba,colorchannelmixer=rr=1.000000:gg=1.000000:bb=1.000000,\
+             scale=87:87:flags=lanczos[dot0];"
+        ));
         assert!(filter.contains("[outv][dot0]overlay=x=480.000-overlay_w/2:y=810.000-overlay_h/2:"));
         assert!(filter.contains("eof_action=pass:enable='between(t\\,0.500000\\,1.000000)'[tapv0]"));
         assert!(args.windows(2).any(|w| w == ["-map", "[tapv0]"]));
     }
 
     #[test]
-    fn tap_style_picks_its_preset_dir_and_unknown_falls_back() {
+    fn tap_style_picks_its_dir_and_colour_tints_the_frames() {
         let mut d = doc();
         d.taps.push(EditTap {
             id: "t1".into(),
@@ -882,14 +902,21 @@ mod tests {
             source_ms: 500,
             pos: [0.5, 0.5],
         });
-        d.tap_style = Some("ring-dark".into());
+        d.tap_style = Some("target".into());
+        d.tap_color = Some("terracotta".into());
         let (args, _) =
             build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
-        assert!(args.contains(&"/cache/tapdot/ring-dark/tapdot_%02d.png".to_string()));
-        d.tap_style = Some("not-a-preset".into());
+        assert!(args.contains(&"/cache/tapdot/target/tapdot_%02d.png".to_string()));
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("colorchannelmixer=rr=0.886275:gg=0.447059:bb=0.356863"));
+        // Unknown ids fall back to the defaults (glow, light).
+        d.tap_style = Some("not-a-style".into());
+        d.tap_color = Some("not-a-colour".into());
         let (args, _) =
             build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
-        assert!(args.contains(&"/cache/tapdot/glow-light/tapdot_%02d.png".to_string()));
+        assert!(args.contains(&"/cache/tapdot/glow/tapdot_%02d.png".to_string()));
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("colorchannelmixer=rr=1.000000:gg=1.000000:bb=1.000000"));
     }
 
     #[test]

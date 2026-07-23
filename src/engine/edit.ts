@@ -45,8 +45,10 @@ export interface EditDoc {
   settings: EditSettings;
   clips: EditClip[];
   taps?: EditTap[];
-  /** Tap style preset id (tapPresets.generated.ts); absent = the default preset. */
+  /** Tap style (shape) id (tapStyles.generated.ts); absent = the default style. */
   tapStyle?: string;
+  /** Tap colour id (tapStyles.generated.ts); absent = the default colour. */
+  tapColor?: string;
   /** Tap size multiplier on the default dot size; absent = 1. */
   tapSize?: number;
 }

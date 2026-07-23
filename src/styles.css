@@ -2219,6 +2219,29 @@ body {
   flex: none;
 }
 
+/* Colour dots: one per tap colour, the selected one ringed. */
+.tap-settings-colors {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 2px;
+}
+
+.tap-settings-color {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tap-settings-color.selected {
+  box-shadow:
+    0 0 0 1.5px var(--surface-elevated),
+    0 0 0 3px var(--accent-border);
+}
+
 .tap-settings-size {
   display: flex;
   align-items: center;

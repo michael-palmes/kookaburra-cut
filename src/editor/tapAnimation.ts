@@ -1,4 +1,6 @@
-/** The tap-highlight animation spec, shared so what you see while editing matches the render: the DOM preview (Preview.tsx) reads these directly, scripts/generate-tap-dot.mjs mirrors tapDotFrame() when baking the overlay frames, and edit.rs mirrors TAP_DOT_SIZE_FRACTION. Keep all three in sync by hand. */
+/** The tap-highlight animation spec, shared so what you see while editing matches the render: the DOM preview (Preview.tsx) reads these directly, scripts/generate-tap-dot.mjs mirrors tapDotFrame() when baking the overlay frames, and edit.rs mirrors TAP_DOT_SIZE_FRACTION. Keep all three in sync by hand. Style shapes and colours live in tapStyles.generated.ts (the generator is their single source of truth). */
+
+import type { TapColor, TapStyle } from "./tapStyles.generated";
 
 export const TAP_ANIMATION_DURATION_MS = 550;
 
@@ -10,6 +12,13 @@ export const TAP_DOT_FRAME_COUNT = 36;
 
 /** Edit-marker visibility margin around a tap's window in "near playhead" scope. */
 export const TAP_MARKER_NEAR_MS = 200;
+
+/** The preview gradient for a style in a colour, matching the baked white frames plus the render-time tint. */
+export function tapGradient(style: TapStyle, color: TapColor): string {
+  const [r, g, b] = color.rgb;
+  const parts = style.alphaStops.map(([t, a]) => `rgba(${r}, ${g}, ${b}, ${a}) ${t * 100}%`);
+  return `radial-gradient(circle closest-side, ${parts.join(", ")})`;
+}
 
 /** Progress 0..1 through the animation, or null outside it. */
 export function tapProgress(elapsedMs: number): number | null {

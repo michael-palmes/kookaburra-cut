@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Bakes the tap-highlight glow-dot animation into RGBA PNG frames for the ffmpeg
-// overlay, one directory per style preset, plus BOTH generated consumers: the
-// include_bytes! preset map edit.rs embeds and the preset list (with CSS
-// gradients) the editor preview renders. This script is the single source of
-// truth for preset data; only the motion curve is still hand-mirrored from
-// src/editor/tapAnimation.ts. Maintainer-only; the output is committed.
-// Run: node scripts/generate-tap-dot.mjs
+// Bakes the tap-highlight animation into RGBA PNG frames for the ffmpeg overlay,
+// one directory per STYLE (shape); frames are white with alpha-only falloff, and
+// colour is applied at render time (ffmpeg colorchannelmixer) and in the preview
+// (CSS gradients), so every style works in every colour. Emits both generated
+// consumers: the include_bytes! style map + colour multipliers edit.rs embeds,
+// and the style/colour lists the editor preview renders. This script is the
+// single source of truth for style and colour data; only the motion curve is
+// still hand-mirrored from src/editor/tapAnimation.ts. Maintainer-only; the
+// output is committed. Run: node scripts/generate-tap-dot.mjs
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,78 +21,61 @@ const SIZE = 256;
 // The dot at scale 1 fills SIZE / headroom so the 1.12 pulse never clips; edit.rs mirrors this when sizing the overlay (TAP_DOT_CANVAS_HEADROOM).
 const CANVAS_HEADROOM = 1.15;
 
-// Style presets: radial-gradient stops as [t, r, g, b, a] with t a fraction of
-// half the element (CSS closest-side), linearly interpolated like CSS does.
-// The first preset is the default.
-const PRESETS = [
+// Styles: alpha stops as [t, alpha] with t a fraction of half the element (CSS
+// closest-side), linearly interpolated like CSS does. The first style is the default.
+const STYLES = [
   {
-    id: "glow-light",
-    label: "Soft glow, light",
-    stops: [
-      [0, 255, 255, 255, 0.95],
-      [0.45, 255, 255, 255, 0.55],
-      [0.7, 255, 255, 255, 0],
+    id: "glow",
+    label: "Soft glow",
+    alphaStops: [
+      [0, 0.95],
+      [0.45, 0.55],
+      [0.7, 0],
     ],
   },
   {
-    id: "glow-dark",
-    label: "Soft glow, dark",
-    stops: [
-      [0, 17, 17, 17, 0.85],
-      [0.42, 17, 17, 17, 0.6],
-      [0.54, 255, 255, 255, 0.7],
-      [0.7, 255, 255, 255, 0],
+    id: "dot",
+    label: "Dot",
+    alphaStops: [
+      [0, 0.95],
+      [0.5, 0.95],
+      [0.62, 0],
     ],
   },
   {
-    id: "glow-blue",
-    label: "Soft glow, blue",
-    stops: [
-      [0, 64, 156, 255, 0.95],
-      [0.45, 64, 156, 255, 0.6],
-      [0.7, 64, 156, 255, 0],
+    id: "ring",
+    label: "Ring",
+    alphaStops: [
+      [0, 0],
+      [0.42, 0.05],
+      [0.52, 0.9],
+      [0.6, 0.9],
+      [0.7, 0],
     ],
   },
   {
-    id: "glow-red",
-    label: "Soft glow, red",
-    stops: [
-      [0, 255, 59, 48, 0.95],
-      [0.45, 255, 59, 48, 0.6],
-      [0.7, 255, 59, 48, 0],
+    id: "target",
+    label: "Dot and ring",
+    alphaStops: [
+      [0, 0.95],
+      [0.18, 0.95],
+      [0.26, 0],
+      [0.5, 0],
+      [0.56, 0.9],
+      [0.64, 0.9],
+      [0.7, 0],
     ],
   },
-  {
-    id: "glow-terracotta",
-    label: "Soft glow, terracotta",
-    stops: [
-      [0, 226, 114, 91, 0.95],
-      [0.45, 226, 114, 91, 0.6],
-      [0.7, 226, 114, 91, 0],
-    ],
-  },
-  {
-    id: "ring-light",
-    label: "Ring, light",
-    stops: [
-      [0, 255, 255, 255, 0],
-      [0.42, 255, 255, 255, 0.05],
-      [0.52, 255, 255, 255, 0.9],
-      [0.6, 255, 255, 255, 0.9],
-      [0.7, 255, 255, 255, 0],
-    ],
-  },
-  {
-    id: "ring-dark",
-    label: "Ring, dark",
-    stops: [
-      [0, 17, 17, 17, 0],
-      [0.42, 17, 17, 17, 0.06],
-      [0.52, 17, 17, 17, 0.92],
-      [0.6, 17, 17, 17, 0.88],
-      [0.7, 17, 17, 17, 0],
-    ],
-  },
+];
+
+// Colours: applied over the white frames as channel multipliers (render) and
+// rgba gradients (preview). The first colour is the default.
+const COLORS = [
+  { id: "light", label: "Light", rgb: [255, 255, 255] },
+  { id: "dark", label: "Dark", rgb: [17, 17, 17] },
+  { id: "blue", label: "Blue", rgb: [64, 156, 255] },
+  { id: "red", label: "Red", rgb: [255, 59, 48] },
+  { id: "terracotta", label: "Terracotta", rgb: [226, 114, 91] },
 ];
 
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -114,18 +99,15 @@ function tapDotFrame(p) {
   return { opacity: lerp(0.6, 0, t), scale: lerp(1, 0.92, t) };
 }
 
-/** Colour+alpha at t, CSS-style linear interpolation between stops. */
-function sampleStops(stops, t) {
-  if (t <= stops[0][0]) return stops[0].slice(1);
+/** Alpha at t, CSS-style linear interpolation between [t, alpha] stops. */
+function sampleAlpha(stops, t) {
+  if (t <= stops[0][0]) return stops[0][1];
   for (let i = 1; i < stops.length; i++) {
-    const [t1, ...c1] = stops[i - 1];
-    const [t2, ...c2] = stops[i];
-    if (t <= t2) {
-      const k = (t - t1) / (t2 - t1);
-      return c1.map((v, j) => lerp(v, c2[j], k));
-    }
+    const [t1, a1] = stops[i - 1];
+    const [t2, a2] = stops[i];
+    if (t <= t2) return lerp(a1, a2, (t - t1) / (t2 - t1));
   }
-  return [0, 0, 0, 0];
+  return 0;
 }
 
 const CRC_TABLE = new Uint32Array(256);
@@ -171,7 +153,7 @@ function encodePng(size, rgba) {
   ]);
 }
 
-function renderFrame(preset, index) {
+function renderFrame(style, index) {
   const elapsedMs = (index * 1000) / FPS;
   const p = elapsedMs > TAP_ANIMATION_DURATION_MS ? null : elapsedMs / TAP_ANIMATION_DURATION_MS;
   const { opacity, scale } = p === null ? { opacity: 0, scale: 1 } : tapDotFrame(p);
@@ -181,57 +163,57 @@ function renderFrame(preset, index) {
   for (let y = 0; y < SIZE; y++) {
     for (let x = 0; x < SIZE; x++) {
       const r = Math.hypot(x + 0.5 - centre, y + 0.5 - centre);
-      const [cr, cg, cb, ca] = sampleStops(preset.stops, r / half);
+      const alpha = opacity * sampleAlpha(style.alphaStops, r / half);
       const at = (y * SIZE + x) * 4;
-      rgba[at] = Math.round(cr);
-      rgba[at + 1] = Math.round(cg);
-      rgba[at + 2] = Math.round(cb);
-      rgba[at + 3] = Math.round(opacity * ca * 255);
+      rgba[at] = 255;
+      rgba[at + 1] = 255;
+      rgba[at + 2] = 255;
+      rgba[at + 3] = Math.round(alpha * 255);
     }
   }
   return encodePng(SIZE, rgba);
-}
-
-function cssGradient(stops) {
-  const parts = stops.map(
-    ([t, r, g, b, a]) => `rgba(${r}, ${g}, ${b}, ${a}) ${Math.round(t * 100)}%`,
-  );
-  return `radial-gradient(circle closest-side, ${parts.join(", ")})`;
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outRoot = join(repoRoot, "src-tauri", "templates", "tapdot");
 rmSync(outRoot, { recursive: true, force: true });
 
-const rustEntries = [];
-for (const preset of PRESETS) {
-  const dir = join(outRoot, preset.id);
+const rustStyleEntries = [];
+for (const style of STYLES) {
+  const dir = join(outRoot, style.id);
   mkdirSync(dir, { recursive: true });
   const names = [];
   for (let i = 0; i < TAP_DOT_FRAME_COUNT; i++) {
     const name = `tapdot_${String(i).padStart(2, "0")}.png`;
-    writeFileSync(join(dir, name), renderFrame(preset, i));
+    writeFileSync(join(dir, name), renderFrame(style, i));
     names.push(name);
   }
-  rustEntries.push(
+  rustStyleEntries.push(
     [
       `    (`,
-      `        "${preset.id}",`,
+      `        "${style.id}",`,
       `        &[`,
-      ...names.map((n) => `            include_bytes!("../templates/tapdot/${preset.id}/${n}"),`),
+      ...names.map((n) => `            include_bytes!("../templates/tapdot/${style.id}/${n}"),`),
       `        ],`,
       `    ),`,
     ].join("\n"),
   );
 }
 
+const mult = (v) => (v / 255).toFixed(6);
 const rust = [
   "// GENERATED by scripts/generate-tap-dot.mjs. Do not edit by hand.",
   "",
-  "/// The tap-highlight glow-dot animation: (preset id, one RGBA PNG per 60fps frame).",
-  "/// The first preset is the default style.",
-  "pub static TAP_DOT_PRESETS: &[(&str, &[&[u8]])] = &[",
-  ...rustEntries,
+  "/// The tap-highlight animation: (style id, one white alpha-falloff RGBA PNG per 60fps frame).",
+  "/// The first style is the default.",
+  "pub static TAP_DOT_STYLES: &[(&str, &[&[u8]])] = &[",
+  ...rustStyleEntries,
+  "];",
+  "",
+  "/// Tap colours as channel multipliers over the white frames (ffmpeg colorchannelmixer).",
+  "/// The first colour is the default.",
+  "pub static TAP_DOT_COLORS: &[(&str, [f64; 3])] = &[",
+  ...COLORS.map((c) => `    ("${c.id}", [${c.rgb.map(mult).join(", ")}]),`),
   "];",
   "",
 ].join("\n");
@@ -240,28 +222,42 @@ writeFileSync(join(repoRoot, "src-tauri", "src", "tap_dot_frames.generated.rs"),
 const ts = [
   "// GENERATED by scripts/generate-tap-dot.mjs. Do not edit by hand.",
   "",
-  "/** A tap-highlight style: the preview gradient matches the baked ffmpeg frames. */",
-  "export interface TapPreset {",
+  "/** A tap-highlight style (shape): alpha stops over half the element, closest-side. */",
+  "export interface TapStyle {",
   "  id: string;",
   "  label: string;",
-  "  gradient: string;",
+  "  alphaStops: [number, number][];",
   "}",
   "",
-  "export const TAP_PRESETS: TapPreset[] = [",
-  ...PRESETS.flatMap((p) => {
-    const gradient = cssGradient(p.stops);
-    const inline = `    gradient: "${gradient}",`;
-    const gradientLines =
-      inline.length <= 100 ? [inline] : ["    gradient:", `      "${gradient}",`];
-    return ["  {", `    id: "${p.id}",`, `    label: "${p.label}",`, ...gradientLines, "  },"];
-  }),
+  "/** A tap-highlight colour, applied to any style. */",
+  "export interface TapColor {",
+  "  id: string;",
+  "  label: string;",
+  "  rgb: [number, number, number];",
+  "}",
+  "",
+  "export const TAP_STYLES: TapStyle[] = [",
+  ...STYLES.flatMap((s) => [
+    "  {",
+    `    id: "${s.id}",`,
+    `    label: "${s.label}",`,
+    "    alphaStops: [",
+    ...s.alphaStops.map(([t, a]) => `      [${t}, ${a}],`),
+    "    ],",
+    "  },",
+  ]),
   "];",
   "",
-  `export const DEFAULT_TAP_PRESET_ID = "${PRESETS[0].id}";`,
+  "export const TAP_COLORS: TapColor[] = [",
+  ...COLORS.map((c) => `  { id: "${c.id}", label: "${c.label}", rgb: [${c.rgb.join(", ")}] },`),
+  "];",
+  "",
+  `export const DEFAULT_TAP_STYLE_ID = "${STYLES[0].id}";`,
+  `export const DEFAULT_TAP_COLOR_ID = "${COLORS[0].id}";`,
   "",
 ].join("\n");
-writeFileSync(join(repoRoot, "src", "editor", "tapPresets.generated.ts"), ts);
+writeFileSync(join(repoRoot, "src", "editor", "tapStyles.generated.ts"), ts);
 
 console.log(
-  `wrote ${PRESETS.length} presets × ${TAP_DOT_FRAME_COUNT} frames to ${outRoot}, tap_dot_frames.generated.rs and tapPresets.generated.ts`,
+  `wrote ${STYLES.length} styles × ${TAP_DOT_FRAME_COUNT} frames and ${COLORS.length} colours to ${outRoot}, tap_dot_frames.generated.rs and tapStyles.generated.ts`,
 );

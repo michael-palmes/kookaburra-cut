@@ -7,9 +7,10 @@ import {
   TAP_DOT_SIZE_FRACTION,
   TAP_MARKER_NEAR_MS,
   tapDotFrame,
+  tapGradient,
   tapProgress,
 } from "./tapAnimation";
-import { DEFAULT_TAP_PRESET_ID, TAP_PRESETS } from "./tapPresets.generated";
+import { TAP_COLORS, TAP_STYLES } from "./tapStyles.generated";
 
 /** The preview controller: one muted <video> per source, driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. Freeze clips have no decode clock, so they advance on rAF frame time with the source parked on the pinned frame. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
 
@@ -41,18 +42,22 @@ export interface PreviewProps {
   onTapContextMenu: (id: string, clientX: number, clientY: number) => void;
   tapMarkerScope: "near" | "all"; // "near" shows edit markers only around the playhead
   onTapMarkerScope: (scope: "near" | "all") => void;
-  tapStyle: string; // preset id (tapPresets.generated.ts)
+  tapStyle: string; // style (shape) id (tapStyles.generated.ts)
   onTapStyle: (id: string) => void;
+  tapColor: string; // colour id (tapStyles.generated.ts)
+  onTapColor: (id: string) => void;
   tapSize: number; // multiplier on the default dot size
   onTapSize: (size: number) => void;
 }
 
-/** The floating tap-settings overlay (camera-pill styling): marker scope + style preset dropdown with live swatches. */
+/** The floating tap-settings overlay (camera-pill styling): marker scope, style dropdown with live swatches, colour dots and size. */
 function TapSettings({
   scope,
   onScope,
   styleId,
   onStyle,
+  colorId,
+  onColor,
   size,
   onSize,
 }: {
@@ -60,6 +65,8 @@ function TapSettings({
   onScope: (scope: "near" | "all") => void;
   styleId: string;
   onStyle: (id: string) => void;
+  colorId: string;
+  onColor: (id: string) => void;
   size: number;
   onSize: (size: number) => void;
 }) {
@@ -74,8 +81,9 @@ function TapSettings({
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [open]);
-  const current = TAP_PRESETS.find((p) => p.id === styleId) ?? TAP_PRESETS[0];
-  // The swatch backdrop splits light/dark so every preset's visibility is previewable; the dot layer draws at 82% so its silhouette never touches the chip's edge.
+  const style = TAP_STYLES.find((s) => s.id === styleId) ?? TAP_STYLES[0];
+  const color = TAP_COLORS.find((c) => c.id === colorId) ?? TAP_COLORS[0];
+  // The swatch backdrop splits light/dark so every style's visibility is previewable; the dot layer draws at 82% so its silhouette never touches the chip's edge.
   const swatch = (gradient: string): CSSProperties => ({
     backgroundImage: `${gradient}, linear-gradient(105deg, #f2f2f2 50%, #20262b 50%)`,
     backgroundSize: "82% 82%, 100% 100%",
@@ -112,31 +120,44 @@ function TapSettings({
           onClick={() => setOpen((o) => !o)}
           title="Tap highlight style (applies to the whole edit)"
         >
-          <span className="tap-swatch" style={swatch(current.gradient)} />
-          <span className="tap-settings-style-label">{current.label}</span>
+          <span className="tap-swatch" style={swatch(tapGradient(style, color))} />
+          <span className="tap-settings-style-label">{style.label}</span>
           <span className="tap-settings-chevron" aria-hidden>
             ▾
           </span>
         </button>
         {open && (
           <div className="tap-settings-menu">
-            {TAP_PRESETS.map((p) => (
+            {TAP_STYLES.map((s) => (
               <button
-                key={p.id}
+                key={s.id}
                 type="button"
-                className={`tap-settings-option${p.id === current.id ? " selected" : ""}`}
-                aria-pressed={p.id === current.id}
+                className={`tap-settings-option${s.id === style.id ? " selected" : ""}`}
+                aria-pressed={s.id === style.id}
                 onClick={() => {
-                  onStyle(p.id);
+                  onStyle(s.id);
                   setOpen(false);
                 }}
               >
-                <span className="tap-swatch" style={swatch(p.gradient)} />
-                {p.label}
+                <span className="tap-swatch" style={swatch(tapGradient(s, color))} />
+                {s.label}
               </button>
             ))}
           </div>
         )}
+      </div>
+      <div className="tap-settings-colors">
+        {TAP_COLORS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={`tap-settings-color${c.id === color.id ? " selected" : ""}`}
+            aria-pressed={c.id === color.id}
+            title={c.label}
+            style={{ background: `rgb(${c.rgb.join(", ")})` }}
+            onClick={() => onColor(c.id)}
+          />
+        ))}
       </div>
       <label className="tap-settings-size" title={`Tap size (${Math.round(size * 100)}%)`}>
         <span className="tap-settings-size-label">Size</span>
@@ -193,6 +214,8 @@ export function Preview({
   onTapMarkerScope,
   tapStyle,
   onTapStyle,
+  tapColor,
+  onTapColor,
   tapSize,
   onTapSize,
 }: PreviewProps) {
@@ -359,10 +382,9 @@ export function Preview({
     return () => cancelAnimationFrame(raf);
   }, [pulseFrame]);
 
-  const preset =
-    TAP_PRESETS.find((p) => p.id === tapStyle) ??
-    TAP_PRESETS.find((p) => p.id === DEFAULT_TAP_PRESET_ID) ??
-    TAP_PRESETS[0];
+  const style = TAP_STYLES.find((s) => s.id === tapStyle) ?? TAP_STYLES[0];
+  const color = TAP_COLORS.find((c) => c.id === tapColor) ?? TAP_COLORS[0];
+  const gradient = tapGradient(style, color);
 
   const dotStyle = (pos: [number, number], opacity: number, scale: number): CSSProperties => ({
     left: `${pos[0] * 100}%`,
@@ -370,7 +392,7 @@ export function Preview({
     width: `${TAP_DOT_SIZE_FRACTION * 100 * tapSize}cqmin`,
     opacity,
     transform: `translate(-50%, -50%) scale(${scale})`,
-    backgroundImage: preset.gradient,
+    backgroundImage: gradient,
   });
 
   /** "Near" scope: an edit marker shows only while the playhead is within the margin of one of its windows; "all" also surfaces taps whose spans were trimmed out. */
@@ -493,8 +515,10 @@ export function Preview({
         <TapSettings
           scope={tapMarkerScope}
           onScope={onTapMarkerScope}
-          styleId={preset.id}
+          styleId={style.id}
           onStyle={onTapStyle}
+          colorId={color.id}
+          onColor={onTapColor}
           size={tapSize}
           onSize={onTapSize}
         />

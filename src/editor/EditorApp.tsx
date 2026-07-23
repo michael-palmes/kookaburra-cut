@@ -39,7 +39,7 @@ import { MediaBrowser } from "../ui/MediaBrowser";
 import { Preview, type TrimScrub } from "./Preview";
 import { Timeline } from "./Timeline";
 import { TAP_ANIMATION_DURATION_MS } from "./tapAnimation";
-import { DEFAULT_TAP_PRESET_ID } from "./tapPresets.generated";
+import { DEFAULT_TAP_COLOR_ID, DEFAULT_TAP_STYLE_ID } from "./tapStyles.generated";
 
 /** The non-destructive video editor window: magnetic timeline (trim/split/reorder/speed/zoom, filmstrips), playhead-driven preview with spacebar transport and trim-edge live preview, debounced autosave with warn-on-close and corrupt-doc recovery, multi-clip assembly. Renders close the window on success. */
 
@@ -383,6 +383,14 @@ export function EditorApp() {
     [doc, target, commitDoc],
   );
 
+  const handleTapColor = useCallback(
+    (id: string) => {
+      if (!doc || !target) return;
+      commitDoc({ ...doc, tapColor: id });
+    },
+    [doc, target, commitDoc],
+  );
+
   const handleTapSize = useCallback(
     (size: number) => {
       if (!doc || !target) return;
@@ -567,8 +575,10 @@ export function EditorApp() {
               onTapContextMenu={handleTapContextMenu}
               tapMarkerScope={tapMarkerScope}
               onTapMarkerScope={setTapMarkerScope}
-              tapStyle={doc.tapStyle ?? DEFAULT_TAP_PRESET_ID}
+              tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
               onTapStyle={handleTapStyle}
+              tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+              onTapColor={handleTapColor}
               tapSize={doc.tapSize ?? 1}
               onTapSize={handleTapSize}
             />
