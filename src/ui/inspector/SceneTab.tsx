@@ -34,7 +34,7 @@ import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
-import type { TextAnimationSpec, Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
+import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
@@ -1179,8 +1179,6 @@ export function SceneTab({
   onOpenEditVideo,
   onDocChanged,
   onTimingChanged,
-  onReplayScene,
-  onReplaySessionEnd,
   onOpenTheme,
   onEditThemeInClaude,
   onThemeEdited,
@@ -1193,10 +1191,6 @@ export function SceneTab({
   onOpenEditVideo: (sceneIndex: number, mediaRel: string, slot?: "device" | "background") => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
-  /** Play [startMs, endMs) once, then pause; the text-motion panel's live preview. */
-  onReplayScene: (startMs: number, endMs: number) => void;
-  /** The text-motion panel closed (any path); App returns the playhead. */
-  onReplaySessionEnd: () => void;
   /** Open ThemeMode, optionally on a pane (the theme context menu). */
   onOpenTheme: (manage?: { view: "fonts" | "duplicate"; themeId: string }) => void;
   onEditThemeInClaude: (choice: { id: string; name: string }) => void;
@@ -1242,6 +1236,37 @@ export function SceneTab({
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
+  const textEditTimer = useRef<number | null>(null);
+  const textEditBaseline = useRef<SceneDoc | null>(null);
+  // Text fields commit on a 200ms debounce (history-less live preview); the session finalises to one undo on blur.
+  const liveText = (key: string, value: string) => {
+    setTextValues((v) => ({ ...v, [key]: value }));
+    if (!textEditBaseline.current && doc) textEditBaseline.current = structuredClone(doc);
+    if (textEditTimer.current !== null) window.clearTimeout(textEditTimer.current);
+    textEditTimer.current = window.setTimeout(() => {
+      textEditTimer.current = null;
+      void patchDoc(
+        (next) => {
+          next.text = { ...(next.text ?? {}), [key]: value };
+        },
+        { history: false },
+      );
+    }, 200);
+  };
+  const flushText = () => {
+    if (textEditTimer.current !== null) {
+      window.clearTimeout(textEditTimer.current);
+      textEditTimer.current = null;
+    }
+    const baseline = textEditBaseline.current;
+    if (!baseline) return;
+    textEditBaseline.current = null;
+    const merged = { ...(doc?.text ?? {}), ...textValues };
+    setTextValues({});
+    void commitFromBaseline(baseline, (next) => {
+      next.text = merged;
+    });
+  };
   /** Header preview fallback: a current-frame capture when no cached thumb exists. An object URL, revoked on replacement/unmount. */
   const [liveThumb, setLiveThumb] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -1252,11 +1277,6 @@ export function SceneTab({
   >(null);
   /** Which animated-fill card is hovered (its clip preview plays). */
   const [bgHover, setBgHover] = useState<string | null>(null);
-  /** The spec + force flag captured when the text-motion drill-in opened; Cancel restores both, back/Esc = Done semantics. */
-  const textAnimOriginal = useRef<{ spec: TextAnimationSpec | undefined; force: boolean }>({
-    spec: undefined,
-    force: false,
-  });
   const codedMotion = useSceneHasCodedTextMotion(sceneIndex);
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
@@ -1359,11 +1379,8 @@ export function SceneTab({
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm on scene change
   useEffect(() => setConfirmApplyAll(false), [sceneIndex]);
 
-  // Drill-ins + inline modals close on Esc like every layer; the text-motion drill-in's Esc keeps the picked spec and returns the playhead (Done semantics, the session-end restore must fire on every close path).
-  useEscapeClose(() => {
-    if (drillIn === "text.motion") textMotionDone();
-    else closeDrill();
-  }, drillIn !== null);
+  // Drill-ins + inline modals close on Esc, popping one level like the back bar.
+  useEscapeClose(() => closeDrill(), drillIn !== null);
   useEscapeClose(() => setModal(null), modal === "media");
 
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
@@ -1387,53 +1404,6 @@ export function SceneTab({
   });
 
   if (!slug) return null;
-
-  /** Done = keep the picked spec, record one session history entry, restore the playhead (the EditBar's onDone, verbatim). */
-  function textMotionDone() {
-    if (doc && slug && sceneFile) {
-      const orig = textAnimOriginal.current;
-      const changed =
-        JSON.stringify(doc.textAnimation ?? null) !== JSON.stringify(orig.spec ?? null) ||
-        (doc.textAnimationForce === true) !== orig.force;
-      if (changed) {
-        const before = structuredClone(doc);
-        if (orig.spec) before.textAnimation = orig.spec;
-        else delete before.textAnimation;
-        if (orig.force) before.textAnimationForce = true;
-        else delete before.textAnimationForce;
-        pushHistory({
-          label: "text motion",
-          changes: [
-            {
-              kind: "sceneDoc",
-              slug,
-              file: sceneFile,
-              sceneIndex,
-              before,
-              after: structuredClone(doc),
-            },
-          ],
-        });
-      }
-    }
-    onReplaySessionEnd();
-    closeDrill();
-  }
-
-  function textMotionCancel() {
-    const orig = textAnimOriginal.current;
-    void patchDoc(
-      (next) => {
-        if (orig.spec) next.textAnimation = orig.spec;
-        else delete next.textAnimation;
-        if (orig.force) next.textAnimationForce = true;
-        else delete next.textAnimationForce;
-      },
-      { history: false },
-    );
-    onReplaySessionEnd();
-    closeDrill();
-  }
 
   const sceneFrame = project.sceneFrames[sceneIndex];
   const sections = sceneSections({
@@ -1631,43 +1601,6 @@ export function SceneTab({
   );
 
   // ── Drill-in views ────────────────────────────────────────────────────────
-  if (drillIn === "text.motion" && doc) {
-    return (
-      <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={textMotionDone} />
-        <div className="inspector-drill-title">Text motion</div>
-        <div className="inspector-drill-body inspector-textmotion">
-          <TextMotionPanel
-            current={doc.textAnimation}
-            theme={sceneTheme}
-            codedMotion={codedMotion}
-            force={doc.textAnimationForce === true}
-            onLive={(spec) =>
-              void patchDoc(
-                (next) => {
-                  if (spec) next.textAnimation = spec;
-                  else delete next.textAnimation;
-                },
-                { history: false },
-              )
-            }
-            onForce={(on) =>
-              void patchDoc(
-                (next) => {
-                  if (on) next.textAnimationForce = true;
-                  else delete next.textAnimationForce;
-                },
-                { history: false },
-              )
-            }
-            onReplay={() => onReplayScene(scene.startMs, scene.startMs + scene.durationMs - 17)}
-            onCancel={textMotionCancel}
-            onDone={textMotionDone}
-          />
-        </div>
-      </div>
-    );
-  }
   if (drillIn === "style.theme" && doc) {
     return (
       <div className="inspector-drill">
@@ -2106,75 +2039,13 @@ export function SceneTab({
       </div>
     );
   }
-  if (drillIn === "frame.icon" && sceneFrame) {
-    const setIcon = (v: string | undefined) =>
-      void patchDoc((next) => {
-        next.frame = { ...(next.frame ?? {}) };
-        if (v) next.frame.icon = v;
-        else delete next.frame.icon;
-      });
-    return (
-      <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Header icon</div>
-        <div className="inspector-drill-body">
-          <TextFieldRow
-            label="Icon"
-            value={sceneFrame.icon ?? ""}
-            placeholder="an emoji or assets/icon.png"
-            onChange={(t) => setIcon(t.trim() || undefined)}
-          />
-          <div className="wizard-field">
-            <span className="wizard-label">Common</span>
-            <div className="chip-icon-grid">
-              {HEADER_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  title={e}
-                  className={`chip-icon-tile emoji${sceneFrame.icon === e ? " selected" : ""}`}
-                  onClick={() => setIcon(e)}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          </div>
-          <p className="modal-hint">Drawn above the title. An emoji, or a project image path.</p>
-        </div>
-      </div>
-    );
-  }
   if (drillIn === "frame.text" && sceneFrame) {
-    const align = sceneFrame.textAlign ?? "left";
     const claimed = sceneFrame.claimsSceneText !== false;
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Text</div>
+        <div className="inspector-drill-title">Scene text</div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Align</span>
-            <div className="wizard-presets">
-              {ALIGN_OPTIONS.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`chip${align === a.id ? " selected" : ""}`}
-                  onClick={() =>
-                    void patchDoc((next) => {
-                      next.frame = { ...(next.frame ?? {}) };
-                      if (a.id === "left") delete next.frame.textAlign;
-                      else next.frame.textAlign = a.id;
-                    })
-                  }
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <p className="modal-hint">Aligns the panel title, subtitle, bullets and chip.</p>
           <label
             className="inspector-duration-row"
             title="Show the scene's title, subtitle and bullets in the panel"
@@ -3407,22 +3278,49 @@ export function SceneTab({
       </div>
     );
   }
-  if (drillIn === "text.edit" && doc) {
+  if (drillIn === "text" && doc) {
     const textKeys = Object.keys(doc.text ?? {});
-    const pinnedKeys = ["title", "subtitle", "headline"].filter((key) => textKeys.includes(key));
-    const orderedKeys = [
-      ...pinnedKeys,
-      ...textKeys.filter((key) => !pinnedKeys.includes(key)).sort(),
-    ];
-    // Legacy device scenes keep their single line under `headline`; call it Title unless a real title coexists.
+    const consumed = textKeysConsumedBy(sceneIndex);
+    const useHeadline =
+      consumed.includes("headline") && !consumed.includes("title") && !textKeys.includes("title");
+    const baseKeys = useHeadline ? ["headline"] : ["title", "subtitle"];
+    if (sceneFrame) baseKeys.push("bullets");
+    const fieldKeys = [...baseKeys, ...textKeys.filter((k) => !baseKeys.includes(k)).sort()];
     const fieldLabels: Record<string, string> = {
       title: "Title",
       subtitle: "Subtitle",
       headline: textKeys.includes("title") ? "Headline" : "Title",
+      bullets: "Bullets",
     };
-    const align = doc.textLayout?.align ?? "center";
+    // One smart alignment: the overlay's own align on overlay scenes, the scene-text align otherwise.
+    const align = sceneFrame
+      ? (sceneFrame.textAlign ?? "left")
+      : (doc.textLayout?.align ?? "center");
+    const setAlign = (a: SceneTextAlign) =>
+      void patchDoc(
+        (next) => {
+          if (sceneFrame) {
+            next.frame = { ...(next.frame ?? {}) };
+            if (a === "left") delete next.frame.textAlign;
+            else next.frame.textAlign = a;
+          } else {
+            next.textLayout = { ...(next.textLayout ?? {}), align: a };
+          }
+        },
+        { history: "text alignment" },
+      );
+    // Header icon: the overlay's icon on overlay scenes, else a scene field (rendered for plain scenes in a later pass).
+    const headerIcon = sceneFrame ? (sceneFrame.icon ?? "") : (doc.headerIcon ?? "");
+    const setHeaderIcon = (v: string | undefined) =>
+      void patchDoc((next) => {
+        if (sceneFrame) {
+          next.frame = { ...(next.frame ?? {}) };
+          if (v) next.frame.icon = v;
+          else delete next.frame.icon;
+        } else if (v) next.headerIcon = v;
+        else delete next.headerIcon;
+      });
     const textTheme = sceneTheme ?? project.theme;
-    // Swatches come from the mounted primitives: a key gets a colour control exactly when its text primitive accepts a sidecar override (`textKey`), and the reset value is that primitive's registered default fill, tokens resolved through the scene's theme.
     const colourDefaults = textKeyColorDefaults(sceneIndex);
     const styleCapable = textKeyStyleCapable(sceneIndex);
     const resolveFillToken = (fill: string): string =>
@@ -3435,7 +3333,6 @@ export function SceneTab({
       const v = doc.textStyle?.[k];
       return typeof v === "number" ? v : undefined;
     };
-    // Default values delete their key, so untouched fields stay absent from the sidecar.
     const patchStyle = (history: string, k: string, value: string | number | undefined) =>
       void patchDoc(
         (next) => {
@@ -3446,18 +3343,16 @@ export function SceneTab({
         },
         { history },
       );
-    const commitTextEdit = () => {
-      const merged = { ...(doc.text ?? {}), ...textValues };
-      closeDrill();
-      setTextValues({});
-      void patchDoc((next) => {
-        next.text = merged;
-      });
-    };
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Edit text</div>
+        <DrillBack
+          label={backLabel}
+          onClick={() => {
+            flushText();
+            closeDrill();
+          }}
+        />
+        <div className="inspector-drill-title">Text</div>
         <div className="inspector-drill-body">
           <div className="wizard-field">
             <span className="wizard-label">Alignment</span>
@@ -3467,22 +3362,14 @@ export function SceneTab({
                   type="button"
                   key={o.id}
                   className={`chip${align === o.id ? " selected" : ""}`}
-                  onClick={() =>
-                    void patchDoc(
-                      (next) => {
-                        next.textLayout = { ...(next.textLayout ?? {}), align: o.id };
-                      },
-                      { history: "text alignment" },
-                    )
-                  }
+                  onClick={() => setAlign(o.id)}
                 >
                   {o.label}
                 </button>
               ))}
             </div>
           </div>
-          {orderedKeys.map((key) => {
-            const value = textValues[key] ?? doc.text?.[key] ?? "";
+          {fieldKeys.map((key) => {
             const label = fieldLabels[key] ?? key;
             const colour =
               colourDefaults[key] !== undefined
@@ -3493,15 +3380,10 @@ export function SceneTab({
               <div key={key} className="text-field-group">
                 <TextFieldRow
                   label={label}
-                  value={value}
-                  onChange={(text) => setTextValues((v) => ({ ...v, [key]: text }))}
-                  onKeyDown={(e) => {
-                    // Cmd/Ctrl+Enter saves; plain Enter stays a newline (native textarea behaviour).
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      commitTextEdit();
-                    }
-                  }}
+                  value={textValues[key] ?? doc.text?.[key] ?? ""}
+                  placeholder={key === "bullets" ? "one bullet per line" : undefined}
+                  onChange={(text) => liveText(key, text)}
+                  onBlur={flushText}
                   colour={
                     colour
                       ? {
@@ -3574,14 +3456,60 @@ export function SceneTab({
               </div>
             );
           })}
-        </div>
-        <div className="inspector-drill-actions">
-          <button type="button" className="btn" onClick={() => closeDrill()}>
-            Cancel
-          </button>
-          <button type="button" className="btn primary" onClick={commitTextEdit}>
-            Save
-          </button>
+          <div className="wizard-field">
+            <span className="wizard-label">Header icon</span>
+            <TextFieldRow
+              label="Icon"
+              value={headerIcon}
+              placeholder="an emoji or assets/icon.png"
+              onChange={(t) => setHeaderIcon(t.trim() || undefined)}
+            />
+            <div className="chip-icon-grid">
+              {HEADER_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  title={e}
+                  className={`chip-icon-tile emoji${headerIcon === e ? " selected" : ""}`}
+                  onClick={() => setHeaderIcon(e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            <p className="modal-hint">
+              {sceneFrame
+                ? "Drawn above the panel title. An emoji, or a project image path."
+                : "An emoji, or a project image path. Shows above the headline in a coming update."}
+            </p>
+          </div>
+          <div className="wizard-field">
+            <span className="wizard-label">Motion</span>
+            <TextMotionPanel
+              current={doc.textAnimation}
+              theme={sceneTheme}
+              codedMotion={codedMotion}
+              force={doc.textAnimationForce === true}
+              onLive={(spec) =>
+                void patchDoc(
+                  (next) => {
+                    if (spec) next.textAnimation = spec;
+                    else delete next.textAnimation;
+                  },
+                  { history: "text motion" },
+                )
+              }
+              onForce={(on) =>
+                void patchDoc(
+                  (next) => {
+                    if (on) next.textAnimationForce = true;
+                    else delete next.textAnimationForce;
+                  },
+                  { history: "text motion" },
+                )
+              }
+            />
+          </div>
         </div>
       </div>
     );
@@ -3684,31 +3612,6 @@ export function SceneTab({
         );
       }
       const onClick = {
-        "text.edit": () => {
-          setTextValues({});
-          openDrill("text.edit");
-        },
-        "text.motion": () => {
-          if (!doc) return;
-          textAnimOriginal.current = {
-            spec: doc.textAnimation,
-            force: doc.textAnimationForce === true,
-          };
-          openDrill("text.motion");
-        },
-        "text.add": () => {
-          // Seed the keys the mounted scene actually reads; the host fallback owns title/subtitle otherwise.
-          const consumed = textKeysConsumedBy(sceneIndex);
-          void patchDoc((next) => {
-            next.text =
-              consumed.includes("headline") && !consumed.includes("title")
-                ? { ...next.text, headline: sceneTitle }
-                : { ...next.text, title: sceneTitle, subtitle: "" };
-          }).then(() => {
-            setTextValues({});
-            openDrill("text.edit");
-          });
-        },
         "device.media": () => {
           setMediaTarget({ kind: "device" });
           setModal("media");

@@ -68,8 +68,6 @@ export function InspectorPanel({
   onOpenEditVideo,
   onDocChanged,
   onTimingChanged,
-  onReplayScene,
-  onReplaySessionEnd,
   onApplyTheme,
   onDeleteScene,
   onReorderScenes,
@@ -102,8 +100,6 @@ export function InspectorPanel({
   onOpenEditVideo: (sceneIndex: number, mediaRel: string, slot?: "device" | "background") => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
-  onReplayScene: (startMs: number, endMs: number) => void;
-  onReplaySessionEnd: () => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
   onApplyTheme: (themeId: string) => void;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
@@ -519,8 +515,6 @@ export function InspectorPanel({
           onOpenEditVideo={onOpenEditVideo}
           onDocChanged={onDocChanged}
           onTimingChanged={onTimingChanged}
-          onReplayScene={onReplayScene}
-          onReplaySessionEnd={onReplaySessionEnd}
           onOpenTheme={onOpenTheme}
           onEditThemeInClaude={onEditThemeInClaude}
           onThemeEdited={onThemeEdited}

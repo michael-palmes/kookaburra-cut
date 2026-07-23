@@ -133,8 +133,7 @@ export function sceneSections(input: {
         { id: "frame.panel", label: "Panel colour", chevron: true },
         { id: "frame.chip", label: "Chip", chevron: true },
         { id: "frame.decorations", label: "Decorations", chevron: true },
-        { id: "frame.icon", label: "Header icon", chevron: true },
-        { id: "frame.text", label: "Text", chevron: true },
+        { id: "frame.text", label: "Scene text", chevron: true },
       );
     }
     sections.push({ id: "frame", label: "Overlay", rows });

@@ -13,7 +13,7 @@ import {
   type TextAnimationDraft,
 } from "./textAnimationOptions";
 
-/** Text-motion panel: a docked live picker above the edit bar, no GL preview and no modal scrim because the real stage IS the preview; every pick patches `doc.textAnimation` immediately and auto-replays the scene, Cancel restores the spec captured at open; wall-clock use is fine here since the edit bar is unmounted during export/autorun. */
+/** Text-motion panel: an inline picker in the Text drill, no GL preview because the real stage IS the preview; every pick patches `doc.textAnimation` immediately as one undo. */
 
 /** Slider that live-updates its label but commits debounced (the ColourInput pattern); a sidecar write per drag tick would thrash the JSON file. Shared with the Background editor's Animated tab. With `onInput`, the debounced ticks are live (history-less) writes and `onCommit` fires once on release, so a drag reads as ONE undo step. */
 export function DebouncedRange({
@@ -162,9 +162,6 @@ export function TextMotionPanel({
   force,
   onLive,
   onForce,
-  onReplay,
-  onCancel,
-  onDone,
 }: {
   /** The sidecar's spec at open (undefined = following the theme). */
   current: TextAnimationSpec | undefined;
@@ -174,15 +171,10 @@ export function TextMotionPanel({
   codedMotion: boolean;
   /** The sidecar's `textAnimationForce` right now. */
   force: boolean;
-  /** Patch `doc.textAnimation` NOW (undefined clears the override). */
+  /** Patch `doc.textAnimation` (undefined clears the override); each pick is one undo. */
   onLive: (spec: TextAnimationSpec | undefined) => void;
   /** Patch `doc.textAnimationForce`; the coded-motion override. */
   onForce: (on: boolean) => void;
-  /** Seek to the scene start and play its window once; the live preview. */
-  onReplay: () => void;
-  /** Restore the open-time spec + force flag and close. */
-  onCancel: () => void;
-  onDone: () => void;
 }) {
   const [draft, setDraft] = useState<TextAnimationDraft | null>(() =>
     current ? specToDraft(current) : null,
@@ -195,7 +187,6 @@ export function TextMotionPanel({
   function commit(next: TextAnimationDraft | null) {
     setDraft(next);
     onLive(next ? draftToSpec(next) : undefined);
-    onReplay();
     if (codedMotion && !force && !overrideDismissed.current) setAskOverride(true);
   }
 
@@ -369,7 +360,6 @@ export function TextMotionPanel({
               onClick={() => {
                 setAskOverride(false);
                 onForce(true);
-                onReplay();
               }}
             >
               Override
@@ -382,34 +372,12 @@ export function TextMotionPanel({
           <span className="popover-group-label" />
           <span className="popover-blurb">Overriding this scene's built-in text motion.</span>
           <span className="popover-actions">
-            <button
-              type="button"
-              className="btn btn-small"
-              onClick={() => {
-                onForce(false);
-                onReplay();
-              }}
-            >
+            <button type="button" className="btn btn-small" onClick={() => onForce(false)}>
               Undo override
             </button>
           </span>
         </div>
       )}
-
-      <div className="popover-row">
-        <span className="popover-group-label" />
-        <span className="popover-actions">
-          <button type="button" className="btn btn-small" onClick={onReplay}>
-            ↺ Replay
-          </button>
-          <button type="button" className="btn btn-small" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="button" className="btn btn-small primary" onClick={onDone}>
-            Done
-          </button>
-        </span>
-      </div>
     </div>
   );
 }
