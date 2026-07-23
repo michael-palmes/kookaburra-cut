@@ -449,12 +449,12 @@ export default function App() {
     };
   }, []);
 
-  // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar or the Background video picker), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device slot only).
+  // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar, the Background video picker or the video window recording picker), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device and video window slots).
   const pendingRepointRef = useRef<{
     slug: string;
     index: number;
     editName: string;
-    slot: "device" | "background";
+    slot: "device" | "background" | "videoWindow";
   } | null>(null);
 
   // The fingerprint poll's baseline lives in a ref so UI-initiated writes can re-arm it (flicker fix): otherwise an app-made sidecar/project.json write would trigger a redundant reload ~2s later.
@@ -802,6 +802,14 @@ export default function App() {
             next.background = { ...next.background, src: rel };
             repointed = true;
           }
+        } else if (pending.slot === "videoWindow") {
+          if (next?.videoWindow) {
+            next.videoWindow = {
+              ...next.videoWindow,
+              media: { ...next.videoWindow.media, src: rel },
+            };
+            repointed = true;
+          }
         } else if (next?.devices?.[0]?.media) {
           const d = next.devices[0];
           if (d.media) d.media = { ...d.media, src: rel };
@@ -825,7 +833,7 @@ export default function App() {
                 },
               ],
             });
-            if (pending.slot === "device") {
+            if (pending.slot === "device" || pending.slot === "videoWindow") {
               const wrote = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
@@ -1344,9 +1352,13 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [togglePlay, project, exporting]);
 
-  // Edit video from a scene surface (device edit bar or Background video picker): open the editor scene-initiated and arm the re-point (the media-changed effect above applies it when the render lands).
+  // Edit video from a scene surface (device edit bar, Background video picker or video window recording picker): open the editor scene-initiated and arm the re-point (the media-changed effect above applies it when the render lands).
   const handleOpenEditVideo = useCallback(
-    async (sceneIndex: number, mediaRel: string, slot: "device" | "background" = "device") => {
+    async (
+      sceneIndex: number,
+      mediaRel: string,
+      slot: "device" | "background" | "videoWindow" = "device",
+    ) => {
       if (!project || !isWorkspaceProjectId(project.id)) return;
       const slug = workspaceSlug(project.id);
       try {
@@ -1913,7 +1925,7 @@ export default function App() {
               onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
-              onOpenEditVideo={(i, rel) => void handleOpenEditVideo(i, rel)}
+              onOpenEditVideo={(i, rel, slot) => void handleOpenEditVideo(i, rel, slot)}
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
               onApplyTheme={(id) => void handleApplyTheme(id)}

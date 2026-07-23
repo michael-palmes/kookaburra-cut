@@ -1222,7 +1222,11 @@ export function SceneTab({
   project: LoadedProject;
   sceneIndex: number;
   sceneTheme: Theme | undefined;
-  onOpenEditVideo: (sceneIndex: number, mediaRel: string, slot?: "device" | "background") => void;
+  onOpenEditVideo: (
+    sceneIndex: number,
+    mediaRel: string,
+    slot?: "device" | "background" | "videoWindow",
+  ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
   /** Open ThemeMode, optionally on a pane (the theme context menu). */
@@ -2174,6 +2178,11 @@ export function SceneTab({
                 onPrimary: pickVideoWindowMedia,
                 onChanged: () => setMediaRefresh((n) => n + 1),
                 onError: setError,
+                onEdit: (rel) => {
+                  if (!vw || vw.media.src !== rel) return false;
+                  onOpenEditVideo(sceneIndex, rel, "videoWindow");
+                  return true;
+                },
               })}
             />
           </div>
