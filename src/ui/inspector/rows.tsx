@@ -1,40 +1,149 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill) and the collapsible section header (chevron rotates −90° when collapsed); rendered from the pure models in ui/inspectorOptions.ts. */
 
-/** One numeric field for pose-style grids: seeds from the value, commits on blur/Enter (shared by the Camera section and the device Rotation drill-in). */
-export function NumericField({
+const DRAG_THRESHOLD_PX = 4;
+
+/** Horizontal drag-to-scrub gesture over a numeric input: a plain click still focuses for typing; a >4px drag scrubs (value tracks live, `onInput` previews each tick, one `onCommit` on release), Shift drags at 0.1x, clamped to min/max/step. The caller owns the input and its text state; `onText` pushes the formatted value there during a drag. Shared by NumberField and DurationRow. */
+export function useDragScrub({
+  value,
+  decimals,
+  onCommit,
+  onInput,
+  onText,
+  inputRef,
+  min,
+  max,
+  step,
+  dragScale,
+}: {
+  value: number;
+  decimals: number;
+  onCommit: (n: number) => void;
+  onInput?: (n: number) => void;
+  onText: (s: string) => void;
+  inputRef: RefObject<HTMLInputElement | null>;
+  min?: number;
+  max?: number;
+  step?: number;
+  dragScale?: number;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const clampSnap = (n: number) => {
+    let v = step ? Math.round(n / step) * step : Number(n.toFixed(decimals));
+    if (min !== undefined) v = Math.max(min, v);
+    if (max !== undefined) v = Math.min(max, v);
+    return v;
+  };
+  const changed = (v: number) => Math.abs(v - value) > 10 ** -decimals / 2;
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || document.activeElement === inputRef.current) return;
+    const startX = e.clientX;
+    const startValue = value;
+    let moved = false;
+    const at = (ev: PointerEvent) =>
+      clampSnap(
+        startValue +
+          (ev.clientX - startX) * (dragScale ?? 10 ** -decimals) * (ev.shiftKey ? 0.1 : 1),
+      );
+    const onMove = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - startX) < DRAG_THRESHOLD_PX) return;
+      if (!moved) {
+        moved = true;
+        setDragging(true);
+        inputRef.current?.blur();
+      }
+      ev.preventDefault();
+      const v = at(ev);
+      onText(v.toFixed(decimals));
+      onInput?.(v);
+    };
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (!moved) return; // a plain click: the input focuses for typing
+      ev.preventDefault();
+      setDragging(false);
+      const v = at(ev);
+      if (changed(v)) onCommit(v);
+      else onText(value.toFixed(decimals));
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  return { dragging, onPointerDown, clampSnap, changed };
+}
+
+/** One numeric field: click to type (blur/Enter commit, Escape revert), or drag horizontally to scrub (ew-resize on hover). While dragging the value tracks live; `onInput` (when given) previews it history-less and `onCommit` records one entry on release. Shared by the Camera section, the device Rotation drill-in and the text style fields. */
+export function NumberField({
   label,
   value,
   decimals,
   onCommit,
+  onInput,
+  min,
+  max,
+  step,
+  dragScale,
 }: {
   label: string;
   value: number;
   decimals: number;
   onCommit: (n: number) => void;
+  /** Live tick while dragging (wire to a history-less write at the call site); omit for a local-only drag preview. */
+  onInput?: (n: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Value change per horizontal pixel (default: the field's finest unit); Shift drags at 0.1x. */
+  dragScale?: number;
 }) {
   const [text, setText] = useState(value.toFixed(decimals));
-  useEffect(() => setText(value.toFixed(decimals)), [value, decimals]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { dragging, onPointerDown, clampSnap, changed } = useDragScrub({
+    value,
+    decimals,
+    onCommit,
+    onInput,
+    onText: setText,
+    inputRef,
+    min,
+    max,
+    step,
+    dragScale,
+  });
+  // Mirror the prop unless the user is typing or mid-drag.
+  useEffect(() => {
+    if (!dragging && document.activeElement !== inputRef.current) setText(value.toFixed(decimals));
+  }, [value, decimals, dragging]);
+
   const commit = () => {
     const n = Number(text);
     if (!Number.isFinite(n)) {
       setText(value.toFixed(decimals));
       return;
     }
-    if (Math.abs(n - value) > 10 ** -decimals / 2) onCommit(n);
+    const v = clampSnap(n);
+    if (changed(v)) onCommit(v);
+    else setText(value.toFixed(decimals));
   };
+
   return (
-    <label className="inspector-pose-field">
+    <label className={`inspector-pose-field${dragging ? " scrubbing" : ""}`}>
       <input
-        className="modal-input inspector-num"
+        ref={inputRef}
+        className="modal-input inspector-num inspector-num-drag"
         value={text}
         inputMode="decimal"
+        onPointerDown={onPointerDown}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") setText(value.toFixed(decimals));
+          if (e.key === "Escape") {
+            setText(value.toFixed(decimals));
+            (e.target as HTMLInputElement).blur();
+          }
         }}
       />
       <span className="inspector-pose-caption">{label}</span>
