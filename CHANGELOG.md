@@ -4,7 +4,7 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-24
 
 ### Added
 
@@ -13,6 +13,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (T), click the preview to place a soft glow dot at the playhead, drag
   its marker to reposition, right-click to retime or delete; Render to
   project composites the animation into the flattened video.
+- A letterbox fit option for video backgrounds: show the whole frame
+  instead of cropping to fill.
+- Plain text scenes render their header icon above the headline, the
+  same field overlays already show.
+
+### Changed
+
+- The inspector is restructured into compact drill-in menus.
+- Number inputs drag to scrub, with a live camera preview and a single
+  undo step per drag.
 
 ## [0.5.0] - 2026-07-23
 
