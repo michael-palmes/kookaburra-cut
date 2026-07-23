@@ -3860,12 +3860,18 @@ export function SceneTab({
     icon: "camera.animate",
     onClick: () => openDrill("camera"),
   });
-  topEntries.push({
-    key: "motion",
-    label: "Timing",
-    icon: "motion.duration",
-    onClick: () => openDrill("motion"),
-  });
+  if (project.slots.length > 1) {
+    topEntries.push({
+      key: "transition",
+      label: "Transition",
+      icon: "motion.transition",
+      value: transitionValue,
+      onClick: () => {
+        void listCachedSceneThumbs(project).then(setThumbs);
+        openDrill("motion.transition");
+      },
+    });
+  }
 
   return (
     <>
@@ -3892,6 +3898,11 @@ export function SceneTab({
             onClick={entry.onClick}
           />
         ))}
+        <DurationRow
+          durationMs={scene.durationMs}
+          mode={durationMode}
+          onCommit={(ms) => void commitDuration(ms)}
+        />
       </div>
       {error && <p className="inspector-error">{error}</p>}
 
