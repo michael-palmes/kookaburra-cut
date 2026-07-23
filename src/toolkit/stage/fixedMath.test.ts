@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   FIXED_BG_DISTANCE,
+  FIXED_BG_EDGE_OVERSCAN,
   FIXED_BG_NDC_CLAMP,
   FIXED_BG_RENDER_ORDER,
+  fixedContainScale,
   fixedCoverCrop,
+  fixedFitQuadSize,
   fixedOverscan,
   fixedParallaxOffset,
   fixedQuadSize,
@@ -19,6 +22,7 @@ describe("fixed-background constants (export contract)", () => {
     expect(FIXED_BG_DISTANCE).toBe(50);
     expect(FIXED_BG_RENDER_ORDER).toBe(-100);
     expect(FIXED_BG_NDC_CLAMP).toBe(2);
+    expect(FIXED_BG_EDGE_OVERSCAN).toBe(1.001);
     expect(fixedOverscan(0)).toBeCloseTo(1.001, 12);
     expect(fixedOverscan(0.05)).toBeCloseTo(1.101, 12);
     expect(fixedOverscan(0.5)).toBeCloseTo(2.001, 12);
@@ -111,5 +115,49 @@ describe("fixedCoverCrop", () => {
 
   it("uses the full window when the aspects match", () => {
     expect(fixedCoverCrop(16 / 9, 16 / 9)).toEqual({ u0: 0, v0: 0, u1: 1, v1: 1 });
+  });
+});
+
+describe("fixedContainScale (letterbox, the fit inverse of the cover-crop)", () => {
+  it("shrinks a wide video vertically into a portrait frame (letterbox)", () => {
+    // 16:9 (1.777…) media into 9:16 (0.5625): x stays, y = frame/media
+    const fit = fixedContainScale(16 / 9, 9 / 16);
+    expect(fit.x).toBe(1);
+    expect(fit.y).toBeCloseTo(0.31640625, 12); // (9/16)/(16/9)
+  });
+
+  it("shrinks a tall video horizontally into a 16:9 frame (pillarbox)", () => {
+    const fit = fixedContainScale(9 / 16, 16 / 9);
+    expect(fit.y).toBe(1);
+    expect(fit.x).toBeCloseTo(0.31640625, 12); // (9/16)/(16/9)
+  });
+
+  it("is 1:1 when the aspects match (degenerates to a full fill, no bars)", () => {
+    expect(fixedContainScale(16 / 9, 16 / 9)).toEqual({ x: 1, y: 1 });
+  });
+
+  it("is the reciprocal of the cover-crop window on the cropped axis", () => {
+    // A 2:1 video into 16:9: cover crops U to (16/9)/2 of the width; contain shrinks Y to the same ratio.
+    const crop = fixedCoverCrop(2, 16 / 9);
+    const fit = fixedContainScale(2, 16 / 9);
+    expect(fit.y).toBeCloseTo(crop.u1 - crop.u0, 12);
+    expect(fit.x).toBe(1);
+  });
+});
+
+describe("fixedFitQuadSize", () => {
+  it("scales the frame size by the contain axes and the edge overscan only (no parallax term)", () => {
+    const fit = fixedContainScale(16 / 9, 9 / 16); // { x: 1, y: 0.3164… }
+    const { width, height } = fixedFitQuadSize(45, 9 / 16, fit);
+    const baseHalfH = 2 * HALF_H_45 * 1.001;
+    expect(width).toBeCloseTo(baseHalfH * (9 / 16) * fit.x, 9);
+    expect(height).toBeCloseTo(baseHalfH * fit.y, 9);
+  });
+
+  it("matches the frustum-filling size (minus parallax) when contain is 1:1", () => {
+    const full = fixedFitQuadSize(45, 16 / 9, { x: 1, y: 1 });
+    const filled = fixedQuadSize(45, 16 / 9, 0);
+    expect(full.width).toBeCloseTo(filled.width, 9);
+    expect(full.height).toBeCloseTo(filled.height, 9);
   });
 });

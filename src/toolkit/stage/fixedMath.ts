@@ -9,9 +9,12 @@ export const FIXED_BG_NDC_CLAMP = 2;
 
 const DEG2RAD = Math.PI / 180;
 
-/** Quad overscan: the 0.1% base kills FP/MSAA edge seams where the quad edge meets the frame edge; the `2p` term covers the full parallax travel (offset ≤ 2p·halfExtent per axis under the NDC clamp). */
+/** Edge-seam overscan base: the 0.1% that kills FP/MSAA seams where a quad edge meets the frame (fill) or the letterbox bars (fit). */
+export const FIXED_BG_EDGE_OVERSCAN = 1.001;
+
+/** Quad overscan: the base kills FP/MSAA edge seams where the quad edge meets the frame edge; the `2p` term covers the full parallax travel (offset ≤ 2p·halfExtent per axis under the NDC clamp). */
 export function fixedOverscan(parallax: number): number {
-  return 1.001 + 2 * parallax;
+  return FIXED_BG_EDGE_OVERSCAN + 2 * parallax;
 }
 
 /** Frustum-filling quad size at FIXED_BG_DISTANCE for a vertical fov (deg) + aspect. */
@@ -23,6 +26,28 @@ export function fixedQuadSize(
   const halfH = FIXED_BG_DISTANCE * Math.tan(fovDeg * 0.5 * DEG2RAD);
   const o = fixedOverscan(parallax);
   return { width: 2 * halfH * aspect * o, height: 2 * halfH * o };
+}
+
+/** Centred contain (letterbox/pillarbox) axis scales for media of `mediaAspect` fit WHOLLY inside a frame of `frameAspect`: the inverse of `fixedCoverCrop` (there the quad stays frame-filling and the UVs crop; here the UVs stay full and the quad shrinks on one axis, the bars quad behind filling the remainder). Wider-than-frame media shrinks vertically (bars top/bottom), taller-than-frame media shrinks horizontally (bars left/right). */
+export function fixedContainScale(
+  mediaAspect: number,
+  frameAspect: number,
+): { x: number; y: number } {
+  if (mediaAspect > frameAspect) return { x: 1, y: frameAspect / mediaAspect };
+  return { x: mediaAspect / frameAspect, y: 1 };
+}
+
+/** Contained quad size at FIXED_BG_DISTANCE: the base frustum size × the base edge overscan × the per-axis contain scale, WITHOUT the parallax travel term (a contained quad never reaches the frame edge, so the full-frame bars quad behind it carries the parallax overscan instead; both quads share the same parallax OFFSET, so they drift together and the media stays centred on the bars). */
+export function fixedFitQuadSize(
+  fovDeg: number,
+  aspect: number,
+  fit: { x: number; y: number },
+): { width: number; height: number } {
+  const halfH = FIXED_BG_DISTANCE * Math.tan(fovDeg * 0.5 * DEG2RAD);
+  return {
+    width: 2 * halfH * aspect * FIXED_BG_EDGE_OVERSCAN * fit.x,
+    height: 2 * halfH * FIXED_BG_EDGE_OVERSCAN * fit.y,
+  };
 }
 
 /** Lateral camera-space offset for the parallax drift: `anchorNdc*` is the world origin projected through the CURRENT camera (under the base pose it projects to (0,0), so its NDC IS the content's screen displacement), and the background moves at `parallax ×` that displacement; fov-invariant by construction (zooming does not move the origin's NDC), and `anchorInFront=false` (the anchor is behind the camera, a pathological orbit) holds the offset at 0. */

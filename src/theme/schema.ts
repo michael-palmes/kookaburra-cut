@@ -199,6 +199,8 @@ export function parseBackgroundSpec(
         const out: Extract<ThemeBackground, { type: "video" }> = { type: "video", src: v.src };
         // Only `false` is stored; absent = loop (decision 6, one knob).
         if (v.loop === false) out.loop = false;
+        // Only `fit` is stored; absent = fill (cover-crop, the byte-identical legacy path).
+        if (v.fit === "fit") out.fit = "fit";
         return withParallax(out);
       }
       break;

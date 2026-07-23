@@ -46,7 +46,9 @@ import {
 import {
   FIXED_BG_DISTANCE,
   FIXED_BG_RENDER_ORDER,
+  fixedContainScale,
   fixedCoverCrop,
+  fixedFitQuadSize,
   fixedParallaxOffset,
   fixedQuadSize,
 } from "./fixedMath";
@@ -94,11 +96,17 @@ function FixedQuad({
   material,
   crop = FULL_WINDOW,
   parallax = 0,
+  fitScale,
+  renderOrder = FIXED_BG_RENDER_ORDER,
   beforeRender,
 }: {
   material: Material;
   crop?: CropWindow;
   parallax?: number;
+  /** Contain (letterbox) axis scales: present = the quad is sized to fit WHOLLY inside the frame (fixedFitQuadSize), absent = the fill path's frustum-filling size (fixedQuadSize). */
+  fitScale?: { x: number; y: number };
+  /** Draw order among the fixed layers; the fit path stacks its video quad one above the bars quad. */
+  renderOrder?: number;
   /** Per-draw uniform writes (the shader fill's clock read); runs before the matrix rewrite. */
   beforeRender?: () => void;
 }) {
@@ -134,21 +142,23 @@ function FixedQuad({
           ndcY = anchor.y;
         }
       }
-      const size = fixedQuadSize(cam.fov, cam.aspect, parallax);
+      const size = fitScale
+        ? fixedFitQuadSize(cam.fov, cam.aspect, fitScale)
+        : fixedQuadSize(cam.fov, cam.aspect, parallax);
       const off = fixedParallaxOffset(cam.fov, cam.aspect, parallax, ndcX, ndcY, inFront);
       translate.makeTranslation(off.x, off.y, -FIXED_BG_DISTANCE);
       scale.makeScale(size.width, size.height, 1);
       // Written per render call, after the graph's updateMatrixWorld; always wins.
       mesh.matrixWorld.copy(cam.matrixWorld).multiply(translate).multiply(scale);
     };
-  }, [parallax, beforeRender]);
+  }, [parallax, fitScale, beforeRender]);
 
   return (
     <mesh
       ref={meshRef}
       geometry={geometry}
       material={material}
-      renderOrder={FIXED_BG_RENDER_ORDER}
+      renderOrder={renderOrder}
       frustumCulled={false}
       matrixAutoUpdate={false}
       onBeforeRender={onBeforeRender}
@@ -281,6 +291,8 @@ function FixedImage({ spec }: { spec: Extract<ThemeBackground, { type: "image" }
 /** Video fill: the clip frame pipeline on the fixed quad, streaming through the SHARED `useClipTexture` binding so `awaitVideoFramesReady` covers this consumer identically to VideoClip/Device; loops by default (`loop: false` holds the last frame, the VideoClip edge semantics), and while extraction is pending the group stays invisible so the scene shows its resolved underlay rather than a black pop (unreachable during export/capture). Frame textures are SHARED (never mutate them); cover-crop rides the quad's per-instance UVs like the image path. */
 function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }> }) {
   const { aspect } = useFormat();
+  const theme = useTheme();
+  const isFit = spec.fit === "fit";
   const groupRef = useRef<Group>(null);
   const material = useMemo(() => {
     const m = new MeshBasicMaterial({ side: DoubleSide });
@@ -289,6 +301,14 @@ function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }
     return m;
   }, []);
   useLayoutEffect(() => () => material.dispose(), [material]);
+  // The letterbox bars: a full-frame quad in the theme background colour behind the contained video (fit only; the fill path never mounts it).
+  const barsMaterial = useExactMaterial(
+    (m) => {
+      configureFixed(m);
+      m.color.set(theme.colors.background);
+    },
+    [theme.colors.background],
+  );
 
   const onPending = useCallback(() => {
     if (groupRef.current) groupRef.current.visible = false;
@@ -308,8 +328,12 @@ function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }
   });
 
   const crop = useMemo(
-    () => (info ? fixedCoverCrop(info.width / info.height, aspect) : FULL_WINDOW),
-    [info, aspect],
+    () => (!isFit && info ? fixedCoverCrop(info.width / info.height, aspect) : FULL_WINDOW),
+    [isFit, info, aspect],
+  );
+  const containScale = useMemo(
+    () => (isFit && info ? fixedContainScale(info.width / info.height, aspect) : undefined),
+    [isFit, info, aspect],
   );
 
   // While frames extract, a second fixed quad shows the shared "Preparing video…" card instead of dropping to the underlay, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it (the VideoClip stand-in pattern).
@@ -328,7 +352,14 @@ function FixedVideo({ spec }: { spec: Extract<ThemeBackground, { type: "video" }
   return (
     <>
       <group ref={groupRef} visible={false}>
-        <FixedQuad material={material} crop={crop} parallax={spec.parallax ?? 0} />
+        {isFit && <FixedQuad material={barsMaterial} parallax={spec.parallax ?? 0} />}
+        <FixedQuad
+          material={material}
+          crop={crop}
+          parallax={spec.parallax ?? 0}
+          fitScale={containScale}
+          renderOrder={isFit ? FIXED_BG_RENDER_ORDER + 1 : undefined}
+        />
       </group>
       {!info && !isExporting() && <FixedQuad material={pendingMaterial} />}
     </>

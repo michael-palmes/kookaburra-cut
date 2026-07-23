@@ -367,6 +367,17 @@ describe("parseSceneDoc", () => {
       "test",
     );
     expect(hold?.background).toEqual({ type: "video", src: "a.mp4", loop: false });
+    // `fit: "fit"` letterboxes; `fill` (the default) normalizes AWAY, keeping legacy bytes identical.
+    const fit = parseSceneDoc(
+      { version: 1, background: { type: "video", src: "a.mp4", fit: "fit" } },
+      "test",
+    );
+    expect(fit?.background).toEqual({ type: "video", src: "a.mp4", fit: "fit" });
+    const fill = parseSceneDoc(
+      { version: 1, background: { type: "video", src: "a.mp4", fit: "fill" } },
+      "test",
+    );
+    expect(fill?.background).toEqual({ type: "video", src: "a.mp4" });
     // No src → dropped (the standard degrade).
     const bad = parseSceneDoc({ version: 1, background: { type: "video" } }, "test");
     expect(bad?.background).toBeUndefined();
