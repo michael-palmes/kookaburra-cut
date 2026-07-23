@@ -90,14 +90,14 @@ export function AddMediaButton({
   );
 }
 
-/** The global-folder import button: same flow as AddMediaButton but into ~/Kookaburra Cut/screenshots. */
+/** The library import button: same flow as AddMediaButton but into the global media library folder (~/Kookaburra Cut/screenshots). */
 function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const handleAdd = useCallback(async () => {
     const picked = await openFilePicker({
       multiple: true,
-      title: "Add to global screenshots",
+      title: "Add to the media library",
       filters: [{ name: "Media", extensions: [...MEDIA_PICKER_EXTENSIONS] }],
     });
     if (!picked) return;
@@ -123,7 +123,7 @@ function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
         onClick={() => void handleAdd()}
         disabled={importing}
       >
-        {importing ? "Adding…" : "＋ Add screenshot"}
+        {importing ? "Adding…" : "＋ Add to library"}
       </button>
       {error && <span className="modal-error media-add-error">{error}</span>}
     </>
@@ -146,6 +146,28 @@ function ImageIcon() {
     <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
       <path
         d="M3 3h10a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm.5 8.5h9L9.6 7.7l-2.2 2.6-1.5-1.6-2.4 2.8ZM5.75 7.5a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function ProjectIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2 4.5A1.5 1.5 0 0 1 3.5 3H6l1.5 1.5h5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-7Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function LibraryIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 2.2 14.5 5.2 8 8.2 1.5 5.2 8 2.2Zm5.6 5.2L8 10 2.4 7.4l-.9.4L8 10.9l6.5-3.1-.9-.4Zm0 2.6L8 12.6 2.4 10l-.9.4L8 13.5l6.5-3.1-.9-.4Z"
         fill="currentColor"
       />
     </svg>
@@ -369,6 +391,10 @@ export function MediaBrowser({
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
   const visibleRels = rels?.filter((rel) => !allowedKinds || allowedKinds.includes(kindOfRel(rel)));
+  // The library grid honours the same kind filter, so an image-only picker never offers a video.
+  const visibleGlobal = globalShots?.filter(
+    (s) => !allowedKinds || allowedKinds.includes(kindOfRel(s.name)),
+  );
 
   const refresh = useCallback(() => {
     listProjectMedia(slug)
@@ -505,52 +531,54 @@ export function MediaBrowser({
   return (
     <div className={`media-browser${compact ? " compact" : ""}`}>
       {(kindToggle || globalToggle || hint || !hideAdd) && (
-        <div className={`media-browser-bar${kindToggle || globalToggle ? " centered" : ""}`}>
-          {globalToggle && (
-            <span className="wizard-presets">
-              <button
-                type="button"
-                className={`chip${sourceTab === "project" ? " selected" : ""}`}
-                title="This project's assets"
-                onClick={() => {
-                  setSourceTab("project");
-                  setPreview(null);
-                }}
-              >
-                Project
-              </button>
-              <button
-                type="button"
-                className={`chip${sourceTab === "global" ? " selected" : ""}`}
-                title="Your global screenshots (~/Kookaburra Cut/screenshots); picking copies into this project"
-                onClick={() => {
-                  setSourceTab("global");
-                  setPreview(null);
-                }}
-              >
-                Global
-              </button>
-            </span>
-          )}
-          {kindToggle && sourceTab === "project" && (
-            <span className="wizard-presets">
-              <button
-                type="button"
-                className={`chip chip-icon${kindTab === "video" ? " selected" : ""}`}
-                onClick={() => setKindTab("video")}
-              >
-                <VideoIcon /> Video
-              </button>
-              <button
-                type="button"
-                className={`chip chip-icon${kindTab === "image" ? " selected" : ""}`}
-                onClick={() => setKindTab("image")}
-              >
-                <ImageIcon /> Images
-              </button>
-            </span>
-          )}
-          {hint && <span className="muted media-browser-hint">{hint}</span>}
+        <div className="media-browser-bar">
+          <div className="media-browser-toggles">
+            {globalToggle && (
+              <span className="wizard-presets">
+                <button
+                  type="button"
+                  className={`chip chip-icon${sourceTab === "project" ? " selected" : ""}`}
+                  title="This project's assets"
+                  onClick={() => {
+                    setSourceTab("project");
+                    setPreview(null);
+                  }}
+                >
+                  <ProjectIcon /> Project
+                </button>
+                <button
+                  type="button"
+                  className={`chip chip-icon${sourceTab === "global" ? " selected" : ""}`}
+                  title="Your media library; picking copies the file into this project"
+                  onClick={() => {
+                    setSourceTab("global");
+                    setPreview(null);
+                  }}
+                >
+                  <LibraryIcon /> Library
+                </button>
+              </span>
+            )}
+            {kindToggle && sourceTab === "project" && (
+              <span className="wizard-presets">
+                <button
+                  type="button"
+                  className={`chip chip-icon${kindTab === "video" ? " selected" : ""}`}
+                  onClick={() => setKindTab("video")}
+                >
+                  <VideoIcon /> Video
+                </button>
+                <button
+                  type="button"
+                  className={`chip chip-icon${kindTab === "image" ? " selected" : ""}`}
+                  onClick={() => setKindTab("image")}
+                >
+                  <ImageIcon /> Images
+                </button>
+              </span>
+            )}
+            {hint && <span className="muted media-browser-hint">{hint}</span>}
+          </div>
           {!hideAdd &&
             (sourceTab === "global" ? (
               <AddGlobalScreenshotButton onImported={refreshGlobal} />
@@ -562,16 +590,16 @@ export function MediaBrowser({
       {pickError && <span className="modal-error media-add-error">{pickError}</span>}
 
       {sourceTab === "global" ? (
-        globalShots === null ? (
-          <p className="muted">Reading screenshots…</p>
-        ) : globalShots.length === 0 ? (
+        visibleGlobal === undefined ? (
+          <p className="muted">Reading your library…</p>
+        ) : visibleGlobal.length === 0 ? (
           <p className="muted">
-            No global screenshots yet: add some here, or use "Add to global screenshots" on any
-            project's media card.
+            Nothing in your library yet: add some here, or use "Add to library" on any project's
+            media card.
           </p>
         ) : (
           <div className="media-grid">
-            {globalShots.map((shot) => (
+            {visibleGlobal.map((shot) => (
               <MediaCard
                 key={shot.name}
                 rel={shot.name}

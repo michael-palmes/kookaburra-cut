@@ -40,6 +40,7 @@ export function MediaLibrary({
           slug={slug}
           projectPath={projectPath}
           refreshKey={refreshKey + localRefresh}
+          globalToggle
           cardMenu={mediaCardMenu({
             slug,
             primaryLabel: "Insert",

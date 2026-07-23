@@ -41,6 +41,7 @@ import type {
 import { DrillBack } from "./inspector/rows";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 import { MediaBrowser } from "./MediaBrowser";
+import { mediaCardMenu } from "./mediaCardMenu";
 import { useEscapeClose } from "./useEscapeClose";
 import { useSceneDocPatch } from "./useSceneDocPatch";
 
@@ -134,6 +135,8 @@ export function LayeredScreenshotBuilder({
 
   // One mediaMeta per screen item: width/height give the schematic (and the preset fit) each screen's true aspect, and video posters double as thumbnails.
   const [metas, setMetas] = useState<Record<string, MediaMeta>>({});
+  const [mediaRefresh, setMediaRefresh] = useState(0);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const screenSrcs = useMemo(
     () =>
       ordered.flatMap((l) =>
@@ -624,6 +627,7 @@ export function LayeredScreenshotBuilder({
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal wizard-wide">
             <h2>{adding.mode === "change" ? "Change media" : "Add to the stack"}</h2>
+            {mediaError && <p className="modal-error">{mediaError}</p>}
             <div className="wizard-media-host">
               <MediaBrowser
                 slug={slug}
@@ -631,6 +635,7 @@ export function LayeredScreenshotBuilder({
                 kindToggle
                 kindDefault="image"
                 globalToggle
+                refreshKey={mediaRefresh}
                 onPick={(rel, meta) => {
                   if (adding.mode === "change" && item?.kind === "screen") {
                     // Change-media path: swap the selected screen's source in place.
@@ -644,6 +649,24 @@ export function LayeredScreenshotBuilder({
                     addScreen(rel, meta);
                   }
                 }}
+                cardMenu={mediaCardMenu({
+                  slug,
+                  primaryLabel: "Select",
+                  onPrimary: (rel, meta) => {
+                    if (adding.mode === "change" && item?.kind === "screen") {
+                      const next = updateItem(block, layer.id, item.id, {
+                        src: rel,
+                        media: meta?.kind === "video" ? "video" : "image",
+                      });
+                      setAdding(null);
+                      commitBlock(next);
+                    } else {
+                      addScreen(rel, meta);
+                    }
+                  },
+                  onChanged: () => setMediaRefresh((n) => n + 1),
+                  onError: setMediaError,
+                })}
               />
             </div>
             <div className="modal-actions">

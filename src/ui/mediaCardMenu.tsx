@@ -43,8 +43,8 @@ export function mediaCardMenu(opts: {
       },
       {
         id: "add-global",
-        label: "Add to global screenshots",
-        title: "Copy this file into ~/Kookaburra Cut/screenshots for reuse in any project",
+        label: "Add to library",
+        title: "Copy this file into your media library for reuse in any project",
         onSelect: () => {
           opts.onError(null);
           copyToGlobalScreenshots(opts.slug, rel).catch((e) => opts.onError(String(e)));

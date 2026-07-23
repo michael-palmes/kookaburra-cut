@@ -66,7 +66,7 @@ import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { sceneSections } from "../inspectorOptions";
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
-import { AddMediaButton, MediaBrowser } from "../MediaBrowser";
+import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
 import { TextFieldRow } from "../SceneTextFields";
@@ -1424,6 +1424,19 @@ export function SceneTab({
     );
   };
 
+  const selectImageBackground = (rel: string, meta: MediaMeta | null) => {
+    if (meta && meta.kind !== "image") return;
+    setBgTabOverride(null);
+    void patchDoc((next) => {
+      const parallax =
+        next.background && next.background.type !== "none" ? next.background.parallax : undefined;
+      next.background =
+        parallax !== undefined
+          ? { type: "image", src: rel, parallax }
+          : { type: "image", src: rel };
+    });
+  };
+
   const header = (
     <div className="inspector-scene-head">
       <div className="inspector-scene-preview">
@@ -1467,16 +1480,49 @@ export function SceneTab({
 
   // The media picker, shared by the device-media row and the decorations drill-in. Defined here
   // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
+  const pickMediaModal = (rel: string, meta: MediaMeta | null) => {
+    setModal(null);
+    if (mediaTarget.kind === "device") {
+      const isVideo = meta?.kind !== "image";
+      void patchDoc(
+        (next) => {
+          const d = next.devices?.[0];
+          if (d) {
+            d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
+            // A device video defaults the scene length to the clip, unless it was locked manually.
+            if (isVideo && next.duration?.mode !== "manual") {
+              next.duration = { mode: "follow-media", sourceDeviceId: d.id };
+            }
+          }
+        },
+        { resync: true },
+      );
+      return;
+    }
+    const decos = sceneFrame?.decorations ?? [];
+    const { replaceId } = mediaTarget;
+    const nextDecos: FrameDecorationSpec[] = replaceId
+      ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+      : [
+          ...decos,
+          {
+            id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
+            src: rel,
+            position: [0.45, -0.5],
+            size: 0.15,
+            shape: "none",
+            layer: "above",
+          },
+        ];
+    void patchDoc((next) => {
+      next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
+    });
+  };
   const mediaModal = modal === "media" && (
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal wizard-wide media-modal-wide">
         <div className="modal-title-row">
           <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change media"}</h2>
-          <AddMediaButton
-            slug={slug}
-            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
-            onImported={() => setMediaRefresh((n) => n + 1)}
-          />
         </div>
         <div className="wizard-media-host">
           <MediaBrowser
@@ -1484,46 +1530,16 @@ export function SceneTab({
             projectPath={workspaceProjectPath(slug) ?? ""}
             kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
             kindToggle={mediaTarget.kind === "device"}
-            hideAdd
+            globalToggle
             refreshKey={mediaRefresh}
-            onPick={(rel, meta) => {
-              setModal(null);
-              if (mediaTarget.kind === "device") {
-                const isVideo = meta?.kind !== "image";
-                void patchDoc(
-                  (next) => {
-                    const d = next.devices?.[0];
-                    if (d) {
-                      d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
-                      // A device video defaults the scene length to the clip, unless it was locked manually.
-                      if (isVideo && next.duration?.mode !== "manual") {
-                        next.duration = { mode: "follow-media", sourceDeviceId: d.id };
-                      }
-                    }
-                  },
-                  { resync: true },
-                );
-                return;
-              }
-              const decos = sceneFrame?.decorations ?? [];
-              const { replaceId } = mediaTarget;
-              const nextDecos: FrameDecorationSpec[] = replaceId
-                ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
-                : [
-                    ...decos,
-                    {
-                      id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
-                      src: rel,
-                      position: [0.45, -0.5],
-                      size: 0.15,
-                      shape: "none",
-                      layer: "above",
-                    },
-                  ];
-              void patchDoc((next) => {
-                next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
-              });
-            }}
+            onPick={pickMediaModal}
+            cardMenu={mediaCardMenu({
+              slug,
+              primaryLabel: "Select",
+              onPrimary: pickMediaModal,
+              onChanged: () => setMediaRefresh((n) => n + 1),
+              onError: setError,
+            })}
           />
         </div>
         <div className="modal-actions">
@@ -2144,6 +2160,17 @@ export function SceneTab({
         },
         { resync: true },
       );
+    const pickVideoWindowMedia = (rel: string, meta: MediaMeta | null) => {
+      if (meta && meta.kind !== "video") return;
+      if (vw)
+        void patchDoc(
+          (next) => {
+            if (next.videoWindow) next.videoWindow.media = { ...next.videoWindow.media, src: rel };
+          },
+          { resync: true },
+        );
+      else createFrom(rel);
+    };
     return (
       <div className="inspector-drill">
         <DrillBack label="Video window" onClick={() => setDrillIn("videoWindow.edit")} />
@@ -2151,33 +2178,22 @@ export function SceneTab({
           <span>Recording</span>
         </div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <AddMediaButton
-              slug={slug}
-              kinds={["video"]}
-              onImported={() => setMediaRefresh((n) => n + 1)}
-            />
-          </div>
           <div className="inspector-media-host">
             <MediaBrowser
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={["video"]}
-              hideAdd
+              globalToggle
               refreshKey={mediaRefresh}
               selectedRel={vw?.media.src ?? null}
-              onPick={(rel, meta) => {
-                if (meta && meta.kind !== "video") return;
-                if (vw)
-                  void patchDoc(
-                    (next) => {
-                      if (next.videoWindow)
-                        next.videoWindow.media = { ...next.videoWindow.media, src: rel };
-                    },
-                    { resync: true },
-                  );
-                else createFrom(rel);
-              }}
+              onPick={pickVideoWindowMedia}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: pickVideoWindowMedia,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
             />
           </div>
         </div>
@@ -2271,19 +2287,12 @@ export function SceneTab({
           )}
           {vw.stage.type === "image" && (
             <>
-              <div className="popover-row">
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["image"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
               <div className="inspector-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["image"]}
-                  hideAdd
+                  globalToggle
                   refreshKey={mediaRefresh}
                   selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
                   onPick={(rel, meta) => {
@@ -2292,6 +2301,18 @@ export function SceneTab({
                       v.stage = { type: "image", src: rel };
                     });
                   }}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: (rel, meta) => {
+                      if (meta && meta.kind !== "image") return;
+                      patchVW((v) => {
+                        v.stage = { type: "image", src: rel };
+                      });
+                    },
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </>
@@ -2375,24 +2396,27 @@ export function SceneTab({
               <p className="modal-hint">
                 Pick a screen recording to float in a window over a backing stage.
               </p>
-              <div className="popover-row">
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["video"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
               <div className="inspector-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["video"]}
-                  hideAdd
+                  globalToggle
                   refreshKey={mediaRefresh}
                   onPick={(rel, meta) => {
                     if (meta && meta.kind !== "video") return;
                     createFrom(rel);
                   }}
+                  cardMenu={mediaCardMenu({
+                    slug,
+                    primaryLabel: "Select",
+                    onPrimary: (rel, meta) => {
+                      if (meta && meta.kind !== "video") return;
+                      createFrom(rel);
+                    },
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setError,
+                  })}
                 />
               </div>
             </>
@@ -2658,6 +2682,53 @@ export function SceneTab({
               />
             </>
           )}
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "style.background.media" && doc) {
+    const kind: "image" | "video" =
+      bgTabOverride === "image" || bgTabOverride === "video"
+        ? bgTabOverride
+        : doc.background?.type === "video"
+          ? "video"
+          : "image";
+    const selectedSrc = doc.background?.type === kind ? doc.background.src : null;
+    const selectBg = kind === "video" ? selectVideoBackground : selectImageBackground;
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Background" onClick={() => setDrillIn("style.background")} />
+        <div className="inspector-drill-title">
+          {kind === "video" ? "Background video" : "Background image"}
+        </div>
+        <div className="inspector-drill-body">
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={[kind]}
+              globalToggle
+              refreshKey={mediaRefresh}
+              selectedRel={selectedSrc}
+              onPick={selectBg}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: selectBg,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+                onEdit:
+                  kind === "video"
+                    ? (rel) => {
+                        if (doc?.background?.type !== "video" || doc.background.src !== rel)
+                          return false;
+                        onOpenEditVideo(sceneIndex, rel, "background");
+                        return true;
+                      }
+                    : undefined,
+              })}
+            />
+          </div>
         </div>
       </div>
     );
@@ -2962,81 +3033,32 @@ export function SceneTab({
           {bgTab === "image" && (
             <>
               {occlusionWarning("image")}
-              <div className="popover-row">
-                <span className="modal-hint bg-media-hint">
-                  Fills the frame behind everything and stays locked to the camera — pick an image
-                  with a safe centre (it cover-crops per aspect).
-                </span>
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["image"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["image"]}
-                  hideAdd
-                  refreshKey={mediaRefresh}
-                  selectedRel={doc?.background?.type === "image" ? doc.background.src : null}
-                  onPick={(rel, meta) => {
-                    if (meta && meta.kind !== "image") return;
-                    setBgTabOverride(null);
-                    void patchDoc((next) => {
-                      const parallax =
-                        next.background && next.background.type !== "none"
-                          ? next.background.parallax
-                          : undefined;
-                      next.background =
-                        parallax !== undefined
-                          ? { type: "image", src: rel, parallax }
-                          : { type: "image", src: rel };
-                    });
-                  }}
-                />
-              </div>
+              <span className="modal-hint">
+                Fills the frame behind everything and stays locked to the camera; pick an image with
+                a safe centre (it cover-crops per aspect).
+              </span>
+              <ActionRow
+                icon={<SceneRowIcon id="style.background" />}
+                label={doc.background?.type === "image" ? "Change image" : "Choose an image"}
+                value={
+                  doc.background?.type === "image" ? doc.background.src.split("/").pop() : undefined
+                }
+                onClick={() => setDrillIn("style.background.media")}
+              />
             </>
           )}
           {bgTab === "video" && (
             <>
               {occlusionWarning("video")}
-              <div className="popover-row">
-                <span className="modal-hint bg-media-hint">
-                  Video that fills the frame behind everything.
-                </span>
-                <AddMediaButton
-                  slug={slug}
-                  kinds={["video"]}
-                  onImported={() => setMediaRefresh((n) => n + 1)}
-                />
-              </div>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["video"]}
-                  hideAdd
-                  refreshKey={mediaRefresh}
-                  selectedRel={doc?.background?.type === "video" ? doc.background.src : null}
-                  cardMenu={mediaCardMenu({
-                    slug,
-                    primaryLabel: "Select",
-                    onPrimary: (rel, meta) => selectVideoBackground(rel, meta),
-                    onChanged: () => setMediaRefresh((n) => n + 1),
-                    onError: setError,
-                    // Editing the scene's current background arms the re-point; other cards keep library semantics.
-                    onEdit: (rel) => {
-                      if (doc?.background?.type !== "video" || doc.background.src !== rel)
-                        return false;
-                      onOpenEditVideo(sceneIndex, rel, "background");
-                      return true;
-                    },
-                  })}
-                  onPick={selectVideoBackground}
-                />
-              </div>
+              <span className="modal-hint">Video that fills the frame behind everything.</span>
+              <ActionRow
+                icon={<SceneRowIcon id="style.background" />}
+                label={doc.background?.type === "video" ? "Change video" : "Choose a video"}
+                value={
+                  doc.background?.type === "video" ? doc.background.src.split("/").pop() : undefined
+                }
+                onClick={() => setDrillIn("style.background.media")}
+              />
               {doc.background?.type === "video" && (
                 <div className="popover-row">
                   <label className="popover-inline" title="Off holds the video's last frame">
