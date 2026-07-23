@@ -3361,7 +3361,7 @@ export function SceneTab({
         },
         { history: "text alignment" },
       );
-    // Header icon: the overlay's icon on overlay scenes, else a scene field (rendered for plain scenes in a later pass).
+    // Header icon: the overlay's icon on overlay scenes, else the plain scene's headerIcon (drawn above the fallback headline).
     const headerIcon = sceneFrame ? (sceneFrame.icon ?? "") : (doc.headerIcon ?? "");
     const setHeaderIcon = (v: string | undefined) =>
       void patchDoc((next) => {
@@ -3534,7 +3534,7 @@ export function SceneTab({
             <p className="modal-hint">
               {sceneFrame
                 ? "Drawn above the panel title. An emoji, or a project image path."
-                : "An emoji, or a project image path. Shows above the headline in a coming update."}
+                : "Drawn above the headline. An emoji, or a project image path."}
             </p>
           </div>
           <TextMotionPanel

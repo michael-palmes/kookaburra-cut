@@ -1,4 +1,5 @@
 import { useContext } from "react";
+import { FrameIcon } from "../../engine/FrameIcon";
 import { useFormat } from "../../engine/format";
 import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc } from "../../engine/sceneDoc";
@@ -12,6 +13,9 @@ import { AnimatedHeadline } from "./AnimatedHeadline";
 const SUBTITLE_SCALE_STEPS = 4;
 /** Subtitle reveal delay behind the title, ms (the house stagger convention). */
 const SUBTITLE_DELAY_MS = 350;
+/** Header-icon edge as a multiple of the title size, and its gap above the title's top edge (title-heights); mirrors the overlay panel's icon proportions. */
+const HEADER_ICON_SIZE = 1;
+const HEADER_ICON_GAP = 0.35;
 
 export interface TitleBlockProps {
   title: string;
@@ -36,6 +40,8 @@ export interface TitleBlockProps {
   subtitleDelayMs?: number;
   /** Register the title/subtitle text keys (default true). `TextFallback` passes false so its own render can't flip the fallback's "is a consumer mounted" gate (which would mount/unmount-loop). */
   register?: boolean;
+  /** Header icon drawn above the title: an emoji/glyph or a project asset path. Defaults to the sidecar's `headerIcon`, so a scaffolded scene's own `TitleBlock` shows it without wiring; overlay scenes carry it on `frame.icon` instead. */
+  icon?: string;
 }
 
 /** Title + optional subtitle with theme-scale sizing and safe-area alignment: the standard top-of-scene text block. Alignment resolves prop → sidecar `textLayout.align` → centre, so the inspector can steer scenes that don't hard-code it. */
@@ -71,8 +77,24 @@ export function TitleBlock(props: TitleBlockProps) {
   const subtitleY = portrait ? -0.28 : -0.42;
   const at = (y: number): V3 => [anchorX + position[0], y + position[1], position[2]];
 
+  // The sidecar's headerIcon is the default so any scene that renders a TitleBlock (the scaffold's own, not just TextFallback) shows it; an explicit prop still wins.
+  const icon = props.icon ?? doc?.headerIcon;
+  const iconSize = titleSize * HEADER_ICON_SIZE;
+  // The title is middle-anchored at titleY; lift the top-anchored icon above its top edge (~titleSize/2) plus the gap.
+  const iconTopY = titleY + titleSize * (0.5 + HEADER_ICON_GAP) + iconSize;
+
   return (
     <>
+      {icon && (
+        <FrameIcon
+          icon={icon}
+          position={at(iconTopY)}
+          size={iconSize}
+          from={from}
+          to={to}
+          anchorX={align}
+        />
+      )}
       <AnimatedHeadline
         text={title}
         from={from}
@@ -115,5 +137,6 @@ export function TextFallback() {
   const consumed = useSceneConsumesAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
   const title = doc?.text?.title ?? "";
   if (consumed || !title.trim()) return null;
+  // TitleBlock reads the sidecar's headerIcon itself, so it needs no icon wiring here.
   return <TitleBlock title={title} subtitle={doc?.text?.subtitle ?? ""} register={false} />;
 }

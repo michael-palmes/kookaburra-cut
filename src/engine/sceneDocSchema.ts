@@ -224,7 +224,7 @@ export interface SceneDoc {
   textLayout?: { align?: SceneTextAlign };
   /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged) and `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
-  /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline. Overlay scenes carry their icon on `frame.icon` instead. Rendering lands in a later pass; the inspector control writes it now. */
+  /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead. */
   headerIcon?: string;
   devices?: SceneDocDeviceSpec[];
   camera?: {
