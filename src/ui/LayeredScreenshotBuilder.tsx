@@ -614,7 +614,10 @@ export function LayeredScreenshotBuilder({
                 />
               </label>
               {item.kind === "screen" && (
-                <label className="popover-inline ls-builder-field">
+                <label
+                  className="popover-inline ls-builder-field"
+                  title="Drops the card backing behind this screen"
+                >
                   <input
                     type="checkbox"
                     checked={item.flat ?? layer.flat ?? false}
