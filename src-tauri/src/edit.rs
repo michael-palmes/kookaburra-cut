@@ -50,6 +50,17 @@ pub struct EditSettings {
     pub fps: f64,
 }
 
+/// A tap highlight: a glow-dot animation composited over the render at a source moment. Anchored in SOURCE time so it survives re-slicing; a duplicated segment shows it in each copy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditTap {
+    pub id: String,
+    pub source_id: String,
+    pub source_ms: u64,
+    /// Normalised 0..1 across the SOURCE video frame.
+    pub pos: [f64; 2],
+}
+
 /// The full edit document (`<project>/edits/<name>.json`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,6 +70,17 @@ pub struct EditDoc {
     pub sources: Vec<EditSource>,
     pub settings: EditSettings,
     pub clips: Vec<EditClip>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub taps: Vec<EditTap>,
+    /// Tap style (shape) id; absent = the default (first) style.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_style: Option<String>,
+    /// Tap colour id; absent = the default (first) colour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_color: Option<String>,
+    /// Tap size multiplier on the default dot size; absent = 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_size: Option<f64>,
 }
 
 /// Which edit the editor window should open; stored in managed state and read by the editor on boot (`get_editor_target`) rather than smuggled through a URL query.
@@ -236,6 +258,10 @@ async fn create_default_doc(
             start_ms: 0,
             hold_ms: None,
         }],
+        taps: Vec::new(),
+        tap_style: None,
+        tap_color: None,
+        tap_size: None,
     })
 }
 
@@ -360,8 +386,87 @@ fn clip_output_frames(clip: &EditClip, fps: f64) -> u32 {
     ((span_ms / 1000.0) * fps).round().max(0.0) as u32
 }
 
-/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
-fn build_render_args(doc: &EditDoc, output: &str, hardware: bool) -> Result<(Vec<String>, u32), String> {
+/// Tap-highlight constants, hand-mirrored from src/editor/tapAnimation.ts and scripts/generate-tap-dot.mjs.
+const TAP_ANIMATION_DURATION_MS: f64 = 550.0;
+const TAP_DOT_SIZE_FRACTION: f64 = 0.07;
+/// The baked frames leave pulse headroom around the scale-1 dot; the overlay scales up by the same factor so the dot lands at exactly TAP_DOT_SIZE_FRACTION of min(w, h).
+const TAP_DOT_CANVAS_HEADROOM: f64 = 1.15;
+/// Bump when the baked frames change to invalidate the materialised cache.
+const TAP_DOT_FRAMES_VERSION: u32 = 3;
+
+/// The doc's tap style (shape), falling back to the default (first) style when absent or unknown.
+fn tap_style_id(doc: &EditDoc) -> &str {
+    let styles = crate::tap_dot_frames::TAP_DOT_STYLES;
+    match doc.tap_style.as_deref() {
+        Some(id) if styles.iter().any(|(k, _)| *k == id) => id,
+        _ => styles[0].0,
+    }
+}
+
+/// The doc's tap colour as channel multipliers over the white frames, defaulting to the first colour.
+fn tap_color_mult(doc: &EditDoc) -> [f64; 3] {
+    let colors = crate::tap_dot_frames::TAP_DOT_COLORS;
+    colors
+        .iter()
+        .find(|(k, _)| Some(*k) == doc.tap_color.as_deref())
+        .unwrap_or(&colors[0])
+        .1
+}
+
+/// Materialise the embedded glow-dot frames into `$APPDATA/cache/tapdot/<preset>` once (versioned marker, the media-cache pattern) so ffmpeg's image2 reader can consume them; both encode lanes reference the same stable files.
+fn ensure_tap_dot_frames(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache")
+        .join("tapdot");
+    let done = dir.join(format!(".done-v{TAP_DOT_FRAMES_VERSION}"));
+    if !done.is_file() {
+        for (style, frames) in crate::tap_dot_frames::TAP_DOT_STYLES {
+            let style_dir = dir.join(style);
+            std::fs::create_dir_all(&style_dir).map_err(|e| e.to_string())?;
+            for (i, bytes) in frames.iter().enumerate() {
+                std::fs::write(style_dir.join(format!("tapdot_{i:02}.png")), bytes)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        std::fs::write(&done, []).map_err(|e| e.to_string())?;
+    }
+    Ok(dir)
+}
+
+/// Mirror of editMath.ts `tapWindows`: one `(tap, clip, start_ms, end_ms)` per clip containing the tap's source point, so a duplicated segment shows it in each copy. Duration is fixed in output ms, clamped at the clip's end (a tap near a cut truncates); freezes are skipped (zero-length source span).
+fn tap_windows<'a>(
+    clips_sorted: &[&'a EditClip],
+    taps: &'a [EditTap],
+) -> Vec<(&'a EditTap, &'a EditClip, f64, f64)> {
+    let mut windows = Vec::new();
+    for tap in taps {
+        for clip in clips_sorted {
+            if clip.hold_ms.is_some()
+                || clip.source_id != tap.source_id
+                || tap.source_ms < clip.in_ms
+                || tap.source_ms >= clip.out_ms
+            {
+                continue;
+            }
+            let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+            let start = clip.start_ms as f64 + (tap.source_ms - clip.in_ms) as f64 / speed;
+            let clip_end = clip.start_ms as f64 + (clip.out_ms - clip.in_ms) as f64 / speed;
+            windows.push((tap, *clip, start, (start + TAP_ANIMATION_DURATION_MS).min(clip_end)));
+        }
+    }
+    windows
+}
+
+/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
+fn build_render_args(
+    doc: &EditDoc,
+    output: &str,
+    hardware: bool,
+    tap_dot_dir: Option<&Path>,
+) -> Result<(Vec<String>, u32), String> {
     if doc.clips.is_empty() {
         return Err("this edit has no clips to render".into());
     }
@@ -425,6 +530,44 @@ fn build_render_args(doc: &EditDoc, output: &str, hardware: bool) -> Result<(Vec
     }
     filter.push_str(&format!("concat=n={}:v=1:a=0[outv]", labels.len()));
 
+    // Tap highlights: one baked glow-dot input per visible window, overlaid AFTER concat on the output-resolution stream (windows are output-time; positions map through each clip's own scale+pad letterbox, multi-source safe).
+    let windows = match tap_dot_dir {
+        Some(_) => tap_windows(&clips_sorted, &doc.taps),
+        None => Vec::new(),
+    };
+    let mut out_label = "outv".to_string();
+    if !windows.is_empty() {
+        let tap_size = doc.tap_size.unwrap_or(1.0).clamp(0.25, 4.0);
+        let dot_px = ((w.min(h) as f64) * TAP_DOT_SIZE_FRACTION * TAP_DOT_CANVAS_HEADROOM
+            * tap_size)
+            .round() as u32;
+        let [cr, cg, cb] = tap_color_mult(doc);
+        for (i, (tap, clip, start_ms, end_ms)) in windows.iter().enumerate() {
+            let source = doc
+                .sources
+                .iter()
+                .find(|s| s.id == clip.source_id)
+                .ok_or_else(|| format!("tap references unknown source {}", clip.source_id))?;
+            let scale = (f64::from(w) / f64::from(source.width))
+                .min(f64::from(h) / f64::from(source.height));
+            let scaled_w = f64::from(source.width) * scale;
+            let scaled_h = f64::from(source.height) * scale;
+            let px = (f64::from(w) - scaled_w) / 2.0 + tap.pos[0].clamp(0.0, 1.0) * scaled_w;
+            let py = (f64::from(h) - scaled_h) / 2.0 + tap.pos[1].clamp(0.0, 1.0) * scaled_h;
+            let idx = input_order.len() + i;
+            let start_s = start_ms / 1000.0;
+            let end_s = end_ms / 1000.0;
+            let next = format!("tapv{i}");
+            filter.push_str(&format!(
+                ";[{idx}:v]format=rgba,colorchannelmixer=rr={cr:.6}:gg={cg:.6}:bb={cb:.6},\
+                 scale={dot_px}:{dot_px}:flags=lanczos[dot{i}];\
+                 [{out_label}][dot{i}]overlay=x={px:.3}-overlay_w/2:y={py:.3}-overlay_h/2:\
+                 eof_action=pass:enable='between(t\\,{start_s:.6}\\,{end_s:.6})'[{next}]"
+            ));
+            out_label = next;
+        }
+    }
+
     let mut args: Vec<String> = vec![
         "-y".into(),
         "-loglevel".into(),
@@ -440,7 +583,27 @@ fn build_render_args(doc: &EditDoc, output: &str, hardware: bool) -> Result<(Vec
         args.push("-i".into());
         args.push(source.abs.clone());
     }
-    args.extend(["-filter_complex".into(), filter, "-map".into(), "[outv]".into()]);
+    if let Some(dir) = tap_dot_dir {
+        let seq = dir
+            .join(tap_style_id(doc))
+            .join("tapdot_%02d.png")
+            .to_string_lossy()
+            .into_owned();
+        for (_, _, start_ms, _) in &windows {
+            args.push("-itsoffset".into());
+            args.push(format!("{:.6}", start_ms / 1000.0));
+            args.push("-framerate".into());
+            args.push("60".into());
+            args.push("-i".into());
+            args.push(seq.clone());
+        }
+    }
+    args.extend([
+        "-filter_complex".into(),
+        filter,
+        "-map".into(),
+        format!("[{out_label}]"),
+    ]);
     if hardware {
         let target_kbps = ((f64::from(w) * f64::from(h) * fps * 0.25) / 1000.0)
             .round()
@@ -500,6 +663,13 @@ pub async fn render_edit(
     let output = assets.join(format!("{name}-edited.mp4"));
     let output_str = output.to_string_lossy().into_owned();
 
+    // Resolved once, BEFORE the lane loop: both encode lanes must reference identical frame files.
+    let tap_dot_dir = if doc.taps.is_empty() {
+        None
+    } else {
+        Some(ensure_tap_dot_frames(&app)?)
+    };
+
     // Hardware first; one software retry so an exotic input can never fail worse than the old lane. The Settings toggle drops the hardware attempt entirely.
     let lanes: &[bool] = if workspace::hardware_video_enabled(&app) {
         &[true, false]
@@ -509,7 +679,7 @@ pub async fn render_edit(
     let mut rendered = false;
     let mut render_err = String::new();
     for &hardware in lanes {
-        let (args, total) = build_render_args(&doc, &output_str, hardware)?;
+        let (args, total) = build_render_args(&doc, &output_str, hardware, tap_dot_dir.as_deref())?;
 
         let (mut rx, _child) = app
             .shell()
@@ -610,12 +780,16 @@ mod tests {
                 start_ms: 0,
                 hold_ms: None,
             }],
+            taps: Vec::new(),
+            tap_style: None,
+            tap_color: None,
+            tap_size: None,
         }
     }
 
     #[test]
     fn hardware_lane_hwaccels_each_input_and_encodes_by_bitrate() {
-        let (args, _) = build_render_args(&doc(), "/out/x.mp4", true).unwrap();
+        let (args, _) = build_render_args(&doc(), "/out/x.mp4", true, None).unwrap();
         for (i, a) in args.iter().enumerate() {
             if a == "-i" {
                 assert_eq!(args[i - 2], "-hwaccel");
@@ -630,7 +804,7 @@ mod tests {
 
     #[test]
     fn software_lane_is_the_original_argv() {
-        let (args, total) = build_render_args(&doc(), "/out/x.mp4", false).unwrap();
+        let (args, total) = build_render_args(&doc(), "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 60);
         let expected: Vec<String> = [
             "-y",
@@ -675,12 +849,105 @@ mod tests {
             start_ms: 1000,
             hold_ms: Some(2000),
         });
-        let (args, total) = build_render_args(&d, "/out/x.mp4", false).unwrap();
+        let (args, total) = build_render_args(&d, "/out/x.mp4", false, None).unwrap();
         assert_eq!(total, 60 + 120); // 1s of source + 2s hold at 60fps
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
         assert!(filter.contains("select=eq(n\\,0)"));
         assert!(filter.contains("tpad=stop_mode=clone:stop_duration=2.000000"));
         assert!(filter.contains("trim=duration=2.000000"));
         assert!(filter.contains("concat=n=2"));
+    }
+
+    #[test]
+    fn tap_overlay_adds_one_input_and_enable_window_per_visible_tap() {
+        let mut d = doc();
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            source_ms: 500,
+            pos: [0.25, 0.75],
+        });
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        let its = args.iter().position(|a| a == "-itsoffset").unwrap();
+        assert_eq!(
+            args[its..its + 6],
+            [
+                "-itsoffset",
+                "0.500000",
+                "-framerate",
+                "60",
+                "-i",
+                "/cache/tapdot/glow/tapdot_%02d.png"
+            ]
+            .map(String::from)
+        );
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        // 87 = round(1080 * 0.07 * 1.15); the window clamps at the 1s clip end.
+        assert!(filter.contains(
+            ";[1:v]format=rgba,colorchannelmixer=rr=1.000000:gg=1.000000:bb=1.000000,\
+             scale=87:87:flags=lanczos[dot0];"
+        ));
+        assert!(filter.contains("[outv][dot0]overlay=x=480.000-overlay_w/2:y=810.000-overlay_h/2:"));
+        assert!(filter.contains("eof_action=pass:enable='between(t\\,0.500000\\,1.000000)'[tapv0]"));
+        assert!(args.windows(2).any(|w| w == ["-map", "[tapv0]"]));
+    }
+
+    #[test]
+    fn tap_style_picks_its_dir_and_colour_tints_the_frames() {
+        let mut d = doc();
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            source_ms: 500,
+            pos: [0.5, 0.5],
+        });
+        d.tap_style = Some("target".into());
+        d.tap_color = Some("terracotta".into());
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        assert!(args.contains(&"/cache/tapdot/target/tapdot_%02d.png".to_string()));
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("colorchannelmixer=rr=0.886275:gg=0.447059:bb=0.356863"));
+        // Unknown ids fall back to the defaults (glow, light).
+        d.tap_style = Some("not-a-style".into());
+        d.tap_color = Some("not-a-colour".into());
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        assert!(args.contains(&"/cache/tapdot/glow/tapdot_%02d.png".to_string()));
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("colorchannelmixer=rr=1.000000:gg=1.000000:bb=1.000000"));
+    }
+
+    #[test]
+    fn tap_size_scales_the_overlay() {
+        let mut d = doc();
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            source_ms: 500,
+            pos: [0.5, 0.5],
+        });
+        d.tap_size = Some(2.0);
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        // 174 = round(1080 * 0.07 * 1.15 * 2)
+        assert!(filter.contains("scale=174:174"));
+    }
+
+    #[test]
+    fn taps_off_every_clip_or_without_a_dot_dir_change_nothing() {
+        let mut d = doc();
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            source_ms: 5000, // outside the clip's [0, 1000) span
+            pos: [0.5, 0.5],
+        });
+        let (with_dir, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        let (baseline, _) = build_render_args(&doc(), "/out/x.mp4", false, None).unwrap();
+        assert_eq!(with_dir, baseline);
     }
 }

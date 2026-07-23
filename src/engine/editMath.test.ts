@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { EditClip } from "./edit";
+import type { EditClip, EditTap } from "./edit";
 import {
+  addTap,
   clipIndexAt,
   clipTimelineMs,
   edgeTargetsMs,
@@ -8,14 +9,20 @@ import {
   MIN_CLIP_SOURCE_MS,
   MIN_HOLD_MS,
   moveClip,
+  moveTap,
   nextClipId,
   nextSourceId,
+  nextTapId,
+  outputToSource,
   relayout,
   removeClip,
+  removeTap,
+  retimeTap,
   setClipHold,
   setClipSpeed,
   snapMs,
   splitAt,
+  tapWindows,
   timelineDurationMs,
   timelineToSource,
   trimClipIn,
@@ -203,5 +210,87 @@ describe("freeze frames", () => {
     expect(trimClipIn(laid, "c1", 100)[0].inMs).toBe(500);
     expect(trimClipOut(laid, "c1", 900, 5000)[0].outMs).toBe(500);
     expect(setClipSpeed(laid, "c1", 2)[0].speed).toBe(1);
+  });
+});
+
+describe("taps", () => {
+  const tap = (id: string, sourceMs: number, pos: [number, number] = [0.5, 0.5]): EditTap => ({
+    id,
+    sourceId: "s1",
+    sourceMs,
+    pos,
+  });
+  const freeze = (id: string, srcMs: number, holdMs: number): EditClip => ({
+    id,
+    sourceId: "s1",
+    inMs: srcMs,
+    outMs: srcMs,
+    speed: 1,
+    holdMs,
+    startMs: 0,
+  });
+
+  it("outputToSource maps the playhead through the clip, retimed and rounded to integers", () => {
+    const clips = relayout([clip("c1", 0, 1000), clip("c2", 2000, 4000, 2)]);
+    expect(outputToSource(clips, 500)).toEqual({ sourceId: "s1", sourceMs: 500 });
+    expect(outputToSource(clips, 1500)).toEqual({ sourceId: "s1", sourceMs: 3000 });
+    const rounded = outputToSource(relayout([clip("c1", 0, 1000, 0.75)]), 1);
+    expect(rounded && Number.isInteger(rounded.sourceMs)).toBe(true);
+  });
+
+  it("outputToSource is null off-timeline and on freezes", () => {
+    const clips = relayout([clip("c1", 0, 1000), freeze("c2", 500, 2000)]);
+    expect(outputToSource(clips, 5000)).toBeNull();
+    expect(outputToSource(clips, 1500)).toBeNull(); // inside the freeze
+  });
+
+  it("tapWindows places one window per containing clip, retimed by speed", () => {
+    const clips = relayout([clip("c1", 0, 1000), clip("c2", 2000, 4000, 2)]);
+    expect(tapWindows(clips, tap("t1", 500), 550)).toEqual([{ startMs: 500, endMs: 1000 }]);
+    expect(tapWindows(clips, tap("t2", 3000), 550)).toEqual([{ startMs: 1500, endMs: 2000 }]);
+  });
+
+  it("tapWindows uses [inMs, outMs) containment", () => {
+    const clips = relayout([clip("c1", 1000, 2000)]);
+    expect(tapWindows(clips, tap("t1", 999), 550)).toEqual([]);
+    expect(tapWindows(clips, tap("t2", 1000), 550)).toHaveLength(1);
+    expect(tapWindows(clips, tap("t3", 2000), 550)).toEqual([]);
+  });
+
+  it("tapWindows clamps a window at the clip's output end", () => {
+    const clips = relayout([clip("c1", 0, 1000), clip("c2", 5000, 6000)]);
+    expect(tapWindows(clips, tap("t1", 900), 550)).toEqual([{ startMs: 900, endMs: 1000 }]);
+  });
+
+  it("a duplicated segment shows the tap in each copy", () => {
+    const clips = relayout([clip("c1", 0, 1000), clip("c2", 0, 1000)]);
+    expect(tapWindows(clips, tap("t1", 400), 550)).toEqual([
+      { startMs: 400, endMs: 950 },
+      { startMs: 1400, endMs: 1950 },
+    ]);
+  });
+
+  it("freezes never surface a tap, even at the pinned frame", () => {
+    const clips = relayout([freeze("c1", 500, 2000)]);
+    expect(tapWindows(clips, tap("t1", 500), 550)).toEqual([]);
+  });
+
+  it("a tap whose source span was trimmed out has no windows", () => {
+    const clips = relayout([clip("c1", 0, 400)]);
+    expect(tapWindows(clips, tap("t1", 700), 550)).toEqual([]);
+  });
+
+  it("add, move, retime and remove are pure and targeted", () => {
+    const taps = [tap("t1", 100), tap("t2", 200)];
+    expect(addTap(taps, tap("t3", 300))).toHaveLength(3);
+    expect(moveTap(taps, "t1", [0.1, 0.9])[0].pos).toEqual([0.1, 0.9]);
+    expect(moveTap(taps, "t1", [0.1, 0.9])[1].pos).toEqual([0.5, 0.5]);
+    expect(retimeTap(taps, "t2", "s2", 900)[1]).toMatchObject({ sourceId: "s2", sourceMs: 900 });
+    expect(removeTap(taps, "t1").map((t) => t.id)).toEqual(["t2"]);
+  });
+
+  it("nextTapId continues the t<n> sequence and survives foreign ids", () => {
+    expect(nextTapId([tap("t1", 0), tap("t5", 0), { ...tap("x", 0), id: "intro" }])).toBe("t6");
+    expect(nextTapId([])).toBe("t1");
   });
 });

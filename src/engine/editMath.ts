@@ -1,4 +1,4 @@
-import type { EditClip } from "./edit";
+import type { EditClip, EditTap } from "./edit";
 
 /** Pure timeline math for the video editor. The timeline is magnetic/gapless (locked): clips always butt together end-to-end, so a clip's `startMs` is derived state, array order is timeline order, and every mutation returns a relaid-out array. "Timeline" times are output-video ms (source spans retimed by `speed`); "source" times index into the source file. Persisted fields stay integers (u64 on the Rust side). Functions that read `startMs` expect a relaid array (every mutator returns one; the editor also relays on load). */
 
@@ -213,5 +213,65 @@ export function nextSourceId(sources: { id: string }[]): string {
   return nextPrefixedId(
     "s",
     sources.map((source) => source.id),
+  );
+}
+
+/** The source point under output time t, or null off-timeline and on freezes (a freeze's zero-length span has no placeable moment). The unrounded twin of `splitAt`'s inline mapping. */
+export function outputToSource(
+  clips: EditClip[],
+  tMs: number,
+): { sourceId: string; sourceMs: number } | null {
+  const i = clipIndexAt(clips, tMs);
+  if (i < 0) return null;
+  const clip = clips[i];
+  if (clip.holdMs !== undefined) return null;
+  return { sourceId: clip.sourceId, sourceMs: Math.round(timelineToSource(clip, tMs)) };
+}
+
+export interface TapWindow {
+  startMs: number;
+  endMs: number;
+}
+
+/** Every output window in which `tap` is visible: one per clip containing its source point, so a duplicated segment shows the tap in each copy. Duration is fixed in OUTPUT ms and clamped to the clip's end, so a tap near a cut truncates rather than bleeding into the next clip. Freezes are skipped (zero-length span, containment can never hold). */
+export function tapWindows(clips: EditClip[], tap: EditTap, tapDurationMs: number): TapWindow[] {
+  const windows: TapWindow[] = [];
+  for (const clip of clips) {
+    if (clip.holdMs !== undefined) continue;
+    if (clip.sourceId !== tap.sourceId) continue;
+    if (tap.sourceMs < clip.inMs || tap.sourceMs >= clip.outMs) continue;
+    const startMs = clip.startMs + (tap.sourceMs - clip.inMs) / effectiveSpeed(clip.speed);
+    const clipEndMs = clip.startMs + clipTimelineMs(clip);
+    windows.push({ startMs, endMs: Math.min(startMs + tapDurationMs, clipEndMs) });
+  }
+  return windows;
+}
+
+export function addTap(taps: EditTap[], tap: EditTap): EditTap[] {
+  return [...taps, tap];
+}
+
+export function moveTap(taps: EditTap[], id: string, pos: [number, number]): EditTap[] {
+  return taps.map((tap) => (tap.id === id ? { ...tap, pos } : tap));
+}
+
+export function retimeTap(
+  taps: EditTap[],
+  id: string,
+  sourceId: string,
+  sourceMs: number,
+): EditTap[] {
+  return taps.map((tap) => (tap.id === id ? { ...tap, sourceId, sourceMs } : tap));
+}
+
+export function removeTap(taps: EditTap[], id: string): EditTap[] {
+  return taps.filter((tap) => tap.id !== id);
+}
+
+/** Next free "t<n>" tap id; collision-checked against all ids. */
+export function nextTapId(taps: EditTap[]): string {
+  return nextPrefixedId(
+    "t",
+    taps.map((tap) => tap.id),
   );
 }

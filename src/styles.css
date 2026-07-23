@@ -2110,11 +2110,215 @@ body {
   visibility: hidden;
 }
 
-.editor-preview video {
+/* Contain-fit wrapper sized by the source's aspect ratio (inline style), so its rect IS the displayed video rect: tap placement math and marker/glow positioning hang off it. container-type feeds the cqmin dot sizing. */
+.editor-video-box {
+  position: relative;
+  width: 100%;
   max-width: 100%;
   max-height: 100%;
+  container-type: size;
+}
+
+.editor-preview video {
+  display: block;
+  width: 100%;
+  height: 100%;
   background: #000;
   border-radius: var(--radius-sm);
+}
+
+/* The armed tap tool's placement surface: DOM over the video, never in rendered pixels (the render composites taps in ffmpeg). */
+.tap-layer {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* The glow-dot animation: size, fade and the preset's closest-side gradient all arrive inline (tapAnimation.ts + tapPresets.generated.ts, matching the baked ffmpeg frames). */
+.tap-glow {
+  position: absolute;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* The floating tap-settings overlay: marker scope + style preset, camera-pill styling. */
+.tap-settings {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  box-shadow: var(--elev-popover);
+}
+
+.tap-settings-scope {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-recessed);
+  border-radius: var(--radius-full);
+}
+
+.tap-settings-seg {
+  padding: 2px 9px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.tap-settings-seg.selected {
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  box-shadow: 0 0 0 1px var(--border-default);
+}
+
+.tap-settings-style {
+  position: relative;
+}
+
+.tap-settings-style-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 4px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.tap-settings-style-btn:hover {
+  background: var(--surface-hover);
+}
+
+.tap-settings-chevron {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tap-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border-default);
+  flex: none;
+}
+
+/* Colour dots: one per tap colour, the selected one ringed. */
+.tap-settings-colors {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 2px;
+}
+
+.tap-settings-color {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tap-settings-color.selected {
+  box-shadow:
+    0 0 0 1.5px var(--surface-elevated),
+    0 0 0 3px var(--accent-border);
+}
+
+.tap-settings-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+}
+
+.tap-settings-size-label {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.tap-settings-size input[type="range"] {
+  width: 64px;
+}
+
+.tap-settings-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+}
+
+.tap-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.tap-settings-option:hover {
+  background: var(--surface-hover);
+}
+
+.tap-settings-option.selected {
+  background: var(--accent-subtle);
+}
+
+/* A placed tap's edit affordance: subtle ring, stronger while the tool is armed. */
+.tap-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  touch-action: none;
+}
+
+.tap-marker.armed,
+.tap-marker:hover {
+  border-color: rgba(255, 255, 255, 0.95);
+}
+
+.tap-marker:active {
+  cursor: grabbing;
 }
 
 .editor-clips {
@@ -2328,6 +2532,24 @@ body {
   font-size: var(--text-2xs);
   color: var(--text-tertiary);
   white-space: nowrap;
+}
+
+/* A tap highlight's ruler dot: click to jump the playhead to its window. */
+.timeline-tap-dot {
+  position: absolute;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+}
+
+.timeline-tap-dot:hover {
+  background: rgba(255, 255, 255, 1);
 }
 
 .timeline-track {

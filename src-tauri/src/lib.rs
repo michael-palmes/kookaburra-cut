@@ -14,6 +14,8 @@ mod gradients;
 mod scene_doc;
 mod objects;
 mod settings_win;
+#[path = "tap_dot_frames.generated.rs"]
+mod tap_dot_frames;
 mod theme;
 mod updater;
 mod workspace;

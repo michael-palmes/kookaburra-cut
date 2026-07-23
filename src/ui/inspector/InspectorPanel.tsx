@@ -123,7 +123,11 @@ export function InspectorPanel({
   onSetAppIcon: (rel: string) => void;
   onSetSoundtrack: () => void;
   onRemoveSoundtrack: () => void;
-  onOpenEditVideo: (sceneIndex: number, mediaRel: string, slot?: "device" | "background") => void;
+  onOpenEditVideo: (
+    sceneIndex: number,
+    mediaRel: string,
+    slot?: "device" | "background" | "videoWindow",
+  ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
