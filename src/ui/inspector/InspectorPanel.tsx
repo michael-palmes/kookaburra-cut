@@ -51,6 +51,32 @@ function QualityIcon({ kind }: { kind: "full" | "balanced" | "performance" }) {
   );
 }
 
+/** Project/Scene tab glyphs: a folder for the project, a clip for the scene. */
+function TabIcon({ id }: { id: "project" | "scene" }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {id === "project" ? (
+        <path d="M2.5 5.5a1 1 0 011-1h3l1.5 1.5h6a1 1 0 011 1v6a1 1 0 01-1 1h-11a1 1 0 01-1-1z" />
+      ) : (
+        <>
+          <rect x="2.5" y="4" width="13" height="10" rx="2" />
+          <path d="M7.5 7.3v3.4l3-1.7z" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function InspectorPanel({
   project,
   aspect,
@@ -260,6 +286,7 @@ export function InspectorPanel({
                 className={`inspector-tab${tab === t ? " active" : ""}`}
                 onClick={() => setTab(t)}
               >
+                <TabIcon id={t} />
                 {t === "project" ? "Project" : "Scene"}
               </button>
             ))}

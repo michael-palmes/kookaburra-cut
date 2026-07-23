@@ -211,9 +211,7 @@ export function TextMotionPanel({
 
   return (
     <div className="text-motion-panel" role="menu" aria-label="Text motion">
-      <div className="popover-row">
-        <span className="popover-group-label">Motion</span>
-      </div>
+      <span className="wizard-label">Motion</span>
       <div className="option-grid three-up" role="listbox" aria-label="Text motion preset">
         {(() => {
           const themePreview = optionPreviewClip(`textanim-${themePreset}`);

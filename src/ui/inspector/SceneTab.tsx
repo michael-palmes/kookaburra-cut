@@ -78,6 +78,29 @@ const SCREEN_TITLES: Record<string, string> = {
   "videoWindow.edit": "Video window",
 };
 
+/** Text-alignment glyphs: three lines pinned left, centre or right. */
+function AlignIcon({ id }: { id: SceneTextAlign }) {
+  const lines: Record<SceneTextAlign, string> = {
+    left: "M3 5h12M3 9h7M3 13h10",
+    center: "M3 5h12M5.5 9h7M4 13h10",
+    right: "M3 5h12M8 9h7M5 13h10",
+  };
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d={lines[id]} />
+    </svg>
+  );
+}
+
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
@@ -880,6 +903,7 @@ function CameraSectionBody({
                   });
                 }}
               >
+                <SceneRowIcon id="camera.animate" />
                 Camera
               </button>
               <button
@@ -896,6 +920,7 @@ function CameraSectionBody({
                   });
                 }}
               >
+                <SceneRowIcon id="layeredScreenshot.edit" />
                 Screenshot stack
               </button>
             </div>
@@ -3356,14 +3381,17 @@ export function SceneTab({
         <div className="inspector-drill-body">
           <div className="wizard-field">
             <span className="wizard-label">Alignment</span>
-            <div className="wizard-presets">
+            <div className="inspector-tabs" role="tablist">
               {ALIGN_OPTIONS.map((o) => (
                 <button
                   type="button"
                   key={o.id}
-                  className={`chip${align === o.id ? " selected" : ""}`}
+                  role="tab"
+                  aria-selected={align === o.id}
+                  className={`inspector-tab${align === o.id ? " active" : ""}`}
                   onClick={() => setAlign(o.id)}
                 >
+                  <AlignIcon id={o.id} />
                   {o.label}
                 </button>
               ))}
@@ -3457,9 +3485,8 @@ export function SceneTab({
             );
           })}
           <div className="wizard-field">
-            <span className="wizard-label">Header icon</span>
             <TextFieldRow
-              label="Icon"
+              label="Header icon"
               value={headerIcon}
               placeholder="an emoji or assets/icon.png"
               onChange={(t) => setHeaderIcon(t.trim() || undefined)}
@@ -3483,33 +3510,30 @@ export function SceneTab({
                 : "An emoji, or a project image path. Shows above the headline in a coming update."}
             </p>
           </div>
-          <div className="wizard-field">
-            <span className="wizard-label">Motion</span>
-            <TextMotionPanel
-              current={doc.textAnimation}
-              theme={sceneTheme}
-              codedMotion={codedMotion}
-              force={doc.textAnimationForce === true}
-              onLive={(spec) =>
-                void patchDoc(
-                  (next) => {
-                    if (spec) next.textAnimation = spec;
-                    else delete next.textAnimation;
-                  },
-                  { history: "text motion" },
-                )
-              }
-              onForce={(on) =>
-                void patchDoc(
-                  (next) => {
-                    if (on) next.textAnimationForce = true;
-                    else delete next.textAnimationForce;
-                  },
-                  { history: "text motion" },
-                )
-              }
-            />
-          </div>
+          <TextMotionPanel
+            current={doc.textAnimation}
+            theme={sceneTheme}
+            codedMotion={codedMotion}
+            force={doc.textAnimationForce === true}
+            onLive={(spec) =>
+              void patchDoc(
+                (next) => {
+                  if (spec) next.textAnimation = spec;
+                  else delete next.textAnimation;
+                },
+                { history: "text motion" },
+              )
+            }
+            onForce={(on) =>
+              void patchDoc(
+                (next) => {
+                  if (on) next.textAnimationForce = true;
+                  else delete next.textAnimationForce;
+                },
+                { history: "text motion" },
+              )
+            }
+          />
         </div>
       </div>
     );

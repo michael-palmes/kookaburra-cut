@@ -479,6 +479,10 @@ body {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+/* A touch more breathing room above each field label inside a drill sub-menu. */
+.inspector-drill-body .wizard-label {
+  margin-top: var(--space-2);
+}
 
 /* A field label carrying its colour swatch on the right (Edit text's Title/Subtitle rows). */
 .wizard-label-with-colour {
@@ -4565,7 +4569,11 @@ body {
 }
 
 .inspector-tab {
+  display: flex;
   flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   height: 26px;
   font: inherit;
   font-size: var(--text-sm);
@@ -4575,6 +4583,12 @@ body {
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+.inspector-tab svg,
+.inspector-subtab svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 
 .inspector-tab.active {
@@ -5053,6 +5067,9 @@ img.inspector-scene-thumb {
   border-radius: var(--radius-md);
 }
 .inspector-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
   padding: 0 12px;
   font: inherit;
