@@ -4,6 +4,16 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Video editor: S and F keyboard shortcuts for Split and Freeze.
+- Video editor: tap highlights for screen recordings. Arm the Tap tool
+  (T), click the preview to place a soft glow dot at the playhead, drag
+  its marker to reposition, right-click to retime or delete; Render to
+  project composites the animation into the flattened video.
+
 ## [0.5.0] - 2026-07-23
 
 ### Added

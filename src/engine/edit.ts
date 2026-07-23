@@ -28,12 +28,23 @@ export interface EditSettings {
   fps: number;
 }
 
+/** A tap highlight: a glow-dot animation composited over the render at a source moment. Anchored in SOURCE time so it survives re-slicing; a duplicated segment shows it in each copy. */
+export interface EditTap {
+  id: string;
+  sourceId: string;
+  /** Integer source ms (persisted times stay integers, u64 on the Rust side). */
+  sourceMs: number;
+  /** Normalised 0..1 across the SOURCE video frame. */
+  pos: [number, number];
+}
+
 export interface EditDoc {
   version: number;
   name: string;
   sources: EditSource[];
   settings: EditSettings;
   clips: EditClip[];
+  taps?: EditTap[];
 }
 
 export interface EditTarget {

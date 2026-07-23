@@ -2110,11 +2110,67 @@ body {
   visibility: hidden;
 }
 
-.editor-preview video {
+/* Contain-fit wrapper sized by the source's aspect ratio (inline style), so its rect IS the displayed video rect: tap placement math and marker/glow positioning hang off it. container-type feeds the cqmin dot sizing. */
+.editor-video-box {
+  position: relative;
+  width: 100%;
   max-width: 100%;
   max-height: 100%;
+  container-type: size;
+}
+
+.editor-preview video {
+  display: block;
+  width: 100%;
+  height: 100%;
   background: #000;
   border-radius: var(--radius-sm);
+}
+
+/* The armed tap tool's placement surface: DOM over the video, never in rendered pixels (the render composites taps in ffmpeg). */
+.tap-layer {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* The glow-dot animation, sized/faded inline from tapAnimation.ts. closest-side pins the gradient radius to half the element so scripts/generate-tap-dot.mjs can bake identical falloff stops. */
+.tap-glow {
+  position: absolute;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle closest-side,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.55) 45%,
+    rgba(255, 255, 255, 0) 70%
+  );
+}
+
+/* A placed tap's edit affordance: subtle ring, stronger while the tool is armed. */
+.tap-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  touch-action: none;
+}
+
+.tap-marker.armed,
+.tap-marker:hover {
+  border-color: rgba(255, 255, 255, 0.95);
+}
+
+.tap-marker:active {
+  cursor: grabbing;
 }
 
 .editor-clips {
@@ -2328,6 +2384,24 @@ body {
   font-size: var(--text-2xs);
   color: var(--text-tertiary);
   white-space: nowrap;
+}
+
+/* A tap highlight's ruler dot: click to jump the playhead to its window. */
+.timeline-tap-dot {
+  position: absolute;
+  bottom: 1px;
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  transform: translateX(-50%);
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+}
+
+.timeline-tap-dot:hover {
+  background: rgba(255, 255, 255, 1);
 }
 
 .timeline-track {

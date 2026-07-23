@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { EditClip, EditSource } from "../engine/edit";
+import type { EditClip, EditSource, EditTap } from "../engine/edit";
 import {
   clipTimelineMs,
   edgeTargetsMs,
@@ -29,6 +29,8 @@ export interface TimelineProps {
   onScrubWheel?: (deltaPx: number) => void;
   /** A media-panel card was dropped here: insert `rel` at clip position `index`. */
   onDropClip?: (rel: string, index: number) => void;
+  /** Tap highlights' output windows; each gets a ruler dot that seeks to it. */
+  tapWindowList?: { tap: EditTap; startMs: number; endMs: number }[];
 }
 
 const PAD_L = 16; // content inset before t=0
@@ -98,6 +100,7 @@ export function Timeline({
   onTrimScrub,
   onScrubWheel,
   onDropClip,
+  tapWindowList,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -434,6 +437,17 @@ export function Timeline({
               >
                 {i % 2 === 0 && <span className="timeline-tick-label">{tickLabel(t)}</span>}
               </div>
+            ))}
+            {tapWindowList?.map(({ tap, startMs }) => (
+              <button
+                key={`${tap.id}:${startMs}`}
+                type="button"
+                className="timeline-tap-dot"
+                style={{ left: PAD_L + startMs * pxPerMs }}
+                title="Tap highlight: jump the playhead here"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => onPlayhead(startMs)}
+              />
             ))}
           </div>
           <div className="timeline-track" onPointerDown={() => onSelect(null)}>

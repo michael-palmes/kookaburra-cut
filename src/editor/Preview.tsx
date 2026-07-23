@@ -1,7 +1,8 @@
-import { useEffect, useRef } from "react";
-import type { EditClip, EditSource } from "../engine/edit";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import type { EditClip, EditSource, EditTap } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
+import { TAP_DOT_SIZE_FRACTION, tapDotFrame, tapProgress } from "./tapAnimation";
 
 /** The preview controller: one muted <video> per source, driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. Freeze clips have no decode clock, so they advance on rAF frame time with the source parked on the pinned frame. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
 
@@ -24,6 +25,23 @@ export interface PreviewProps {
   trimScrub?: TrimScrub | null;
   onPlayhead: (ms: number) => void; // playback ticks (timeline time)
   onStop: () => void; // reached the end (or nothing left to play)
+  armedTap: boolean; // the tap tool: click the frame to place a highlight
+  canPlaceTap: boolean; // playhead is on a placeable moment (not a freeze, not off-timeline)
+  taps: EditTap[];
+  tapWindowList: { tap: EditTap; startMs: number; endMs: number }[]; // output windows, precomputed
+  onPlaceTap: (pos: [number, number]) => void; // pos normalised 0..1 across the source frame
+  onCommitTap: (id: string, pos: [number, number]) => void; // one commit per drag gesture
+  onTapContextMenu: (id: string, clientX: number, clientY: number) => void;
+}
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** Pointer position normalised 0..1 against the video box rect. */
+function posFromRect(e: { clientX: number; clientY: number }, rect: DOMRect): [number, number] {
+  return [
+    clamp01((e.clientX - rect.left) / rect.width),
+    clamp01((e.clientY - rect.top) / rect.height),
+  ];
 }
 
 function effectiveSpeed(speed: number): number {
@@ -45,6 +63,13 @@ export function Preview({
   trimScrub,
   onPlayhead,
   onStop,
+  armedTap,
+  canPlaceTap,
+  taps,
+  tapWindowList,
+  onPlaceTap,
+  onCommitTap,
+  onTapContextMenu,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
@@ -178,6 +203,45 @@ export function Preview({
     };
   }, [playing, onPlayhead, onStop]);
 
+  // Tap markers: one live drag at a time, rect frozen at gesture start, single commit on release.
+  const dragRef = useRef<{ id: string; rect: DOMRect } | null>(null);
+  const [dragPos, setDragPos] = useState<{ id: string; pos: [number, number] } | null>(null);
+
+  // One-shot placement pulse: instant feedback when a tap lands, independent of the playhead. Preview-only wall clock, same as the transport rAF loop above (never the export path).
+  const pulseRef = useRef<{ pos: [number, number]; start: number } | null>(null);
+  const [pulseFrame, setPulseFrame] = useState<{
+    pos: [number, number];
+    opacity: number;
+    scale: number;
+  } | null>(null);
+  const startPulse = useCallback((pos: [number, number]) => {
+    pulseRef.current = { pos, start: performance.now() };
+    setPulseFrame({ pos, ...tapDotFrame(0) });
+  }, []);
+  useEffect(() => {
+    if (!pulseFrame) return;
+    const raf = requestAnimationFrame(() => {
+      const pulse = pulseRef.current;
+      if (!pulse) return;
+      const p = tapProgress(performance.now() - pulse.start);
+      if (p === null) {
+        pulseRef.current = null;
+        setPulseFrame(null);
+      } else {
+        setPulseFrame({ pos: pulse.pos, ...tapDotFrame(p) });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pulseFrame]);
+
+  const dotStyle = (pos: [number, number], opacity: number, scale: number): CSSProperties => ({
+    left: `${pos[0] * 100}%`,
+    top: `${pos[1] * 100}%`,
+    width: `${TAP_DOT_SIZE_FRACTION * 100}cqmin`,
+    opacity,
+    transform: `translate(-50%, -50%) scale(${scale})`,
+  });
+
   return (
     <div className="editor-preview">
       {sources.map((source) => (
@@ -185,16 +249,101 @@ export function Preview({
           key={source.id}
           className={`editor-video${source.id === activeSourceId ? "" : " hidden"}`}
         >
-          <video
-            src={fsUrl(`${basePath}/${source.rel}`)}
-            muted
-            playsInline
-            preload="auto"
-            ref={(el) => {
-              if (el) videos.current.set(source.id, el);
-              else videos.current.delete(source.id);
+          <div
+            className="editor-video-box"
+            style={{
+              aspectRatio:
+                source.width > 0 && source.height > 0
+                  ? `${source.width} / ${source.height}`
+                  : undefined,
             }}
-          />
+          >
+            <video
+              src={fsUrl(`${basePath}/${source.rel}`)}
+              muted
+              playsInline
+              preload="auto"
+              ref={(el) => {
+                if (el) videos.current.set(source.id, el);
+                else videos.current.delete(source.id);
+              }}
+            />
+            {source.id === activeSourceId && (
+              <>
+                {armedTap && canPlaceTap && (
+                  <div
+                    className="tap-layer"
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      const pos = posFromRect(e, e.currentTarget.getBoundingClientRect());
+                      onPlaceTap(pos);
+                      startPulse(pos);
+                    }}
+                  />
+                )}
+                {tapWindowList.map(({ tap, startMs, endMs }) => {
+                  if (tap.sourceId !== source.id) return null;
+                  if (playheadMs < startMs || playheadMs >= endMs) return null;
+                  const p = tapProgress(playheadMs - startMs);
+                  if (p === null) return null;
+                  const { opacity, scale } = tapDotFrame(p);
+                  return (
+                    <div
+                      key={`${tap.id}:${startMs}`}
+                      className="tap-glow"
+                      style={dotStyle(tap.pos, opacity, scale)}
+                    />
+                  );
+                })}
+                {pulseFrame && (
+                  <div
+                    className="tap-glow"
+                    style={dotStyle(pulseFrame.pos, pulseFrame.opacity, pulseFrame.scale)}
+                  />
+                )}
+                {taps.map((tap) => {
+                  if (tap.sourceId !== source.id) return null;
+                  const pos = dragPos?.id === tap.id ? dragPos.pos : tap.pos;
+                  return (
+                    <button
+                      key={tap.id}
+                      type="button"
+                      className={`tap-marker${armedTap ? " armed" : ""}`}
+                      aria-label="Tap highlight: drag to move, right-click for options"
+                      title="Tap highlight: drag to move, right-click for options"
+                      style={{ left: `${pos[0] * 100}%`, top: `${pos[1] * 100}%` }}
+                      onPointerDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.stopPropagation();
+                        const box = e.currentTarget.parentElement;
+                        if (!box) return;
+                        dragRef.current = { id: tap.id, rect: box.getBoundingClientRect() };
+                        setDragPos({ id: tap.id, pos: tap.pos });
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                      }}
+                      onPointerMove={(e) => {
+                        const drag = dragRef.current;
+                        if (!drag || drag.id !== tap.id) return;
+                        setDragPos({ id: drag.id, pos: posFromRect(e, drag.rect) });
+                      }}
+                      onPointerUp={(e) => {
+                        const drag = dragRef.current;
+                        if (!drag || drag.id !== tap.id) return;
+                        dragRef.current = null;
+                        setDragPos(null);
+                        onCommitTap(drag.id, posFromRect(e, drag.rect));
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onTapContextMenu(tap.id, e.clientX, e.clientY);
+                      }}
+                    />
+                  );
+                })}
+              </>
+            )}
+          </div>
         </div>
       ))}
       {clips.length === 0 && <p className="muted">No clips to preview.</p>}

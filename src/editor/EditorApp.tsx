@@ -1,10 +1,11 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type EditClip,
   type EditDoc,
+  type EditTap,
   type EditTarget,
   getEditorTarget,
   loadEdit,
@@ -14,21 +15,30 @@ import {
   saveEdit,
 } from "../engine/edit";
 import {
+  addTap,
   freezeAt,
+  moveTap,
   nextClipId,
   nextSourceId,
+  nextTapId,
+  outputToSource,
   relayout,
   removeClip,
+  removeTap,
+  retimeTap,
   setClipHold,
   setClipSpeed,
   splitAt,
+  tapWindows,
   timelineDurationMs,
 } from "../engine/editMath";
 import { formatMediaDuration, type MediaMeta, mediaMeta } from "../engine/media";
 import { revealApp } from "../engine/reveal";
+import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
 import { Preview, type TrimScrub } from "./Preview";
 import { Timeline } from "./Timeline";
+import { TAP_ANIMATION_DURATION_MS } from "./tapAnimation";
 
 /** The non-destructive video editor window: magnetic timeline (trim/split/reorder/speed/zoom, filmstrips), playhead-driven preview with spacebar transport and trim-edge live preview, debounced autosave with warn-on-close and corrupt-doc recovery, multi-clip assembly. Renders close the window on success. */
 
@@ -58,6 +68,8 @@ export function EditorApp() {
   const [playing, setPlaying] = useState(false);
   const [trimScrub, setTrimScrub] = useState<TrimScrub | null>(null);
   const [mediaRefresh, setMediaRefresh] = useState(0);
+  const [armedTap, setArmedTap] = useState(false);
+  const [tapMenu, setTapMenu] = useState<ContextMenuState | null>(null);
 
   // Debounced autosave: rapid mutations coalesce into one save; flushSave() runs any pending write before renders (render_edit reads edit.json from disk) and on close. renderStaleRef backs the warn-on-close (changes not yet in a render).
   const saveTimer = useRef<number | null>(null);
@@ -260,32 +272,6 @@ export function EditorApp() {
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Space plays/pauses; Delete/Backspace removes the selected clip; Escape deselects.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) return;
-      // The media panel has its own keyboard semantics, and an open fullscreen preview owns the transport keys (its VideoPlayer handles them).
-      if (t?.closest(".editor-media-panel")) return;
-      if (document.querySelector(".media-preview")) return;
-      if (e.key === " ") {
-        e.preventDefault();
-        togglePlay();
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        e.preventDefault();
-        const direction = e.key === "ArrowLeft" ? -1 : 1;
-        stepFrames(direction * (e.shiftKey ? 10 : 1));
-      } else if ((e.key === "Delete" || e.key === "Backspace") && doc && selectedId) {
-        e.preventDefault();
-        commit(removeClip(doc.clips, selectedId));
-      } else if (e.key === "Escape") {
-        setSelectedId(null);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [doc, selectedId, commit, togglePlay, stepFrames]);
-
   const handleRender = useCallback(async () => {
     if (!target || !doc) return;
     setRender({ phase: "rendering", frame: 0, total: 1 });
@@ -357,11 +343,133 @@ export function EditorApp() {
     if (next) commit(next);
   }, [doc, playheadMs, commit]);
 
+  /** Commit a taps-only mutation (placement, drag, context-menu edits). */
+  const commitTaps = useCallback(
+    (taps: EditTap[]) => {
+      if (!doc || !target) return;
+      commitDoc({ ...doc, taps });
+    },
+    [doc, target, commitDoc],
+  );
+
+  const handlePlaceTap = useCallback(
+    (pos: [number, number]) => {
+      if (!doc) return;
+      const at = outputToSource(doc.clips, playheadMs);
+      if (!at) return;
+      const taps = doc.taps ?? [];
+      commitTaps(
+        addTap(taps, { id: nextTapId(taps), sourceId: at.sourceId, sourceMs: at.sourceMs, pos }),
+      );
+    },
+    [doc, playheadMs, commitTaps],
+  );
+
+  const handleCommitTap = useCallback(
+    (id: string, pos: [number, number]) => {
+      if (!doc) return;
+      commitTaps(moveTap(doc.taps ?? [], id, pos));
+    },
+    [doc, commitTaps],
+  );
+
   const firstSource = doc?.sources[0] ?? null;
   const selectedClip = doc?.clips.find((c) => c.id === selectedId) ?? null;
   const totalMs = doc ? timelineDurationMs(doc.clips) : 0;
   const canSplit = doc ? splitAt(doc.clips, playheadMs, "probe") !== null : false;
   const canFreeze = doc ? freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS) !== null : false;
+  const canTap = doc ? outputToSource(doc.clips, playheadMs) !== null : false;
+
+  /** Every tap's visible output windows, flattened for the preview glow and the ruler markers. */
+  const tapWindowList = useMemo(
+    () =>
+      (doc?.taps ?? []).flatMap((tap) =>
+        tapWindows(doc?.clips ?? [], tap, TAP_ANIMATION_DURATION_MS).map((w) => ({ tap, ...w })),
+      ),
+    [doc],
+  );
+
+  const handleTapContextMenu = useCallback(
+    (id: string, x: number, y: number) => {
+      setTapMenu({
+        x,
+        y,
+        items: [
+          {
+            id: "retime",
+            label: "Move to playhead",
+            disabled: !canTap,
+            title: canTap ? undefined : "The playhead isn't on a placeable moment",
+            onSelect: () => {
+              if (!doc) return;
+              const at = outputToSource(doc.clips, playheadMs);
+              if (at) commitTaps(retimeTap(doc.taps ?? [], id, at.sourceId, at.sourceMs));
+            },
+          },
+          {
+            id: "delete",
+            label: "Delete",
+            confirmLabel: "Really delete?",
+            danger: true,
+            onSelect: () => {
+              if (doc) commitTaps(removeTap(doc.taps ?? [], id));
+            },
+          },
+        ],
+      });
+    },
+    [doc, playheadMs, canTap, commitTaps],
+  );
+
+  // Space plays/pauses; S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) return;
+      // The media panel has its own keyboard semantics, and an open fullscreen preview owns the transport keys (its VideoPlayer handles them).
+      if (t?.closest(".editor-media-panel")) return;
+      if (document.querySelector(".media-preview")) return;
+      const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (e.key === " ") {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const direction = e.key === "ArrowLeft" ? -1 : 1;
+        stepFrames(direction * (e.shiftKey ? 10 : 1));
+      } else if (plain && e.key.toLowerCase() === "s" && canSplit) {
+        e.preventDefault();
+        handleSplit();
+      } else if (plain && e.key.toLowerCase() === "f" && canFreeze) {
+        e.preventDefault();
+        handleFreeze();
+      } else if (plain && e.key.toLowerCase() === "t" && (armedTap || canTap)) {
+        e.preventDefault();
+        setArmedTap((a) => !a);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && doc && selectedId) {
+        e.preventDefault();
+        commit(removeClip(doc.clips, selectedId));
+      } else if (e.key === "Escape") {
+        // Disarm the tap tool first, deselect only when it wasn't armed (the AnimationLane pattern).
+        if (armedTap) setArmedTap(false);
+        else setSelectedId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    doc,
+    selectedId,
+    commit,
+    togglePlay,
+    stepFrames,
+    handleSplit,
+    handleFreeze,
+    canSplit,
+    canFreeze,
+    armedTap,
+    canTap,
+  ]);
 
   return (
     <div className="editor-window">
@@ -432,6 +540,13 @@ export function EditorApp() {
               trimScrub={trimScrub}
               onPlayhead={setPlayheadMs}
               onStop={stopPlaying}
+              armedTap={armedTap}
+              canPlaceTap={canTap}
+              taps={doc.taps ?? []}
+              tapWindowList={tapWindowList}
+              onPlaceTap={handlePlaceTap}
+              onCommitTap={handleCommitTap}
+              onTapContextMenu={handleTapContextMenu}
             />
           )}
         </main>
@@ -454,7 +569,7 @@ export function EditorApp() {
               className="btn"
               onClick={handleSplit}
               disabled={!canSplit}
-              title="Split the clip under the playhead"
+              title="Split the clip under the playhead (S)"
             >
               Split
             </button>
@@ -463,9 +578,19 @@ export function EditorApp() {
               className="btn"
               onClick={handleFreeze}
               disabled={!canFreeze}
-              title="Hold the frame under the playhead as its own clip"
+              title="Hold the frame under the playhead as its own clip (F)"
             >
               Freeze
+            </button>
+            <button
+              type="button"
+              className={`btn${armedTap ? " selected" : ""}`}
+              aria-pressed={armedTap}
+              onClick={() => setArmedTap((a) => !a)}
+              disabled={!armedTap && !canTap}
+              title="Tap highlight: click the preview to place a glow at the playhead (T)"
+            >
+              Tap
             </button>
             <button
               type="button"
@@ -532,9 +657,12 @@ export function EditorApp() {
             onTrimScrub={handleTrimScrub}
             onScrubWheel={scrubWheel}
             onDropClip={handleAddClip}
+            tapWindowList={tapWindowList}
           />
         </>
       )}
+
+      {tapMenu && <ContextMenu menu={tapMenu} onClose={() => setTapMenu(null)} />}
 
       {render.phase === "rendering" && (
         <footer className="editor-progress">

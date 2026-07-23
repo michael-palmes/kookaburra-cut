@@ -27,8 +27,12 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ["Space", "Play / pause"],
       ["← / →", "Step one frame (⇧ = 10)"],
+      ["S", "Split the clip under the playhead"],
+      ["F", "Freeze the frame under the playhead"],
+      ["T", "Tap tool: click the preview to place a tap highlight"],
       ["⌫", "Delete the selected clip"],
       ["Trackpad scroll", "Scrub the playhead"],
+      ["Right-click", "Tap marker: context menu"],
     ],
   },
   {
