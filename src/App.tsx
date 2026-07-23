@@ -1228,30 +1228,6 @@ export default function App() {
     // The background clipboard is per-project too: image/video fills reference project assets.
     useUiStore.getState().setBackgroundClipboard(null);
   }, [projectIdLoaded]);
-  const handleReplayScene = useCallback(
-    (startMs: number, endMs: number) => {
-      if (!project || exporting || isExporting()) return;
-      if (replayReturnMsRef.current === null) {
-        replayReturnMsRef.current = useClockStore.getState().currentMs;
-      }
-      playUntilRef.current = endMs;
-      useClockStore.getState().setCurrentMs(startMs);
-      setPlaying(true);
-    },
-    [project, exporting],
-  );
-
-  /** The text-motion panel closed (Done, Cancel or the bar toggle): return the playhead to where editing began, paused. */
-  const handleReplaySessionEnd = useCallback(() => {
-    const returnTo = replayReturnMsRef.current;
-    replayReturnMsRef.current = null;
-    playUntilRef.current = null;
-    if (returnTo !== null && !isExporting()) {
-      setPlaying(false);
-      useClockStore.getState().setCurrentMs(returnTo);
-    }
-  }, []);
-
   const togglePlay = useCallback(() => {
     if (!project || exporting || isExporting()) return;
     playUntilRef.current = null; // manual transport clears any bounded replay
@@ -1940,8 +1916,6 @@ export default function App() {
               onOpenEditVideo={(i, rel) => void handleOpenEditVideo(i, rel)}
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
-              onReplayScene={handleReplayScene}
-              onReplaySessionEnd={handleReplaySessionEnd}
               onApplyTheme={(id) => void handleApplyTheme(id)}
               onDeleteScene={(i) => void handleDeleteScene(i)}
               onReorderScenes={handleReorderScenes}
@@ -2034,10 +2008,10 @@ export default function App() {
               openMedia: () => setShowMedia(true),
               openTheme: () => setThemeMode({}),
               editScreenshotStack: () => {
-                // The builder is a Scene-tab drill-in; setInspectorTab clears drillIn, so order matters.
+                // The builder is a Scene-tab drill-in; setInspectorTab clears the stack, so order matters.
                 const ui = useUiStore.getState();
                 ui.setInspectorTab("scene");
-                ui.setInspectorDrillIn("layeredScreenshot.edit");
+                ui.jumpInspectorDrill(["layeredScreenshot.edit"]);
               },
               setSoundtrack: () => void handleSetSoundtrack(),
               removeSoundtrack: () => void handleRemoveSoundtrack(),

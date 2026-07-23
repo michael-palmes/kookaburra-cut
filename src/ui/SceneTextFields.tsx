@@ -32,6 +32,7 @@ export function TextFieldRow({
   colour,
   onChange,
   onKeyDown,
+  onBlur,
 }: {
   label: string;
   value: string;
@@ -39,6 +40,7 @@ export function TextFieldRow({
   colour?: TextFieldColour;
   onChange: (value: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLTextAreaElement>) => void;
 }) {
   return (
     <div className="wizard-field">
@@ -60,6 +62,7 @@ export function TextFieldRow({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
+        onBlur={onBlur}
       />
     </div>
   );

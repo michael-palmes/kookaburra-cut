@@ -51,6 +51,32 @@ function QualityIcon({ kind }: { kind: "full" | "balanced" | "performance" }) {
   );
 }
 
+/** Project/Scene tab glyphs: a folder for the project, a clip for the scene. */
+function TabIcon({ id }: { id: "project" | "scene" }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 18 18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {id === "project" ? (
+        <path d="M2.5 5.5a1 1 0 011-1h3l1.5 1.5h6a1 1 0 011 1v6a1 1 0 01-1 1h-11a1 1 0 01-1-1z" />
+      ) : (
+        <>
+          <rect x="2.5" y="4" width="13" height="10" rx="2" />
+          <path d="M7.5 7.3v3.4l3-1.7z" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 export function InspectorPanel({
   project,
   aspect,
@@ -68,8 +94,6 @@ export function InspectorPanel({
   onOpenEditVideo,
   onDocChanged,
   onTimingChanged,
-  onReplayScene,
-  onReplaySessionEnd,
   onApplyTheme,
   onDeleteScene,
   onReorderScenes,
@@ -102,8 +126,6 @@ export function InspectorPanel({
   onOpenEditVideo: (sceneIndex: number, mediaRel: string, slot?: "device" | "background") => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
-  onReplayScene: (startMs: number, endMs: number) => void;
-  onReplaySessionEnd: () => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
   onApplyTheme: (themeId: string) => void;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
@@ -144,7 +166,7 @@ export function InspectorPanel({
   useEffect(() => {
     setOpenRow(null);
     setConfirmRemoveMusic(false);
-    useUiStore.getState().setInspectorDrillIn(null);
+    useUiStore.getState().resetInspectorDrill();
   }, [project.id, tab]);
 
   // The music remove confirmation disarms itself (the EditBar pattern).
@@ -164,7 +186,7 @@ export function InspectorPanel({
       return;
     }
     handledPlaybackNonce.current = playbackNonce;
-    useUiStore.getState().setInspectorDrillIn(null);
+    useUiStore.getState().resetInspectorDrill();
     setOpenRow("playback");
   }, [playbackNonce, tab, setTab]);
 
@@ -195,7 +217,9 @@ export function InspectorPanel({
   }, [openRow]);
 
   const drillIn = useUiStore((s) => s.inspector.drillIn);
-  const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
+  const openDrill = useUiStore((s) => s.openInspectorDrill);
+  const closeDrill = useUiStore((s) => s.closeInspectorDrill);
+  const setDrillIn = (id: string | null) => (id === null ? closeDrill() : openDrill(id));
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
@@ -262,6 +286,7 @@ export function InspectorPanel({
                 className={`inspector-tab${tab === t ? " active" : ""}`}
                 onClick={() => setTab(t)}
               >
+                <TabIcon id={t} />
                 {t === "project" ? "Project" : "Scene"}
               </button>
             ))}
@@ -517,8 +542,6 @@ export function InspectorPanel({
           onOpenEditVideo={onOpenEditVideo}
           onDocChanged={onDocChanged}
           onTimingChanged={onTimingChanged}
-          onReplayScene={onReplayScene}
-          onReplaySessionEnd={onReplaySessionEnd}
           onOpenTheme={onOpenTheme}
           onEditThemeInClaude={onEditThemeInClaude}
           onThemeEdited={onThemeEdited}

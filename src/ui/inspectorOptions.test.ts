@@ -68,15 +68,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "video", src: "assets/a.mp4" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 3 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "camera", "motion"]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows.map((r) => r.id);
     expect(deviceRows).toEqual([
       "device.media",
       "device.editVideo",
       "device.change",
       "device.rotation",
-      "layeredScreenshot.add",
-      "videoWindow.add",
+      "style.shadow",
       "device.remove",
     ]);
   });
@@ -86,7 +85,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "image", src: "assets/a.png" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "camera", "motion"]);
     const textRows = sections.find((s) => s.id === "text")?.rows;
     expect(textRows?.map((r) => r.id)).toEqual(["text.add"]);
     expect(textRows?.[0].chevron).toBe(false);
@@ -99,30 +98,24 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
   it("no device → the device section offers a single Add device row and no Shadow row", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "style", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "camera", "motion"]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows;
-    expect(deviceRows?.map((r) => r.id)).toEqual([
-      "device.add",
-      "layeredScreenshot.add",
-      "videoWindow.add",
-    ]);
+    expect(deviceRows?.map((r) => r.id)).toEqual(["device.add"]);
     expect(deviceRows?.[0].chevron).toBe(false);
     expect(deviceRows?.[0].danger).toBeUndefined();
-    expect(sections.find((s) => s.id === "style")?.rows.map((r) => r.id)).toEqual([
-      "style.theme",
-      "style.background",
-    ]);
   });
 
-  it("a device adds the Shadow row to Style (M5 live round — all four drill-ins)", () => {
+  it("a device puts the Shadow row in the Device panel", () => {
     const doc = docWith({
       devices: [{ media: { kind: "image", src: "assets/a.png" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.find((s) => s.id === "style")?.rows.map((r) => r.id)).toEqual([
-      "style.theme",
-      "style.background",
+    expect(sections.find((s) => s.id === "device")?.rows.map((r) => r.id)).toEqual([
+      "device.media",
+      "device.change",
+      "device.rotation",
       "style.shadow",
+      "device.remove",
     ]);
   });
 
@@ -158,25 +151,9 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.change",
       "device.rotation",
       "device.lid",
-      "layeredScreenshot.add",
-      "videoWindow.add",
+      "style.shadow",
       "device.remove",
     ]);
-  });
-
-  it("a videoWindow block swaps the Add row for an Edit row", () => {
-    const doc = docWith({
-      videoWindow: {
-        media: { src: "assets/a.mp4" },
-        stage: { type: "color", color: "#111" },
-        radius: "macos",
-      },
-    });
-    const rows = sceneSections({ doc, slotsCount: 1 })
-      .find((s) => s.id === "device")
-      ?.rows.map((r) => r.id);
-    expect(rows).toContain("videoWindow.edit");
-    expect(rows).not.toContain("videoWindow.add");
   });
 
   it("Remove device is the only danger row and carries no chevron", () => {
@@ -199,24 +176,16 @@ describe("sceneSections Overlay section", () => {
     expect(sections.map((s) => s.id)).not.toContain("frame");
   });
 
-  it("a deck frame that resolves for this scene shows Overlay between device and style, with cutout + panel rows", () => {
+  it("a deck frame that resolves for this scene shows Overlay after device, with cutout + panel rows", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2, deckFrame: true, frame: cutoutFrame });
-    expect(sections.map((s) => s.id)).toEqual([
-      "text",
-      "device",
-      "frame",
-      "style",
-      "camera",
-      "motion",
-    ]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
     expect(sections.find((s) => s.id === "frame")?.rows.map((r) => r.id)).toEqual([
       "frame.enabled",
       "frame.cutout",
       "frame.panel",
       "frame.chip",
       "frame.decorations",
-      "frame.icon",
       "frame.text",
     ]);
   });

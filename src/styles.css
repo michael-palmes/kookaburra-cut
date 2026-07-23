@@ -479,6 +479,10 @@ body {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+/* A touch more breathing room above each field label inside a drill sub-menu. */
+.inspector-drill-body .wizard-label {
+  margin-top: var(--space-2);
+}
 
 /* A field label carrying its colour swatch on the right (Edit text's Title/Subtitle rows). */
 .wizard-label-with-colour {
@@ -2847,9 +2851,6 @@ body {
   gap: var(--space-2);
 }
 /* Align the Present-loop toggle + mode chips under the Animate-scene row label (8px pad + 17px icon + 11px gap). */
-.popover-row.camera-loop-indent {
-  padding-left: 36px;
-}
 .popover-group-label {
   min-width: 82px;
   font-size: 11px;
@@ -3736,14 +3737,11 @@ body {
   font-size: 12px;
 }
 
-.ls-builder-spread input[type="range"] {
+.ls-builder-spread > .popover-inline {
   flex: 1;
 }
-
-.ls-builder-readout {
-  min-width: 34px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
+.ls-builder-spread input[type="range"] {
+  flex: 1;
 }
 
 .ls-layer-list {
@@ -4568,7 +4566,11 @@ body {
 }
 
 .inspector-tab {
+  display: flex;
   flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   height: 26px;
   font: inherit;
   font-size: var(--text-sm);
@@ -4578,6 +4580,12 @@ body {
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+.inspector-tab svg,
+.inspector-subtab svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 
 .inspector-tab.active {
@@ -4956,8 +4964,9 @@ img.inspector-scene-thumb {
   gap: 8px;
   flex: none;
   width: 100%;
-  min-height: 38px;
-  padding: 8px 14px;
+  min-height: 42px;
+  margin-bottom: 8px;
+  padding: 10px 14px;
   font: inherit;
   font-size: var(--text-base);
   font-weight: 550;
@@ -5035,6 +5044,97 @@ img.inspector-scene-thumb {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* Camera drill: the per-key Reset sits top-right under the back bar. */
+.inspector-drill-reset {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
+}
+
+/* Compact segmented toggle inside a drill (camera track): a smaller sibling of .inspector-tabs. */
+.inspector-subtabs {
+  display: inline-flex;
+  align-self: flex-start;
+  margin: 2px 10px 10px;
+  padding: 2px;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.inspector-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 12px;
+  white-space: nowrap;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.inspector-subtab.active {
+  font-weight: 590;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+/* Reusable: a bordered container whose segmented toggle (.inspector-subtabs) straddles its top edge, centred. */
+.toggle-fieldset {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: 14px;
+  padding: 22px 6px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.toggle-fieldset > .inspector-subtabs {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+
+/* Left-aligned toggle row (Loop in Present): checkbox, label and a description under it, like an ActionRow. */
+.inspector-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.inspector-toggle-row input {
+  margin-top: 3px;
+}
+.inspector-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inspector-toggle-label {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+.inspector-toggle-desc {
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+.camera-loop-modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 10px 6px 34px;
 }
 
 /* Camera numerics: two 3-column grids of mono fields with captions below. */
@@ -5302,37 +5402,21 @@ img.inspector-scene-thumb {
 /* Embedded transition picker: the modal body stacked for the panel — cards 2-up,
    preview above them at full panel width; full-height with the actions pinned
    at the bottom (M5 live round). */
-.transition-embedded {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-.transition-embedded .transition-body {
+/* Transition drill (embedded): the preview/params sit on top with the list below; the whole stack
+   scrolls in the drill body while Cancel/Apply pin to the fixed .inspector-drill-actions bar. */
+.transition-embedded-body .transition-body {
   flex-direction: column-reverse;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
 }
-
-.transition-embedded .transition-grid {
+.transition-embedded-body .transition-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-
-.transition-embedded .transition-side {
+.transition-embedded-body .transition-side {
   width: 100%;
 }
-
-.transition-embedded .transition-preview-canvas,
-.transition-embedded canvas {
+.transition-embedded-body .transition-preview-canvas,
+.transition-embedded-body canvas {
   width: 100%;
   height: auto;
-}
-
-.transition-embedded .modal-actions {
-  flex: none;
-  margin-top: var(--space-4);
 }
 
 /* Embedded gradient picker: 2-up swatch grid at panel width. */

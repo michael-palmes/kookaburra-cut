@@ -113,7 +113,7 @@ export function PlaybackBar({
         onManage: () => {
           const ui = useUiStore.getState();
           ui.setInspectorTab("project");
-          ui.setInspectorDrillIn("project.scenes");
+          ui.jumpInspectorDrill(["project.scenes"]);
         },
       }),
     });

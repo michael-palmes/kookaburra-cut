@@ -224,6 +224,8 @@ export interface SceneDoc {
   textLayout?: { align?: SceneTextAlign };
   /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged) and `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
+  /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline. Overlay scenes carry their icon on `frame.icon` instead. Rendering lands in a later pass; the inspector control writes it now. */
+  headerIcon?: string;
   devices?: SceneDocDeviceSpec[];
   camera?: {
     keys: SceneDocCameraKey[];
@@ -322,6 +324,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   }
   const out: SceneDoc = { version: doc.version };
   if (typeof doc.name === "string") out.name = doc.name;
+  if (typeof doc.headerIcon === "string") out.headerIcon = doc.headerIcon;
   const duration = doc.duration as SceneDocDuration | undefined;
   if (duration && (duration.mode === "manual" || duration.mode === "follow-media")) {
     out.duration = duration;

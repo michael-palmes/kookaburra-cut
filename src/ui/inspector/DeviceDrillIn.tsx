@@ -18,12 +18,14 @@ export function DeviceDrillIn({
   colour,
   motion,
   onBack,
+  backLabel = "Scene",
   onSave,
 }: {
   model: DeviceId;
   colour: string;
   motion: DeviceMotionPreset;
   onBack: () => void;
+  backLabel?: string;
   onSave: (model: DeviceId, colour: string, motion: DeviceMotionPreset) => void;
 }) {
   const [m, setM] = useState<DeviceId>(model);
@@ -33,7 +35,7 @@ export function DeviceDrillIn({
   const spec = DEVICE_CATALOG[m];
   return (
     <div className="inspector-drill">
-      <DrillBack label="Scene" onClick={onBack} />
+      <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Change device</div>
       <div className="inspector-drill-body">
         <div className="inspector-device-switcher" role="radiogroup" aria-label="Device model">
