@@ -5072,6 +5072,7 @@ img.inspector-scene-thumb {
   gap: 6px;
   height: 24px;
   padding: 0 12px;
+  white-space: nowrap;
   font: inherit;
   font-size: var(--text-xs);
   font-weight: 500;
@@ -5094,7 +5095,7 @@ img.inspector-scene-thumb {
   flex-direction: column;
   gap: var(--space-4);
   margin-top: 14px;
-  padding: 22px 12px 12px;
+  padding: 22px 6px 12px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
 }
