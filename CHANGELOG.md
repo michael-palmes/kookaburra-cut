@@ -4,6 +4,33 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-23
+
+### Added
+
+- Scene overlays: a camera-locked panel with a shaped cutout the scene
+  renders through, like a slide deck. Titles, bullets, a status chip, a
+  header icon and decorations, all editable in the inspector with a
+  drag, resize and rotate gizmo in the preview.
+- The video window scene primitive: a screen recording as a floating
+  rounded window over a colour, gradient or image backing stage, with
+  real 3D parallax under the scene camera.
+- A media library: browse the shared workspace pool from every picker,
+  filtered by kind, with right-click menus throughout.
+- An Android device in graphite, black and white.
+- Sharing export presets (H.264 and H.265, 60 fps, up to native 4K).
+- A loading overlay while an export prepares.
+
+### Changed
+
+- A device scene's length can follow its video automatically.
+
+### Fixed
+
+- Timeline rename and duration edits no longer shift the surrounding
+  layout.
+- Project app icons update immediately after a swap.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added
