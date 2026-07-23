@@ -2393,6 +2393,12 @@ export function SceneTab({
                 onClick={() => openDrill("videoWindow.media")}
               />
               <ActionRow
+                icon={<SceneRowIcon id="device.editVideo" />}
+                label="Edit recording"
+                chevron
+                onClick={() => onOpenEditVideo(sceneIndex, vw.media.src, "videoWindow")}
+              />
+              <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
                 label="Backing stage"
                 value={{ color: "Colour", gradient: "Gradient", image: "Image" }[vw.stage.type]}
