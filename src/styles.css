@@ -606,11 +606,11 @@ body {
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
 }
-/* The source + kind toggles group together on the left so the Add button keeps the right edge on one line. */
+/* The source + kind toggle rows stack on the left; the Add button keeps the right edge. */
 .media-browser-toggles {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: var(--space-2);
   min-width: 0;
 }

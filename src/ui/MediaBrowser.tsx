@@ -152,6 +152,28 @@ function ImageIcon() {
   );
 }
 
+function ProjectIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2 4.5A1.5 1.5 0 0 1 3.5 3H6l1.5 1.5h5A1.5 1.5 0 0 1 14 6v5.5A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-7Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function LibraryIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M8 2.2 14.5 5.2 8 8.2 1.5 5.2 8 2.2Zm5.6 5.2L8 10 2.4 7.4l-.9.4L8 10.9l6.5-3.1-.9-.4Zm0 2.6L8 12.6 2.4 10l-.9.4L8 13.5l6.5-3.1-.9-.4Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export interface MediaBrowserProps {
   slug: string;
   /** Absolute project folder, full-res previews load from it via the asset protocol. */
@@ -515,25 +537,25 @@ export function MediaBrowser({
               <span className="wizard-presets">
                 <button
                   type="button"
-                  className={`chip${sourceTab === "project" ? " selected" : ""}`}
+                  className={`chip chip-icon${sourceTab === "project" ? " selected" : ""}`}
                   title="This project's assets"
                   onClick={() => {
                     setSourceTab("project");
                     setPreview(null);
                   }}
                 >
-                  Project
+                  <ProjectIcon /> Project
                 </button>
                 <button
                   type="button"
-                  className={`chip${sourceTab === "global" ? " selected" : ""}`}
+                  className={`chip chip-icon${sourceTab === "global" ? " selected" : ""}`}
                   title="Your media library; picking copies the file into this project"
                   onClick={() => {
                     setSourceTab("global");
                     setPreview(null);
                   }}
                 >
-                  Library
+                  <LibraryIcon /> Library
                 </button>
               </span>
             )}
