@@ -79,11 +79,13 @@ export function LayeredScreenshotBuilder({
   sceneIndex,
   onDocChanged,
   onBack,
+  backLabel = "Scene",
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onBack: () => void;
+  backLabel?: string;
 }) {
   const selectedLayerId = useLayeredScreenshotEditStore((s) => s.selectedLayerId);
   const selectedItemId = useLayeredScreenshotEditStore((s) => s.selectedItemId);
@@ -239,7 +241,7 @@ export function LayeredScreenshotBuilder({
 
   return (
     <>
-      <DrillBack label="Scene" onClick={onBack} />
+      <DrillBack label={backLabel} onClick={onBack} />
       <div className="ls-builder">
         <div className="ls-builder-section">
           <div className="wizard-presets">

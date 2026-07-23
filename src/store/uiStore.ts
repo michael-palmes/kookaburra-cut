@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { ThemeBackdrop, ThemeBackground } from "../theme/tokens";
 
-/** Main-window chrome state: the command palette, preview-audio mute, the inspector panel's tab/drill-in/collapsed-section state, the timeline's background clipboard, and the rail-wizard request channel (lets the palette, and later the playback bar, ask TerminalPanel to open a scene wizard without threading callbacks through every layer). Like editorStore, the deterministic export path never reads this store, it holds chrome-only state that must never influence rendered pixels. */
+/** Main-window chrome state: the command palette, preview-audio mute, the inspector panel's tab and drill-in nav stack, the timeline's background clipboard, and the rail-wizard request channel (lets the palette, and later the playback bar, ask TerminalPanel to open a scene wizard without threading callbacks through every layer). Like editorStore, the deterministic export path never reads this store, it holds chrome-only state that must never influence rendered pixels. */
 
 export type InspectorTab = "project" | "scene";
 
@@ -26,10 +26,10 @@ export interface BackgroundClipboard {
 
 export interface InspectorState {
   tab: InspectorTab;
-  /** The open drill-in view's id (single-level push/pop), or null at the row list. */
+  /** The drill-in nav stack; top = current screen, [] = the row list. Screen ids are the same strings each screen matches on. */
+  drillStack: string[];
+  /** Read-only mirror of the stack top (drillStack.at(-1) ?? null): what the render dispatch and preview-only gates match against. Maintained by the drill actions, never set directly. */
   drillIn: string | null;
-  /** Collapsed Scene-tab section ids (sections default open). */
-  collapsed: string[];
 }
 
 interface UiState {
@@ -51,8 +51,14 @@ interface UiState {
   setAudioMuted: (muted: boolean) => void;
   setPreviewQuality: (quality: PreviewQuality) => void;
   setInspectorTab: (tab: InspectorTab) => void;
-  setInspectorDrillIn: (id: string | null) => void;
-  toggleInspectorSection: (id: string) => void;
+  /** Push a screen (forward navigation): row list to a group, or a group to a detail. */
+  openInspectorDrill: (id: string) => void;
+  /** Pop one level (the DrillBack affordance). */
+  closeInspectorDrill: () => void;
+  /** Clear to the row list (tab/scene/project switch, or a full close). */
+  resetInspectorDrill: () => void;
+  /** Land directly on a screen path (external jumps from the palette or timeline). */
+  jumpInspectorDrill: (ids: string[]) => void;
   requestRailWizard: (wizard: "new-scene" | "edit-scene" | null) => void;
   requestPlaybackOptions: () => void;
   setBackgroundClipboard: (clip: BackgroundClipboard | null) => void;
@@ -62,7 +68,7 @@ export const useUiStore = create<UiState>((set) => ({
   paletteOpen: false,
   audioMuted: false,
   previewQuality: loadPreviewQuality(),
-  inspector: { tab: "project", drillIn: null, collapsed: [] },
+  inspector: { tab: "project", drillStack: [], drillIn: null },
   railWizardRequest: null,
   playbackOptionsNonce: 0,
   backgroundClipboard: null,
@@ -77,17 +83,22 @@ export const useUiStore = create<UiState>((set) => ({
     }
     set({ previewQuality });
   },
-  setInspectorTab: (tab) => set((s) => ({ inspector: { ...s.inspector, tab, drillIn: null } })),
-  setInspectorDrillIn: (drillIn) => set((s) => ({ inspector: { ...s.inspector, drillIn } })),
-  toggleInspectorSection: (id) =>
-    set((s) => ({
-      inspector: {
-        ...s.inspector,
-        collapsed: s.inspector.collapsed.includes(id)
-          ? s.inspector.collapsed.filter((c) => c !== id)
-          : [...s.inspector.collapsed, id],
-      },
-    })),
+  setInspectorTab: (tab) =>
+    set((s) => ({ inspector: { ...s.inspector, tab, drillStack: [], drillIn: null } })),
+  openInspectorDrill: (id) =>
+    set((s) => {
+      const drillStack = [...s.inspector.drillStack, id];
+      return { inspector: { ...s.inspector, drillStack, drillIn: id } };
+    }),
+  closeInspectorDrill: () =>
+    set((s) => {
+      const drillStack = s.inspector.drillStack.slice(0, -1);
+      return { inspector: { ...s.inspector, drillStack, drillIn: drillStack.at(-1) ?? null } };
+    }),
+  resetInspectorDrill: () =>
+    set((s) => ({ inspector: { ...s.inspector, drillStack: [], drillIn: null } })),
+  jumpInspectorDrill: (ids) =>
+    set((s) => ({ inspector: { ...s.inspector, drillStack: ids, drillIn: ids.at(-1) ?? null } })),
   requestRailWizard: (railWizardRequest) => set({ railWizardRequest }),
   requestPlaybackOptions: () => set((s) => ({ playbackOptionsNonce: s.playbackOptionsNonce + 1 })),
   setBackgroundClipboard: (backgroundClipboard) => set({ backgroundClipboard }),

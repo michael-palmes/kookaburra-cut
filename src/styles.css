@@ -4956,8 +4956,9 @@ img.inspector-scene-thumb {
   gap: 8px;
   flex: none;
   width: 100%;
-  min-height: 38px;
-  padding: 8px 14px;
+  min-height: 42px;
+  margin-bottom: 8px;
+  padding: 10px 14px;
   font: inherit;
   font-size: var(--text-base);
   font-weight: 550;
@@ -5035,6 +5036,13 @@ img.inspector-scene-thumb {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* Camera drill: the per-key Reset sits top-right under the back bar. */
+.inspector-drill-reset {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
 }
 
 /* Camera numerics: two 3-column grids of mono fields with captions below. */

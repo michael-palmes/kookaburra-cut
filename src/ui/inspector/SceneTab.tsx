@@ -64,7 +64,26 @@ import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
-import { sceneSections } from "../inspectorOptions";
+import { type SceneSectionId, type SceneSectionModel, sceneSections } from "../inspectorOptions";
+
+/** Scene-tab top level: one drill row per section group (compact submenu list). */
+const GROUP_LABELS: Record<SceneSectionId, string> = {
+  text: "Text",
+  device: "Screens & devices",
+  frame: "Overlay",
+  style: "Background & look",
+  camera: "Camera",
+  motion: "Timing",
+};
+
+/** Titles the DrillBack shows for the screen one level down; groups plus the detail screens that own children. */
+const SCREEN_TITLES: Record<string, string> = {
+  ...GROUP_LABELS,
+  "text.edit": "Edit text",
+  "style.background": "Background",
+  "videoWindow.edit": "Video window",
+};
+
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
@@ -81,7 +100,7 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { RotationDrillIn } from "./RotationDrillIn";
-import { ActionRow, DrillBack, NumberField, SectionHeader, useDragScrub } from "./rows";
+import { ActionRow, DrillBack, NumberField, useDragScrub } from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
@@ -758,15 +777,13 @@ function CameraSectionBody({
   project,
   sceneIndex,
   onDocChanged,
-  collapsed,
-  onToggle,
+  onBack,
   patchDoc,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
-  collapsed: boolean;
-  onToggle: () => void;
+  onBack: () => void;
   patchDoc: (patch: (next: SceneDoc) => void) => Promise<void>;
 }) {
   const { doc, slot, camera, preview, commit, appliedPoseAt } = useCameraDoc(
@@ -820,206 +837,197 @@ function CameraSectionBody({
   };
 
   return (
-    <>
-      <SectionHeader
-        label="Camera"
-        collapsed={collapsed}
-        onToggle={onToggle}
-        trailing={
-          camera.keys.length > 0 ? (
-            <button
-              type="button"
-              className="inspector-reset-btn"
-              title="Reset this key to the scene-default pose"
-              onClick={(e) => {
-                e.stopPropagation();
-                onResetKey();
-              }}
-            >
-              Reset
-            </button>
-          ) : undefined
-        }
-      />
-      {collapsed ? null : (
-        <div className="inspector-section-body">
-          {doc?.layeredScreenshot && (
-            <>
-              {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
-              <div className="wizard-presets">
-                <button
-                  type="button"
-                  className={`chip${lsAnimated ? "" : " selected"}`}
-                  title="Animate this scene with the camera track"
-                  onClick={() => {
-                    if (!lsAnimated) return;
-                    useLayeredScreenshotEditStore.getState().setLaneOpen(false);
-                    void patchDoc((next) => {
-                      delete next.animatedTrack;
-                    });
-                  }}
-                >
-                  Camera
-                </button>
-                <button
-                  type="button"
-                  className={`chip${lsAnimated ? " selected" : ""}`}
-                  title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
-                  onClick={() => {
-                    if (lsAnimated) return;
-                    useCameraEditStore.getState().setOpen(false);
-                    void patchDoc((next) => {
-                      next.animatedTrack = "layeredScreenshot";
-                    });
-                  }}
-                >
-                  Screenshot stack
-                </button>
-              </div>
-              {lsAnimated && (
-                <p className="modal-hint">
-                  This scene animates the screenshot stack; the camera track is standing down.
-                </p>
-              )}
-            </>
-          )}
-          <div className="inspector-pose-grid">
-            <NumberField
-              label="orbit °"
-              value={pose.azimuthDeg}
-              decimals={1}
-              dragScale={0.5}
-              onInput={(n) => previewPose((p) => (p.azimuthDeg = n))}
-              onCommit={(n) => commitPose((p) => (p.azimuthDeg = n))}
-            />
-            <NumberField
-              label="tilt °"
-              value={pose.elevationDeg}
-              decimals={1}
-              dragScale={0.5}
-              onInput={(n) => previewPose((p) => (p.elevationDeg = n))}
-              onCommit={(n) => commitPose((p) => (p.elevationDeg = n))}
-            />
-            <NumberField
-              label="distance"
-              value={pose.distance}
-              decimals={2}
-              dragScale={0.02}
-              onInput={(n) => previewPose((p) => (p.distance = n))}
-              onCommit={(n) => commitPose((p) => (p.distance = n))}
-            />
-          </div>
-          <div className="inspector-pose-grid">
-            <NumberField
-              label="target x"
-              value={pose.target[0]}
-              decimals={2}
-              dragScale={0.02}
-              onInput={(n) => previewPose((p) => (p.target[0] = n))}
-              onCommit={(n) => commitPose((p) => (p.target[0] = n))}
-            />
-            <NumberField
-              label="target y"
-              value={pose.target[1]}
-              decimals={2}
-              dragScale={0.02}
-              onInput={(n) => previewPose((p) => (p.target[1] = n))}
-              onCommit={(n) => commitPose((p) => (p.target[1] = n))}
-            />
-            <NumberField
-              label="target z"
-              value={pose.target[2]}
-              decimals={2}
-              dragScale={0.02}
-              onInput={(n) => previewPose((p) => (p.target[2] = n))}
-              onCommit={(n) => commitPose((p) => (p.target[2] = n))}
-            />
-          </div>
-          <ActionRow
-            icon={<SceneRowIcon id="camera.animate" />}
-            label="Animate scene"
-            value={
-              camera.keys.length > 0
-                ? `${camera.keys.length} key${camera.keys.length === 1 ? "" : "s"}`
-                : undefined
-            }
-            selected={cameraOpen}
-            onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
+    <div className="inspector-drill">
+      <DrillBack label="Scene" onClick={onBack} />
+      {camera.keys.length > 0 && (
+        <div className="inspector-drill-reset">
+          <button
+            type="button"
+            className="inspector-reset-btn"
+            title="Reset this key to the scene-default pose"
+            onClick={onResetKey}
+          >
+            Reset
+          </button>
+        </div>
+      )}
+      <div className="inspector-drill-body inspector-section-body">
+        {doc?.layeredScreenshot && (
+          <>
+            {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
+            <div className="wizard-presets">
+              <button
+                type="button"
+                className={`chip${lsAnimated ? "" : " selected"}`}
+                title="Animate this scene with the camera track"
+                onClick={() => {
+                  if (!lsAnimated) return;
+                  useLayeredScreenshotEditStore.getState().setLaneOpen(false);
+                  void patchDoc((next) => {
+                    delete next.animatedTrack;
+                  });
+                }}
+              >
+                Camera
+              </button>
+              <button
+                type="button"
+                className={`chip${lsAnimated ? " selected" : ""}`}
+                title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
+                onClick={() => {
+                  if (lsAnimated) return;
+                  useCameraEditStore.getState().setOpen(false);
+                  void patchDoc((next) => {
+                    next.animatedTrack = "layeredScreenshot";
+                  });
+                }}
+              >
+                Screenshot stack
+              </button>
+            </div>
+            {lsAnimated && (
+              <p className="modal-hint">
+                This scene animates the screenshot stack; the camera track is standing down.
+              </p>
+            )}
+          </>
+        )}
+        <div className="inspector-pose-grid">
+          <NumberField
+            label="orbit °"
+            value={pose.azimuthDeg}
+            decimals={1}
+            dragScale={0.5}
+            onInput={(n) => previewPose((p) => (p.azimuthDeg = n))}
+            onCommit={(n) => commitPose((p) => (p.azimuthDeg = n))}
           />
-          {camera.keys.length > 1 && (
-            <>
+          <NumberField
+            label="tilt °"
+            value={pose.elevationDeg}
+            decimals={1}
+            dragScale={0.5}
+            onInput={(n) => previewPose((p) => (p.elevationDeg = n))}
+            onCommit={(n) => commitPose((p) => (p.elevationDeg = n))}
+          />
+          <NumberField
+            label="distance"
+            value={pose.distance}
+            decimals={2}
+            dragScale={0.02}
+            onInput={(n) => previewPose((p) => (p.distance = n))}
+            onCommit={(n) => commitPose((p) => (p.distance = n))}
+          />
+        </div>
+        <div className="inspector-pose-grid">
+          <NumberField
+            label="target x"
+            value={pose.target[0]}
+            decimals={2}
+            dragScale={0.02}
+            onInput={(n) => previewPose((p) => (p.target[0] = n))}
+            onCommit={(n) => commitPose((p) => (p.target[0] = n))}
+          />
+          <NumberField
+            label="target y"
+            value={pose.target[1]}
+            decimals={2}
+            dragScale={0.02}
+            onInput={(n) => previewPose((p) => (p.target[1] = n))}
+            onCommit={(n) => commitPose((p) => (p.target[1] = n))}
+          />
+          <NumberField
+            label="target z"
+            value={pose.target[2]}
+            decimals={2}
+            dragScale={0.02}
+            onInput={(n) => previewPose((p) => (p.target[2] = n))}
+            onCommit={(n) => commitPose((p) => (p.target[2] = n))}
+          />
+        </div>
+        <ActionRow
+          icon={<SceneRowIcon id="camera.animate" />}
+          label="Animate scene"
+          value={
+            camera.keys.length > 0
+              ? `${camera.keys.length} key${camera.keys.length === 1 ? "" : "s"}`
+              : undefined
+          }
+          selected={cameraOpen}
+          onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
+        />
+        {camera.keys.length > 1 && (
+          <>
+            <div className="popover-row camera-loop-indent">
+              <label
+                className="popover-inline"
+                title="While a slideshow holds, loop the camera back to its first key; video playback and export are untouched"
+              >
+                <input
+                  type="checkbox"
+                  checked={camera.presentLoop !== undefined}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      void commit({
+                        ...camera,
+                        presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
+                      });
+                    } else {
+                      const { presentLoop: _drop, ...rest } = camera;
+                      void commit(rest);
+                    }
+                  }}
+                />
+                Loop in Present
+              </label>
+            </div>
+            {camera.presentLoop && (
               <div className="popover-row camera-loop-indent">
-                <label
-                  className="popover-inline"
-                  title="While a slideshow holds, loop the camera back to its first key; video playback and export are untouched"
+                <button
+                  type="button"
+                  className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
+                  title="Ease back to the first key, then replay"
+                  onClick={() =>
+                    void commit({
+                      ...camera,
+                      presentLoop: {
+                        mode: "smooth",
+                        blendMs: camera.presentLoop?.blendMs ?? DEFAULT_LOOP_BLEND_MS,
+                      },
+                    })
+                  }
                 >
-                  <input
-                    type="checkbox"
-                    checked={camera.presentLoop !== undefined}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        void commit({
-                          ...camera,
-                          presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
-                        });
-                      } else {
-                        const { presentLoop: _drop, ...rest } = camera;
-                        void commit(rest);
-                      }
-                    }}
-                  />
-                  Loop in Present
-                </label>
-              </div>
-              {camera.presentLoop && (
-                <div className="popover-row camera-loop-indent">
-                  <button
-                    type="button"
-                    className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
-                    title="Ease back to the first key, then replay"
-                    onClick={() =>
+                  Smooth
+                </button>
+                <button
+                  type="button"
+                  className={`chip${camera.presentLoop.mode === "jump" ? " selected" : ""}`}
+                  title="Jump cut back to the first key each cycle"
+                  onClick={() => void commit({ ...camera, presentLoop: { mode: "jump" } })}
+                >
+                  Jump
+                </button>
+                {camera.presentLoop.mode === "smooth" && (
+                  <NumberField
+                    label="blend s"
+                    value={(camera.presentLoop.blendMs ?? DEFAULT_LOOP_BLEND_MS) / 1000}
+                    decimals={1}
+                    onCommit={(n) =>
                       void commit({
                         ...camera,
                         presentLoop: {
                           mode: "smooth",
-                          blendMs: camera.presentLoop?.blendMs ?? DEFAULT_LOOP_BLEND_MS,
+                          blendMs: Math.max(100, Math.round(n * 1000)),
                         },
                       })
                     }
-                  >
-                    Smooth
-                  </button>
-                  <button
-                    type="button"
-                    className={`chip${camera.presentLoop.mode === "jump" ? " selected" : ""}`}
-                    title="Jump cut back to the first key each cycle"
-                    onClick={() => void commit({ ...camera, presentLoop: { mode: "jump" } })}
-                  >
-                    Jump
-                  </button>
-                  {camera.presentLoop.mode === "smooth" && (
-                    <NumberField
-                      label="blend s"
-                      value={(camera.presentLoop.blendMs ?? DEFAULT_LOOP_BLEND_MS) / 1000}
-                      decimals={1}
-                      onCommit={(n) =>
-                        void commit({
-                          ...camera,
-                          presentLoop: {
-                            mode: "smooth",
-                            blendMs: Math.max(100, Math.round(n * 1000)),
-                          },
-                        })
-                      }
-                    />
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </>
+                  />
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1185,7 +1193,13 @@ export function SceneTab({
   const { slug, doc, scene, error, setError, patchDoc, commitFromBaseline, commitDuration } =
     useSceneDocPatch(project, sceneIndex, onDocChanged, onTimingChanged);
   const drillIn = useUiStore((s) => s.inspector.drillIn);
-  const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
+  const drillStack = useUiStore((s) => s.inspector.drillStack);
+  // The back bar names the screen it pops to: the parent group (or a detail with children), else the row list.
+  const backLabel =
+    drillStack.length > 1 ? (SCREEN_TITLES[drillStack[drillStack.length - 2]] ?? "Scene") : "Scene";
+  const openDrill = useUiStore((s) => s.openInspectorDrill);
+  const closeDrill = useUiStore((s) => s.closeInspectorDrill);
+  const resetDrill = useUiStore((s) => s.resetInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
   const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
@@ -1197,8 +1211,6 @@ export function SceneTab({
     setModal("media");
     requestDecoMedia(null);
   }, [decoMediaRequestId, requestDecoMedia]);
-  const collapsed = useUiStore((s) => s.inspector.collapsed);
-  const toggleSection = useUiStore((s) => s.toggleInspectorSection);
 
   const [modal, setModal] = useState<"media" | null>(null);
   // What a media pick targets: the scene device, or a decoration (append, or replace one by id).
@@ -1300,14 +1312,14 @@ export function SceneTab({
   useEffect(() => {
     setModal(null);
     setConfirmRemove(false);
-    setDrillIn(null);
+    resetDrill();
     setRenaming(false);
     setBgTabOverride(null);
     setLiveThumb((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
-  }, [sceneIndex, setDrillIn]);
+  }, [sceneIndex, resetDrill]);
 
   // The remove confirmation disarms itself (the EditBar pattern).
   useEffect(() => {
@@ -1335,7 +1347,7 @@ export function SceneTab({
   // Drill-ins + inline modals close on Esc like every layer; the text-motion drill-in's Esc keeps the picked spec and returns the playhead (Done semantics, the session-end restore must fire on every close path).
   useEscapeClose(() => {
     if (drillIn === "text.motion") textMotionDone();
-    else setDrillIn(null);
+    else closeDrill();
   }, drillIn !== null);
   useEscapeClose(() => setModal(null), modal === "media");
 
@@ -1390,7 +1402,7 @@ export function SceneTab({
       }
     }
     onReplaySessionEnd();
-    setDrillIn(null);
+    closeDrill();
   }
 
   function textMotionCancel() {
@@ -1405,7 +1417,7 @@ export function SceneTab({
       { history: false },
     );
     onReplaySessionEnd();
-    setDrillIn(null);
+    closeDrill();
   }
 
   const sceneFrame = project.sceneFrames[sceneIndex];
@@ -1591,7 +1603,7 @@ export function SceneTab({
   if (drillIn === "text.motion" && doc) {
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={textMotionDone} />
+        <DrillBack label={backLabel} onClick={textMotionDone} />
         <div className="inspector-drill-title">Text motion</div>
         <div className="inspector-drill-body inspector-textmotion">
           <TextMotionPanel
@@ -1628,7 +1640,7 @@ export function SceneTab({
   if (drillIn === "style.theme" && doc) {
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Scene theme</div>
         <div className="inspector-drill-body">
           <p className="modal-hint">
@@ -1659,7 +1671,7 @@ export function SceneTab({
           >
             Manage…
           </button>
-          <button type="button" className="btn" onClick={() => setDrillIn(null)}>
+          <button type="button" className="btn" onClick={() => closeDrill()}>
             Cancel
           </button>
           <button
@@ -1667,7 +1679,7 @@ export function SceneTab({
             className="btn primary"
             disabled={themeDraft === (doc.themeId ?? "")}
             onClick={() => {
-              setDrillIn(null);
+              closeDrill();
               // Theme resolution bakes at load; the write chains the nonce reload.
               void patchDoc((next) => {
                 next.themeId = themeDraft || undefined;
@@ -1694,7 +1706,7 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Cutout</div>
         <div className="inspector-drill-body">
           <div className="bg-type-grid" role="tablist" aria-label="Cutout shape">
@@ -1786,7 +1798,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Panel colour</div>
         <div className="inspector-drill-body">
           <div className="popover-row">
@@ -1834,7 +1846,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Chip</div>
         <div className="inspector-drill-body">
           {chip ? (
@@ -1944,7 +1956,7 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Decorations</div>
         <div className="inspector-drill-body">
           {decos.length === 0 && (
@@ -2072,7 +2084,7 @@ export function SceneTab({
       });
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Header icon</div>
         <div className="inspector-drill-body">
           <TextFieldRow
@@ -2107,7 +2119,7 @@ export function SceneTab({
     const claimed = sceneFrame.claimsSceneText !== false;
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Text</div>
         <div className="inspector-drill-body">
           <div className="popover-row">
@@ -2160,7 +2172,7 @@ export function SceneTab({
   if (drillIn === "style.shadow" && doc && device) {
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Device shadow</div>
         <div className="inspector-drill-body">
           <div className="option-grid">
@@ -2209,7 +2221,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label="Video window" onClick={() => setDrillIn("videoWindow.edit")} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">
           <span>Recording</span>
         </div>
@@ -2244,7 +2256,7 @@ export function SceneTab({
       });
     return (
       <div className="inspector-drill">
-        <DrillBack label="Video window" onClick={() => setDrillIn("videoWindow.edit")} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">
           <span>Backing stage</span>
         </div>
@@ -2420,7 +2432,7 @@ export function SceneTab({
           label="Scene"
           onClick={() => {
             setConfirmRemoveVideoWindow(false);
-            setDrillIn(null);
+            closeDrill();
           }}
         />
         <div className="inspector-drill-title">
@@ -2463,14 +2475,14 @@ export function SceneTab({
                 label="Recording"
                 value={vw.media.src.split("/").pop() ?? "None"}
                 chevron
-                onClick={() => setDrillIn("videoWindow.media")}
+                onClick={() => openDrill("videoWindow.media")}
               />
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
                 label="Backing stage"
                 value={{ color: "Colour", gradient: "Gradient", image: "Image" }[vw.stage.type]}
                 chevron
-                onClick={() => setDrillIn("videoWindow.stage")}
+                onClick={() => openDrill("videoWindow.stage")}
               />
 
               <div className="popover-row">
@@ -2713,7 +2725,7 @@ export function SceneTab({
                   void patchDoc((next) => {
                     next.videoWindow = undefined;
                   });
-                  setDrillIn(null);
+                  closeDrill();
                 }}
               />
             </>
@@ -2733,7 +2745,7 @@ export function SceneTab({
     const selectBg = kind === "video" ? selectVideoBackground : selectImageBackground;
     return (
       <div className="inspector-drill">
-        <DrillBack label="Background" onClick={() => setDrillIn("style.background")} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">
           {kind === "video" ? "Background video" : "Background image"}
         </div>
@@ -2839,7 +2851,7 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">
           <span>Background</span>
           {bgTab === "shader" && selectedShaderPreset && (
@@ -3079,7 +3091,7 @@ export function SceneTab({
                 value={
                   doc.background?.type === "image" ? doc.background.src.split("/").pop() : undefined
                 }
-                onClick={() => setDrillIn("style.background.media")}
+                onClick={() => openDrill("style.background.media")}
               />
             </>
           )}
@@ -3093,7 +3105,7 @@ export function SceneTab({
                 value={
                   doc.background?.type === "video" ? doc.background.src.split("/").pop() : undefined
                 }
-                onClick={() => setDrillIn("style.background.media")}
+                onClick={() => openDrill("style.background.media")}
               />
               {doc.background?.type === "video" && (
                 <div className="popover-row">
@@ -3279,7 +3291,7 @@ export function SceneTab({
   if (drillIn === "motion.transition") {
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{`Transition out of scene ${boundaryIndex + 1}`}</div>
         <div className="inspector-drill-body">
           <TransitionModal
@@ -3287,7 +3299,7 @@ export function SceneTab({
             project={project}
             boundaryIndex={boundaryIndex}
             thumbs={thumbs ?? {}}
-            onCancel={() => setDrillIn(null)}
+            onCancel={() => closeDrill()}
             onApply={async (spec) => {
               const manifestBefore = await readProjectManifestSnapshot(slug);
               await updateSceneTransition(slug, boundaryIndex, spec);
@@ -3303,7 +3315,7 @@ export function SceneTab({
                   },
                 ],
               });
-              setDrillIn(null);
+              closeDrill();
               onTimingChanged();
             }}
           />
@@ -3329,7 +3341,7 @@ export function SceneTab({
       );
     return (
       <div className="inspector-drill">
-        <DrillBack label="Edit text" onClick={() => setDrillIn("text.edit")} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">
           {label.charAt(0).toUpperCase() + label.slice(1)} font
         </div>
@@ -3352,7 +3364,7 @@ export function SceneTab({
                 await preloadAppFonts([ref]);
                 commitFont(formatFontString(ref));
                 // A recent chip is a committed choice, so step straight back to Edit text.
-                if (opts?.fromRecent) setDrillIn("text.edit");
+                if (opts?.fromRecent) closeDrill();
               })();
             }}
           />
@@ -3405,7 +3417,7 @@ export function SceneTab({
       );
     const commitTextEdit = () => {
       const merged = { ...(doc.text ?? {}), ...textValues };
-      setDrillIn(null);
+      closeDrill();
       setTextValues({});
       void patchDoc((next) => {
         next.text = merged;
@@ -3413,7 +3425,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label="Scene" onClick={() => setDrillIn(null)} />
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Edit text</div>
         <div className="inspector-drill-body">
           <div className="wizard-field">
@@ -3479,7 +3491,7 @@ export function SceneTab({
                         type="button"
                         className={`text-style-font${fontOverride ? " overridden" : ""}`}
                         title={`${label} font`}
-                        onClick={() => setDrillIn(`text.font:${key}`)}
+                        onClick={() => openDrill(`text.font:${key}`)}
                       >
                         <span className="text-style-font-name">
                           {fontOverride ? parseFontString(fontOverride).family : "Theme font"}
@@ -3533,7 +3545,7 @@ export function SceneTab({
           })}
         </div>
         <div className="inspector-drill-actions">
-          <button type="button" className="btn" onClick={() => setDrillIn(null)}>
+          <button type="button" className="btn" onClick={() => closeDrill()}>
             Cancel
           </button>
           <button type="button" className="btn primary" onClick={commitTextEdit}>
@@ -3549,9 +3561,10 @@ export function SceneTab({
         model={(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId}
         colour={device.colour ?? DEVICE_CATALOG["iphone-15-pro"].defaultColour}
         motion={device.motion?.preset ?? "none"}
-        onBack={() => setDrillIn(null)}
+        onBack={() => closeDrill()}
+        backLabel={backLabel}
         onSave={(model, colour, motion) => {
-          setDrillIn(null);
+          closeDrill();
           void patchDoc((next) => {
             const d = next.devices?.[0];
             if (d) {
@@ -3571,7 +3584,8 @@ export function SceneTab({
         project={project}
         sceneIndex={sceneIndex}
         onDocChanged={onDocChanged}
-        onBack={() => setDrillIn(null)}
+        onBack={() => closeDrill()}
+        backLabel={backLabel}
       />
     );
   }
@@ -3580,7 +3594,8 @@ export function SceneTab({
     return (
       <RotationDrillIn
         rotationDeg={device.placement?.rotationDeg ?? [0, 0, 0]}
-        onBack={() => setDrillIn(null)}
+        onBack={() => closeDrill()}
+        backLabel={backLabel}
         onCommit={(rotationDeg) => {
           void patchDoc((next) => {
             const d = next.devices?.[0];
@@ -3592,6 +3607,220 @@ export function SceneTab({
   }
 
   // ── The section list ──────────────────────────────────────────────────────
+  const renderSectionRows = (section: SceneSectionModel) =>
+    section.rows.map((row) => {
+      if (row.id === "motion.duration") {
+        return (
+          <DurationRow
+            key={row.id}
+            durationMs={scene.durationMs}
+            mode={durationMode}
+            onCommit={(ms) => void commitDuration(ms)}
+          />
+        );
+      }
+      if (row.id === "device.lid" && device) {
+        const lid = isDeviceId(device.model) ? DEVICE_CATALOG[device.model].lid : undefined;
+        return (
+          <LidRow
+            key={row.id}
+            lidDeg={device.lidDeg ?? lid?.defaultDeg ?? 90}
+            openDeg={lid?.openDeg ?? 110}
+            onCommit={(deg) =>
+              void patchDoc((next) => {
+                const d = next.devices?.[0];
+                if (d) d.lidDeg = deg;
+              })
+            }
+          />
+        );
+      }
+      if (row.id === "frame.enabled") {
+        return (
+          <FrameEnabledRow
+            key={row.id}
+            on={sceneFrame !== undefined}
+            onToggle={(on) =>
+              void patchDoc((next) => {
+                if (on) {
+                  if (next.frame) delete next.frame.enabled;
+                } else {
+                  next.frame = { ...(next.frame ?? {}), enabled: false };
+                }
+              })
+            }
+          />
+        );
+      }
+      const onClick = {
+        "text.edit": () => {
+          setTextValues({});
+          openDrill("text.edit");
+        },
+        "text.motion": () => {
+          if (!doc) return;
+          textAnimOriginal.current = {
+            spec: doc.textAnimation,
+            force: doc.textAnimationForce === true,
+          };
+          openDrill("text.motion");
+        },
+        "text.add": () => {
+          // Seed the keys the mounted scene actually reads; the host fallback owns title/subtitle otherwise.
+          const consumed = textKeysConsumedBy(sceneIndex);
+          void patchDoc((next) => {
+            next.text =
+              consumed.includes("headline") && !consumed.includes("title")
+                ? { ...next.text, headline: sceneTitle }
+                : { ...next.text, title: sceneTitle, subtitle: "" };
+          }).then(() => {
+            setTextValues({});
+            openDrill("text.edit");
+          });
+        },
+        "device.media": () => {
+          setMediaTarget({ kind: "device" });
+          setModal("media");
+        },
+        "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
+        "device.change": () => openDrill("device.change"),
+        "device.add": () => {
+          void patchDoc((next) => {
+            // The Rust scaffolder's device defaults, byte for byte.
+            next.devices = [
+              ...(next.devices ?? []),
+              {
+                id: "d1",
+                model: "iphone-17-pro",
+                colour: "silver",
+                placement: {
+                  position: [0, -0.3, 0],
+                  rotationDeg: [0, 0, 0],
+                  scale: 1,
+                },
+                motion: { preset: "none" },
+                shadow: "soft",
+              },
+            ];
+          });
+        },
+        "device.rotation": () => openDrill("device.rotation"),
+        // Both paths drill into the builder; it seeds the first layer for scenes without a block.
+        "layeredScreenshot.edit": () => openDrill("layeredScreenshot.edit"),
+        "layeredScreenshot.add": () => openDrill("layeredScreenshot.edit"),
+        // Both paths drill into the editor; it creates the block on the first media pick.
+        "videoWindow.edit": () => openDrill("videoWindow.edit"),
+        "videoWindow.add": () => openDrill("videoWindow.edit"),
+        "device.remove": () => {
+          if (!confirmRemove) {
+            setConfirmRemove(true);
+            return;
+          }
+          setConfirmRemove(false);
+          void patchDoc((next) => {
+            next.devices = (next.devices ?? []).slice(1);
+          });
+        },
+        "motion.transition": () => {
+          void listCachedSceneThumbs(project).then(setThumbs);
+          openDrill("motion.transition");
+        },
+        "style.theme": () => {
+          if (!doc) return;
+          setThemeDraft(doc.themeId ?? "");
+          openDrill("style.theme");
+        },
+        "style.background": () => {
+          setBgTabOverride(null);
+          openDrill("style.background");
+        },
+        "style.shadow": () => openDrill("style.shadow"),
+        "frame.cutout": () => openDrill("frame.cutout"),
+        "frame.panel": () => openDrill("frame.panel"),
+        "frame.chip": () => openDrill("frame.chip"),
+        "frame.decorations": () => openDrill("frame.decorations"),
+        "frame.icon": () => openDrill("frame.icon"),
+        "frame.text": () => openDrill("frame.text"),
+      }[row.id];
+      const value = {
+        "text.motion": doc?.textAnimation ? describeSpec(doc.textAnimation) : "Theme default",
+        "device.change": device
+          ? DEVICE_CATALOG[
+              (device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId
+            ].name
+          : undefined,
+        "device.rotation": device
+          ? (device.placement?.rotationDeg ?? [0, 0, 0]).map((n) => `${Math.round(n)}°`).join(" ")
+          : undefined,
+        "videoWindow.edit": doc?.videoWindow
+          ? { color: "Colour", gradient: "Gradient", image: "Image" }[doc.videoWindow.stage.type]
+          : undefined,
+        "motion.transition": transitionValue,
+        "style.theme": sceneTheme?.name,
+        "style.background": doc
+          ? doc.background === undefined
+            ? "Theme default"
+            : {
+                none: "None",
+                color: "Colour",
+                gradient: "Gradient",
+                shader: "Animated",
+                image: "Image",
+                video: "Video",
+              }[doc.background.type]
+          : undefined,
+        "style.shadow": device
+          ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
+          : undefined,
+        "frame.cutout": sceneFrame ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape] : undefined,
+        "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
+        "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
+        "frame.decorations": sceneFrame
+          ? sceneFrame.decorations?.length
+            ? String(sceneFrame.decorations.length)
+            : "None"
+          : undefined,
+        "frame.icon": sceneFrame ? (sceneFrame.icon ?? "None") : undefined,
+        "frame.text": sceneFrame
+          ? (ALIGN_OPTIONS.find((a) => a.id === (sceneFrame.textAlign ?? "left"))?.label ?? "Left")
+          : undefined,
+      }[row.id];
+      return (
+        <ActionRow
+          key={row.id}
+          icon={<SceneRowIcon id={row.id} />}
+          label={row.id === "device.remove" && confirmRemove ? "Really remove?" : row.label}
+          value={value}
+          chevron={row.chevron}
+          danger={row.danger}
+          selected={row.id === "device.media" && modal === "media"}
+          onClick={onClick}
+        />
+      );
+    });
+
+  if (drillIn === "camera") {
+    return (
+      <CameraSectionBody
+        project={project}
+        sceneIndex={sceneIndex}
+        onDocChanged={onDocChanged}
+        onBack={closeDrill}
+        patchDoc={patchDoc}
+      />
+    );
+  }
+  const groupSection =
+    drillIn && drillIn !== "camera" ? sections.find((s) => s.id === drillIn) : undefined;
+  if (groupSection) {
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={closeDrill} />
+        <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
+      </div>
+    );
+  }
+
   return (
     <>
       {header}
@@ -3606,241 +3835,16 @@ export function SceneTab({
           ask Claude to add one in the terminal, or edit the scene file directly.
         </p>
       )}
-      {sections.map((section, i) => {
-        const isCollapsed = collapsed.includes(section.id);
-        return (
-          <div key={section.id}>
-            {i > 0 && <div className="inspector-section-divider" />}
-            {/* The Camera section owns its header; its Reset trailing button needs the camera doc (decision 6). */}
-            {section.id === "camera" ? (
-              <CameraSectionBody
-                project={project}
-                sceneIndex={sceneIndex}
-                onDocChanged={onDocChanged}
-                collapsed={isCollapsed}
-                onToggle={() => toggleSection(section.id)}
-                patchDoc={patchDoc}
-              />
-            ) : (
-              <SectionHeader
-                label={section.label}
-                collapsed={isCollapsed}
-                onToggle={() => toggleSection(section.id)}
-              />
-            )}
-            {!isCollapsed && section.id !== "camera" && (
-              <div className="inspector-rows inspector-section-body">
-                {section.rows.map((row) => {
-                  if (row.id === "motion.duration") {
-                    return (
-                      <DurationRow
-                        key={row.id}
-                        durationMs={scene.durationMs}
-                        mode={durationMode}
-                        onCommit={(ms) => void commitDuration(ms)}
-                      />
-                    );
-                  }
-                  if (row.id === "device.lid" && device) {
-                    const lid = isDeviceId(device.model)
-                      ? DEVICE_CATALOG[device.model].lid
-                      : undefined;
-                    return (
-                      <LidRow
-                        key={row.id}
-                        lidDeg={device.lidDeg ?? lid?.defaultDeg ?? 90}
-                        openDeg={lid?.openDeg ?? 110}
-                        onCommit={(deg) =>
-                          void patchDoc((next) => {
-                            const d = next.devices?.[0];
-                            if (d) d.lidDeg = deg;
-                          })
-                        }
-                      />
-                    );
-                  }
-                  if (row.id === "frame.enabled") {
-                    return (
-                      <FrameEnabledRow
-                        key={row.id}
-                        on={sceneFrame !== undefined}
-                        onToggle={(on) =>
-                          void patchDoc((next) => {
-                            if (on) {
-                              if (next.frame) delete next.frame.enabled;
-                            } else {
-                              next.frame = { ...(next.frame ?? {}), enabled: false };
-                            }
-                          })
-                        }
-                      />
-                    );
-                  }
-                  const onClick = {
-                    "text.edit": () => {
-                      setTextValues({});
-                      setDrillIn("text.edit");
-                    },
-                    "text.motion": () => {
-                      if (!doc) return;
-                      textAnimOriginal.current = {
-                        spec: doc.textAnimation,
-                        force: doc.textAnimationForce === true,
-                      };
-                      setDrillIn("text.motion");
-                    },
-                    "text.add": () => {
-                      // Seed the keys the mounted scene actually reads; the host fallback owns title/subtitle otherwise.
-                      const consumed = textKeysConsumedBy(sceneIndex);
-                      void patchDoc((next) => {
-                        next.text =
-                          consumed.includes("headline") && !consumed.includes("title")
-                            ? { ...next.text, headline: sceneTitle }
-                            : { ...next.text, title: sceneTitle, subtitle: "" };
-                      }).then(() => {
-                        setTextValues({});
-                        setDrillIn("text.edit");
-                      });
-                    },
-                    "device.media": () => {
-                      setMediaTarget({ kind: "device" });
-                      setModal("media");
-                    },
-                    "device.editVideo": () =>
-                      device?.media && onOpenEditVideo(sceneIndex, device.media.src),
-                    "device.change": () => setDrillIn("device.change"),
-                    "device.add": () => {
-                      void patchDoc((next) => {
-                        // The Rust scaffolder's device defaults, byte for byte.
-                        next.devices = [
-                          ...(next.devices ?? []),
-                          {
-                            id: "d1",
-                            model: "iphone-17-pro",
-                            colour: "silver",
-                            placement: {
-                              position: [0, -0.3, 0],
-                              rotationDeg: [0, 0, 0],
-                              scale: 1,
-                            },
-                            motion: { preset: "none" },
-                            shadow: "soft",
-                          },
-                        ];
-                      });
-                    },
-                    "device.rotation": () => setDrillIn("device.rotation"),
-                    // Both paths drill into the builder; it seeds the first layer for scenes without a block.
-                    "layeredScreenshot.edit": () => setDrillIn("layeredScreenshot.edit"),
-                    "layeredScreenshot.add": () => setDrillIn("layeredScreenshot.edit"),
-                    // Both paths drill into the editor; it creates the block on the first media pick.
-                    "videoWindow.edit": () => setDrillIn("videoWindow.edit"),
-                    "videoWindow.add": () => setDrillIn("videoWindow.edit"),
-                    "device.remove": () => {
-                      if (!confirmRemove) {
-                        setConfirmRemove(true);
-                        return;
-                      }
-                      setConfirmRemove(false);
-                      void patchDoc((next) => {
-                        next.devices = (next.devices ?? []).slice(1);
-                      });
-                    },
-                    "motion.transition": () => {
-                      void listCachedSceneThumbs(project).then(setThumbs);
-                      setDrillIn("motion.transition");
-                    },
-                    "style.theme": () => {
-                      if (!doc) return;
-                      setThemeDraft(doc.themeId ?? "");
-                      setDrillIn("style.theme");
-                    },
-                    "style.background": () => {
-                      setBgTabOverride(null);
-                      setDrillIn("style.background");
-                    },
-                    "style.shadow": () => setDrillIn("style.shadow"),
-                    "frame.cutout": () => setDrillIn("frame.cutout"),
-                    "frame.panel": () => setDrillIn("frame.panel"),
-                    "frame.chip": () => setDrillIn("frame.chip"),
-                    "frame.decorations": () => setDrillIn("frame.decorations"),
-                    "frame.icon": () => setDrillIn("frame.icon"),
-                    "frame.text": () => setDrillIn("frame.text"),
-                  }[row.id];
-                  const value = {
-                    "text.motion": doc?.textAnimation
-                      ? describeSpec(doc.textAnimation)
-                      : "Theme default",
-                    "device.change": device
-                      ? DEVICE_CATALOG[
-                          (device.model in DEVICE_CATALOG
-                            ? device.model
-                            : "iphone-15-pro") as DeviceId
-                        ].name
-                      : undefined,
-                    "device.rotation": device
-                      ? (device.placement?.rotationDeg ?? [0, 0, 0])
-                          .map((n) => `${Math.round(n)}°`)
-                          .join(" ")
-                      : undefined,
-                    "videoWindow.edit": doc?.videoWindow
-                      ? { color: "Colour", gradient: "Gradient", image: "Image" }[
-                          doc.videoWindow.stage.type
-                        ]
-                      : undefined,
-                    "motion.transition": transitionValue,
-                    "style.theme": sceneTheme?.name,
-                    "style.background": doc
-                      ? doc.background === undefined
-                        ? "Theme default"
-                        : {
-                            none: "None",
-                            color: "Colour",
-                            gradient: "Gradient",
-                            shader: "Animated",
-                            image: "Image",
-                            video: "Video",
-                          }[doc.background.type]
-                      : undefined,
-                    "style.shadow": device
-                      ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
-                      : undefined,
-                    "frame.cutout": sceneFrame
-                      ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape]
-                      : undefined,
-                    "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
-                    "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
-                    "frame.decorations": sceneFrame
-                      ? sceneFrame.decorations?.length
-                        ? String(sceneFrame.decorations.length)
-                        : "None"
-                      : undefined,
-                    "frame.icon": sceneFrame ? (sceneFrame.icon ?? "None") : undefined,
-                    "frame.text": sceneFrame
-                      ? (ALIGN_OPTIONS.find((a) => a.id === (sceneFrame.textAlign ?? "left"))
-                          ?.label ?? "Left")
-                      : undefined,
-                  }[row.id];
-                  return (
-                    <ActionRow
-                      key={row.id}
-                      icon={<SceneRowIcon id={row.id} />}
-                      label={
-                        row.id === "device.remove" && confirmRemove ? "Really remove?" : row.label
-                      }
-                      value={value}
-                      chevron={row.chevron}
-                      danger={row.danger}
-                      selected={row.id === "device.media" && modal === "media"}
-                      onClick={onClick}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      <div className="inspector-rows">
+        {sections.map((section) => (
+          <ActionRow
+            key={section.id}
+            label={GROUP_LABELS[section.id]}
+            chevron
+            onClick={() => openDrill(section.id)}
+          />
+        ))}
+      </div>
       {error && <p className="inspector-error">{error}</p>}
 
       {/* Scene management (the wizard's Arrange delete, re-homed): files move to the Trash; the last scene is protected (the Rust guard, mirrored as disabled); deliberately outside the pinned sceneSections model, bottom-of-panel chrome like the error line. */}

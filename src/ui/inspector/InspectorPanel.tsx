@@ -144,7 +144,7 @@ export function InspectorPanel({
   useEffect(() => {
     setOpenRow(null);
     setConfirmRemoveMusic(false);
-    useUiStore.getState().setInspectorDrillIn(null);
+    useUiStore.getState().resetInspectorDrill();
   }, [project.id, tab]);
 
   // The music remove confirmation disarms itself (the EditBar pattern).
@@ -164,7 +164,7 @@ export function InspectorPanel({
       return;
     }
     handledPlaybackNonce.current = playbackNonce;
-    useUiStore.getState().setInspectorDrillIn(null);
+    useUiStore.getState().resetInspectorDrill();
     setOpenRow("playback");
   }, [playbackNonce, tab, setTab]);
 
@@ -195,7 +195,9 @@ export function InspectorPanel({
   }, [openRow]);
 
   const drillIn = useUiStore((s) => s.inspector.drillIn);
-  const setDrillIn = useUiStore((s) => s.setInspectorDrillIn);
+  const openDrill = useUiStore((s) => s.openInspectorDrill);
+  const closeDrill = useUiStore((s) => s.closeInspectorDrill);
+  const setDrillIn = (id: string | null) => (id === null ? closeDrill() : openDrill(id));
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.

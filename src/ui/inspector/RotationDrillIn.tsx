@@ -14,16 +14,18 @@ const AXIS_LABELS = ["tilt x °", "turn y °", "roll z °"] as const;
 export function RotationDrillIn({
   rotationDeg,
   onBack,
+  backLabel = "Scene",
   onCommit,
 }: {
   rotationDeg: V3;
   onBack: () => void;
+  backLabel?: string;
   onCommit: (next: V3) => void;
 }) {
   const matches = (v: V3) => v.every((n, i) => Math.abs(n - rotationDeg[i]) < 0.05);
   return (
     <>
-      <DrillBack label="Scene" onClick={onBack} />
+      <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-section-body">
         <div className="wizard-presets">
           {ROTATION_PRESETS.map((p) => (

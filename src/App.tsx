@@ -2034,10 +2034,10 @@ export default function App() {
               openMedia: () => setShowMedia(true),
               openTheme: () => setThemeMode({}),
               editScreenshotStack: () => {
-                // The builder is a Scene-tab drill-in; setInspectorTab clears drillIn, so order matters.
+                // The builder is a Scene-tab drill-in; setInspectorTab clears the stack, so order matters.
                 const ui = useUiStore.getState();
                 ui.setInspectorTab("scene");
-                ui.setInspectorDrillIn("layeredScreenshot.edit");
+                ui.jumpInspectorDrill(["layeredScreenshot.edit"]);
               },
               setSoundtrack: () => void handleSetSoundtrack(),
               removeSoundtrack: () => void handleRemoveSoundtrack(),
