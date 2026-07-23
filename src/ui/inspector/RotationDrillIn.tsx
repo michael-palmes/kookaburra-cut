@@ -1,5 +1,5 @@
 import type { V3 } from "../../toolkit/types";
-import { DrillBack, NumericField } from "./rows";
+import { DrillBack, NumberField } from "./rows";
 
 /** Preset poses: Front on is the glb's authored identity; Editorial is the scaffolder's hero angle. */
 const ROTATION_PRESETS: { id: string; label: string; value: V3 }[] = [
@@ -39,7 +39,7 @@ export function RotationDrillIn({
         </div>
         <div className="inspector-pose-grid">
           {AXIS_LABELS.map((label, axis) => (
-            <NumericField
+            <NumberField
               key={label}
               label={label}
               value={rotationDeg[axis]}

@@ -5060,6 +5060,17 @@ img.inspector-scene-thumb {
   text-align: center;
 }
 
+/* Drag-to-scrub affordance: ew-resize on hover, back to a caret once focused for typing. */
+.inspector-num-drag {
+  cursor: ew-resize;
+}
+.inspector-num-drag:focus {
+  cursor: text;
+}
+.scrubbing {
+  user-select: none;
+}
+
 .inspector-pose-caption {
   font-size: var(--text-xs);
   color: var(--text-tertiary);

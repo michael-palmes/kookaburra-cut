@@ -9,7 +9,7 @@ import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPrevie
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
-import { nearestKey, setKeyPose } from "../../engine/sceneCameraEdit";
+import { type CameraDoc, nearestKey, setKeyPose } from "../../engine/sceneCameraEdit";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
 import type {
   SceneDoc,
@@ -81,7 +81,7 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { RotationDrillIn } from "./RotationDrillIn";
-import { ActionRow, DrillBack, NumericField, SectionHeader } from "./rows";
+import { ActionRow, DrillBack, NumberField, SectionHeader, useDragScrub } from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
@@ -509,7 +509,20 @@ function DurationRow({
   onCommit: (ms: number) => void;
 }) {
   const [text, setText] = useState((durationMs / 1000).toFixed(2));
-  useEffect(() => setText((durationMs / 1000).toFixed(2)), [durationMs]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { dragging, onPointerDown } = useDragScrub({
+    value: durationMs / 1000,
+    decimals: 2,
+    min: 0.1,
+    dragScale: 0.05,
+    onText: setText,
+    inputRef,
+    onCommit: (seconds) => onCommit(Math.round(seconds * 1000)),
+  });
+  useEffect(() => {
+    if (!dragging && document.activeElement !== inputRef.current)
+      setText((durationMs / 1000).toFixed(2));
+  }, [durationMs, dragging]);
   const commit = () => {
     const seconds = Number(text);
     if (!Number.isFinite(seconds) || seconds < 0.1) {
@@ -520,17 +533,22 @@ function DurationRow({
     if (ms !== durationMs) onCommit(ms);
   };
   return (
-    <div className="inspector-duration-row" title="Scene length in seconds (switches to manual)">
+    <div
+      className={`inspector-duration-row${dragging ? " scrubbing" : ""}`}
+      title="Scene length in seconds (switches to manual)"
+    >
       <span className="action-row-icon">
         <SceneRowIcon id="motion.duration" />
       </span>
       <span className="action-row-label">Duration</span>
       {mode && <span className="action-row-value">{mode}</span>}
       <input
-        className="modal-input inspector-num inspector-seconds"
+        ref={inputRef}
+        className="modal-input inspector-num inspector-seconds inspector-num-drag"
         value={text}
         inputMode="decimal"
         aria-label="Scene duration in seconds"
+        onPointerDown={onPointerDown}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
@@ -751,7 +769,7 @@ function CameraSectionBody({
   onToggle: () => void;
   patchDoc: (patch: (next: SceneDoc) => void) => Promise<void>;
 }) {
-  const { doc, slot, camera, commit, appliedPoseAt } = useCameraDoc(
+  const { doc, slot, camera, preview, commit, appliedPoseAt } = useCameraDoc(
     project,
     sceneIndex,
     onDocChanged,
@@ -775,17 +793,23 @@ function CameraSectionBody({
   const targetKey = camera.keys.find((k) => k.id === targetKeyId) ?? null;
   const pose: SceneDocCameraPose = targetKey?.pose ?? appliedPoseAt(coarseLocal);
 
-  const commitPose = (mutate: (p: SceneDocCameraPose) => void) => {
+  const posePatch = (mutate: (p: SceneDocCameraPose) => void): CameraDoc => {
     const next: SceneDocCameraPose = { ...pose, target: [...pose.target] };
     mutate(next);
-    if (targetKey) {
-      const cam = setKeyPose(camera, targetKey.id, next);
-      if (cam) void commit(cam);
-    } else {
-      // Empty track: a lone key at 0 = static reframe (the overlay's seed).
-      void commit({ keys: [{ id: "k1", tMs: 0, pose: next }], segments: [] });
-      useCameraEditStore.getState().select("k1", null);
-    }
+    return targetKey
+      ? (setKeyPose(camera, targetKey.id, next) ?? camera)
+      : { keys: [{ id: "k1", tMs: 0, pose: next }], segments: [] };
+  };
+
+  /** Live drag tick: render the pose through the store draft, no doc write, no undo. */
+  const previewPose = (mutate: (p: SceneDocCameraPose) => void) =>
+    preview(posePatch(mutate), false);
+
+  const commitPose = (mutate: (p: SceneDocCameraPose) => void) => {
+    const seeding = !targetKey;
+    void commit(posePatch(mutate));
+    // Empty track: a lone key at 0 = static reframe (the overlay's seed).
+    if (seeding) useCameraEditStore.getState().select("k1", null);
   };
 
   /** Per-key Reset (decision 6, moved here from the old strip's tools row): the selected-else-nearest key back to the scene-default pose. */
@@ -860,42 +884,54 @@ function CameraSectionBody({
             </>
           )}
           <div className="inspector-pose-grid">
-            <NumericField
+            <NumberField
               label="orbit °"
               value={pose.azimuthDeg}
               decimals={1}
+              dragScale={0.5}
+              onInput={(n) => previewPose((p) => (p.azimuthDeg = n))}
               onCommit={(n) => commitPose((p) => (p.azimuthDeg = n))}
             />
-            <NumericField
+            <NumberField
               label="tilt °"
               value={pose.elevationDeg}
               decimals={1}
+              dragScale={0.5}
+              onInput={(n) => previewPose((p) => (p.elevationDeg = n))}
               onCommit={(n) => commitPose((p) => (p.elevationDeg = n))}
             />
-            <NumericField
+            <NumberField
               label="distance"
               value={pose.distance}
               decimals={2}
+              dragScale={0.02}
+              onInput={(n) => previewPose((p) => (p.distance = n))}
               onCommit={(n) => commitPose((p) => (p.distance = n))}
             />
           </div>
           <div className="inspector-pose-grid">
-            <NumericField
+            <NumberField
               label="target x"
               value={pose.target[0]}
               decimals={2}
+              dragScale={0.02}
+              onInput={(n) => previewPose((p) => (p.target[0] = n))}
               onCommit={(n) => commitPose((p) => (p.target[0] = n))}
             />
-            <NumericField
+            <NumberField
               label="target y"
               value={pose.target[1]}
               decimals={2}
+              dragScale={0.02}
+              onInput={(n) => previewPose((p) => (p.target[1] = n))}
               onCommit={(n) => commitPose((p) => (p.target[1] = n))}
             />
-            <NumericField
+            <NumberField
               label="target z"
               value={pose.target[2]}
               decimals={2}
+              dragScale={0.02}
+              onInput={(n) => previewPose((p) => (p.target[2] = n))}
               onCommit={(n) => commitPose((p) => (p.target[2] = n))}
             />
           </div>
@@ -962,7 +998,7 @@ function CameraSectionBody({
                     Jump
                   </button>
                   {camera.presentLoop.mode === "smooth" && (
-                    <NumericField
+                    <NumberField
                       label="blend s"
                       value={(camera.presentLoop.blendMs ?? DEFAULT_LOOP_BLEND_MS) / 1000}
                       decimals={1}
@@ -3454,7 +3490,7 @@ export function SceneTab({
                       </button>
                       <span className="inspector-pose-caption">Font</span>
                     </span>
-                    <NumericField
+                    <NumberField
                       label="Size %"
                       value={Math.round((styleNum(`${key}Size`) ?? 1) * 100)}
                       decimals={0}
@@ -3466,7 +3502,7 @@ export function SceneTab({
                         )
                       }
                     />
-                    <NumericField
+                    <NumberField
                       label="X"
                       value={styleNum(`${key}OffsetX`) ?? 0}
                       decimals={2}
@@ -3478,7 +3514,7 @@ export function SceneTab({
                         )
                       }
                     />
-                    <NumericField
+                    <NumberField
                       label="Y"
                       value={styleNum(`${key}OffsetY`) ?? 0}
                       decimals={2}
