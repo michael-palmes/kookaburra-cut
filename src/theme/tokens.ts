@@ -101,8 +101,8 @@ export type ThemeBackground =
   /** `gradient` names a THEME gradient; `spec` (the picker) carries an inline self-contained gradient, theme-independent presets/customs. One must be present; `spec` wins when both are. */
   | { type: "gradient"; gradient?: string; spec?: GradientSpec; parallax?: number }
   | { type: "image"; src: string; parallax?: number }
-  /** A looping video fill riding the clip frame pipeline. SCENE-DOC ONLY (decision 5: themes are workspace-shared and can't reference project assets; the theme parser drops it). Absent `loop` = true; `loop: false` holds the last frame. */
-  | { type: "video"; src: string; parallax?: number; loop?: boolean }
+  /** A looping video fill riding the clip frame pipeline. SCENE-DOC ONLY (decision 5: themes are workspace-shared and can't reference project assets; the theme parser drops it). Absent `loop` = true; `loop: false` holds the last frame. Absent `fit` = `fill` (cover-crop to fill the frame); `fit` letterboxes the whole video with bars in the theme background colour. */
+  | { type: "video"; src: string; parallax?: number; loop?: boolean; fit?: "fill" | "fit" }
   /** An animated GLSL fill (the vendored paper-design pack): `shader` names a SHADER_BACKGROUNDS id, `colors` are hexes filling the effect's slots, `speed` multiplies the ABSOLUTE project clock (continuous across scene cuts), `params` are the effect's own numeric knobs. Theme-safe (no asset references). */
   | {
       type: "shader";

@@ -3060,6 +3060,29 @@ export function SceneTab({
                   </label>
                 </div>
               )}
+              {doc.background?.type === "video" && (
+                <div className="popover-row">
+                  <label
+                    className="popover-inline"
+                    title="On shows the whole video with bars in the background colour; off crops it to fill the frame"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={doc.background.fit === "fit"}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        void patchDoc((next) => {
+                          if (next.background?.type === "video") {
+                            const { fit: _drop, ...rest } = next.background;
+                            next.background = on ? { ...rest, fit: "fit" } : rest;
+                          }
+                        });
+                      }}
+                    />
+                    Fit inside frame
+                  </label>
+                </div>
+              )}
             </>
           )}
           <div className="popover-row">
