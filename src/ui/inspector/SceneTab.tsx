@@ -869,6 +869,146 @@ function CameraSectionBody({
     if (cam) void commit(cam);
   };
 
+  const cameraOptions = (
+    <>
+      <div className="inspector-pose-grid">
+        <NumberField
+          label="orbit °"
+          value={pose.azimuthDeg}
+          decimals={1}
+          dragScale={0.5}
+          onInput={(n) => previewPose((p) => (p.azimuthDeg = n))}
+          onCommit={(n) => commitPose((p) => (p.azimuthDeg = n))}
+        />
+        <NumberField
+          label="tilt °"
+          value={pose.elevationDeg}
+          decimals={1}
+          dragScale={0.5}
+          onInput={(n) => previewPose((p) => (p.elevationDeg = n))}
+          onCommit={(n) => commitPose((p) => (p.elevationDeg = n))}
+        />
+        <NumberField
+          label="distance"
+          value={pose.distance}
+          decimals={2}
+          dragScale={0.02}
+          onInput={(n) => previewPose((p) => (p.distance = n))}
+          onCommit={(n) => commitPose((p) => (p.distance = n))}
+        />
+      </div>
+      <div className="inspector-pose-grid">
+        <NumberField
+          label="target x"
+          value={pose.target[0]}
+          decimals={2}
+          dragScale={0.02}
+          onInput={(n) => previewPose((p) => (p.target[0] = n))}
+          onCommit={(n) => commitPose((p) => (p.target[0] = n))}
+        />
+        <NumberField
+          label="target y"
+          value={pose.target[1]}
+          decimals={2}
+          dragScale={0.02}
+          onInput={(n) => previewPose((p) => (p.target[1] = n))}
+          onCommit={(n) => commitPose((p) => (p.target[1] = n))}
+        />
+        <NumberField
+          label="target z"
+          value={pose.target[2]}
+          decimals={2}
+          dragScale={0.02}
+          onInput={(n) => previewPose((p) => (p.target[2] = n))}
+          onCommit={(n) => commitPose((p) => (p.target[2] = n))}
+        />
+      </div>
+      <ActionRow
+        icon={<SceneRowIcon id="camera.animate" />}
+        label="Animate scene"
+        value={
+          camera.keys.length > 0
+            ? `${camera.keys.length} key${camera.keys.length === 1 ? "" : "s"}`
+            : undefined
+        }
+        selected={cameraOpen}
+        onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
+      />
+      {camera.keys.length > 1 && (
+        <>
+          <label className="inspector-toggle-row">
+            <input
+              type="checkbox"
+              checked={camera.presentLoop !== undefined}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  void commit({
+                    ...camera,
+                    presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
+                  });
+                } else {
+                  const { presentLoop: _drop, ...rest } = camera;
+                  void commit(rest);
+                }
+              }}
+            />
+            <span className="inspector-toggle-text">
+              <span className="inspector-toggle-label">Loop in Present</span>
+              <span className="inspector-toggle-desc">
+                In slideshow Present mode, ease the camera back to its first key each cycle. Video
+                playback and export are untouched.
+              </span>
+            </span>
+          </label>
+          {camera.presentLoop && (
+            <div className="camera-loop-modes">
+              <button
+                type="button"
+                className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
+                title="Ease back to the first key, then replay"
+                onClick={() =>
+                  void commit({
+                    ...camera,
+                    presentLoop: {
+                      mode: "smooth",
+                      blendMs: camera.presentLoop?.blendMs ?? DEFAULT_LOOP_BLEND_MS,
+                    },
+                  })
+                }
+              >
+                Smooth
+              </button>
+              <button
+                type="button"
+                className={`chip${camera.presentLoop.mode === "jump" ? " selected" : ""}`}
+                title="Jump cut back to the first key each cycle"
+                onClick={() => void commit({ ...camera, presentLoop: { mode: "jump" } })}
+              >
+                Jump
+              </button>
+              {camera.presentLoop.mode === "smooth" && (
+                <NumberField
+                  label="blend s"
+                  value={(camera.presentLoop.blendMs ?? DEFAULT_LOOP_BLEND_MS) / 1000}
+                  decimals={1}
+                  onCommit={(n) =>
+                    void commit({
+                      ...camera,
+                      presentLoop: {
+                        mode: "smooth",
+                        blendMs: Math.max(100, Math.round(n * 1000)),
+                      },
+                    })
+                  }
+                />
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
   return (
     <div className="inspector-drill">
       <DrillBack label="Scene" onClick={onBack} />
@@ -885,8 +1025,8 @@ function CameraSectionBody({
         </div>
       )}
       <div className="inspector-drill-body inspector-section-body">
-        {doc?.layeredScreenshot && (
-          <>
+        {doc?.layeredScreenshot ? (
+          <div className="toggle-fieldset">
             {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
             <div className="inspector-subtabs" role="tablist">
               <button
@@ -929,142 +1069,10 @@ function CameraSectionBody({
                 This scene animates the screenshot stack; the camera track is standing down.
               </p>
             )}
-          </>
-        )}
-        <div className="inspector-pose-grid">
-          <NumberField
-            label="orbit °"
-            value={pose.azimuthDeg}
-            decimals={1}
-            dragScale={0.5}
-            onInput={(n) => previewPose((p) => (p.azimuthDeg = n))}
-            onCommit={(n) => commitPose((p) => (p.azimuthDeg = n))}
-          />
-          <NumberField
-            label="tilt °"
-            value={pose.elevationDeg}
-            decimals={1}
-            dragScale={0.5}
-            onInput={(n) => previewPose((p) => (p.elevationDeg = n))}
-            onCommit={(n) => commitPose((p) => (p.elevationDeg = n))}
-          />
-          <NumberField
-            label="distance"
-            value={pose.distance}
-            decimals={2}
-            dragScale={0.02}
-            onInput={(n) => previewPose((p) => (p.distance = n))}
-            onCommit={(n) => commitPose((p) => (p.distance = n))}
-          />
-        </div>
-        <div className="inspector-pose-grid">
-          <NumberField
-            label="target x"
-            value={pose.target[0]}
-            decimals={2}
-            dragScale={0.02}
-            onInput={(n) => previewPose((p) => (p.target[0] = n))}
-            onCommit={(n) => commitPose((p) => (p.target[0] = n))}
-          />
-          <NumberField
-            label="target y"
-            value={pose.target[1]}
-            decimals={2}
-            dragScale={0.02}
-            onInput={(n) => previewPose((p) => (p.target[1] = n))}
-            onCommit={(n) => commitPose((p) => (p.target[1] = n))}
-          />
-          <NumberField
-            label="target z"
-            value={pose.target[2]}
-            decimals={2}
-            dragScale={0.02}
-            onInput={(n) => previewPose((p) => (p.target[2] = n))}
-            onCommit={(n) => commitPose((p) => (p.target[2] = n))}
-          />
-        </div>
-        <ActionRow
-          icon={<SceneRowIcon id="camera.animate" />}
-          label="Animate scene"
-          value={
-            camera.keys.length > 0
-              ? `${camera.keys.length} key${camera.keys.length === 1 ? "" : "s"}`
-              : undefined
-          }
-          selected={cameraOpen}
-          onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
-        />
-        {camera.keys.length > 1 && (
-          <>
-            <label className="inspector-toggle-row">
-              <input
-                type="checkbox"
-                checked={camera.presentLoop !== undefined}
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    void commit({
-                      ...camera,
-                      presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
-                    });
-                  } else {
-                    const { presentLoop: _drop, ...rest } = camera;
-                    void commit(rest);
-                  }
-                }}
-              />
-              <span className="inspector-toggle-text">
-                <span className="inspector-toggle-label">Loop in Present</span>
-                <span className="inspector-toggle-desc">
-                  In slideshow Present mode, ease the camera back to its first key each cycle. Video
-                  playback and export are untouched.
-                </span>
-              </span>
-            </label>
-            {camera.presentLoop && (
-              <div className="camera-loop-modes">
-                <button
-                  type="button"
-                  className={`chip${camera.presentLoop.mode === "smooth" ? " selected" : ""}`}
-                  title="Ease back to the first key, then replay"
-                  onClick={() =>
-                    void commit({
-                      ...camera,
-                      presentLoop: {
-                        mode: "smooth",
-                        blendMs: camera.presentLoop?.blendMs ?? DEFAULT_LOOP_BLEND_MS,
-                      },
-                    })
-                  }
-                >
-                  Smooth
-                </button>
-                <button
-                  type="button"
-                  className={`chip${camera.presentLoop.mode === "jump" ? " selected" : ""}`}
-                  title="Jump cut back to the first key each cycle"
-                  onClick={() => void commit({ ...camera, presentLoop: { mode: "jump" } })}
-                >
-                  Jump
-                </button>
-                {camera.presentLoop.mode === "smooth" && (
-                  <NumberField
-                    label="blend s"
-                    value={(camera.presentLoop.blendMs ?? DEFAULT_LOOP_BLEND_MS) / 1000}
-                    decimals={1}
-                    onCommit={(n) =>
-                      void commit({
-                        ...camera,
-                        presentLoop: {
-                          mode: "smooth",
-                          blendMs: Math.max(100, Math.round(n * 1000)),
-                        },
-                      })
-                    }
-                  />
-                )}
-              </div>
-            )}
-          </>
+            {cameraOptions}
+          </div>
+        ) : (
+          cameraOptions
         )}
       </div>
     </div>

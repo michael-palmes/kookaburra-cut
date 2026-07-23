@@ -5087,6 +5087,25 @@ img.inspector-scene-thumb {
   background: var(--surface-raised);
 }
 
+/* Reusable: a bordered container whose segmented toggle (.inspector-subtabs) straddles its top edge, centred. */
+.toggle-fieldset {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: 14px;
+  padding: 22px 12px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+.toggle-fieldset > .inspector-subtabs {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+
 /* Left-aligned toggle row (Loop in Present): checkbox, label and a description under it, like an ActionRow. */
 .inspector-toggle-row {
   display: flex;
