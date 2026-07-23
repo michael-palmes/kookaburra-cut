@@ -47,6 +47,8 @@ export interface EditDoc {
   taps?: EditTap[];
   /** Tap style preset id (tapPresets.generated.ts); absent = the default preset. */
   tapStyle?: string;
+  /** Tap size multiplier on the default dot size; absent = 1. */
+  tapSize?: number;
 }
 
 export interface EditTarget {

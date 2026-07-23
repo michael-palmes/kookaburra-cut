@@ -75,6 +75,9 @@ pub struct EditDoc {
     /// Tap style preset id; absent = the default (first) preset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_style: Option<String>,
+    /// Tap size multiplier on the default dot size; absent = 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_size: Option<f64>,
 }
 
 /// Which edit the editor window should open; stored in managed state and read by the editor on boot (`get_editor_target`) rather than smuggled through a URL query.
@@ -254,6 +257,7 @@ async fn create_default_doc(
         }],
         taps: Vec::new(),
         tap_style: None,
+        tap_size: None,
     })
 }
 
@@ -519,8 +523,10 @@ fn build_render_args(
     };
     let mut out_label = "outv".to_string();
     if !windows.is_empty() {
-        let dot_px =
-            ((w.min(h) as f64) * TAP_DOT_SIZE_FRACTION * TAP_DOT_CANVAS_HEADROOM).round() as u32;
+        let tap_size = doc.tap_size.unwrap_or(1.0).clamp(0.25, 4.0);
+        let dot_px = ((w.min(h) as f64) * TAP_DOT_SIZE_FRACTION * TAP_DOT_CANVAS_HEADROOM
+            * tap_size)
+            .round() as u32;
         for (i, (tap, clip, start_ms, end_ms)) in windows.iter().enumerate() {
             let source = doc
                 .sources
@@ -760,6 +766,7 @@ mod tests {
             }],
             taps: Vec::new(),
             tap_style: None,
+            tap_size: None,
         }
     }
 
@@ -883,6 +890,23 @@ mod tests {
         let (args, _) =
             build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
         assert!(args.contains(&"/cache/tapdot/glow-light/tapdot_%02d.png".to_string()));
+    }
+
+    #[test]
+    fn tap_size_scales_the_overlay() {
+        let mut d = doc();
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s1".into(),
+            source_ms: 500,
+            pos: [0.5, 0.5],
+        });
+        d.tap_size = Some(2.0);
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        // 174 = round(1080 * 0.07 * 1.15 * 2)
+        assert!(filter.contains("scale=174:174"));
     }
 
     #[test]

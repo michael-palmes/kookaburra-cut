@@ -52,6 +52,24 @@ const PRESETS = [
     ],
   },
   {
+    id: "glow-red",
+    label: "Soft glow, red",
+    stops: [
+      [0, 255, 59, 48, 0.95],
+      [0.45, 255, 59, 48, 0.6],
+      [0.7, 255, 59, 48, 0],
+    ],
+  },
+  {
+    id: "glow-terracotta",
+    label: "Soft glow, terracotta",
+    stops: [
+      [0, 226, 114, 91, 0.95],
+      [0.45, 226, 114, 91, 0.6],
+      [0.7, 226, 114, 91, 0],
+    ],
+  },
+  {
     id: "ring-light",
     label: "Ring, light",
     stops: [

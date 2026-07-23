@@ -27,6 +27,18 @@ export const TAP_PRESETS: TapPreset[] = [
       "radial-gradient(circle closest-side, rgba(64, 156, 255, 0.95) 0%, rgba(64, 156, 255, 0.6) 45%, rgba(64, 156, 255, 0) 70%)",
   },
   {
+    id: "glow-red",
+    label: "Soft glow, red",
+    gradient:
+      "radial-gradient(circle closest-side, rgba(255, 59, 48, 0.95) 0%, rgba(255, 59, 48, 0.6) 45%, rgba(255, 59, 48, 0) 70%)",
+  },
+  {
+    id: "glow-terracotta",
+    label: "Soft glow, terracotta",
+    gradient:
+      "radial-gradient(circle closest-side, rgba(226, 114, 91, 0.95) 0%, rgba(226, 114, 91, 0.6) 45%, rgba(226, 114, 91, 0) 70%)",
+  },
+  {
     id: "ring-light",
     label: "Ring, light",
     gradient:

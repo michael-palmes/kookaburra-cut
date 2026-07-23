@@ -2207,16 +2207,32 @@ body {
 }
 
 .tap-settings-chevron {
-  font-size: 8px;
-  color: var(--text-tertiary);
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .tap-swatch {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 1px solid var(--border-default);
   flex: none;
+}
+
+.tap-settings-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+}
+
+.tap-settings-size-label {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+}
+
+.tap-settings-size input[type="range"] {
+  width: 64px;
 }
 
 .tap-settings-menu {

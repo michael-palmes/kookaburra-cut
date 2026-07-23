@@ -43,6 +43,8 @@ export interface PreviewProps {
   onTapMarkerScope: (scope: "near" | "all") => void;
   tapStyle: string; // preset id (tapPresets.generated.ts)
   onTapStyle: (id: string) => void;
+  tapSize: number; // multiplier on the default dot size
+  onTapSize: (size: number) => void;
 }
 
 /** The floating tap-settings overlay (camera-pill styling): marker scope + style preset dropdown with live swatches. */
@@ -51,11 +53,15 @@ function TapSettings({
   onScope,
   styleId,
   onStyle,
+  size,
+  onSize,
 }: {
   scope: "near" | "all";
   onScope: (scope: "near" | "all") => void;
   styleId: string;
   onStyle: (id: string) => void;
+  size: number;
+  onSize: (size: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -69,9 +75,12 @@ function TapSettings({
     return () => window.removeEventListener("pointerdown", onDown, true);
   }, [open]);
   const current = TAP_PRESETS.find((p) => p.id === styleId) ?? TAP_PRESETS[0];
-  // The swatch backdrop splits light/dark so every preset's visibility is previewable.
+  // The swatch backdrop splits light/dark so every preset's visibility is previewable; the dot layer draws at 82% so its silhouette never touches the chip's edge.
   const swatch = (gradient: string): CSSProperties => ({
     backgroundImage: `${gradient}, linear-gradient(105deg, #f2f2f2 50%, #20262b 50%)`,
+    backgroundSize: "82% 82%, 100% 100%",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
   });
   return (
     <div className="tap-settings" ref={ref}>
@@ -129,6 +138,17 @@ function TapSettings({
           </div>
         )}
       </div>
+      <label className="tap-settings-size" title={`Tap size (${Math.round(size * 100)}%)`}>
+        <span className="tap-settings-size-label">Size</span>
+        <input
+          type="range"
+          min={0.5}
+          max={3}
+          step={0.05}
+          value={size}
+          onChange={(e) => onSize(Number(e.currentTarget.value))}
+        />
+      </label>
     </div>
   );
 }
@@ -173,6 +193,8 @@ export function Preview({
   onTapMarkerScope,
   tapStyle,
   onTapStyle,
+  tapSize,
+  onTapSize,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
@@ -345,7 +367,7 @@ export function Preview({
   const dotStyle = (pos: [number, number], opacity: number, scale: number): CSSProperties => ({
     left: `${pos[0] * 100}%`,
     top: `${pos[1] * 100}%`,
-    width: `${TAP_DOT_SIZE_FRACTION * 100}cqmin`,
+    width: `${TAP_DOT_SIZE_FRACTION * 100 * tapSize}cqmin`,
     opacity,
     transform: `translate(-50%, -50%) scale(${scale})`,
     backgroundImage: preset.gradient,
@@ -473,6 +495,8 @@ export function Preview({
           onScope={onTapMarkerScope}
           styleId={preset.id}
           onStyle={onTapStyle}
+          size={tapSize}
+          onSize={onTapSize}
         />
       )}
       {clips.length === 0 && <p className="muted">No clips to preview.</p>}

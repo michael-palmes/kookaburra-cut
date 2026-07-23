@@ -383,6 +383,14 @@ export function EditorApp() {
     [doc, target, commitDoc],
   );
 
+  const handleTapSize = useCallback(
+    (size: number) => {
+      if (!doc || !target) return;
+      commitDoc({ ...doc, tapSize: size });
+    },
+    [doc, target, commitDoc],
+  );
+
   const firstSource = doc?.sources[0] ?? null;
   const selectedClip = doc?.clips.find((c) => c.id === selectedId) ?? null;
   const totalMs = doc ? timelineDurationMs(doc.clips) : 0;
@@ -561,6 +569,8 @@ export function EditorApp() {
               onTapMarkerScope={setTapMarkerScope}
               tapStyle={doc.tapStyle ?? DEFAULT_TAP_PRESET_ID}
               onTapStyle={handleTapStyle}
+              tapSize={doc.tapSize ?? 1}
+              onTapSize={handleTapSize}
             />
           )}
         </main>
