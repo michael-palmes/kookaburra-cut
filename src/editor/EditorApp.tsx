@@ -1,7 +1,7 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type EditClip,
   type EditDoc,
@@ -37,10 +37,16 @@ import { formatMediaDuration, type MediaMeta, mediaMeta } from "../engine/media"
 import { revealApp } from "../engine/reveal";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
+import { useEscapeClose } from "../ui/useEscapeClose";
 import { Preview, type TrimScrub } from "./Preview";
 import { Timeline } from "./Timeline";
-import { TAP_ANIMATION_DURATION_MS } from "./tapAnimation";
-import { DEFAULT_TAP_COLOR_ID, DEFAULT_TAP_STYLE_ID } from "./tapStyles.generated";
+import { TAP_ANIMATION_DURATION_MS, tapGradient } from "./tapAnimation";
+import {
+  DEFAULT_TAP_COLOR_ID,
+  DEFAULT_TAP_STYLE_ID,
+  TAP_COLORS,
+  TAP_STYLES,
+} from "./tapStyles.generated";
 
 /** The non-destructive video editor window: magnetic timeline (trim/split/reorder/speed/zoom, filmstrips), playhead-driven preview with spacebar transport and trim-edge live preview, debounced autosave with warn-on-close and corrupt-doc recovery, multi-clip assembly. Renders close the window on success. */
 
@@ -52,6 +58,130 @@ type RenderState =
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
 const AUTOSAVE_DEBOUNCE_MS = 400;
 const WHEEL_PX_PER_FRAME = 4; // horizontal-scroll scrub sensitivity
+
+/** The tap-settings strip under the topbar: marker scope, style dropdown with live swatches, colour dots and size, centred full-width. */
+function TapSettingsBar({
+  scope,
+  onScope,
+  styleId,
+  onStyle,
+  colorId,
+  onColor,
+  size,
+  onSize,
+}: {
+  scope: "near" | "all";
+  onScope: (scope: "near" | "all") => void;
+  styleId: string;
+  onStyle: (id: string) => void;
+  colorId: string;
+  onColor: (id: string) => void;
+  size: number;
+  onSize: (size: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEscapeClose(() => setOpen(false), open);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [open]);
+  const style = TAP_STYLES.find((s) => s.id === styleId) ?? TAP_STYLES[0];
+  const color = TAP_COLORS.find((c) => c.id === colorId) ?? TAP_COLORS[0];
+  // The swatch backdrop splits light/dark so every style's visibility is previewable; the dot layer draws at 82% so its silhouette never touches the chip's edge.
+  const swatch = (gradient: string): CSSProperties => ({
+    backgroundImage: `${gradient}, linear-gradient(105deg, #f2f2f2 50%, #20262b 50%)`,
+    backgroundSize: "82% 82%, 100% 100%",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+  });
+  return (
+    <div className="tap-settings" ref={ref}>
+      <div className="tap-settings-scope">
+        <button
+          type="button"
+          className={`tap-settings-seg${scope === "near" ? " selected" : ""}`}
+          aria-pressed={scope === "near"}
+          onClick={() => onScope("near")}
+          title="Show tap markers near the playhead only"
+        >
+          Near
+        </button>
+        <button
+          type="button"
+          className={`tap-settings-seg${scope === "all" ? " selected" : ""}`}
+          aria-pressed={scope === "all"}
+          onClick={() => onScope("all")}
+          title="Show every tap marker on this source"
+        >
+          All
+        </button>
+      </div>
+      <div className="tap-settings-style">
+        <button
+          type="button"
+          className="tap-settings-style-btn"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          title="Tap highlight style (applies to the whole edit)"
+        >
+          <span className="tap-swatch" style={swatch(tapGradient(style, color))} />
+          <span className="tap-settings-style-label">{style.label}</span>
+          <span className="tap-settings-chevron" aria-hidden>
+            ▾
+          </span>
+        </button>
+        {open && (
+          <div className="tap-settings-menu">
+            {TAP_STYLES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                className={`tap-settings-option${s.id === style.id ? " selected" : ""}`}
+                aria-pressed={s.id === style.id}
+                onClick={() => {
+                  onStyle(s.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="tap-swatch" style={swatch(tapGradient(s, color))} />
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="tap-settings-colors">
+        {TAP_COLORS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            className={`tap-settings-color${c.id === color.id ? " selected" : ""}`}
+            aria-pressed={c.id === color.id}
+            title={c.label}
+            style={{ background: `rgb(${c.rgb.join(", ")})` }}
+            onClick={() => onColor(c.id)}
+          />
+        ))}
+      </div>
+      <label className="tap-settings-size" title={`Tap size (${Math.round(size * 100)}%)`}>
+        <span className="tap-settings-size-label">Size</span>
+        <input
+          type="range"
+          min={0.5}
+          max={3}
+          step={0.05}
+          value={size}
+          onChange={(e) => onSize(Number(e.currentTarget.value))}
+        />
+      </label>
+    </div>
+  );
+}
 
 export function EditorApp() {
   // Fade the UI in on first commit (anti-flash reveal).
@@ -545,50 +675,62 @@ export function EditorApp() {
           )}
         </aside>
         <main className="editor-stage" ref={stageRef}>
-          {error ? (
-            <div className="stage-error" role="alert">
-              <h2>This edit can’t open right now</h2>
-              <pre>{error}</pre>
-              {target?.sourceRel ? (
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleReset}
-                  title="Keeps the broken document beside it as a .json.bak backup"
-                >
-                  Discard and start over
-                </button>
-              ) : null}
+          {doc && ((doc.taps?.length ?? 0) > 0 || armedTap) && (
+            <div className="editor-tap-bar">
+              <TapSettingsBar
+                scope={tapMarkerScope}
+                onScope={setTapMarkerScope}
+                styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                onStyle={handleTapStyle}
+                colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                onColor={handleTapColor}
+                size={doc.tapSize ?? 1}
+                onSize={handleTapSize}
+              />
             </div>
-          ) : !doc || !firstSource ? (
-            <p className="muted">Loading edit…</p>
-          ) : (
-            <Preview
-              clips={doc.clips}
-              sources={doc.sources}
-              basePath={target?.path ?? ""}
-              playheadMs={playheadMs}
-              playing={playing}
-              trimScrub={trimScrub}
-              onPlayhead={setPlayheadMs}
-              onStop={stopPlaying}
-              armedTap={armedTap}
-              canPlaceTap={canTap}
-              taps={doc.taps ?? []}
-              tapWindowList={tapWindowList}
-              onPlaceTap={handlePlaceTap}
-              onCommitTap={handleCommitTap}
-              onTapContextMenu={handleTapContextMenu}
-              tapMarkerScope={tapMarkerScope}
-              onTapMarkerScope={setTapMarkerScope}
-              tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-              onTapStyle={handleTapStyle}
-              tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-              onTapColor={handleTapColor}
-              tapSize={doc.tapSize ?? 1}
-              onTapSize={handleTapSize}
-            />
           )}
+          <div className="editor-preview-area">
+            {error ? (
+              <div className="stage-error" role="alert">
+                <h2>This edit can’t open right now</h2>
+                <pre>{error}</pre>
+                {target?.sourceRel ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={handleReset}
+                    title="Keeps the broken document beside it as a .json.bak backup"
+                  >
+                    Discard and start over
+                  </button>
+                ) : null}
+              </div>
+            ) : !doc || !firstSource ? (
+              <p className="muted">Loading edit…</p>
+            ) : (
+              <Preview
+                clips={doc.clips}
+                sources={doc.sources}
+                basePath={target?.path ?? ""}
+                playheadMs={playheadMs}
+                playing={playing}
+                trimScrub={trimScrub}
+                onPlayhead={setPlayheadMs}
+                onStop={stopPlaying}
+                armedTap={armedTap}
+                canPlaceTap={canTap}
+                taps={doc.taps ?? []}
+                tapWindowList={tapWindowList}
+                onPlaceTap={handlePlaceTap}
+                onCommitTap={handleCommitTap}
+                onTapContextMenu={handleTapContextMenu}
+                tapMarkerScope={tapMarkerScope}
+                tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                tapSize={doc.tapSize ?? 1}
+              />
+            )}
+          </div>
         </main>
       </div>
 
