@@ -1026,12 +1026,21 @@ bundled rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale | `0e64593d…` | — |
+| `showcase-tour` (rolling gate) | `97af238c…` (pre-trim; re-record pending, see below) | stale | stale | stale | `0e64593d…` | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 
+> **2026-07-25 (gate speedup, baseline re-record PENDING):** showcase-tour's
+> scene durations were trimmed for gate speed (14.2 s → 8.2 s timeline, 492
+> frames/pass; scene 05's camera end key 2700 → 2200 ms) and `pnpm gate` became
+> one comma-list boot. The trimmed 16:9 baseline could NOT be recorded that
+> night: every verify attempt died at WebKit's 4 GB WebContent footprint
+> ceiling (see "What breaks it"). `97af238c…` remains the last recorded
+> pre-trim hash; record the new hash (with a frame eyeball) on the first
+> passing Verify ×2 and replace this note.
+>
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,
 > editor tap/space/progress fixes, template cleanup, device subtitles, the
