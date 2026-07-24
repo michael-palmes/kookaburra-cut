@@ -23,6 +23,7 @@ import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import {
   clipExtractionCount,
+  clipExtractionProgress,
   evictAllClips,
   invalidateChangedClips,
   setHardwareVideo,
@@ -214,6 +215,7 @@ export default function App() {
 
   const currentMs = useClockStore((s) => s.currentMs);
   const clipsExtracting = useSyncExternalStore(subscribeClipExtraction, clipExtractionCount);
+  const extractionProgress = useSyncExternalStore(subscribeClipExtraction, clipExtractionProgress);
   const durationMs = useClockStore((s) => s.durationMs);
   const setCurrentMs = useClockStore((s) => s.setCurrentMs);
   const theme = useEditorStore((s) => s.theme);
@@ -1805,9 +1807,19 @@ export default function App() {
                 </button>
               )}
 
-              {/* A freshly added video extracts its CFR frame sequence before the device screen can show it; say so instead of leaving the screen silently black. */}
+              {/* A freshly added video extracts its CFR frame sequence before the device screen can show it; say so instead of leaving the screen silently black, with a determinate bar once ffmpeg reports frames. */}
               {!isAutoRun && !exporting && clipsExtracting > 0 && (
-                <div className="stage-busy-chip">Preparing video…</div>
+                <div className="stage-busy-chip">
+                  Preparing video…
+                  {extractionProgress !== null && (
+                    <span className="stage-busy-progress">
+                      <span
+                        className="stage-busy-progress-bar"
+                        style={{ width: `${Math.round(extractionProgress * 100)}%` }}
+                      />
+                    </span>
+                  )}
+                </div>
               )}
               {isAutoRun && <div className="stage-busy-chip">Automated run — hands off</div>}
 

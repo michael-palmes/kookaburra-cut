@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { useContext, useEffect, useState, useSyncExternalStore } from "react";
 import { LinearFilter, type Object3D, type Scene, SRGBColorSpace, Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
@@ -78,12 +78,15 @@ export function setClipLane(lane: ClipLane): void {
 // A freshly added video's first extraction takes a while and the device screen stays black meanwhile, so the stage shows an honest "Preparing video" chip driven by this counter; UI-only plumbing, no clock reads or render-path change.
 let extracting = 0;
 const extractionListeners = new Set<() => void>();
-function bumpExtracting(delta: number) {
-  extracting += delta;
-  // Deferred notify: registerClip is legal during React render, and a synchronous store notification there would set state mid-render of another component.
+// Deferred notify: registerClip is legal during React render, and a synchronous store notification there would set state mid-render of another component.
+function notifyExtraction() {
   queueMicrotask(() => {
     for (const listener of extractionListeners) listener();
   });
+}
+function bumpExtracting(delta: number) {
+  extracting += delta;
+  notifyExtraction();
 }
 /** Subscribe to extraction-count changes (useSyncExternalStore shape). */
 export function subscribeClipExtraction(listener: () => void): () => void {
@@ -94,14 +97,45 @@ export function clipExtractionCount(): number {
   return extracting;
 }
 
+/** Per-extraction ffmpeg progress (frames written vs the probe-estimated total), keyed like the registry. */
+interface ExtractProgress {
+  frame: number;
+  total: number;
+}
+const extractionProgress = new Map<string, ExtractProgress>();
+
+/** Aggregate 0..1 progress across in-flight extractions, or null before any has reported (the chip falls back to indeterminate). */
+export function clipExtractionProgress(): number | null {
+  if (extractionProgress.size === 0) return null;
+  let frames = 0;
+  let total = 0;
+  for (const p of extractionProgress.values()) {
+    frames += p.frame;
+    total += p.total;
+  }
+  return total > 0 ? Math.min(1, frames / total) : null;
+}
+
 async function extract(srcAbs: string, lane: ClipLane): Promise<{ info: ClipInfo; sha: string }> {
   const sha = await invoke<string>("hash_file", { path: srcAbs });
-  const info = await invoke<ClipInfo>("extract_clip_frames", {
-    srcAbs,
-    sha,
-    hardware: lane === "hw",
-  });
-  return { info, sha };
+  const key = `${lane}:${srcAbs}`;
+  const onProgress = new Channel<ExtractProgress>();
+  onProgress.onmessage = (p) => {
+    extractionProgress.set(key, p);
+    notifyExtraction();
+  };
+  try {
+    const info = await invoke<ClipInfo>("extract_clip_frames", {
+      srcAbs,
+      sha,
+      hardware: lane === "hw",
+      onProgress,
+    });
+    return { info, sha };
+  } finally {
+    extractionProgress.delete(key);
+    notifyExtraction();
+  }
 }
 
 /** Registers a clip for on-demand extraction in the active lane (idempotent); kicks off the sidecar extraction once per unique source+lane and memoizes the result. Safe to call during render, it does no work when the entry already exists. */

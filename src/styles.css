@@ -665,6 +665,9 @@ body {
   top: var(--space-3);
   left: 50%;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 2px var(--space-3);
   font-size: var(--text-2xs);
   color: var(--text-secondary);
@@ -673,6 +676,21 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   transform: translateX(-50%);
+}
+
+/* Determinate extraction progress inside the chip (ffmpeg frame counts vs the probe estimate). */
+.stage-busy-progress {
+  width: 72px;
+  height: 3px;
+  overflow: hidden;
+  background: var(--surface-recessed);
+  border-radius: var(--radius-full);
+}
+.stage-busy-progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-fast) linear;
 }
 
 .media-grid {

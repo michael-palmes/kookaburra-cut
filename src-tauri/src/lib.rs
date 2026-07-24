@@ -638,6 +638,14 @@ async fn save_screenshot(
     Ok(pending.out.to_string_lossy().into_owned())
 }
 
+/// Determinate extraction progress for the "Preparing video…" chip, streamed over an ipc `Channel` (frames written vs a probe-estimated total); pure observability, the extraction args and output bytes are untouched.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtractProgress {
+    frame: u32,
+    total: u32,
+}
+
 /// Pre-extracts a source video to a deterministic constant-frame-rate PNG sequence for `VideoClip`; frames are cached under `$APPDATA/cache/clips/<sha>-<fps>fps/` keyed by the source-file hash and reused across runs (a `.done` marker guards against a partial extraction being mistaken for a complete one); the sidecar decodes the source, including variable-frame-rate screen recordings, into CFR frames via `fps=` + cfr.
 #[tauri::command]
 async fn extract_clip_frames(
@@ -648,6 +656,7 @@ async fn extract_clip_frames(
     _sha: String,
     // VideoToolbox decode is NOT pixel-identical to software, so each lane owns its own cache dir; the software dir is the one standing baselines were recorded from.
     hardware: bool,
+    on_progress: Channel<ExtractProgress>,
 ) -> Result<ClipInfo, String> {
     // The Settings toggle can force everything onto the software lane.
     let hardware = hardware && workspace::hardware_video_enabled(&app);
@@ -673,11 +682,17 @@ async fn extract_clip_frames(
         }
     }
 
+    // Estimate the output frame count for the progress channel (best-effort; 0-duration probes just skip reporting).
+    let total = match media::probe_media(&app, &src_path).await {
+        Ok(probe) => ((probe.duration_ms as f64 / 1000.0) * f64::from(CLIP_FPS)).ceil() as u32,
+        Err(_) => 0,
+    };
+
     // Re-extract from scratch (clears any partial remnants).
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let pattern = dir.join("frame-%05d.png");
-    let mut args: Vec<String> = vec!["-y".into()];
+    let mut args: Vec<String> = vec!["-y".into(), "-progress".into(), "pipe:1".into()];
     if hardware {
         args.extend(["-hwaccel".into(), "videotoolbox".into()]);
     }
@@ -714,8 +729,24 @@ async fn extract_clip_frames(
     // No stdin to feed, but the event channel (buffer 1) must still be drained.
     let mut code: Option<i32> = None;
     let mut last_error: Option<String> = None;
+    let mut buffer = String::new();
     while let Some(event) = rx.recv().await {
         match event {
+            CommandEvent::Stdout(bytes) => {
+                // ffmpeg `-progress pipe:1` emits `key=value` lines; pull `frame=N`.
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(nl) = buffer.find('\n') {
+                    let line: String = buffer.drain(..=nl).collect();
+                    if let Some(v) = line.trim().strip_prefix("frame=") {
+                        if let (Ok(frame), true) = (v.trim().parse::<u32>(), total > 0) {
+                            let _ = on_progress.send(ExtractProgress {
+                                frame: frame.min(total),
+                                total,
+                            });
+                        }
+                    }
+                }
+            }
             CommandEvent::Terminated(payload) => {
                 code = payload.code;
                 break;
