@@ -158,6 +158,9 @@ export function ScenesDrillIn({
   const openMenu = (e: React.MouseEvent, scene: SceneManagerRow) => {
     if (busy) return;
     e.preventDefault();
+    // Right-clicking inside a multi-selection turns Duplicate into the footer button's bulk action.
+    const bulk =
+      selected.has(scene.index) && selected.size > 1 ? [...selected].sort((a, b) => a - b) : null;
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -165,8 +168,17 @@ export function ScenesDrillIn({
         canRename: scene.hasDoc,
         lastScene: scenes.length <= 1,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
+        duplicateCount: bulk?.length,
         onRename: () => startRename(scene),
-        onDuplicate: () => onDuplicateDialog(scene.index),
+        onDuplicate: () => {
+          if (!bulk) {
+            onDuplicateDialog(scene.index);
+            return;
+          }
+          setSelected(new Set());
+          setAnchor(null);
+          onDuplicate(bulk);
+        },
         onDuration: () =>
           setTiming({ index: scene.index, text: (scene.durationMs / 1000).toFixed(2) }),
         onCopyBackground: () => onCopyBackground(scene.index),

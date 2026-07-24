@@ -307,6 +307,7 @@ export function TransitionModal({
   thumbs,
   onCancel,
   onApply,
+  onApplyAll,
   embedded = false,
 }: {
   project: LoadedProject;
@@ -317,6 +318,8 @@ export function TransitionModal({
   onCancel: () => void;
   /** Persists the spec (null = remove) and refreshes timing; the modal awaits it. */
   onApply: (spec: TransitionSpec | null) => Promise<void>;
+  /** Present on multi-boundary projects: persists the draft onto EVERY boundary (two-click confirm). */
+  onApplyAll?: (spec: TransitionSpec | null) => Promise<void>;
   /** Render without the modal chrome; the inspector drill-in hosts the same body (decision 8) with a compact stacked layout. */
   embedded?: boolean;
 }) {
@@ -360,6 +363,24 @@ export function TransitionModal({
     setError(null);
     try {
       await onApply(draft);
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  };
+
+  const [confirmAll, setConfirmAll] = useState(false);
+  const applyAll = async () => {
+    if (!onApplyAll) return;
+    if (!confirmAll) {
+      setConfirmAll(true);
+      return;
+    }
+    setConfirmAll(false);
+    setBusy(true);
+    setError(null);
+    try {
+      await onApplyAll(draft);
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -533,6 +554,11 @@ export function TransitionModal({
       <button type="button" className="btn" onClick={onCancel} disabled={busy}>
         Cancel
       </button>
+      {onApplyAll && (
+        <button type="button" className="btn" onClick={applyAll} disabled={busy}>
+          {confirmAll ? `Set all ${project.slots.length - 1} transitions?` : "Apply to all"}
+        </button>
+      )}
       <button type="button" className="btn primary" onClick={apply} disabled={busy}>
         {busy ? "Applying…" : "Apply"}
       </button>
