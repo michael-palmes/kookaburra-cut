@@ -1199,6 +1199,7 @@ export function SceneTab({
   onEditThemeInClaude,
   onThemeEdited,
   themesRefreshKey,
+  mediaRefreshKey,
   onDeleteScene,
 }: {
   project: LoadedProject;
@@ -1216,6 +1217,8 @@ export function SceneTab({
   onEditThemeInClaude: (choice: { id: string; name: string }) => void;
   onThemeEdited: (wsId: string, json: string) => Promise<void>;
   themesRefreshKey: number;
+  /** Bumped by the main window's media-changed listener so pickers surface fresh renders. */
+  mediaRefreshKey: number;
   /** Trash-recoverable scene removal (the bottom Delete row; Rust guards the last scene). */
   onDeleteScene: (sceneIndex: number) => void;
 }) {
@@ -1600,7 +1603,7 @@ export function SceneTab({
             kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
             kindToggle={mediaTarget.kind === "device"}
             globalToggle
-            refreshKey={mediaRefresh}
+            refreshKey={mediaRefreshKey + mediaRefresh}
             onPick={pickMediaModal}
             cardMenu={mediaCardMenu({
               slug,
@@ -2142,7 +2145,7 @@ export function SceneTab({
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={["video"]}
               globalToggle
-              refreshKey={mediaRefresh}
+              refreshKey={mediaRefreshKey + mediaRefresh}
               selectedRel={vw?.media.src ?? null}
               onPick={pickVideoWindowMedia}
               cardMenu={mediaCardMenu({
@@ -2256,7 +2259,7 @@ export function SceneTab({
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["image"]}
                   globalToggle
-                  refreshKey={mediaRefresh}
+                  refreshKey={mediaRefreshKey + mediaRefresh}
                   selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
                   onPick={(rel, meta) => {
                     if (meta && meta.kind !== "image") return;
@@ -2365,17 +2368,17 @@ export function SceneTab({
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["video"]}
                   globalToggle
-                  refreshKey={mediaRefresh}
+                  refreshKey={mediaRefreshKey + mediaRefresh}
                   onPick={(rel, meta) => {
                     if (meta && meta.kind !== "video") return;
-                    createFrom(rel);
+                    createFrom(rel, meta);
                   }}
                   cardMenu={mediaCardMenu({
                     slug,
                     primaryLabel: "Select",
                     onPrimary: (rel, meta) => {
                       if (meta && meta.kind !== "video") return;
-                      createFrom(rel);
+                      createFrom(rel, meta);
                     },
                     onChanged: () => setMediaRefresh((n) => n + 1),
                     onError: setError,
@@ -2664,7 +2667,7 @@ export function SceneTab({
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={[kind]}
               globalToggle
-              refreshKey={mediaRefresh}
+              refreshKey={mediaRefreshKey + mediaRefresh}
               selectedRel={selectedSrc}
               onPick={selectBg}
               cardMenu={mediaCardMenu({

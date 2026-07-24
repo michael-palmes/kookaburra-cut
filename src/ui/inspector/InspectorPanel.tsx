@@ -550,6 +550,7 @@ export function InspectorPanel({
           onEditThemeInClaude={onEditThemeInClaude}
           onThemeEdited={onThemeEdited}
           themesRefreshKey={themesRefreshKey}
+          mediaRefreshKey={mediaRefreshKey}
           onDeleteScene={onDeleteScene}
         />
       )}
