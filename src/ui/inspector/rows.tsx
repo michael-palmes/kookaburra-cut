@@ -4,7 +4,7 @@ import { type ReactNode, type RefObject, useEffect, useRef, useState } from "rea
 
 const DRAG_THRESHOLD_PX = 4;
 
-/** Horizontal drag-to-scrub gesture over a numeric input: a plain click still focuses for typing; a >4px drag scrubs (value tracks live, `onInput` previews each tick, one `onCommit` on release), Shift drags at 0.1x, clamped to min/max/step. The caller owns the input and its text state; `onText` pushes the formatted value there during a drag. Shared by NumberField and DurationRow. */
+/** Horizontal drag-to-scrub gesture over a numeric input: a plain click still focuses for typing; a >4px drag scrubs even while the input is focused (value tracks live, `onInput` previews each tick, one `onCommit` on release), Shift drags at 0.1x, clamped to min/max/step. The caller owns the input and its text state; `onText` pushes the formatted value there during a drag. Shared by NumberField and DurationRow. */
 export function useDragScrub({
   value,
   decimals,
@@ -37,7 +37,7 @@ export function useDragScrub({
   };
   const changed = (v: number) => Math.abs(v - value) > 10 ** -decimals / 2;
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || document.activeElement === inputRef.current) return;
+    if (e.button !== 0) return;
     const startX = e.clientX;
     const startValue = value;
     let moved = false;
@@ -52,6 +52,7 @@ export function useDragScrub({
         moved = true;
         setDragging(true);
         inputRef.current?.blur();
+        window.getSelection()?.removeAllRanges();
       }
       ev.preventDefault();
       const v = at(ev);

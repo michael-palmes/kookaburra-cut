@@ -5448,7 +5448,7 @@ img.inspector-scene-thumb {
   text-align: center;
 }
 
-/* Drag-to-scrub affordance: ew-resize on hover, back to a caret once focused for typing. */
+/* Drag-to-scrub affordance: ew-resize on hover, a caret once focused for typing (dragging still scrubs). */
 .inspector-num-drag {
   cursor: ew-resize;
 }
