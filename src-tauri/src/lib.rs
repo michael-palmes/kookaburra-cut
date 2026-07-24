@@ -1194,6 +1194,8 @@ mod tests {
         assert!(workspace::validate_slug("9x16").is_ok());
         assert!(workspace::validate_slug("1x1").is_ok());
         assert!(workspace::validate_slug("4x5").is_ok());
+        assert!(workspace::validate_slug("3x2").is_ok());
+        assert!(workspace::validate_slug("2x3").is_ok());
     }
 
     #[test]

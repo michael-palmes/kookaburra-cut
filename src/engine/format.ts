@@ -4,7 +4,7 @@ import { useEditorStore } from "../store/editorStore";
 import type { FormatInfo } from "../toolkit/types";
 import { FormatContext } from "./sceneContext";
 
-export type AspectName = "16:9" | "9:16" | "1:1" | "4:5";
+export type AspectName = "16:9" | "9:16" | "1:1" | "4:5" | "3:2" | "2:3";
 
 /** Canonical export/preview frame rate: export steps the clock at `tMs = frame * 1000 / FPS` and embedded `VideoClip`s pre-extract to a matching CFR sequence, so one frame index maps 1:1 to one source frame. Changing it re-baselines determinism, re-run Verify ×2. */
 export const FPS = 60;
@@ -28,9 +28,12 @@ export const FORMATS: Record<AspectName, FormatSpec> = {
   "1:1": { name: "1:1", width: 2160, height: 2160 },
   // Portrait social format, first-class (2026 marketing set).
   "4:5": { name: "4:5", width: 2160, height: 2700 },
+  // Photographic pair (2026-07), 2160 short edge like everything above; feature-scoped baselines.
+  "3:2": { name: "3:2", width: 3240, height: 2160 },
+  "2:3": { name: "2:3", width: 2160, height: 3240 },
 };
 
-/** The standing determinism matrix: Verify's "all" and phase-close gates stay these three; 4:5 baselines are feature-scoped (launch + tour anchors). */
+/** The standing determinism matrix: Verify's "all" and phase-close gates stay these three; 4:5 / 3:2 / 2:3 baselines are feature-scoped (launch + tour anchors). */
 export const STANDING_ASPECTS: AspectName[] = ["16:9", "9:16", "1:1"];
 
 /** Safe-area inset as a fraction of the smaller (world) dimension. */

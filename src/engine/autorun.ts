@@ -101,12 +101,12 @@ interface AutoRunReport {
 
 function parseAspects(raw: string | undefined): FormatSpec[] {
   const value = (raw ?? "all").trim();
-  // "all" = the STANDING matrix (16:9, 9:16, 1:1); 4:5 is first-class but its gates stay feature-scoped, so it must be requested explicitly.
+  // "all" = the STANDING matrix (16:9, 9:16, 1:1); 4:5 / 3:2 / 2:3 are first-class but their gates stay feature-scoped, so they must be requested explicitly.
   if (value === "" || value === "all") return STANDING_ASPECTS.map((a) => FORMATS[a]);
   const spec = FORMATS[value as AspectName];
   if (!spec) {
     throw new Error(
-      `unknown KOOKABURRA_ASPECT "${value}" (expected 16:9 | 9:16 | 1:1 | 4:5 | all)`,
+      `unknown KOOKABURRA_ASPECT "${value}" (expected 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 | all)`,
     );
   }
   return [spec];

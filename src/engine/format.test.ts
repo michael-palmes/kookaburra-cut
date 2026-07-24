@@ -21,10 +21,18 @@ describe("computeFormat", () => {
     expect(computeFormat(FORMATS["1:1"]).aspect).toBeCloseTo(1, 5);
   });
 
+  it("derives the photographic pair at a 2160 short edge", () => {
+    expect(computeFormat(FORMATS["3:2"]).aspect).toBeCloseTo(3 / 2, 5);
+    expect(FORMATS["3:2"].height).toBe(2160);
+    expect(computeFormat(FORMATS["2:3"]).aspect).toBeCloseTo(2 / 3, 5);
+    expect(FORMATS["2:3"].width).toBe(2160);
+  });
+
   it("keeps a constant visible world HEIGHT across aspects (vertical FOV)", () => {
     const h = computeFormat(FORMATS["16:9"]).frame.height;
     expect(computeFormat(FORMATS["9:16"]).frame.height).toBeCloseTo(h, 5);
     expect(computeFormat(FORMATS["1:1"]).frame.height).toBeCloseTo(h, 5);
+    expect(computeFormat(FORMATS["3:2"]).frame.height).toBeCloseTo(h, 5);
   });
 
   it("scales the visible world WIDTH with aspect", () => {

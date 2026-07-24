@@ -139,7 +139,7 @@ describe("grouping + filtering", () => {
   it("absent allowedAspects means every aspect", () => {
     const doc = structuredClone(reels());
     doc.allowedAspects = undefined;
-    expect(presetAspects(doc)).toEqual(["16:9", "9:16", "1:1", "4:5"]);
+    expect(presetAspects(doc)).toEqual(["16:9", "9:16", "1:1", "4:5", "3:2", "2:3"]);
   });
 });
 
