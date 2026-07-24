@@ -987,18 +987,20 @@ and do not need their own verifies.**
 - **Tier 0: statics (every change, free):** `pnpm vitest run` · `pnpm build` ·
   `pnpm lint`. Pure math (eases, presets, schemas, edit math) belongs in unit
   tests, not in verify runs.
-- **Tier 1: the DEFAULT gate (1–2 runs):**
-  1. ONE feature-matched project, Verify ×2, **16:9 only**: pick the project
-     whose content exercises the changed path: `showcase-tour` for
-     themes/staging/text/presets (the rolling gate project, six themes, devices,
-     video, ImageCard, camera moves and bloom in one project),
-     `ws:device-video-spike` for device/media/camera, `ws:fx-spike` for effects, a
-     hand-rolled workspace mini-project for anything narrower.
-  2. `ws:launch-2026` Verify ×2 16:9: must be EQUAL (the null-for-legacy proof).
-
-  `pnpm gate` runs exactly this pair in ONE app boot (`--project` takes a comma
-  list for verify/export), removing the second cold boot's fixed cost; per-leg
-  results carry a `project` field in `last-run.json`.
+- **Tier 1: the DEFAULT per-change gate (1 run):** ONE feature-matched
+  project, Verify ×2, **16:9 only**: pick the project whose content exercises
+  the changed path: `showcase-tour` for themes/staging/text/presets (the
+  rolling gate project, six themes, devices, video, ImageCard, camera moves
+  and bloom in one project), `ws:device-video-spike` for device/media/camera,
+  `ws:fx-spike` for effects, a hand-rolled workspace mini-project for anything
+  narrower. `pnpm gate` runs the showcase-tour leg (~2 min).
+- **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
+  merges (and at any rebase or phase close), `pnpm gate:merge` runs
+  `showcase-tour` + `ws:launch-2026` Verify ×2 in ONE app boot (`--project`
+  takes a comma list for verify/export; per-leg results carry a `project`
+  field in `last-run.json`). `ws:launch-2026` must be EQUAL: the
+  null-for-legacy proof. A legacy regression is caught per PR instead of per
+  change; it still cannot merge.
 - **Tier 2: escalate selectively:** changes at a SHARED render seam (compositor,
   exporter, SceneStage, effects chain, camera application) add the other class
   project and ONE 9:16 spot-check (aspect-dependent code is rare: it's layout,
