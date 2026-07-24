@@ -10,6 +10,7 @@ import type { EffectsConfig, EffectsOverride, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
+import { refreshWorkspaceAssets, workspaceAssetMissing } from "./assetInventory";
 import type { CameraKeyframe } from "./cameraTrack";
 import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
@@ -288,8 +289,16 @@ function resolveLutUrls<T extends EffectsConfig | EffectsOverride>(projectId: st
 /** Resolve a project-relative IMAGE asset (e.g. `"assets/screen.png"`) to a Vite-fingerprinted URL loadable inside the webview (for a WebGL texture). Unlike `resolveAssetPath` (an absolute FS path for the native side), this is a bundled asset URL that survives the `base: "./"` packaged build. Throws with an actionable message if the asset is missing. */
 export function resolveAssetUrl(projectId: string, relPath: string): string {
   const key = projectAssetKey(projectId, relPath);
-  // Workspace assets load at their asset-protocol key directly.
-  if (isWorkspaceProjectId(projectId)) return key;
+  // Workspace assets load at their asset-protocol key, gated by the inventory: a known-missing file must throw here (callers degrade to nothing) rather than reject inside the texture loader, which fails an autorun via the boot trap even when an AssetBoundary contains it.
+  if (isWorkspaceProjectId(projectId)) {
+    if (workspaceAssetMissing(projectId, relPath)) {
+      throw new Error(
+        `Image asset "${relPath}" not found in project "${projectId}". ` +
+          "Put it under the project's assets/ folder and reference it relatively.",
+      );
+    }
+    return key;
+  }
   const url = assetUrlGlob[key];
   if (!url) {
     throw new Error(
@@ -409,6 +418,7 @@ export async function loadProject(
     const slug = workspaceSlug(id);
     await ensureProjectTrusted(slug, manifest.name || slug);
     await ensureSampleAssets(slug);
+    await refreshWorkspaceAssets(id);
   }
 
   const scenes: SceneModule[] = [];

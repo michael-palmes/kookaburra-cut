@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { refreshWorkspaceAssets } from "./assetInventory";
 
 /** Media library frontend over the native module (src-tauri/src/media.rs): per-project asset listing/import and the sha-keyed poster/scrub-frame cache. */
 
@@ -18,9 +19,11 @@ export function listProjectMedia(slug: string): Promise<string[]> {
   return invoke<string[]>("list_project_media", { slug });
 }
 
-/** Copy files into the project's assets/; returns the imported relative paths. */
-export function importMedia(slug: string, paths: string[]): Promise<string[]> {
-  return invoke<string[]>("import_media", { slug, paths });
+/** Copy files into the project's assets/; returns the imported relative paths. New files join the workspace asset inventory so `resolveAssetUrl` accepts them immediately. */
+export async function importMedia(slug: string, paths: string[]): Promise<string[]> {
+  const rels = await invoke<string[]>("import_media", { slug, paths });
+  await refreshWorkspaceAssets(`ws:${slug}`);
+  return rels;
 }
 
 /** Probe + thumbnail one asset (cached by content hash; first call generates). */

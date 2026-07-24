@@ -35,6 +35,7 @@ import { ProjectIdContext, SceneDocContext } from "../../engine/sceneContext";
 import { useEditorStore } from "../../store/editorStore";
 import { useTheme } from "../../theme";
 import type { ThemeBackground } from "../../theme/tokens";
+import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
 import {
   bundledBackdropUrl,
@@ -285,7 +286,11 @@ function FixedImage({ spec }: { spec: Extract<ThemeBackground, { type: "image" }
     console.warn(`[stage] background image "${spec.src}" unresolved:`, e);
   }
   if (!url) return null;
-  return <FixedImageLoaded url={url} spec={spec} />;
+  return (
+    <AssetBoundary key={url} label={spec.src}>
+      <FixedImageLoaded url={url} spec={spec} />
+    </AssetBoundary>
+  );
 }
 
 /** Video fill: the clip frame pipeline on the fixed quad, streaming through the SHARED `useClipTexture` binding so `awaitVideoFramesReady` covers this consumer identically to VideoClip/Device; loops by default (`loop: false` holds the last frame, the VideoClip edge semantics), and while extraction is pending the group stays invisible so the scene shows its resolved underlay rather than a black pop (unreachable during export/capture). Frame textures are SHARED (never mutate them); cover-crop rides the quad's per-instance UVs like the image path. */

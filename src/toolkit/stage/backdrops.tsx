@@ -20,6 +20,7 @@ import { useEditorStore } from "../../store/editorStore";
 import { useTheme } from "../../theme";
 import { hexToOklch, mixOklch, type Oklch, oklchToBytes } from "../../theme/oklch";
 import type { GradientSpec, ThemeBackdrop, ThemeShadowSpec } from "../../theme/tokens";
+import { AssetBoundary } from "../media/AssetBoundary";
 
 /** Staging backdrops, mounted by `<SceneStage>` from the scene's resolved backdrop spec: all three surface kinds render UNLIT with `toneMapped: false` so theme hexes/gradients/images land EXACTLY (a `#ffffff` background through ACES would render grey, the device-screen precedent), and receive real shadows through a `ShadowMaterial` catcher overlay drawn just in front (polygon offset); geometry/texture constants below are EXPORT CONTRACT. See docs/determinism.md ("Staging"). */
 
@@ -321,7 +322,11 @@ function ImagePlane({
     console.warn(`[stage] image backdrop "${spec.src}" unresolved:`, e);
   }
   if (!url) return null;
-  return <ImagePlaneLoaded url={url} spec={spec} shadow={shadow} />;
+  return (
+    <AssetBoundary key={url} label={spec.src}>
+      <ImagePlaneLoaded url={url} spec={spec} shadow={shadow} />
+    </AssetBoundary>
+  );
 }
 
 /** The shared image-plane render: cover-fit + unlit material + catcher (both sources). */
