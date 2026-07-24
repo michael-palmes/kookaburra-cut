@@ -11,7 +11,7 @@
       "colour": "silver",
       "media": { "src": "assets/sample-phone-recording.mp4", "kind": "video", "startMs": 0 },
       "placement": { "rotationDeg": [0, 0, 0] },
-      "motion": { "preset": "turntable", "degPerSec": 12 }
+      "motion": { "preset": "none" }
     }
   ]
 }

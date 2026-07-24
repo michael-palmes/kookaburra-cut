@@ -1,7 +1,7 @@
 import type { V3 } from "../../toolkit/types";
 import { DrillBack, NumberField } from "./rows";
 
-/** Preset poses: Front on is the glb's authored identity; Editorial is the scaffolder's hero angle. */
+/** Preset poses: Front on is the glb's authored identity (every creation path's default); Editorial/Mirrored are optional hero angles. */
 const ROTATION_PRESETS: { id: string; label: string; value: V3 }[] = [
   { id: "front", label: "Front on", value: [0, 0, 0] },
   { id: "editorial", label: "Editorial", value: [3, -14, 0] },
