@@ -25,6 +25,7 @@ import {
   type Texture,
   Vector2,
   Vector3,
+  type WebGLRenderer,
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
 import { useClockStore } from "../../engine/clock";
@@ -55,6 +56,7 @@ import {
 import { SHADER_BACKGROUNDS } from "./shaders";
 import { getShaderNoiseTexture } from "./shaders/noiseTexture";
 import { shaderBackgroundVertex } from "./shaders/vertex";
+import { wrapDisplayDomainFragment } from "./shaders/wrap";
 
 /** The fixed (camera-locked, frame-filling) background, mounted for every scene by the scene host regardless of staging: its quad lives in the scene's host group like any other content but its `matrixWorld` is rewritten from the live camera in `onBeforeRender` (deterministic since camera state is a pure function of the clock), and it draws first via `renderOrder = FIXED_BG_RENDER_ORDER` with `depthTest/depthWrite: false` so every world object paints over it regardless of z; all placement/crop/parallax math is golden-pinned in `fixedMath.ts` (export contract). */
 
@@ -107,8 +109,8 @@ function FixedQuad({
   fitScale?: { x: number; y: number };
   /** Draw order among the fixed layers; the fit path stacks its video quad one above the bars quad. */
   renderOrder?: number;
-  /** Per-draw uniform writes (the shader fill's clock read); runs before the matrix rewrite. */
-  beforeRender?: () => void;
+  /** Per-draw uniform writes (the shader fill's clock read and target probe); runs before the matrix rewrite. */
+  beforeRender?: (renderer: WebGLRenderer) => void;
 }) {
   // `crop` identities are stable (a module constant or a useMemo in FixedImageMesh).
   const geometry = useMemo(() => fixedQuadGeometry(crop), [crop]);
@@ -120,8 +122,8 @@ function FixedQuad({
     const translate = new Matrix4();
     const scale = new Matrix4();
     const anchor = new Vector3();
-    return (_renderer: unknown, _scene: unknown, camera: unknown) => {
-      beforeRender?.();
+    return (renderer: unknown, _scene: unknown, camera: unknown) => {
+      beforeRender?.(renderer as WebGLRenderer);
       const mesh = meshRef.current;
       const cam = camera as PerspectiveCamera;
       if (!mesh || !cam.isPerspectiveCamera) return;
@@ -392,12 +394,13 @@ function FixedShader({ spec }: { spec: Extract<ThemeBackground, { type: "shader"
     return new ShaderMaterial({
       glslVersion: GLSL3,
       vertexShader: shaderBackgroundVertex,
-      fragmentShader: def.fragment,
+      fragmentShader: wrapDisplayDomainFragment(def.fragment),
       uniforms: {
         ...def.uniforms(colors, params),
         // The shared randomizer texture builds synchronously (DataTexture), so no export barrier is needed.
         ...(def.noise ? { u_noiseTexture: { value: getShaderNoiseTexture() } } : {}),
         u_time: { value: 0 },
+        u_linearOut: { value: 0 },
         // Pinned to the EXPORT format pixels, never the live canvas, so preview and export lay the pattern out identically.
         u_resolution: { value: new Vector2(format.width, format.height) },
         u_scale: { value: s.scale ?? 1 },
@@ -410,10 +413,17 @@ function FixedShader({ spec }: { spec: Extract<ThemeBackground, { type: "shader"
     });
   }, [def, specKey, format.width, format.height]);
   useLayoutEffect(() => () => material?.dispose(), [material]);
-  const beforeRender = useCallback(() => {
-    if (!material) return;
-    material.uniforms.u_time.value = (useClockStore.getState().currentMs / 1000) * speed;
-  }, [material, speed]);
+  const beforeRender = useCallback(
+    (renderer: WebGLRenderer) => {
+      if (!material) return;
+      material.uniforms.u_time.value = (useClockStore.getState().currentMs / 1000) * speed;
+      // Colour-managed (hardware sRGB) targets re-encode on store, so hand them linear light; the canvas keeps the raw display-domain bytes.
+      const target = renderer.getRenderTarget();
+      material.uniforms.u_linearOut.value =
+        target && target.texture.colorSpace === SRGBColorSpace ? 1 : 0;
+    },
+    [material, speed],
+  );
   if (!def) {
     console.warn(`[stage] shader background "${spec.shader}" not found — no background`);
     return null;

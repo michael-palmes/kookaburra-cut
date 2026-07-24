@@ -1,0 +1,30 @@
+{
+  "id": "transition-bg-spike",
+  "name": "Transition Backgrounds",
+  "version": 2,
+  "themeId": "kookaburra-default",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-mesh.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 700
+      }
+    },
+    {
+      "file": "scenes/02-swirl.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "dip",
+        "durationMs": 700,
+        "color": "#ffffff"
+      }
+    },
+    {
+      "file": "scenes/03-neuro.tsx",
+      "durationMs": 2000
+    }
+  ]
+}
