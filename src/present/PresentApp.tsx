@@ -18,6 +18,7 @@ import { ProjectIdContext } from "../engine/sceneContext";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
 import { DevicesFallback } from "../toolkit/device/Device";
+import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { VideoWindowFallback } from "../toolkit/media/VideoWindow";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
@@ -347,12 +348,14 @@ export function PresentApp() {
                       theme={project.sceneThemes[i]}
                       frame={project.sceneFrames[i]}
                     >
-                      <SceneBackground />
-                      <SceneComponent />
-                      <DevicesFallback />
-                      <LayeredScreenshotFallback />
-                      <VideoWindowFallback />
-                      <TextFallback />
+                      <AssetBoundary label={`scene ${i + 1}`}>
+                        <SceneBackground />
+                        <SceneComponent />
+                        <DevicesFallback />
+                        <LayeredScreenshotFallback />
+                        <VideoWindowFallback />
+                        <TextFallback />
+                      </AssetBoundary>
                     </SceneHost>
                   );
                 })}

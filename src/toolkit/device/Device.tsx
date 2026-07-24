@@ -32,6 +32,7 @@ import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
+import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
 import { useSceneStaged, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
@@ -211,7 +212,7 @@ function ScreenVideo(props: {
   return <group ref={readyRef} />;
 }
 
-/** Image media: a static texture on the screen material (the DeviceMockup path). */
+/** Image media: a static texture on the screen material (the DeviceMockup path). A missing asset degrades to an untextured screen; never tear down the canvas tree. */
 function ScreenImage(props: {
   src: string;
   material: MeshBasicMaterial;
@@ -219,8 +220,25 @@ function ScreenImage(props: {
   screenAspect: number;
   projectId: string;
 }) {
-  const { src, material, screens, screenAspect, projectId } = props;
-  const tex = useTexture(resolveAssetUrl(projectId, src));
+  const { src, projectId, ...rest } = props;
+  let url: string | null = null;
+  try {
+    url = resolveAssetUrl(projectId, src);
+  } catch (e) {
+    console.warn(`[device] screen image "${src}" unresolved:`, e);
+  }
+  if (!url) return null;
+  return <ScreenImageLoaded url={url} {...rest} />;
+}
+
+function ScreenImageLoaded(props: {
+  url: string;
+  material: MeshBasicMaterial;
+  screens: Mesh[];
+  screenAspect: number;
+}) {
+  const { url, material, screens, screenAspect } = props;
+  const tex = useTexture(url);
 
   useLayoutEffect(() => {
     // Match the loader's colour space and the glTF flipY convention (DeviceMockup precedent).
@@ -650,13 +668,15 @@ export function Device(props: DeviceProps) {
         />
       )}
       {media?.kind === "image" && (
-        <ScreenImage
-          src={media.src}
-          material={screenMaterial}
-          screens={screens}
-          screenAspect={activeSpec.screen.aspect}
-          projectId={projectId}
-        />
+        <AssetBoundary key={media.src} label={media.src}>
+          <ScreenImage
+            src={media.src}
+            material={screenMaterial}
+            screens={screens}
+            screenAspect={activeSpec.screen.aspect}
+            projectId={projectId}
+          />
+        </AssetBoundary>
       )}
     </group>
   );
