@@ -548,12 +548,17 @@ fn build_render_args(
                 .iter()
                 .find(|s| s.id == clip.source_id)
                 .ok_or_else(|| format!("tap references unknown source {}", clip.source_id))?;
-            let scale = (f64::from(w) / f64::from(source.width))
-                .min(f64::from(h) / f64::from(source.height));
-            let scaled_w = f64::from(source.width) * scale;
-            let scaled_h = f64::from(source.height) * scale;
-            let px = (f64::from(w) - scaled_w) / 2.0 + tap.pos[0].clamp(0.0, 1.0) * scaled_w;
-            let py = (f64::from(h) - scaled_h) / 2.0 + tap.pos[1].clamp(0.0, 1.0) * scaled_h;
+            // Mirror ffmpeg's integer geometry exactly: `scale=…:force_original_aspect_ratio=decrease` rounds the free dimension to the nearest integer (av_rescale) and `pad`'s (ow-iw)/2 truncates, so the overlay centre must come from those integer results, not raw floats.
+            let scaled_w = (f64::from(h) * f64::from(source.width) / f64::from(source.height))
+                .round()
+                .min(f64::from(w));
+            let scaled_h = (f64::from(w) * f64::from(source.height) / f64::from(source.width))
+                .round()
+                .min(f64::from(h));
+            let px = ((f64::from(w) - scaled_w) / 2.0).floor()
+                + tap.pos[0].clamp(0.0, 1.0) * scaled_w;
+            let py = ((f64::from(h) - scaled_h) / 2.0).floor()
+                + tap.pos[1].clamp(0.0, 1.0) * scaled_h;
             let idx = input_order.len() + i;
             let start_s = start_ms / 1000.0;
             let end_s = end_ms / 1000.0;
@@ -891,6 +896,42 @@ mod tests {
         assert!(filter.contains("[outv][dot0]overlay=x=480.000-overlay_w/2:y=810.000-overlay_h/2:"));
         assert!(filter.contains("eof_action=pass:enable='between(t\\,0.500000\\,1.000000)'[tapv0]"));
         assert!(args.windows(2).any(|w| w == ["-map", "[tapv0]"]));
+    }
+
+    #[test]
+    fn tap_overlay_on_a_padded_clip_uses_ffmpeg_rounded_geometry() {
+        // A portrait source in the landscape canvas: ffmpeg scales it to 608x1080 (av_rescale
+        // rounds 607.5 up) with a 656px pad offset; the overlay centre must match that geometry.
+        let mut d = doc();
+        d.sources.push(EditSource {
+            id: "s2".into(),
+            rel: "assets/b.mp4".into(),
+            width: 1080,
+            height: 1920,
+            fps: 60.0,
+            duration_ms: 10_000,
+            abs: "/abs/b.mp4".into(),
+        });
+        d.clips.push(EditClip {
+            id: "c2".into(),
+            source_id: "s2".into(),
+            in_ms: 0,
+            out_ms: 1000,
+            speed: 1.0,
+            start_ms: 1000,
+            hold_ms: None,
+        });
+        d.taps.push(EditTap {
+            id: "t1".into(),
+            source_id: "s2".into(),
+            source_ms: 500,
+            pos: [0.25, 0.75],
+        });
+        let (args, _) =
+            build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        // x = 656 + 0.25 * 608, y = 0 + 0.75 * 1080.
+        assert!(filter.contains("[outv][dot0]overlay=x=808.000-overlay_w/2:y=810.000-overlay_h/2:"));
     }
 
     #[test]
