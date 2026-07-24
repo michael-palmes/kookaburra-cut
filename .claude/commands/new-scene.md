@@ -43,7 +43,10 @@ Steps:
    device kind, `{ "mode": "follow-media" }` (no source device) for the video kind.
    Otherwise `{ "mode": "manual" }` and **4000ms**.
 6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
-   `durationMs`, in order.
+   `durationMs`, in order. New scenes join with a crossfade by default: seed
+   `"transition": { "type": "crossfade", "durationMs": 600 }` on the previous scene's
+   entry, and on the new entry too when it isn't last; never overwrite an existing
+   transition.
 7. Verify: `pnpm build`, `pnpm test`, `pnpm lint` — fix and rerun until clean.
 8. Tell the user to preview with `/preview $1`, and to gate with `Verify ×2` before relying
    on the scene (the skill's validation loop).
