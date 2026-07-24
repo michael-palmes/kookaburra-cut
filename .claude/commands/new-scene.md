@@ -27,7 +27,7 @@ Steps:
    recentres); for the appversion kind seed `title` (app name, else `"Your App"`) AND
    `subtitle` (version, else `"1.0"`); other kinds get a `title` if the user gave copy
    (`headline` is the legacy key on old scenes; never write it for new ones) — and for
-   the device kind one
+   the device kind ALSO `subtitle: ""` plus one
    `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`, `media` if given, the
    template's default `placement`, `motion`, `shadow`); for the layeredscreenshot kind a
    `layeredScreenshot` block with one layer (`{ "id": "l1", "visible": true, "z": 0,

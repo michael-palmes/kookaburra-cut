@@ -585,13 +585,16 @@ pub async fn scaffold_scene(
         },
         "text": {},
     });
-    // Title scenes seed the TitleBlock pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
+    // Title and device scenes seed the title/subtitle pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
     if options.kind == "title" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
     } else if options.kind == "appversion" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
+    } else if options.kind == "device" {
+        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
+        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
     } else if let Some(title) = &options.title {
         doc["text"]["title"] = json!(title);
     }
