@@ -41,7 +41,7 @@ pnpm release           # guards -> package:signed -> zip + checksum -> tag -> dr
 **Gate economy:** the default per-change gate is ONE feature-matched project
 Verify ×2 in 16:9 (`showcase-tour` is the rolling gate project, ~2 min). The
 legacy sentinel gates PRE-MERGE: `pnpm gate:merge` runs showcase-tour +
-`ws:launch-2026` in one boot (~4–5 min); `ws:launch-2026` must be EQUAL (the
+`ws:launch-2026` in one boot (~3 min); `ws:launch-2026` must be EQUAL (the
 null-for-legacy proof).
 Theme/scene DATA variations don't need their own verifies; only changed CODE
 PATHS do. Full matrices (all projects × all aspects) are reserved for engine-wide

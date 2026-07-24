@@ -1022,18 +1022,31 @@ and do not need their own verifies.**
 Baselines are same-machine SHA-256 prefixes of the frozen-path (`libx264`,
 16:9 unless noted) export, recorded after a passed Verify ×2. Two projects anchor
 the set: the null-for-legacy sentinel (`ws:launch-2026`, a hash-identical
-workspace copy of the reel dropped from the bundled set on 2026-07-13) and the
-bundled rolling-gate project (`showcase-tour`):
+workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
+durations re-frozen 2026-07-25, see the splice note below) and the bundled
+rolling-gate project (`showcase-tour`):
 
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale | — | — |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — |
 | `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 
+> **2026-07-25 (sentinel splice, Michael's call):** `ws:launch-2026` was
+> trimmed 19.0 s → 8.2 s (5000/3000×4/5000 → 2400/1600×4/2400 ms; scenes and
+> transitions untouched) to stop the sentinel becoming a growing time sink at
+> PR cadence, especially with multiple worktrees queueing runs. The splice was
+> done safely: the full-length hash `b70c9788…` was proven EQUAL the same
+> morning on the same render code (no render-path commits between proof and
+> re-freeze), then the trimmed anchor recorded EQUAL at `eb89826c…` with
+> per-scene frames eyeballed. The pre-trim manifest is backed up beside the
+> batch plan docs, so the old anchor remains re-verifiable. Coverage note:
+> frames past each scene's cut (late counter states, clip frames past 2.4 s)
+> left the proof at the splice.
+>
 > **2026-07-25 (gate speedup + footprint fix):** showcase-tour's scene
 > durations were trimmed for gate speed (14.2 s → 8.2 s timeline, 492
 > frames/pass; scene 05's camera end key 2700 → 2200 ms), `pnpm gate` became
