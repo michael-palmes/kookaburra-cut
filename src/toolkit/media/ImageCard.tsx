@@ -9,6 +9,7 @@ import { useEditorStore } from "../../store/editorStore";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
 import type { V3 } from "../types";
+import { AssetBoundary } from "./AssetBoundary";
 
 export interface ImageCardProps {
   /** Project-relative asset path (e.g. `assets/app-icon.png`). */
@@ -38,7 +39,11 @@ export function ImageCard(props: ImageCardProps) {
     console.warn(`[image] "${src}" unresolved:`, e);
   }
   if (!url) return null;
-  return <LoadedImageCard url={url} position={position} width={width} from={from} to={to} />;
+  return (
+    <AssetBoundary key={url} label={src}>
+      <LoadedImageCard url={url} position={position} width={width} from={from} to={to} />
+    </AssetBoundary>
+  );
 }
 
 /** The group-shine uniform set: stable objects the compiled program holds. */

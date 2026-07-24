@@ -1,4 +1,4 @@
-import { isAssetReference } from "../toolkit/frame/icon";
+import { isAssetReference, isUnloadableAssetPath } from "../toolkit/frame/icon";
 import { ImageCard } from "../toolkit/media/ImageCard";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { V3 } from "../toolkit/types";
@@ -31,6 +31,7 @@ export function FrameIcon({
     const centre: V3 = [position[0] + (size / 2) * f, position[1] - size / 2, position[2]];
     return <ImageCard src={icon} position={centre} width={size} from={from} to={to} />;
   }
+  if (isUnloadableAssetPath(icon)) return null;
   return (
     <AnimatedHeadline
       text={icon}
