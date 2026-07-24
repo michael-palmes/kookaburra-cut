@@ -404,10 +404,17 @@ export default function App() {
     if (isAutoRun) void getCurrentWindow().setTitle("Kookaburra Cut — automated run");
   }, [isAutoRun]);
 
-  // The editor window announces a finished render; re-scan Media if it's open.
+  // The editor window announces a finished render; re-scan Media if it's open. The payload identifies the rendered edit so a pending re-point only ever consumes its own render, never an unrelated broadcast (e.g. Settings' cache clear, which carries none).
+  const lastEditRenderRef = useRef<{ slug: string; name: string } | null>(null);
   useEffect(() => {
     if (isAutoRun) return;
-    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    const unlisten = listen<{ slug: string; name: string } | null>(
+      "kookaburra://media-changed",
+      (e) => {
+        lastEditRenderRef.current = e.payload ?? null;
+        setMediaRefresh((n) => n + 1);
+      },
+    );
     return () => {
       void unlisten.then((fn) => fn());
     };
@@ -786,8 +793,11 @@ export default function App() {
         console.warn("[clips] invalidation sweep failed:", e),
       );
       const pending = pendingRepointRef.current;
+      const rendered = lastEditRenderRef.current;
       if (
         pending &&
+        rendered?.slug === pending.slug &&
+        rendered?.name === pending.editName &&
         isWorkspaceProjectId(project.id) &&
         workspaceSlug(project.id) === pending.slug
       ) {

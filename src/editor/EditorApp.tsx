@@ -284,7 +284,7 @@ export function EditorApp() {
       );
       renderStaleRef.current = false;
       // Success: tell the main window (media library refresh) and close this one.
-      await emit("kookaburra://media-changed");
+      await emit("kookaburra://media-changed", { slug: target.slug, name: target.name });
       await getCurrentWindow().close();
     } catch (e) {
       setRender({ phase: "error", message: String(e) });
