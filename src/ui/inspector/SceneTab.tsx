@@ -3721,6 +3721,7 @@ export function SceneTab({
           {SCREEN_TITLES[groupSection.id] ?? groupSection.label}
         </div>
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
+        {mediaModal}
       </div>
     );
   }
