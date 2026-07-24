@@ -1,6 +1,6 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
-/** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill) and the collapsible section header (chevron rotates −90° when collapsed); rendered from the pure models in ui/inspectorOptions.ts. */
+/** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -283,9 +283,77 @@ export function ActionRow({
     >
       {icon && <span className="action-row-icon">{icon}</span>}
       <span className="action-row-label">{label}</span>
-      {value && <span className="action-row-value">{value}</span>}
+      {value && (
+        <span className="action-row-value" title={value}>
+          {value}
+        </span>
+      )}
       {chevron && <Chevron />}
     </button>
+  );
+}
+
+/** Middle-truncates a file name so the distinguishing tail (dates, times, extension) stays visible. */
+export function middleTruncate(name: string, max = 34): string {
+  if (name.length <= max) return name;
+  const tail = 14;
+  return `${name.slice(0, max - tail - 1)}…${name.slice(-tail)}`;
+}
+
+/** One boolean setting: label left, plain-language description under it, switch right. The input is a real checkbox for focus and assistive tech; the track is painted from its checked state. */
+export function ToggleRow({
+  icon,
+  label,
+  description,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  icon?: ReactNode;
+  label: string;
+  description?: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <label className={`toggle-row${disabled ? " toggle-row-disabled" : ""}`}>
+      {icon && <span className="toggle-row-icon">{icon}</span>}
+      <span className="toggle-row-text">
+        <span className="toggle-row-label">{label}</span>
+        {description && <span className="toggle-row-desc">{description}</span>}
+      </span>
+      <span className="toggle-switch">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span className="toggle-switch-track" aria-hidden="true">
+          <span className="toggle-switch-thumb" />
+        </span>
+      </span>
+    </label>
+  );
+}
+
+/** A drill-in option group: uppercase label, optional group-level hint, rows sitting tight underneath; groups separate from their neighbours with a wider gap than rows do. */
+export function DrillGroup({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="drill-group">
+      <span className="drill-group-label">{label}</span>
+      {hint && <span className="drill-group-hint">{hint}</span>}
+      {children}
+    </div>
   );
 }
 
@@ -308,45 +376,5 @@ export function DrillBack({ label, onClick }: { label: string; onClick: () => vo
       </span>
       {`Back to ${label}`}
     </button>
-  );
-}
-
-/** Collapsible section header; the body is the caller's affair. The toggle is an inner button so a `trailing` control (e.g. the Camera section's Reset) never nests interactive elements. */
-export function SectionHeader({
-  label,
-  collapsed,
-  onToggle,
-  trailing,
-}: {
-  label: string;
-  collapsed: boolean;
-  onToggle: () => void;
-  trailing?: ReactNode;
-}) {
-  return (
-    <div className="inspector-section-head">
-      <button
-        type="button"
-        className="inspector-section-toggle"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-      >
-        <span className={`inspector-section-chev${collapsed ? " collapsed" : ""}`}>
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            aria-hidden="true"
-          >
-            <path d="M6 8l4 4 4-4" />
-          </svg>
-        </span>
-        <span className="inspector-section-label">{label}</span>
-      </button>
-      {trailing && <span className="inspector-section-trailing">{trailing}</span>}
-    </div>
   );
 }

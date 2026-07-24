@@ -4860,12 +4860,11 @@ body {
   flex: none;
 }
 
+/* Labels are short fixed strings and never shrink; a long value ellipsizes instead. */
 .action-row-label {
-  min-width: 0;
-  overflow: hidden;
+  flex: none;
   font-size: var(--text-base);
   color: var(--text-primary);
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4877,7 +4876,6 @@ body {
 .action-row-value {
   margin-left: auto;
   min-width: 0;
-  max-width: 60%;
   overflow: hidden;
   font-size: var(--text-xs);
   color: var(--text-tertiary);
@@ -4896,6 +4894,138 @@ body {
 
 .action-row-label + .action-row-chevron {
   margin-left: auto;
+}
+
+/* One boolean setting (§8.4): label + description left, switch right. */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.toggle-row:hover {
+  background: var(--surface-hover);
+}
+
+.toggle-row-disabled {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+.toggle-row-icon {
+  display: inline-flex;
+  flex: none;
+  align-self: flex-start;
+  color: var(--text-secondary);
+}
+
+.toggle-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toggle-row-label {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+.toggle-row-desc {
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+.toggle-switch {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+}
+
+.toggle-switch input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+}
+
+.toggle-switch-track {
+  display: block;
+  width: 30px;
+  height: 18px;
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.toggle-switch-thumb {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 1px;
+  background: var(--text-secondary);
+  border-radius: var(--radius-full);
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+}
+
+.toggle-switch input:checked + .toggle-switch-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-switch-track .toggle-switch-thumb {
+  transform: translateX(12px);
+  background: #fff;
+}
+
+.toggle-switch input:focus-visible + .toggle-switch-track {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}
+
+/* A drill-in option group: rows sit tight under their uppercase label; the wider top margin
+   (over the drill body's 12px gap) is what separates one group from the next. */
+.drill-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drill-group:not(:first-child) {
+  margin-top: var(--space-4);
+}
+
+.drill-group-label {
+  padding: 0 8px;
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.drill-group-hint {
+  padding: 0 8px;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+/* Rows without their own padding line up with action/toggle row labels (8px inset). */
+.drill-group > .popover-row,
+.drill-group > .wizard-presets,
+.inspector-drill-body > .modal-hint {
+  padding-inline: 8px;
 }
 
 /* Row-anchored menu/popover (§8.8): elevated, below the row, right-aligned. */
@@ -5076,30 +5206,6 @@ body {
   color: var(--warning);
 }
 
-/* Section headers + inset dividers (consumed from M4). The toggle is an inner
-   button so trailing controls (Camera's Reset) never nest inside it. */
-.inspector-section-head {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding-right: 16px;
-}
-
-.inspector-section-toggle {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  padding: 11px 16px;
-  font: inherit;
-  text-align: left;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  user-select: none;
-}
-
 .inspector-reset-btn {
   flex: none;
   padding: 3px 8px;
@@ -5115,28 +5221,6 @@ body {
 .inspector-reset-btn:hover {
   color: var(--text-primary);
   background: var(--surface-hover);
-}
-
-.inspector-section-chev {
-  display: inline-flex;
-  color: var(--text-tertiary);
-  transition: transform var(--dur-fast) var(--ease-standard);
-}
-
-.inspector-section-chev.collapsed {
-  transform: rotate(-90deg);
-}
-
-.inspector-section-label {
-  font-size: var(--text-sm);
-  font-weight: 590;
-  color: var(--text-primary);
-}
-
-.inspector-section-trailing {
-  margin-left: auto;
-  font-size: 11.5px;
-  color: var(--text-secondary);
 }
 
 .inspector-section-divider {
@@ -5326,37 +5410,12 @@ img.inspector-scene-thumb {
   transform: translate(-50%, -50%);
 }
 
-/* Left-aligned toggle row (Loop in Present): checkbox, label and a description under it, like an ActionRow. */
-.inspector-toggle-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-.inspector-toggle-row input {
-  margin-top: 3px;
-}
-.inspector-toggle-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.inspector-toggle-label {
-  font-size: var(--text-base);
-  color: var(--text-primary);
-}
-.inspector-toggle-desc {
-  font-size: var(--text-xs);
-  line-height: 1.35;
-  color: var(--text-tertiary);
-}
 .camera-loop-modes {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 10px 6px 34px;
+  padding: 0 8px 6px;
 }
 
 /* Camera numerics: two 3-column grids of mono fields with captions below. */

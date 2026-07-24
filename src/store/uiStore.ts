@@ -68,7 +68,8 @@ export const useUiStore = create<UiState>((set) => ({
   paletteOpen: false,
   audioMuted: false,
   previewQuality: loadPreviewQuality(),
-  inspector: { tab: "project", drillStack: [], drillIn: null },
+  // Scene is the default tab: it's where editing happens; bundled projects heal back to Project.
+  inspector: { tab: "scene", drillStack: [], drillIn: null },
   railWizardRequest: null,
   playbackOptionsNonce: 0,
   backgroundClipboard: null,

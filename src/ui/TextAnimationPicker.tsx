@@ -310,7 +310,7 @@ export function TextMotionPanel({
                 label="Starting scale"
                 onCommit={(v) => commit({ ...draft, startScale: v })}
               />
-              <label className="popover-inline">
+              <label className="popover-inline" title="A light sweep across the text as it lands">
                 <input
                   type="checkbox"
                   checked={draft.shine}

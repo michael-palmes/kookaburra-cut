@@ -117,7 +117,15 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { RotationDrillIn } from "./RotationDrillIn";
-import { ActionRow, DrillBack, NumberField, useDragScrub } from "./rows";
+import {
+  ActionRow,
+  DrillBack,
+  DrillGroup,
+  middleTruncate,
+  NumberField,
+  ToggleRow,
+  useDragScrub,
+} from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
@@ -651,24 +659,6 @@ function LidRow({
   );
 }
 
-/** Inline toggle row for whether this scene shows the deck overlay: off writes `frame.enabled: false`, on clears it back to the deck default. */
-function FrameEnabledRow({ on, onToggle }: { on: boolean; onToggle: (on: boolean) => void }) {
-  return (
-    <label className="inspector-duration-row" title="Show the deck's overlay panel on this scene">
-      <span className="action-row-icon">
-        <SceneRowIcon id="frame.enabled" />
-      </span>
-      <span className="action-row-label">Show on this scene</span>
-      <input
-        type="checkbox"
-        checked={on}
-        aria-label="Show the overlay on this scene"
-        onChange={(e) => onToggle(e.target.checked)}
-      />
-    </label>
-  );
-}
-
 /** Cutout-shape tiles, the `BgTypeIcon` sibling scoped to `FrameShape`. */
 function FrameShapeIcon({ id }: { id: FrameShape }) {
   const shape = {
@@ -936,30 +926,22 @@ function CameraSectionBody({
       />
       {camera.keys.length > 1 && (
         <>
-          <label className="inspector-toggle-row">
-            <input
-              type="checkbox"
-              checked={camera.presentLoop !== undefined}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  void commit({
-                    ...camera,
-                    presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
-                  });
-                } else {
-                  const { presentLoop: _drop, ...rest } = camera;
-                  void commit(rest);
-                }
-              }}
-            />
-            <span className="inspector-toggle-text">
-              <span className="inspector-toggle-label">Loop in Present</span>
-              <span className="inspector-toggle-desc">
-                In slideshow Present mode, ease the camera back to its first key each cycle. Video
-                playback and export are untouched.
-              </span>
-            </span>
-          </label>
+          <ToggleRow
+            label="Loop in Present"
+            description="In slideshow Present mode, the camera eases back to its first key each cycle. Video playback and export are untouched."
+            checked={camera.presentLoop !== undefined}
+            onChange={(on) => {
+              if (on) {
+                void commit({
+                  ...camera,
+                  presentLoop: { mode: "smooth", blendMs: DEFAULT_LOOP_BLEND_MS },
+                });
+              } else {
+                const { presentLoop: _drop, ...rest } = camera;
+                void commit(rest);
+              }
+            }}
+          />
           {camera.presentLoop && (
             <div className="camera-loop-modes">
               <button
@@ -2081,27 +2063,18 @@ export function SceneTab({
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">Scene text</div>
         <div className="inspector-drill-body">
-          <label
-            className="inspector-duration-row"
-            title="Show the scene's title, subtitle and bullets in the panel"
-          >
-            <span className="action-row-label">Use scene text in the panel</span>
-            <input
-              type="checkbox"
-              checked={claimed}
-              aria-label="Use scene text in the panel"
-              onChange={(e) =>
-                void patchDoc((next) => {
-                  next.frame = { ...(next.frame ?? {}) };
-                  if (e.target.checked) delete next.frame.claimsSceneText;
-                  else next.frame.claimsSceneText = false;
-                })
-              }
-            />
-          </label>
-          <p className="modal-hint">
-            When off, the scene's own headline shows in the frame instead.
-          </p>
+          <ToggleRow
+            label="Use scene text in the panel"
+            description="Shows the scene's title, subtitle and bullets in the panel; off shows the scene's own headline in the frame instead."
+            checked={claimed}
+            onChange={(on) =>
+              void patchDoc((next) => {
+                next.frame = { ...(next.frame ?? {}) };
+                if (on) delete next.frame.claimsSceneText;
+                else next.frame.claimsSceneText = false;
+              })
+            }
+          />
         </div>
       </div>
     );
@@ -2415,9 +2388,15 @@ export function SceneTab({
               <ActionRow
                 icon={<SceneRowIcon id="device.media" />}
                 label="Recording"
-                value={vw.media.src.split("/").pop() ?? "None"}
+                value={middleTruncate(vw.media.src.split("/").pop() ?? "None")}
                 chevron
                 onClick={() => openDrill("videoWindow.media")}
+              />
+              <ActionRow
+                icon={<SceneRowIcon id="device.editVideo" />}
+                label="Edit recording"
+                chevron
+                onClick={() => onOpenEditVideo(sceneIndex, vw.media.src, "videoWindow")}
               />
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
@@ -2427,10 +2406,7 @@ export function SceneTab({
                 onClick={() => openDrill("videoWindow.stage")}
               />
 
-              <div className="popover-row">
-                <span className="popover-group-label">Corners</span>
-              </div>
-              <div className="popover-row">
+              <DrillGroup label="Corners">
                 <div className="wizard-presets">
                   {RADII.map((r) => (
                     <button
@@ -2447,173 +2423,163 @@ export function SceneTab({
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Corner radius</span>
-                <DebouncedRange
-                  value={resolveVideoWindowRadius(vw.radius)}
-                  min={0}
-                  max={0.2}
-                  step={0.005}
-                  label="Corner radius"
-                  onInput={(val) =>
-                    vwLive((v) => {
-                      v.radius = { custom: val };
-                    })
-                  }
-                  onCommit={(val) =>
-                    vwCommit((v) => {
-                      v.radius = { custom: val };
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Corner radius</span>
+                  <DebouncedRange
+                    value={resolveVideoWindowRadius(vw.radius)}
+                    min={0}
+                    max={0.2}
+                    step={0.005}
+                    label="Corner radius"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.radius = { custom: val };
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.radius = { custom: val };
+                      })
+                    }
+                  />
+                </div>
+              </DrillGroup>
+
+              <DrillGroup label="Border">
+                <ToggleRow
+                  label="Show border"
+                  description="A thin edge line around the window."
+                  checked={border.enabled}
+                  onChange={(on) =>
+                    patchVW((v) => {
+                      v.border = { ...border, enabled: on };
                     })
                   }
                 />
-              </div>
-
-              <div className="popover-row">
-                <span className="popover-group-label">Border</span>
-              </div>
-              <div className="popover-row">
-                <label className="popover-inline">
-                  <input
-                    type="checkbox"
-                    checked={border.enabled}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      patchVW((v) => {
-                        v.border = { ...border, enabled: on };
-                      });
-                    }}
-                  />
-                  Show border
-                </label>
-              </div>
-              {border.enabled && (
-                <>
-                  <div className="popover-row">
-                    <span className="popover-inline">
-                      Colour
-                      <ColourPicker
-                        value={border.color}
-                        label="Border colour"
-                        onCommit={(hex) =>
-                          patchVW((v) => {
-                            v.border = { ...border, color: hex };
+                {border.enabled && (
+                  <>
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Colour
+                        <ColourPicker
+                          value={border.color}
+                          label="Border colour"
+                          onCommit={(hex) =>
+                            patchVW((v) => {
+                              v.border = { ...border, color: hex };
+                            })
+                          }
+                        />
+                      </span>
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Width</span>
+                      <DebouncedRange
+                        value={border.width}
+                        min={0}
+                        max={0.02}
+                        step={0.0005}
+                        label="Border width"
+                        onInput={(val) =>
+                          vwLive((v) => {
+                            v.border = { ...border, width: val };
+                          })
+                        }
+                        onCommit={(val) =>
+                          vwCommit((v) => {
+                            v.border = { ...border, width: val };
                           })
                         }
                       />
-                    </span>
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Width</span>
-                    <DebouncedRange
-                      value={border.width}
-                      min={0}
-                      max={0.02}
-                      step={0.0005}
-                      label="Border width"
-                      onInput={(val) =>
-                        vwLive((v) => {
-                          v.border = { ...border, width: val };
-                        })
-                      }
-                      onCommit={(val) =>
-                        vwCommit((v) => {
-                          v.border = { ...border, width: val };
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Strength</span>
-                    <DebouncedRange
-                      value={border.opacity}
-                      min={0}
-                      max={1}
-                      step={0.02}
-                      label="Border strength"
-                      onInput={(val) =>
-                        vwLive((v) => {
-                          v.border = { ...border, opacity: val };
-                        })
-                      }
-                      onCommit={(val) =>
-                        vwCommit((v) => {
-                          v.border = { ...border, opacity: val };
-                        })
-                      }
-                    />
-                  </div>
-                </>
-              )}
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Strength</span>
+                      <DebouncedRange
+                        value={border.opacity}
+                        min={0}
+                        max={1}
+                        step={0.02}
+                        label="Border strength"
+                        onInput={(val) =>
+                          vwLive((v) => {
+                            v.border = { ...border, opacity: val };
+                          })
+                        }
+                        onCommit={(val) =>
+                          vwCommit((v) => {
+                            v.border = { ...border, opacity: val };
+                          })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+              </DrillGroup>
 
-              <div className="popover-row">
-                <span className="popover-group-label">Shadow</span>
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Strength</span>
-                <DebouncedRange
-                  value={shadow.opacity}
-                  min={0}
-                  max={0.8}
-                  step={0.02}
-                  label="Shadow strength"
-                  onInput={(val) =>
-                    vwLive((v) => {
-                      v.shadow = { ...shadow, opacity: val };
-                    })
-                  }
-                  onCommit={(val) =>
-                    vwCommit((v) => {
-                      v.shadow = { ...shadow, opacity: val };
-                    })
-                  }
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Softness</span>
-                <DebouncedRange
-                  value={shadow.blur}
-                  min={0}
-                  max={0.4}
-                  step={0.01}
-                  label="Shadow softness"
-                  onInput={(val) =>
-                    vwLive((v) => {
-                      v.shadow = { ...shadow, blur: val };
-                    })
-                  }
-                  onCommit={(val) =>
-                    vwCommit((v) => {
-                      v.shadow = { ...shadow, blur: val };
-                    })
-                  }
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Drop</span>
-                <DebouncedRange
-                  value={shadow.offset[1]}
-                  min={-0.2}
-                  max={0.2}
-                  step={0.01}
-                  label="Shadow drop"
-                  onInput={(val) =>
-                    vwLive((v) => {
-                      v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
-                    })
-                  }
-                  onCommit={(val) =>
-                    vwCommit((v) => {
-                      v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
-                    })
-                  }
-                />
-              </div>
+              <DrillGroup label="Shadow">
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Strength</span>
+                  <DebouncedRange
+                    value={shadow.opacity}
+                    min={0}
+                    max={0.8}
+                    step={0.02}
+                    label="Shadow strength"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.shadow = { ...shadow, opacity: val };
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.shadow = { ...shadow, opacity: val };
+                      })
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Softness</span>
+                  <DebouncedRange
+                    value={shadow.blur}
+                    min={0}
+                    max={0.4}
+                    step={0.01}
+                    label="Shadow softness"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.shadow = { ...shadow, blur: val };
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.shadow = { ...shadow, blur: val };
+                      })
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Drop</span>
+                  <DebouncedRange
+                    value={shadow.offset[1]}
+                    min={-0.2}
+                    max={0.2}
+                    step={0.01}
+                    label="Shadow drop"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
+                      })
+                    }
+                  />
+                </div>
+              </DrillGroup>
 
-              <div className="popover-row">
-                <span className="popover-group-label">Motion</span>
-              </div>
-              <div className="popover-row">
+              <DrillGroup label="Motion">
                 <div className="wizard-presets">
                   {MOTIONS.map((m) => (
                     <button
@@ -2630,27 +2596,27 @@ export function SceneTab({
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Window size</span>
-                <DebouncedRange
-                  value={vw.scale ?? 0.72}
-                  min={0.3}
-                  max={1}
-                  step={0.01}
-                  label="Window size"
-                  onInput={(val) =>
-                    vwLive((v) => {
-                      v.scale = val;
-                    })
-                  }
-                  onCommit={(val) =>
-                    vwCommit((v) => {
-                      v.scale = val;
-                    })
-                  }
-                />
-              </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Window size</span>
+                  <DebouncedRange
+                    value={vw.scale ?? 0.72}
+                    min={0.3}
+                    max={1}
+                    step={0.01}
+                    label="Window size"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.scale = val;
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.scale = val;
+                      })
+                    }
+                  />
+                </div>
+              </DrillGroup>
 
               <div className="inspector-section-divider" />
               <ActionRow
@@ -2753,7 +2719,7 @@ export function SceneTab({
       stagingOn && (
         <div className="bg-occlusion">
           <span className="modal-hint">
-            This scene stages a {stagedBackdrop} backdrop that will hide the {kind} — remove it so
+            This scene stages a {stagedBackdrop} backdrop that will hide the {kind}: remove it so
             the {kind} shows.
           </span>
           <button type="button" className="btn" onClick={removeStageBackdrop}>
@@ -2810,7 +2776,7 @@ export function SceneTab({
         <div className="inspector-drill-body">
           {docTab === "default" ? (
             <p className="modal-hint">
-              Following the theme's background — pick a fill type to override it for this scene.
+              Following the theme's background. Pick a fill type to override it for this scene.
             </p>
           ) : (
             <div className="popover-row">
@@ -2922,10 +2888,7 @@ export function SceneTab({
               {shaderSpec && shaderDef && (
                 <>
                   {(SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []).length > 0 && (
-                    <>
-                      <div className="popover-row">
-                        <span className="popover-group-label">Presets</span>
-                      </div>
+                    <DrillGroup label="Presets">
                       <div className="option-grid three-up">
                         {(SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []).map((preset) => (
                           <OptionCard
@@ -2937,85 +2900,87 @@ export function SceneTab({
                           />
                         ))}
                       </div>
-                    </>
+                    </DrillGroup>
                   )}
-                  {shaderDef.colorSlots.map((slot, i) => (
-                    <div key={slot.label} className="popover-row">
-                      <span className="popover-inline">
-                        {slot.label}
-                        <ColourPicker
-                          value={shaderSpec.colors?.[i] ?? slot.fallback}
-                          label={slot.label}
-                          defaultValue={slot.fallback}
-                          onReset={() =>
-                            patchShader((spec) => {
-                              const colors = shaderDef.colorSlots.map(
-                                (s, j) => spec.colors?.[j] ?? s.fallback,
-                              );
-                              colors[i] = slot.fallback;
-                              spec.colors = colors;
-                            })
-                          }
-                          onCommit={(hex) =>
-                            patchShader((spec) => {
-                              const colors = shaderDef.colorSlots.map(
-                                (s, j) => spec.colors?.[j] ?? s.fallback,
-                              );
-                              colors[i] = hex;
-                              spec.colors = colors;
-                            })
-                          }
-                        />
-                      </span>
-                    </div>
-                  ))}
-                  <div className="popover-row">
-                    <span className="popover-inline">Speed</span>
-                    <DebouncedRange
-                      value={shaderSpec.speed ?? 1}
-                      min={0}
-                      max={3}
-                      step={0.05}
-                      label="Animation speed"
-                      onCommit={(v) =>
-                        patchShader((spec) => {
-                          spec.speed = v;
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline">Zoom</span>
-                    <DebouncedRange
-                      value={shaderSpec.scale ?? 1}
-                      min={0.25}
-                      max={3}
-                      step={0.05}
-                      label="Pattern zoom"
-                      onCommit={(v) =>
-                        patchShader((spec) => {
-                          spec.scale = v;
-                        })
-                      }
-                    />
-                  </div>
-                  {Object.entries(shaderDef.params).map(([key, p]) => (
-                    <div key={key} className="popover-row">
-                      <span className="popover-inline">{p.label}</span>
+                  <DrillGroup label="Colours and motion">
+                    {shaderDef.colorSlots.map((slot, i) => (
+                      <div key={slot.label} className="popover-row">
+                        <span className="popover-inline">
+                          {slot.label}
+                          <ColourPicker
+                            value={shaderSpec.colors?.[i] ?? slot.fallback}
+                            label={slot.label}
+                            defaultValue={slot.fallback}
+                            onReset={() =>
+                              patchShader((spec) => {
+                                const colors = shaderDef.colorSlots.map(
+                                  (s, j) => spec.colors?.[j] ?? s.fallback,
+                                );
+                                colors[i] = slot.fallback;
+                                spec.colors = colors;
+                              })
+                            }
+                            onCommit={(hex) =>
+                              patchShader((spec) => {
+                                const colors = shaderDef.colorSlots.map(
+                                  (s, j) => spec.colors?.[j] ?? s.fallback,
+                                );
+                                colors[i] = hex;
+                                spec.colors = colors;
+                              })
+                            }
+                          />
+                        </span>
+                      </div>
+                    ))}
+                    <div className="popover-row">
+                      <span className="popover-inline">Speed</span>
                       <DebouncedRange
-                        value={shaderSpec.params?.[key] ?? p.default}
-                        min={p.min}
-                        max={p.max}
-                        step={p.step}
-                        label={p.label}
+                        value={shaderSpec.speed ?? 1}
+                        min={0}
+                        max={3}
+                        step={0.05}
+                        label="Animation speed"
                         onCommit={(v) =>
                           patchShader((spec) => {
-                            spec.params = { ...(spec.params ?? {}), [key]: v };
+                            spec.speed = v;
                           })
                         }
                       />
                     </div>
-                  ))}
+                    <div className="popover-row">
+                      <span className="popover-inline">Zoom</span>
+                      <DebouncedRange
+                        value={shaderSpec.scale ?? 1}
+                        min={0.25}
+                        max={3}
+                        step={0.05}
+                        label="Pattern zoom"
+                        onCommit={(v) =>
+                          patchShader((spec) => {
+                            spec.scale = v;
+                          })
+                        }
+                      />
+                    </div>
+                    {Object.entries(shaderDef.params).map(([key, p]) => (
+                      <div key={key} className="popover-row">
+                        <span className="popover-inline">{p.label}</span>
+                        <DebouncedRange
+                          value={shaderSpec.params?.[key] ?? p.default}
+                          min={p.min}
+                          max={p.max}
+                          step={p.step}
+                          label={p.label}
+                          onCommit={(v) =>
+                            patchShader((spec) => {
+                              spec.params = { ...(spec.params ?? {}), [key]: v };
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </DrillGroup>
                 </>
               )}
             </>
@@ -3031,7 +2996,9 @@ export function SceneTab({
                 icon={<SceneRowIcon id="style.background" />}
                 label={doc.background?.type === "image" ? "Change image" : "Choose an image"}
                 value={
-                  doc.background?.type === "image" ? doc.background.src.split("/").pop() : undefined
+                  doc.background?.type === "image"
+                    ? middleTruncate(doc.background.src.split("/").pop() ?? "")
+                    : undefined
                 }
                 onClick={() => openDrill("style.background.media")}
               />
@@ -3045,123 +3012,86 @@ export function SceneTab({
                 icon={<SceneRowIcon id="style.background" />}
                 label={doc.background?.type === "video" ? "Change video" : "Choose a video"}
                 value={
-                  doc.background?.type === "video" ? doc.background.src.split("/").pop() : undefined
+                  doc.background?.type === "video"
+                    ? middleTruncate(doc.background.src.split("/").pop() ?? "")
+                    : undefined
                 }
                 onClick={() => openDrill("style.background.media")}
               />
               {doc.background?.type === "video" && (
-                <div className="popover-row">
-                  <label className="popover-inline" title="Off holds the video's last frame">
-                    <input
-                      type="checkbox"
-                      checked={doc.background.loop !== false}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        void patchDoc((next) => {
-                          if (next.background?.type === "video") {
-                            const { loop: _drop, ...rest } = next.background;
-                            next.background = on ? rest : { ...rest, loop: false };
-                          }
-                        });
-                      }}
-                    />
-                    Loop
-                  </label>
-                </div>
+                <ToggleRow
+                  label="Loop"
+                  description="Plays again from the start when it ends; off holds the last frame."
+                  checked={doc.background.loop !== false}
+                  onChange={(on) =>
+                    void patchDoc((next) => {
+                      if (next.background?.type === "video") {
+                        const { loop: _drop, ...rest } = next.background;
+                        next.background = on ? rest : { ...rest, loop: false };
+                      }
+                    })
+                  }
+                />
               )}
               {doc.background?.type === "video" && (
-                <div className="popover-row">
-                  <label
-                    className="popover-inline"
-                    title="On shows the whole video with bars in the background colour; off crops it to fill the frame"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={doc.background.fit === "fit"}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        void patchDoc((next) => {
-                          if (next.background?.type === "video") {
-                            const { fit: _drop, ...rest } = next.background;
-                            next.background = on ? { ...rest, fit: "fit" } : rest;
-                          }
-                        });
-                      }}
-                    />
-                    Fit inside frame
-                  </label>
-                </div>
+                <ToggleRow
+                  label="Fit inside frame"
+                  description="Shows the whole video with letterbox bars; off crops it to fill the frame."
+                  checked={doc.background.fit === "fit"}
+                  onChange={(on) =>
+                    void patchDoc((next) => {
+                      if (next.background?.type === "video") {
+                        const { fit: _drop, ...rest } = next.background;
+                        next.background = on ? { ...rest, fit: "fit" } : rest;
+                      }
+                    })
+                  }
+                />
               )}
             </>
           )}
-          <div className="popover-row">
-            <span className="popover-group-label">Drift</span>
-          </div>
-          <p className="modal-hint">
-            Camera motion drifts the fill at 5% of the content's screen motion — a pure orbit at the
-            origin shows none; pan the camera target to see it.
-          </p>
-          <div className="popover-row">
-            <label
-              className={`popover-inline${doc.background && doc.background.type !== "none" ? "" : " popover-disabled"}`}
-            >
-              <input
-                type="checkbox"
-                disabled={!doc.background || doc.background.type === "none"}
-                checked={
-                  !!doc.background &&
-                  doc.background.type !== "none" &&
-                  (doc.background.parallax ?? 0) > 0
+          <ToggleRow
+            label="Drift"
+            description="Camera motion shifts the fill slightly for depth; pan the camera to see it."
+            disabled={!doc.background || doc.background.type === "none"}
+            checked={
+              !!doc.background &&
+              doc.background.type !== "none" &&
+              (doc.background.parallax ?? 0) > 0
+            }
+            onChange={(on) =>
+              void patchDoc((next) => {
+                if (next.background && next.background.type !== "none") {
+                  next.background = toggleDrift(next.background, on);
                 }
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  void patchDoc((next) => {
-                    if (next.background && next.background.type !== "none") {
-                      next.background = toggleDrift(next.background, on);
-                    }
-                  });
-                }}
-              />
-              Drift
-            </label>
-          </div>
+              })
+            }
+          />
           {stagedBackdrop !== null && (
             <>
-              <div className="popover-row">
-                <span className="popover-group-label">Staging</span>
-              </div>
-              <p className="modal-hint">
-                The world-space floor and backdrop that catch light and real shadows. Colour and
-                gradient picks write through to it; off shows the flat background alone.
-              </p>
-              <div className="popover-row">
-                <label className="popover-inline">
-                  <input
-                    type="checkbox"
-                    checked={stagingOn}
-                    onChange={(e) => {
-                      const on = e.target.checked;
-                      void patchDoc((next) => {
-                        if (!on) {
-                          next.backdrop = { type: "none" };
-                          return;
-                        }
-                        // Back on: the theme's own staging when it has one, else a floor in the current colour.
-                        if (sceneTheme?.backdrop && sceneTheme.backdrop.type !== "none") {
-                          next.backdrop = undefined;
-                        } else {
-                          next.backdrop = floorFor(
-                            doc.background?.type === "color"
-                              ? doc.background.color
-                              : (sceneTheme?.colors.background ?? "#ffffff"),
-                          );
-                        }
-                      });
-                    }}
-                  />
-                  Staging
-                </label>
-              </div>
+              <ToggleRow
+                label="Staging"
+                description="A floor and backdrop that catch light and real shadows; colour and gradient picks write through to it."
+                checked={stagingOn}
+                onChange={(on) =>
+                  void patchDoc((next) => {
+                    if (!on) {
+                      next.backdrop = { type: "none" };
+                      return;
+                    }
+                    // Back on: the theme's own staging when it has one, else a floor in the current colour.
+                    if (sceneTheme?.backdrop && sceneTheme.backdrop.type !== "none") {
+                      next.backdrop = undefined;
+                    } else {
+                      next.backdrop = floorFor(
+                        doc.background?.type === "color"
+                          ? doc.background.color
+                          : (sceneTheme?.colors.background ?? "#ffffff"),
+                      );
+                    }
+                  })
+                }
+              />
               {stagingOn && (
                 <div className="wizard-presets">
                   {(() => {
@@ -3217,14 +3147,10 @@ export function SceneTab({
             </>
           )}
           {slug && project.slots.length > 1 && (
-            <>
-              <div className="popover-row">
-                <span className="popover-group-label">Apply everywhere</span>
-              </div>
-              <p className="modal-hint">
-                Copies this background{stagedBackdrop !== null ? " and staging" : ""} onto every
-                other scene, matching each slide.
-              </p>
+            <DrillGroup
+              label="Apply everywhere"
+              hint={`Copies this background${stagedBackdrop !== null ? " and staging" : ""} onto every other scene, matching each slide.`}
+            >
               <div className="popover-row">
                 <button
                   type="button"
@@ -3247,7 +3173,7 @@ export function SceneTab({
                     : "Apply to all slides"}
                 </button>
               </div>
-            </>
+            </DrillGroup>
           )}
         </div>
       </div>
@@ -3656,10 +3582,13 @@ export function SceneTab({
       }
       if (row.id === "frame.enabled") {
         return (
-          <FrameEnabledRow
+          <ToggleRow
             key={row.id}
-            on={sceneFrame !== undefined}
-            onToggle={(on) =>
+            icon={<SceneRowIcon id="frame.enabled" />}
+            label="Show on this scene"
+            description="Shows the deck's overlay panel on this scene."
+            checked={sceneFrame !== undefined}
+            onChange={(on) =>
               void patchDoc((next) => {
                 if (on) {
                   if (next.frame) delete next.frame.enabled;
@@ -3726,9 +3655,6 @@ export function SceneTab({
           : undefined,
         "device.rotation": device
           ? (device.placement?.rotationDeg ?? [0, 0, 0]).map((n) => `${Math.round(n)}°`).join(" ")
-          : undefined,
-        "videoWindow.edit": doc?.videoWindow
-          ? { color: "Colour", gradient: "Gradient", image: "Image" }[doc.videoWindow.stage.type]
           : undefined,
         "motion.transition": transitionValue,
         "style.theme": sceneTheme?.name,
@@ -3822,6 +3748,8 @@ export function SceneTab({
     label: string;
     icon: string;
     value?: string;
+    /** False for instant in-place actions that open nothing (Add device). */
+    chevron?: boolean;
     onClick: () => void;
   }[] = [];
   if (doc)
@@ -3844,6 +3772,7 @@ export function SceneTab({
       key: "device.add",
       label: "Add device",
       icon: "device.add",
+      chevron: false,
       onClick: addDevice,
     });
   if (doc)
@@ -3858,9 +3787,6 @@ export function SceneTab({
       key: "vw",
       label: doc.videoWindow ? "Video window" : "Add video window",
       icon: "videoWindow.edit",
-      value: doc.videoWindow
-        ? { color: "Colour", gradient: "Gradient", image: "Image" }[doc.videoWindow.stage.type]
-        : undefined,
       onClick: () => openDrill("videoWindow.edit"),
     });
   if (project.deckFrame !== undefined)
@@ -3922,8 +3848,8 @@ export function SceneTab({
       )}
       {!doc && (
         <p className="inspector-stub-note">
-          This scene has no scene document yet, so its text, media and style can't be edited here —
-          ask Claude to add one in the terminal, or edit the scene file directly.
+          This scene has no scene document yet, so its text, media and style can't be edited here.
+          Ask Claude to add one in the terminal, or edit the scene file directly.
         </p>
       )}
       <div className="inspector-rows">
@@ -3933,7 +3859,7 @@ export function SceneTab({
             icon={<SceneRowIcon id={entry.icon} />}
             label={entry.label}
             value={entry.value}
-            chevron
+            chevron={entry.chevron ?? true}
             onClick={entry.onClick}
           />
         ))}
