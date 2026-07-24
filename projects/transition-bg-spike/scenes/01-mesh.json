@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "name": "Mesh gradient",
+  "background": { "type": "shader", "shader": "mesh-gradient", "speed": 1 }
+}

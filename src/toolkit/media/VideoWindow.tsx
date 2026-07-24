@@ -26,6 +26,7 @@ import { useTimeline } from "../../engine/timeline";
 import { useSceneConsumesVideoWindow } from "../../engine/videoWindowRegistry";
 import { useEditorStore } from "../../store/editorStore";
 import { gradientTexture, useExactMaterial } from "../stage/backdrops";
+import { AssetBoundary } from "./AssetBoundary";
 import { applyCardMask, cardUniforms, SHADOW_FRAG, SHADOW_VERT } from "./LayeredScreenshot";
 import { preparingVideoTexture } from "./preparingTexture";
 
@@ -138,7 +139,11 @@ function BackingStage({ stage, w, h }: { stage: VideoWindowStage; w: number; h: 
     console.warn(`[videoWindow] stage image "${stage.src}" unresolved:`, e);
   }
   if (!url) return null;
-  return <ImageStageLoaded url={url} fit={stage.fit ?? "cover"} w={w} h={h} />;
+  return (
+    <AssetBoundary key={url} label={stage.src}>
+      <ImageStageLoaded url={url} fit={stage.fit ?? "cover"} w={w} h={h} />
+    </AssetBoundary>
+  );
 }
 
 // ── The window's drop shadow (analytic, reuses the LayeredScreenshot shaders) ──

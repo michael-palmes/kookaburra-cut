@@ -13,7 +13,10 @@ export function sceneMenuItems(opts: {
   onDelete: () => void;
   /** Timeline surfaces pass this to add a jump to the Scenes manager; the manager omits it. */
   onManage?: () => void;
+  /** Scenes-manager multi-select: > 1 relabels Duplicate to the instant bulk action. */
+  duplicateCount?: number;
 }): (ContextMenuItem | "separator")[] {
+  const bulk = (opts.duplicateCount ?? 0) > 1;
   return [
     {
       id: "rename",
@@ -22,7 +25,11 @@ export function sceneMenuItems(opts: {
       title: opts.canRename ? undefined : "This scene has no scene document yet",
       onSelect: opts.onRename,
     },
-    { id: "duplicate", label: "Duplicate…", onSelect: opts.onDuplicate },
+    {
+      id: "duplicate",
+      label: bulk ? `Duplicate ${opts.duplicateCount} scenes` : "Duplicate…",
+      onSelect: opts.onDuplicate,
+    },
     { id: "duration", label: "Change duration…", onSelect: opts.onDuration },
     ...(opts.onManage
       ? [{ id: "manage", label: "Manage scenes…", onSelect: opts.onManage } as ContextMenuItem]

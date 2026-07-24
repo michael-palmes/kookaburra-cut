@@ -1273,6 +1273,10 @@ export function SceneTab({
   const [textValues, setTextValues] = useState<Record<string, string>>({});
   const textEditTimer = useRef<number | null>(null);
   const textEditBaseline = useRef<SceneDoc | null>(null);
+  // The header-icon field mirrors the text-field debounce so half-typed paths don't hit the renderer per keystroke.
+  const [iconDraft, setIconDraft] = useState<string | null>(null);
+  const iconEditTimer = useRef<number | null>(null);
+  const iconEditBaseline = useRef<SceneDoc | null>(null);
   // Text fields commit on a 200ms debounce (history-less live preview); the session finalises to one undo on blur.
   const liveText = (key: string, value: string) => {
     setTextValues((v) => ({ ...v, [key]: value }));
@@ -3219,6 +3223,30 @@ export function SceneTab({
             closeDrill();
             onTimingChanged();
           }}
+          onApplyAll={
+            project.slots.length > 2
+              ? async (spec) => {
+                  const manifestBefore = await readProjectManifestSnapshot(slug);
+                  for (let i = 0; i < project.slots.length - 1; i++) {
+                    await updateSceneTransition(slug, i, spec);
+                  }
+                  pushHistory({
+                    label: "transition (all)",
+                    changes: [
+                      {
+                        kind: "manifest",
+                        slug,
+                        before: manifestBefore,
+                        after: await readProjectManifestSnapshot(slug),
+                        reload: false,
+                      },
+                    ],
+                  });
+                  closeDrill();
+                  onTimingChanged();
+                }
+              : undefined
+          }
         />
       </div>
     );
@@ -3309,15 +3337,40 @@ export function SceneTab({
       );
     // Header icon: the overlay's icon on overlay scenes, else the plain scene's headerIcon (drawn above the fallback headline).
     const headerIcon = sceneFrame ? (sceneFrame.icon ?? "") : (doc.headerIcon ?? "");
+    const writeHeaderIcon = (next: SceneDoc, v: string | undefined) => {
+      if (sceneFrame) {
+        next.frame = { ...(next.frame ?? {}) };
+        if (v) next.frame.icon = v;
+        else delete next.frame.icon;
+      } else if (v) next.headerIcon = v;
+      else delete next.headerIcon;
+    };
+    // Emoji tiles commit instantly; the free-text field live-previews on the text-field debounce and finalises to one undo on blur.
     const setHeaderIcon = (v: string | undefined) =>
-      void patchDoc((next) => {
-        if (sceneFrame) {
-          next.frame = { ...(next.frame ?? {}) };
-          if (v) next.frame.icon = v;
-          else delete next.frame.icon;
-        } else if (v) next.headerIcon = v;
-        else delete next.headerIcon;
-      });
+      void patchDoc((next) => writeHeaderIcon(next, v));
+    const liveHeaderIcon = (value: string) => {
+      setIconDraft(value);
+      if (!iconEditBaseline.current) iconEditBaseline.current = structuredClone(doc);
+      if (iconEditTimer.current !== null) window.clearTimeout(iconEditTimer.current);
+      iconEditTimer.current = window.setTimeout(() => {
+        iconEditTimer.current = null;
+        void patchDoc((next) => writeHeaderIcon(next, value.trim() || undefined), {
+          history: false,
+        });
+      }, 200);
+    };
+    const flushHeaderIcon = () => {
+      if (iconEditTimer.current !== null) {
+        window.clearTimeout(iconEditTimer.current);
+        iconEditTimer.current = null;
+      }
+      const baseline = iconEditBaseline.current;
+      const value = (iconDraft ?? headerIcon).trim() || undefined;
+      iconEditBaseline.current = null;
+      setIconDraft(null);
+      if (!baseline) return;
+      void commitFromBaseline(baseline, (next) => writeHeaderIcon(next, value));
+    };
     const textTheme = sceneTheme ?? project.theme;
     const colourDefaults = textKeyColorDefaults(sceneIndex);
     const styleCapable = textKeyStyleCapable(sceneIndex);
@@ -3460,9 +3513,10 @@ export function SceneTab({
           <div className="wizard-field">
             <TextFieldRow
               label="Header icon"
-              value={headerIcon}
+              value={iconDraft ?? headerIcon}
               placeholder="an emoji or assets/icon.png"
-              onChange={(t) => setHeaderIcon(t.trim() || undefined)}
+              onChange={liveHeaderIcon}
+              onBlur={flushHeaderIcon}
             />
             <div className="chip-icon-grid">
               {HEADER_EMOJIS.map((e) => (
@@ -3771,7 +3825,9 @@ export function SceneTab({
       icon: "text.edit",
       onClick: () => openDrill("text"),
     });
-  if (device)
+  const deviceVideo = device?.media?.kind === "video" ? device.media.src : undefined;
+  const windowVideo = doc?.videoWindow?.media.src;
+  if (device) {
     topEntries.push({
       key: "device",
       label: "Device",
@@ -3779,7 +3835,15 @@ export function SceneTab({
       value: deviceName,
       onClick: () => openDrill("device"),
     });
-  else if (doc)
+    if (deviceVideo)
+      topEntries.push({
+        key: "editVideo.device",
+        label: windowVideo ? "Edit device video" : "Edit video",
+        icon: "device.editVideo",
+        chevron: false,
+        onClick: () => onOpenEditVideo(sceneIndex, deviceVideo),
+      });
+  } else if (doc)
     topEntries.push({
       key: "device.add",
       label: "Add device",
@@ -3794,13 +3858,22 @@ export function SceneTab({
       icon: "layeredScreenshot.edit",
       onClick: () => openDrill("layeredScreenshot.edit"),
     });
-  if (doc)
+  if (doc) {
     topEntries.push({
       key: "vw",
       label: doc.videoWindow ? "Video window" : "Add video window",
       icon: "videoWindow.edit",
       onClick: () => openDrill("videoWindow.edit"),
     });
+    if (windowVideo)
+      topEntries.push({
+        key: "editVideo.vw",
+        label: deviceVideo ? "Edit recording" : "Edit video",
+        icon: "device.editVideo",
+        chevron: false,
+        onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
+      });
+  }
   if (project.deckFrame !== undefined)
     topEntries.push({
       key: "frame",

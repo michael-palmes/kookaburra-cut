@@ -1023,6 +1023,7 @@ bundled rolling-gate project (`showcase-tour`):
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale | — | — |
 | `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale | `0e64593d…` | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 
@@ -1037,7 +1038,31 @@ bundled rolling-gate project (`showcase-tour`):
 > with unchanged output args, and everything else is editor/UI or template
 > data. `showcase-tour` 3:2 recorded its first baseline `0e64593d…` (Verify ×2
 > EQUAL) after eyeballing 3:2 and 2:3 frames via `--action screenshot`; 2:3
-> stays unbaselined until a project ships in it (the 4:5 precedent).
+> stays unbaselined until a project ships in it (the 4:5 precedent). This
+> merge also corrects the same-day `1ce41e1d…` re-record below: a fresh git
+> worktree lacks the gitignored licensed device glbs, so both that run AND its
+> "clean origin/main" comparison rendered the placeholder device (EQUAL, wrong
+> pixels); with the models present the identical code reproduces `97af238c…`
+> Verify ×2 EQUAL, so the standing baseline never moved. Copy
+> `src/assets/models/licensed/*.glb` into a worktree before gating from one.
+
+> **2026-07-24 (animated backgrounds through transitions):** shader background
+> fills write display-domain colour raw, which the compositor's hardware-sRGB
+> A/B targets encoded a second time, so every transition frame over an animated
+> background rendered one sRGB encode brighter (the "flash to white" report;
+> measured mean RGB 4/9/18 solo vs 32/57/79 mid-crossfade). `shaders/wrap.ts`
+> now reroutes each vendored fragment's `main()` so the engine can flip the
+> output to linear light (`u_linearOut`, set per draw from
+> `renderer.getRenderTarget()`) for colour-managed targets only; the canvas path
+> is a pass-through, so solo frames are byte-identical. New fixture
+> `transition-bg-spike` (mesh-gradient → crossfade → swirl → dip-to-white →
+> neuro-noise) covers the previously untested shader-background × transition
+> combination, recorded `2df76336…` Verify ×2 EQUAL after eyeballing seam frames
+> via `--action screenshot`. Anchors: `ws:launch-2026` EQUAL (`b70c9788…`);
+> `showcase-tour` Verify ×2 EQUAL and byte-identical to a clean `origin/main`
+> run on the same machine (both `1ce41e1d…`). CORRECTED same day (see the note
+> above): both runs came from worktrees missing the licensed device glbs, so
+> `1ce41e1d…` is the placeholder-device render; `97af238c…` stands.
 
 > **2026-07-23 (video window):** the VideoWindow feature landed with both anchors
 > EQUAL (`97af238c…` / `b70c9788…`): the host-side `VideoWindowFallback` mounts

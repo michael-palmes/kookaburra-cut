@@ -36,10 +36,12 @@ file live in this skill's `REFERENCE.md`.
    function's name and signature so the rest of the fragment stays untouched. Floor `vec2`
    inputs through `ivec2` before the `uvec2` cast (float-to-uint is undefined for negatives).
 3. **Leave engine-owned uniforms out of `uniforms()`.** `u_time`, `u_resolution`, `u_scale`,
-   `u_rotation` and `u_offsetX/Y` are written by the engine quad. If the effect needs texture
-   noise, set `noise: true`, keep the `sampler2D u_noiseTexture` declaration and exclude it
-   too; the engine attaches the shared `DataTexture` from `noiseTexture.ts`. Never embed a new
-   image; decode to raw bytes at vendor time like `NOISE_B64`.
+   `u_rotation`, `u_offsetX/Y` and `u_linearOut` are written by the engine quad. If the effect
+   needs texture noise, set `noise: true`, keep the `sampler2D u_noiseTexture` declaration and
+   exclude it too; the engine attaches the shared `DataTexture` from `noiseTexture.ts`. Never
+   embed a new image; decode to raw bytes at vendor time like `NOISE_B64`. The fragment writes
+   display-domain colour raw; the engine wraps `main()` (`shaders/wrap.ts`) so compositor
+   render targets receive linear light instead (`wrap.test.ts` pins the rewrite markers).
 4. **Register it** in `src/toolkit/stage/shaders/index.ts`: add to `SHADER_BACKGROUNDS` and to
    `SHADER_BACKGROUND_IDS` (the inspector's display order).
 5. **If ported, record the attribution.** Add the source file to

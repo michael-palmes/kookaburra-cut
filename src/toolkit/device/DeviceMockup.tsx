@@ -13,6 +13,7 @@ import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
+import { AssetBoundary } from "../media/AssetBoundary";
 import type { V3 } from "../types";
 import { DEVICE_MODELS, type DeviceModelName, HIDDEN_NODES, SCREEN_MATERIAL } from "./models";
 
@@ -39,25 +40,39 @@ function materialName(material: Material | Material[]): string | undefined {
   return Array.isArray(material) ? material[0]?.name : material.name;
 }
 
-/** Loads a bundled handset glTF and maps a static project image onto its screen mesh; the export preamble awaits `preloadDeviceModels()` / `preloadProjectImages()` so a cold export never races a still-loading asset. See docs/determinism.md. */
+/** Loads a bundled handset glTF and maps a static project image onto its screen mesh; the export preamble awaits `preloadDeviceModels()` / `preloadProjectImages()` so a cold export never races a still-loading asset. See docs/determinism.md. A missing screen asset degrades to no mockup; never tear down the canvas tree. */
 export function DeviceMockup(props: DeviceMockupProps) {
-  const {
-    model,
-    screen,
-    rotation = [0, 0, 0],
-    position = [0, 0, 0],
-    scale = 1,
-    spinDegPerSec = 0,
-  } = props;
-
-  const { localMs } = useTimeline();
   // The owning project's id (see ProjectIdContext): the store's projectId flips to the target project one render before this scene unmounts on a project switch, and resolveAssetUrl against the wrong project throws mid-render (glob miss), tearing down the canvas tree.
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;
+  let url: string | null = null;
+  try {
+    url = resolveAssetUrl(projectId, props.screen);
+  } catch (e) {
+    console.warn(`[device] mockup screen "${props.screen}" unresolved:`, e);
+  }
+  if (!url) return null;
+  return (
+    <AssetBoundary key={url} label={props.screen}>
+      <DeviceMockupLoaded {...props} screenUrl={url} />
+    </AssetBoundary>
+  );
+}
 
+function DeviceMockupLoaded(props: DeviceMockupProps & { screenUrl: string }) {
+  const {
+    model,
+    rotation = [0, 0, 0],
+    position = [0, 0, 0],
+    scale = 1,
+    spinDegPerSec = 0,
+    screenUrl,
+  } = props;
+
+  const { localMs } = useTimeline();
   const { scene } = useGLTF(DEVICE_MODELS[model]);
-  const screenTex = useTexture(resolveAssetUrl(projectId, screen));
+  const screenTex = useTexture(screenUrl);
 
   // Clone once per (model, texture) since drei's useGLTF cache is shared: hide the studio backdrop, swap the display mesh to an unlit material showing the screen, then recentre + auto-fit to a fixed world height.
   const { root, fit } = useMemo(() => {

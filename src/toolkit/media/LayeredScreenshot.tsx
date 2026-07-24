@@ -40,6 +40,7 @@ import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { type Theme, useTheme } from "../../theme";
 import { AnimatedHeadline } from "../text/AnimatedHeadline";
+import { AssetBoundary } from "./AssetBoundary";
 
 const DEG2RAD = Math.PI / 180;
 /** Corner radius when the theme has no `card` token, as a fraction of the card's short edge. */
@@ -287,6 +288,15 @@ function TextCard({ item, rect }: { item: LayeredScreenshotTextItem; rect: Solve
   );
 }
 
+/** The stack's image srcs, joined: keys the AssetBoundary so only a source change remounts (and retries a failed load). */
+function stackImageKey(normalized: NormalizedLayeredScreenshot): string {
+  return normalized.layers
+    .flatMap((l) => l.items)
+    .filter((i) => i.kind === "screen" && i.media === "image")
+    .map((i) => (i.kind === "screen" ? i.src : ""))
+    .join("|");
+}
+
 function useResolvedProjectId(): string {
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
@@ -438,7 +448,11 @@ export function LayeredScreenshot(_props: LayeredScreenshotProps = {}) {
   const draft = useLayeredScreenshotDraft(useResolvedProjectId(), sceneIndex);
   const normalized = draft ? draft.normalized : fromDoc;
   if (!normalized) return null;
-  return <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />;
+  return (
+    <AssetBoundary key={stackImageKey(normalized)} label="layered screenshot">
+      <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />
+    </AssetBoundary>
+  );
 }
 
 /** Host-side stack for scenes whose TSX never wires `useSceneLayeredScreenshot` (mounted by SceneHost, the DevicesFallback pattern): reads the doc directly so it can't register as a consumer itself; drafts merge exactly as in the primitive. */
@@ -454,5 +468,9 @@ export function LayeredScreenshotFallback() {
   );
   const normalized = draft ? draft.normalized : fromDoc;
   if (consumed || !normalized) return null;
-  return <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />;
+  return (
+    <AssetBoundary key={stackImageKey(normalized)} label="layered screenshot">
+      <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />
+    </AssetBoundary>
+  );
 }

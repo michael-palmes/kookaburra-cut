@@ -3,6 +3,7 @@ import { useContext, useLayoutEffect, useMemo } from "react";
 import { MeshBasicMaterial, SRGBColorSpace, type Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
 import type { FrameDecorationSpec } from "../toolkit/frame/types";
+import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import type { FormatInfo } from "../toolkit/types";
 import { useHeldLocalMs } from "./presentHold";
 import { resolveAssetUrl } from "./project";
@@ -55,14 +56,16 @@ export function FrameDecoration({
   }
   if (!url) return null;
   return (
-    <LoadedDecoration
-      url={url}
-      decoration={decoration}
-      format={format}
-      from={from}
-      to={to}
-      order={order}
-    />
+    <AssetBoundary key={url} label={decoration.src}>
+      <LoadedDecoration
+        url={url}
+        decoration={decoration}
+        format={format}
+        from={from}
+        to={to}
+        order={order}
+      />
+    </AssetBoundary>
   );
 }
 
