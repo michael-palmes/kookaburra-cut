@@ -728,6 +728,13 @@ body {
   overflow: hidden;
 }
 
+/* Transparency checkerboard behind image posters (PNG posters keep alpha; see media.rs). */
+.media-thumb-alpha {
+  background:
+    repeating-conic-gradient(var(--surface-panel-alt) 0% 25%, var(--surface-recessed) 0% 50%) 50% /
+    16px 16px;
+}
+
 /* The fullscreen-preview affordance (v11 · M2): bottom-left of the thumb, hover-revealed. */
 .media-expand {
   position: absolute;

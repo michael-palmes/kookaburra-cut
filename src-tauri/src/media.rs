@@ -589,7 +589,10 @@ pub(crate) async fn ensure_media_cache(
     if done.exists() {
         if let Ok(text) = std::fs::read_to_string(&meta_path) {
             if let Ok(cached) = serde_json::from_str::<CachedMeta>(&text) {
-                return Ok(hydrate(cached, &cache, rel, &sha));
+                // Image entries cached before the alpha-preserving PNG poster regenerate in place.
+                if cache.join(poster_name(&cached.kind)).is_file() {
+                    return Ok(hydrate(cached, &cache, rel, &sha));
+                }
             }
         }
     }
@@ -611,7 +614,7 @@ pub(crate) async fn ensure_media_cache(
     let hardware = video && workspace::hardware_video_enabled(app);
 
     // Poster: 25% in for videos (skips black lead-ins), the image itself otherwise.
-    let poster = cache.join("poster.jpg");
+    let poster = cache.join(poster_name(if video { "video" } else { "image" }));
     let mut poster_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
     if hardware {
         poster_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
@@ -673,11 +676,23 @@ pub(crate) async fn ensure_media_cache(
     Ok(hydrate(cached, &cache, rel, &sha))
 }
 
+/// Images keep alpha in a PNG poster (the picker draws a checkerboard behind them); videos stay JPG.
+fn poster_name(kind: &str) -> &'static str {
+    if kind == "image" {
+        "poster.png"
+    } else {
+        "poster.jpg"
+    }
+}
+
 /// Rebuild the absolute-path view of a cache entry (ffmpeg's %02d numbering is 1-based).
 fn hydrate(cached: CachedMeta, cache: &Path, rel: &str, sha: &str) -> MediaMeta {
     MediaMeta {
         rel: rel.to_owned(),
-        poster_path: cache.join("poster.jpg").to_string_lossy().into_owned(),
+        poster_path: cache
+            .join(poster_name(&cached.kind))
+            .to_string_lossy()
+            .into_owned(),
         scrub_paths: (1..=cached.scrub_count)
             .map(|i| {
                 cache
