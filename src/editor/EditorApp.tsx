@@ -16,6 +16,7 @@ import {
 } from "../engine/edit";
 import {
   addTap,
+  clipIndexAt,
   freezeAt,
   moveTap,
   nextClipId,
@@ -207,10 +208,15 @@ export function EditorApp() {
     setPlayheadMs((p) => Math.min(p, durationMs));
   }, [doc, selectedId]);
 
-  /** Spacebar transport: toggle playback (restarts from 0 when parked at the end). */
+  /** Spacebar transport: toggle playback (restarts from 0 when parked at the end, or anywhere off a clip; `clipIndexAt` is the same check the rAF loop uses to stop). */
   const togglePlay = useCallback(() => {
     if (!doc || doc.clips.length === 0) return;
-    if (!playing && playheadMs >= timelineDurationMs(doc.clips) - 1) setPlayheadMs(0);
+    if (
+      !playing &&
+      (clipIndexAt(doc.clips, playheadMs) < 0 || playheadMs >= timelineDurationMs(doc.clips) - 1)
+    ) {
+      setPlayheadMs(0);
+    }
     setPlaying(!playing);
   }, [doc, playing, playheadMs]);
 
