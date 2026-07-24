@@ -43,6 +43,7 @@ GPU/driver, not across fleets.)
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
 | Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/clips.ts` lane rule. |
+| **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rides at ~3.9–4.1 GB steady state, mostly WebGL/IOSurface working set; when a periodic footprint check catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page, which used to restart the autorun in a silent loop until the wrapper timed out; the kill is a per-check dice roll, so runs pass or die by ~1% margins, and window focus does NOT lift the ceiling) | `runAutoRun`'s reload latch (sessionStorage restart counter) tolerates one benign reload then fails fast naming this failure mode. The real headroom fix (shrinking the steady-state graphics footprint) is an open work item; until it lands, a failed run is retryable and the latch keeps failures cheap. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
 
@@ -994,6 +995,10 @@ and do not need their own verifies.**
      `ws:device-video-spike` for device/media/camera, `ws:fx-spike` for effects, a
      hand-rolled workspace mini-project for anything narrower.
   2. `ws:launch-2026` Verify ×2 16:9: must be EQUAL (the null-for-legacy proof).
+
+  `pnpm gate` runs exactly this pair in ONE app boot (`--project` takes a comma
+  list for verify/export), removing the second cold boot's fixed cost; per-leg
+  results carry a `project` field in `last-run.json`.
 - **Tier 2: escalate selectively:** changes at a SHARED render seam (compositor,
   exporter, SceneStage, effects chain, camera application) add the other class
   project and ONE 9:16 spot-check (aspect-dependent code is rare: it's layout,

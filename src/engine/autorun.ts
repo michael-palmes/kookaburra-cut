@@ -43,8 +43,10 @@ export type AutoRunAction =
 
 export interface AutoRunConfig {
   action: AutoRunAction;
-  /** Project id to load and run (falls back to the store default when unset). */
+  /** First project of the run: the one App boots into (falls back to the store default when unset). */
   project: string;
+  /** Every project of the run, in order (KOOKABURRA_PROJECT accepts a comma list so the gate pair shares one app boot). */
+  projects: string[];
   /** Aspects to run: an explicit one, or every format. */
   aspects: FormatSpec[];
   encode?: EncodeSpec;
@@ -61,6 +63,8 @@ export interface AutoRunConfig {
 /** A single aspect's outcome: determinism digests (verify) or the output path (export). */
 interface AutoRunResult {
   aspect: string;
+  /** Which project this row belongs to (multi-project runs verify several in one boot). */
+  project?: string;
   /** theme-previews: which theme this row's preview set belongs to. */
   theme?: string;
   identical?: boolean;
@@ -202,16 +206,27 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     encode = JSON.parse(env.encodeJson) as EncodeSpec;
     outputSuffix = "custom";
   }
+  // The preview batches render their dedicated projects unless one is forced.
+  const projects = (
+    env.project?.trim() ||
+    (action === "theme-previews"
+      ? "theme-starter"
+      : action === "option-previews"
+        ? "preview-lab"
+        : useEditorStore.getState().projectId)
+  )
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (projects.length > 1 && action !== "verify" && action !== "export") {
+    throw new Error(
+      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify and export accept a list`,
+    );
+  }
   return {
     action,
-    // The preview batches render their dedicated projects unless one is forced.
-    project:
-      env.project?.trim() ||
-      (action === "theme-previews"
-        ? "theme-starter"
-        : action === "option-previews"
-          ? "preview-lab"
-          : useEditorStore.getState().projectId),
+    project: projects[0],
+    projects,
     // --preset without --aspect exports the preset's favoured aspect; perf and screenshot default to one 16:9 pass.
     aspects:
       preset && !env.aspect?.trim()
@@ -267,6 +282,18 @@ export async function runAutoRun(
   const results: AutoRunResult[] = [];
   let ok = true;
   let error: string | undefined;
+
+  // Reload latch: WebKit kills the WebContent process when the page footprint nears its 4 GB ceiling (a 4K verify rides just under it), and wry auto-reloads the page, silently restarting the run in a loop until the wrapper times out. sessionStorage survives the reload, so tolerate one benign restart (a cold-cache Vite re-optimization) and fail fast on the second.
+  const restarts = Number(sessionStorage.getItem("kookaburra-autorun-restarts") ?? "0");
+  sessionStorage.setItem("kookaburra-autorun-restarts", String(restarts + 1));
+  if (restarts > 1) {
+    await finish({
+      ok: false,
+      error:
+        "the page reloaded twice mid-run (WebKit likely killed the WebContent process near its 4 GB footprint ceiling; see _autorun/dev.log and docs/determinism.md)",
+    });
+    return;
+  }
 
   // Boot latch: a Vite dep re-optimization can hard-reload the page mid-run, orphaning the ffmpeg child and leaving native export state busy, so clear any stale export before starting or a re-fired autorun dies as "already in progress".
   await invoke("cancel_export").catch(() => {});
@@ -437,78 +464,92 @@ export async function runAutoRun(
   }
 
   try {
-    for (const format of config.aspects) {
-      console.warn(`[autorun] ${config.action} ${format.name} starting`);
-      useEditorStore.getState().setFormat(format);
-      await nextCommit();
-      console.warn(`[autorun] ${format.name} format committed`);
-      // Loudness is gain-only: measured through the exact export graph (cached native-side) and summed into the spec's volume slot.
-      let encode = config.encode;
-      // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too.
-      const outFps = encode?.fps ?? FPS;
-      if (encode && config.loudnessTarget !== undefined && project.audio) {
-        const outFrames = Math.max(1, Math.round((project.totalMs / 1000) * outFps));
-        const measured = await invoke<{ integratedLufs: number; truePeakDbtp: number }>(
-          "measure_loudness",
-          {
-            file: project.audio.abs,
-            gainDb: project.audio.gainDb ?? 0,
-            fadeInMs: project.audio.fadeInMs ?? 0,
-            fadeOutMs: project.audio.fadeOutMs ?? 0,
-            startOffsetMs: project.audio.startOffsetMs ?? 0,
-            totalFrames: outFrames,
-            fps: outFps,
-          },
-        );
-        const delta = Math.round((config.loudnessTarget - measured.integratedLufs) * 100) / 100;
-        if (measured.truePeakDbtp + delta > -1.5) {
-          console.warn(
-            `[autorun] loudness: projected true peak ${(measured.truePeakDbtp + delta).toFixed(1)} dBTP exceeds −1.5 — export proceeds (gain-only, never limited)`,
-          );
-        }
-        encode = {
-          ...encode,
-          audio: { ...(encode.audio ?? { codec: { aacKbps: 192 } }), loudnessGainDb: delta },
-        };
+    // The first project arrives loaded and committed by App's boot effect; later list entries swap in mid-run through the same load/apply/commit barriers the theme-previews batch uses.
+    let current = project;
+    for (const [index, projectId] of config.projects.entries()) {
+      if (index > 0) {
+        if (!applyProject) throw new Error("a multi-project run needs the applyProject hook");
+        console.warn(`[autorun] loading "${projectId}"`);
+        current = await loadProject(projectId);
+        applyProject(current);
+        await nextCommit();
+        await awaitProjectCommitted(current);
+        await awaitSceneHostsCommitted(current.slots.length);
       }
-      const base = {
-        projectId: project.id,
-        fps: outFps,
-        durationMs: project.totalMs,
-        slots: project.slots,
-        cameraTrack: project.cameraTrack,
-        sceneDocs: project.sceneDocs,
-        theme: project.theme,
-        sceneThemes: project.sceneThemes,
-        sceneFrames: project.sceneFrames,
-        audio: project.audio,
-        codec: config.codec,
-        encode,
-        outputSuffix: config.outputSuffix,
-        format,
-      };
-      if (config.action === "verify") {
-        const r = await verifyDeterminism(base, onProgress);
-        results.push({
-          aspect: format.name,
-          identical: r.identical,
-          hashA: r.hashA,
-          hashB: r.hashB,
-          fingerprint: r.fingerprint,
-          ...(r.divergentCount !== undefined
-            ? {
-                divergentCount: r.divergentCount,
-                divergentRanges: r.divergentRanges,
-                divergentTiles: r.divergentTiles,
-                boundMismatches: r.boundMismatches,
-                frameDeltas: r.frameDeltas,
-              }
-            : {}),
-        });
-        if (!r.identical) ok = false;
-      } else {
-        const path = await exportProject(base, onProgress);
-        results.push({ aspect: format.name, path });
+      for (const format of config.aspects) {
+        console.warn(`[autorun] ${config.action} ${current.id} ${format.name} starting`);
+        useEditorStore.getState().setFormat(format);
+        await nextCommit();
+        console.warn(`[autorun] ${format.name} format committed`);
+        // Loudness is gain-only: measured through the exact export graph (cached native-side) and summed into the spec's volume slot.
+        let encode = config.encode;
+        // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too.
+        const outFps = encode?.fps ?? FPS;
+        if (encode && config.loudnessTarget !== undefined && current.audio) {
+          const outFrames = Math.max(1, Math.round((current.totalMs / 1000) * outFps));
+          const measured = await invoke<{ integratedLufs: number; truePeakDbtp: number }>(
+            "measure_loudness",
+            {
+              file: current.audio.abs,
+              gainDb: current.audio.gainDb ?? 0,
+              fadeInMs: current.audio.fadeInMs ?? 0,
+              fadeOutMs: current.audio.fadeOutMs ?? 0,
+              startOffsetMs: current.audio.startOffsetMs ?? 0,
+              totalFrames: outFrames,
+              fps: outFps,
+            },
+          );
+          const delta = Math.round((config.loudnessTarget - measured.integratedLufs) * 100) / 100;
+          if (measured.truePeakDbtp + delta > -1.5) {
+            console.warn(
+              `[autorun] loudness: projected true peak ${(measured.truePeakDbtp + delta).toFixed(1)} dBTP exceeds −1.5 — export proceeds (gain-only, never limited)`,
+            );
+          }
+          encode = {
+            ...encode,
+            audio: { ...(encode.audio ?? { codec: { aacKbps: 192 } }), loudnessGainDb: delta },
+          };
+        }
+        const base = {
+          projectId: current.id,
+          fps: outFps,
+          durationMs: current.totalMs,
+          slots: current.slots,
+          cameraTrack: current.cameraTrack,
+          sceneDocs: current.sceneDocs,
+          theme: current.theme,
+          sceneThemes: current.sceneThemes,
+          sceneFrames: current.sceneFrames,
+          audio: current.audio,
+          codec: config.codec,
+          encode,
+          outputSuffix: config.outputSuffix,
+          format,
+        };
+        if (config.action === "verify") {
+          const r = await verifyDeterminism(base, onProgress);
+          results.push({
+            aspect: format.name,
+            project: current.id,
+            identical: r.identical,
+            hashA: r.hashA,
+            hashB: r.hashB,
+            fingerprint: r.fingerprint,
+            ...(r.divergentCount !== undefined
+              ? {
+                  divergentCount: r.divergentCount,
+                  divergentRanges: r.divergentRanges,
+                  divergentTiles: r.divergentTiles,
+                  boundMismatches: r.boundMismatches,
+                  frameDeltas: r.frameDeltas,
+                }
+              : {}),
+          });
+          if (!r.identical) ok = false;
+        } else {
+          const path = await exportProject(base, onProgress);
+          results.push({ aspect: format.name, project: current.id, path });
+        }
       }
     }
   } catch (e) {
@@ -518,7 +559,7 @@ export async function runAutoRun(
 
   const report: AutoRunReport = {
     action: config.action,
-    project: project.id,
+    project: config.projects.join(","),
     codec: config.codec,
     ok,
     durationMs: Math.round(performance.now() - startedAt),
