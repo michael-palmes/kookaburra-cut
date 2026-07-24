@@ -1188,6 +1188,18 @@ function BgTypeIcon({ id }: { id: string }) {
   }
 }
 
+/** Applies a picked recording to the doc's video window and defaults the scene length to follow it (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so the window keeps its size before frames arrive. */
+function applyVideoWindowMedia(next: SceneDoc, src: string, meta: MediaMeta | null) {
+  if (!next.videoWindow) return;
+  const media = { ...next.videoWindow.media, src };
+  if (meta && meta.width > 0 && meta.height > 0) media.aspect = meta.width / meta.height;
+  else delete media.aspect;
+  next.videoWindow.media = media;
+  if (next.duration?.mode !== "manual") {
+    next.duration = { mode: "follow-media", source: "videoWindow" };
+  }
+}
+
 export function SceneTab({
   project,
   sceneIndex,
@@ -2110,7 +2122,7 @@ export function SceneTab({
   }
   if (drillIn === "videoWindow.media" && doc) {
     const vw = doc.videoWindow;
-    const createFrom = (src: string) =>
+    const createFrom = (src: string, meta: MediaMeta | null) =>
       void patchDoc(
         (next) => {
           next.videoWindow = {
@@ -2118,19 +2130,14 @@ export function SceneTab({
             stage: { type: "color", color: sceneTheme?.colors.background ?? "#1b2330" },
             radius: "macos",
           };
+          applyVideoWindowMedia(next, src, meta);
         },
         { resync: true },
       );
     const pickVideoWindowMedia = (rel: string, meta: MediaMeta | null) => {
       if (meta && meta.kind !== "video") return;
-      if (vw)
-        void patchDoc(
-          (next) => {
-            if (next.videoWindow) next.videoWindow.media = { ...next.videoWindow.media, src: rel };
-          },
-          { resync: true },
-        );
-      else createFrom(rel);
+      if (vw) void patchDoc((next) => applyVideoWindowMedia(next, rel, meta), { resync: true });
+      else createFrom(rel, meta);
     };
     return (
       <div className="inspector-drill">
@@ -2312,7 +2319,7 @@ export function SceneTab({
         });
       else patchVW(mutate);
     };
-    const createFrom = (src: string) =>
+    const createFrom = (src: string, meta: MediaMeta | null) =>
       void patchDoc(
         (next) => {
           next.videoWindow = {
@@ -2320,6 +2327,7 @@ export function SceneTab({
             stage: { type: "color", color: sceneTheme?.colors.background ?? "#1b2330" },
             radius: "macos",
           };
+          applyVideoWindowMedia(next, src, meta);
         },
         { resync: true },
       );

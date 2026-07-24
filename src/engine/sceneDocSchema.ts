@@ -43,7 +43,7 @@ export interface SceneDocDeviceSpec {
 
 export type SceneDocDuration =
   | { mode: "manual" }
-  | { mode: "follow-media"; sourceDeviceId?: string };
+  | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
 
 /** Orbit pose for the per-scene camera track. */
 export interface SceneDocCameraPose {

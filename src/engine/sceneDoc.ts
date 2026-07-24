@@ -183,14 +183,17 @@ export async function resyncFollowMediaDuration(
   if (duration?.mode !== "follow-media") return false;
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === duration.sourceDeviceId) ?? devices[0];
+  // An explicit source pins the follow to the block the user picked; legacy docs keep the device-first chain.
   const src =
-    device?.media?.kind === "video"
-      ? device.media.src
-      : doc?.videoWindow?.media?.src
-        ? doc.videoWindow.media.src
-        : doc?.background?.type === "video"
-          ? doc.background.src
-          : null;
+    duration.source === "videoWindow"
+      ? (doc?.videoWindow?.media?.src ?? null)
+      : device?.media?.kind === "video"
+        ? device.media.src
+        : doc?.videoWindow?.media?.src
+          ? doc.videoWindow.media.src
+          : doc?.background?.type === "video"
+            ? doc.background.src
+            : null;
   if (!src) return false;
   const meta = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {
