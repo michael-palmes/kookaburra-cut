@@ -43,7 +43,7 @@ export interface SceneDocDeviceSpec {
 
 export type SceneDocDuration =
   | { mode: "manual" }
-  | { mode: "follow-media"; sourceDeviceId?: string };
+  | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
 
 /** Orbit pose for the per-scene camera track. */
 export interface SceneDocCameraPose {
@@ -202,8 +202,8 @@ export interface VideoWindowMotion {
 
 /** A macOS screen recording presented as a floating window (rounded corners + hairline edge) with an analytic drop shadow, over a bundled full-bleed backing stage; one per scene, sidecar-only (references a project asset, like video fills). Deep validation lives in `sceneVideoWindow.ts`. */
 export interface SceneDocVideoWindow {
-  /** Project-relative video, e.g. `"assets/screencast.mp4"`. */
-  media: { src: string; startMs?: number; loop?: boolean };
+  /** Project-relative video, e.g. `"assets/screencast.mp4"`; `aspect` (width/height, recorded at pick time) sizes the window before the clip's intrinsics arrive. */
+  media: { src: string; startMs?: number; loop?: boolean; aspect?: number };
   stage: VideoWindowStage;
   radius: VideoWindowRadius;
   border?: VideoWindowBorder;

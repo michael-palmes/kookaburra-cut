@@ -44,7 +44,7 @@ export interface NormalizedVideoWindowShadow {
 
 /** A validated, defaults-filled videoWindow ready to render. */
 export interface NormalizedVideoWindow {
-  media: { src: string; startMs: number; loop: boolean };
+  media: { src: string; startMs: number; loop: boolean; aspect: number | null };
   stage: VideoWindowStage;
   radiusFraction: number;
   border: VideoWindowBorder;
@@ -142,6 +142,10 @@ export function normalizeVideoWindow(
       src,
       startMs: Number.isFinite(raw.media.startMs) ? (raw.media.startMs as number) : 0,
       loop: raw.media.loop === true,
+      aspect:
+        Number.isFinite(raw.media.aspect) && (raw.media.aspect as number) > 0
+          ? (raw.media.aspect as number)
+          : null,
     },
     stage: normalizeStage(raw.stage, source),
     radiusFraction: resolveVideoWindowRadius(raw.radius),

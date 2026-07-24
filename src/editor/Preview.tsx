@@ -2,7 +2,6 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from "re
 import type { EditClip, EditSource, EditTap } from "../engine/edit";
 import { clipIndexAt, timelineDurationMs, timelineToSource } from "../engine/editMath";
 import { fsUrl } from "../engine/media";
-import { useEscapeClose } from "../ui/useEscapeClose";
 import {
   TAP_DOT_SIZE_FRACTION,
   TAP_MARKER_NEAR_MS,
@@ -41,137 +40,9 @@ export interface PreviewProps {
   onCommitTap: (id: string, pos: [number, number]) => void; // one commit per drag gesture
   onTapContextMenu: (id: string, clientX: number, clientY: number) => void;
   tapMarkerScope: "near" | "all"; // "near" shows edit markers only around the playhead
-  onTapMarkerScope: (scope: "near" | "all") => void;
   tapStyle: string; // style (shape) id (tapStyles.generated.ts)
-  onTapStyle: (id: string) => void;
   tapColor: string; // colour id (tapStyles.generated.ts)
-  onTapColor: (id: string) => void;
   tapSize: number; // multiplier on the default dot size
-  onTapSize: (size: number) => void;
-}
-
-/** The floating tap-settings overlay (camera-pill styling): marker scope, style dropdown with live swatches, colour dots and size. */
-function TapSettings({
-  scope,
-  onScope,
-  styleId,
-  onStyle,
-  colorId,
-  onColor,
-  size,
-  onSize,
-}: {
-  scope: "near" | "all";
-  onScope: (scope: "near" | "all") => void;
-  styleId: string;
-  onStyle: (id: string) => void;
-  colorId: string;
-  onColor: (id: string) => void;
-  size: number;
-  onSize: (size: number) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEscapeClose(() => setOpen(false), open);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [open]);
-  const style = TAP_STYLES.find((s) => s.id === styleId) ?? TAP_STYLES[0];
-  const color = TAP_COLORS.find((c) => c.id === colorId) ?? TAP_COLORS[0];
-  // The swatch backdrop splits light/dark so every style's visibility is previewable; the dot layer draws at 82% so its silhouette never touches the chip's edge.
-  const swatch = (gradient: string): CSSProperties => ({
-    backgroundImage: `${gradient}, linear-gradient(105deg, #f2f2f2 50%, #20262b 50%)`,
-    backgroundSize: "82% 82%, 100% 100%",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat",
-  });
-  return (
-    <div className="tap-settings" ref={ref}>
-      <div className="tap-settings-scope">
-        <button
-          type="button"
-          className={`tap-settings-seg${scope === "near" ? " selected" : ""}`}
-          aria-pressed={scope === "near"}
-          onClick={() => onScope("near")}
-          title="Show tap markers near the playhead only"
-        >
-          Near
-        </button>
-        <button
-          type="button"
-          className={`tap-settings-seg${scope === "all" ? " selected" : ""}`}
-          aria-pressed={scope === "all"}
-          onClick={() => onScope("all")}
-          title="Show every tap marker on this source"
-        >
-          All
-        </button>
-      </div>
-      <div className="tap-settings-style">
-        <button
-          type="button"
-          className="tap-settings-style-btn"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-          title="Tap highlight style (applies to the whole edit)"
-        >
-          <span className="tap-swatch" style={swatch(tapGradient(style, color))} />
-          <span className="tap-settings-style-label">{style.label}</span>
-          <span className="tap-settings-chevron" aria-hidden>
-            ▾
-          </span>
-        </button>
-        {open && (
-          <div className="tap-settings-menu">
-            {TAP_STYLES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={`tap-settings-option${s.id === style.id ? " selected" : ""}`}
-                aria-pressed={s.id === style.id}
-                onClick={() => {
-                  onStyle(s.id);
-                  setOpen(false);
-                }}
-              >
-                <span className="tap-swatch" style={swatch(tapGradient(s, color))} />
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="tap-settings-colors">
-        {TAP_COLORS.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className={`tap-settings-color${c.id === color.id ? " selected" : ""}`}
-            aria-pressed={c.id === color.id}
-            title={c.label}
-            style={{ background: `rgb(${c.rgb.join(", ")})` }}
-            onClick={() => onColor(c.id)}
-          />
-        ))}
-      </div>
-      <label className="tap-settings-size" title={`Tap size (${Math.round(size * 100)}%)`}>
-        <span className="tap-settings-size-label">Size</span>
-        <input
-          type="range"
-          min={0.5}
-          max={3}
-          step={0.05}
-          value={size}
-          onChange={(e) => onSize(Number(e.currentTarget.value))}
-        />
-      </label>
-    </div>
-  );
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -211,13 +82,9 @@ export function Preview({
   onCommitTap,
   onTapContextMenu,
   tapMarkerScope,
-  onTapMarkerScope,
   tapStyle,
-  onTapStyle,
   tapColor,
-  onTapColor,
   tapSize,
-  onTapSize,
 }: PreviewProps) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
   // Latest-value mirrors so the playback loop never restarts on scrub/edit.
@@ -511,18 +378,6 @@ export function Preview({
           </div>
         </div>
       ))}
-      {taps.length > 0 && (
-        <TapSettings
-          scope={tapMarkerScope}
-          onScope={onTapMarkerScope}
-          styleId={style.id}
-          onStyle={onTapStyle}
-          colorId={color.id}
-          onColor={onTapColor}
-          size={tapSize}
-          onSize={onTapSize}
-        />
-      )}
       {clips.length === 0 && <p className="muted">No clips to preview.</p>}
     </div>
   );

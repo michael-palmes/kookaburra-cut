@@ -9,9 +9,8 @@ import {
 } from "@kookaburra/toolkit";
 
 /**
- * Theme starter scene 5, device + title with a camera move: the sidecar's per-scene
- * camera keys orbit-push toward a floating device (v7 · M5). Composition here, camera and
- * content in `scenes/05-device-camera.json`.
+ * Theme starter scene 5, a second device + title held front-on and still; content in
+ * `scenes/05-device-camera.json` (add camera keys there for a move).
  */
 export default defineScene({
   id: "starter-device-camera",

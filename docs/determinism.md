@@ -917,9 +917,10 @@ extra 0.0 = the byte-frozen legacy string). Projected true peak > −1.5 dBTP wa
 and proceeds, never a limiter (a limiter is content-dependent DSP; a gain is a
 constant).
 
-**4:5 is first-class but feature-scoped**: `FORMATS["4:5"]` = 2160×2700;
-`STANDING_ASPECTS` pins Verify's "all" and the full matrices to the standing
-three (16:9 / 9:16 / 1:1).
+**4:5, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
+2160×2700, `FORMATS["3:2"]` = 3240×2160, `FORMATS["2:3"]` = 2160×3240 (2160
+short edge, the house convention); `STANDING_ASPECTS` pins Verify's "all" and
+the full matrices to the standing three (16:9 / 9:16 / 1:1).
 
 ### The export modal & user presets
 
@@ -1017,14 +1018,33 @@ the set: the null-for-legacy sentinel (`ws:launch-2026`, a hash-identical
 workspace copy of the reel dropped from the bundled set on 2026-07-13) and the
 bundled rolling-gate project (`showcase-tour`):
 
-| Project | 16:9 | 9:16 | 1:1 | 4:5 |
-| --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
-| `showcase-tour` (rolling gate) | `1ce41e1d…` | stale | stale | stale |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — |
+| Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale | — | — |
+| `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale | `0e64593d…` | — |
+| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
+
+> **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
+> fixes, video-window loading/aspect seeding, follow-media for video windows,
+> editor tap/space/progress fixes, template cleanup, device subtitles, the
+> 3:2/2:3 aspects) landed with all three anchors EQUAL (`97af238c…` /
+> `b70c9788…` / `d67eb1d4…`): the video-window aspect seed and preparing card
+> are null-for-legacy (no `media.aspect` in existing docs; `isExporting()`
+> stands the card down and the extract barrier means no captured frame can
+> sample it), extraction progress is a `-progress pipe:1` observability add
+> with unchanged output args, and everything else is editor/UI or template
+> data. `showcase-tour` 3:2 recorded its first baseline `0e64593d…` (Verify ×2
+> EQUAL) after eyeballing 3:2 and 2:3 frames via `--action screenshot`; 2:3
+> stays unbaselined until a project ships in it (the 4:5 precedent). This
+> merge also corrects the same-day `1ce41e1d…` re-record below: a fresh git
+> worktree lacks the gitignored licensed device glbs, so both that run AND its
+> "clean origin/main" comparison rendered the placeholder device (EQUAL, wrong
+> pixels); with the models present the identical code reproduces `97af238c…`
+> Verify ×2 EQUAL, so the standing baseline never moved. Copy
+> `src/assets/models/licensed/*.glb` into a worktree before gating from one.
 
 > **2026-07-24 (animated backgrounds through transitions):** shader background
 > fills write display-domain colour raw, which the compositor's hardware-sRGB
@@ -1040,9 +1060,9 @@ bundled rolling-gate project (`showcase-tour`):
 > combination, recorded `2df76336…` Verify ×2 EQUAL after eyeballing seam frames
 > via `--action screenshot`. Anchors: `ws:launch-2026` EQUAL (`b70c9788…`);
 > `showcase-tour` Verify ×2 EQUAL and byte-identical to a clean `origin/main`
-> run on the same machine (both `1ce41e1d…`). The previous `97af238c…` went
-> stale on main after 2026-07-20 (one of #45-#49 moved it), independent of this
-> change; the table row is re-recorded at `1ce41e1d…` from this run.
+> run on the same machine (both `1ce41e1d…`). CORRECTED same day (see the note
+> above): both runs came from worktrees missing the licensed device glbs, so
+> `1ce41e1d…` is the placeholder-device render; `97af238c…` stands.
 
 > **2026-07-23 (video window):** the VideoWindow feature landed with both anchors
 > EQUAL (`97af238c…` / `b70c9788…`): the host-side `VideoWindowFallback` mounts

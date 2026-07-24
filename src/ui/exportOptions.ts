@@ -15,7 +15,7 @@ export const CUSTOM_ID = "custom";
 /** Decision 18's mux margin. */
 export const MUX_MARGIN = 1.05;
 
-export const ALL_ASPECTS: AspectName[] = ["16:9", "9:16", "1:1", "4:5"];
+export const ALL_ASPECTS: AspectName[] = ["16:9", "9:16", "1:1", "4:5", "3:2", "2:3"];
 
 /** Aspects a preset may export (absent allowedAspects = unrestricted). */
 export function presetAspects(doc: ExportPresetDoc): AspectName[] {

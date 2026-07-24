@@ -46,7 +46,12 @@ describe("normalizeVideoWindow — degrade + defaults", () => {
   it("fills defaults for a minimal block", () => {
     const n = normalizeVideoWindow(minimal(), "s");
     expect(n).not.toBeNull();
-    expect(n?.media).toEqual({ src: "assets/screencast.mp4", startMs: 0, loop: false });
+    expect(n?.media).toEqual({
+      src: "assets/screencast.mp4",
+      startMs: 0,
+      loop: false,
+      aspect: null,
+    });
     expect(n?.radiusFraction).toBeCloseTo(0.035);
     expect(n?.scale).toBeCloseTo(0.72);
     expect(n?.motion).toEqual({ preset: "none" });

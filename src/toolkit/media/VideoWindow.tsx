@@ -10,6 +10,7 @@ import {
 } from "three";
 import { clipPlaneSize } from "../../engine/clipFrame";
 import { useClipTexture } from "../../engine/clipTexture";
+import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -27,6 +28,7 @@ import { useEditorStore } from "../../store/editorStore";
 import { gradientTexture, useExactMaterial } from "../stage/backdrops";
 import { AssetBoundary } from "./AssetBoundary";
 import { applyCardMask, cardUniforms, SHADOW_FRAG, SHADOW_VERT } from "./LayeredScreenshot";
+import { preparingVideoTexture } from "./preparingTexture";
 
 /** Depth (world units) of the backing stage behind the window group; the "set back a bit" gap that gives parallax under the scene camera. */
 const STAGE_GAP = 0.6;
@@ -34,7 +36,7 @@ const STAGE_GAP = 0.6;
 const STAGE_OVERSCAN = 2;
 /** The shadow quad sits just behind the window inside the moving group, so it tracks the window's motion. */
 const SHADOW_BEHIND = 0.12;
-/** Placeholder aspect before the clip's intrinsics arrive (the mesh is hidden until the first frame binds; exports have intrinsics by frame 0 behind the extract barrier). */
+/** Last-resort aspect before the clip's intrinsics arrive; the doc's recorded `media.aspect` seeds first, so the window keeps its size across remounts and media swaps (exports have intrinsics by frame 0 behind the extract barrier). */
 const DEFAULT_CLIP_ASPECT = 16 / 9;
 
 interface Rect {
@@ -251,6 +253,16 @@ function WindowVideo({
           <planeGeometry args={[rect.width, rect.height]} />
         </mesh>
       </group>
+      {/* While frames extract, the shared "Preparing video…" card fills the window, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
+      {!info && !isExporting() && (
+        <mesh>
+          <planeGeometry args={[rect.width, rect.height]} />
+          <meshBasicMaterial
+            map={preparingVideoTexture(rect.width / rect.height, true)}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -262,7 +274,7 @@ function VideoWindowRenderer({ w }: { w: NormalizedVideoWindow }) {
   const format = useFormat();
   const [clipAspect, setClipAspect] = useState<number | null>(null);
   const onAspect = useCallback((a: number) => setClipAspect((prev) => (prev === a ? prev : a)), []);
-  const aspect = clipAspect ?? DEFAULT_CLIP_ASPECT;
+  const aspect = clipAspect ?? w.media.aspect ?? DEFAULT_CLIP_ASPECT;
   const rect = clipPlaneSize(
     "contain",
     { width: format.frame.width * w.scale, height: format.frame.height * w.scale },

@@ -5,6 +5,10 @@ const shas = new Map<string, string>();
 let failExtract = false;
 
 vi.mock("@tauri-apps/api/core", () => ({
+  // Channel stands in for the ipc progress channel; tests never feed it messages.
+  Channel: class {
+    onmessage?: (msg: unknown) => void;
+  },
   invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
     if (cmd === "hash_file") {
       const sha = shas.get(args?.path as string);

@@ -27,7 +27,7 @@ Steps:
    recentres); for the appversion kind seed `title` (app name, else `"Your App"`) AND
    `subtitle` (version, else `"1.0"`); other kinds get a `title` if the user gave copy
    (`headline` is the legacy key on old scenes; never write it for new ones) — and for
-   the device kind one
+   the device kind ALSO `subtitle: ""` plus one
    `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`, `media` if given, the
    template's default `placement`, `motion`, `shadow`); for the layeredscreenshot kind a
    `layeredScreenshot` block with one layer (`{ "id": "l1", "visible": true, "z": 0,
@@ -43,7 +43,10 @@ Steps:
    device kind, `{ "mode": "follow-media" }` (no source device) for the video kind.
    Otherwise `{ "mode": "manual" }` and **4000ms**.
 6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
-   `durationMs`, in order.
+   `durationMs`, in order. New scenes join with a crossfade by default: seed
+   `"transition": { "type": "crossfade", "durationMs": 600 }` on the previous scene's
+   entry, and on the new entry too when it isn't last; never overwrite an existing
+   transition.
 7. Verify: `pnpm build`, `pnpm test`, `pnpm lint` — fix and rerun until clean.
 8. Tell the user to preview with `/preview $1`, and to gate with `Verify ×2` before relying
    on the scene (the skill's validation loop).

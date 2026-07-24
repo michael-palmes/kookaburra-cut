@@ -275,7 +275,7 @@ function MediaCard({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-scrub is decorative — the card root carries the button semantics */}
       <div
         ref={thumbRef}
-        className="media-thumb"
+        className={`media-thumb${meta?.kind === "image" ? " media-thumb-alpha" : ""}`}
         onMouseMove={(e) => {
           // Hover-scrub: cursor X sweeps across the pre-extracted frames.
           if (!meta || meta.scrubPaths.length === 0 || !thumbRef.current) return;

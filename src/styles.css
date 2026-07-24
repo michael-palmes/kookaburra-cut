@@ -665,6 +665,9 @@ body {
   top: var(--space-3);
   left: 50%;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 2px var(--space-3);
   font-size: var(--text-2xs);
   color: var(--text-secondary);
@@ -673,6 +676,21 @@ body {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   transform: translateX(-50%);
+}
+
+/* Determinate extraction progress inside the chip (ffmpeg frame counts vs the probe estimate). */
+.stage-busy-progress {
+  width: 72px;
+  height: 3px;
+  overflow: hidden;
+  background: var(--surface-recessed);
+  border-radius: var(--radius-full);
+}
+.stage-busy-progress-bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-fast) linear;
 }
 
 .media-grid {
@@ -726,6 +744,13 @@ body {
   aspect-ratio: 1;
   background: var(--surface-recessed);
   overflow: hidden;
+}
+
+/* Transparency checkerboard behind image posters (PNG posters keep alpha; see media.rs). */
+.media-thumb-alpha {
+  background:
+    repeating-conic-gradient(var(--surface-panel-alt) 0% 25%, var(--surface-recessed) 0% 50%) 50% /
+    16px 16px;
 }
 
 /* The fullscreen-preview affordance (v11 · M2): bottom-left of the thumb, hover-revealed. */
@@ -2081,10 +2106,27 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
+  flex-direction: column;
+  background: var(--surface-recessed);
+}
+
+/* The tap-settings strip: the stage's full width, flush under the topbar, controls centred; the media panel keeps its full height beside it. */
+.editor-tap-bar {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.editor-preview-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background: var(--surface-recessed);
 }
 
 .editor-preview {
@@ -2143,20 +2185,11 @@ body {
   pointer-events: none;
 }
 
-/* The floating tap-settings overlay: marker scope + style preset, camera-pill styling. */
+/* The tap-settings controls: a plain centred row, the strip (.editor-tap-bar) carries the surface. */
 .tap-settings {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 7;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px;
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  box-shadow: var(--elev-popover);
 }
 
 .tap-settings-scope {
@@ -5441,7 +5474,7 @@ img.inspector-scene-thumb {
   text-align: center;
 }
 
-/* Drag-to-scrub affordance: ew-resize on hover, back to a caret once focused for typing. */
+/* Drag-to-scrub affordance: ew-resize on hover, a caret once focused for typing (dragging still scrubs). */
 .inspector-num-drag {
   cursor: ew-resize;
 }

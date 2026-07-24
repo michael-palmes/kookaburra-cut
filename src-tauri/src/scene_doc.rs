@@ -585,13 +585,16 @@ pub async fn scaffold_scene(
         },
         "text": {},
     });
-    // Title scenes seed the TitleBlock pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
+    // Title and device scenes seed the title/subtitle pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
     if options.kind == "title" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
     } else if options.kind == "appversion" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
+    } else if options.kind == "device" {
+        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
+        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
     } else if let Some(title) = &options.title {
         doc["text"]["title"] = json!(title);
     }
@@ -654,9 +657,23 @@ pub async fn scaffold_scene(
         .and_then(Value::as_array_mut)
         .ok_or("project.json has no scenes array")?;
     let entry = json!({ "file": file, "durationMs": duration_ms });
-    match options.position {
-        Some(index) if index < scenes.len() => scenes.insert(index, entry),
-        _ => scenes.push(entry),
+    let at = match options.position {
+        Some(index) if index < scenes.len() => {
+            scenes.insert(index, entry);
+            index
+        }
+        _ => {
+            scenes.push(entry);
+            scenes.len() - 1
+        }
+    };
+    // New scenes join with a crossfade by default (600ms, the catalogue default in transitionCatalog.ts): seed the previous scene's outgoing transition and, when the new scene isn't last, its own; never overwrite an existing choice.
+    let default_transition = json!({ "type": "crossfade", "durationMs": 600 });
+    if at > 0 && scenes[at - 1].get("transition").is_none() {
+        scenes[at - 1]["transition"] = default_transition.clone();
+    }
+    if at + 1 < scenes.len() && scenes[at].get("transition").is_none() {
+        scenes[at]["transition"] = default_transition;
     }
     atomic_write_json(&manifest_path, &manifest)?;
 
