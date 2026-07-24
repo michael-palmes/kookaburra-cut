@@ -9,6 +9,8 @@ import {
 import { useEditorStore } from "../store/editorStore";
 import { THEME_LINEUP } from "../theme/registry";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
+import { releaseCompositorPools } from "./compositor";
+import { releaseComposer } from "./effects";
 import { preloadEnvironments } from "./environments";
 import { canvasHandle } from "./exportBridge";
 import {
@@ -299,8 +301,9 @@ export async function runAutoRun(
   await invoke("cancel_export").catch(() => {});
 
   const onProgress = (p: ExportProgress) => {
-    // console.warn not log: only warn/error forward into the wrapper's dev.log, and these breadcrumbs are how a stalled AFK run gets diagnosed post-hoc.
-    if (p.frame === p.total) console.warn(`[autorun] frame ${p.frame}/${p.total}`);
+    // console.warn not log: only warn/error forward into the wrapper's dev.log, and these breadcrumbs are how a stalled AFK run (or a WebContent footprint kill) gets localized post-hoc.
+    if (p.frame % 120 === 0 || p.frame === p.total)
+      console.warn(`[autorun] frame ${p.frame}/${p.total}`);
   };
 
   if (config.action === "option-previews") {
@@ -469,6 +472,9 @@ export async function runAutoRun(
     for (const [index, projectId] of config.projects.entries()) {
       if (index > 0) {
         if (!applyProject) throw new Error("a multi-project run needs the applyProject hook");
+        // One WebContent process hosts every leg, so the previous project's render-target pools and composer must not stack onto this leg's footprint (WebKit kills the process near 4 GB).
+        releaseCompositorPools();
+        releaseComposer();
         console.warn(`[autorun] loading "${projectId}"`);
         current = await loadProject(projectId);
         applyProject(current);
@@ -526,6 +532,13 @@ export async function runAutoRun(
           outputSuffix: config.outputSuffix,
           format,
         };
+        // GPU-residency breadcrumb: three's texture/geometry/program counts localize footprint growth to a leg without a debugger attached.
+        const glInfo = canvasHandle.current?.gl.info;
+        if (glInfo) {
+          console.warn(
+            `[autorun] gl memory before ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
+          );
+        }
         if (config.action === "verify") {
           const r = await verifyDeterminism(base, onProgress);
           results.push({
@@ -549,6 +562,11 @@ export async function runAutoRun(
         } else {
           const path = await exportProject(base, onProgress);
           results.push({ aspect: format.name, project: current.id, path });
+        }
+        if (glInfo) {
+          console.warn(
+            `[autorun] gl memory after ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
+          );
         }
       }
     }
