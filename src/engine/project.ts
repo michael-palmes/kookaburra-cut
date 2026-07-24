@@ -377,6 +377,21 @@ async function importProjectModule<T>(
   return load();
 }
 
+/** A project must reference each scene file once: shared files load one sidecar into two scenes and every text key collides. */
+export function assertUniqueSceneFiles(scenes: ProjectManifest["scenes"], label: string): void {
+  const seen = new Map<string, number>();
+  scenes.forEach((entry, index) => {
+    const file = entry.file.replace(/^\.?\//, "");
+    const first = seen.get(file);
+    if (first !== undefined) {
+      throw new Error(
+        `${label} references "${entry.file}" more than once (scenes ${first + 1} and ${index + 1}): each scene entry needs its own file. Duplicate the scene file and its sidecar instead of reusing one.`,
+      );
+    }
+    seen.set(file, index);
+  });
+}
+
 /** Parse a project manifest from either source, with readable failures for hand-edited files. */
 async function loadManifest(id: string): Promise<ProjectManifest> {
   if (isWorkspaceProjectId(id)) {
@@ -393,6 +408,7 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
     if (!Array.isArray(manifest.scenes) || manifest.scenes.length === 0) {
       throw new Error(`"${slug}/project.json" needs a non-empty "scenes" array.`);
     }
+    assertUniqueSceneFiles(manifest.scenes, `"${slug}/project.json"`);
     return manifest;
   }
   const manifestPath = `/projects/${id}/project.json`;
@@ -402,7 +418,9 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
       `Project "${id}" not found (no ${manifestPath}). Available: ${listProjectIds().join(", ") || "none"}`,
     );
   }
-  return (await load()).default;
+  const manifest = (await load()).default;
+  assertUniqueSceneFiles(manifest.scenes ?? [], `"${id}/project.json"`);
+  return manifest;
 }
 
 /** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `theme-starter` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */

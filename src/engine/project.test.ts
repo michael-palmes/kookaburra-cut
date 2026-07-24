@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertProjectRelative, outgoingSceneTransitions } from "./project";
+import { assertProjectRelative, assertUniqueSceneFiles, outgoingSceneTransitions } from "./project";
 import type { TransitionSpec } from "./sceneTimeline";
 
 describe("assertProjectRelative", () => {
@@ -25,6 +25,41 @@ describe("assertProjectRelative", () => {
 
   it("rejects a .. segment buried after a legitimate-looking prefix", () => {
     expect(() => assertProjectRelative("assets/../../secret")).toThrow();
+  });
+});
+
+describe("assertUniqueSceneFiles", () => {
+  const entry = (file: string) => ({ file, durationMs: 1000 });
+
+  it("passes distinct files", () => {
+    expect(() =>
+      assertUniqueSceneFiles(
+        [entry("scenes/01-open.tsx"), entry("scenes/02-close.tsx")],
+        '"demo/project.json"',
+      ),
+    ).not.toThrow();
+  });
+
+  it("passes an empty scenes array", () => {
+    expect(() => assertUniqueSceneFiles([], '"demo/project.json"')).not.toThrow();
+  });
+
+  it("throws naming the file and both scene positions", () => {
+    expect(() =>
+      assertUniqueSceneFiles(
+        [entry("scenes/01-open.tsx"), entry("scenes/02-mid.tsx"), entry("scenes/01-open.tsx")],
+        '"demo/project.json"',
+      ),
+    ).toThrow(/scenes\/01-open\.tsx.*scenes 1 and 3/);
+  });
+
+  it("catches a ./-prefixed spelling of the same file", () => {
+    expect(() =>
+      assertUniqueSceneFiles(
+        [entry("scenes/01-open.tsx"), entry("./scenes/01-open.tsx")],
+        '"demo/project.json"',
+      ),
+    ).toThrow(/more than once/);
   });
 });
 

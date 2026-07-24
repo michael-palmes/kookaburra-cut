@@ -43,7 +43,9 @@ Steps:
    device kind, `{ "mode": "follow-media" }` (no source device) for the video kind.
    Otherwise `{ "mode": "manual" }` and **4000ms**.
 6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
-   `durationMs`, in order. New scenes join with a crossfade by default: seed
+   `durationMs`, in order. The `file` must not already appear in `scenes` (the loader
+   hard-errors on duplicates: copy the TSX and sidecar to a fresh stem instead of
+   reusing one). New scenes join with a crossfade by default: seed
    `"transition": { "type": "crossfade", "durationMs": 600 }` on the previous scene's
    entry, and on the new entry too when it isn't last; never overwrite an existing
    transition.
