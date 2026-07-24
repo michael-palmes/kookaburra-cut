@@ -37,7 +37,7 @@ pnpm package:dmg       # DMG only, from an already-built release/Kookaburra Cut.
 pnpm release           # guards -> package:signed -> zip + checksum -> tag -> draft GH release
 ```
 
-**Gate economy:** verifies are slow (~2–3 min each); default to **1–2 runs**:
+**Gate economy:** verifies are slow (the standard pair is ~4–5 min in one boot); default to **1–2 runs**:
 ONE feature-matched project Verify ×2 in 16:9 (`showcase-tour` is the rolling gate
 project) + `ws:launch-2026` 16:9 (must be EQUAL: the null-for-legacy proof).
 Theme/scene DATA variations don't need their own verifies; only changed CODE

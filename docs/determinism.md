@@ -43,7 +43,7 @@ GPU/driver, not across fleets.)
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
 | Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/clips.ts` lane rule. |
-| **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rides at ~3.9–4.1 GB steady state, mostly WebGL/IOSurface working set; when a periodic footprint check catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page, which used to restart the autorun in a silent loop until the wrapper timed out; the kill is a per-check dice roll, so runs pass or die by ~1% margins, and window focus does NOT lift the ceiling) | `runAutoRun`'s reload latch (sessionStorage restart counter) tolerates one benign reload then fails fast naming this failure mode. The real headroom fix (shrinking the steady-state graphics footprint) is an open work item; until it lands, a failed run is retryable and the latch keeps failures cheap. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
+| **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Deeper shave if ever needed: a shared MSAA scratch target with plain resolve textures for the A/B pairs. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
 
@@ -1026,20 +1026,22 @@ bundled rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `97af238c…` (pre-trim; re-record pending, see below) | stale | stale | stale | `0e64593d…` | — |
+| `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 
-> **2026-07-25 (gate speedup, baseline re-record PENDING):** showcase-tour's
-> scene durations were trimmed for gate speed (14.2 s → 8.2 s timeline, 492
-> frames/pass; scene 05's camera end key 2700 → 2200 ms) and `pnpm gate` became
-> one comma-list boot. The trimmed 16:9 baseline could NOT be recorded that
-> night: every verify attempt died at WebKit's 4 GB WebContent footprint
-> ceiling (see "What breaks it"). `97af238c…` remains the last recorded
-> pre-trim hash; record the new hash (with a frame eyeball) on the first
-> passing Verify ×2 and replace this note.
+> **2026-07-25 (gate speedup + footprint fix):** showcase-tour's scene
+> durations were trimmed for gate speed (14.2 s → 8.2 s timeline, 492
+> frames/pass; scene 05's camera end key 2700 → 2200 ms), `pnpm gate` became
+> one comma-list boot, and the WebContent footprint fix landed (idle render
+> pools released during export; a 4K export's plateau dropped 4468 → 3177 MB).
+> The trimmed 16:9 baseline recorded EQUAL at `7ad3e821…` in the same gate
+> that held `ws:launch-2026` EQUAL at `b70c9788…` (proof the pool lifecycle
+> changes move no pixels); per-scene frames eyeballed off the gated export.
+> The 3:2 baseline (`0e64593d…`) predates the trim and re-records on next
+> need. Whole-pair gate wall time: ~4:20.
 >
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,
