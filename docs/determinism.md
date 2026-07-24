@@ -1020,10 +1020,29 @@ bundled rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 |
 | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale |
-| `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale |
+| `showcase-tour` (rolling gate) | `1ce41e1d…` | stale | stale | stale |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — |
+
+> **2026-07-24 (animated backgrounds through transitions):** shader background
+> fills write display-domain colour raw, which the compositor's hardware-sRGB
+> A/B targets encoded a second time, so every transition frame over an animated
+> background rendered one sRGB encode brighter (the "flash to white" report;
+> measured mean RGB 4/9/18 solo vs 32/57/79 mid-crossfade). `shaders/wrap.ts`
+> now reroutes each vendored fragment's `main()` so the engine can flip the
+> output to linear light (`u_linearOut`, set per draw from
+> `renderer.getRenderTarget()`) for colour-managed targets only; the canvas path
+> is a pass-through, so solo frames are byte-identical. New fixture
+> `transition-bg-spike` (mesh-gradient → crossfade → swirl → dip-to-white →
+> neuro-noise) covers the previously untested shader-background × transition
+> combination, recorded `2df76336…` Verify ×2 EQUAL after eyeballing seam frames
+> via `--action screenshot`. Anchors: `ws:launch-2026` EQUAL (`b70c9788…`);
+> `showcase-tour` Verify ×2 EQUAL and byte-identical to a clean `origin/main`
+> run on the same machine (both `1ce41e1d…`). The previous `97af238c…` went
+> stale on main after 2026-07-20 (one of #45-#49 moved it), independent of this
+> change; the table row is re-recorded at `1ce41e1d…` from this run.
 
 > **2026-07-23 (video window):** the VideoWindow feature landed with both anchors
 > EQUAL (`97af238c…` / `b70c9788…`): the host-side `VideoWindowFallback` mounts
