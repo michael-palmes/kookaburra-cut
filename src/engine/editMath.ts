@@ -151,6 +151,31 @@ export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditCl
   return relayout([...clips.slice(0, i), left, freeze, right, ...clips.slice(i + 1)]);
 }
 
+/** Splice a caller-built clip in at output time t, mirroring freezeAt: splits the containing clip there, slips to its nearer edge when a half would fall under the source floor (or when t lands on a freeze), and appends off-timeline (including exactly at the end). The caller owns `newClip`'s id (nextClipId against the pre-splice array is safe: the split's right half collision-checks against it). */
+export function insertClipAt(clips: EditClip[], tMs: number, newClip: EditClip): EditClip[] {
+  const i = clipIndexAt(clips, tMs);
+  if (i < 0) return relayout([...clips, newClip]);
+  const clip = clips[i];
+  if (clip.holdMs !== undefined) {
+    const before = tMs - clip.startMs < clipTimelineMs(clip) / 2;
+    const at = before ? i : i + 1;
+    return relayout([...clips.slice(0, at), newClip, ...clips.slice(at)]);
+  }
+  const src = Math.round(timelineToSource(clip, tMs));
+  const startShort = src - clip.inMs < MIN_CLIP_SOURCE_MS;
+  const endShort = clip.outMs - src < MIN_CLIP_SOURCE_MS;
+  // Both halves can be short on a sub-2×floor clip: the genuinely nearer edge wins.
+  if (startShort && (!endShort || src - clip.inMs <= clip.outMs - src)) {
+    return relayout([...clips.slice(0, i), newClip, ...clips.slice(i)]);
+  }
+  if (endShort) {
+    return relayout([...clips.slice(0, i + 1), newClip, ...clips.slice(i + 1)]);
+  }
+  const left = { ...clip, outMs: src };
+  const right = { ...clip, id: nextClipId([...clips, newClip]), inMs: src };
+  return relayout([...clips.slice(0, i), left, newClip, right, ...clips.slice(i + 1)]);
+}
+
 /** Retime a freeze clip; non-freezes are untouched. */
 export function setClipHold(clips: EditClip[], id: string, holdMs: number): EditClip[] {
   return relayout(

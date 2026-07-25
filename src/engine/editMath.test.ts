@@ -6,6 +6,7 @@ import {
   clipTimelineMs,
   edgeTargetsMs,
   freezeAt,
+  insertClipAt,
   MIN_CLIP_SOURCE_MS,
   MIN_HOLD_MS,
   moveClip,
@@ -210,6 +211,53 @@ describe("freeze frames", () => {
     expect(trimClipIn(laid, "c1", 100)[0].inMs).toBe(500);
     expect(trimClipOut(laid, "c1", 900, 5000)[0].outMs).toBe(500);
     expect(setClipSpeed(laid, "c1", 2)[0].speed).toBe(1);
+  });
+
+  describe("insertClipAt", () => {
+    const incoming = (id: string): EditClip => ({
+      id,
+      sourceId: "s2",
+      inMs: 0,
+      outMs: 3000,
+      speed: 1,
+      startMs: 0,
+    });
+
+    it("splits the containing clip and splices the new clip between the halves", () => {
+      const next = insertClipAt(relayout([clip("c1", 0, 1000)]), 400, incoming("c2"));
+      expect(next.map((c) => c.sourceId)).toEqual(["s1", "s2", "s1"]);
+      expect(next[0].outMs).toBe(400);
+      expect(next[2].inMs).toBe(400);
+      expect(next.map((c) => c.startMs)).toEqual([0, 400, 3400]);
+      expect(new Set(next.map((c) => c.id)).size).toBe(3);
+    });
+
+    it("slips to a clip edge instead of leaving a sliver", () => {
+      const atStart = insertClipAt(relayout([clip("c1", 0, 1000)]), 50, incoming("c2"));
+      expect(atStart.map((c) => c.sourceId)).toEqual(["s2", "s1"]);
+      const atEnd = insertClipAt(relayout([clip("c1", 0, 1000)]), 960, incoming("c2"));
+      expect(atEnd.map((c) => c.sourceId)).toEqual(["s1", "s2"]);
+    });
+
+    it("appends when t is off the timeline, including exactly at the end", () => {
+      const laid = relayout([clip("c1", 0, 1000)]);
+      expect(insertClipAt(laid, 1000, incoming("c2")).map((c) => c.sourceId)).toEqual(["s1", "s2"]);
+      expect(insertClipAt([], 0, incoming("c1")).map((c) => c.sourceId)).toEqual(["s2"]);
+    });
+
+    it("slips to the genuinely nearer edge when both halves are short", () => {
+      const laid = relayout([clip("c1", 0, 150)]);
+      expect(insertClipAt(laid, 90, incoming("c2")).map((c) => c.sourceId)).toEqual(["s1", "s2"]);
+      expect(insertClipAt(laid, 60, incoming("c2")).map((c) => c.sourceId)).toEqual(["s2", "s1"]);
+    });
+
+    it("slips to the nearer edge of a freeze instead of splitting it", () => {
+      const laid = relayout([clip("c1", 0, 1000), freeze("c2", 500, 2000)]);
+      const nearStart = insertClipAt(laid, 1200, incoming("c3"));
+      expect(nearStart.map((c) => c.id)).toEqual(["c1", "c3", "c2"]);
+      const nearEnd = insertClipAt(laid, 2800, incoming("c3"));
+      expect(nearEnd.map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
+    });
   });
 });
 

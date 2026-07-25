@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { EditClip, EditSource, EditTap } from "../engine/edit";
 import {
+  clipIndexAt,
   clipTimelineMs,
   edgeTargetsMs,
   moveClip,
+  setClipHold,
   snapMs,
   timelineDurationMs,
   trimClipIn,
@@ -27,8 +29,10 @@ export interface TimelineProps {
   onTrimScrub?: (scrub: TrimScrub | null) => void;
   /** Horizontal wheel/trackpad delta scrubs the playhead (scroll scrubs in both the preview and the timeline; the timeline pans via auto-follow). */
   onScrubWheel?: (deltaPx: number) => void;
-  /** A media-panel card was dropped here: insert `rel` at clip position `index`. */
-  onDropClip?: (rel: string, index: number) => void;
+  /** A media-panel card was dropped here: splice `rel` in at output time `tMs` (mid-clip splits the clip under it; edge-snapped). */
+  onDropClipAt?: (rel: string, tMs: number) => void;
+  /** Right-click on a clip block: the host opens its shared ContextMenu at (x, y). */
+  onClipMenu?: (id: string, x: number, y: number) => void;
   /** Tap highlights' output windows; each gets a ruler dot that seeks to it. */
   tapWindowList?: { tap: EditTap; startMs: number; endMs: number }[];
 }
@@ -42,7 +46,7 @@ const MAX_PX_PER_MS = 4;
 
 type DragState =
   | {
-      kind: "trim-in" | "trim-out";
+      kind: "trim-in" | "trim-out" | "hold";
       id: string;
       startClientX: number;
       orig: EditClip[];
@@ -99,7 +103,8 @@ export function Timeline({
   onCommit,
   onTrimScrub,
   onScrubWheel,
-  onDropClip,
+  onDropClipAt,
+  onClipMenu,
   tapWindowList,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -107,7 +112,7 @@ export function Timeline({
   const [viewW, setViewW] = useState(0);
   const [zoom, setZoom] = useState<number | null>(null); // null = fit-all (the default)
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [dropIndex, setDropIndex] = useState<number | null>(null); // media-panel drops
+  const [dropMs, setDropMs] = useState<number | null>(null); // media-panel drops (output ms)
 
   const sourceById = new Map(sources.map((s) => [s.id, s]));
   const durationMs = timelineDurationMs(clips);
@@ -223,17 +228,22 @@ export function Timeline({
     };
   }
 
-  function onTrimPointerDown(e: React.PointerEvent, id: string, kind: "trim-in" | "trim-out") {
+  function onTrimPointerDown(
+    e: React.PointerEvent,
+    id: string,
+    kind: "trim-in" | "trim-out" | "hold",
+  ) {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     onSelect(id);
     setDrag({ kind, id, startClientX: e.clientX, orig: clips, draft: clips });
-    onTrimScrub?.(trimScrubOf(clips, id, kind));
+    // A hold drag never changes the pinned frame, so there is nothing to scrub.
+    if (kind !== "hold") onTrimScrub?.(trimScrubOf(clips, id, kind));
   }
 
   function onTrimPointerMove(e: React.PointerEvent) {
-    if (!drag || (drag.kind !== "trim-in" && drag.kind !== "trim-out")) return;
+    if (!drag || drag.kind === "move") return;
     const origClip = drag.orig.find((c) => c.id === drag.id);
     if (!origClip) return;
     const dxMs = (e.clientX - drag.startClientX) / pxPerMs;
@@ -241,7 +251,10 @@ export function Timeline({
     const startTl = origClip.startMs;
     const endTl = startTl + clipTimelineMs(origClip);
     let draft: EditClip[];
-    if (drag.kind === "trim-in") {
+    if (drag.kind === "hold") {
+      const edgeTl = snapMs(endTl + dxMs, [playheadMs], snapThresholdMs);
+      draft = setClipHold(drag.orig, drag.id, edgeTl - startTl);
+    } else if (drag.kind === "trim-in") {
       const edgeTl = snapMs(startTl + dxMs, [playheadMs], snapThresholdMs);
       draft = trimClipIn(drag.orig, drag.id, origClip.outMs - (endTl - edgeTl) * speed);
     } else {
@@ -255,14 +268,18 @@ export function Timeline({
       );
     }
     setDrag({ ...drag, draft });
-    onTrimScrub?.(trimScrubOf(draft, drag.id, drag.kind));
+    if (drag.kind !== "hold") onTrimScrub?.(trimScrubOf(draft, drag.id, drag.kind));
   }
 
   function onTrimPointerUp() {
-    if (!drag || (drag.kind !== "trim-in" && drag.kind !== "trim-out")) return;
+    if (!drag || drag.kind === "move") return;
     const orig = drag.orig.find((c) => c.id === drag.id);
     const draft = drag.draft.find((c) => c.id === drag.id);
-    if (orig && draft && (orig.inMs !== draft.inMs || orig.outMs !== draft.outMs)) {
+    if (
+      orig &&
+      draft &&
+      (orig.inMs !== draft.inMs || orig.outMs !== draft.outMs || orig.holdMs !== draft.holdMs)
+    ) {
       onCommit(drag.draft);
     }
     setDrag(null);
@@ -322,45 +339,38 @@ export function Timeline({
   }
 
   // ── Media-panel drops (HTML5 DnD; editor window only) ────────────────────
-  /** Insertion index for a drop at clientX: before the first clip whose centre is past it. */
-  function dropIndexAt(clientX: number): number {
-    const t = pointerMs(clientX);
-    let index = 0;
-    let cum = 0;
-    for (const clip of clips) {
-      const dur = clipTimelineMs(clip);
-      if (t > cum + dur / 2) index++;
-      cum += dur;
+  /** Drop time at clientX: edge-snapped and floored at 0 (past the end the splice appends). A point inside a freeze resolves to the freeze's nearer edge here, so the indicator shows where insertClipAt will actually land. */
+  function dropMsAt(clientX: number): number {
+    const raw = Math.max(0, pointerMs(clientX));
+    const snapped = Math.round(snapMs(raw, edgeTargetsMs(clips), snapThresholdMs));
+    const i = clipIndexAt(clips, snapped);
+    const under = i >= 0 ? clips[i] : undefined;
+    if (under && under.holdMs !== undefined) {
+      const before = snapped - under.startMs < clipTimelineMs(under) / 2;
+      return before ? under.startMs : under.startMs + Math.round(clipTimelineMs(under));
     }
-    return index;
-  }
-
-  /** Content-relative x of the boundary before clip `index` (the indicator position). */
-  function boundaryX(index: number): number {
-    let cum = 0;
-    for (let i = 0; i < index && i < clips.length; i++) cum += clipTimelineMs(clips[i]);
-    return PAD_L + cum * pxPerMs;
+    return snapped;
   }
 
   function onMediaDragOver(e: React.DragEvent) {
-    if (!onDropClip || !e.dataTransfer.types.includes(MEDIA_DRAG_TYPE)) return;
+    if (!onDropClipAt || !e.dataTransfer.types.includes(MEDIA_DRAG_TYPE)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    setDropIndex(dropIndexAt(e.clientX));
+    setDropMs(dropMsAt(e.clientX));
   }
 
   function onMediaDragLeave(e: React.DragEvent) {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return; // still inside
-    setDropIndex(null);
+    setDropMs(null);
   }
 
   function onMediaDrop(e: React.DragEvent) {
-    setDropIndex(null);
-    if (!onDropClip) return;
+    setDropMs(null);
+    if (!onDropClipAt) return;
     const rel = e.dataTransfer.getData(MEDIA_DRAG_TYPE) || e.dataTransfer.getData("text/plain");
     if (!rel) return;
     e.preventDefault();
-    onDropClip(rel, dropIndexAt(e.clientX));
+    onDropClipAt(rel, dropMsAt(e.clientX));
   }
 
   // ── Playhead (ruler scrub with edge snapping) ─────────────────────────────
@@ -478,6 +488,15 @@ export function Timeline({
                   onPointerMove={onClipPointerMove}
                   onPointerUp={onClipPointerUp}
                   onPointerCancel={cancelDrag}
+                  onContextMenu={
+                    onClipMenu
+                      ? (e) => {
+                          e.preventDefault();
+                          onSelect(clip.id);
+                          onClipMenu(clip.id, e.clientX, e.clientY);
+                        }
+                      : undefined
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -503,7 +522,17 @@ export function Timeline({
                     {frozen ? `❄ ${name}` : name}
                     {!frozen && speed !== 1 ? ` · ${Number(speed.toFixed(2))}×` : ""}
                   </span>
-                  {!frozen && (
+                  {frozen ? (
+                    // A freeze has no in-point: one right-edge handle retimes the hold.
+                    <div
+                      className="timeline-handle right"
+                      title="Drag to retime the freeze"
+                      onPointerDown={(e) => onTrimPointerDown(e, clip.id, "hold")}
+                      onPointerMove={onTrimPointerMove}
+                      onPointerUp={onTrimPointerUp}
+                      onPointerCancel={cancelDrag}
+                    />
+                  ) : (
                     <>
                       <div
                         className="timeline-handle left"
@@ -525,8 +554,11 @@ export function Timeline({
               );
             })}
           </div>
-          {dropIndex !== null && (
-            <div className="timeline-drop-indicator" style={{ left: boundaryX(dropIndex) }} />
+          {dropMs !== null && (
+            <div
+              className="timeline-drop-indicator"
+              style={{ left: PAD_L + Math.min(dropMs, durationMs) * pxPerMs }}
+            />
           )}
           <div className="timeline-playhead" style={{ left: playheadX }}>
             <div className="timeline-playhead-cap" />
