@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LightingSpec } from "../theme/tokens";
+import type { LightingSpec, LightSpec } from "../theme/tokens";
 import {
   FIXTURE_MAX_COUNT,
   MAX_SCENE_LIGHTS,
   normalizeLighting,
+  resolveLightBudget,
   resolveLighting,
   resolveLightingColour,
+  spotHalfAngleRad,
   sunShadowSoftness,
 } from "./sceneLighting";
 
@@ -323,6 +325,65 @@ describe("resolveLighting (three layers)", () => {
 
   it("is value-identical to the theme alone (the v8 no-op contract)", () => {
     expect(resolveLighting(theme, undefined, undefined)).toEqual(theme);
+  });
+});
+
+describe("spotHalfAngleRad", () => {
+  it("converts the artist's full cone to three's radian half-angle", () => {
+    expect(spotHalfAngleRad(30)).toBeCloseTo((15 * Math.PI) / 180, 10);
+    expect(spotHalfAngleRad(90)).toBeCloseTo(Math.PI / 4, 10);
+    expect(spotHalfAngleRad(179)).toBeCloseTo((89.5 * Math.PI) / 180, 10);
+  });
+});
+
+describe("resolveLightBudget", () => {
+  const orbit = { mode: "orbit", azimuthDeg: 0, elevationDeg: 0, distance: 5 } as const;
+  const dir = (id: string, castShadow?: boolean): LightSpec => ({
+    id,
+    type: "directional",
+    intensity: 1,
+    placement: orbit,
+    ...(castShadow ? { castShadow: true } : {}),
+  });
+
+  it("drops disabled lights and caps the list below MAX_SCENE_LIGHTS with the sun's slot", () => {
+    const lights = Array.from({ length: MAX_SCENE_LIGHTS }, (_, i) => dir(`l${i}`));
+    const spec: LightingSpec = {
+      sun: { azimuthDeg: 0, elevationDeg: 0, intensity: 1 },
+      lights: [{ ...dir("off"), enabled: false }, ...lights],
+    };
+    const budget = resolveLightBudget(spec, false);
+    expect(budget.lights).toHaveLength(MAX_SCENE_LIGHTS - 1);
+    expect(budget.lights.some((l) => l.id === "off")).toBe(false);
+    expect(budget.droppedLights).toBe(1);
+  });
+
+  it("gives casters to the first MAX_SHADOW_CASTERS in declaration order, sun first", () => {
+    const spec: LightingSpec = {
+      lights: [dir("a", true), dir("b", true), dir("c", true), dir("d", true), dir("e", true)],
+    };
+    const withSun = resolveLightBudget(spec, true);
+    expect([...withSun.shadowCasterIds]).toEqual(["a", "b", "c"]);
+    expect(withSun.droppedCasters).toBe(2);
+    const withoutSun = resolveLightBudget(spec, false);
+    expect([...withoutSun.shadowCasterIds]).toEqual(["a", "b", "c", "d"]);
+    expect(withoutSun.droppedCasters).toBe(1);
+  });
+
+  it("never gives a caster slot to point or area lights", () => {
+    const spec: LightingSpec = {
+      lights: [
+        {
+          id: "p",
+          type: "point",
+          intensity: 1,
+          placement: orbit,
+          castShadow: true,
+        } as LightSpec,
+        dir("d", true),
+      ],
+    };
+    expect([...resolveLightBudget(spec, false).shadowCasterIds]).toEqual(["d"]);
   });
 });
 

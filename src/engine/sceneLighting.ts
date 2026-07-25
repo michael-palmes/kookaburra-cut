@@ -396,6 +396,40 @@ export function resolveLighting(
   return hasV8Rig(merged) || hasV9Content(merged) ? merged : undefined;
 }
 
+/** `angleDeg` (the FULL cone, how artists think) -> three's `SpotLight.angle` (radian HALF-angle). One conversion, one place, unit-tested. */
+export function spotHalfAngleRad(angleDeg: number): number {
+  return (angleDeg * Math.PI) / 360;
+}
+
+/** The deterministic render budget for a resolved spec, identical in preview and export. The sun takes the first shadow slot when it casts; free lights then claim caster slots in declaration order up to MAX_SHADOW_CASTERS (only directional and spot may cast), and the light list itself caps at MAX_SCENE_LIGHTS minus the sun's slot. Over-budget entries drop deterministically, counted for the caller to warn about, never silently. */
+export function resolveLightBudget(
+  spec: LightingSpec,
+  sunCasts: boolean,
+): {
+  lights: LightSpec[];
+  shadowCasterIds: Set<string>;
+  droppedLights: number;
+  droppedCasters: number;
+} {
+  const enabled = (spec.lights ?? []).filter((l) => l.enabled !== false);
+  const lightBudget = MAX_SCENE_LIGHTS - (spec.sun && spec.sun.enabled !== false ? 1 : 0);
+  const lights = enabled.slice(0, Math.max(0, lightBudget));
+  const shadowCasterIds = new Set<string>();
+  let casterBudget = MAX_SHADOW_CASTERS - (sunCasts ? 1 : 0);
+  let droppedCasters = 0;
+  for (const light of lights) {
+    if (light.castShadow !== true) continue;
+    if (light.type !== "directional" && light.type !== "spot") continue;
+    if (casterBudget > 0) {
+      shadowCasterIds.add(light.id);
+      casterBudget -= 1;
+    } else {
+      droppedCasters += 1;
+    }
+  }
+  return { lights, shadowCasterIds, droppedLights: enabled.length - lights.length, droppedCasters };
+}
+
 /** Sun angular diameter -> VSM softness: angularDeg / SUN_ANGULAR_REFERENCE clamped 0..1, so the v8 default softness 0.5 corresponds to angularDeg 4 (no pixel change reading existing themes). Falls back to the shadow block's raw softness when the sun doesn't carry angularDeg. */
 export function sunShadowSoftness(
   sun: SunSpec | undefined,

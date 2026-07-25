@@ -35,6 +35,7 @@ import {
 import { getLoadedEnvironment } from "./environments";
 import { FPS, MSAA_SAMPLES } from "./format";
 import { getFramePanels } from "./framePanelRegistry";
+import { applyRelativeLights } from "./lightingState";
 import type { ResolvedOverlay } from "./overlayPlan";
 import {
   CUTOUT_MODE_BOX,
@@ -466,6 +467,8 @@ export function renderComposited(
     showOnly(idx);
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     if (states?.solo) applyState(states.solo);
+    // Camera/subject-space lights resolve AFTER the camera pose lands, per render target (a no-op when none are mounted).
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     const overlay = overlays?.[idx] ?? null;
     if (overlay) {
       // Overlay path: the scene renders into its cutout, then the slide keys it in over the panel. Effects don't yet compose onto a framed scene (docs/overlays.md open question), so this branch is taken ahead of fx.
@@ -512,6 +515,8 @@ export function renderComposited(
   showOnly(tr.fromIndex);
   if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
   if (states?.a) applyState(states.a);
+  // Target A resolves its own relative lights: A and B use different cameras on a transition frame.
+  applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
   if (overlayA) {
     renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
     const panelA = panelFor(tr.fromIndex);
@@ -524,6 +529,7 @@ export function renderComposited(
   showOnly(tr.toIndex);
   if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
   if (states?.b) applyState(states.b);
+  applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
   if (overlayB) {
     renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
     const panelB = panelFor(tr.toIndex);
@@ -536,6 +542,7 @@ export function renderComposited(
   // The composite quad ignores `camera`; sets the dominant scene's pose here so both overlay branches below render the persistent layer with it, and the same for render state (which also feeds the dip-colour fallback in setCompositeUniforms below).
   if (cameras?.overlay) applyCameraPose(camera as PerspectiveCamera, cameras.overlay);
   if (states?.overlay) applyState(states.overlay);
+  applyRelativeLights(camera as PerspectiveCamera, cameras?.overlay ?? null);
 
   gl.toneMapping = prevToneMapping;
 

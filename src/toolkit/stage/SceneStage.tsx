@@ -4,28 +4,30 @@ import {
   SceneDocContext,
   useSceneContext,
 } from "../../engine/sceneContext";
-import { resolveLightingColour, sunShadowSoftness } from "../../engine/sceneLighting";
+import {
+  resolveLightBudget,
+  resolveLightingColour,
+  sunShadowSoftness,
+} from "../../engine/sceneLighting";
 import { useStageRegistry } from "../../engine/stageRegistry";
 import { useTheme } from "../../theme";
 import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";
 import { StageBackdrop } from "./backdrops";
 import { SceneStageContext, type SceneStageState } from "./context";
+import { StageLights } from "./StageLights";
+import {
+  SHADOW_BLUR_SAMPLES,
+  SHADOW_FAR,
+  SHADOW_FRUSTUM_EXTENT,
+  SHADOW_NEAR,
+  SHADOW_RADIUS_SCALE,
+} from "./shadowRig";
 
 /** The theme-driven stage: lights the scene from the resolved lighting layers (theme -> project -> scene, see `mergeLighting`), mounts the resolved backdrop, and tells staged primitives to stand their bundled lit sets down; the camera-locked fixed background and environment reflections do NOT mount here (mounted elsewhere, at the scene host and the compositor seam respectively). Shadows are the HYBRID decision: the sun casts real shadow maps only when a floor/backdrop is staged AND the shadow technique is "map", else the procedural blob shadows remain the default; no lighting at any layer renders no lights and leaves primitives lit (context null) so a scaffolded scene stays visible under a legacy theme. The v8 path (sun + ambient + fills, no v9 fields) must emit an IDENTICAL scene graph: same component order, same props, same values. */
 
-/** Lights sit on a fixed-radius sphere aimed at the origin. EXPORT CONTRACT. */
+/** The sun and legacy fills sit on a fixed-radius sphere aimed at the origin (free lights use their own distance, see StageLights). EXPORT CONTRACT. The shadow rig constants live in shadowRig.ts, shared with shadow-casting free lights. */
 const LIGHT_RADIUS = 8;
-
-// ── Shadow rig (export contract) ─────────────────────────────────────
-/** Ortho shadow-camera half-extent, covers the stage; FIXED, never auto-fit. */
-const SHADOW_FRUSTUM_EXTENT = 8;
-const SHADOW_NEAR = 0.5;
-const SHADOW_FAR = 30;
-/** `softness` 0..1 → VSM blur radius. */
-const SHADOW_RADIUS_SCALE = 8;
-/** VSM gaussian tap count (three default, pinned explicitly). */
-const SHADOW_BLUR_SAMPLES = 8;
 
 const DEG2RAD = Math.PI / 180;
 
@@ -75,6 +77,24 @@ export function SceneStage({
     [lighting, mapShadows],
   );
 
+  // Free lights (v9): deterministic budgets computed once per resolved spec; over-cap drops warn here, once, never silently.
+  const sunCasts = Boolean(sun && sun.enabled !== false && mapShadows && sun.castShadow !== false);
+  const budget = useMemo(() => {
+    if (!lighting || (lighting.lights?.length ?? 0) === 0) return null;
+    const b = resolveLightBudget(lighting, sunCasts);
+    if (b.droppedLights > 0) {
+      console.warn(
+        `[lighting] scene ${sceneIndex ?? "?"}: ${b.droppedLights} light(s) over the scene cap — dropped`,
+      );
+    }
+    if (b.droppedCasters > 0) {
+      console.warn(
+        `[lighting] scene ${sceneIndex ?? "?"}: ${b.droppedCasters} shadow caster(s) over the cap — rendered without shadows`,
+      );
+    }
+    return b;
+  }, [lighting, sunCasts, sceneIndex]);
+
   return (
     <SceneStageContext.Provider value={stageState}>
       {lighting && (
@@ -108,6 +128,14 @@ export function SceneStage({
               color={fill.color ?? "#ffffff"}
             />
           ))}
+          {budget && (
+            <StageLights
+              lights={budget.lights}
+              shadowCasterIds={budget.shadowCasterIds}
+              shadow={shadow}
+              colors={theme.colors}
+            />
+          )}
         </>
       )}
       {backdrop && (

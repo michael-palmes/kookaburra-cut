@@ -54,6 +54,7 @@ import {
   takeUndo,
 } from "./engine/history";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
+import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
 import { PersistentLayer } from "./engine/PersistentLayer";
 import {
@@ -1632,6 +1633,8 @@ export default function App() {
                   // Shadow maps: enabled globally, inert until a SceneStage mounts a castShadow key light (see SHADOW_MAP_TYPE; regressions prove the inert case byte-neutral).
                   shadows={{ enabled: true, type: SHADOW_MAP_TYPE }}
                   onCreated={({ gl }) => {
+                    // Area lights need the LTC uniforms initialised once, at renderer creation, never lazily on first light (a first-frame init would race the export preamble). Global and idempotent.
+                    ensureRectAreaLightUniforms();
                     console.warn(
                       "[gl] context:",
                       JSON.stringify(gl.getContext().getContextAttributes()),
