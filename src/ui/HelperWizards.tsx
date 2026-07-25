@@ -1,16 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useId, useState } from "react";
 import { TRANSITION_CATALOG } from "../engine/transitionCatalog";
+import { SceneInsertTimeline } from "./SceneInsertTimeline";
+import type { WizardSceneInfo } from "./SceneWizards";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Mini form wizards behind the terminal helper chips: each composes a concrete, well-formed prompt from a few fields, then hands it to the panel, which pastes it into the Claude session exactly like the old one-click templates (bracketed paste, never auto-submitted; the user can still edit before pressing Enter). */
 
 export type WizardKind = "new-scene" | "pacing" | "look" | "media";
-
-export interface WizardScene {
-  id: string;
-  durationMs: number;
-}
 
 const DURATION_PRESETS = [
   { label: "Quick", seconds: 2 },
@@ -87,13 +84,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function HelperWizard({
   kind,
   scenes,
+  thumbs,
   slug,
   onInsert,
   onCancel,
 }: {
   kind: WizardKind;
-  /** The loaded project's scenes (id + current duration), for scene-aware dropdowns. */
-  scenes: WizardScene[];
+  /** The loaded project's scenes, for scene-aware dropdowns and the placement strip. */
+  scenes: WizardSceneInfo[];
+  /** Scene-thumb paths by stem, for the placement strip's cards. */
+  thumbs: Record<string, string>;
   /** Project slug, for the media listing. */
   slug: string;
   /** Receives the composed prompt (the panel pastes it, unsubmitted). */
@@ -138,12 +138,14 @@ export function HelperWizard({
     switch (kind) {
       case "new-scene": {
         if (!desc) return null;
+        const afterScene =
+          placement.startsWith("after:") && scenes[Number(placement.slice("after:".length))];
         const where =
-          placement === "end"
-            ? "at the end"
-            : placement === "start"
-              ? "at the start"
-              : `after ${sceneName(placement)}`;
+          placement === "start"
+            ? "at the start"
+            : afterScene
+              ? `after ${sceneName(afterScene.id)}`
+              : "at the end";
         const enter =
           transition === "none"
             ? "with no transition"
@@ -180,7 +182,7 @@ export function HelperWizard({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <div className="modal">
+      <div className={`modal${kind === "new-scene" ? " wizard-wide wizard-place-wide" : ""}`}>
         <h2 id={titleId}>{titles[kind]}</h2>
 
         {kind === "new-scene" && (
@@ -196,19 +198,12 @@ export function HelperWizard({
               />
             </Field>
             <Field label="Where?">
-              <select
-                className="select"
+              <SceneInsertTimeline
+                scenes={scenes}
+                thumbs={thumbs}
                 value={placement}
-                onChange={(e) => setPlacement(e.target.value)}
-              >
-                <option value="end">At the end</option>
-                <option value="start">At the start</option>
-                {scenes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    After “{s.id}”
-                  </option>
-                ))}
-              </select>
+                onChange={setPlacement}
+              />
             </Field>
             <Field label="How long?">
               <DurationField value={seconds} onChange={setSeconds} />

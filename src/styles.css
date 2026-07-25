@@ -3041,6 +3041,136 @@ body {
   font-weight: 590;
 }
 
+/* Scene placement strip: fixed-width thumb cards with a draggable insertion
+   indicator that rubber-bands between the gaps (insertMath owns the geometry). */
+.insert-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.insert-strip {
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  border-radius: var(--radius-sm);
+}
+
+/* Snapping fights the drag's programmatic edge scroll. */
+.insert-strip.dragging {
+  scroll-snap-type: none;
+}
+
+.insert-strip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.insert-cards {
+  position: relative;
+  display: flex;
+  gap: var(--space-4);
+  padding: 18px var(--space-4) var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  cursor: grab;
+}
+
+.insert-cards:active {
+  cursor: grabbing;
+}
+
+/* A real flex child, so the end gap survives the lost-trailing-padding overflow quirk. */
+.insert-cards::after {
+  content: "";
+  flex: 0 0 1px;
+}
+
+.insert-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 0 1 8.5rem;
+  min-width: 6rem;
+  font-size: var(--text-xs);
+  scroll-snap-align: start;
+}
+
+.insert-card-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+}
+
+.insert-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.insert-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.insert-indicator {
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 0;
+  transition: left 160ms ease;
+  pointer-events: none;
+}
+
+.insert-indicator.dragging {
+  transition: none;
+}
+
+.insert-indicator::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--danger);
+  border-radius: 1px;
+}
+
+/* Raised grab handle: subtle dot texture, slight shadow. */
+.insert-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 14px;
+  background-color: var(--danger-fill);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1.1px);
+  background-size: 5px 5px;
+  background-position: 3px 4px;
+  border-radius: var(--radius-full);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+.insert-caption {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* The placement strip needs more shoulder room than the base wizard width. */
+.wizard-place-wide {
+  width: min(56rem, calc(100% - 2rem));
+}
+
 /* Embedded media picker: bounded so the wizard modal, not the grid, owns scrolling. */
 .wizard-media-host {
   max-height: 20rem;
