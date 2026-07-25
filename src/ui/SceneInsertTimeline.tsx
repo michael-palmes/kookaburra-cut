@@ -46,7 +46,16 @@ export function SceneInsertTimeline({
     const cardWidth = first.offsetWidth;
     const gapWidth =
       cards.length > 1 ? cards[1].offsetLeft - first.offsetLeft - cardWidth : first.offsetLeft;
-    setLayout({ count: cards.length, cardWidth, gapWidth, padStart: first.offsetLeft });
+    // Identity-stable when nothing moved, so resize ticks can't re-trigger the reveal scroll.
+    setLayout((prev) =>
+      prev &&
+      prev.count === cards.length &&
+      prev.cardWidth === cardWidth &&
+      prev.gapWidth === gapWidth &&
+      prev.padStart === first.offsetLeft
+        ? prev
+        : { count: cards.length, cardWidth, gapWidth, padStart: first.offsetLeft },
+    );
   }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: count re-measures when the card set changes
@@ -59,16 +68,19 @@ export function SceneInsertTimeline({
     return () => observer.disconnect();
   }, [measure]);
 
-  // Keep the committed gap in view (seeded values can sit deep in a long strip).
+  // Keep the committed gap in view (seeded values can sit deep in a long strip); the first reveal positions instantly, later ones glide.
+  const revealed = useRef(false);
   useEffect(() => {
     const scroller = scrollerRef.current;
     const x = centres[gap];
     if (dragX !== null || !scroller || x === undefined) return;
+    const behavior = revealed.current ? "smooth" : "auto";
+    revealed.current = true;
     const margin = 40;
     if (x < scroller.scrollLeft + margin) {
-      scroller.scrollTo({ left: Math.max(0, x - margin), behavior: "smooth" });
+      scroller.scrollTo({ left: Math.max(0, x - margin), behavior });
     } else if (x > scroller.scrollLeft + scroller.clientWidth - margin) {
-      scroller.scrollTo({ left: x - scroller.clientWidth + margin, behavior: "smooth" });
+      scroller.scrollTo({ left: x - scroller.clientWidth + margin, behavior });
     }
   }, [gap, centres, dragX]);
 
@@ -103,6 +115,8 @@ export function SceneInsertTimeline({
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 || !layout || centres.length === 0) return;
     e.preventDefault();
+    // preventDefault suppresses the browser's click-to-focus, so hand the slider focus for the click-then-nudge keyboard flow.
+    scrollerRef.current?.focus({ preventScroll: true });
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const state = { pointerId: e.pointerId, clientX: e.clientX, raf: 0 };
     drag.current = state;

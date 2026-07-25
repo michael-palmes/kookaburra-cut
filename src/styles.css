@@ -3069,7 +3069,8 @@ body {
   position: relative;
   display: flex;
   gap: var(--space-4);
-  padding: 18px var(--space-4) var(--space-2);
+  /* Side insets hold the full handle at the resting start/end gaps (a scroller can't reach negative x). */
+  padding: 18px var(--space-6) var(--space-2);
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -3083,7 +3084,7 @@ body {
 /* A real flex child, so the end gap survives the lost-trailing-padding overflow quirk. */
 .insert-cards::after {
   content: "";
-  flex: 0 0 1px;
+  flex: 0 0 var(--space-6);
 }
 
 .insert-card {

@@ -140,11 +140,12 @@ export function HelperWizard({
         if (!desc) return null;
         const afterScene =
           placement.startsWith("after:") && scenes[Number(placement.slice("after:".length))];
+        // Named like the strip's caption, with the file as the unambiguous anchor.
         const where =
           placement === "start"
             ? "at the start"
             : afterScene
-              ? `after ${sceneName(afterScene.id)}`
+              ? `after the "${afterScene.name ?? afterScene.id}" scene (${afterScene.file})`
               : "at the end";
         const enter =
           transition === "none"
