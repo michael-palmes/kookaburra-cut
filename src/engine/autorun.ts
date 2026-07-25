@@ -9,7 +9,7 @@ import {
 import { useEditorStore } from "../store/editorStore";
 import { THEME_LINEUP } from "../theme/registry";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
-import { preloadEnvironments } from "./environments";
+import { collectEnvironmentSources, preloadEnvironments } from "./environments";
 import { canvasHandle } from "./exportBridge";
 import {
   awaitSceneHostsCommitted,
@@ -321,9 +321,15 @@ export async function runAutoRun(
         // The theme's PMREM environment resolves BEFORE the swap (the preloadBundledBackdrops rationale): headless windows never fire rAF, so a texture landing after the swap would otherwise stay unpainted into the first capture.
         const gl = canvasHandle.current?.gl;
         if (gl) {
-          await preloadEnvironments(gl, [loaded.theme, ...loaded.sceneThemes]).catch((e) =>
-            console.warn(`[autorun] environment preload failed for ${themeId}:`, e),
-          );
+          await preloadEnvironments(
+            gl,
+            collectEnvironmentSources(
+              loaded.id,
+              [loaded.theme, ...loaded.sceneThemes],
+              loaded.projectLighting,
+              loaded.sceneDocs,
+            ),
+          ).catch((e) => console.warn(`[autorun] environment preload failed for ${themeId}:`, e));
         }
         applyProject(loaded);
         await nextCommit();
@@ -412,6 +418,7 @@ export async function runAutoRun(
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
           codec: config.codec,
           format,
@@ -480,6 +487,7 @@ export async function runAutoRun(
         sceneDocs: project.sceneDocs,
         theme: project.theme,
         sceneThemes: project.sceneThemes,
+        projectLighting: project.projectLighting,
         sceneFrames: project.sceneFrames,
         audio: project.audio,
         codec: config.codec,

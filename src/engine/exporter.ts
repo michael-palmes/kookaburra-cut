@@ -4,7 +4,7 @@ import type { Object3D, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import { Vector2 } from "three";
 import type { EncodeSpec } from "../export/presetSchema";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
-import type { Theme } from "../theme/tokens";
+import type { LightingSpec, Theme } from "../theme/tokens";
 import { preloadCatalogModels } from "../toolkit/device/catalog";
 import { preloadDeviceModels } from "../toolkit/device/models";
 import { preloadChipIcons } from "../toolkit/frame/chipIcons";
@@ -30,7 +30,7 @@ import {
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { preloadEffectLuts } from "./effects";
-import { preloadEnvironments } from "./environments";
+import { collectEnvironmentSources, preloadEnvironments } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
 import type { FormatSpec } from "./format";
@@ -71,6 +71,8 @@ export interface ExportOptions {
   /** The project's theme + resolved per-scene themes; drive the per-target scene-state plan (background/environment). Absent means the root scene is never touched (the byte-identical legacy paths). */
   theme?: Theme;
   sceneThemes?: Theme[];
+  /** The manifest's project-default lighting layer (v9); feeds per-scene environment resolution and the environment preload barrier. */
+  projectLighting?: LightingSpec;
   /** Per-scene resolved overlays; absent (or all undefined) means no scene renders through a cutout, the byte-identical legacy path. */
   sceneFrames?: (FrameSpec | undefined)[];
   /** Encoder; defaults to the deterministic libx264. */
@@ -313,9 +315,17 @@ async function exportPreamble(
   await preloadText3dFonts();
   // Preloads the project's LUT textures (usually cached by loadProject already) and forces their GPU upload before frame 0, since a mid-run first-use upload is exactly the async-asset race this preamble exists to prevent. See docs/determinism.md.
   await preloadEffectLuts({ gl });
-  // Resolves every theme environment (RGBE decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading.
+  // Resolves every environment source across the v8 theme blocks and the v9 lighting layers (RGBE/EXR decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading; a missing USER source rejects here and fails the run loudly.
   if (opts.theme) {
-    await preloadEnvironments(gl, [opts.theme, ...(opts.sceneThemes ?? [])]);
+    await preloadEnvironments(
+      gl,
+      collectEnvironmentSources(
+        opts.projectId,
+        [opts.theme, ...(opts.sceneThemes ?? [])],
+        opts.projectLighting,
+        opts.sceneDocs,
+      ),
+    );
   }
   // Bundled backdrop images load through an awaited module cache, never suspense (the loft-1 stale-capture lesson); settle them before frame 0.
   await preloadBundledBackdrops();
@@ -404,7 +414,13 @@ export async function exportProject(
 
   // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
   const sceneStates =
-    opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
+    opts.theme && opts.sceneThemes
+      ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
+          projectId: opts.projectId,
+          projectLighting: opts.projectLighting,
+          sceneDocs: opts.sceneDocs,
+        })
+      : null;
 
   // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
   const overlays = opts.sceneThemes
@@ -511,7 +527,13 @@ export async function captureScreenshot(
 
   const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
   const sceneStates =
-    opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
+    opts.theme && opts.sceneThemes
+      ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
+          projectId: opts.projectId,
+          projectLighting: opts.projectLighting,
+          sceneDocs: opts.sceneDocs,
+        })
+      : null;
   const overlays = opts.sceneThemes
     ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
     : null;

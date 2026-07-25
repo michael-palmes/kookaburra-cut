@@ -192,7 +192,7 @@ export interface LightingSpec {
   preset?: string;
 }
 
-/** Environment reflections (IBL): `source` is a bundled HDRI id (`kookaburra:<name>`), a Lightformer preset id (`kookaburra:softbox`), or a project-relative `.hdr` path (user themes). Preloaded before frame 0 via `preloadEnvironments`. */
+/** Environment reflections (IBL), the v8 theme block: `source` is a bundled HDRI id (`kookaburra:<name>`) or the Lightformer preset id (`kookaburra:softbox`). Project-relative `.hdr`/`.exr` sources and the explicit `"none"` live on the v9 `LightingSpec.environment` (same shape, wider vocabulary). Preloaded before frame 0 via `preloadEnvironments`. */
 export interface ThemeEnvironment {
   source: string;
   intensity: number;

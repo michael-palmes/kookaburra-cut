@@ -3798,6 +3798,7 @@ export function SceneTab({
       <LightingSectionBody
         doc={doc}
         theme={sceneTheme ?? project.theme}
+        projectId={project.id}
         projectLighting={project.projectLighting}
         onBack={closeDrill}
         patchDoc={patchDoc}

@@ -149,6 +149,13 @@ const assetUrlGlob = import.meta.glob<string>("/projects/*/assets/**/*.{png,jpg,
   eager: true,
 });
 
+// Project-relative environment maps (v9 lighting: user `.hdr`/`.exr` IBL sources). A separate glob from images so `preloadProjectImages` never routes an HDR through TextureLoader.
+const assetHdrGlob = import.meta.glob<string>("/projects/*/assets/**/*.{hdr,exr}", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+
 /** Dev-only lab projects stay out of every picker; `loadProject` still resolves them by id (the option-preview generator loads `preview-lab` explicitly). */
 const HIDDEN_PROJECT_IDS = new Set(["preview-lab"]);
 
@@ -314,6 +321,68 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
   return url;
 }
 
+/** Resolve a project-relative environment map (`.hdr`/`.exr`) to a loadable URL. THROWS on a missing file, at resolve time, so a bad source fails an autorun loudly instead of exporting without reflections (the AssetBoundary lesson: boundary-caught errors still fail autoruns). */
+export function resolveProjectHdrUrl(projectId: string, relPath: string): string {
+  const clean = assertProjectRelative(relPath);
+  if (isWorkspaceProjectId(projectId)) {
+    if (workspaceEnvironmentMissing(projectId, clean)) {
+      throw new Error(
+        `Environment map "${relPath}" not found in project "${projectId}". ` +
+          "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
+      );
+    }
+    return projectAssetKey(projectId, clean);
+  }
+  const url = assetHdrGlob[`/projects/${projectId}/${clean}`];
+  if (!url) {
+    throw new Error(
+      `Environment map "${relPath}" not found for project "${projectId}". ` +
+        "Put a .hdr or .exr under projects/<project>/assets/ and reference it relatively.",
+    );
+  }
+  return url;
+}
+
+/** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetInventory.ts for the environment glob. */
+const workspaceEnvironments = new Map<string, Set<string>>();
+
+async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
+  if (!isWorkspaceProjectId(projectId)) return;
+  try {
+    const rels = await invoke<string[]>("list_project_environments", {
+      slug: workspaceSlug(projectId),
+    });
+    workspaceEnvironments.set(projectId, new Set(rels.map((rel) => rel.replace(/^\.?\//, ""))));
+  } catch {
+    workspaceEnvironments.delete(projectId);
+  }
+}
+
+/** True only when the inventory is loaded AND the path is absent from it. */
+function workspaceEnvironmentMissing(projectId: string, relPath: string): boolean {
+  const inventory = workspaceEnvironments.get(projectId);
+  return inventory !== undefined && !inventory.has(relPath.replace(/^\.?\//, ""));
+}
+
+/** The project's environment-map rel paths for the lighting picker ("assets/studio.hdr"). */
+export async function listProjectEnvironmentAssets(projectId: string): Promise<string[]> {
+  if (isWorkspaceProjectId(projectId)) {
+    try {
+      const rels = await invoke<string[]>("list_project_environments", {
+        slug: workspaceSlug(projectId),
+      });
+      return rels.map((rel) => rel.replace(/^\.?\//, "")).sort();
+    } catch {
+      return [];
+    }
+  }
+  const prefix = `/projects/${projectId}/`;
+  return Object.keys(assetHdrGlob)
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length))
+    .sort();
+}
+
 /** Await every image asset of a project being fetched + decoded before frame 0, warming drei's `useTexture` cache so screen textures (e.g. DeviceMockup) resolve synchronously in the export loop. Called in the export preamble; video sources are handled separately by `preextractClips`. See docs/determinism.md. */
 export async function preloadProjectImages(projectId: string): Promise<void> {
   let urls: string[];
@@ -424,6 +493,7 @@ export async function loadProject(
     await ensureProjectTrusted(slug, manifest.name || slug);
     await ensureSampleAssets(slug);
     await refreshWorkspaceAssets(id);
+    await refreshWorkspaceEnvironments(id);
   }
 
   const scenes: SceneModule[] = [];

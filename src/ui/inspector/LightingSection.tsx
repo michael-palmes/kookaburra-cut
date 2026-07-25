@@ -1,5 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  BUNDLED_ENVIRONMENT_IDS,
+  NONE_SOURCE,
+  resolveSceneEnvironment,
+  SOFTBOX_SOURCE,
+} from "../../engine/environments";
 import { placementToOrbit, placementToPoint } from "../../engine/orbit";
+import { listProjectEnvironmentAssets } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
   resolveLighting,
@@ -8,6 +15,7 @@ import {
   sunShadowSoftness,
 } from "../../engine/sceneLighting";
 import type {
+  EnvironmentSpec,
   LightingSpec,
   LightSpace,
   LightSpec,
@@ -17,8 +25,26 @@ import type {
   ThemeShadowSpec,
 } from "../../theme/tokens";
 import { ColourPicker } from "../colour/ColourPicker";
+import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { ActionRow, DrillBack, DrillGroup, NumberField, ToggleRow } from "./rows";
+
+/** Baked picker thumbnails (UI-only JPEGs; scripts/hdri-thumb.py). */
+const HDRI_THUMBS = import.meta.glob<string>("../../assets/hdri-thumbs/*.jpg", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+
+const thumbFor = (id: string): string | null =>
+  HDRI_THUMBS[`../../assets/hdri-thumbs/${id.replace(/^kookaburra:/, "")}.jpg`] ?? null;
+
+const environmentLabel = (source: string): string => {
+  if (source === NONE_SOURCE) return "None";
+  if (source === SOFTBOX_SOURCE) return "Softbox";
+  const stem = source.replace(/^kookaburra:/, "").replace(/^assets\//, "");
+  return stem.replace(/\.(hdr|exr)$/i, "").replace(/[-_]/g, " ");
+};
 
 /** The Lighting drill-in (v9): edits the resolved theme -> project -> scene layers. Inherited values render from the resolve, never written on open (writing on open would diff every scene the user merely looked at); each edit writes its WHOLE field into the sidecar (the mergeLighting whole-field contract). Environment is a read-only summary until PR 3. */
 
@@ -119,6 +145,7 @@ function fieldSource(
 export function LightingSectionBody({
   doc,
   theme,
+  projectId,
   projectLighting,
   onBack,
   patchDoc,
@@ -126,6 +153,7 @@ export function LightingSectionBody({
 }: {
   doc: SceneDoc;
   theme: Theme;
+  projectId: string;
   projectLighting: LightingSpec | undefined;
   onBack: () => void;
   patchDoc: (patch: (next: SceneDoc) => void, opts?: { history?: string | false }) => Promise<void>;
@@ -134,6 +162,17 @@ export function LightingSectionBody({
   const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
   const dragBaseline = useRef<SceneDoc | null>(null);
   const [lightId, setLightId] = useState<string | null>(null);
+  // The project's own .hdr/.exr files, listed once per open (extra tiles below the bundled set).
+  const [projectMaps, setProjectMaps] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void listProjectEnvironmentAssets(projectId).then((rels) => {
+      if (!cancelled) setProjectMaps(rels);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   // Live slider ticks write history-less; the release records one entry from the drag-start snapshot (the video-window pattern).
   const live = (mutate: (next: SceneDoc) => void) => {
@@ -181,6 +220,19 @@ export function LightingSectionBody({
       mutate(lights);
       next.lighting = { ...(next.lighting ?? {}), lights };
     };
+  const writeEnvironment =
+    (mutate: (e: EnvironmentSpec) => void) =>
+    (next: SceneDoc): void => {
+      const environment = structuredClone(
+        resolveSceneEnvironment(theme, projectLighting, doc) ?? {
+          source: NONE_SOURCE,
+          intensity: 1,
+          rotationDeg: 0,
+        },
+      );
+      mutate(environment);
+      next.lighting = { ...(next.lighting ?? {}), environment };
+    };
   const writeLight = (id: string, mutate: (l: LightSpec) => void) =>
     writeLights((lights) => {
       const light = lights.find((l) => l.id === id);
@@ -197,12 +249,7 @@ export function LightingSectionBody({
   const shadow = resolved?.shadow;
   const sunSwatch = sun ? resolveLightingColour(sun, theme.colors) : "#ffffff";
   const angularDisplay = sun?.angularDeg ?? sunShadowSoftness(sun, shadow) * SUN_ANGULAR_REFERENCE;
-  const environment = doc.lighting?.environment ?? theme.environment;
-  const environmentLabel = environment
-    ? environment.source === "none"
-      ? "None"
-      : environment.source.replace(/^kookaburra:/, "").replace(/-/g, " ")
-    : "None";
+  const environment = resolveSceneEnvironment(theme, projectLighting, doc);
 
   const selectedLight = lightId
     ? (resolved?.lights ?? []).find((l) => l.id === lightId)
@@ -265,9 +312,87 @@ export function LightingSectionBody({
           </>
         ) : (
           <>
-            <DrillGroup label="Environment">
-              {/* Read-only this PR; the picker + intensity/rotation arrive with the HDRI expansion. */}
-              <ActionRow label="Reflections" value={environmentLabel} chevron={false} />
+            <DrillGroup
+              label="Environment"
+              hint={fieldSource("environment", doc.lighting, projectLighting)}
+            >
+              {/* Lighting-only IBL: reflections and specular, never a visible background. */}
+              <div className="option-grid">
+                <OptionCard
+                  label="None"
+                  title="Explicitly no reflections"
+                  image={null}
+                  selected={environment?.source === NONE_SOURCE}
+                  onSelect={() =>
+                    commit(writeEnvironment((e) => Object.assign(e, { source: NONE_SOURCE })))
+                  }
+                />
+                <OptionCard
+                  label="Softbox"
+                  title="The procedural three-panel studio rig"
+                  image={null}
+                  selected={environment?.source === SOFTBOX_SOURCE}
+                  onSelect={() =>
+                    commit(writeEnvironment((e) => Object.assign(e, { source: SOFTBOX_SOURCE })))
+                  }
+                />
+                {BUNDLED_ENVIRONMENT_IDS.map((id) => (
+                  <OptionCard
+                    key={id}
+                    label={environmentLabel(id)}
+                    image={thumbFor(id)}
+                    selected={environment?.source === id}
+                    onSelect={() =>
+                      commit(writeEnvironment((e) => Object.assign(e, { source: id })))
+                    }
+                  />
+                ))}
+                {projectMaps.map((rel) => (
+                  <OptionCard
+                    key={rel}
+                    label={environmentLabel(rel)}
+                    title={rel}
+                    image={null}
+                    selected={environment?.source === rel}
+                    onSelect={() =>
+                      commit(writeEnvironment((e) => Object.assign(e, { source: rel })))
+                    }
+                  />
+                ))}
+              </div>
+              {environment && environment.source !== NONE_SOURCE && (
+                <>
+                  <DebouncedRange
+                    label="Intensity"
+                    value={environment.intensity}
+                    min={0}
+                    max={3}
+                    step={0.05}
+                    onInput={(n) => live(writeEnvironment((e) => (e.intensity = n)))}
+                    onCommit={(n) => commit(writeEnvironment((e) => (e.intensity = n)))}
+                  />
+                  <DebouncedRange
+                    label="Rotation °"
+                    value={environment.rotationDeg}
+                    min={0}
+                    max={360}
+                    step={1}
+                    onInput={(n) => live(writeEnvironment((e) => (e.rotationDeg = n)))}
+                    onCommit={(n) => commit(writeEnvironment((e) => (e.rotationDeg = n)))}
+                  />
+                </>
+              )}
+              {doc.lighting?.environment && (
+                <ActionRow
+                  label="Use the theme's reflections"
+                  chevron={false}
+                  onClick={() =>
+                    commit((next) => {
+                      if (next.lighting) delete next.lighting.environment;
+                    })
+                  }
+                />
+              )}
             </DrillGroup>
 
             <DrillGroup label="Sun" hint={fieldSource("sun", doc.lighting, projectLighting)}>

@@ -145,4 +145,62 @@ describe("applySceneRenderState", () => {
     expect(scene.environment).toBeNull();
     expect(scene.environmentIntensity).toBe(1);
   });
+
+  it('"none" clears the environment explicitly, never the shared fallback', () => {
+    const scene = new Scene();
+    const sharedTex = new Texture();
+    applySceneRenderState(
+      scene,
+      { background: new Color("#000000"), environmentSource: "none" },
+      { environment: sharedTex, intensity: 0.5, rotationYRad: 0.25 },
+      resolver,
+    );
+    expect(scene.environment).toBeNull();
+    expect(scene.environmentIntensity).toBe(1);
+    expect(scene.environmentRotation.y).toBe(0);
+  });
+});
+
+describe("v9 lighting environments at the seam", () => {
+  it("opts in on a scene-doc lighting environment alone (no v8 theme blocks)", () => {
+    const theme = makeTheme();
+    const docs = [
+      undefined,
+      {
+        version: 1,
+        lighting: {
+          environment: { source: "kookaburra:warehouse", intensity: 0.35, rotationDeg: 0 },
+        },
+      },
+    ];
+    expect(usesThemedSceneState(theme, [theme, theme])).toBe(false);
+    expect(usesThemedSceneState(theme, [theme, theme], { sceneDocs: docs })).toBe(true);
+    const states = buildSceneRenderStates(theme, [theme, theme], {
+      projectId: "ws:spike",
+      sceneDocs: docs,
+    });
+    expect(states?.[0].environmentSource).toBeUndefined();
+    expect(states?.[1].environmentSource).toBe("kookaburra:warehouse");
+    expect(states?.[1].environmentIntensity).toBe(0.35);
+  });
+
+  it("scene doc wins over project lighting wins over the theme blocks, and user paths key per project", () => {
+    const theme = makeTheme({
+      environment: { source: "kookaburra:ferndale-studio", intensity: 1, rotationDeg: 0 },
+    });
+    const projectLighting = {
+      environment: { source: "assets/studio.hdr", intensity: 0.8, rotationDeg: 10 },
+    };
+    const docs = [
+      undefined,
+      { version: 1, lighting: { environment: { source: "none", intensity: 1, rotationDeg: 0 } } },
+    ];
+    const states = buildSceneRenderStates(theme, [theme, theme], {
+      projectId: "ws:spike",
+      projectLighting,
+      sceneDocs: docs,
+    });
+    expect(states?.[0].environmentSource).toBe("ws:spike|assets/studio.hdr");
+    expect(states?.[1].environmentSource).toBe("none");
+  });
 });

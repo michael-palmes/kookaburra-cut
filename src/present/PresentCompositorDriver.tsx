@@ -4,7 +4,7 @@ import type { PerspectiveCamera } from "three";
 import { applyCameraTrack, sampleCameraTrack } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { renderComposited } from "../engine/compositor";
-import { preloadEnvironments } from "../engine/environments";
+import { collectEnvironmentSources, preloadEnvironments } from "../engine/environments";
 import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
@@ -55,7 +55,12 @@ export function PresentCompositorDriver({
   const gl = useThree((s) => s.gl);
   const sceneTracks = useMemo(() => buildSceneCameraTracks(project.sceneDocs), [project]);
   const sceneStates = useMemo(
-    () => buildSceneRenderStates(project.theme, project.sceneThemes),
+    () =>
+      buildSceneRenderStates(project.theme, project.sceneThemes, {
+        projectId: project.id,
+        projectLighting: project.projectLighting,
+        sceneDocs: project.sceneDocs,
+      }),
     [project],
   );
   const overlays = useMemo(
@@ -64,7 +69,17 @@ export function PresentCompositorDriver({
   );
 
   useEffect(() => {
-    void preloadEnvironments(gl, [project.theme, ...project.sceneThemes]).then(() => invalidate());
+    void preloadEnvironments(
+      gl,
+      collectEnvironmentSources(
+        project.id,
+        [project.theme, ...project.sceneThemes],
+        project.projectLighting,
+        project.sceneDocs,
+      ),
+    )
+      .then(() => invalidate())
+      .catch((e) => console.warn("[environments] present preload failed:", e));
   }, [gl, project, invalidate]);
 
   // Redraw on deck changes that land while the clock is parked (e.g. back nav in video pause).

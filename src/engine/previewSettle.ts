@@ -5,7 +5,7 @@ import { preloadDeviceModels } from "../toolkit/device/models";
 import { preloadHeroModels } from "../toolkit/hero/models";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { useClockStore } from "./clock";
-import { preloadEnvironments } from "./environments";
+import { collectEnvironmentSources, preloadEnvironments } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { awaitSceneHostsCommitted } from "./exporter";
 import { isExporting } from "./exportState";
@@ -55,7 +55,18 @@ export async function settleProjectOpen(
       guard("project images", preloadProjectImages(loaded.id)),
       guard("bundled backdrops", preloadBundledBackdrops()),
       gl
-        ? guard("environments", preloadEnvironments(gl, [loaded.theme, ...loaded.sceneThemes]))
+        ? guard(
+            "environments",
+            preloadEnvironments(
+              gl,
+              collectEnvironmentSources(
+                loaded.id,
+                [loaded.theme, ...loaded.sceneThemes],
+                loaded.projectLighting,
+                loaded.sceneDocs,
+              ),
+            ),
+          )
         : Promise.resolve(),
     ]);
     await awaitSceneHostsCommitted(loaded.slots.length);

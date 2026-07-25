@@ -1110,6 +1110,8 @@ pub fn read_scene_source(
 }
 
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
+/// User environment maps (v9 lighting): lighting-only IBL sources, never visible media.
+pub(crate) const ENVIRONMENT_EXTENSIONS: &[&str] = &["hdr", "exr"];
 pub(crate) const MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v", "webm",
 ];
@@ -1125,6 +1127,16 @@ pub fn list_project_assets(
     slug: String,
 ) -> Result<Vec<String>, String> {
     list_by_extension(&app, &state, &slug, IMAGE_EXTENSIONS)
+}
+
+/// Relative paths of a project's environment maps (.hdr/.exr) for the lighting picker and the environment preload inventory.
+#[tauri::command]
+pub fn list_project_environments(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<Vec<String>, String> {
+    list_by_extension(&app, &state, &slug, ENVIRONMENT_EXTENSIONS)
 }
 
 /// Relative paths of ALL media in a project's assets/ (videos + images), newest modified first so every picker surfaces fresh imports/edits on top: used by the helper wizards' file dropdown and the media library's listing.
