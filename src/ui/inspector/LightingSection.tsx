@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { placementToOrbit, placementToPoint } from "../../engine/orbit";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
   resolveLighting,
@@ -8,6 +9,8 @@ import {
 } from "../../engine/sceneLighting";
 import type {
   LightingSpec,
+  LightSpace,
+  LightSpec,
   SunSpec,
   Theme,
   ThemeLightSpec,
@@ -17,7 +20,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { ActionRow, DrillBack, DrillGroup, NumberField, ToggleRow } from "./rows";
 
-/** The Lighting drill-in (v9 · PR 1): edits the subset v8 already renders (sun, ambient, fills, shadow) against the resolved theme -> project -> scene layers. Inherited values render from the resolve, never written on open (writing on open would diff every scene the user merely looked at); each edit writes its WHOLE field into the sidecar (the mergeLighting whole-field contract). Environment is a read-only summary until PR 3; the free-light list arrives in PR 2. */
+/** The Lighting drill-in (v9): edits the resolved theme -> project -> scene layers. Inherited values render from the resolve, never written on open (writing on open would diff every scene the user merely looked at); each edit writes its WHOLE field into the sidecar (the mergeLighting whole-field contract). Environment is a read-only summary until PR 3. */
 
 /** Seed rig for "Light this scene" on an unlit theme: the soft-studio starting point. */
 const DEFAULT_SUN: SunSpec = { azimuthDeg: 35, elevationDeg: 40, intensity: 1.8 };
@@ -30,6 +33,77 @@ const DEFAULT_SHADOW: ThemeShadowSpec = {
   bias: -0.0005,
 };
 const MAP_SIZES = [1024, 2048, 4096];
+
+const TYPE_LABEL: Record<LightSpec["type"], string> = {
+  directional: "Directional",
+  point: "Point",
+  spot: "Spot",
+  area: "Area",
+};
+
+/** Per-type intensity slider ceilings (three's units differ wildly between types). */
+const INTENSITY_MAX: Record<LightSpec["type"], number> = {
+  directional: 6,
+  point: 40,
+  spot: 200,
+  area: 30,
+};
+
+const SPACES: { id: LightSpace; label: string }[] = [
+  { id: "world", label: "World" },
+  { id: "camera", label: "Camera" },
+  { id: "subject", label: "Subject" },
+];
+
+const SPACE_HINT: Record<LightSpace, string | undefined> = {
+  world: undefined,
+  camera: "Rides the camera: stays in the same part of frame through any move.",
+  subject: "Orbits the camera's target: holds its angle off the subject as the camera flies.",
+};
+
+/** Defaults on add, tuned so a new light is immediately visible (never origin at intensity 0). */
+const LIGHT_DEFAULTS: Record<LightSpec["type"], (id: string) => LightSpec> = {
+  directional: (id) => ({
+    id,
+    type: "directional",
+    intensity: 1.5,
+    kelvin: 5500,
+    placement: { mode: "orbit", azimuthDeg: 45, elevationDeg: 30, distance: 8 },
+  }),
+  point: (id) => ({
+    id,
+    type: "point",
+    intensity: 8,
+    kelvin: 3200,
+    distance: 10,
+    decay: 2,
+    placement: { mode: "point", position: [2, 2, 2] },
+  }),
+  spot: (id) => ({
+    id,
+    type: "spot",
+    intensity: 40,
+    kelvin: 5000,
+    angleDeg: 30,
+    penumbra: 0.4,
+    placement: { mode: "orbit", azimuthDeg: -40, elevationDeg: 45, distance: 6 },
+  }),
+  area: (id) => ({
+    id,
+    type: "area",
+    intensity: 6,
+    kelvin: 6000,
+    width: 2,
+    height: 2,
+    placement: { mode: "point", position: [0, 2, 3] },
+  }),
+};
+
+function nextLightId(lights: readonly LightSpec[]): string {
+  let n = 1;
+  while (lights.some((l) => l.id === `light-${n}`)) n += 1;
+  return `light-${n}`;
+}
 
 /** Which layer a field currently comes from, for the group hints ("From theme" placeholders). */
 function fieldSource(
@@ -59,6 +133,7 @@ export function LightingSectionBody({
 }) {
   const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
   const dragBaseline = useRef<SceneDoc | null>(null);
+  const [lightId, setLightId] = useState<string | null>(null);
 
   // Live slider ticks write history-less; the release records one entry from the drag-start snapshot (the video-window pattern).
   const live = (mutate: (next: SceneDoc) => void) => {
@@ -99,6 +174,24 @@ export function LightingSectionBody({
       mutate(shadow);
       next.lighting = { ...(next.lighting ?? {}), shadow };
     };
+  const writeLights =
+    (mutate: (lights: LightSpec[]) => void) =>
+    (next: SceneDoc): void => {
+      const lights = structuredClone(resolved?.lights ?? []);
+      mutate(lights);
+      next.lighting = { ...(next.lighting ?? {}), lights };
+    };
+  const writeLight = (id: string, mutate: (l: LightSpec) => void) =>
+    writeLights((lights) => {
+      const light = lights.find((l) => l.id === id);
+      if (light) mutate(light);
+    });
+
+  const addLight = (type: LightSpec["type"]) => {
+    const id = nextLightId(resolved?.lights ?? []);
+    commit(writeLights((lights) => lights.push(LIGHT_DEFAULTS[type](id))));
+    setLightId(id);
+  };
 
   const sun = resolved?.sun;
   const shadow = resolved?.shadow;
@@ -110,6 +203,40 @@ export function LightingSectionBody({
       ? "None"
       : environment.source.replace(/^kookaburra:/, "").replace(/-/g, " ")
     : "None";
+
+  const selectedLight = lightId
+    ? (resolved?.lights ?? []).find((l) => l.id === lightId)
+    : undefined;
+  if (selectedLight) {
+    return (
+      <LightEditor
+        light={selectedLight}
+        colors={theme.colors}
+        onBack={() => setLightId(null)}
+        onLive={(mutate) => live(writeLight(selectedLight.id, mutate))}
+        onCommit={(mutate) => commit(writeLight(selectedLight.id, mutate))}
+        onDuplicate={() => {
+          const id = nextLightId(resolved?.lights ?? []);
+          commit(
+            writeLights((lights) => {
+              const source = lights.find((l) => l.id === selectedLight.id);
+              if (source) lights.push({ ...structuredClone(source), id, name: undefined });
+            }),
+          );
+          setLightId(id);
+        }}
+        onDelete={() => {
+          commit(
+            writeLights((lights) => {
+              const at = lights.findIndex((l) => l.id === selectedLight.id);
+              if (at >= 0) lights.splice(at, 1);
+            }),
+          );
+          setLightId(null);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="inspector-drill">
@@ -198,9 +325,9 @@ export function LightingSectionBody({
                       onCommit={(n) => commit(writeSun((s) => (s.kelvin = n)))}
                     />
                   </div>
-                  {sun.kelvin !== undefined && (
+                  {sun.kelvin !== undefined ? (
                     <ActionRow
-                      label="Use the theme's sun colour"
+                      label="Use a custom colour instead"
                       chevron={false}
                       onClick={() =>
                         commit(
@@ -210,6 +337,22 @@ export function LightingSectionBody({
                         )
                       }
                     />
+                  ) : (
+                    <div className="camera-loop-modes">
+                      <span className="drill-group-hint">Custom colour</span>
+                      <ColourPicker
+                        value={sun.color ?? "#ffffff"}
+                        label="Sun colour"
+                        onCommit={(hex) =>
+                          commit(
+                            writeSun((s) => {
+                              s.color = hex;
+                              delete s.kelvin;
+                            }),
+                          )
+                        }
+                      />
+                    </div>
                   )}
                   <ToggleRow
                     label="Sun enabled"
@@ -268,6 +411,31 @@ export function LightingSectionBody({
                 ))}
               </DrillGroup>
             )}
+
+            <DrillGroup label="Lights" hint={fieldSource("lights", doc.lighting, projectLighting)}>
+              {(resolved.lights ?? []).map((light) => (
+                <ActionRow
+                  key={light.id}
+                  label={light.name ?? TYPE_LABEL[light.type]}
+                  value={`${TYPE_LABEL[light.type]} · ${light.intensity}`}
+                  onClick={() => setLightId(light.id)}
+                />
+              ))}
+              <div className="camera-loop-modes">
+                <span className="drill-group-hint">Add</span>
+                {(Object.keys(TYPE_LABEL) as LightSpec["type"][]).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className="chip"
+                    title={`Add a ${TYPE_LABEL[type].toLowerCase()} light`}
+                    onClick={() => addLight(type)}
+                  >
+                    {TYPE_LABEL[type]}
+                  </button>
+                ))}
+              </div>
+            </DrillGroup>
 
             <DrillGroup label="Shadow" hint={fieldSource("shadow", doc.lighting, projectLighting)}>
               <ToggleRow
@@ -333,6 +501,401 @@ export function LightingSectionBody({
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** One free light's editor: type-specific fields, the World/Camera/Subject space row, the lossless Orbit/Position placement pair, the colour union (kelvin first, token swatches, custom hex) and the per-type shadow policy. */
+function LightEditor({
+  light,
+  colors,
+  onBack,
+  onLive,
+  onCommit,
+  onDuplicate,
+  onDelete,
+}: {
+  light: LightSpec;
+  colors: Theme["colors"];
+  onBack: () => void;
+  onLive: (mutate: (l: LightSpec) => void) => void;
+  onCommit: (mutate: (l: LightSpec) => void) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const aim = light.target ?? ([0, 0, 0] as [number, number, number]);
+  const space = light.space ?? "world";
+  const swatch = resolveLightingColour(light, colors);
+  const canShadow = light.type === "directional" || light.type === "spot";
+  const aimed = light.type !== "point";
+  const placement = light.placement;
+  const spaceHint = SPACE_HINT[space];
+
+  return (
+    <div className="inspector-drill">
+      <DrillBack label="Lighting" onClick={onBack} />
+      <div className="inspector-drill-title">{light.name ?? TYPE_LABEL[light.type]}</div>
+      <div className="inspector-drill-body inspector-section-body">
+        <input
+          key={light.id}
+          className="modal-input"
+          defaultValue={light.name ?? ""}
+          placeholder={TYPE_LABEL[light.type]}
+          aria-label="Light name"
+          onBlur={(e) => {
+            const value = e.target.value.trim();
+            if ((light.name ?? "") === value) return;
+            onCommit((l) => {
+              if (value) l.name = value;
+              else delete l.name;
+            });
+          }}
+        />
+
+        <DrillGroup label="Space" hint={spaceHint}>
+          <div className="camera-loop-modes">
+            {SPACES.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                className={`chip${space === id ? " selected" : ""}`}
+                title={SPACE_HINT[id] ?? "Fixed in the scene."}
+                onClick={() =>
+                  onCommit((l) => {
+                    if (id === "world") delete l.space;
+                    else l.space = id;
+                  })
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </DrillGroup>
+
+        <DrillGroup label="Placement">
+          <div className="camera-loop-modes">
+            <button
+              type="button"
+              className={`chip${placement.mode === "orbit" ? " selected" : ""}`}
+              title="Azimuth, elevation and distance around the aim point"
+              onClick={() => {
+                if (placement.mode === "orbit") return;
+                onCommit((l) => (l.placement = placementToOrbit(l.placement, aim)));
+              }}
+            >
+              Orbit
+            </button>
+            <button
+              type="button"
+              className={`chip${placement.mode === "point" ? " selected" : ""}`}
+              title="Numeric XYZ position"
+              onClick={() => {
+                if (placement.mode === "point") return;
+                onCommit((l) => (l.placement = placementToPoint(l.placement, aim)));
+              }}
+            >
+              Position
+            </button>
+          </div>
+          {placement.mode === "orbit" ? (
+            <>
+              <DebouncedRange
+                label="Azimuth"
+                value={placement.azimuthDeg}
+                min={-180}
+                max={180}
+                step={1}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
+                  })
+                }
+              />
+              <DebouncedRange
+                label="Elevation"
+                value={placement.elevationDeg}
+                min={-90}
+                max={90}
+                step={1}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
+                  })
+                }
+              />
+              <div className="inspector-pose-grid">
+                <NumberField
+                  label="distance"
+                  value={placement.distance}
+                  decimals={2}
+                  dragScale={0.02}
+                  min={0}
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.placement.mode === "orbit") l.placement.distance = n;
+                    })
+                  }
+                />
+              </div>
+            </>
+          ) : (
+            <div className="inspector-pose-grid">
+              {(["x", "y", "z"] as const).map((axis, i) => (
+                <NumberField
+                  key={axis}
+                  label={axis}
+                  value={placement.position[i]}
+                  decimals={2}
+                  dragScale={0.02}
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.placement.mode === "point") l.placement.position[i] = n;
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )}
+          {aimed && (
+            <div className="inspector-pose-grid">
+              {(["x", "y", "z"] as const).map((axis, i) => (
+                <NumberField
+                  key={axis}
+                  label={`aim ${axis}`}
+                  value={aim[i]}
+                  decimals={2}
+                  dragScale={0.02}
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      const target: [number, number, number] = [...(l.target ?? [0, 0, 0])];
+                      target[i] = n;
+                      l.target = target;
+                    })
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </DrillGroup>
+
+        <DrillGroup label="Light">
+          <DebouncedRange
+            label="Intensity"
+            value={light.intensity}
+            min={0}
+            max={INTENSITY_MAX[light.type]}
+            step={0.05}
+            onInput={(n) => onLive((l) => (l.intensity = n))}
+            onCommit={(n) => onCommit((l) => (l.intensity = n))}
+          />
+          {light.type === "spot" && (
+            <>
+              <DebouncedRange
+                label="Cone °"
+                value={light.angleDeg}
+                min={1}
+                max={179}
+                step={1}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.type === "spot") l.angleDeg = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.type === "spot") l.angleDeg = n;
+                  })
+                }
+              />
+              <DebouncedRange
+                label="Penumbra"
+                value={light.penumbra}
+                min={0}
+                max={1}
+                step={0.01}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.type === "spot") l.penumbra = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.type === "spot") l.penumbra = n;
+                  })
+                }
+              />
+            </>
+          )}
+          {(light.type === "point" || light.type === "spot") && (
+            <div className="inspector-pose-grid">
+              <NumberField
+                label="falloff"
+                value={light.distance ?? 0}
+                decimals={1}
+                dragScale={0.1}
+                min={0}
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.type === "point" || l.type === "spot") l.distance = n;
+                  })
+                }
+              />
+              <NumberField
+                label="decay"
+                value={light.decay ?? 2}
+                decimals={1}
+                dragScale={0.05}
+                min={0}
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.type === "point" || l.type === "spot") l.decay = n;
+                  })
+                }
+              />
+            </div>
+          )}
+          {light.type === "area" && (
+            <>
+              <div className="inspector-pose-grid">
+                <NumberField
+                  label="width"
+                  value={light.width}
+                  decimals={2}
+                  dragScale={0.02}
+                  min={0.05}
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.type === "area") l.width = n;
+                    })
+                  }
+                />
+                <NumberField
+                  label="height"
+                  value={light.height}
+                  decimals={2}
+                  dragScale={0.02}
+                  min={0.05}
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.type === "area") l.height = n;
+                    })
+                  }
+                />
+              </div>
+              <p className="modal-hint">
+                Area lights reach devices and other standard materials only: text and animated
+                backgrounds ignore them, and they can't cast shadows.
+              </p>
+            </>
+          )}
+        </DrillGroup>
+
+        <DrillGroup label="Colour">
+          <div className="lighting-kelvin-row">
+            <span
+              className="lighting-kelvin-swatch"
+              style={{ background: swatch }}
+              title={light.kelvin !== undefined ? `${light.kelvin} K` : "Colour"}
+            />
+            <DebouncedRange
+              label="Temperature K"
+              value={light.kelvin ?? 6500}
+              min={1000}
+              max={20000}
+              step={100}
+              onInput={(n) => onLive((l) => (l.kelvin = n))}
+              onCommit={(n) => onCommit((l) => (l.kelvin = n))}
+            />
+          </div>
+          {light.kelvin !== undefined ? (
+            <ActionRow
+              label="Use a theme or custom colour instead"
+              chevron={false}
+              onClick={() =>
+                onCommit((l) => {
+                  delete l.kelvin;
+                })
+              }
+            />
+          ) : (
+            <div className="camera-loop-modes">
+              {(["accent", "text", "muted", "background"] as const).map((token) => (
+                <button
+                  key={token}
+                  type="button"
+                  className={`chip${light.colorToken === token ? " selected" : ""}`}
+                  title={`Theme ${token} colour (a theme swap restyles this light)`}
+                  onClick={() =>
+                    onCommit((l) => {
+                      l.colorToken = token;
+                      delete l.kelvin;
+                    })
+                  }
+                >
+                  <span className="lighting-kelvin-swatch" style={{ background: colors[token] }} />
+                  {token}
+                </button>
+              ))}
+              <ColourPicker
+                value={light.color ?? "#ffffff"}
+                label="Custom light colour"
+                onCommit={(hex) =>
+                  onCommit((l) => {
+                    l.color = hex;
+                    delete l.kelvin;
+                    delete l.colorToken;
+                  })
+                }
+              />
+            </div>
+          )}
+        </DrillGroup>
+
+        <ToggleRow
+          label="Cast shadows"
+          description={
+            light.type === "point"
+              ? "Point lights can't cast shadows (a cube map costs six renders per light)."
+              : light.type === "area"
+                ? "Area lights can't cast shadows (a three.js limitation)."
+                : "Capped at four casters per scene, sun included; over-cap lights render unshadowed."
+          }
+          checked={canShadow && light.castShadow === true}
+          disabled={!canShadow}
+          onChange={(on) =>
+            onCommit((l) => {
+              if (on) l.castShadow = true;
+              else delete l.castShadow;
+            })
+          }
+        />
+        <ToggleRow
+          label="Enabled"
+          description="Off keeps the light's settings without lighting anything."
+          checked={light.enabled !== false}
+          onChange={(on) =>
+            onCommit((l) => {
+              if (on) delete l.enabled;
+              else l.enabled = false;
+            })
+          }
+        />
+
+        <div className="inspector-section-divider" />
+        <ActionRow label="Duplicate light" chevron={false} onClick={onDuplicate} />
+        <ActionRow label="Delete light" chevron={false} danger onClick={onDelete} />
       </div>
     </div>
   );
