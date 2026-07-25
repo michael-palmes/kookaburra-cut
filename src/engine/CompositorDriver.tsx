@@ -20,6 +20,7 @@ import {
 } from "./environments";
 import { stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
+import { HELPER_LAYER } from "./lightEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   buildSceneCameraTracks,
@@ -138,6 +139,8 @@ export function CompositorDriver({
   useFrame((s) => {
     // Stands down while the exporter owns rendering: a stray preview render here would race the export's async text sync and capture stale glyphs (non-deterministic export).
     if (isExporting()) return;
+    // Preview frames see the light helpers' layer; the exporter disables it per run (the double guard).
+    s.camera.layers.enable(HELPER_LAYER);
     const currentMs = useClockStore.getState().currentMs;
     const resolved = resolveAt(slots, currentMs);
     // Preview-only draft merge: an in-flight camera drag replaces its scene's track for this render, read imperatively (never a subscription into the render) and unreachable during export (`isExporting` above; the export loop samples only `ExportOptions.sceneDocs`).

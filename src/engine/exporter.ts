@@ -39,6 +39,7 @@ import {
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
 import type { FormatSpec } from "./format";
+import { HELPER_LAYER } from "./lightEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   isWorkspaceProjectId,
@@ -450,6 +451,8 @@ export async function exportProject(
     applyCameraPose(cam, baseCameraPose());
   }
 
+  // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating).
+  cam.layers.disable(HELPER_LAYER);
   // The exporter owns rendering for the whole loop; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
   setExporting(true);
   try {
@@ -564,6 +567,7 @@ export async function captureScreenshot(
     applyCameraPose(cam, baseCameraPose());
   }
 
+  cam.layers.disable(HELPER_LAYER);
   setExporting(true);
   try {
     // One iteration of the export loop's frame block, barrier for barrier.
@@ -623,7 +627,7 @@ export async function verifyDeterminism(
   const RETAIN_FRAMES = 3;
   const rawA: Uint8Array[] = [];
   const rawB: Uint8Array[] = [];
-  // Holds the preview stand-down across both passes (nested over each pass's own hold; the flag is depth-counted, see engine/exportState). Without this, a wall-clock-varying number of preview frames rendered between the passes at the preview size, with the restored preview clock, and their GPU residue leaked into pass B's first frames (the showcase-tour frames-0-1 ±LSB flake); with the hold, pass B starts from exactly the state pass A ended in, deterministic by construction.
+  // Holds the preview stand-down across both passes (nested over each pass's own hold; the flag is depth-counted, see engine/exportState). Without this, a wall-clock-varying number of preview frames rendered between the passes at the preview size, with the restored preview clock, and their GPU residue leaked into pass B's first frames (the showcase-tour frames-0-1 ±LSB flake); with the hold, pass B starts from exactly the state pass A ended in, deterministic by construction. Each pass's own run disables HELPER_LAYER.
   setExporting(true);
   let hashA: string;
   let hashB: string;

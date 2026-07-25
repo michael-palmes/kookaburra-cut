@@ -7,6 +7,7 @@ import {
   SOFTBOX_SOURCE,
 } from "../../engine/environments";
 import { nextKeyId } from "../../engine/keyedTrack";
+import { useLightEditStore } from "../../engine/lightEditStore";
 import { placementToOrbit, placementToPoint } from "../../engine/orbit";
 import { listProjectEnvironmentAssets } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
@@ -405,7 +406,10 @@ export function LightingSectionBody({
       <FixtureEditor
         fixture={selectedFixture}
         colors={theme.colors}
-        onBack={() => setFixtureId(null)}
+        onBack={() => {
+          useLightEditStore.getState().select(null);
+          setFixtureId(null);
+        }}
         onLive={(mutate) => live(writeFixture(selectedFixture.id, mutate))}
         onCommit={(mutate) => commit(writeFixture(selectedFixture.id, mutate))}
         onDuplicate={() => {
@@ -444,7 +448,10 @@ export function LightingSectionBody({
       <LightEditor
         light={selectedLight}
         colors={theme.colors}
-        onBack={() => setLightId(null)}
+        onBack={() => {
+          useLightEditStore.getState().select(null);
+          setLightId(null);
+        }}
         onLive={(mutate) => live(writeLight(selectedLight.id, mutate))}
         onCommit={(mutate) => commit(writeLight(selectedLight.id, mutate))}
         onDuplicate={() => {
@@ -751,7 +758,10 @@ export function LightingSectionBody({
                   key={light.id}
                   label={light.name ?? TYPE_LABEL[light.type]}
                   value={`${TYPE_LABEL[light.type]} · ${light.intensity}`}
-                  onClick={() => setLightId(light.id)}
+                  onClick={() => {
+                    useLightEditStore.getState().select("light", light.id);
+                    setLightId(light.id);
+                  }}
                 />
               ))}
               <div className="camera-loop-modes">
@@ -782,7 +792,10 @@ export function LightingSectionBody({
                   key={fixture.id}
                   label={fixture.name ?? FORM_LABEL[fixture.form]}
                   value={`${FORM_LABEL[fixture.form]}${fixture.repeat && fixture.repeat.count > 1 ? ` ×${fixture.repeat.count}${fixture.repeat.mirrorAxis ? "×2" : ""}` : ""}`}
-                  onClick={() => setFixtureId(fixture.id)}
+                  onClick={() => {
+                    useLightEditStore.getState().select("fixture", fixture.id);
+                    setFixtureId(fixture.id);
+                  }}
                 />
               ))}
               <div className="camera-loop-modes">
@@ -1090,24 +1103,37 @@ function LightEditor({
             </div>
           )}
           {aimed && (
-            <div className="inspector-pose-grid">
-              {(["x", "y", "z"] as const).map((axis, i) => (
-                <NumberField
-                  key={axis}
-                  label={`aim ${axis}`}
-                  value={aim[i]}
-                  decimals={2}
-                  dragScale={0.02}
-                  onCommit={(n) =>
+            <>
+              <div className="inspector-pose-grid">
+                {(["x", "y", "z"] as const).map((axis, i) => (
+                  <NumberField
+                    key={axis}
+                    label={`aim ${axis}`}
+                    value={aim[i]}
+                    decimals={2}
+                    dragScale={0.02}
+                    onCommit={(n) =>
+                      onCommit((l) => {
+                        const target: [number, number, number] = [...(l.target ?? [0, 0, 0])];
+                        target[i] = n;
+                        l.target = target;
+                      })
+                    }
+                  />
+                ))}
+              </div>
+              {(aim[0] !== 0 || aim[1] !== 0 || aim[2] !== 0) && (
+                <ActionRow
+                  label="Aim at the subject"
+                  chevron={false}
+                  onClick={() =>
                     onCommit((l) => {
-                      const target: [number, number, number] = [...(l.target ?? [0, 0, 0])];
-                      target[i] = n;
-                      l.target = target;
+                      delete l.target;
                     })
                   }
                 />
-              ))}
-            </div>
+              )}
+            </>
           )}
         </DrillGroup>
 

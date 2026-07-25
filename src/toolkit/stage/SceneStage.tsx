@@ -19,6 +19,7 @@ import { useTheme } from "../../theme";
 import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";
 import { StageFixtures } from "../lighting/Fixture";
+import { LightHelpers } from "../lighting/LightHelpers";
 import { StageBackdrop } from "./backdrops";
 import { SceneStageContext, type SceneStageState } from "./context";
 import { StageLights } from "./StageLights";
@@ -188,6 +189,7 @@ export function SceneStage({
           {budget && budget.fixtures.entries.length > 0 && (
             <StageFixtures entries={budget.fixtures.entries} colors={theme.colors} />
           )}
+          <LightHelpers lighting={lighting} />
         </>
       )}
       {backdrop && (
