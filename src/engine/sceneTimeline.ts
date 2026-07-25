@@ -184,6 +184,15 @@ export function resolveTransitionParams(spec: TransitionSpec): TransitionParams 
   };
 }
 
+/** The clamped overlap an outgoing TransitionSpec produces between two neighbouring scene durations; buildSceneTimeline uses this exact formula, so duration edits can re-clamp without duplicating it. */
+export function resolveOverlapMs(
+  spec: TransitionSpec | undefined,
+  prevDurationMs: number,
+  nextDurationMs: number,
+): number {
+  return Math.max(0, Math.min(spec?.durationMs ?? 0, prevDurationMs, nextDurationMs));
+}
+
 /** Places scenes on the global timeline; the previous scene's outgoing transition pulls this scene's start back by the overlap, clamped so it never exceeds either neighbour's duration (so starts stay ≥ 0). */
 export function buildSceneTimeline(scenes: TimelineSceneInput[]): SceneSlot[] {
   const slots: SceneSlot[] = [];
@@ -194,8 +203,7 @@ export function buildSceneTimeline(scenes: TimelineSceneInput[]): SceneSlot[] {
     if (i > 0) {
       const prev = slots[i - 1];
       const spec = scenes[i - 1].transition;
-      const requested = spec?.durationMs ?? 0;
-      const overlap = Math.max(0, Math.min(requested, prev.durationMs, sc.durationMs));
+      const overlap = resolveOverlapMs(spec, prev.durationMs, sc.durationMs);
       startMs = prev.endMs - overlap;
       transitionIn =
         spec && overlap > 0

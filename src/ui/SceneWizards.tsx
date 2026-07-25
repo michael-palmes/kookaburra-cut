@@ -989,9 +989,16 @@ export function EditSceneWizard({
       if (mediaChanged) {
         let resyncFailed: unknown = null;
         const manifestBefore = await readProjectManifestSnapshot(slug);
-        await resyncFollowMediaDuration(slug, scene.index, next, scene.durationMs).catch((e) => {
+        const resynced = await resyncFollowMediaDuration(
+          slug,
+          scene.index,
+          next,
+          scene.durationMs,
+          scene.file,
+        ).catch((e) => {
           console.warn("[wizard] duration re-sync failed:", e);
           resyncFailed = e;
+          return null;
         });
         if (!resyncFailed) {
           const manifestAfter = await readProjectManifestSnapshot(slug);
@@ -1002,6 +1009,16 @@ export function EditSceneWizard({
               before: manifestBefore,
               after: manifestAfter,
               reload: false,
+            });
+          }
+          if (resynced?.clampedDoc) {
+            historyChanges.push({
+              kind: "sceneDoc",
+              slug,
+              file: scene.file,
+              sceneIndex: scene.index,
+              before: structuredClone(next),
+              after: structuredClone(resynced.clampedDoc),
             });
           }
         }
