@@ -1026,12 +1026,24 @@ bundled rolling-gate project (`showcase-tour`):
 
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `b70c9788…` | stale | stale | stale | — | — |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` (fixture spliced to 8.2s on 2026-07-25; full-length was `b70c9788…`) | stale | stale | stale | — | — |
 | `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale | `0e64593d…` | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `b5d80edb…` | — | — | — | — | — |
+
+> **2026-07-25 (scene lighting v9, PRs 1-8):** the lighting batch (schema v9
+> with the theme -> project -> scene layers, four free light types with
+> World/Camera/Subject spaces resolved per render target, six new bundled
+> HDRIs + user `.hdr`/`.exr` sources + `"none"`, emissive fixtures with repeat
+> arrays and the env-mirror bake, lighting keyframes, the preset grid, and the
+> explicit tone-mapping/exposure contract) landed with both anchors EQUAL
+> (`97af238c…` / `eb89826c…`, the post-splice launch baseline) and the new
+> 15-scene lighting fixture verifying identical ×2 at `b5d80edb…`. Every new
+> block is null-for-legacy: absent at all layers resolves the v8 path verbatim,
+> pinned by the whole-lineup theme-equivalence test.
 
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,
