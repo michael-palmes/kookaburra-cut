@@ -646,11 +646,6 @@ body {
   font-size: var(--text-xs);
   align-self: center;
 }
-.chip-icon {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
 .modal-title-row {
   display: flex;
   gap: var(--space-3);
@@ -700,17 +695,20 @@ body {
      and the thumbnails' contained images end up centred off-screen (all-black cards). */
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-5);
+  /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
+     floor, then a column drops (the inspector rail and narrow editor panels sit at 2). */
+  grid-template-columns: repeat(
+      auto-fill,
+      minmax(max(140px, calc((100% - 2 * var(--space-4)) / 3)), 1fr)
+    );
+  gap: var(--space-4);
   padding-right: var(--space-2);
 }
 
-/* Compact host (the editor's 1/3-width side panel): smaller cells, tighter gap. */
+/* Compact host (the editor's 1/3-width side panel): fill the panel and scroll; rows keep
+   natural height instead of squashing. */
 .media-browser.compact .media-grid {
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-4);
   padding-right: 0;
-  /* Fill the panel and scroll; rows keep natural height instead of squashing. */
   flex: 1 1 0;
   min-height: 0;
   grid-auto-rows: max-content;
@@ -3182,28 +3180,20 @@ body {
   border-radius: var(--radius-xs);
 }
 
-/* v11 · M2: the pick modals (Change media / Background image) — 4 smaller cards across. */
+/* v11 · M2: the pick modals (Change media / Choose image): wider, with a taller host. */
 .media-modal-wide {
   width: min(66rem, calc(100% - 2rem));
 }
 .media-modal-wide .wizard-media-host {
   max-height: 62vh;
 }
-.media-modal-wide .media-grid {
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3);
-}
 
-/* The wizards' media step: a fixed 3-across grid with room for two full rows. */
+/* The wizards' media step: room for two full rows. */
 .wizard-media-wide {
   width: min(56rem, calc(100% - 2rem));
 }
 .wizard-media-wide .wizard-media-host {
   max-height: min(42rem, 58vh);
-}
-.wizard-media-wide .media-grid {
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
 }
 
 .wizard-media-row {
@@ -6076,7 +6066,18 @@ img.inspector-scene-thumb {
   font-size: var(--text-xs);
 }
 
-/* Embedded 2-up media browser (Background → Image). */
+/* The media browser's segmented toggles sit flush in their bar. */
+.media-browser-toggles .inspector-subtabs {
+  margin: 0;
+}
+/* Both toggles: the browser wraps in a ToggleFieldset, which must flex so the grid inside
+   keeps scrolling in modal hosts. */
+.media-browser > .toggle-fieldset {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Embedded media browser in the inspector rail (the shared 140px card floor sits it at 2-up). */
 .inspector-media-host {
   display: flex;
   flex-direction: column;
@@ -6085,8 +6086,6 @@ img.inspector-scene-thumb {
 }
 
 .inspector-media-host .media-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
   padding-right: 0;
 }
 

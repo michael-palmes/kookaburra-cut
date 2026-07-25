@@ -37,6 +37,7 @@ import { formatMediaDuration, type MediaMeta, mediaMeta } from "../engine/media"
 import { revealApp } from "../engine/reveal";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
+import { mediaCardMenu } from "../ui/mediaCardMenu";
 import { useEscapeClose } from "../ui/useEscapeClose";
 import { Preview, type TrimScrub } from "./Preview";
 import { Timeline } from "./Timeline";
@@ -670,7 +671,18 @@ export function EditorApp() {
               refreshKey={mediaRefresh}
               compact
               draggableVideos
+              kinds={["video"]}
               hint="Drag a video into the timeline"
+              cardMenu={mediaCardMenu({
+                slug: target.slug,
+                primaryLabel: "Insert",
+                onPrimary: (rel) => handleAddClip(rel),
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setSaveError,
+                // This edit's own source and rendered output are already open here: claim Edit as a no-op.
+                onEdit: (rel) =>
+                  rel === target.sourceRel || rel === `assets/${target.name}-edited.mp4`,
+              })}
             />
           )}
         </aside>
