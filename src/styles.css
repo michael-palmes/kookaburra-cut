@@ -5451,6 +5451,26 @@ img.inspector-scene-thumb {
   padding: 0 8px 6px;
 }
 
+/* Lighting: the Kelvin slider with its live colour swatch alongside. */
+.lighting-kelvin-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.lighting-kelvin-row > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.lighting-kelvin-swatch {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
 /* Camera numerics: two 3-column grids of mono fields with captions below. */
 .inspector-pose-grid {
   display: grid;
