@@ -172,7 +172,7 @@ The full contract and its failure catalogue are in
 | VBV determinism | Software VBV lanes pin encoder threads to 1 | x264 VBV under threads produces identical frames but differing bytes |
 | Loudness | Measured gain only (cached ebur128 through the exact export graph) summed into a single volume slot; true-peak overage warns, never limits | A limiter is content-dependent DSP; a gain is a constant |
 | Render at output fps | 30fps presets step the render clock at 30 directly | Half the render time; the 30fps instants are bit-identical to every second 60fps instant |
-| Aspects | 16:9 / 9:16 / 1:1 standing, 4:5 first-class but feature-scoped in gates | Gate economy |
+| Aspects | 16:9 / 9:16 / 1:1 standing; 4:5 / 5:4 / 3:2 / 2:3 first-class but feature-scoped in gates (whether any joins the standing matrix stays an open question) | Gate economy |
 | Output naming | Preset/custom exports carry a preset suffix; the frozen path keeps the exact legacy filename | Preset output can never overwrite the files baselines hash |
 | Size caps | Estimate vs platform cap with a one-click fit; informative, never blocking | Informative, not paternal |
 

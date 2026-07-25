@@ -66,6 +66,7 @@ describe("buildCommands (the vocabulary pin)", () => {
       "view.aspect:9:16",
       "view.aspect:1:1",
       "view.aspect:4:5",
+      "view.aspect:5:4",
       "export.verify",
       "export.open",
       // Relocated rail Music menu: the inspector and the palette both own it now.
