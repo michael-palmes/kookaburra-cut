@@ -1,5 +1,8 @@
-import { type ReactNode, useContext, useEffect, useMemo } from "react";
+import { type ReactNode, useContext, useEffect, useId, useMemo, useRef } from "react";
+import type { DirectionalLight, Light } from "three";
 import { resolveFixturePlan } from "../../engine/fixtures";
+import { registerLightingAnimatable } from "../../engine/lightingAnimation";
+import { sunPosition } from "../../engine/orbit";
 import {
   ProjectLightingContext,
   SceneDocContext,
@@ -29,20 +32,9 @@ import {
 
 /** The theme-driven stage: lights the scene from the resolved lighting layers (theme -> project -> scene, see `mergeLighting`), mounts the resolved backdrop, and tells staged primitives to stand their bundled lit sets down; the camera-locked fixed background and environment reflections do NOT mount here (mounted elsewhere, at the scene host and the compositor seam respectively). Shadows are the HYBRID decision: the sun casts real shadow maps only when a floor/backdrop is staged AND the shadow technique is "map", else the procedural blob shadows remain the default; no lighting at any layer renders no lights and leaves primitives lit (context null) so a scaffolded scene stays visible under a legacy theme. The v8 path (sun + ambient + fills, no v9 fields) must emit an IDENTICAL scene graph: same component order, same props, same values. */
 
-/** The sun and legacy fills sit on a fixed-radius sphere aimed at the origin (free lights use their own distance, see StageLights). EXPORT CONTRACT. The shadow rig constants live in shadowRig.ts, shared with shadow-casting free lights. */
-const LIGHT_RADIUS = 8;
-
-const DEG2RAD = Math.PI / 180;
-
-/** Orbit direction (azimuth from +z, elevation up) → a world position at LIGHT_RADIUS. */
+// The v8 sun sphere (LIGHT_RADIUS) lives in engine/orbit.ts, shared with the keyframe apply seam; the shadow rig constants live in shadowRig.ts, shared with shadow-casting free lights.
 function lightPosition(spec: ThemeLightSpec): [number, number, number] {
-  const az = spec.azimuthDeg * DEG2RAD;
-  const el = spec.elevationDeg * DEG2RAD;
-  return [
-    LIGHT_RADIUS * Math.sin(az) * Math.cos(el),
-    LIGHT_RADIUS * Math.sin(el),
-    LIGHT_RADIUS * Math.cos(az) * Math.cos(el),
-  ];
+  return sunPosition(spec.azimuthDeg, spec.elevationDeg);
 }
 
 export function SceneStage({
@@ -79,6 +71,39 @@ export function SceneStage({
     () => (lighting ? { mapShadows } : null),
     [lighting, mapShadows],
   );
+
+  // Keyframe apply-seam registration: the sun and ambient are animatable per scene (no track mounted means the registry is populated but never read).
+  const animKey = useId();
+  const sunRef = useRef<DirectionalLight>(null);
+  const ambientRef = useRef<Light>(null);
+  useEffect(() => {
+    if (!lighting || sceneIndex === undefined) return;
+    const cleanups: (() => void)[] = [];
+    if (sunRef.current && sun) {
+      cleanups.push(
+        registerLightingAnimatable(`${animKey}:sun`, {
+          kind: "sun",
+          sceneIndex,
+          light: sunRef.current,
+          base: sun,
+          baseColor: resolveLightingColour(sun, theme.colors),
+        }),
+      );
+    }
+    if (ambientRef.current && lighting.ambient !== undefined) {
+      cleanups.push(
+        registerLightingAnimatable(`${animKey}:ambient`, {
+          kind: "ambient",
+          sceneIndex,
+          light: ambientRef.current,
+          base: lighting.ambient,
+        }),
+      );
+    }
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [animKey, lighting, sun, sceneIndex, theme]);
 
   // Free lights + fixtures (v9): deterministic budgets computed once per resolved spec; over-cap drops warn here, once, never silently.
   const sunCasts = Boolean(sun && sun.enabled !== false && mapShadows && sun.castShadow !== false);
@@ -120,9 +145,12 @@ export function SceneStage({
     <SceneStageContext.Provider value={stageState}>
       {lighting && (
         <>
-          {lighting.ambient !== undefined && <ambientLight intensity={lighting.ambient} />}
+          {lighting.ambient !== undefined && (
+            <ambientLight ref={ambientRef} intensity={lighting.ambient} />
+          )}
           {sun && sun.enabled !== false && (
             <directionalLight
+              ref={sunRef}
               position={lightPosition(sun)}
               intensity={sun.intensity}
               color={resolveLightingColour(sun, theme.colors)}

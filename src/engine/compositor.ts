@@ -35,6 +35,7 @@ import {
 import { getLoadedEnvironment } from "./environments";
 import { FPS, MSAA_SAMPLES } from "./format";
 import { getFramePanels } from "./framePanelRegistry";
+import { applyFrameLighting } from "./lightingAnimation";
 import { applyRelativeLights } from "./lightingState";
 import type { ResolvedOverlay } from "./overlayPlan";
 import {
@@ -46,6 +47,7 @@ import {
 import { getPersistentLayers } from "./persistentLayerRegistry";
 import type { FrameCameraPlan } from "./sceneCamera";
 import type { SceneHostHandle } from "./sceneHostRegistry";
+import type { FrameLightingPlan } from "./sceneLighting";
 import {
   applySceneRenderState,
   type FrameSceneStatePlan,
@@ -407,6 +409,7 @@ export function renderComposited(
   cameras?: FrameCameraPlan,
   states?: FrameSceneStatePlan,
   overlays?: readonly (ResolvedOverlay | null)[],
+  lighting?: FrameLightingPlan,
 ): void {
   // Snapshots the root-scene values the state plan owns, restored at every exit so root-scene state never leaks into the next-loaded project; the environment snapshot doubles as the explicit fallback for scenes whose theme declares none (legacy drei mounts keep working through it).
   const prevStateBackground = states ? scene.background : undefined;
@@ -467,8 +470,9 @@ export function renderComposited(
     showOnly(idx);
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     if (states?.solo) applyState(states.solo);
-    // Camera/subject-space lights resolve AFTER the camera pose lands, per render target (a no-op when none are mounted).
+    // Camera/subject-space lights resolve AFTER the camera pose lands, per render target (a no-op when none are mounted); keyframed lighting applies last so its env overrides win.
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
+    applyFrameLighting(scene, lighting?.solo);
     const overlay = overlays?.[idx] ?? null;
     if (overlay) {
       // Overlay path: the scene renders into its cutout, then the slide keys it in over the panel. Effects don't yet compose onto a framed scene (docs/overlays.md open question), so this branch is taken ahead of fx.
@@ -515,8 +519,9 @@ export function renderComposited(
   showOnly(tr.fromIndex);
   if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
   if (states?.a) applyState(states.a);
-  // Target A resolves its own relative lights: A and B use different cameras on a transition frame.
+  // Target A resolves its own relative lights and its own sampled lighting: A and B use different cameras AND different scene-local times on a transition frame.
   applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
+  applyFrameLighting(scene, lighting?.a);
   if (overlayA) {
     renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
     const panelA = panelFor(tr.fromIndex);
@@ -530,6 +535,7 @@ export function renderComposited(
   if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
   if (states?.b) applyState(states.b);
   applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
+  applyFrameLighting(scene, lighting?.b);
   if (overlayB) {
     renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
     const panelB = panelFor(tr.toIndex);
@@ -543,6 +549,7 @@ export function renderComposited(
   if (cameras?.overlay) applyCameraPose(camera as PerspectiveCamera, cameras.overlay);
   if (states?.overlay) applyState(states.overlay);
   applyRelativeLights(camera as PerspectiveCamera, cameras?.overlay ?? null);
+  applyFrameLighting(scene, lighting?.overlay);
 
   gl.toneMapping = prevToneMapping;
 

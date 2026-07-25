@@ -16,6 +16,7 @@ import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
 import type { LoadedProject } from "../engine/project";
 import { buildSceneCameraTracks, orbitToView, resolveFrameCameras } from "../engine/sceneCamera";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
+import { buildLightingTracks, resolveFrameLighting } from "../engine/sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "../engine/sceneState";
 import {
   applyTransitionEase,
@@ -59,6 +60,10 @@ export function PresentCompositorDriver({
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const sceneTracks = useMemo(() => buildSceneCameraTracks(project.sceneDocs), [project]);
+  const lightingTracks = useMemo(
+    () => buildLightingTracks(project.sceneThemes, project.projectLighting, project.sceneDocs),
+    [project],
+  );
   const sceneStates = useMemo(
     () =>
       buildSceneRenderStates(project.theme, project.sceneThemes, {
@@ -262,6 +267,7 @@ export function PresentCompositorDriver({
       plan,
       statePlan,
       overlays ?? undefined,
+      resolveFrameLighting(lightingTracks, resolved) ?? undefined,
     );
   }, 1);
 

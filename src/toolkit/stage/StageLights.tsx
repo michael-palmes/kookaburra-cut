@@ -1,7 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
-import { Object3D } from "three";
+import { type Light, Object3D } from "three";
+import { registerLightingAnimatable } from "../../engine/lightingAnimation";
 import { registerRelativeLight } from "../../engine/lightingState";
 import { placementPosition } from "../../engine/orbit";
+import { useSceneContext } from "../../engine/sceneContext";
 import { resolveLightingColour, spotHalfAngleRad } from "../../engine/sceneLighting";
 import type { LightSpec, Theme, ThemeShadowSpec } from "../../theme/tokens";
 import {
@@ -56,6 +58,21 @@ function FreeLight({
       },
     });
   }, [key, relative, aimed, spec, aim, targetObject]);
+
+  // Keyframe apply-seam registration (intensity/kelvin per light id; placement for world lights).
+  const sceneIndex = useSceneContext()?.index;
+  useEffect(() => {
+    const light = lightRef.current as Light | null;
+    if (!light || sceneIndex === undefined) return;
+    return registerLightingAnimatable(`${key}:anim`, {
+      kind: "light",
+      sceneIndex,
+      id: spec.id,
+      light,
+      base: spec,
+      baseColor: color,
+    });
+  }, [key, spec, sceneIndex, color]);
 
   const castShadow = allowShadow && spec.castShadow === true;
   const mapSize = shadow?.mapSize ?? 2048;

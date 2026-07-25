@@ -51,6 +51,7 @@ import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFin
 import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
+import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { configureDeterministicEngine } from "./timeline";
@@ -425,6 +426,9 @@ export async function exportProject(
 
   // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
   const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const lightingTracks = opts.sceneThemes
+    ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
 
   // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
   const sceneStates =
@@ -475,6 +479,7 @@ export async function exportProject(
       const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+      const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
       // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
       renderComposited(
         gl,
@@ -485,6 +490,7 @@ export async function exportProject(
         plan ?? undefined,
         statePlan,
         overlays ?? undefined,
+        lightingPlan ?? undefined,
       );
       if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
       ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
@@ -540,6 +546,9 @@ export async function captureScreenshot(
   }
 
   const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const lightingTracks = opts.sceneThemes
+    ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
   const sceneStates =
     opts.theme && opts.sceneThemes
       ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
@@ -571,6 +580,7 @@ export async function captureScreenshot(
     const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
     if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
     renderComposited(
       gl,
       scene,
@@ -580,6 +590,7 @@ export async function captureScreenshot(
       plan ?? undefined,
       statePlan,
       overlays ?? undefined,
+      lightingPlan ?? undefined,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
     await invoke("begin_screenshot", { width, height, name });

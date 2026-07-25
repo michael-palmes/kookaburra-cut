@@ -29,6 +29,7 @@ import {
 } from "./sceneCamera";
 import type { SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
+import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 
@@ -69,6 +70,12 @@ export function CompositorDriver({
 
   // Normalized once per project load; null entries for scenes without a camera track.
   const sceneTracks = useMemo(() => buildSceneCameraTracks(sceneDocs ?? []), [sceneDocs]);
+
+  // Lighting keyframe tracks (scene-doc layer only); null-for-legacy when nothing keys.
+  const lightingTracks = useMemo(
+    () => (sceneThemes ? buildLightingTracks(sceneThemes, projectLighting, sceneDocs ?? []) : null),
+    [sceneThemes, projectLighting, sceneDocs],
+  );
 
   // Per-scene render states; null unless the project opts into themed scene state.
   const sceneStates = useMemo(
@@ -146,6 +153,7 @@ export function CompositorDriver({
     if (!plan) applyCameraTrack(s.camera as PerspectiveCamera, cameraTrack, currentMs);
     // Scene render state, same rules: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
     renderComposited(
       s.gl,
       s.scene,
@@ -155,6 +163,7 @@ export function CompositorDriver({
       plan ?? undefined,
       statePlan,
       overlays ?? undefined,
+      lightingPlan ?? undefined,
     );
   }, 1);
 

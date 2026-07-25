@@ -1,12 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LightingSpec, LightSpec } from "../theme/tokens";
+import type { LightingSpec, LightSpec, Placement } from "../theme/tokens";
 import {
+  buildLightingTracks,
+  captureLightingPose,
+  chainLightingSegments,
   FIXTURE_MAX_COUNT,
   MAX_SCENE_LIGHTS,
+  mixPlacement,
   normalizeLighting,
+  normalizeLightingTrack,
+  resolveFrameLighting,
   resolveLightBudget,
   resolveLighting,
   resolveLightingColour,
+  sampleLightingPose,
   spotHalfAngleRad,
   sunShadowSoftness,
 } from "./sceneLighting";
@@ -421,5 +428,166 @@ describe("resolveLightingColour", () => {
       "#123456",
     );
     expect(resolveLightingColour({ colorToken: "primary" }, COLORS)).toBe("#ffffff");
+  });
+});
+
+describe("lighting keyframes (v9 · PR 6)", () => {
+  const specWithTrack = (keys: unknown, segments?: unknown): LightingSpec =>
+    ({
+      sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 },
+      ambient: 0.4,
+      lights: [
+        {
+          id: "rim",
+          type: "directional",
+          intensity: 1,
+          placement: { mode: "orbit", azimuthDeg: 0, elevationDeg: 0, distance: 5 },
+        },
+      ],
+      keys,
+      segments,
+    }) as LightingSpec;
+
+  it("normalises a track, dropping bad keys and unknown-id pose entries", () => {
+    const track = normalizeLightingTrack(
+      specWithTrack(
+        [
+          {
+            id: "k1",
+            tMs: 0,
+            pose: { ambient: 0.1, lights: { rim: { intensity: 2 }, ghost: { intensity: 9 } } },
+          },
+          { id: "k1", tMs: 500, pose: {} },
+          { id: "k2", tMs: "soon", pose: {} },
+          { id: "k3", tMs: 1000, pose: { sun: { intensity: 4 } } },
+        ],
+        [
+          { from: "k1", to: "k3", ease: "inOutSine" },
+          { from: "k3", to: "missing", ease: "linear" },
+        ],
+      ),
+      "t",
+    );
+    expect(track?.keys.map((k) => k.id)).toEqual(["k1", "k3"]);
+    expect(track?.keys[0].pose.lights?.rim).toEqual({ intensity: 2 });
+    expect(track?.keys[0].pose.lights?.ghost).toBeUndefined();
+    expect(track?.segments).toHaveLength(1);
+    expect(normalizeLightingTrack(specWithTrack([]), "t")).toBeNull();
+  });
+
+  it("samples eased interpolation inside a segment and holds outside", () => {
+    const track = normalizeLightingTrack(
+      specWithTrack(
+        [
+          { id: "k1", tMs: 0, pose: { ambient: 0, sun: { intensity: 2, kelvin: 2000 } } },
+          { id: "k2", tMs: 1000, pose: { ambient: 1, sun: { intensity: 4, kelvin: 6000 } } },
+        ],
+        [{ from: "k1", to: "k2", ease: "linear" }],
+      ),
+      "t",
+    );
+    if (!track) throw new Error("track expected");
+    const mid = sampleLightingPose(track, 500);
+    expect(mid.ambient).toBeCloseTo(0.5, 6);
+    expect(mid.sun?.intensity).toBeCloseTo(3, 6);
+    // Kelvin interpolates in KELVIN space, not RGB.
+    expect(mid.sun?.kelvin).toBeCloseTo(4000, 6);
+    expect(sampleLightingPose(track, 2000).ambient).toBe(1);
+    expect(sampleLightingPose(track, -50).ambient).toBe(0);
+  });
+
+  it("a field present at only one endpoint holds rather than lerping to nothing", () => {
+    const track = normalizeLightingTrack(
+      specWithTrack(
+        [
+          { id: "k1", tMs: 0, pose: { ambient: 0.2, sun: { intensity: 3 } } },
+          { id: "k2", tMs: 1000, pose: { ambient: 0.8 } },
+        ],
+        [{ from: "k1", to: "k2", ease: "linear" }],
+      ),
+      "t",
+    );
+    if (!track) throw new Error("track expected");
+    const mid = sampleLightingPose(track, 500);
+    expect(mid.ambient).toBeCloseTo(0.5, 6);
+    expect(mid.sun?.intensity).toBe(3);
+  });
+
+  it("mixPlacement stays in orbit space for orbit pairs and normalises mixed pairs to point", () => {
+    const a = { mode: "orbit", azimuthDeg: 0, elevationDeg: 0, distance: 4 } as const;
+    const b = { mode: "orbit", azimuthDeg: 90, elevationDeg: 0, distance: 8 } as const;
+    const mid = mixPlacement(a, b, 0.5);
+    expect(mid).toEqual({ mode: "orbit", azimuthDeg: 45, elevationDeg: 0, distance: 6 });
+    const point: Placement = { mode: "point", position: [4, 0, 0] };
+    const mixed = mixPlacement(a, point, 0.5);
+    expect(mixed.mode).toBe("point");
+    if (mixed.mode === "point") {
+      expect(mixed.position[0]).toBeCloseTo(2, 6);
+      expect(mixed.position[2]).toBeCloseTo(2, 6);
+    }
+  });
+
+  it("resolveFrameLighting samples A and B at their OWN scene-local times (the transition trap)", () => {
+    const theme = {
+      colors: COLORS,
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 }, ambient: 0.4 },
+    } as unknown as Parameters<typeof buildLightingTracks>[0][number];
+    const docA = {
+      lighting: specWithTrack(
+        [
+          { id: "k1", tMs: 0, pose: { ambient: 0 } },
+          { id: "k2", tMs: 1000, pose: { ambient: 1 } },
+        ],
+        [{ from: "k1", to: "k2", ease: "linear" }],
+      ),
+    };
+    const docB = {
+      lighting: specWithTrack(
+        [
+          { id: "k1", tMs: 0, pose: { ambient: 1 } },
+          { id: "k2", tMs: 1000, pose: { ambient: 0 } },
+        ],
+        [{ from: "k1", to: "k2", ease: "linear" }],
+      ),
+    };
+    const tracks = buildLightingTracks([theme, theme], undefined, [docA, docB]);
+    const plan = resolveFrameLighting(tracks, {
+      active: [
+        { index: 0, localMs: 750 },
+        { index: 1, localMs: 250 },
+      ],
+      transition: { fromIndex: 0, toIndex: 1, progress: 0.4 },
+    });
+    expect(plan?.a?.pose.ambient).toBeCloseTo(0.75, 6);
+    expect(plan?.b?.pose.ambient).toBeCloseTo(0.75, 6);
+    expect(plan?.overlay).toBe(plan?.a);
+    expect(resolveFrameLighting([null, null], { active: [{ index: 0, localMs: 0 }] })).toBeNull();
+  });
+
+  it("captureLightingPose diffs the scene layer against the theme+project base", () => {
+    const theme = {
+      colors: COLORS,
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 }, ambient: 0.4 },
+    } as unknown as Parameters<typeof captureLightingPose>[0];
+    const pose = captureLightingPose(theme, undefined, {
+      sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 3.5, kelvin: 2900 },
+      ambient: 0.4,
+    });
+    expect(pose.sun).toEqual({ intensity: 3.5, kelvin: 2900 });
+    expect(pose.ambient).toBeUndefined();
+    expect(captureLightingPose(theme, undefined, undefined)).toEqual({});
+  });
+
+  it("chainLightingSegments chains consecutive keys and preserves matching eases", () => {
+    const keys = [
+      { id: "k2", tMs: 1000, pose: {} },
+      { id: "k1", tMs: 0, pose: {} },
+      { id: "k3", tMs: 2000, pose: {} },
+    ];
+    const segments = chainLightingSegments(keys, [{ from: "k1", to: "k2", ease: "outExpo" }]);
+    expect(segments).toEqual([
+      { from: "k1", to: "k2", ease: "outExpo" },
+      { from: "k2", to: "k3", ease: "inOutSine" },
+    ]);
   });
 });

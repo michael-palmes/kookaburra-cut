@@ -178,6 +178,32 @@ export interface FixtureSpec {
   repeat?: FixtureRepeat;
 }
 
+/** One sparse keyframe pose over the WHOLE rig (one track per scene, the camera precedent): absent fields leave the base value alone, so a key that only sets `sun.intensity` touches nothing else. Colours interpolate through Kelvin when both endpoints define it (a Kelvin ramp reads as a light warming; an RGB lerp between blackbody colours goes muddy). */
+export interface LightingPose {
+  ambient?: number;
+  environmentIntensity?: number;
+  environmentRotationDeg?: number;
+  sun?: { azimuthDeg?: number; elevationDeg?: number; intensity?: number; kelvin?: number };
+  /** By light id. Keyed placement drives WORLD lights only (camera/subject placements resolve at the seam). */
+  lights?: Record<string, { intensity?: number; kelvin?: number; placement?: Placement }>;
+  /** By fixture id. */
+  fixtures?: Record<string, { emissive?: number; lightIntensity?: number }>;
+}
+
+export interface LightingKey {
+  id: string;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: LightingPose;
+}
+
+export interface LightingSegment {
+  from: string;
+  to: string;
+  /** An engine/ease.ts name. */
+  ease: string;
+}
+
 /** v9 lighting. Absent at every layer resolves to the v8 path verbatim. `key` is accepted as an alias for `sun` on read and normalised to `sun` in memory; nothing rewrites theme files. */
 export interface LightingSpec {
   environment?: EnvironmentSpec;
@@ -190,6 +216,9 @@ export interface LightingSpec {
   shadow?: ThemeShadowSpec;
   /** Bundled preset id last applied by the picker. The renderer never reads it. */
   preset?: string;
+  /** The scene's lighting keyframe track (SCENE-DOC layer only; themes and project defaults never animate). Raw here like the camera's sidecar block; deep validation lives in `normalizeLightingTrack`. */
+  keys?: LightingKey[];
+  segments?: LightingSegment[];
 }
 
 /** Environment reflections (IBL), the v8 theme block: `source` is a bundled HDRI id (`kookaburra:<name>`) or the Lightformer preset id (`kookaburra:softbox`). Project-relative `.hdr`/`.exr` sources and the explicit `"none"` live on the v9 `LightingSpec.environment` (same shape, wider vocabulary). Preloaded before frame 0 via `preloadEnvironments`. */

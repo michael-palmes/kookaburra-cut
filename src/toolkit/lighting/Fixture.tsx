@@ -15,8 +15,10 @@ import {
   TorusGeometry,
 } from "three";
 import type { FixturePlanEntry } from "../../engine/fixtures";
+import { registerLightingAnimatable } from "../../engine/lightingAnimation";
 import { registerRelativeLight } from "../../engine/lightingState";
 import { placementPosition } from "../../engine/orbit";
+import { useSceneContext } from "../../engine/sceneContext";
 import { resolveLightingColour } from "../../engine/sceneLighting";
 import type { FixtureSpec, Theme } from "../../theme/tokens";
 
@@ -126,6 +128,35 @@ export function Fixture({ entry, colors }: { entry: FixturePlanEntry; colors: Th
       },
     });
   }, [key, relative, spec]);
+
+  // Keyframe apply-seam registration (emissive/lightIntensity per fixture id): the traversal snapshots the mounted meshes and paired lights in scene-graph (= instance) order.
+  const sceneIndex = useSceneContext()?.index;
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group || sceneIndex === undefined) return;
+    const meshes: import("three").Mesh[] = [];
+    const pairedLights: import("three").Light[] = [];
+    group.traverse((obj) => {
+      const light = obj as import("three").Light;
+      if (light.isLight) {
+        pairedLights.push(light);
+        return;
+      }
+      const mesh = obj as import("three").Mesh;
+      if (mesh.isMesh && !(mesh as InstancedMesh).isInstancedMesh) meshes.push(mesh);
+    });
+    return registerLightingAnimatable(`${key}:anim`, {
+      kind: "fixture",
+      sceneIndex,
+      id: spec.id,
+      base: spec,
+      baseColor: resolveLightingColour(spec, colors),
+      instances,
+      meshes,
+      instanced: instancedRef.current,
+      pairedLights,
+    });
+  }, [key, spec, colors, instances, sceneIndex]);
 
   return (
     <group ref={groupRef} position={relative ? undefined : basePosition}>

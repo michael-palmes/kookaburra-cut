@@ -47,6 +47,20 @@ export function orbitFromView(
   };
 }
 
+/** The sun and legacy fills sit on a fixed-radius sphere aimed at the origin. EXPORT CONTRACT (the v8 rig; shared by SceneStage and the keyframe apply seam). */
+export const LIGHT_RADIUS = 8;
+
+/** Orbit direction (azimuth from +z, elevation up) -> a world position at LIGHT_RADIUS. */
+export function sunPosition(azimuthDeg: number, elevationDeg: number): [number, number, number] {
+  const az = azimuthDeg * DEG2RAD;
+  const el = elevationDeg * DEG2RAD;
+  return [
+    LIGHT_RADIUS * Math.sin(az) * Math.cos(el),
+    LIGHT_RADIUS * Math.sin(el),
+    LIGHT_RADIUS * Math.cos(az) * Math.cos(el),
+  ];
+}
+
 /** A light/fixture placement resolved to a position in its own space: orbit placements orbit the entity's aim point (its own `distance`, never the legacy LIGHT_RADIUS); point placements are literal. */
 export function placementPosition(
   placement: Placement,

@@ -572,11 +572,17 @@ camera exactly:
   MSAA-resolve precedent); textures cache by source id for the app's lifetime.
   The preview fire-and-forgets the same call (a reflection-less first paint is
   preview-only, healed by an invalidate).
-- **Theme lighting is static per scene.** `<SceneStage>` mounts plain lights from
-  theme tokens (fixed `LIGHT_RADIUS`, azimuth/elevation → position, export
-  contract); staged primitives' bundled lit sets stand down via
-  `useSceneStaged()` (explicit `lit` wins). No token is ever time-derived; scene
-  "motion" of light is out of scope by design.
+- **Every lighting value is a pure function of the resolved timeline position.**
+  `<SceneStage>` mounts the resolved rig (fixed `LIGHT_RADIUS` for the sun and
+  legacy fills, export contract); staged primitives' bundled lit sets stand down
+  via `useSceneStaged()` (explicit `lit` wins). Since v9, a scene doc may carry a
+  lighting keyframe track (one sparse whole-rig track, `sceneLighting.ts`),
+  sampled per render target at the compositor seam exactly like the camera: on a
+  transition frame, targets A and B sample their own scene's track at their own
+  scene-local times. Nothing reads the wall clock and nothing accumulates across
+  frames; theme TOKENS remain static (tracks live on the scene-doc layer only).
+  This deliberately reverses the v8 "scene motion of light is out of scope" lock;
+  see docs/decisions.md.
 - **Degrade, never crash.** A malformed theme document falls back to the default
   theme (project level) or the project's theme (scene level), like a malformed
   sidecar. Gate assets (spike themes, sidecar theme swaps) are structure-pinned
