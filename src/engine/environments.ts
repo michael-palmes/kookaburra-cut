@@ -1,4 +1,5 @@
 import {
+  BackSide,
   Color,
   DoubleSide,
   Mesh,
@@ -6,6 +7,7 @@ import {
   PlaneGeometry,
   PMREMGenerator,
   Scene,
+  SphereGeometry,
   type Texture,
   type WebGLRenderer,
 } from "three";
@@ -20,9 +22,11 @@ import nightCityUrl from "../assets/hdri/night-city.hdr?url";
 import storyUrl from "../assets/hdri/story-studio.hdr?url";
 import sunsetUrl from "../assets/hdri/sunset.hdr?url";
 import warehouseUrl from "../assets/hdri/warehouse.hdr?url";
-import type { LightingSpec, Theme } from "../theme/tokens";
+import type { FixtureSpec, LightingSpec, Theme } from "../theme/tokens";
+import { fixtureWorldInstances } from "./fixtures";
 import { resolveProjectHdrUrl } from "./project";
 import type { SceneDoc } from "./sceneDocSchema";
+import { resolveLighting, resolveLightingColour } from "./sceneLighting";
 
 /** Environment reflections (IBL): PMREM textures cached by source key for the app's lifetime. Source kinds: bundled CC0 HDRIs (`kookaburra:<name>.hdr`, converted by `pnpm assets:hdri`; provenance in src/assets/hdri/README.md), the procedural `kookaburra:softbox` preset, `"none"` (explicitly no reflections, distinct from absent = inherit), and project-relative `.hdr`/`.exr` user files (cache-keyed `<projectId>|<rel>`; a missing file THROWS at resolve time so autoruns fail loudly, the AssetBoundary lesson). Determinism: RGBE/EXR decode is pure CPU and PMREM is fixed-function GPU work (the MSAA precedent), so it's same-machine deterministic; `preloadEnvironments` is an export-preamble barrier so every themed frame finds its texture already resolved, while the preview calls it too and simply invalidates when textures land. */
 
@@ -159,6 +163,183 @@ export function collectEnvironmentSources(
   add(projectLighting?.environment?.source);
   for (const doc of sceneDocs ?? []) add(doc?.lighting?.environment?.source);
   return [...keys];
+}
+
+// ── Env mirror (v9 · PR 4) ──────────────────────────────────────────
+// A scene with any `envMirror` fixture replaces its environment with a one-shot PMREM `fromScene` bake: the resolved HDRI as an equirect-textured backdrop sphere plus a Lightformer-style emissive proxy per mirrored instance, so the fixture shows up as a crisp reflection on glossy surfaces. Baked once under the preload barrier, cached by a content key, never re-rendered mid-run; editing a mirrored fixture mints a new key and re-bakes on settle. World-space fixtures only (camera/subject warn and skip); keyframed fixtures bake at their base pose.
+
+interface MirrorProxy {
+  position: [number, number, number];
+  rotationDeg: [number, number, number];
+  size: [number, number];
+  /** Linear emissive colour, already scaled by `emissive` and the instance jitter. */
+  color: [number, number, number];
+}
+
+export interface MirrorRequest {
+  key: string;
+  /** The underlying environment's cache key, or null when the scene resolves none/"none". */
+  envKey: string | null;
+  proxies: MirrorProxy[];
+}
+
+/** djb2 over the request content: the bake cache key. Deterministic, content-addressed. */
+function mirrorKey(envKey: string | null, proxies: MirrorProxy[]): string {
+  const payload = JSON.stringify([envKey, proxies]);
+  let h = 5381;
+  for (let i = 0; i < payload.length; i++) h = ((h * 33) ^ payload.charCodeAt(i)) >>> 0;
+  return `mirror:${h.toString(16)}`;
+}
+
+function mirrorProxies(fixtures: readonly FixtureSpec[], colors: Theme["colors"]): MirrorProxy[] {
+  const proxies: MirrorProxy[] = [];
+  for (const fixture of fixtures) {
+    if (fixture.enabled === false || fixture.envMirror !== true) continue;
+    if ((fixture.space ?? "world") !== "world") {
+      console.warn(
+        `[environments] fixture "${fixture.id}": envMirror is world-space only — skipped`,
+      );
+      continue;
+    }
+    const base = new Color(resolveLightingColour(fixture, colors));
+    for (const inst of fixtureWorldInstances(fixture)) {
+      const c = base.clone().multiplyScalar(fixture.emissive * inst.emissiveScale);
+      proxies.push({
+        position: inst.position,
+        rotationDeg: fixture.rotationDeg ?? [0, 0, 0],
+        size: [fixture.size[0], fixture.form === "panel" ? fixture.size[1] : fixture.size[1] * 2],
+        color: [c.r, c.g, c.b],
+      });
+    }
+  }
+  return proxies;
+}
+
+/** The scene's env-mirror bake request (and its cache key), or null when no enabled world fixture mirrors. The key doubles as the scene's `environmentSource`, so `buildSceneRenderStates` and the preload sites agree by construction. */
+export function sceneMirrorRequest(
+  projectId: string | undefined,
+  sceneTheme: Theme,
+  projectLighting: LightingSpec | undefined,
+  sceneDoc: SceneDoc | undefined,
+): MirrorRequest | null {
+  const resolved = resolveLighting(sceneTheme.lighting, projectLighting, sceneDoc?.lighting);
+  if (!resolved?.fixtures?.some((f) => f.envMirror === true && f.enabled !== false)) return null;
+  const proxies = mirrorProxies(resolved.fixtures, sceneTheme.colors);
+  if (proxies.length === 0) return null;
+  const env = resolveSceneEnvironment(sceneTheme, projectLighting, sceneDoc);
+  const envKey =
+    env && env.source !== NONE_SOURCE ? environmentCacheKey(projectId, env.source) : null;
+  return { key: mirrorKey(envKey, proxies), envKey, proxies };
+}
+
+/** Every scene's mirror request for a loaded project (deduped by key); the preload sites await these alongside the plain environments. */
+export function collectMirrorRequests(
+  projectId: string | undefined,
+  sceneThemes: readonly Theme[],
+  projectLighting?: LightingSpec,
+  sceneDocs?: readonly (SceneDoc | undefined)[],
+): MirrorRequest[] {
+  const byKey = new Map<string, MirrorRequest>();
+  sceneThemes.forEach((theme, i) => {
+    const request = sceneMirrorRequest(projectId, theme, projectLighting, sceneDocs?.[i]);
+    if (request) byKey.set(request.key, request);
+  });
+  return [...byKey.values()];
+}
+
+/** Raw equirects retained for bakes only (the plain path PMREMs then disposes; the bake scene needs the source texture as a backdrop sphere map). */
+const equirects = new Map<string, Texture>();
+
+async function loadEquirectForKey(key: string): Promise<Texture | null> {
+  const cached = equirects.get(key);
+  if (cached) return cached;
+  let url: string;
+  let exr = false;
+  const split = key.indexOf("|");
+  if (split >= 0) {
+    const rel = key.slice(split + 1);
+    url = resolveProjectHdrUrl(key.slice(0, split), rel);
+    exr = /\.exr$/i.test(rel);
+  } else {
+    if (key === SOFTBOX_SOURCE) return null;
+    const bundled = BUNDLED_HDRI[key];
+    if (!bundled) return null;
+    url = bundled;
+  }
+  const texture = await loadEquirect(url, exr);
+  equirects.set(key, texture);
+  return texture;
+}
+
+async function bakeMirrorEnvironment(gl: WebGLRenderer, request: MirrorRequest): Promise<Texture> {
+  const scene = new Scene();
+  scene.background = new Color(0, 0, 0);
+  const disposables: { dispose(): void }[] = [];
+  if (request.envKey) {
+    const equirect = await loadEquirectForKey(request.envKey);
+    if (equirect) {
+      // SphereGeometry UVs are equirectangular, so a back-side textured sphere reproduces the HDRI surround for the bake camera at the origin region.
+      const sky = new Mesh(
+        new SphereGeometry(50, 64, 32),
+        new MeshBasicMaterial({ map: equirect, side: BackSide }),
+      );
+      sky.scale.x = -1;
+      scene.add(sky);
+      disposables.push(sky.geometry, sky.material);
+    }
+  }
+  for (const proxy of request.proxies) {
+    const mesh = new Mesh(
+      new PlaneGeometry(proxy.size[0], proxy.size[1]),
+      new MeshBasicMaterial({
+        color: new Color(proxy.color[0], proxy.color[1], proxy.color[2]),
+        side: DoubleSide,
+      }),
+    );
+    mesh.position.set(...proxy.position);
+    mesh.rotation.set(
+      (proxy.rotationDeg[0] * Math.PI) / 180,
+      (proxy.rotationDeg[1] * Math.PI) / 180,
+      (proxy.rotationDeg[2] * Math.PI) / 180,
+    );
+    scene.add(mesh);
+    disposables.push(mesh.geometry, mesh.material);
+  }
+  const pmrem = new PMREMGenerator(gl);
+  try {
+    return pmrem.fromScene(scene, 0, 0.1, 1000).texture;
+  } finally {
+    pmrem.dispose();
+    for (const d of disposables) d.dispose();
+  }
+}
+
+/** Bake every mirror request not already cached (idempotent; shares the loaded/inflight maps with the plain sources, so `getLoadedEnvironment(key)` serves bakes at the seam identically). */
+export async function preloadMirrorEnvironments(
+  gl: WebGLRenderer,
+  requests: readonly MirrorRequest[],
+): Promise<void> {
+  await Promise.all(
+    requests.map((request) => {
+      if (loaded.has(request.key)) return Promise.resolve(loaded.get(request.key) ?? null);
+      let promise = inflight.get(request.key);
+      if (!promise) {
+        promise = bakeMirrorEnvironment(gl, request).then(
+          (tex) => {
+            loaded.set(request.key, tex);
+            inflight.delete(request.key);
+            return tex as Texture | null;
+          },
+          (e) => {
+            inflight.delete(request.key);
+            throw e;
+          },
+        );
+        inflight.set(request.key, promise);
+      }
+      return promise;
+    }),
+  );
 }
 
 /** Resolves every collected cache key (idempotent; concurrent calls share in-flight loads); the export preamble awaits this (a missing user file rejects and fails the run), the preview fire-and-forgets it with a catch and invalidates on completion. */

@@ -30,7 +30,12 @@ import {
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { preloadEffectLuts } from "./effects";
-import { collectEnvironmentSources, preloadEnvironments } from "./environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
 import type { FormatSpec } from "./format";
@@ -315,13 +320,22 @@ async function exportPreamble(
   await preloadText3dFonts();
   // Preloads the project's LUT textures (usually cached by loadProject already) and forces their GPU upload before frame 0, since a mid-run first-use upload is exactly the async-asset race this preamble exists to prevent. See docs/determinism.md.
   await preloadEffectLuts({ gl });
-  // Resolves every environment source across the v8 theme blocks and the v9 lighting layers (RGBE/EXR decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading; a missing USER source rejects here and fails the run loudly.
+  // Resolves every environment source across the v8 theme blocks and the v9 lighting layers (RGBE/EXR decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading; a missing USER source rejects here and fails the run loudly. Env-mirror bakes ride the same barrier (one-shot fromScene, cached by content key).
   if (opts.theme) {
     await preloadEnvironments(
       gl,
       collectEnvironmentSources(
         opts.projectId,
         [opts.theme, ...(opts.sceneThemes ?? [])],
+        opts.projectLighting,
+        opts.sceneDocs,
+      ),
+    );
+    await preloadMirrorEnvironments(
+      gl,
+      collectMirrorRequests(
+        opts.projectId,
+        opts.sceneThemes ?? [],
         opts.projectLighting,
         opts.sceneDocs,
       ),

@@ -12,7 +12,12 @@ import {
 } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
-import { collectEnvironmentSources, preloadEnvironments } from "./environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "./environments";
 import { stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
 import { resolveOverlays } from "./overlayPlan";
@@ -91,6 +96,12 @@ export function CompositorDriver({
       sceneDocs,
     );
     void preloadEnvironments(gl, sources)
+      .then(() =>
+        preloadMirrorEnvironments(
+          gl,
+          collectMirrorRequests(projectId, sceneThemes, projectLighting, sceneDocs),
+        ),
+      )
       .then(() => invalidate())
       .catch((e) => console.warn("[environments] preview preload failed:", e));
   }, [gl, theme, sceneThemes, sceneStates, projectId, projectLighting, sceneDocs, invalidate]);

@@ -33,6 +33,8 @@ interface RelativeLightEntry {
   targetObject: Object3D | null;
   /** True for area lights: orient the light itself at the aim point (RectAreaLight has no target). */
   aimSelf: boolean;
+  /** True for fixtures: the whole group also takes the space's rotation, so a camera-space fixture rides the camera rigidly rather than translating only. */
+  orient?: boolean;
   spec: RelativeLightSpec;
 }
 
@@ -68,7 +70,7 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
   camera.updateMatrixWorld();
   _camPos.setFromMatrixPosition(camera.matrixWorld);
 
-  for (const { object, targetObject, aimSelf, spec } of entries.values()) {
+  for (const { object, targetObject, aimSelf, orient, spec } of entries.values()) {
     if (spec.space === "camera") {
       // The camera's own frame, rigid: local placement coordinates map through matrixWorld.
       _basis.copy(camera.matrixWorld);
@@ -93,6 +95,7 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
     _pos.set(...placementPosition(spec.placement, spec.target)).applyMatrix4(_basis);
     _aim.set(...spec.target).applyMatrix4(_basis);
     object.position.copy(_pos);
+    if (orient) object.quaternion.setFromRotationMatrix(_basis);
     if (targetObject) {
       targetObject.position.copy(_aim);
       targetObject.updateMatrixWorld();

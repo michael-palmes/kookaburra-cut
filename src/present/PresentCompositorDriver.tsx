@@ -4,7 +4,12 @@ import type { PerspectiveCamera } from "three";
 import { applyCameraTrack, sampleCameraTrack } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { renderComposited } from "../engine/compositor";
-import { collectEnvironmentSources, preloadEnvironments } from "../engine/environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "../engine/environments";
 import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
@@ -78,6 +83,17 @@ export function PresentCompositorDriver({
         project.sceneDocs,
       ),
     )
+      .then(() =>
+        preloadMirrorEnvironments(
+          gl,
+          collectMirrorRequests(
+            project.id,
+            project.sceneThemes,
+            project.projectLighting,
+            project.sceneDocs,
+          ),
+        ),
+      )
       .then(() => invalidate())
       .catch((e) => console.warn("[environments] present preload failed:", e));
   }, [gl, project, invalidate]);

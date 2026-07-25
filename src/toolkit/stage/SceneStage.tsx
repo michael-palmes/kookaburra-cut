@@ -1,10 +1,12 @@
 import { type ReactNode, useContext, useEffect, useMemo } from "react";
+import { resolveFixturePlan } from "../../engine/fixtures";
 import {
   ProjectLightingContext,
   SceneDocContext,
   useSceneContext,
 } from "../../engine/sceneContext";
 import {
+  MAX_SCENE_LIGHTS,
   resolveLightBudget,
   resolveLightingColour,
   sunShadowSoftness,
@@ -13,6 +15,7 @@ import { useStageRegistry } from "../../engine/stageRegistry";
 import { useTheme } from "../../theme";
 import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";
+import { StageFixtures } from "../lighting/Fixture";
 import { StageBackdrop } from "./backdrops";
 import { SceneStageContext, type SceneStageState } from "./context";
 import { StageLights } from "./StageLights";
@@ -77,11 +80,19 @@ export function SceneStage({
     [lighting, mapShadows],
   );
 
-  // Free lights (v9): deterministic budgets computed once per resolved spec; over-cap drops warn here, once, never silently.
+  // Free lights + fixtures (v9): deterministic budgets computed once per resolved spec; over-cap drops warn here, once, never silently.
   const sunCasts = Boolean(sun && sun.enabled !== false && mapShadows && sun.castShadow !== false);
   const budget = useMemo(() => {
-    if (!lighting || (lighting.lights?.length ?? 0) === 0) return null;
+    if (!lighting) return null;
+    if ((lighting.lights?.length ?? 0) === 0 && (lighting.fixtures?.length ?? 0) === 0) {
+      return null;
+    }
     const b = resolveLightBudget(lighting, sunCasts);
+    const sunSlot = lighting.sun && lighting.sun.enabled !== false ? 1 : 0;
+    const fixtures = resolveFixturePlan(
+      lighting.fixtures,
+      MAX_SCENE_LIGHTS - sunSlot - b.lights.length,
+    );
     if (b.droppedLights > 0) {
       console.warn(
         `[lighting] scene ${sceneIndex ?? "?"}: ${b.droppedLights} light(s) over the scene cap — dropped`,
@@ -92,7 +103,17 @@ export function SceneStage({
         `[lighting] scene ${sceneIndex ?? "?"}: ${b.droppedCasters} shadow caster(s) over the cap — rendered without shadows`,
       );
     }
-    return b;
+    if (fixtures.droppedInstances > 0) {
+      console.warn(
+        `[lighting] scene ${sceneIndex ?? "?"}: ${fixtures.droppedInstances} fixture instance(s) over the cap — dropped`,
+      );
+    }
+    if (fixtures.thinnedLights > 0) {
+      console.warn(
+        `[lighting] scene ${sceneIndex ?? "?"}: ${fixtures.thinnedLights} fixture light(s) thinned to fit the scene cap — geometry keeps glowing`,
+      );
+    }
+    return { ...b, fixtures };
   }, [lighting, sunCasts, sceneIndex]);
 
   return (
@@ -135,6 +156,9 @@ export function SceneStage({
               shadow={shadow}
               colors={theme.colors}
             />
+          )}
+          {budget && budget.fixtures.entries.length > 0 && (
+            <StageFixtures entries={budget.fixtures.entries} colors={theme.colors} />
           )}
         </>
       )}

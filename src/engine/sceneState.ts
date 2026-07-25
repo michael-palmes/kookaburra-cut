@@ -1,6 +1,11 @@
 import { Color, MathUtils, type Scene, type Texture } from "three";
 import type { LightingSpec, Theme } from "../theme/tokens";
-import { environmentCacheKey, NONE_SOURCE, resolveSceneEnvironment } from "./environments";
+import {
+  environmentCacheKey,
+  NONE_SOURCE,
+  resolveSceneEnvironment,
+  sceneMirrorRequest,
+} from "./environments";
 import type { SceneDoc } from "./sceneDocSchema";
 import type { Resolved } from "./sceneTimeline";
 
@@ -47,7 +52,10 @@ export function usesThemedSceneState(
   if (projectTheme.lighting || projectTheme.environment || projectTheme.backdrop) return true;
   if (sceneThemes.some((t) => t !== projectTheme)) return true;
   if (lighting?.projectLighting?.environment) return true;
-  return (lighting?.sceneDocs ?? []).some((doc) => doc?.lighting?.environment);
+  return (lighting?.sceneDocs ?? []).some(
+    (doc) =>
+      doc?.lighting?.environment || doc?.lighting?.fixtures?.some((f) => f.envMirror === true),
+  );
 }
 
 /** Prebuilds one state per scene (colours parsed once, no per-frame allocation), or null when the project doesn't opt in. */
@@ -59,11 +67,19 @@ export function buildSceneRenderStates(
   if (!usesThemedSceneState(projectTheme, sceneThemes, lighting)) return null;
   return sceneThemes.map((t, i) => {
     const state: SceneRenderState = { background: new Color(t.colors.background) };
-    const env = resolveSceneEnvironment(t, lighting?.projectLighting, lighting?.sceneDocs?.[i]);
+    const doc = lighting?.sceneDocs?.[i];
+    const env = resolveSceneEnvironment(t, lighting?.projectLighting, doc);
     if (env) {
       state.environmentSource = environmentCacheKey(lighting?.projectId, env.source);
       state.environmentIntensity = env.intensity;
       state.environmentRotationDeg = env.rotationDeg;
+    }
+    // Env-mirror fixtures replace the scene's environment with the content-keyed bake (see environments.ts); intensity/rotation still apply at the seam.
+    const mirror = sceneMirrorRequest(lighting?.projectId, t, lighting?.projectLighting, doc);
+    if (mirror) {
+      state.environmentSource = mirror.key;
+      state.environmentIntensity = env?.intensity ?? 1;
+      state.environmentRotationDeg = env?.rotationDeg ?? 0;
     }
     return state;
   });

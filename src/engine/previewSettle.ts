@@ -5,7 +5,12 @@ import { preloadDeviceModels } from "../toolkit/device/models";
 import { preloadHeroModels } from "../toolkit/hero/models";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { useClockStore } from "./clock";
-import { collectEnvironmentSources, preloadEnvironments } from "./environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { awaitSceneHostsCommitted } from "./exporter";
 import { isExporting } from "./exportState";
@@ -64,6 +69,16 @@ export async function settleProjectOpen(
                 [loaded.theme, ...loaded.sceneThemes],
                 loaded.projectLighting,
                 loaded.sceneDocs,
+              ),
+            ).then(() =>
+              preloadMirrorEnvironments(
+                gl,
+                collectMirrorRequests(
+                  loaded.id,
+                  loaded.sceneThemes,
+                  loaded.projectLighting,
+                  loaded.sceneDocs,
+                ),
               ),
             ),
           )
