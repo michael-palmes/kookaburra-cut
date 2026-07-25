@@ -55,7 +55,7 @@ type RenderState =
   | { phase: "rendering"; frame: number; total: number }
   | { phase: "error"; message: string };
 
-const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 6];
 const AUTOSAVE_DEBOUNCE_MS = 400;
 const WHEEL_PX_PER_FRAME = 4; // horizontal-scroll scrub sensitivity
 
