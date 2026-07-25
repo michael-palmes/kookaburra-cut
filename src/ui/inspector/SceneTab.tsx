@@ -3800,6 +3800,7 @@ export function SceneTab({
         theme={sceneTheme ?? project.theme}
         projectId={project.id}
         projectLighting={project.projectLighting}
+        slot={scene}
         onBack={closeDrill}
         patchDoc={patchDoc}
         commitFromBaseline={commitFromBaseline}

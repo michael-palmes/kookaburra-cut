@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { useClockStore } from "../../engine/clock";
 import {
   BUNDLED_ENVIRONMENT_IDS,
   NONE_SOURCE,
   resolveSceneEnvironment,
   SOFTBOX_SOURCE,
 } from "../../engine/environments";
+import { nextKeyId } from "../../engine/keyedTrack";
 import { placementToOrbit, placementToPoint } from "../../engine/orbit";
 import { listProjectEnvironmentAssets } from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
+  captureLightingPose,
+  chainLightingSegments,
   resolveLighting,
   resolveLightingColour,
   SUN_ANGULAR_REFERENCE,
@@ -220,6 +224,7 @@ export function LightingSectionBody({
   theme,
   projectId,
   projectLighting,
+  slot,
   onBack,
   patchDoc,
   commitFromBaseline,
@@ -228,6 +233,8 @@ export function LightingSectionBody({
   theme: Theme;
   projectId: string;
   projectLighting: LightingSpec | undefined;
+  /** The scene's timeline placement, for "Add key at playhead". */
+  slot: { startMs: number; durationMs: number };
   onBack: () => void;
   patchDoc: (patch: (next: SceneDoc) => void, opts?: { history?: string | false }) => Promise<void>;
   commitFromBaseline: (baseline: SceneDoc, patch: (next: SceneDoc) => void) => Promise<void>;
@@ -769,6 +776,63 @@ export function LightingSectionBody({
                     />
                   </div>
                 </>
+              )}
+            </DrillGroup>
+
+            <DrillGroup
+              label="Animation"
+              hint="One sparse track over the whole rig: each key captures this scene's current overrides; consecutive keys chain with an ease."
+            >
+              {[...(doc.lighting?.keys ?? [])]
+                .sort((a, b) => a.tMs - b.tMs)
+                .map((key) => (
+                  <ActionRow
+                    key={key.id}
+                    label={`${(key.tMs / 1000).toFixed(2)}s`}
+                    value={Object.keys(key.pose).join(", ") || "empty"}
+                    chevron={false}
+                    onClick={() =>
+                      commit((next) => {
+                        if (!next.lighting?.keys) return;
+                        next.lighting.keys = next.lighting.keys.filter((k) => k.id !== key.id);
+                        next.lighting.segments = chainLightingSegments(
+                          next.lighting.keys,
+                          next.lighting.segments,
+                        );
+                        if (next.lighting.keys.length === 0) {
+                          delete next.lighting.keys;
+                          delete next.lighting.segments;
+                        }
+                      })
+                    }
+                  />
+                ))}
+              <ActionRow
+                label="Add key at playhead"
+                chevron={false}
+                onClick={() => {
+                  const localMs = Math.round(
+                    Math.min(
+                      slot.durationMs,
+                      Math.max(0, useClockStore.getState().currentMs - slot.startMs),
+                    ),
+                  );
+                  const pose = captureLightingPose(theme, projectLighting, doc.lighting);
+                  commit((next) => {
+                    const lighting = next.lighting ?? {};
+                    const keys = [...(lighting.keys ?? [])];
+                    keys.push({ id: nextKeyId({ keys, segments: [] }), tMs: localMs, pose });
+                    lighting.keys = keys;
+                    lighting.segments = chainLightingSegments(keys, lighting.segments);
+                    next.lighting = lighting;
+                  });
+                }}
+              />
+              {(doc.lighting?.keys?.length ?? 0) > 0 && (
+                <p className="modal-hint">
+                  Tap a key to remove it. A keyed shadow-casting light re-renders its shadow map
+                  every frame, which is correct and costly.
+                </p>
               )}
             </DrillGroup>
 
