@@ -29,6 +29,7 @@ import type {
   ThemeLightSpec,
   ThemeShadowSpec,
 } from "../../theme/tokens";
+import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";
 import { ColourPicker } from "../colour/ColourPicker";
 import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
@@ -450,6 +451,29 @@ export function LightingSectionBody({
           </>
         ) : (
           <>
+            <DrillGroup
+              label="Presets"
+              hint="One click writes a complete look into this scene; every value stays tweakable after."
+            >
+              <div className="option-grid">
+                {LIGHTING_PRESETS.map((preset) => (
+                  <OptionCard
+                    key={preset.id}
+                    label={preset.label}
+                    title={preset.description}
+                    image={null}
+                    selected={doc.lighting?.preset === preset.id}
+                    onSelect={() =>
+                      commit((next) => {
+                        // By-value application (the shader-preset model): keys survive only if their referenced ids still exist after the swap.
+                        next.lighting = structuredClone({ ...preset.spec, preset: preset.id });
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </DrillGroup>
+
             <DrillGroup
               label="Environment"
               hint={fieldSource("environment", doc.lighting, projectLighting)}
