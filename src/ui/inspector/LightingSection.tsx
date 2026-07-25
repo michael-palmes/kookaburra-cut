@@ -16,6 +16,7 @@ import {
 } from "../../engine/sceneLighting";
 import type {
   EnvironmentSpec,
+  FixtureSpec,
   LightingSpec,
   LightSpace,
   LightSpec,
@@ -131,6 +132,78 @@ function nextLightId(lights: readonly LightSpec[]): string {
   return `light-${n}`;
 }
 
+const FORM_LABEL: Record<FixtureSpec["form"], string> = {
+  tube: "Tube",
+  panel: "Panel",
+  ring: "Ring",
+  strip: "Strip",
+  bulb: "Bulb",
+};
+
+/** Per-form size field labels ([a, b] of `size`). */
+const SIZE_LABELS: Record<FixtureSpec["form"], [string, string]> = {
+  tube: ["length", "diameter"],
+  panel: ["width", "height"],
+  ring: ["outer", "thickness"],
+  strip: ["length", "width"],
+  bulb: ["diameter", "-"],
+};
+
+/** Defaults on add, tuned so a new fixture looks right immediately. */
+const FIXTURE_DEFAULTS: Record<FixtureSpec["form"], (id: string) => FixtureSpec> = {
+  tube: (id) => ({
+    id,
+    form: "tube",
+    size: [3.2, 0.06],
+    kelvin: 4200,
+    emissive: 3.5,
+    lightIntensity: 14,
+    placement: { mode: "point", position: [0, 2.4, 0] },
+  }),
+  panel: (id) => ({
+    id,
+    form: "panel",
+    size: [2, 1],
+    kelvin: 5600,
+    emissive: 2.5,
+    lightIntensity: 10,
+    placement: { mode: "point", position: [0, 2, 2] },
+  }),
+  ring: (id) => ({
+    id,
+    form: "ring",
+    size: [1.2, 0.05],
+    kelvin: 3000,
+    emissive: 4,
+    lightIntensity: 6,
+    placement: { mode: "point", position: [0, 1.2, 2] },
+  }),
+  strip: (id) => ({
+    id,
+    form: "strip",
+    size: [4, 0.04],
+    kelvin: 6500,
+    emissive: 4,
+    lightIntensity: 8,
+    placement: { mode: "point", position: [0, 2.2, 0] },
+  }),
+  bulb: (id) => ({
+    id,
+    form: "bulb",
+    size: [0.12, 0.12],
+    kelvin: 2700,
+    emissive: 6,
+    lightIntensity: 5,
+    placement: { mode: "point", position: [0, 1.6, 1] },
+  }),
+};
+
+function nextFixtureId(fixtures: readonly FixtureSpec[]): string {
+  let n = 1;
+  while (fixtures.some((f) => f.id === `fixture-${n}`)) n += 1;
+  return `fixture-${n}`;
+}
+
 /** Which layer a field currently comes from, for the group hints ("From theme" placeholders). */
 function fieldSource(
   field: keyof LightingSpec,
@@ -162,6 +235,7 @@ export function LightingSectionBody({
   const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
   const dragBaseline = useRef<SceneDoc | null>(null);
   const [lightId, setLightId] = useState<string | null>(null);
+  const [fixtureId, setFixtureId] = useState<string | null>(null);
   // The project's own .hdr/.exr files, listed once per open (extra tiles below the bundled set).
   const [projectMaps, setProjectMaps] = useState<string[]>([]);
   useEffect(() => {
@@ -245,11 +319,68 @@ export function LightingSectionBody({
     setLightId(id);
   };
 
+  const writeFixtures =
+    (mutate: (fixtures: FixtureSpec[]) => void) =>
+    (next: SceneDoc): void => {
+      const fixtures = structuredClone(resolved?.fixtures ?? []);
+      mutate(fixtures);
+      next.lighting = { ...(next.lighting ?? {}), fixtures };
+    };
+  const writeFixture = (id: string, mutate: (f: FixtureSpec) => void) =>
+    writeFixtures((fixtures) => {
+      const fixture = fixtures.find((f) => f.id === id);
+      if (fixture) mutate(fixture);
+    });
+  const addFixture = (form: FixtureSpec["form"]) => {
+    const id = nextFixtureId(resolved?.fixtures ?? []);
+    commit(writeFixtures((fixtures) => fixtures.push(FIXTURE_DEFAULTS[form](id))));
+    setFixtureId(id);
+  };
+
   const sun = resolved?.sun;
   const shadow = resolved?.shadow;
   const sunSwatch = sun ? resolveLightingColour(sun, theme.colors) : "#ffffff";
   const angularDisplay = sun?.angularDeg ?? sunShadowSoftness(sun, shadow) * SUN_ANGULAR_REFERENCE;
   const environment = resolveSceneEnvironment(theme, projectLighting, doc);
+
+  const selectedFixture = fixtureId
+    ? (resolved?.fixtures ?? []).find((f) => f.id === fixtureId)
+    : undefined;
+  if (selectedFixture) {
+    return (
+      <FixtureEditor
+        fixture={selectedFixture}
+        colors={theme.colors}
+        onBack={() => setFixtureId(null)}
+        onLive={(mutate) => live(writeFixture(selectedFixture.id, mutate))}
+        onCommit={(mutate) => commit(writeFixture(selectedFixture.id, mutate))}
+        onDuplicate={() => {
+          const id = nextFixtureId(resolved?.fixtures ?? []);
+          commit(
+            writeFixtures((fixtures) => {
+              const source = fixtures.find((f) => f.id === selectedFixture.id);
+              if (source) {
+                const copy = structuredClone(source);
+                copy.id = id;
+                copy.name = undefined;
+                fixtures.push(copy);
+              }
+            }),
+          );
+          setFixtureId(id);
+        }}
+        onDelete={() => {
+          commit(
+            writeFixtures((fixtures) => {
+              const at = fixtures.findIndex((f) => f.id === selectedFixture.id);
+              if (at >= 0) fixtures.splice(at, 1);
+            }),
+          );
+          setFixtureId(null);
+        }}
+      />
+    );
+  }
 
   const selectedLight = lightId
     ? (resolved?.lights ?? []).find((l) => l.id === lightId)
@@ -557,6 +688,37 @@ export function LightingSectionBody({
                     onClick={() => addLight(type)}
                   >
                     {TYPE_LABEL[type]}
+                  </button>
+                ))}
+              </div>
+            </DrillGroup>
+
+            <DrillGroup
+              label="Fixtures"
+              hint={
+                fieldSource("fixtures", doc.lighting, projectLighting) ??
+                "Fixtures glow when the scene has bloom."
+              }
+            >
+              {(resolved.fixtures ?? []).map((fixture) => (
+                <ActionRow
+                  key={fixture.id}
+                  label={fixture.name ?? FORM_LABEL[fixture.form]}
+                  value={`${FORM_LABEL[fixture.form]}${fixture.repeat && fixture.repeat.count > 1 ? ` ×${fixture.repeat.count}${fixture.repeat.mirrorAxis ? "×2" : ""}` : ""}`}
+                  onClick={() => setFixtureId(fixture.id)}
+                />
+              ))}
+              <div className="camera-loop-modes">
+                <span className="drill-group-hint">Add</span>
+                {(Object.keys(FORM_LABEL) as FixtureSpec["form"][]).map((form) => (
+                  <button
+                    key={form}
+                    type="button"
+                    className="chip"
+                    title={`Add a ${FORM_LABEL[form].toLowerCase()} fixture`}
+                    onClick={() => addFixture(form)}
+                  >
+                    {FORM_LABEL[form]}
                   </button>
                 ))}
               </div>
@@ -1021,6 +1183,298 @@ function LightEditor({
         <div className="inspector-section-divider" />
         <ActionRow label="Duplicate light" chevron={false} onClick={onDuplicate} />
         <ActionRow label="Delete light" chevron={false} danger onClick={onDelete} />
+      </div>
+    </div>
+  );
+}
+
+/** One fixture's editor: form, per-form sized geometry, the colour union, emissive + paired light intensity, placement + rotation, the World/Camera/Subject space row, the repeat block and the env-mirror toggle. */
+function FixtureEditor({
+  fixture,
+  colors,
+  onBack,
+  onLive,
+  onCommit,
+  onDuplicate,
+  onDelete,
+}: {
+  fixture: FixtureSpec;
+  colors: Theme["colors"];
+  onBack: () => void;
+  onLive: (mutate: (f: FixtureSpec) => void) => void;
+  onCommit: (mutate: (f: FixtureSpec) => void) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const space = fixture.space ?? "world";
+  const swatch = resolveLightingColour(fixture, colors);
+  const [sizeA, sizeB] = SIZE_LABELS[fixture.form];
+  const position =
+    fixture.placement.mode === "point" ? fixture.placement.position : ([0, 0, 0] as const);
+  const rotation = fixture.rotationDeg ?? ([0, 0, 0] as const);
+  const repeat = fixture.repeat;
+
+  return (
+    <div className="inspector-drill">
+      <DrillBack label="Lighting" onClick={onBack} />
+      <div className="inspector-drill-title">{fixture.name ?? FORM_LABEL[fixture.form]}</div>
+      <div className="inspector-drill-body inspector-section-body">
+        <div className="camera-loop-modes">
+          {(Object.keys(FORM_LABEL) as FixtureSpec["form"][]).map((form) => (
+            <button
+              key={form}
+              type="button"
+              className={`chip${fixture.form === form ? " selected" : ""}`}
+              title={`${FORM_LABEL[form]} geometry`}
+              onClick={() => onCommit((f) => (f.form = form))}
+            >
+              {FORM_LABEL[form]}
+            </button>
+          ))}
+        </div>
+
+        <DrillGroup label="Geometry">
+          <div className="inspector-pose-grid">
+            <NumberField
+              label={sizeA}
+              value={fixture.size[0]}
+              decimals={2}
+              dragScale={0.02}
+              min={0.02}
+              onCommit={(n) => onCommit((f) => (f.size = [n, f.size[1]]))}
+            />
+            {sizeB !== "-" && (
+              <NumberField
+                label={sizeB}
+                value={fixture.size[1]}
+                decimals={3}
+                dragScale={0.005}
+                min={0}
+                onCommit={(n) => onCommit((f) => (f.size = [f.size[0], n]))}
+              />
+            )}
+          </div>
+          <div className="inspector-pose-grid">
+            {(["x", "y", "z"] as const).map((axis, i) => (
+              <NumberField
+                key={axis}
+                label={`rot ${axis} °`}
+                value={rotation[i]}
+                decimals={1}
+                dragScale={0.5}
+                onCommit={(n) =>
+                  onCommit((f) => {
+                    const next: [number, number, number] = [...(f.rotationDeg ?? [0, 0, 0])];
+                    next[i] = n;
+                    f.rotationDeg = next;
+                  })
+                }
+              />
+            ))}
+          </div>
+        </DrillGroup>
+
+        <DrillGroup label="Glow">
+          <div className="lighting-kelvin-row">
+            <span
+              className="lighting-kelvin-swatch"
+              style={{ background: swatch }}
+              title={fixture.kelvin !== undefined ? `${fixture.kelvin} K` : "Colour"}
+            />
+            <DebouncedRange
+              label="Temperature K"
+              value={fixture.kelvin ?? 4200}
+              min={1000}
+              max={20000}
+              step={100}
+              onInput={(n) => onLive((f) => (f.kelvin = n))}
+              onCommit={(n) => onCommit((f) => (f.kelvin = n))}
+            />
+          </div>
+          <DebouncedRange
+            label="Emissive"
+            value={fixture.emissive}
+            min={0}
+            max={8}
+            step={0.1}
+            onInput={(n) => onLive((f) => (f.emissive = n))}
+            onCommit={(n) => onCommit((f) => (f.emissive = n))}
+          />
+          <DebouncedRange
+            label="Light intensity"
+            value={fixture.lightIntensity}
+            min={0}
+            max={40}
+            step={0.5}
+            onInput={(n) => onLive((f) => (f.lightIntensity = n))}
+            onCommit={(n) => onCommit((f) => (f.lightIntensity = n))}
+          />
+          <p className="modal-hint">
+            Emissive is the visible glow (above 1 it blooms); light intensity is the paired real
+            light. Zero light intensity keeps a purely decorative fixture. Paired lights reach
+            devices and other standard materials only.
+          </p>
+        </DrillGroup>
+
+        <DrillGroup label="Placement" hint={SPACE_HINT[space]}>
+          <div className="camera-loop-modes">
+            {SPACES.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                className={`chip${space === id ? " selected" : ""}`}
+                title={SPACE_HINT[id] ?? "Fixed in the scene."}
+                onClick={() =>
+                  onCommit((f) => {
+                    if (id === "world") delete f.space;
+                    else f.space = id;
+                  })
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="inspector-pose-grid">
+            {(["x", "y", "z"] as const).map((axis, i) => (
+              <NumberField
+                key={axis}
+                label={axis}
+                value={position[i]}
+                decimals={2}
+                dragScale={0.02}
+                onCommit={(n) =>
+                  onCommit((f) => {
+                    const base =
+                      f.placement.mode === "point"
+                        ? ([...f.placement.position] as [number, number, number])
+                        : ([0, 0, 0] as [number, number, number]);
+                    base[i] = n;
+                    f.placement = { mode: "point", position: base };
+                  })
+                }
+              />
+            ))}
+          </div>
+        </DrillGroup>
+
+        <DrillGroup label="Repeat">
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="count"
+              value={repeat?.count ?? 1}
+              decimals={0}
+              dragScale={0.05}
+              min={1}
+              max={64}
+              onCommit={(n) =>
+                onCommit((f) => {
+                  if (n <= 1 && !f.repeat?.mirrorAxis) delete f.repeat;
+                  else
+                    f.repeat = {
+                      count: Math.round(n),
+                      spacing: f.repeat?.spacing ?? 2.4,
+                      axis: f.repeat?.axis ?? "z",
+                      ...(f.repeat?.mirrorAxis ? { mirrorAxis: f.repeat.mirrorAxis } : {}),
+                      ...(f.repeat?.jitter ? { jitter: f.repeat.jitter } : {}),
+                    };
+                })
+              }
+            />
+            <NumberField
+              label="spacing"
+              value={repeat?.spacing ?? 2.4}
+              decimals={2}
+              dragScale={0.02}
+              onCommit={(n) =>
+                onCommit((f) => {
+                  if (f.repeat) f.repeat.spacing = n;
+                })
+              }
+            />
+            <NumberField
+              label="jitter"
+              value={repeat?.jitter ?? 0}
+              decimals={2}
+              dragScale={0.01}
+              min={0}
+              max={1}
+              onCommit={(n) =>
+                onCommit((f) => {
+                  if (!f.repeat) return;
+                  if (n <= 0) delete f.repeat.jitter;
+                  else f.repeat.jitter = n;
+                })
+              }
+            />
+          </div>
+          {repeat && (
+            <>
+              <div className="camera-loop-modes">
+                <span className="drill-group-hint">Axis</span>
+                {(["x", "y", "z"] as const).map((axis) => (
+                  <button
+                    key={axis}
+                    type="button"
+                    className={`chip${repeat.axis === axis ? " selected" : ""}`}
+                    onClick={() =>
+                      onCommit((f) => {
+                        if (f.repeat) f.repeat.axis = axis;
+                      })
+                    }
+                  >
+                    {axis}
+                  </button>
+                ))}
+                <span className="drill-group-hint">Mirror</span>
+                {(["x", "y", "z"] as const).map((axis) => (
+                  <button
+                    key={`m${axis}`}
+                    type="button"
+                    className={`chip${repeat.mirrorAxis === axis ? " selected" : ""}`}
+                    title={`Duplicate the run mirrored across ${axis}`}
+                    onClick={() =>
+                      onCommit((f) => {
+                        if (!f.repeat) return;
+                        if (f.repeat.mirrorAxis === axis) delete f.repeat.mirrorAxis;
+                        else f.repeat.mirrorAxis = axis;
+                      })
+                    }
+                  >
+                    {axis}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </DrillGroup>
+
+        <ToggleRow
+          label="Mirror into reflections"
+          description="Bakes this fixture into the scene environment for crisp reflections on glass. The reflection is static: keyframed fixtures bake at their base pose, and world space only."
+          checked={fixture.envMirror === true}
+          onChange={(on) =>
+            onCommit((f) => {
+              if (on) f.envMirror = true;
+              else delete f.envMirror;
+            })
+          }
+        />
+        <ToggleRow
+          label="Enabled"
+          description="Off keeps the fixture's settings without rendering anything."
+          checked={fixture.enabled !== false}
+          onChange={(on) =>
+            onCommit((f) => {
+              if (on) delete f.enabled;
+              else f.enabled = false;
+            })
+          }
+        />
+
+        <div className="inspector-section-divider" />
+        <ActionRow label="Duplicate fixture" chevron={false} onClick={onDuplicate} />
+        <ActionRow label="Delete fixture" chevron={false} danger onClick={onDelete} />
       </div>
     </div>
   );
