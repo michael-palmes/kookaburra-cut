@@ -281,11 +281,24 @@ export function resolveAt(slots: SceneSlot[], tMs: number): Resolved {
 }
 
 /** The playhead's dominant scene (the later scene inside a transition overlap): the editing chrome's shared notion of "the active scene", followed by the edit surfaces, camera mini-timeline and tool overlay (moved here from EditBar since it's pure slot math and shouldn't couple to a component module). */
+/** Where scene `index`'s ATTRIBUTION window begins on the global timeline: halfway through its incoming overlap, so the chrome's "current scene" (dividers, bold names, lane targeting) flips mid-transition. Display semantics only; `resolveAt` owns render semantics and never reads this. */
+export function attributionStartMs(
+  slots: { startMs: number; transitionIn?: { durationMs: number } }[],
+  index: number,
+): number {
+  const slot = slots[index];
+  if (!slot || index === 0) return 0;
+  return slot.startMs + (slot.transitionIn?.durationMs ?? 0) / 2;
+}
+
 export function activeSceneIndex(slots: SceneSlot[], ms: number): number {
+  // Attribution windows run mid-transition to mid-transition (project ends excepted); out of range keeps the pinned v7 fallback to scene 0.
   let found = 0;
+  const total = timelineTotalMs(slots);
   for (let i = 0; i < slots.length; i++) {
-    const s = slots[i];
-    if (ms >= s.startMs && ms < s.startMs + s.durationMs) found = i;
+    const start = attributionStartMs(slots, i);
+    const end = i + 1 < slots.length ? attributionStartMs(slots, i + 1) : total;
+    if (ms >= start && ms < end) found = i;
   }
   return found;
 }

@@ -1,5 +1,7 @@
 /** Pure px↔ms mapping for the timeline dock, shared by the playback bar and the animation lane; structure-pinned in unit tests so scrub geometry can't drift between them. */
 
+import { attributionStartMs } from "../engine/sceneTimeline";
+
 /** The scrub step (ms); parity with the old range input's `step={16}`. */
 export const SCRUB_STEP_MS = 16;
 
@@ -30,13 +32,17 @@ export interface SceneCellSpan {
   weight: number;
 }
 
-/** Scene cells tile the track exactly: cell i runs from its slot's `startMs` to the next slot's `startMs` (last to `totalMs`); transitions overlap slots so raw durations would over-count, and tiling on start boundaries keeps the playhead aligned with cell edges. */
+/** Scene cells tile the track exactly on ATTRIBUTION boundaries (mid-transition to mid-transition, project ends excepted), matching `activeSceneIndex`, so the drawn scene change sits halfway through each transition and the bold name always agrees with its cell. */
 export function sceneCellSpans(
-  slots: { startMs: number; durationMs: number }[],
+  slots: { startMs: number; durationMs: number; transitionIn?: { durationMs: number } }[],
   totalMs: number,
 ): SceneCellSpan[] {
-  return slots.map((slot, i) => ({
+  return slots.map((_slot, i) => ({
     index: i,
-    weight: Math.max(1, (i + 1 < slots.length ? slots[i + 1].startMs : totalMs) - slot.startMs),
+    weight: Math.max(
+      1,
+      (i + 1 < slots.length ? attributionStartMs(slots, i + 1) : totalMs) -
+        attributionStartMs(slots, i),
+    ),
   }));
 }

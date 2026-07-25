@@ -32,17 +32,25 @@ describe("playheadFraction", () => {
   });
 });
 
-describe("sceneCellSpans (cells tile the track on start boundaries)", () => {
-  it("weights by start-to-next-start so transitions never over-count", () => {
+describe("sceneCellSpans (cells tile the track on attribution boundaries)", () => {
+  it("weights mid-transition to mid-transition so the drawn change sits halfway through each overlap", () => {
     // Three scenes with a 600ms crossfade into each: starts 0 / 2400 / 4800, total 7400.
     const slots = [
       { startMs: 0, durationMs: 3000 },
-      { startMs: 2400, durationMs: 3000 },
-      { startMs: 4800, durationMs: 2600 },
+      { startMs: 2400, durationMs: 3000, transitionIn: { durationMs: 600 } },
+      { startMs: 4800, durationMs: 2600, transitionIn: { durationMs: 600 } },
     ];
     const spans = sceneCellSpans(slots, 7400);
-    expect(spans.map((s) => s.weight)).toEqual([2400, 2400, 2600]);
+    expect(spans.map((s) => s.weight)).toEqual([2700, 2400, 2300]);
     expect(spans.reduce((sum, s) => sum + s.weight, 0)).toBe(7400);
+  });
+
+  it("degrades to start boundaries on hard cuts (no overlap to halve)", () => {
+    const slots = [
+      { startMs: 0, durationMs: 2000 },
+      { startMs: 2000, durationMs: 1000 },
+    ];
+    expect(sceneCellSpans(slots, 3000).map((s) => s.weight)).toEqual([2000, 1000]);
   });
 
   it("a single scene owns the whole track", () => {

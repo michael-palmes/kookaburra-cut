@@ -60,11 +60,16 @@ export function AnimationLane({
     [onSceneDuration, sceneIndex],
   );
 
+  // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries.
+  const nextSlot = project.slots[sceneIndex + 1];
   return (
     <TrackLane<SceneDocCameraPose, CameraDoc>
       open={open}
       slotStartMs={slot.startMs}
       durationMs={slot.durationMs}
+      windowStartMs={(slot.transitionIn?.durationMs ?? 0) / 2}
+      windowEndMs={slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2}
+      lastScene={!nextSlot}
       track={camera}
       selectedKeyId={selectedKeyId}
       selectedSegment={selectedSegment}
