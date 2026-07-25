@@ -59,7 +59,7 @@ type RenderState =
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 6];
 
 /** Toolbar glyphs: hand-authored 13px stroke SVGs (the MediaBrowser icon precedent; no icon package). */
-function ToolIcon({ id }: { id: "split" | "freeze" | "tap" | "delete" | "speed" }) {
+function ToolIcon({ id }: { id: "split" | "freeze" | "tap" | "delete" }) {
   const glyph = {
     split: (
       <>
@@ -82,7 +82,6 @@ function ToolIcon({ id }: { id: "split" | "freeze" | "tap" | "delete" | "speed" 
         <path d="M4 4.5l.8 9h6.4l.8-9" />
       </>
     ),
-    speed: <path d="M2.5 4.5L7 8l-4.5 3.5zM8.5 4.5L13 8l-4.5 3.5z" />,
   }[id];
   return (
     <svg
@@ -779,157 +778,148 @@ export function EditorApp() {
             />
           )}
         </aside>
-        <main className="editor-stage" ref={stageRef}>
-          {doc && ((doc.taps?.length ?? 0) > 0 || armedTap) && (
-            <div className="editor-tap-bar">
-              <TapSettingsBar
-                scope={tapMarkerScope}
-                onScope={setTapMarkerScope}
-                styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-                onStyle={handleTapStyle}
-                colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                onColor={handleTapColor}
-                size={doc.tapSize ?? 1.25}
-                onSize={handleTapSize}
-              />
-            </div>
-          )}
-          <div className="editor-preview-area">
-            {error ? (
-              <div className="stage-error" role="alert">
-                <h2>This edit can’t open right now</h2>
-                <pre>{error}</pre>
-                {target?.sourceRel ? (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={handleReset}
-                    title="Keeps the broken document beside it as a .json.bak backup"
-                  >
-                    Discard and start over
-                  </button>
-                ) : null}
+        <div className="editor-stage-col">
+          <main className="editor-stage" ref={stageRef}>
+            {doc && ((doc.taps?.length ?? 0) > 0 || armedTap) && (
+              <div className="editor-tap-bar">
+                <TapSettingsBar
+                  scope={tapMarkerScope}
+                  onScope={setTapMarkerScope}
+                  styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                  onStyle={handleTapStyle}
+                  colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                  onColor={handleTapColor}
+                  size={doc.tapSize ?? 1.25}
+                  onSize={handleTapSize}
+                />
               </div>
-            ) : !doc || !firstSource ? (
-              <p className="muted">Loading edit…</p>
-            ) : (
-              <Preview
-                clips={doc.clips}
-                sources={doc.sources}
-                basePath={target?.path ?? ""}
-                playheadMs={playheadMs}
-                playing={playing}
-                trimScrub={trimScrub}
-                onPlayhead={setPlayheadMs}
-                onStop={stopPlaying}
-                armedTap={armedTap}
-                canPlaceTap={canTap}
-                taps={doc.taps ?? []}
-                tapWindowList={tapWindowList}
-                onPlaceTap={handlePlaceTap}
-                onCommitTap={handleCommitTap}
-                onTapContextMenu={handleTapContextMenu}
-                tapMarkerScope={tapMarkerScope}
-                tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-                tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                tapSize={doc.tapSize ?? 1.25}
-              />
             )}
-          </div>
-        </main>
-      </div>
-
-      {doc && (
-        <>
-          <div className="editor-toolbar">
-            <div className="editor-toolbar-lead" aria-hidden="true" />
-            <div className="editor-toolbar-stage">
-              <div className="editor-toolbar-tools">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleSplit}
-                  disabled={!canSplit}
-                  title="Split the clip under the playhead (S)"
-                >
-                  <ToolIcon id="split" />
-                  Split
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleFreeze}
-                  disabled={!canFreeze}
-                  title="Hold the frame under the playhead as its own clip (F)"
-                >
-                  <ToolIcon id="freeze" />
-                  Freeze
-                </button>
-                <button
-                  type="button"
-                  className={`btn${armedTap ? " selected" : ""}`}
-                  aria-pressed={armedTap}
-                  onClick={() => setArmedTap((a) => !a)}
-                  disabled={!armedTap && !canTap}
-                  title="Tap highlight: click the preview to place a glow at the playhead (T)"
-                >
-                  <ToolIcon id="tap" />
-                  Tap
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => selectedId && commit(removeClip(doc.clips, selectedId))}
-                  disabled={!selectedId}
-                  title="Delete the selected clip (⌫)"
-                >
-                  <ToolIcon id="delete" />
-                  Delete
-                </button>
-                {selectedClip?.holdMs !== undefined ? (
-                  <label className="editor-hold" title="Freeze length in seconds">
-                    Hold
-                    <input
-                      key={`${selectedClip.id}:${selectedClip.holdMs}`}
-                      className="editor-hold-input"
-                      type="number"
-                      min={0.1}
-                      step={0.1}
-                      defaultValue={Number((selectedClip.holdMs / 1000).toFixed(1))}
-                      onBlur={(e) => {
-                        const s = Number(e.currentTarget.value);
-                        if (Number.isFinite(s) && s > 0 && selectedId) {
-                          commit(setClipHold(doc.clips, selectedId, Math.round(s * 1000)));
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      }}
-                    />
-                    s
-                  </label>
-                ) : (
-                  <span className={`editor-speed-wrap${selectedClip ? "" : " disabled"}`}>
-                    <ToolIcon id="speed" />
-                    <select
-                      className="select editor-speed"
-                      value={selectedClip?.speed ?? 1}
-                      disabled={!selectedClip}
-                      title="Playback speed of the selected clip"
-                      onChange={(e) =>
-                        selectedId &&
-                        commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
-                      }
+            <div className="editor-preview-area">
+              {error ? (
+                <div className="stage-error" role="alert">
+                  <h2>This edit can’t open right now</h2>
+                  <pre>{error}</pre>
+                  {target?.sourceRel ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={handleReset}
+                      title="Keeps the broken document beside it as a .json.bak backup"
                     >
-                      {SPEED_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}×
-                        </option>
-                      ))}
-                    </select>
-                  </span>
-                )}
-              </div>
+                      Discard and start over
+                    </button>
+                  ) : null}
+                </div>
+              ) : !doc || !firstSource ? (
+                <p className="muted">Loading edit…</p>
+              ) : (
+                <Preview
+                  clips={doc.clips}
+                  sources={doc.sources}
+                  basePath={target?.path ?? ""}
+                  playheadMs={playheadMs}
+                  playing={playing}
+                  trimScrub={trimScrub}
+                  onPlayhead={setPlayheadMs}
+                  onStop={stopPlaying}
+                  armedTap={armedTap}
+                  canPlaceTap={canTap}
+                  taps={doc.taps ?? []}
+                  tapWindowList={tapWindowList}
+                  onPlaceTap={handlePlaceTap}
+                  onCommitTap={handleCommitTap}
+                  onTapContextMenu={handleTapContextMenu}
+                  tapMarkerScope={tapMarkerScope}
+                  tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                  tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                  tapSize={doc.tapSize ?? 1.25}
+                />
+              )}
+            </div>
+          </main>
+          {doc && (
+            <div className="editor-toolbar">
+              <button
+                type="button"
+                className="btn"
+                onClick={handleSplit}
+                disabled={!canSplit}
+                title="Split the clip under the playhead (S)"
+              >
+                <ToolIcon id="split" />
+                Split
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleFreeze}
+                disabled={!canFreeze}
+                title="Hold the frame under the playhead as its own clip (F)"
+              >
+                <ToolIcon id="freeze" />
+                Freeze
+              </button>
+              <button
+                type="button"
+                className={`btn${armedTap ? " selected" : ""}`}
+                aria-pressed={armedTap}
+                onClick={() => setArmedTap((a) => !a)}
+                disabled={!armedTap && !canTap}
+                title="Tap highlight: click the preview to place a glow at the playhead (T)"
+              >
+                <ToolIcon id="tap" />
+                Tap
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => selectedId && commit(removeClip(doc.clips, selectedId))}
+                disabled={!selectedId}
+                title="Delete the selected clip (⌫)"
+              >
+                <ToolIcon id="delete" />
+                Delete
+              </button>
+              {selectedClip?.holdMs !== undefined ? (
+                <label className="editor-hold" title="Freeze length in seconds">
+                  Hold
+                  <input
+                    key={`${selectedClip.id}:${selectedClip.holdMs}`}
+                    className="editor-hold-input"
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    defaultValue={Number((selectedClip.holdMs / 1000).toFixed(1))}
+                    onBlur={(e) => {
+                      const s = Number(e.currentTarget.value);
+                      if (Number.isFinite(s) && s > 0 && selectedId) {
+                        commit(setClipHold(doc.clips, selectedId, Math.round(s * 1000)));
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                  />
+                  s
+                </label>
+              ) : (
+                <select
+                  className="select editor-speed"
+                  value={selectedClip?.speed ?? 1}
+                  disabled={!selectedClip}
+                  title="Playback speed of the selected clip"
+                  onChange={(e) =>
+                    selectedId &&
+                    commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
+                  }
+                >
+                  {SPEED_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}×
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 className="btn editor-play"
@@ -939,27 +929,31 @@ export function EditorApp() {
               >
                 {playing ? "⏸" : "▶"}
               </button>
-              <span className="muted editor-timecode editor-toolbar-end">
+              <span className="spacer" />
+              <span className="muted editor-timecode">
                 {(playheadMs / 1000).toFixed(2)}s / {(totalMs / 1000).toFixed(2)}s
               </span>
             </div>
-          </div>
-          <Timeline
-            clips={doc.clips}
-            sources={doc.sources}
-            metas={metas}
-            selectedId={selectedId}
-            playheadMs={playheadMs}
-            onSelect={setSelectedId}
-            onPlayhead={handleSeek}
-            onCommit={commit}
-            onTrimScrub={handleTrimScrub}
-            onScrubWheel={scrubWheel}
-            onDropClipAt={handleInsertClipAt}
-            onClipMenu={handleClipContextMenu}
-            tapWindowList={tapWindowList}
-          />
-        </>
+          )}
+        </div>
+      </div>
+
+      {doc && (
+        <Timeline
+          clips={doc.clips}
+          sources={doc.sources}
+          metas={metas}
+          selectedId={selectedId}
+          playheadMs={playheadMs}
+          onSelect={setSelectedId}
+          onPlayhead={handleSeek}
+          onCommit={commit}
+          onTrimScrub={handleTrimScrub}
+          onScrubWheel={scrubWheel}
+          onDropClipAt={handleInsertClipAt}
+          onClipMenu={handleClipContextMenu}
+          tapWindowList={tapWindowList}
+        />
       )}
 
       {tapMenu && <ContextMenu menu={tapMenu} onClose={() => setTapMenu(null)} />}
