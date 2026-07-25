@@ -11,6 +11,7 @@ describe("projectRows (the Project-tab pin)", () => {
       aspect: "16:9",
       soundtrackName: null,
       playbackLabel: "Full quality",
+      renderLabel: "ACES",
       scenesCount: 3,
     });
     expect(rows.map((r) => r.id)).toEqual([
@@ -20,6 +21,7 @@ describe("projectRows (the Project-tab pin)", () => {
       "appIcon",
       "aspect",
       "music",
+      "render",
       "playback",
     ]);
     expect(rows.every((r) => r.chevron)).toBe(true);
@@ -37,6 +39,7 @@ describe("projectRows (the Project-tab pin)", () => {
       aspect: "9:16",
       soundtrackName: "sunrise.mp3",
       playbackLabel: "Performance",
+      renderLabel: "ACES",
       scenesCount: 1,
     });
     expect(rows.find((r) => r.id === "music")?.value).toBe("sunrise.mp3");
@@ -50,6 +53,7 @@ describe("projectRows (the Project-tab pin)", () => {
       aspect: "1:1",
       soundtrackName: null,
       playbackLabel: "Full quality",
+      renderLabel: "ACES",
       scenesCount: 2,
     });
     expect(rows.map((r) => r.id)).toEqual(["theme", "aspect", "playback"]);

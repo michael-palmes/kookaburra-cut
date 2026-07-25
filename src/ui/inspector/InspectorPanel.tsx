@@ -7,6 +7,7 @@ import {
   workspaceProjectPath,
   workspaceSlug,
 } from "../../engine/project";
+import { EXPOSURE_MAX, EXPOSURE_MIN, type RenderSettings } from "../../engine/renderSettings";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
@@ -14,6 +15,7 @@ import { projectRows } from "../inspectorOptions";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { DuplicateSceneDialog } from "../PlaybackBar";
+import { DebouncedRange } from "../TextAnimationPicker";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
@@ -102,6 +104,7 @@ export function InspectorPanel({
   onSceneDuration,
   onPasteBackground,
   onDuplicateSceneAt,
+  onSetRenderSettings,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -146,13 +149,15 @@ export function InspectorPanel({
   onPasteBackground: (index: number) => void;
   /** Copy one scene to a chosen position (the Duplicate… placement dialog). */
   onDuplicateSceneAt: (index: number, position?: number) => Promise<void>;
+  /** Write the project display transform (manifest `render`); App owns the write + history. */
+  onSetRenderSettings: (settings: RenderSettings) => void;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
   const setTab = useUiStore((s) => s.setInspectorTab);
 
   // Which row's popover/menu is open; doubles as the row-selected state ("exactly one row selected at a time").
-  const [openRow, setOpenRow] = useState<"aspect" | "music" | "playback" | null>(null);
+  const [openRow, setOpenRow] = useState<"aspect" | "music" | "playback" | "render" | null>(null);
   const previewQuality = useUiStore((s) => s.previewQuality);
   const [confirmRemoveMusic, setConfirmRemoveMusic] = useState(false);
   useEscapeClose(() => setOpenRow(null), openRow !== null);
@@ -205,6 +210,10 @@ export function InspectorPanel({
         : previewQuality === "balanced"
           ? "Balanced"
           : "Full quality",
+    renderLabel:
+      { aces: "ACES", agx: "AgX", neutral: "Neutral", linear: "Linear" }[
+        project.renderSettings.toneMapping
+      ] + (project.renderSettings.exposure !== 1 ? ` · ` : ""),
     scenesCount: project.slots.length,
   });
 
@@ -274,6 +283,7 @@ export function InspectorPanel({
     aspect: () => setOpenRow(openRow === "aspect" ? null : "aspect"),
     music: () => setOpenRow(openRow === "music" ? null : "music"),
     playback: () => setOpenRow(openRow === "playback" ? null : "playback"),
+    render: () => setOpenRow(openRow === "render" ? null : "render"),
   };
 
   return (
@@ -500,6 +510,62 @@ export function InspectorPanel({
                       setOpenRow(null);
                     }}
                   />
+                </div>
+              )}
+              {row.id === "render" && openRow === "render" && (
+                <div className="inspector-popover inspector-popover-wide" role="menu">
+                  <PopoverChoice
+                    icon={<RowIcon id="theme" />}
+                    label="ACES Filmic"
+                    description="The cinematic default every existing project was graded under. Changing it re-renders the whole video's colour."
+                    active={project.renderSettings.toneMapping === "aces"}
+                    onClick={() => {
+                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "aces" });
+                      setOpenRow(null);
+                    }}
+                  />
+                  <PopoverChoice
+                    icon={<RowIcon id="theme" />}
+                    label="AgX"
+                    description="Modern cinematic curve with gentler highlight desaturation."
+                    active={project.renderSettings.toneMapping === "agx"}
+                    onClick={() => {
+                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "agx" });
+                      setOpenRow(null);
+                    }}
+                  />
+                  <PopoverChoice
+                    icon={<RowIcon id="theme" />}
+                    label="Neutral"
+                    description="Khronos PBR Neutral: the recommended pick for product-accurate brand colours."
+                    active={project.renderSettings.toneMapping === "neutral"}
+                    onClick={() => {
+                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "neutral" });
+                      setOpenRow(null);
+                    }}
+                  />
+                  <PopoverChoice
+                    icon={<RowIcon id="theme" />}
+                    label="Linear"
+                    description="No curve at all: a diagnostic view, not a look to ship."
+                    active={project.renderSettings.toneMapping === "linear"}
+                    onClick={() => {
+                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "linear" });
+                      setOpenRow(null);
+                    }}
+                  />
+                  <div className="inspector-popover-slider">
+                    <DebouncedRange
+                      label="Exposure"
+                      value={project.renderSettings.exposure}
+                      min={EXPOSURE_MIN}
+                      max={EXPOSURE_MAX}
+                      step={0.05}
+                      onCommit={(exposure) =>
+                        onSetRenderSettings({ ...project.renderSettings, exposure })
+                      }
+                    />
+                  </div>
                 </div>
               )}
               {row.id === "music" && openRow === "music" && (
