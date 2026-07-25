@@ -1032,16 +1032,18 @@ bundled rolling-gate project (`showcase-tour`):
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `b5d80edb…` | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
 
-> **2026-07-25 (scene lighting v9, PRs 1-8):** the lighting batch (schema v9
-> with the theme -> project -> scene layers, four free light types with
+> **2026-07-25 (scene lighting v9, the full batch):** the lighting batch (schema
+> v9 with the theme -> project -> scene layers, four free light types with
 > World/Camera/Subject spaces resolved per render target, six new bundled
 > HDRIs + user `.hdr`/`.exr` sources + `"none"`, emissive fixtures with repeat
-> arrays and the env-mirror bake, lighting keyframes, the preset grid, and the
-> explicit tone-mapping/exposure contract) landed with both anchors EQUAL
-> (`97af238c…` / `eb89826c…`, the post-splice launch baseline) and the new
-> 15-scene lighting fixture verifying identical ×2 at `b5d80edb…`. Every new
+> arrays and the env-mirror bake, preview-only placement helpers on their own
+> camera layer, lighting keyframes, the preset grid, the explicit
+> tone-mapping/exposure contract, and the housed practical props) landed with
+> both anchors EQUAL (`97af238c…` / `eb89826c…`, the post-splice launch
+> baseline) and the 16-scene lighting fixture verifying identical ×2 at
+> `fe701549…` (supersedes the interim 15-scene `b5d80edb…`). Every new
 > block is null-for-legacy: absent at all layers resolves the v8 path verbatim,
 > pinned by the whole-lineup theme-equivalence test.
 
