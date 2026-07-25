@@ -3706,6 +3706,13 @@ body {
   background: var(--surface-hover);
 }
 
+/* The reset button disables on a trackless scene; dim like every other disabled control. */
+.camera-pill-mode:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+  background: none;
+}
+
 .camera-pill-mode.active {
   color: var(--accent-text);
   background: var(--accent-subtle);
