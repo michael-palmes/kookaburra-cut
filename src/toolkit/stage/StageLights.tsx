@@ -85,6 +85,7 @@ function FreeLight({
         <>
           <directionalLight
             ref={lightRef}
+            userData={{ kookaburraFreeLight: true }}
             position={position}
             intensity={spec.intensity}
             color={color}
@@ -108,6 +109,7 @@ function FreeLight({
       return (
         <pointLight
           ref={lightRef}
+          userData={{ kookaburraFreeLight: true }}
           position={position}
           intensity={spec.intensity}
           color={color}
@@ -120,6 +122,7 @@ function FreeLight({
         <>
           <spotLight
             ref={lightRef}
+            userData={{ kookaburraFreeLight: true }}
             position={position}
             intensity={spec.intensity}
             color={color}
@@ -144,6 +147,7 @@ function FreeLight({
       return (
         <rectAreaLight
           ref={lightRef}
+          userData={{ kookaburraFreeLight: true }}
           position={position}
           intensity={spec.intensity}
           color={color}

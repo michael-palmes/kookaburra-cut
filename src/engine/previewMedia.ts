@@ -30,3 +30,12 @@ export function subscribePreviewPlayback(listener: () => void): () => void {
   playbackListeners.add(listener);
   return () => playbackListeners.delete(listener);
 }
+
+/** Perf-probe env-off pass (preview-only, the perfClipsFrozen pattern): the compositor nulls the scene environment after the state plan applies while this is on. Never set outside the probe; the compositor additionally ignores it while `isExporting()`. */
+let environmentOff = false;
+export function setPreviewEnvironmentOff(value: boolean): void {
+  environmentOff = value;
+}
+export function previewEnvironmentOff(): boolean {
+  return environmentOff;
+}

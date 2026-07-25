@@ -33,6 +33,7 @@ import {
   resolveFrameEffects,
 } from "./effects";
 import { getLoadedEnvironment } from "./environments";
+import { isExporting as isExportingNow } from "./exportState";
 import { FPS, MSAA_SAMPLES } from "./format";
 import { getFramePanels } from "./framePanelRegistry";
 import { applyFrameLighting } from "./lightingAnimation";
@@ -45,6 +46,7 @@ import {
   overlayVertexShader,
 } from "./overlayShader";
 import { getPersistentLayers } from "./persistentLayerRegistry";
+import { previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
 import type { SceneHostHandle } from "./sceneHostRegistry";
 import type { FrameLightingPlan } from "./sceneLighting";
@@ -422,6 +424,8 @@ export function renderComposited(
     : null;
   const applyState = (s: SceneRenderState) => {
     if (sharedEnv) applySceneRenderState(scene, s, sharedEnv, getLoadedEnvironment);
+    // Perf-probe env-off pass only (preview diagnostics); exports never see it.
+    if (previewEnvironmentOff() && !isExportingNow()) scene.environment = null;
   };
   const restoreSceneState = () => {
     if (!sharedEnv) return;

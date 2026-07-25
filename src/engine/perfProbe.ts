@@ -1,7 +1,11 @@
 import type { Material, Mesh, Object3D, Scene, WebGLRenderer } from "three";
 import { useClockStore } from "./clock";
 import { canvasHandle } from "./exportBridge";
-import { setPreviewClipStride, setPreviewPlaybackActive } from "./previewMedia";
+import {
+  setPreviewClipStride,
+  setPreviewEnvironmentOff,
+  setPreviewPlaybackActive,
+} from "./previewMedia";
 import type { LoadedProject } from "./project";
 
 /** Playback performance probe (`kookaburra:run --action perf`): plays a window of every scene under a matrix of elimination passes and reports frame-time stats plus renderer counters per pass, so regressions and hotspots (device glass, screen media, shadows, fill rate) can be pinned as scenes grow. Preview-only diagnostics; the export path never reads any of this. Needs a visible window: WKWebView suspends rAF while occluded. */
@@ -118,7 +122,55 @@ const PASSES: PerfPass[] = [
       };
     },
   },
+  // ── v9 lighting eliminations ─────────────────────────────────────
+  {
+    id: "no-extra-lights",
+    apply: (_gl, scene) => hidePass(scene, (obj) => obj.userData.kookaburraFreeLight === true),
+  },
+  {
+    // The whole fixture: glow geometry AND paired lights.
+    id: "no-fixtures",
+    apply: (_gl, scene) => hidePass(scene, (obj) => obj.userData.kookaburraFixture === true),
+  },
+  {
+    // Geometry keeps glowing, the paired lights go: separates draw-call cost from shader-permutation cost.
+    id: "no-fixture-lights",
+    apply: (_gl, scene) => hidePass(scene, (obj) => obj.userData.kookaburraFixtureLight === true),
+  },
+  {
+    // Free area lights and fixture rect lights together: isolates the LTC cost.
+    id: "no-area-lights",
+    apply: (_gl, scene) =>
+      hidePass(scene, (obj) => (obj as { isRectAreaLight?: boolean }).isRectAreaLight === true),
+  },
+  {
+    // IBL sampling cost: the compositor nulls scene.environment after the state plan while the flag is on.
+    id: "env-off",
+    apply: (_gl, scene) => {
+      setPreviewEnvironmentOff(true);
+      const prev = scene.environment;
+      scene.environment = null;
+      return () => {
+        setPreviewEnvironmentOff(false);
+        scene.environment = prev;
+      };
+    },
+  },
 ];
+
+/** Hide every matching visible object for the pass; returns the restore. */
+function hidePass(scene: Scene, match: (obj: Object3D) => boolean): () => void {
+  const hidden: Object3D[] = [];
+  scene.traverse((obj) => {
+    if (match(obj) && obj.visible) {
+      obj.visible = false;
+      hidden.push(obj);
+    }
+  });
+  return () => {
+    for (const obj of hidden) obj.visible = true;
+  };
+}
 
 /** Real-playback measurement: advances the shared clock by wall-clock delta each rAF (the preview's own pipeline: clock write, React commit, demand render) and samples the tick gaps. */
 function measureWindow(

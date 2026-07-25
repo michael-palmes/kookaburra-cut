@@ -54,10 +54,18 @@ const PAIRED_POINT: FixtureSpec["form"][] = ["ring", "bulb"];
 function PairedLight({ spec, colors }: { spec: FixtureSpec; colors: Theme["colors"] }) {
   const color = resolveLightingColour(spec, colors);
   if (PAIRED_POINT.includes(spec.form)) {
-    return <pointLight intensity={spec.lightIntensity} color={color} decay={2} />;
+    return (
+      <pointLight
+        userData={{ kookaburraFixtureLight: true }}
+        intensity={spec.lightIntensity}
+        color={color}
+        decay={2}
+      />
+    );
   }
   return (
     <rectAreaLight
+      userData={{ kookaburraFixtureLight: true }}
       intensity={spec.lightIntensity}
       color={color}
       width={spec.size[0]}
@@ -159,7 +167,11 @@ export function Fixture({ entry, colors }: { entry: FixturePlanEntry; colors: Th
   }, [key, spec, colors, instances, sceneIndex]);
 
   return (
-    <group ref={groupRef} position={relative ? undefined : basePosition}>
+    <group
+      ref={groupRef}
+      userData={{ kookaburraFixture: true }}
+      position={relative ? undefined : basePosition}
+    >
       {instanced ? (
         <instancedMesh ref={instancedRef} args={[geometry, material, instances.length]} />
       ) : (
