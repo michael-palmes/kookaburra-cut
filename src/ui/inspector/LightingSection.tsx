@@ -143,6 +143,10 @@ const FORM_LABEL: Record<FixtureSpec["form"], string> = {
   ring: "Ring",
   strip: "Strip",
   bulb: "Bulb",
+  "neon-sign": "Neon sign",
+  "tube-stand": "Tube stand",
+  "ring-light": "Ring light",
+  "led-strip": "LED strip",
 };
 
 /** Per-form size field labels ([a, b] of `size`). */
@@ -152,6 +156,10 @@ const SIZE_LABELS: Record<FixtureSpec["form"], [string, string]> = {
   ring: ["outer", "thickness"],
   strip: ["length", "width"],
   bulb: ["diameter", "-"],
+  "neon-sign": ["length", "diameter"],
+  "tube-stand": ["length", "diameter"],
+  "ring-light": ["outer", "thickness"],
+  "led-strip": ["length", "width"],
 };
 
 /** Defaults on add, tuned so a new fixture looks right immediately. */
@@ -200,6 +208,44 @@ const FIXTURE_DEFAULTS: Record<FixtureSpec["form"], (id: string) => FixtureSpec>
     emissive: 6,
     lightIntensity: 5,
     placement: { mode: "point", position: [0, 1.6, 1] },
+  }),
+  "neon-sign": (id) => ({
+    id,
+    form: "neon-sign",
+    size: [2.4, 0.05],
+    kelvin: 3000,
+    emissive: 4.5,
+    lightIntensity: 6,
+    shape: "rect",
+    placement: { mode: "point", position: [0, 1.4, -1.5] },
+  }),
+  "tube-stand": (id) => ({
+    id,
+    form: "tube-stand",
+    size: [2.6, 0.06],
+    kelvin: 4200,
+    emissive: 3.5,
+    lightIntensity: 12,
+    placement: { mode: "point", position: [1.8, 0.6, 1] },
+    rotationDeg: [-70, 0, 0],
+  }),
+  "ring-light": (id) => ({
+    id,
+    form: "ring-light",
+    size: [1.3, 0.05],
+    kelvin: 5600,
+    emissive: 3,
+    lightIntensity: 8,
+    placement: { mode: "point", position: [-1.6, 0.4, 2] },
+  }),
+  "led-strip": (id) => ({
+    id,
+    form: "led-strip",
+    size: [3.6, 0.04],
+    kelvin: 6500,
+    emissive: 4,
+    lightIntensity: 8,
+    placement: { mode: "point", position: [0, -1.2, -1] },
   }),
 };
 
@@ -1320,6 +1366,27 @@ function FixtureEditor({
             </button>
           ))}
         </div>
+
+        {fixture.form === "neon-sign" && (
+          <div className="camera-loop-modes">
+            <span className="drill-group-hint">Shape</span>
+            {(["line", "circle", "rect"] as const).map((shape) => (
+              <button
+                key={shape}
+                type="button"
+                className={`chip${(fixture.shape ?? "line") === shape ? " selected" : ""}`}
+                onClick={() =>
+                  onCommit((f) => {
+                    if (shape === "line") delete f.shape;
+                    else f.shape = shape;
+                  })
+                }
+              >
+                {shape}
+              </button>
+            ))}
+          </div>
+        )}
 
         <DrillGroup label="Geometry">
           <div className="inspector-pose-grid">

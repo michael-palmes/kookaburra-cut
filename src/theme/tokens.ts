@@ -140,7 +140,20 @@ export type LightSpec =
     })
   | (LightBase & { type: "area"; width: number; height: number });
 
-export type FixtureForm = "tube" | "panel" | "ring" | "strip" | "bulb";
+/** Bare emissive forms plus the housed practicals (v9 · PR 10: the same emissive-core-plus-paired-light anatomy wrapped in simple procedural housing geometry; no licensed assets). */
+export type FixtureForm =
+  | "tube"
+  | "panel"
+  | "ring"
+  | "strip"
+  | "bulb"
+  | "neon-sign"
+  | "tube-stand"
+  | "ring-light"
+  | "led-strip";
+
+/** Neon-sign tube paths (free-form paths are out of scope by design). */
+export type NeonShape = "line" | "circle" | "rect";
 
 /** Repeat expansion for a fixture: `count` instances spaced along `axis`, optionally mirrored across `mirrorAxis`; `jitter` (0..1) varies per instance, seeded from the fixture id (engine/rng.ts, never Math.random). */
 export interface FixtureRepeat {
@@ -173,6 +186,8 @@ export interface FixtureSpec {
   lightIntensity: number;
   /** Also bake this fixture into the scene environment for crisp reflections on glossy surfaces. World-space static poses only. */
   envMirror?: boolean;
+  /** neon-sign only: the tube's built-in path (default "line"). */
+  shape?: NeonShape;
   placement: Placement;
   rotationDeg?: [number, number, number];
   repeat?: FixtureRepeat;

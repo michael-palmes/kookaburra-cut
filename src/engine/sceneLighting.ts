@@ -39,7 +39,17 @@ const finite3 = (v: unknown): v is [number, number, number] =>
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
 const LIGHT_SPACES: LightSpace[] = ["world", "camera", "subject"];
-const FIXTURE_FORMS: FixtureSpec["form"][] = ["tube", "panel", "ring", "strip", "bulb"];
+const FIXTURE_FORMS: FixtureSpec["form"][] = [
+  "tube",
+  "panel",
+  "ring",
+  "strip",
+  "bulb",
+  "neon-sign",
+  "tube-stand",
+  "ring-light",
+  "led-strip",
+];
 const AXES = ["x", "y", "z"] as const;
 
 function parseV8LightSpec(v: unknown): ThemeLightSpec | undefined {
@@ -265,6 +275,7 @@ function parseFixture(v: unknown, source: string): FixtureSpec | undefined {
   };
   assignColour(fixture, v);
   if (v.envMirror === true) fixture.envMirror = true;
+  if (v.shape === "line" || v.shape === "circle" || v.shape === "rect") fixture.shape = v.shape;
   if (finite3(v.rotationDeg)) {
     fixture.rotationDeg = [v.rotationDeg[0], v.rotationDeg[1], v.rotationDeg[2]];
   }

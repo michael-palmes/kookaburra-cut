@@ -591,3 +591,30 @@ describe("lighting keyframes (v9 · PR 6)", () => {
     ]);
   });
 });
+
+describe("housed fixture forms (v9 · PR 10)", () => {
+  it("parses the four practicals and the neon shape", () => {
+    const spec = normalizeLighting(
+      {
+        fixtures: [
+          validFixture({ id: "n", form: "neon-sign", shape: "rect" }),
+          validFixture({ id: "t", form: "tube-stand" }),
+          validFixture({ id: "r", form: "ring-light" }),
+          validFixture({ id: "l", form: "led-strip" }),
+          validFixture({ id: "bad", form: "neon-sign", shape: "spiral" }),
+        ],
+      },
+      "t",
+    );
+    expect(spec?.fixtures?.map((f) => f.form)).toEqual([
+      "neon-sign",
+      "tube-stand",
+      "ring-light",
+      "led-strip",
+      "neon-sign",
+    ]);
+    expect(spec?.fixtures?.[0].shape).toBe("rect");
+    // An unknown shape drops the FIELD, not the fixture.
+    expect(spec?.fixtures?.[4].shape).toBeUndefined();
+  });
+});
