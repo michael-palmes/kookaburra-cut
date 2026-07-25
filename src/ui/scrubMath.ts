@@ -1,6 +1,6 @@
 /** Pure px↔ms mapping for the timeline dock, shared by the playback bar and the animation lane; structure-pinned in unit tests so scrub geometry can't drift between them. */
 
-import { attributionStartMs } from "../engine/sceneTimeline";
+import { attributionBoundaries } from "../engine/sceneTimeline";
 
 /** The scrub step (ms); parity with the old range input's `step={16}`. */
 export const SCRUB_STEP_MS = 16;
@@ -37,12 +37,9 @@ export function sceneCellSpans(
   slots: { startMs: number; durationMs: number; transitionIn?: { durationMs: number } }[],
   totalMs: number,
 ): SceneCellSpan[] {
+  const starts = attributionBoundaries(slots);
   return slots.map((_slot, i) => ({
     index: i,
-    weight: Math.max(
-      1,
-      (i + 1 < slots.length ? attributionStartMs(slots, i + 1) : totalMs) -
-        attributionStartMs(slots, i),
-    ),
+    weight: Math.max(1, (i + 1 < slots.length ? starts[i + 1] : totalMs) - starts[i]),
   }));
 }

@@ -125,9 +125,9 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   const xOf = (tMs: number) =>
     PAD + (Math.min(windowEndMs, Math.max(windowStartMs, tMs)) - windowStartMs) * pxPerMs;
 
-  /** Every lane seek clamps inside this scene's attribution window, one ms short of the next scene's boundary, so dragging the lane can never retarget the chrome to a neighbouring scene. */
+  /** Every lane seek clamps inside this scene's attribution window, one ms short of the next scene's boundary, so dragging the lane can never retarget the chrome to a neighbouring scene. The window-start floor wins on a degenerate (zero-width) window, so the cap can never undershoot into the PREVIOUS scene either. */
   function seekLocal(tMs: number) {
-    const max = lastScene ? windowEndMs : windowEndMs - 1;
+    const max = Math.max(windowStartMs, lastScene ? windowEndMs : windowEndMs - 1);
     const capped = Math.min(max, Math.max(windowStartMs, tMs));
     const clock = useClockStore.getState();
     clock.setCurrentMs(Math.min(clock.durationMs, slotStartMs + capped));
@@ -391,15 +391,21 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           {layout.segments.map((seg) => {
             const left = xOf(seg.fromTMs);
             const width = Math.max(innerW * MIN_SEGMENT_VISUAL, xOf(seg.toTMs) - left);
+            // A segment living entirely inside a trimmed transition half pins at the lane edge, cued like edge keys.
+            const outside = seg.toTMs <= windowStartMs || seg.fromTMs >= windowEndMs;
             return (
               // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven editing surface — keyboard editing rides the window-level Delete/arrow handlers
               <div
                 key={`${seg.fromId}-${seg.toId}`}
                 className={`anim-seg${selectedSegment === seg.docIndex ? " selected" : ""}${
                   seg.ease === "jump" ? " jump" : ""
-                }${activeSegment?.docIndex === seg.docIndex ? " at-playhead" : ""}`}
+                }${activeSegment?.docIndex === seg.docIndex ? " at-playhead" : ""}${outside ? " overhang" : ""}`}
                 style={{ left, width }}
-                title={`Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`} — drag to move, click for easing, right-click to delete`}
+                title={
+                  outside
+                    ? `Animation at ${(seg.fromTMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
+                    : `Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`} — drag to move, click for easing, right-click to delete`
+                }
                 onPointerDown={(e) => onSegmentPointerDown(e, seg.docIndex, seg.fromId, seg.toId)}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}

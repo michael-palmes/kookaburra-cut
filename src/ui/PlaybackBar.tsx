@@ -16,7 +16,7 @@ import { sceneMenuItems } from "./sceneMenu";
 import { msFromTrackX, playheadFraction, sceneCellSpans } from "./scrubMath";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** Segmented per-scene playback bar: cells tile the track on start boundaries (`sceneCellSpans`) so the playhead lines up with every scene edge; the play button is deliberately not accent-coloured; right-click renames, duplicates, re-times or deletes a scene; disabled while exporting. */
+/** Segmented per-scene playback bar: cells tile the track on ATTRIBUTION boundaries (`sceneCellSpans`, mid-transition to mid-transition) so the drawn scene change sits halfway through each overlap and the bold name agrees with its cell; the play button is deliberately not accent-coloured; right-click renames, duplicates, re-times or deletes a scene; disabled while exporting. */
 export function PlaybackBar({
   project,
   playing,
