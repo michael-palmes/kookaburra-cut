@@ -4554,6 +4554,12 @@ body {
   padding: 0;
   border: 0;
 }
+/* Aspect chips carry a proportioned rect glyph before the label. */
+.export-aspect-row .chip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
 
 .export-list {
   flex: 1;
@@ -5249,6 +5255,12 @@ body {
 .inspector-popover-item.active {
   color: var(--accent-text);
   background: var(--accent-subtle);
+}
+
+/* The aspect popover's proportioned rect glyphs sit clear of the label. */
+.inspector-popover-item > .aspect-icon {
+  flex: none;
+  margin-right: var(--space-3);
 }
 
 .inspector-popover-item.danger {

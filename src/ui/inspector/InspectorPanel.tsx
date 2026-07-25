@@ -10,6 +10,7 @@ import {
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
+import { AspectIcon } from "../exportIcons";
 import { projectRows } from "../inspectorOptions";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
@@ -463,6 +464,7 @@ export function InspectorPanel({
                         setOpenRow(null);
                       }}
                     >
+                      <AspectIcon name={name} />
                       {name}
                     </button>
                   ))}
