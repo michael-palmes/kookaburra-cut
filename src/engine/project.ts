@@ -16,6 +16,7 @@ import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
 import { fsUrl } from "./media";
 import { ensureProjectTrusted } from "./projectTrust";
+import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { ensureSampleAssets } from "./sampleAssets";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
@@ -55,6 +56,8 @@ export interface ProjectManifest {
   persistent?: string;
   /** Deck-wide overlay: a camera-locked panel with a shaped cutout the scene renders through, merged with each scene's sidecar `frame` (see `mergeFrameSpec`). Absent means no overlay anywhere, the byte-identical legacy path. */
   frame?: FrameSpec;
+  /** The display transform (v9 · PR 8): `{ toneMapping?, exposure? }`, parsed with the degrade guard. Absent means ACES at 1.0, the byte-identical default. */
+  render?: unknown;
   /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
   lighting?: unknown;
 }
@@ -127,6 +130,8 @@ export interface LoadedProject {
   sceneEffectDefaults: Record<number, EffectsConfig>;
   /** The manifest's validated project-default lighting layer, if it declares one (manifest `lighting`); provided to the canvas tree via `ProjectLightingContext`. */
   projectLighting?: LightingSpec;
+  /** The project's display transform (manifest `render`); ACES at 1.0 when absent. */
+  renderSettings: RenderSettings;
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -565,6 +570,7 @@ export async function loadProject(
     manifest.lighting === undefined
       ? undefined
       : (normalizeLighting(manifest.lighting, `${id}/project.json`) ?? undefined);
+  const renderSettings = parseRenderSettings(manifest.render, `${id}/project.json`);
 
   // Theme-swapped scenes replace the project-wide effect base wholesale (sparse; entries only where a sidecar overrides the theme, possibly `{}`, which turns effects OFF there).
   const sceneEffectDefaults: Record<number, EffectsConfig> = {};
@@ -640,5 +646,6 @@ export async function loadProject(
     sceneFrames,
     sceneEffectDefaults,
     projectLighting,
+    renderSettings,
   };
 }

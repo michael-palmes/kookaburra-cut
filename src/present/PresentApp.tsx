@@ -143,7 +143,12 @@ export function PresentApp() {
         useEditorStore.getState().setTheme(loaded.theme);
         useEffectsStore
           .getState()
-          .setProjectEffects(loaded.effects, loaded.effectOverrides, loaded.sceneEffectDefaults);
+          .setProjectEffects(
+            loaded.effects,
+            loaded.effectOverrides,
+            loaded.sceneEffectDefaults,
+            loaded.renderSettings,
+          );
         const present = usePresentStore.getState();
         present.reset();
         present.setSceneCount(loaded.slots.length);

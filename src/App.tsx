@@ -85,6 +85,8 @@ import {
   writeProjectManifestSnapshot,
 } from "./engine/projectEdit";
 import { TrustDeniedError } from "./engine/projectTrust";
+import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
+import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
 import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
@@ -554,6 +556,35 @@ export default function App() {
     }
   }
 
+  async function handleSetRenderSettings(settings: RenderSettings) {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    try {
+      const slug = workspaceSlug(current.id);
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      const manifest = JSON.parse(manifestBefore);
+      // ACES at 1.0 is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
+      if (settings.toneMapping === "aces" && settings.exposure === 1) delete manifest.render;
+      else manifest.render = settings;
+      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      pushHistory({
+        label: "render settings",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+      handleTimingChanged();
+    } catch (e) {
+      setToast({ kind: "error", message: `Render settings failed: ${String(e)}` });
+    }
+  }
+
   async function handleRemoveSoundtrack() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
@@ -925,7 +956,12 @@ export default function App() {
       useEditorStore.getState().setTheme(loaded.theme);
       useEffectsStore
         .getState()
-        .setProjectEffects(loaded.effects, loaded.effectOverrides, loaded.sceneEffectDefaults);
+        .setProjectEffects(
+          loaded.effects,
+          loaded.effectOverrides,
+          loaded.sceneEffectDefaults,
+          loaded.renderSettings,
+        );
       const clock = useClockStore.getState();
       clock.setDurationMs(loaded.totalMs);
       // Keep the scrub position within the (possibly shorter) new project.
@@ -1650,6 +1686,7 @@ export default function App() {
                   <color attach="background" args={[theme.colors.background]} />
                   <PreviewClock />
                   <ExportBridge />
+                  <RenderSettingsApplier />
                   {project && (
                     <CompositorDriver
                       projectId={project.id}
@@ -1970,6 +2007,7 @@ export default function App() {
               onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
               onPasteBackground={(i) => void handlePasteBackground(i)}
               onDuplicateSceneAt={handleDuplicateScene}
+              onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
             />
           )}
         </div>

@@ -7,7 +7,6 @@ import {
   LUT3DEffect,
   RenderPass,
   ToneMappingEffect,
-  ToneMappingMode,
   VignetteEffect,
 } from "postprocessing";
 import {
@@ -25,10 +24,12 @@ import {
 } from "three";
 import type { EffectsConfig, EffectsOverride } from "../theme/tokens";
 import { DeterministicGrainEffect } from "./DeterministicGrainEffect";
+import { ExposureEffect } from "./ExposureEffect";
 import { blendEffectParams, resolveEffectParams, sceneBaseEffects } from "./effectParams";
 import { useEffectsStore } from "./effectsStore";
 import { MSAA_SAMPLES } from "./format";
 import { type CubeLut, parseCubeLut } from "./lutCube";
+import { composerToneMapping } from "./renderSettings";
 import type { Resolved } from "./sceneTimeline";
 
 /** Effect keys that are actually wired into the chain (all four starter effects as of cut 2). */
@@ -42,6 +43,7 @@ interface ComposerState {
   bloom: BloomEffect | null;
   vignette: VignetteEffect | null;
   grain: DeterministicGrainEffect | null;
+  exposure: ExposureEffect;
   lut: LUT3DEffect | null;
   size: Vector2;
   key: string;
@@ -177,10 +179,14 @@ export function resolveFrameEffects(resolved: Resolved): EffectsConfig | null {
 /** Lazily builds (and resizes/rebuilds, disposing the old) the composer for the project's effect set at the live drawing-buffer size; the RenderPass's scene/camera are set per-frame by the caller. */
 export function ensureComposer(gl: WebGLRenderer, w: number, h: number): ComposerState {
   const keys = projectEffectKeys();
-  const { projectDefault, overrides, sceneDefaults } = useEffectsStore.getState();
+  const { projectDefault, overrides, sceneDefaults, renderSettings } = useEffectsStore.getState();
   // The LUT urls are part of the cache key: the compiled shader bakes the LUT's size into defines, so a project swap to a different LUT set must rebuild the chain (mid-project swaps within one project are uniform-only, the url set is project-stable).
   const lutUrls = keys.has("lut") ? collectLutUrls(projectDefault, overrides, sceneDefaults) : [];
-  const key = [...keys].sort().join(",") + (lutUrls.length ? `|${lutUrls.join("|")}` : "");
+  // The tone-mapping mode is a shader define, so it belongs in the rebuild key (mode swaps are per-project, never per-frame).
+  const key =
+    [...keys].sort().join(",") +
+    (lutUrls.length ? `|${lutUrls.join("|")}` : "") +
+    `|tm:${renderSettings.toneMapping}`;
   if (
     composerState &&
     composerState.size.x === w &&
@@ -214,8 +220,9 @@ export function ensureComposer(gl: WebGLRenderer, w: number, h: number): Compose
   const bloom = keys.has("bloom") ? new BloomEffect({ mipmapBlur: true }) : null;
   const vignette = keys.has("vignette") ? new VignetteEffect() : null;
   const grain = keys.has("grain") ? new DeterministicGrainEffect() : null;
-  // ToneMapping owns the single ACES tone-map; the pass's one sRGB encode still happens at output.
-  const tonemap = new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC });
+  // ToneMapping owns the single display tone-map (the project mode; ACES by default); the pass's one sRGB encode still happens at output. Exposure multiplies immediately BEFORE it, mirroring gl.toneMappingExposure's position in three's pipeline.
+  const tonemap = new ToneMappingEffect({ mode: composerToneMapping(renderSettings.toneMapping) });
+  const exposure = new ExposureEffect();
   // The colour-grade LUT comes after tone-mapping (LDR `.cube` grades are authored for tone-mapped input; postprocessing feeds it sRGB via its inputColorSpace and converts back); BlendFunction.NORMAL so `intensity` drives blendMode.opacity, a uniform not a recompile; seeded with the first LUT url's texture, applyEffectUniforms binds the frame's actual LUT.
   let lut: LUT3DEffect | null = null;
   if (lutUrls.length > 0) {
@@ -228,7 +235,7 @@ export function ensureComposer(gl: WebGLRenderer, w: number, h: number): Compose
     }
     lut = new LUT3DEffect(seedTex, { blendFunction: BlendFunction.NORMAL });
   }
-  const chain = [bloom, vignette, grain, tonemap, lut].filter(
+  const chain = [bloom, vignette, grain, exposure, tonemap, lut].filter(
     (e): e is NonNullable<typeof e> => e !== null,
   );
   composer.addPass(new EffectPass(undefined, ...chain));
@@ -240,6 +247,7 @@ export function ensureComposer(gl: WebGLRenderer, w: number, h: number): Compose
     bloom,
     vignette,
     grain,
+    exposure,
     lut,
     size: new Vector2(w, h),
     key,
@@ -249,6 +257,7 @@ export function ensureComposer(gl: WebGLRenderer, w: number, h: number): Compose
 
 /** CPU-write every effect uniform from the resolved params + frame seed. Effects off → amount 0. */
 function applyEffectUniforms(cs: ComposerState, cfg: EffectsConfig, seed: number): void {
+  cs.exposure.exposure = useEffectsStore.getState().renderSettings.exposure;
   if (cs.bloom) {
     cs.bloom.intensity = cfg.bloom?.intensity ?? 0;
     if (cfg.bloom) {
