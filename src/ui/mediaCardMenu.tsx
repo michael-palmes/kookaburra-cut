@@ -3,7 +3,7 @@ import { copyToGlobalScreenshots, deleteMedia, type MediaMeta } from "../engine/
 import type { ContextMenuItem } from "./ContextMenu";
 import type { MediaActionContext } from "./MediaBrowser";
 
-/** The media-card ⋯/right-click menu (2026-07-12): shared by the media library, the Project-tab media drill-in and the Background ▸ Video picker. Edit opens the video editor (a rendered output reopens its own edit; videos only); the primary action is the host's ("Insert" pastes into Claude, "Select" picks); Delete is the house two-step to the Trash (refused while a scene still references the file). Rename is deliberately absent for now (Michael's call). */
+/** The media-card ⋯/right-click menu (2026-07-12): shared by the media library, the Project-tab media drill-in and the Background ▸ Video picker. Edit opens the video editor (a rendered output reopens its own edit; videos only); the primary action is the host's ("Insert" pastes into Claude, "Select" picks); Delete is the house two-step to the Trash (refused while a scene or edit still references the file). Rename is deliberately absent for now (Michael's call). */
 export function mediaCardMenu(opts: {
   slug: string;
   /** The non-destructive primary action's label ("Insert" | "Select"). */
@@ -55,7 +55,7 @@ export function mediaCardMenu(opts: {
         label: "Delete",
         confirmLabel: "Really delete?",
         danger: true,
-        title: "Moves the file to the Trash (refused while a scene still uses it)",
+        title: "Moves the file to the Trash (refused while a scene or edit still uses it)",
         onSelect: () => {
           opts.onError(null);
           deleteMedia(opts.slug, rel)
