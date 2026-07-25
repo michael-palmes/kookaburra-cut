@@ -684,7 +684,7 @@ export function EditorApp() {
                 onStyle={handleTapStyle}
                 colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
                 onColor={handleTapColor}
-                size={doc.tapSize ?? 1}
+                size={doc.tapSize ?? 1.25}
                 onSize={handleTapSize}
               />
             </div>
@@ -727,7 +727,7 @@ export function EditorApp() {
                 tapMarkerScope={tapMarkerScope}
                 tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
                 tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                tapSize={doc.tapSize ?? 1}
+                tapSize={doc.tapSize ?? 1.25}
               />
             )}
           </div>

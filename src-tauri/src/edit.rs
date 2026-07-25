@@ -78,7 +78,7 @@ pub struct EditDoc {
     /// Tap colour id; absent = the default (first) colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_color: Option<String>,
-    /// Tap size multiplier on the default dot size; absent = 1.
+    /// Tap size multiplier on the default dot size; absent = 1.25.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_size: Option<f64>,
 }
@@ -128,11 +128,63 @@ fn write_doc(path: &Path, doc: &EditDoc) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
+/// Editor tap preferences remembered per project (`<slug>/edits/_tap_prefs.json`): the last saved style/colour/size seeds the next new edit. Editor convenience only, never part of the deterministic project schema.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct TapPrefs {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tap_style: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tap_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tap_size: Option<f64>,
+}
+
+fn tap_prefs_path(root: &Path, slug: &str) -> std::path::PathBuf {
+    edits_dir(root, slug).join("_tap_prefs.json")
+}
+
+/// Missing or corrupt prefs read as empty; they are a convenience, never an error.
+fn read_tap_prefs(root: &Path, slug: &str) -> TapPrefs {
+    std::fs::read_to_string(tap_prefs_path(root, slug))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Best-effort atomic write on every save carrying tap fields; a prefs failure never fails the save. Merges per field: a doc that never touched a field must not wipe another edit's saved preference.
+fn write_tap_prefs(root: &Path, slug: &str, doc: &EditDoc) {
+    if doc.tap_style.is_none() && doc.tap_color.is_none() && doc.tap_size.is_none() {
+        return;
+    }
+    let mut prefs = read_tap_prefs(root, slug);
+    if doc.tap_style.is_some() {
+        prefs.tap_style = doc.tap_style.clone();
+    }
+    if doc.tap_color.is_some() {
+        prefs.tap_color = doc.tap_color.clone();
+    }
+    if doc.tap_size.is_some() {
+        prefs.tap_size = doc.tap_size;
+    }
+    let path = tap_prefs_path(root, slug);
+    let Some(dir) = path.parent() else { return };
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let Ok(text) = serde_json::to_string_pretty(&prefs) else {
+        return;
+    };
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, text + "\n").is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
 fn read_doc(path: &Path) -> Result<EditDoc, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("reading edit at {}: {e}", path.display()))?;
-    let doc: EditDoc =
-        serde_json::from_str(&text).map_err(|e| format!("edit is corrupt: {e}"))?;
+    let doc: EditDoc = serde_json::from_str(&text).map_err(|e| format!("edit is corrupt: {e}"))?;
     if doc.version > EDIT_VERSION {
         return Err(format!(
             "this edit uses document version {} — it needs a newer Kookaburra Cut",
@@ -232,6 +284,7 @@ async fn create_default_doc(
         return Err("only videos can be edited".into());
     }
     let fps = if probe.fps > 0.0 { probe.fps } else { 60.0 };
+    let prefs = read_tap_prefs(root, slug);
     Ok(EditDoc {
         version: EDIT_VERSION,
         name: name.to_owned(),
@@ -259,9 +312,9 @@ async fn create_default_doc(
             hold_ms: None,
         }],
         taps: Vec::new(),
-        tap_style: None,
-        tap_color: None,
-        tap_size: None,
+        tap_style: prefs.tap_style,
+        tap_color: prefs.tap_color,
+        tap_size: prefs.tap_size,
     })
 }
 
@@ -318,7 +371,11 @@ pub async fn reset_edit(
 /// The pending editor target (read once by the editor window on boot).
 #[tauri::command]
 pub fn get_editor_target(editor: State<'_, EditorState>) -> Result<Option<EditTarget>, String> {
-    Ok(editor.0.lock().map_err(|_| "editor state poisoned")?.clone())
+    Ok(editor
+        .0
+        .lock()
+        .map_err(|_| "editor state poisoned")?
+        .clone())
 }
 
 /// Load an edit document (schema-validated by serde; a corrupt file returns a readable error).
@@ -347,7 +404,9 @@ pub fn save_edit(
     let root = workspace::require_root(&app, &settings)?;
     workspace::validate_slug(&slug)?;
     workspace::validate_slug(&name)?;
-    write_doc(&edit_path(&root, &slug, &name), &doc)
+    write_doc(&edit_path(&root, &slug, &name), &doc)?;
+    write_tap_prefs(&root, &slug, &doc);
+    Ok(())
 }
 
 /// Names of a project's saved edits.
@@ -365,7 +424,10 @@ pub fn list_edits(
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) == Some("json") {
                 if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    names.push(stem.to_owned());
+                    // Leading underscore = editor sidecar (_tap_prefs), not an edit.
+                    if !stem.starts_with('_') {
+                        names.push(stem.to_owned());
+                    }
                 }
             }
         }
@@ -454,7 +516,12 @@ fn tap_windows<'a>(
             let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
             let start = clip.start_ms as f64 + (tap.source_ms - clip.in_ms) as f64 / speed;
             let clip_end = clip.start_ms as f64 + (clip.out_ms - clip.in_ms) as f64 / speed;
-            windows.push((tap, *clip, start, (start + TAP_ANIMATION_DURATION_MS).min(clip_end)));
+            windows.push((
+                tap,
+                *clip,
+                start,
+                (start + TAP_ANIMATION_DURATION_MS).min(clip_end),
+            ));
         }
     }
     windows
@@ -537,8 +604,10 @@ fn build_render_args(
     };
     let mut out_label = "outv".to_string();
     if !windows.is_empty() {
-        let tap_size = doc.tap_size.unwrap_or(1.0).clamp(0.25, 4.0);
-        let dot_px = ((w.min(h) as f64) * TAP_DOT_SIZE_FRACTION * TAP_DOT_CANVAS_HEADROOM
+        let tap_size = doc.tap_size.unwrap_or(1.25).clamp(0.25, 4.0);
+        let dot_px = ((w.min(h) as f64)
+            * TAP_DOT_SIZE_FRACTION
+            * TAP_DOT_CANVAS_HEADROOM
             * tap_size)
             .round() as u32;
         let [cr, cg, cb] = tap_color_mult(doc);
@@ -555,10 +624,10 @@ fn build_render_args(
             let scaled_h = (f64::from(w) * f64::from(source.height) / f64::from(source.width))
                 .round()
                 .min(f64::from(h));
-            let px = ((f64::from(w) - scaled_w) / 2.0).floor()
-                + tap.pos[0].clamp(0.0, 1.0) * scaled_w;
-            let py = ((f64::from(h) - scaled_h) / 2.0).floor()
-                + tap.pos[1].clamp(0.0, 1.0) * scaled_h;
+            let px =
+                ((f64::from(w) - scaled_w) / 2.0).floor() + tap.pos[0].clamp(0.0, 1.0) * scaled_w;
+            let py =
+                ((f64::from(h) - scaled_h) / 2.0).floor() + tap.pos[1].clamp(0.0, 1.0) * scaled_h;
             let idx = input_order.len() + i;
             let start_s = start_ms / 1000.0;
             let end_s = end_ms / 1000.0;
@@ -729,7 +798,10 @@ pub async fn render_edit(
         }
 
         if code == Some(0) {
-            let _ = on_progress.send(RenderProgress { frame: total, total });
+            let _ = on_progress.send(RenderProgress {
+                frame: total,
+                total,
+            });
             rendered = true;
             break;
         }
@@ -883,15 +955,15 @@ mod tests {
                 "-framerate",
                 "60",
                 "-i",
-                "/cache/tapdot/glow/tapdot_%02d.png"
+                "/cache/tapdot/target/tapdot_%02d.png"
             ]
             .map(String::from)
         );
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
-        // 87 = round(1080 * 0.07 * 1.15); the window clamps at the 1s clip end.
+        // 109 = round(1080 * 0.07 * 1.15 * 1.25); the window clamps at the 1s clip end.
         assert!(filter.contains(
-            ";[1:v]format=rgba,colorchannelmixer=rr=1.000000:gg=1.000000:bb=1.000000,\
-             scale=87:87:flags=lanczos[dot0];"
+            ";[1:v]format=rgba,colorchannelmixer=rr=0.250980:gg=0.611765:bb=1.000000,\
+             scale=109:109:flags=lanczos[dot0];"
         ));
         assert!(filter.contains("[outv][dot0]overlay=x=480.000-overlay_w/2:y=810.000-overlay_h/2:"));
         assert!(filter.contains("eof_action=pass:enable='between(t\\,0.500000\\,1.000000)'[tapv0]"));
@@ -950,14 +1022,14 @@ mod tests {
         assert!(args.contains(&"/cache/tapdot/target/tapdot_%02d.png".to_string()));
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
         assert!(filter.contains("colorchannelmixer=rr=0.886275:gg=0.447059:bb=0.356863"));
-        // Unknown ids fall back to the defaults (glow, light).
+        // Unknown ids fall back to the defaults (target, blue).
         d.tap_style = Some("not-a-style".into());
         d.tap_color = Some("not-a-colour".into());
         let (args, _) =
             build_render_args(&d, "/out/x.mp4", false, Some(Path::new("/cache/tapdot"))).unwrap();
-        assert!(args.contains(&"/cache/tapdot/glow/tapdot_%02d.png".to_string()));
+        assert!(args.contains(&"/cache/tapdot/target/tapdot_%02d.png".to_string()));
         let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
-        assert!(filter.contains("colorchannelmixer=rr=1.000000:gg=1.000000:bb=1.000000"));
+        assert!(filter.contains("colorchannelmixer=rr=0.250980:gg=0.611765:bb=1.000000"));
     }
 
     #[test]

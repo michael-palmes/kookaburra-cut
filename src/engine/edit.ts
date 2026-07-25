@@ -49,7 +49,7 @@ export interface EditDoc {
   tapStyle?: string;
   /** Tap colour id (tapStyles.generated.ts); absent = the default colour. */
   tapColor?: string;
-  /** Tap size multiplier on the default dot size; absent = 1. */
+  /** Tap size multiplier on the default dot size; absent = 1.25. */
   tapSize?: number;
 }
 
