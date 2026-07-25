@@ -86,7 +86,7 @@ import {
 import { TrustDeniedError } from "./engine/projectTrust";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
-import { ProjectIdContext } from "./engine/sceneContext";
+import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
   resyncFollowMediaDuration,
   syncFollowMediaDurations,
@@ -1659,59 +1659,61 @@ export default function App() {
                   )}
                   {/* Scenes resolve assets against the project that owns them, the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
                   <ProjectIdContext.Provider value={project?.id ?? null}>
-                    <Suspense fallback={null}>
-                      {project?.scenes.map((scene, i) => {
-                        const slot = project.slots[i];
-                        const SceneComponent = scene.Scene;
-                        return (
-                          <SceneHost
-                            key={`${project.id}:${slot.id}`}
-                            index={i}
-                            id={slot.id}
-                            startMs={slot.startMs}
-                            durationMs={slot.durationMs}
-                            doc={project.sceneDocs[i]}
-                            theme={project.sceneThemes[i]}
-                            frame={project.sceneFrames[i]}
-                          >
-                            {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
-                            <AssetBoundary label={`scene ${i + 1}`}>
-                              {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
-                              <SceneBackground />
-                              <SceneComponent />
-                              {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
-                              <DevicesFallback />
-                              <LayeredScreenshotFallback />
-                              <VideoWindowFallback />
-                              <TextFallback />
-                            </AssetBoundary>
-                          </SceneHost>
-                        );
-                      })}
-                      {/* The persistent (hoisted morph) layer mounts once as a sibling of the scene hosts, outside every SceneContext, so it reads global time and tweens across scene seams. The compositor owns its per-frame visibility. */}
-                      {project?.persistent && (
-                        <PersistentLayer key={`${project.id}:persistent`}>
-                          <project.persistent />
-                        </PersistentLayer>
-                      )}
-                      {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
-                      {project?.scenes.map((_, i) => {
-                        const frame = project.sceneFrames[i];
-                        if (!frame) return null;
-                        const slot = project.slots[i];
-                        return (
-                          <FramePanel
-                            key={`${project.id}:panel:${slot.id}`}
-                            index={i}
-                            startMs={slot.startMs}
-                            durationMs={slot.durationMs}
-                            doc={project.sceneDocs[i]}
-                            theme={project.sceneThemes[i]}
-                            frame={frame}
-                          />
-                        );
-                      })}
-                    </Suspense>
+                    <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
+                      <Suspense fallback={null}>
+                        {project?.scenes.map((scene, i) => {
+                          const slot = project.slots[i];
+                          const SceneComponent = scene.Scene;
+                          return (
+                            <SceneHost
+                              key={`${project.id}:${slot.id}`}
+                              index={i}
+                              id={slot.id}
+                              startMs={slot.startMs}
+                              durationMs={slot.durationMs}
+                              doc={project.sceneDocs[i]}
+                              theme={project.sceneThemes[i]}
+                              frame={project.sceneFrames[i]}
+                            >
+                              {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
+                              <AssetBoundary label={`scene ${i + 1}`}>
+                                {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
+                                <SceneBackground />
+                                <SceneComponent />
+                                {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
+                                <DevicesFallback />
+                                <LayeredScreenshotFallback />
+                                <VideoWindowFallback />
+                                <TextFallback />
+                              </AssetBoundary>
+                            </SceneHost>
+                          );
+                        })}
+                        {/* The persistent (hoisted morph) layer mounts once as a sibling of the scene hosts, outside every SceneContext, so it reads global time and tweens across scene seams. The compositor owns its per-frame visibility. */}
+                        {project?.persistent && (
+                          <PersistentLayer key={`${project.id}:persistent`}>
+                            <project.persistent />
+                          </PersistentLayer>
+                        )}
+                        {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
+                        {project?.scenes.map((_, i) => {
+                          const frame = project.sceneFrames[i];
+                          if (!frame) return null;
+                          const slot = project.slots[i];
+                          return (
+                            <FramePanel
+                              key={`${project.id}:panel:${slot.id}`}
+                              index={i}
+                              startMs={slot.startMs}
+                              durationMs={slot.durationMs}
+                              doc={project.sceneDocs[i]}
+                              theme={project.sceneThemes[i]}
+                              frame={frame}
+                            />
+                          );
+                        })}
+                      </Suspense>
+                    </ProjectLightingContext.Provider>
                   </ProjectIdContext.Provider>
                 </Canvas>
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. */}

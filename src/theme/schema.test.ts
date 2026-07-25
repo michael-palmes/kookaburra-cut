@@ -103,7 +103,8 @@ describe("builtin theme documents (structure pins)", () => {
     expect(theme?.colors.accent).toBe("#3ad1c4");
     // The bundled-font gate: a parse-degrade back to Inter would render the spike's headlines in the wrong face while still verifying byte-identical.
     expect(theme?.typography.headline).toEqual({ family: "Space Grotesk", weight: 600 });
-    expect(theme?.lighting?.key).toEqual({
+    // v9 normalises the theme file's `key` alias to `sun` in memory; the values stay verbatim.
+    expect(theme?.lighting?.sun).toEqual({
       azimuthDeg: -30,
       elevationDeg: 42,
       intensity: 1.9,
@@ -136,7 +137,7 @@ describe("builtin theme documents (structure pins)", () => {
     expect(theme?.colors.background).toBe("#f4f6f8");
     // The lineup evolution: the SemiBold headline face.
     expect(theme?.typography.headline).toEqual({ family: "Inter", weight: 600 });
-    expect(theme?.lighting?.key.intensity).toBe(2.0);
+    expect(theme?.lighting?.sun?.intensity).toBe(2.0);
     expect(theme?.lighting?.ambient).toBe(0.85);
     expect(theme?.environment?.source).toBe("kookaburra:monochrome-studio");
     // The white cyc floor with REAL map shadows: a parse-degrade here would silently turn the gate's floor scene back into a flat background.
@@ -315,7 +316,7 @@ describe("builtin theme documents (structure pins)", () => {
     expect(theme?.environment?.source).toBe(environment);
     expect(theme?.textAnimation?.in).toBe(animIn);
     // Every lineup theme lights its stage (SceneStage would silently stand down without).
-    expect(theme?.lighting?.key).toBeDefined();
+    expect(theme?.lighting?.sun).toBeDefined();
     // A gradient backdrop must name a gradient that actually exists in the theme (bundled themes never use inline specs).
     if (theme?.backdrop?.type === "gradient") {
       expect(theme.backdrop.gradient).toBeDefined();
@@ -474,7 +475,7 @@ describe("parseThemeDoc degrade behaviour", () => {
       },
     };
     const theme = parseThemeDoc(doc, "t");
-    expect(theme?.lighting?.key.intensity).toBe(2.2);
+    expect(theme?.lighting?.sun?.intensity).toBe(2.2);
     expect(theme?.lighting?.fills).toHaveLength(1);
     expect(theme?.lighting?.shadow?.mapSize).toBe(2048);
 
@@ -725,45 +726,91 @@ describe("parseThemeDoc degrade behaviour", () => {
   });
 });
 
-describe("parseLightingOverride + mergeLighting (v8 · M2 scene-doc staging)", () => {
+describe("parseLightingOverride + mergeLighting (v8 · M2 scene-doc staging, v9 layers)", () => {
   const base: NonNullable<ReturnType<typeof parseThemeDoc>>["lighting"] = {
-    key: { azimuthDeg: 35, elevationDeg: 55, intensity: 2 },
+    sun: { azimuthDeg: 35, elevationDeg: 55, intensity: 2 },
     fills: [{ azimuthDeg: -120, elevationDeg: 18, intensity: 0.8 }],
     ambient: 0.85,
     shadow: { technique: "map", softness: 0.5, opacity: 0.3, mapSize: 2048, bias: -0.0005 },
   };
 
-  it("parses partial overrides and drops invalid fields", () => {
+  it("parses partial overrides (the v8 key alias included) and drops invalid fields", () => {
     const ov = parseLightingOverride(
       { key: { azimuthDeg: 60, elevationDeg: 14, intensity: 2.4 }, ambient: "high" },
       "t",
     );
-    expect(ov?.key?.elevationDeg).toBe(14);
+    expect(ov?.sun?.elevationDeg).toBe(14);
     expect(ov?.ambient).toBeUndefined();
     expect(parseLightingOverride({ nothing: true }, "t")).toBeUndefined();
   });
 
-  it("merges field-level: an override key replaces the theme key wholesale", () => {
-    const merged = mergeLighting(base, {
-      key: { azimuthDeg: 60, elevationDeg: 14, intensity: 2.4 },
+  it("merges field-level: an override sun replaces the theme sun wholesale", () => {
+    const merged = mergeLighting(base, undefined, {
+      sun: { azimuthDeg: 60, elevationDeg: 14, intensity: 2.4 },
     });
-    expect(merged?.key).toEqual({ azimuthDeg: 60, elevationDeg: 14, intensity: 2.4 });
+    expect(merged?.sun).toEqual({ azimuthDeg: 60, elevationDeg: 14, intensity: 2.4 });
     expect(merged?.fills).toBe(base?.fills);
     expect(merged?.ambient).toBe(0.85);
     expect(merged?.shadow?.mapSize).toBe(2048);
   });
 
-  it("without a base, applies only a complete override (key + ambient)", () => {
-    expect(mergeLighting(undefined, { ambient: 0.4 })).toBeUndefined();
-    const built = mergeLighting(undefined, {
-      key: { azimuthDeg: 0, elevationDeg: 30, intensity: 1.5 },
+  it("the project layer sits between theme and scene", () => {
+    const merged = mergeLighting(base, { ambient: 0.3 }, { ambient: 0.1 });
+    expect(merged?.ambient).toBe(0.1);
+    expect(mergeLighting(base, { ambient: 0.3 }, undefined)?.ambient).toBe(0.3);
+    expect(mergeLighting(base, { ambient: 0.3 }, undefined)?.sun).toEqual(base?.sun);
+  });
+
+  it("without a base, applies only a complete override (sun + ambient)", () => {
+    expect(mergeLighting(undefined, undefined, { ambient: 0.4 })).toBeUndefined();
+    const built = mergeLighting(undefined, undefined, {
+      sun: { azimuthDeg: 0, elevationDeg: 30, intensity: 1.5 },
       ambient: 0.4,
     });
-    expect(built?.fills).toEqual([]);
+    expect(built?.fills).toBeUndefined();
     expect(built?.ambient).toBe(0.4);
   });
 
-  it("returns the base untouched when there is no override", () => {
-    expect(mergeLighting(base, undefined)).toBe(base);
+  it("is value-identical to the base when there is no override (the v8 no-op contract)", () => {
+    const merged = mergeLighting(base, undefined, undefined);
+    expect(merged).toEqual(base);
+    expect(merged?.sun).toBe(base?.sun);
+    expect(merged?.fills).toBe(base?.fills);
+    expect(merged?.shadow).toBe(base?.shadow);
+  });
+});
+
+describe("v8 -> v9 theme parse equivalence (the whole-lineup pin)", () => {
+  // The v9 parser must produce the exact v8 values for every lit builtin, not merely parse: a subtle intensity or colour change here would move every themed baseline. Raw JSON `key` compares against normalised `sun` verbatim.
+  const LIT_DOCS = [
+    kookaburraMidnightDoc,
+    kookaburraStudioWhiteDoc,
+    kookaburraPaperDoc,
+    kookaburraLoftDoc,
+    kookaburraGalleryDoc,
+    kookaburraSunriseDoc,
+    kookaburraPacificDoc,
+    kookaburraNeonDoc,
+    kookaburraAbyssDoc,
+    kookaburraEmberDoc,
+  ] as const;
+
+  it.each(LIT_DOCS.map((doc) => [doc.id, doc] as const))("%s resolves verbatim", (_id, doc) => {
+    const raw = doc.lighting as {
+      key: Record<string, unknown>;
+      fills?: Record<string, unknown>[];
+      ambient: number;
+      shadow?: Record<string, unknown>;
+    };
+    const parsed = parseThemeDoc(doc, "pin")?.lighting;
+    expect(parsed?.sun).toEqual(raw.key);
+    expect(parsed?.fills ?? []).toEqual(raw.fills ?? []);
+    expect(parsed?.ambient).toBe(raw.ambient);
+    if (raw.shadow) expect(parsed?.shadow).toEqual(raw.shadow);
+    else expect(parsed?.shadow).toBeUndefined();
+    // No v9 fields appear from thin air on a v8 document.
+    expect(parsed?.lights).toBeUndefined();
+    expect(parsed?.fixtures).toBeUndefined();
+    expect(parsed?.environment).toBeUndefined();
   });
 });

@@ -56,7 +56,7 @@ describe("usesThemedSceneState / buildSceneRenderStates (the null-for-legacy gat
   it("opts in when the project theme itself carries a v8 block", () => {
     const lit = makeTheme({
       lighting: {
-        key: { azimuthDeg: 35, elevationDeg: 55, intensity: 2.2 },
+        sun: { azimuthDeg: 35, elevationDeg: 55, intensity: 2.2 },
         fills: [],
         ambient: 0.5,
       },

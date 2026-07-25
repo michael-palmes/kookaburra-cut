@@ -6,7 +6,7 @@ import { TextureLoader } from "three";
 import { assetVersionSuffix } from "../store/assetVersionStore";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
-import type { EffectsConfig, EffectsOverride, Theme } from "../theme/tokens";
+import type { EffectsConfig, EffectsOverride, LightingSpec, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
@@ -20,6 +20,7 @@ import { ensureSampleAssets } from "./sampleAssets";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
+import { normalizeLighting } from "./sceneLighting";
 import {
   buildSceneTimeline,
   type SceneSlot,
@@ -54,6 +55,8 @@ export interface ProjectManifest {
   persistent?: string;
   /** Deck-wide overlay: a camera-locked panel with a shaped cutout the scene renders through, merged with each scene's sidecar `frame` (see `mergeFrameSpec`). Absent means no overlay anywhere, the byte-identical legacy path. */
   frame?: FrameSpec;
+  /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
+  lighting?: unknown;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -122,6 +125,8 @@ export interface LoadedProject {
   audio?: ProjectAudio;
   /** BASE effect stacks for scenes whose sidecar swaps the theme (sparse, keyed by scene index); a wholesale replacement of the project default for that scene, LUT urls already resolved. See `sceneBaseEffects` (engine/effectParams.ts). */
   sceneEffectDefaults: Record<number, EffectsConfig>;
+  /** The manifest's validated project-default lighting layer, if it declares one (manifest `lighting`); provided to the canvas tree via `ProjectLightingContext`. */
+  projectLighting?: LightingSpec;
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -485,6 +490,12 @@ export async function loadProject(
   });
   const effects = resolveLutUrls(id, theme.effects ?? {});
 
+  // The project-default lighting layer: validated with the usual degrade guard, so a malformed block loads the project unlit rather than failing the load.
+  const projectLighting =
+    manifest.lighting === undefined
+      ? undefined
+      : (normalizeLighting(manifest.lighting, `${id}/project.json`) ?? undefined);
+
   // Theme-swapped scenes replace the project-wide effect base wholesale (sparse; entries only where a sidecar overrides the theme, possibly `{}`, which turns effects OFF there).
   const sceneEffectDefaults: Record<number, EffectsConfig> = {};
   sceneDocs.forEach((doc, i) => {
@@ -558,5 +569,6 @@ export async function loadProject(
     deckFrame,
     sceneFrames,
     sceneEffectDefaults,
+    projectLighting,
   };
 }

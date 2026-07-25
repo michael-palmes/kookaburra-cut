@@ -70,6 +70,128 @@ export interface ThemeLighting {
   shadow?: ThemeShadowSpec;
 }
 
+// v9 (Scene Lighting) types: the full lighting block shared by all three layers (theme -> project -> scene), each present field fully replacing the layer below (the mergeLighting contract). Absent at every layer resolves to the v8 path verbatim (null-for-legacy). Deep validation lives in engine/sceneLighting.ts.
+
+/** Where a light's transform is resolved: fixed in the scene, riding the camera, or orbiting the camera's target. Camera/subject spaces resolve per render target at the compositor seam (transition frames use different cameras for A and B). */
+export type LightSpace = "world" | "camera" | "subject";
+
+/** Dual placement, losslessly convertible (engine/orbit.ts); `mode` records whichever the user last edited. Orbit placement uses the light's own distance, never the legacy LIGHT_RADIUS. */
+export type Placement =
+  | { mode: "orbit"; azimuthDeg: number; elevationDeg: number; distance: number }
+  | { mode: "point"; position: [number, number, number] };
+
+/** Environment reflections for the lighting block: same shape as `ThemeEnvironment` plus the explicit `"none"` source ("no reflections", distinct from absent = inherit the layer below). Lighting only; never a visible background. */
+export interface EnvironmentSpec {
+  /** `"kookaburra:<slug>"` | `"kookaburra:softbox"` | a project-relative `.hdr`/`.exr` path | `"none"`. */
+  source: string;
+  intensity: number;
+  rotationDeg: number;
+}
+
+/** The promoted key light. `azimuthDeg`/`elevationDeg`/`intensity`/`color` are byte-compatible with `ThemeLightSpec`, so a v8 `key` block parses straight in. */
+export interface SunSpec {
+  azimuthDeg: number;
+  elevationDeg: number;
+  intensity: number;
+  /** 1000..20000. Wins over `colorToken` and `color` when present. */
+  kelvin?: number;
+  /** Theme colour token name, resolved against the active theme at render time. */
+  colorToken?: string;
+  /** sRGB hex. Kept for v8 compatibility. */
+  color?: string;
+  /** Apparent angular diameter in degrees. Real sun is 0.53. Drives shadow softness. */
+  angularDeg?: number;
+  /** Default true. */
+  castShadow?: boolean;
+  /** Default true. False keeps the entry for keyframing without lighting anything. */
+  enabled?: boolean;
+}
+
+interface LightBase {
+  id: string;
+  name?: string;
+  /** Default true. */
+  enabled?: boolean;
+  /** Default "world". */
+  space?: LightSpace;
+  intensity: number;
+  /** 1000..20000. Wins over `colorToken` and `color` when present. */
+  kelvin?: number;
+  /** Theme colour token name, used when `kelvin` is absent. */
+  colorToken?: string;
+  color?: string;
+  /** Default false. Rejected at parse for point (cube-map cost) and area (three.js cannot). */
+  castShadow?: boolean;
+  placement: Placement;
+  /** Aim point in the light's own space. Default [0,0,0]. Ignored by point lights. */
+  target?: [number, number, number];
+}
+
+/** One free light. `angleDeg` is the FULL cone in degrees (three's `angle` is radian half-angle); `distance`/`decay` default to three's own defaults (0 and 2). */
+export type LightSpec =
+  | (LightBase & { type: "directional" })
+  | (LightBase & { type: "point"; distance?: number; decay?: number })
+  | (LightBase & {
+      type: "spot";
+      angleDeg: number;
+      penumbra: number;
+      distance?: number;
+      decay?: number;
+    })
+  | (LightBase & { type: "area"; width: number; height: number });
+
+export type FixtureForm = "tube" | "panel" | "ring" | "strip" | "bulb";
+
+/** Repeat expansion for a fixture: `count` instances spaced along `axis`, optionally mirrored across `mirrorAxis`; `jitter` (0..1) varies per instance, seeded from the fixture id (engine/rng.ts, never Math.random). */
+export interface FixtureRepeat {
+  /** 1..FIXTURE_MAX_COUNT. */
+  count: number;
+  spacing: number;
+  axis: "x" | "y" | "z";
+  /** Duplicate the whole run mirrored across this axis. */
+  mirrorAxis?: "x" | "y" | "z";
+  /** 0..1 per-instance variation, seeded from the fixture id. */
+  jitter?: number;
+}
+
+/** An emissive light fixture: visible geometry (`emissive` above 1.0 crosses the bloom threshold) plus a paired real light (`lightIntensity: 0` = purely decorative). */
+export interface FixtureSpec {
+  id: string;
+  form: FixtureForm;
+  name?: string;
+  enabled?: boolean;
+  /** Default "world". */
+  space?: LightSpace;
+  /** Visible geometry, world units. tube: [length, diameter]. panel: [w, h]. ring: [outerDiameter, thickness]. strip: [length, width]. bulb: [diameter, -]. */
+  size: [number, number];
+  kelvin?: number;
+  colorToken?: string;
+  color?: string;
+  /** Emissive multiplier. Above 1.0 to cross the bloom threshold. */
+  emissive: number;
+  /** The paired real light. 0 means purely decorative geometry. */
+  lightIntensity: number;
+  /** Also bake this fixture into the scene environment for crisp reflections on glossy surfaces. World-space static poses only. */
+  envMirror?: boolean;
+  placement: Placement;
+  rotationDeg?: [number, number, number];
+  repeat?: FixtureRepeat;
+}
+
+/** v9 lighting. Absent at every layer resolves to the v8 path verbatim. `key` is accepted as an alias for `sun` on read and normalised to `sun` in memory; nothing rewrites theme files. */
+export interface LightingSpec {
+  environment?: EnvironmentSpec;
+  sun?: SunSpec;
+  ambient?: number;
+  /** Legacy v8 fills, kept so existing themes parse unchanged. New work uses `lights`. */
+  fills?: ThemeLightSpec[];
+  lights?: LightSpec[];
+  fixtures?: FixtureSpec[];
+  shadow?: ThemeShadowSpec;
+  /** Bundled preset id last applied by the picker. The renderer never reads it. */
+  preset?: string;
+}
+
 /** Environment reflections (IBL): `source` is a bundled HDRI id (`kookaburra:<name>`), a Lightformer preset id (`kookaburra:softbox`), or a project-relative `.hdr` path (user themes). Preloaded before frame 0 via `preloadEnvironments`. */
 export interface ThemeEnvironment {
   source: string;
@@ -171,7 +293,8 @@ export interface Theme {
   };
   textAnimation?: TextAnimationSpec;
   card?: ThemeCard;
-  lighting?: ThemeLighting;
+  /** v9 shape in memory (the v8 `key` alias normalises to `sun` on read); theme JSON files stay v8. */
+  lighting?: LightingSpec;
   environment?: ThemeEnvironment;
   backdrop?: ThemeBackdrop;
   background?: ThemeBackground;

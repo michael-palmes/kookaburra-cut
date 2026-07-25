@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Theme } from "../theme/tokens";
+import type { LightingSpec, Theme } from "../theme/tokens";
 import type { FormatInfo } from "../toolkit/types";
 import type { SceneDoc } from "./sceneDocSchema";
 
@@ -22,6 +22,9 @@ export const ProjectIdContext = createContext<string | null>(null);
 
 /** The mounted scene's sidecar document, supplied by `<SceneHost>` from `LoadedProject.sceneDocs` and read by `useSceneText`/`useSceneDevices`; null when the scene has no sidecar, which then renders exactly as before. */
 export const SceneDocContext = createContext<SceneDoc | null>(null);
+
+/** The project-default lighting layer (`LoadedProject.projectLighting`), the middle layer of theme -> project -> scene; provided beside `ProjectIdContext` inside the canvas so `SceneStage` resolves it per scene. Null when the manifest declares none, which resolves exactly as before. */
+export const ProjectLightingContext = createContext<LightingSpec | null>(null);
 
 /** The mounted scene's resolved theme (the project theme unless the sidecar overrides `themeId`); `useTheme()` reads this first, falling back to the editor store for UI chrome, which deliberately keeps the project theme since per-scene render state is applied at the compositor seam instead. */
 export const SceneThemeContext = createContext<Theme | null>(null);

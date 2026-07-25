@@ -254,7 +254,7 @@ describe("parseSceneDoc", () => {
     // The long-shadow gradient scene rides entirely on sidecar staging overrides.
     const gradient = parseSceneDoc(themeSpikeGradientDoc, "theme-spike/03-gradient.json");
     expect(gradient?.backdrop).toEqual({ type: "gradient", gradient: "glow" });
-    expect(gradient?.lighting?.key?.elevationDeg).toBe(16);
+    expect(gradient?.lighting?.sun?.elevationDeg).toBe(16);
     expect(gradient?.lighting?.shadow?.technique).toBe("map");
 
     const image = parseSceneDoc(themeSpikeImageDoc, "theme-spike/04-image.json");
@@ -298,7 +298,7 @@ describe("parseSceneDoc", () => {
       "test",
     );
     expect(doc?.backdrop).toEqual({ type: "gradient", gradient: "brand" });
-    expect(doc?.lighting?.key?.elevationDeg).toBe(16);
+    expect(doc?.lighting?.sun?.elevationDeg).toBe(16);
     expect(doc?.lighting?.ambient).toBeUndefined();
     const bad = parseSceneDoc({ version: 1, backdrop: { type: "floor" } }, "test");
     expect(bad?.backdrop).toBeUndefined();
