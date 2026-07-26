@@ -24,7 +24,7 @@
       },
       {
         "id": "k2",
-        "tMs": 2700,
+        "tMs": 2200,
         "pose": { "target": [0, 0.15, 0], "azimuthDeg": 6, "elevationDeg": 3, "distance": 5.0 }
       }
     ],

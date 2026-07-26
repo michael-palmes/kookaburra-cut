@@ -7,7 +7,7 @@
   "scenes": [
     {
       "file": "scenes/01-pacific-open.tsx",
-      "durationMs": 2800,
+      "durationMs": 1600,
       "transition": {
         "type": "crossfade",
         "durationMs": 600
@@ -15,7 +15,7 @@
     },
     {
       "file": "scenes/02-paper-editorial.tsx",
-      "durationMs": 3000,
+      "durationMs": 1600,
       "transition": {
         "type": "crossfade",
         "durationMs": 600
@@ -23,7 +23,7 @@
     },
     {
       "file": "scenes/03-neon-type.tsx",
-      "durationMs": 2600,
+      "durationMs": 1600,
       "transition": {
         "type": "crossfade",
         "durationMs": 600
@@ -31,7 +31,7 @@
     },
     {
       "file": "scenes/04-ember-device.tsx",
-      "durationMs": 3200,
+      "durationMs": 2400,
       "transition": {
         "type": "crossfade",
         "durationMs": 600
@@ -39,7 +39,7 @@
     },
     {
       "file": "scenes/05-abyss-camera.tsx",
-      "durationMs": 3000,
+      "durationMs": 2400,
       "transition": {
         "type": "crossfade",
         "durationMs": 600
@@ -47,7 +47,7 @@
     },
     {
       "file": "scenes/06-sunrise-close.tsx",
-      "durationMs": 2600
+      "durationMs": 1600
     }
   ]
 }

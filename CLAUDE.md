@@ -24,7 +24,7 @@ pnpm format             # biome format --write .
 # Bundled gate projects take NO prefix (showcase-tour); workspace fixtures take ws:.
 pnpm kookaburra:run --action verify --project ws:launch-2026 --aspect all
 pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:9 --codec libx264
-pnpm gate               # the standard two-leg gate pair (showcase-tour + ws:launch-2026, 16:9)
+pnpm gate               # the standard gate pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
 
 # SEE a frame without driving the app: one deterministic frame via the export path → PNG
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
