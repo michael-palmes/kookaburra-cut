@@ -4,6 +4,7 @@ import { useCameraEditStore } from "../engine/cameraEditStore";
 import { clampToStage, projectToStage, worldPerPixel } from "../engine/cameraProject";
 import type { CameraPose } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
+import { useSceneIsBanded } from "../engine/depthStageRegistry";
 import type { LoadedProject } from "../engine/project";
 import type { RigDoc } from "../engine/sceneCameraEdit";
 import { setKeyPose } from "../engine/sceneCameraEdit";
@@ -47,6 +48,7 @@ export function CameraPathOverlay({
     onDocChanged,
   );
   const currentMs = useClockStore((s) => s.currentMs);
+  const banded = useSceneIsBanded(sceneIndex);
   const [rect, setRect] = useState({ width: 0, height: 0 });
   const [drag, setDrag] = useState<DotDrag | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -109,11 +111,13 @@ export function CameraPathOverlay({
             },
             aspect,
             doc,
+            undefined,
+            banded,
           ),
         ] as const;
       }),
     );
-  }, [track, aspect, doc]);
+  }, [track, aspect, doc, banded]);
 
   const path = useMemo(() => {
     if (!track || !shape || rect.width === 0) return null;

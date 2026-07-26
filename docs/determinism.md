@@ -522,6 +522,39 @@ samples in `engine/sceneRig.ts` (pure, no three.js, unit-tested). The invariants
   pose still produces bit-for-bit the matrix it always did. The project-level
   track gains no roll channel.
 
+### Depth bands and the travel envelope
+
+A rig needs something to fly through, and a full-bleed layer sized for a static
+camera stops being full-bleed once one travels. Both come from one summary:
+
+- **The envelope is a fixed-count sample, not a frame read.** `rigEnvelope`
+  (`engine/sceneRig.ts`) samples the track at exactly `ENVELOPE_SAMPLES` (64)
+  evenly spaced instants across its authored span and reports the largest
+  lateral and vertical excursion, the nearest and furthest distance from the
+  content plane, and the fov range. The count is EXPORT CONTRACT: sizing maths
+  that depended on frame rate or scene length would resolve differently in
+  preview and export.
+- **Sizing only, never the pose.** `envelopeOverscan(env, frame, z, minimum)`
+  turns the envelope into "how many base frames wide must a layer at depth `z`
+  be", and takes the existing constant as its FLOOR. A rig can therefore only
+  ever ask for more; a rig-less scene resolves the constant unchanged, which is
+  what keeps every existing project byte-identical. `VideoWindow`'s
+  `STAGE_OVERSCAN` is the one existing layer that reads it: its backing stage is
+  a real world-space plane, so travel can bring its edge into frame. The fixed
+  background does NOT read it and needs nothing, because its quad is rewritten
+  from the live camera every draw and so cannot show an edge at any pose.
+- **DepthStage band depths are pinned.** `foreground` 1.8, `content` 0,
+  `midground` −2.4, `backdrop` −5.5 (`toolkit/stage/DepthStage.tsx`), chosen to
+  read as parallax while staying inside the cyclorama's back wall at z −6. Each
+  band sizes its rect through `envelopeOverscan` at its own depth, so nearer
+  bands (which the camera passes closer to) get more overscan than far ones.
+- **The envelope resolves from context, not a registry.** `useRigEnvelope` reads
+  the scene doc already provided by `SceneHost`, so preview and export compute it
+  from the same input by construction rather than by a plumbing convention. The
+  DepthStage *registry* exists only so the editor's bounds advisory can tell a
+  banded scene from a staged one; it is UI-only and the render path never reads
+  it.
+
 ## Layered screenshot
 
 A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
@@ -1110,7 +1143,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `596c4a79…` | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `27d6383b…` | — | — | — | — | — |
 
 > **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
 > aimed at the camera-space origin, which IS the camera, so every such rim light

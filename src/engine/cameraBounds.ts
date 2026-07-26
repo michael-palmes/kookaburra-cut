@@ -135,13 +135,17 @@ export function stagedBackdrop(
   return backdrop && backdrop.type !== "none" ? backdrop : undefined;
 }
 
-/** Check one applied pose against whatever the scene stages. Rules, in order: a video window's oversized stage plane, then a cyclorama floor, then a vertical backdrop plane. Nothing staged is always ok. */
+/** Check one applied pose against whatever the scene stages. Rules, in order: a scene laid out in depth bands (nothing to check, it sizes itself), a video window's oversized stage plane, a cyclorama floor, then a vertical backdrop plane. Nothing staged is always ok. */
 export function checkCameraBounds(
   pose: CameraPose,
   aspect: number,
   doc: SceneDoc | undefined,
   themeBackdrop?: ThemeBackdrop,
+  banded = false,
 ): BoundsVerdict {
+  // A DepthStage scene sizes every band from the camera's own travel envelope, so its keys pass
+  // by construction; warning about them would be noise.
+  if (banded) return OK;
   if (doc?.videoWindow) {
     // The stage plane sits at the content plane, oversized by the overscan factor; the base frame at the base distance is the unit it is oversized against.
     const baseHalf = frustumHalf({ ...pose, fov: 45 }, aspect, 5);

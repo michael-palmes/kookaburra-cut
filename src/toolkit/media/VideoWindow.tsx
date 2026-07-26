@@ -16,6 +16,7 @@ import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneVideoWindow } from "../../engine/sceneDoc";
 import type { VideoWindowBorder, VideoWindowStage } from "../../engine/sceneDocSchema";
+import { envelopeOverscan } from "../../engine/sceneRig";
 import {
   type NormalizedVideoWindow,
   type NormalizedVideoWindowShadow,
@@ -26,6 +27,7 @@ import { useTimeline } from "../../engine/timeline";
 import { useSceneConsumesVideoWindow } from "../../engine/videoWindowRegistry";
 import { useEditorStore } from "../../store/editorStore";
 import { gradientTexture, useExactMaterial } from "../stage/backdrops";
+import { useRigEnvelope } from "../stage/DepthStage";
 import { AssetBoundary } from "./AssetBoundary";
 import { applyCardMask, cardUniforms, SHADOW_FRAG, SHADOW_VERT } from "./LayeredScreenshot";
 import { preparingVideoTexture } from "./preparingTexture";
@@ -281,8 +283,15 @@ function VideoWindowRenderer({ w }: { w: NormalizedVideoWindow }) {
     { width: aspect, height: 1 },
   );
   const motion = sampleVideoWindowMotion(w.motion, localMs);
-  const stageW = format.frame.width * STAGE_OVERSCAN;
-  const stageH = format.frame.height * STAGE_OVERSCAN;
+  // A camera rig can travel further than the constant's limited-orbit assumption, so the stage
+  // sizes itself from the scene's travel envelope; STAGE_OVERSCAN stays the floor, which is what
+  // keeps every rig-less scene byte-identical.
+  const envelope = useRigEnvelope();
+  const overscan = envelope
+    ? envelopeOverscan(envelope, format.frame, 0, STAGE_OVERSCAN)
+    : STAGE_OVERSCAN;
+  const stageW = format.frame.width * overscan;
+  const stageH = format.frame.height * overscan;
   return (
     <group>
       <BackingStage stage={w.stage} w={stageW} h={stageH} />

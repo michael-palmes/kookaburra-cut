@@ -38,6 +38,7 @@ export function CameraRigFields({
   targetKeyId,
   appliedView,
   aspect,
+  banded,
   previewPose,
   commitPose,
   commitRig,
@@ -49,13 +50,15 @@ export function CameraRigFields({
   targetKeyId: string | null;
   appliedView: CameraPose;
   aspect: number;
+  /** The scene lays out in depth bands, so it sizes itself and needs no advisory. */
+  banded: boolean;
   previewPose: (mutate: (p: SceneDocRigPose) => void) => void;
   commitPose: (mutate: (p: SceneDocRigPose) => void) => void;
   commitRig: (rig: RigDoc) => void;
 }) {
   const broken = brokenRigBindings(rig, doc);
   const options = bindables(doc);
-  const bounds = checkCameraBounds(appliedView, aspect, doc);
+  const bounds = checkCameraBounds(appliedView, aspect, doc, undefined, banded);
 
   const setAimMode = (mode: SceneDocRigAim["mode"]) =>
     commitPose((p) => {

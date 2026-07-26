@@ -390,6 +390,66 @@ export function sampleSceneRig(track: SceneRigTrack, localMs: number): RigPose {
   return fromCanonical(toCanonical(held.pose));
 }
 
+/** How many evenly spaced samples summarise a rig's travel. FIXED and documented: the envelope feeds SIZING maths, which must land on the same numbers in preview and export, so it can never depend on frame rate or scene length. EXPORT CONTRACT. */
+export const ENVELOPE_SAMPLES = 64;
+
+/** What a rig's travel asks of the set: how far off-centre it goes, how close and far it gets from the content plane, and the lens range it uses. Sizing maths only, never the per-frame pose. */
+export interface RigEnvelope {
+  /** Largest |x| the camera reaches. */
+  lateral: number;
+  /** Largest |y|. */
+  vertical: number;
+  /** Distance from the content plane (z = 0) at the nearest and furthest points of travel. */
+  minDistance: number;
+  maxDistance: number;
+  minFov: number;
+  maxFov: number;
+}
+
+/** Summarise a rig's travel from a fixed number of samples across its authored span. */
+export function rigEnvelope(track: SceneRigTrack, fallbackFov = CAMERA.fov): RigEnvelope {
+  const first = track.keys[0].tMs;
+  const last = track.keys[track.keys.length - 1].tMs;
+  const span = last - first;
+  let lateral = 0;
+  let vertical = 0;
+  let minDistance = Number.POSITIVE_INFINITY;
+  let maxDistance = 0;
+  let minFov = Number.POSITIVE_INFINITY;
+  let maxFov = 0;
+  for (let i = 0; i < ENVELOPE_SAMPLES; i++) {
+    // A zero-span track (one key, or every key at the same instant) samples that one pose.
+    const t = span <= 0 ? first : first + (span * i) / (ENVELOPE_SAMPLES - 1);
+    const pose = sampleSceneRig(track, t);
+    lateral = Math.max(lateral, Math.abs(pose.position[0]));
+    vertical = Math.max(vertical, Math.abs(pose.position[1]));
+    const distance = Math.abs(pose.position[2]);
+    minDistance = Math.min(minDistance, distance);
+    maxDistance = Math.max(maxDistance, distance);
+    const fov = pose.fov ?? fallbackFov;
+    minFov = Math.min(minFov, fov);
+    maxFov = Math.max(maxFov, fov);
+  }
+  return { lateral, vertical, minDistance, maxDistance, minFov, maxFov };
+}
+
+/** How much a full-bleed layer at depth `z` must be oversized to stay full-bleed for this rig's whole travel: the widest the frame ever gets on that plane, plus how far off-centre the camera ever goes, as a multiple of the base frame. `minimum` keeps an existing constant as the floor, so a rig can only ever ask for MORE, never shrink what a rig-less scene renders. Pure sizing maths, evaluated once per scene, never per frame. */
+export function envelopeOverscan(
+  env: RigEnvelope,
+  frame: { width: number; height: number },
+  z = 0,
+  minimum = 1,
+): number {
+  const distance = Math.max(0.1, env.maxDistance - z);
+  const halfH = distance * Math.tan((env.maxFov * Math.PI) / 360);
+  const halfW = halfH * (frame.width / frame.height);
+  return Math.max(
+    minimum,
+    (env.lateral + halfW) / (frame.width / 2),
+    (env.vertical + halfH) / (frame.height / 2),
+  );
+}
+
 /** The rig's default pose: the base camera expressed as a free pose (the Reset target, and the seed when Free mode is switched on with nothing authored). */
 export function defaultRigPose(): SceneDocRigPose {
   return {

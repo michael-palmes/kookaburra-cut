@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } fro
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
+import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useFormat } from "../../engine/format";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
@@ -906,6 +907,7 @@ function CameraSectionBody({
   const free = mode === "rig";
   const format = useFormat();
   const aspect = format.width / format.height;
+  const banded = useSceneIsBanded(sceneIndex);
   const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const cameraOpen = useCameraEditStore((s) => s.open);
@@ -1035,6 +1037,7 @@ function CameraSectionBody({
         targetKeyId={rigKey?.id ?? null}
         appliedView={appliedViewAt(rigTargetTMs)}
         aspect={aspect}
+        banded={banded}
         previewPose={previewRigPose}
         commitPose={commitRigPose}
         commitRig={(next: RigDoc) => void commitRig(next)}
