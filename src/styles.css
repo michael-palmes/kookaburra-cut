@@ -377,6 +377,12 @@ body {
   border-radius: var(--radius-xs);
 }
 
+/* Disabled selects dim like disabled buttons do. */
+.select:disabled {
+  color: var(--text-disabled);
+  border-color: var(--border-subtle);
+}
+
 .muted {
   color: var(--text-secondary);
   font-size: var(--text-sm);
@@ -646,11 +652,6 @@ body {
   font-size: var(--text-xs);
   align-self: center;
 }
-.chip-icon {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
 .modal-title-row {
   display: flex;
   gap: var(--space-3);
@@ -700,17 +701,20 @@ body {
      and the thumbnails' contained images end up centred off-screen (all-black cards). */
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-5);
+  /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
+     floor, then a column drops (the inspector rail and narrow editor panels sit at 2). */
+  grid-template-columns: repeat(
+      auto-fill,
+      minmax(max(140px, calc((100% - 2 * var(--space-4)) / 3)), 1fr)
+    );
+  gap: var(--space-4);
   padding-right: var(--space-2);
 }
 
-/* Compact host (the editor's 1/3-width side panel): smaller cells, tighter gap. */
+/* Compact host (the editor's 1/3-width side panel): fill the panel and scroll; rows keep
+   natural height instead of squashing. */
 .media-browser.compact .media-grid {
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-4);
   padding-right: 0;
-  /* Fill the panel and scroll; rows keep natural height instead of squashing. */
   flex: 1 1 0;
   min-height: 0;
   grid-auto-rows: max-content;
@@ -2412,12 +2416,22 @@ body {
 
 /* ── Timeline (§ M5.2) — magnetic clip strip + ruler + playhead ─────────────── */
 
+/* The stage column: preview on top, the toolbar tucked under it so the media panel
+   beside them runs full height down to the timeline. */
+.editor-stage-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tools left-aligned against the media panel's edge; timecode keeps the right. */
 .editor-toolbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface-panel);
   border-top: 1px solid var(--border-default);
   user-select: none;
@@ -2463,8 +2477,9 @@ body {
 
 /* Fixed width so the ▶/⏸ glyph swap doesn't reflow the toolbar. */
 .editor-play {
-  width: 44px;
+  width: 64px;
   padding: 0;
+  margin-left: var(--space-5);
 }
 
 /* Fixed width so "Render to project" ↔ "Rendering… NN%" doesn't jitter the topbar. */
@@ -2472,8 +2487,9 @@ body {
   min-width: 172px;
 }
 
-/* Stage row split (decision 2026-07-05): shared media browser left (1/3), preview
-   right (2/3). The toolbar + timeline below stay full-width. */
+/* Stage row split (decision 2026-07-05): shared media browser left (1/3, full height
+   down to the timeline), stage column right (preview over the toolbar). The timeline
+   below stays full-width. */
 .editor-split {
   flex: 1 1 auto;
   min-height: 0;
@@ -2859,20 +2875,20 @@ body {
 
 .kind-picker {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
 }
 
-/* The type step: three kind cards per row need the media step's width. */
+/* The type step: twelve presets sit four across by three high. */
 .wizard-kind-wide {
-  width: min(56rem, calc(100% - 2rem));
+  width: min(68rem, calc(100% - 2rem));
 }
 
 .kind-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-5);
+  padding: var(--space-4);
   font: inherit;
   text-align: left;
   color: var(--text-primary);
@@ -3041,6 +3057,178 @@ body {
   font-weight: 590;
 }
 
+/* Scene placement strip: fixed-width thumb cards with a draggable insertion
+   indicator that rubber-bands between the gaps (insertMath owns the geometry). */
+.insert-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.insert-viewport {
+  position: relative;
+}
+
+/* Edge fades cue scenes sitting off-screen in an overflowing strip. */
+.insert-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+}
+
+.insert-fade.start {
+  left: 0;
+  background: linear-gradient(to right, var(--surface-elevated), transparent);
+}
+
+.insert-fade.end {
+  right: 0;
+  background: linear-gradient(to left, var(--surface-elevated), transparent);
+}
+
+.insert-strip {
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  border-radius: var(--radius-sm);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  cursor: grab;
+  /* Cards scale to fit instead; the rare overflow scrolls with no bar chrome. */
+  scrollbar-width: none;
+}
+
+.insert-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.insert-strip:active {
+  cursor: grabbing;
+}
+
+/* Snapping fights the drag's programmatic edge scroll. */
+.insert-strip.dragging {
+  scroll-snap-type: none;
+}
+
+.insert-strip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.insert-cards {
+  position: relative;
+  display: flex;
+  gap: var(--space-4);
+  /* Top inset seats the playhead handle; side insets hold it at the resting start/end gaps (a scroller can't reach negative x), and the end gap mirrors the start exactly, so no trailing spacer. */
+  padding: 30px var(--space-6) var(--space-2);
+}
+
+.insert-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Cards grow to fill the row, so the end gap hugs the last scene instead of floating at the far edge. */
+  flex: 1 1 8.5rem;
+  min-width: 3.5rem;
+  max-width: 16rem;
+  font-size: var(--text-xs);
+  scroll-snap-align: start;
+}
+
+.insert-card-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+}
+
+.insert-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.insert-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: var(--text-secondary);
+}
+
+.insert-indicator {
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 0;
+  transition: left 160ms ease;
+  pointer-events: none;
+}
+
+.insert-indicator.dragging {
+  transition: none;
+}
+
+/* The line grows out of the head's taper, one continuous playhead. */
+.insert-indicator::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: var(--danger-fill);
+  border-radius: 1px;
+}
+
+/* Playhead cap: flat top tapering to the line, dot texture at 20%. */
+.insert-handle {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 26px;
+  background-color: var(--danger-fill);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1.2px);
+  background-size: 5px 5px;
+  background-position: 2px 2.5px;
+  clip-path: polygon(0 0, 100% 0, 100% 52%, 50% 100%, 0 52%);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+}
+
+/* The readout sits apart from the strip as a small info panel. */
+.insert-caption {
+  display: flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+}
+
+.insert-caption svg {
+  flex: none;
+  color: var(--accent);
+}
+
+/* The placement strip needs more shoulder room than the base wizard width. */
+.wizard-place-wide {
+  width: min(64rem, calc(100% - 2rem));
+}
+
 /* Embedded media picker: bounded so the wizard modal, not the grid, owns scrolling. */
 .wizard-media-host {
   max-height: 20rem;
@@ -3051,28 +3239,20 @@ body {
   border-radius: var(--radius-xs);
 }
 
-/* v11 · M2: the pick modals (Change media / Background image) — 4 smaller cards across. */
+/* v11 · M2: the pick modals (Change media / Choose image): wider, with a taller host. */
 .media-modal-wide {
   width: min(66rem, calc(100% - 2rem));
 }
 .media-modal-wide .wizard-media-host {
   max-height: 62vh;
 }
-.media-modal-wide .media-grid {
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3);
-}
 
-/* The wizards' media step: a fixed 3-across grid with room for two full rows. */
+/* The wizards' media step: room for two full rows. */
 .wizard-media-wide {
   width: min(56rem, calc(100% - 2rem));
 }
 .wizard-media-wide .wizard-media-host {
   max-height: min(42rem, 58vh);
-}
-.wizard-media-wide .media-grid {
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
 }
 
 .wizard-media-row {
@@ -3528,6 +3708,11 @@ body {
   opacity: 0.4;
 }
 
+/* A segment pinned at the lane edge (living inside a trimmed transition half) dims like edge keys. */
+.anim-seg.overhang {
+  opacity: 0.4;
+}
+
 /* 2px playhead overshooting the track 4px top/bottom, with a 9×9 square cap. */
 .anim-playhead {
   position: absolute;
@@ -3704,6 +3889,13 @@ body {
 
 .camera-pill-mode:hover {
   background: var(--surface-hover);
+}
+
+/* The reset button disables on a trackless scene; dim like every other disabled control. */
+.camera-pill-mode:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+  background: none;
 }
 
 .camera-pill-mode.active {
@@ -4403,6 +4595,12 @@ body {
   padding: 0;
   border: 0;
 }
+/* Aspect chips carry a proportioned rect glyph before the label. */
+.export-aspect-row .chip {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
 
 .export-list {
   flex: 1;
@@ -5098,6 +5296,12 @@ body {
 .inspector-popover-item.active {
   color: var(--accent-text);
   background: var(--accent-subtle);
+}
+
+/* The aspect popover's proportioned rect glyphs sit clear of the label. */
+.inspector-popover-item > .aspect-icon {
+  flex: none;
+  margin-right: var(--space-3);
 }
 
 .inspector-popover-item.danger {
@@ -5953,7 +6157,24 @@ img.inspector-scene-thumb {
   font-size: var(--text-xs);
 }
 
-/* Embedded 2-up media browser (Background → Image). */
+/* The media browser's segmented toggles sit flush in their bar. */
+.media-browser-toggles .inspector-subtabs {
+  margin: 0;
+}
+/* Both toggles: the browser wraps in a ToggleFieldset, which must flex so the grid inside
+   keeps scrolling in modal hosts. */
+.media-browser > .toggle-fieldset {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Compact segmented tabs (the video window's corner/motion preset rows): four to five glyph-bearing options fit the rail. */
+.inspector-subtabs.subtabs-compact .inspector-subtab {
+  gap: 4px;
+  padding: 0 7px;
+}
+
+/* Embedded media browser in the inspector rail (the shared 140px card floor sits it at 2-up). */
 .inspector-media-host {
   display: flex;
   flex-direction: column;
@@ -5962,8 +6183,6 @@ img.inspector-scene-thumb {
 }
 
 .inspector-media-host .media-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
   padding-right: 0;
 }
 

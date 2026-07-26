@@ -20,7 +20,7 @@ export interface RenderStateFingerprint {
   background: string | null;
   backgroundIntensity: number;
   /** Compositor A/B transition-target formats (part of the transition contract); null until the run's first transition frame allocates them. */
-  compositorTargets: { sdr: string; hdr: string | null; samples: number } | null;
+  compositorTargets: { sdr: string | null; hdr: string | null; samples: number } | null;
   lights: { type: string; intensity: number; color: string }[];
   /** Lit (standard/physical) materials only; the specular-relevant surface. */
   materials: {

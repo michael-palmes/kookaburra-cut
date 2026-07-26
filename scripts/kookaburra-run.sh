@@ -12,9 +12,10 @@
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
 #
 # Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot (required)
-#         --project <id>           (default: the app's default project; theme-previews →
-#                  theme-starter, option-previews → preview-lab)
-#         --aspect 16:9|9:16|1:1|4:5|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
+#         --project <id[,id...]>   (default: the app's default project; theme-previews →
+#                  theme-starter, option-previews → preview-lab; verify/export accept a
+#                  comma list and run every project in ONE app boot, e.g. the gate pair)
+#         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
 #         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene)
 #         --codec  libx264|h264_videotoolbox|prores_ks (default: libx264)
@@ -75,10 +76,15 @@ elif [[ ! -x "$SIDECAR" ]]; then
 fi
 # Workspace projects (v6, "ws:<slug>") resolve inside the app against the configured
 # workspace — only bundled projects can be pre-validated against the repo tree here.
-if [[ -n "$PROJECT" && "$PROJECT" != ws:* && ! -f "$ROOT/projects/$PROJECT/project.json" ]]; then
-  echo "kookaburra:run: project '$PROJECT' not found at projects/$PROJECT/project.json" >&2
-  echo "            available: $(ls -1 "$ROOT/projects" 2>/dev/null | tr '\n' ' ')" >&2
-  exit 2
+if [[ -n "$PROJECT" ]]; then
+  IFS=',' read -ra PROJECT_LIST <<<"$PROJECT"
+  for P in "${PROJECT_LIST[@]}"; do
+    if [[ -n "$P" && "$P" != ws:* && ! -f "$ROOT/projects/$P/project.json" ]]; then
+      echo "kookaburra:run: project '$P' not found at projects/$P/project.json" >&2
+      echo "            available: $(ls -1 "$ROOT/projects" 2>/dev/null | tr '\n' ' ')" >&2
+      exit 2
+    fi
+  done
 fi
 # One app instance at a time: dev mode needs Vite's port 1420 to itself, and ANY concurrent
 # instance (dev or packaged) shares $APPDATA caches with this run. Fail fast with

@@ -29,11 +29,12 @@ import { grainSeed } from "./effectParams";
 import {
   drawingBufferSize,
   ensureComposer,
+  releaseComposer,
   renderThroughComposer,
   resolveFrameEffects,
 } from "./effects";
 import { getLoadedEnvironment } from "./environments";
-import { isExporting as isExportingNow } from "./exportState";
+import { isExporting } from "./exportState";
 import { FPS, MSAA_SAMPLES } from "./format";
 import { getFramePanels } from "./framePanelRegistry";
 import { applyFrameLighting } from "./lightingAnimation";
@@ -75,8 +76,9 @@ import {
 /** Renders the active scene(s) for one frame, applying any cross-scene transition; one function called by both preview and export so they cannot drift. Fast path (one scene, no transition): direct `gl.render` to the default framebuffer, byte-identical to v0 (never routed through render targets, which would change the bytes). Transition path (two scenes): each renders to its own `WebGLRenderTarget` (no-fx: sRGB 8-bit, tone-mapped once; fx: HalfFloat linear, un-tone-mapped for the composer), then a fullscreen pass composites them in the display domain. All touched renderer state is snapshotted and restored. See docs/determinism.md. */
 
 interface CompositorState {
-  targetA: WebGLRenderTarget;
-  targetB: WebGLRenderTarget;
+  /** SDR A/B pair for no-fx transition frames, allocated lazily on first use (fx projects' transitions never touch it) and released between windows during export: the WebContent process rides WebKit's 4 GB footprint ceiling at 4K, and each MSAA pair is ~570 MB. */
+  targetA: WebGLRenderTarget | null;
+  targetB: WebGLRenderTarget | null;
   /** HDR (HalfFloat/linear) A/B pair for the fx path, allocated lazily on the first fx transition frame, disposed and nulled on resize alongside the SDR pair. */
   targetAHdr: WebGLRenderTarget | null;
   targetBHdr: WebGLRenderTarget | null;
@@ -209,16 +211,16 @@ function ensureState(w: number, h: number): CompositorState {
   if (state && state.size.x === w && state.size.y === h) return state;
 
   if (state) {
-    state.targetA.dispose();
-    state.targetB.dispose();
-    state.targetA = makeTarget(w, h, false);
-    state.targetB = makeTarget(w, h, false);
+    state.targetA?.dispose();
+    state.targetB?.dispose();
+    state.targetA = null; // every pool re-allocates lazily at the new size on next use
+    state.targetB = null;
     state.targetAHdr?.dispose();
     state.targetBHdr?.dispose();
-    state.targetAHdr = null; // re-allocated on the next fx transition frame
+    state.targetAHdr = null;
     state.targetBHdr = null;
     state.sceneTarget?.dispose();
-    state.sceneTarget = null; // cutout-sized; re-allocated on the next framed scene
+    state.sceneTarget = null;
     state.size.set(w, h);
     return state;
   }
@@ -241,8 +243,8 @@ function ensureState(w: number, h: number): CompositorState {
   slideScene.add(slideMesh);
 
   state = {
-    targetA: makeTarget(w, h, false),
-    targetB: makeTarget(w, h, false),
+    targetA: null,
+    targetB: null,
     targetAHdr: null,
     targetBHdr: null,
     size: new Vector2(w, h),
@@ -268,18 +270,67 @@ function ensureHdrTargets(st: CompositorState): void {
   if (!st.targetBHdr) st.targetBHdr = makeTarget(st.size.x, st.size.y, true);
 }
 
+/** Allocate the SDR pair on first use (lazy, mirroring the HDR pair). */
+function ensureSdrTargets(st: CompositorState): void {
+  if (!st.targetA) st.targetA = makeTarget(st.size.x, st.size.y, false);
+  if (!st.targetB) st.targetB = makeTarget(st.size.x, st.size.y, false);
+}
+
+/** During export, frames release the pools they did not touch, so idle MSAA pairs, the cutout target and the composer never sit resident between windows (each pair is 570-886 MB at 4K and the WebContent process is killed by WebKit near a 4 GB footprint). Preview never releases: a mid-playback realloc would hitch at 60fps. The next window that needs a pool simply re-allocates it through the existing ensure* path, which is a pure function of size, so pixels cannot change; the gate proves it. */
+function releaseIdlePools(used: {
+  sdr?: boolean;
+  hdr?: boolean;
+  sceneTarget?: boolean;
+  composer?: boolean;
+}): void {
+  if (!isExporting()) return;
+  if (!used.composer) releaseComposer();
+  if (!state) return;
+  if (!used.sdr && state.targetA) {
+    state.targetA.dispose();
+    state.targetB?.dispose();
+    state.targetA = null;
+    state.targetB = null;
+  }
+  if (!used.hdr && state.targetAHdr) {
+    state.targetAHdr.dispose();
+    state.targetBHdr?.dispose();
+    state.targetAHdr = null;
+    state.targetBHdr = null;
+  }
+  if (!used.sceneTarget && state.sceneTarget) {
+    state.sceneTarget.dispose();
+    state.sceneTarget = null;
+  }
+}
+
+/** Release every pooled render target (the multi-project autorun calls this between legs so one project's pools never inflate the next leg's footprint); pools re-allocate lazily on next use. */
+export function releaseCompositorPools(): void {
+  if (!state) return;
+  state.targetA?.dispose();
+  state.targetB?.dispose();
+  state.targetA = null;
+  state.targetB = null;
+  state.targetAHdr?.dispose();
+  state.targetBHdr?.dispose();
+  state.targetAHdr = null;
+  state.targetBHdr = null;
+  state.sceneTarget?.dispose();
+  state.sceneTarget = null;
+}
+
 /** Diagnostic snapshot of the compositor's A/B target formats for the verify render-state fingerprint; target type/colorSpace is part of the transition contract, so a cross-build divergence should name itself in one JSON diff. */
 export function compositorTargetFingerprint(): {
-  sdr: string;
+  sdr: string | null;
   hdr: string | null;
   samples: number;
 } | null {
   if (!state) return null;
   const describe = (t: WebGLRenderTarget) => `${t.texture.type}/${t.texture.colorSpace}`;
   return {
-    sdr: describe(state.targetA),
+    sdr: state.targetA ? describe(state.targetA) : null,
     hdr: state.targetAHdr ? describe(state.targetAHdr) : null,
-    samples: state.targetA.samples,
+    samples: MSAA_SAMPLES,
   };
 }
 
@@ -425,7 +476,7 @@ export function renderComposited(
   const applyState = (s: SceneRenderState) => {
     if (sharedEnv) applySceneRenderState(scene, s, sharedEnv, getLoadedEnvironment);
     // Perf-probe env-off pass only (preview diagnostics); exports never see it.
-    if (previewEnvironmentOff() && !isExportingNow()) scene.environment = null;
+    if (previewEnvironmentOff() && !isExporting()) scene.environment = null;
   };
   const restoreSceneState = () => {
     if (!sharedEnv) return;
@@ -493,6 +544,7 @@ export function renderComposited(
       gl.render(scene, camera);
     }
     gl.setRenderTarget(prevTarget);
+    releaseIdlePools({ sceneTarget: !!overlay, composer: !!fx });
     restoreSceneState();
     restoreVisible();
     return;
@@ -509,9 +561,11 @@ export function renderComposited(
   if (fx) {
     gl.toneMapping = NoToneMapping;
     ensureHdrTargets(st);
+  } else {
+    ensureSdrTargets(st);
   }
-  const tgtA = fx ? (st.targetAHdr as WebGLRenderTarget) : st.targetA;
-  const tgtB = fx ? (st.targetBHdr as WebGLRenderTarget) : st.targetB;
+  const tgtA = fx ? (st.targetAHdr as WebGLRenderTarget) : (st.targetA as WebGLRenderTarget);
+  const tgtB = fx ? (st.targetBHdr as WebGLRenderTarget) : (st.targetB as WebGLRenderTarget);
 
   // Persistent layers must not bake into the A/B targets, they'd render into both and cross-fade against themselves (ghosting); hidden here, drawn exactly once over the composite below.
   for (const g of persistent) g.visible = false;
@@ -615,6 +669,12 @@ export function renderComposited(
 
   gl.autoClear = prevAutoClear;
   gl.setRenderTarget(prevTarget);
+  releaseIdlePools({
+    sdr: !fx,
+    hdr: !!fx,
+    sceneTarget: !!(overlayA || overlayB),
+    composer: !!fx,
+  });
   restoreSceneState();
   restoreVisible();
 }

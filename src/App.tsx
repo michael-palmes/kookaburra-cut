@@ -879,7 +879,7 @@ export default function App() {
               ],
             });
             if (pending.slot === "device" || pending.slot === "videoWindow") {
-              const wrote = await resyncFollowMediaDuration(
+              const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
                 next,

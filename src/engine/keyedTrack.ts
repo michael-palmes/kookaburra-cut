@@ -194,6 +194,29 @@ export function removeSegment<P, T extends KeyedTrack<P>>(track: T, docIndex: nu
   };
 }
 
+/** Shrink-fit a track to a new scene duration, walking overhanging segments from the end: an end key past the new end clamps its `tMs` to it (pose untouched); a segment whose clamped span would fall under the minimum gap (including one starting past the end) is removed whole under removeSegment's orphan-key convention, continuing to the previous segment as far as needed. Growth and clean tracks return the track unchanged. */
+export function clampTrackToDuration<P, T extends KeyedTrack<P>>(track: T, durationMs: number): T {
+  let next: T = track;
+  for (;;) {
+    const layout = trackLayout(next);
+    const overhanging = [...layout.segments].reverse().find((s) => s.toTMs > durationMs);
+    if (!overhanging) break;
+    if (overhanging.fromTMs > durationMs - MIN_KEY_GAP_MS) {
+      const removed = removeSegment(next, overhanging.docIndex);
+      if (!removed) break;
+      next = removed;
+      continue;
+    }
+    next = {
+      ...next,
+      keys: next.keys.map((k) =>
+        k.id === overhanging.toId ? { ...k, tMs: Math.round(durationMs) } : k,
+      ),
+    };
+  }
+  return next;
+}
+
 /** Remove a key and every segment referencing it. */
 export function removeKey<P, T extends KeyedTrack<P>>(track: T, keyId: string): T | null {
   if (!track.keys.some((k) => k.id === keyId)) return null;

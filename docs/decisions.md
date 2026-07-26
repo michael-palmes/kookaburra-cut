@@ -48,7 +48,8 @@ The full contract and its failure catalogue are in
 | Transition blending | Mix in the display (encoded sRGB) domain; transition endpoints are byte-equal to their solo neighbours; effects projects blend through the exact ACES forward/inverse pair | A dissolve is a perceptual effect; linear mixing back-loads the fade |
 | Tone mapping | Tone-map once, encode once, per path; the effects composer owns a project's single ACES pass | Two ACES implementations are never mixed across a seam |
 | Exact-colour surfaces | Backdrops, screens, fixed backgrounds and SDF text render unlit with tone mapping off; 3D bodies keep ACES | White through ACES is grey; authored colours must land exactly |
-| Gate economy | The default gate is two runs: one feature-matched project + the legacy sentinel, 16:9. Full matrices only for engine-wide constants, deliberate rebases and phase closes | Data variations are not code paths; verifies are minutes each |
+| Gate economy | The default gate is ONE run: the feature-matched project, 16:9 (`pnpm gate` = showcase-tour). The legacy sentinel (`ws:launch-2026`) gates PRE-MERGE (`pnpm gate:merge`, one boot) and at rebases/phase closes, not per change (2026-07-25, Michael). Full matrices only for engine-wide constants, deliberate rebases and phase closes | Data variations are not code paths; verifies are minutes each; a legacy regression still cannot merge, it is just caught per PR instead of per change |
+| Sentinel trimmed via a documented splice | `ws:launch-2026` re-frozen at 8.2 s on 2026-07-25 (Michael): full-length EQUAL proven same-session, then the trimmed anchor recorded (`eb89826c…`); pre-trim manifest backed up. Any future sentinel edit must follow the same splice procedure | Early in the project the sentinel was a growing per-run time sink (multi-worktree queueing); the splice preserves the evidence chain through the cut, at the accepted cost of dropping past-the-cut frames from the legacy proof |
 | Rebase discipline | Engine-wide constants (fps, MSAA, shadow type, blending domain, atlas order) are rebase events, undertaken deliberately and re-proven | The baseline set is an asset; it moves on purpose or not at all |
 
 ## Project format & authoring
@@ -175,7 +176,7 @@ The full contract and its failure catalogue are in
 | VBV determinism | Software VBV lanes pin encoder threads to 1 | x264 VBV under threads produces identical frames but differing bytes |
 | Loudness | Measured gain only (cached ebur128 through the exact export graph) summed into a single volume slot; true-peak overage warns, never limits | A limiter is content-dependent DSP; a gain is a constant |
 | Render at output fps | 30fps presets step the render clock at 30 directly | Half the render time; the 30fps instants are bit-identical to every second 60fps instant |
-| Aspects | 16:9 / 9:16 / 1:1 standing, 4:5 first-class but feature-scoped in gates | Gate economy |
+| Aspects | 16:9 / 9:16 / 1:1 standing; 4:5 / 5:4 / 3:2 / 2:3 first-class but feature-scoped in gates (whether any joins the standing matrix stays an open question) | Gate economy |
 | Output naming | Preset/custom exports carry a preset suffix; the frozen path keeps the exact legacy filename | Preset output can never overwrite the files baselines hash |
 | Size caps | Estimate vs platform cap with a one-click fit; informative, never blocking | Informative, not paternal |
 

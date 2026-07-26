@@ -15,6 +15,7 @@ import {
   mediaMeta,
 } from "../engine/media";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
+import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
 import { useEscapeClose } from "./useEscapeClose";
 import { VideoPlayer } from "./VideoPlayer";
 
@@ -190,7 +191,7 @@ export interface MediaBrowserProps {
   kinds?: ("video" | "image")[];
   /** Show a Project/Global source toggle: Global browses ~/Kookaburra Cut/screenshots and picking copies the file into this project's assets first (copy-on-use). */
   globalToggle?: boolean;
-  /** Show a Video/Images toggle in the toolbar, defaulting to video (Change media). */
+  /** Show a Video/Images toggle in the toolbar, defaulting to video (Change media). Together with `globalToggle` the browser wraps in a ToggleFieldset, the source switch straddling its top edge. */
   kindToggle?: boolean;
   /** The kind tab the toggle starts on (default "video"). */
   kindDefault?: "video" | "image";
@@ -528,74 +529,72 @@ export function MediaBrowser({
   // The fullscreen preview is a layer of its own: the shared Escape stack closes it first, then a host modal on the next press.
   useEscapeClose(() => setPreview(null), preview !== null);
 
-  return (
-    <div className={`media-browser${compact ? " compact" : ""}`}>
-      {(kindToggle || globalToggle || hint || !hideAdd) && (
+  const sourceRow = globalToggle ? (
+    <SegmentedRow
+      options={[
+        {
+          value: "project",
+          label: "Project",
+          icon: <ProjectIcon />,
+          title: "This project's assets",
+        },
+        {
+          value: "global",
+          label: "Library",
+          icon: <LibraryIcon />,
+          title: "Your media library; picking copies the file into this project",
+        },
+      ]}
+      value={sourceTab}
+      onChange={(tab) => {
+        setSourceTab(tab);
+        setPreview(null);
+      }}
+    />
+  ) : null;
+  const kindRow = kindToggle ? (
+    <SegmentedRow
+      options={[
+        { value: "video", label: "Video", icon: <VideoIcon /> },
+        { value: "image", label: "Images", icon: <ImageIcon /> },
+      ]}
+      value={kindTab}
+      onChange={setKindTab}
+    />
+  ) : null;
+  const addButton = hideAdd ? null : sourceTab === "global" ? (
+    <AddGlobalScreenshotButton onImported={refreshGlobal} />
+  ) : (
+    <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
+  );
+
+  const body = (
+    <>
+      {((!(sourceRow && kindRow) && sourceRow) || kindRow || hint || addButton) && (
         <div className="media-browser-bar">
           <div className="media-browser-toggles">
-            {globalToggle && (
-              <span className="wizard-presets">
-                <button
-                  type="button"
-                  className={`chip chip-icon${sourceTab === "project" ? " selected" : ""}`}
-                  title="This project's assets"
-                  onClick={() => {
-                    setSourceTab("project");
-                    setPreview(null);
-                  }}
-                >
-                  <ProjectIcon /> Project
-                </button>
-                <button
-                  type="button"
-                  className={`chip chip-icon${sourceTab === "global" ? " selected" : ""}`}
-                  title="Your media library; picking copies the file into this project"
-                  onClick={() => {
-                    setSourceTab("global");
-                    setPreview(null);
-                  }}
-                >
-                  <LibraryIcon /> Library
-                </button>
-              </span>
-            )}
-            {kindToggle && sourceTab === "project" && (
-              <span className="wizard-presets">
-                <button
-                  type="button"
-                  className={`chip chip-icon${kindTab === "video" ? " selected" : ""}`}
-                  onClick={() => setKindTab("video")}
-                >
-                  <VideoIcon /> Video
-                </button>
-                <button
-                  type="button"
-                  className={`chip chip-icon${kindTab === "image" ? " selected" : ""}`}
-                  onClick={() => setKindTab("image")}
-                >
-                  <ImageIcon /> Images
-                </button>
-              </span>
-            )}
+            {!(sourceRow && kindRow) && sourceRow}
+            {kindRow}
             {hint && <span className="muted media-browser-hint">{hint}</span>}
           </div>
-          {!hideAdd &&
-            (sourceTab === "global" ? (
-              <AddGlobalScreenshotButton onImported={refreshGlobal} />
-            ) : (
-              <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
-            ))}
+          {addButton}
         </div>
       )}
       {pickError && <span className="modal-error media-add-error">{pickError}</span>}
 
       {sourceTab === "global" ? (
-        visibleGlobal === undefined ? (
+        globalShots === null || visibleGlobal === undefined ? (
           <p className="muted">Reading your library…</p>
-        ) : visibleGlobal.length === 0 ? (
+        ) : globalShots.length === 0 ? (
           <p className="muted">
             Nothing in your library yet: add some here, or use "Add to library" on any project's
             media card.
+          </p>
+        ) : visibleGlobal.length === 0 ? (
+          <p className="muted">
+            {allowedKinds?.includes("image")
+              ? "No images in your library yet."
+              : "No videos in your library yet."}
           </p>
         ) : (
           <div className="media-grid">
@@ -654,6 +653,12 @@ export function MediaBrowser({
           ))}
         </div>
       )}
+    </>
+  );
+
+  return (
+    <div className={`media-browser${compact ? " compact" : ""}`}>
+      {sourceRow && kindRow ? <ToggleFieldset control={sourceRow}>{body}</ToggleFieldset> : body}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
 

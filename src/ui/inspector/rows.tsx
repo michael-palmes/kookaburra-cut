@@ -358,6 +358,62 @@ export function DrillGroup({
   );
 }
 
+/** One exclusive choice in a SegmentedRow; the optional icon leads the label (17px inline SVG, same treatment the camera subtabs shipped with). */
+export interface SegmentedOption<T extends string> {
+  value: T;
+  label: string;
+  icon?: ReactNode;
+  /** Tooltip; useful where the label alone undersells the consequence of switching. */
+  title?: string;
+}
+
+/** The shared segmented toggle (the camera drill's subtabs, promoted): 2-5 exclusive options as one compact pill. Clicking the active option is a no-op. Pair with ToggleFieldset to straddle a bordered section's top edge. */
+export function SegmentedRow<T extends string>({
+  options,
+  value,
+  onChange,
+  className,
+}: {
+  options: SegmentedOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={className ? `inspector-subtabs ${className}` : "inspector-subtabs"}
+      role="tablist"
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="tab"
+          aria-selected={o.value === value}
+          className={`inspector-subtab${o.value === value ? " active" : ""}`}
+          title={o.title}
+          onClick={() => {
+            if (o.value !== value) onChange(o.value);
+          }}
+        >
+          {o.icon}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A bordered section whose segmented control straddles the top edge, centred (the Camera drill treatment). `control` must be a SegmentedRow rendered as a direct child: the straddle CSS targets `.toggle-fieldset > .inspector-subtabs`. */
+export function ToggleFieldset({ control, children }: { control: ReactNode; children: ReactNode }) {
+  return (
+    <div className="toggle-fieldset">
+      {control}
+      {children}
+    </div>
+  );
+}
+
 /** The drill-in back bar: a full-width, eye-catching affordance at the top of every drill-in, accent wash, real hit area, "Back to <context>". */
 export function DrillBack({ label, onClick }: { label: string; onClick: () => void }) {
   return (

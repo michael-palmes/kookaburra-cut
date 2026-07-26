@@ -67,6 +67,17 @@ describe("bundled export presets (the structure pin)", () => {
     }
   });
 
+  it("accepts every aspect the engine exports, including 5:4", () => {
+    for (const aspect of ["16:9", "9:16", "1:1", "4:5", "5:4", "3:2", "2:3"]) {
+      const doc = structuredClone(bundled("kookaburra-master")) as unknown as Record<
+        string,
+        unknown
+      >;
+      doc.favouredAspect = aspect;
+      expect(parseExportPreset(doc, "test"), `aspect ${aspect} rejected`).toBeDefined();
+    }
+  });
+
   it("rejects the impossible combinations at resolve time", () => {
     const doc = structuredClone(bundled("meta-reels"));
     doc.video.codec = "h264_videotoolbox";

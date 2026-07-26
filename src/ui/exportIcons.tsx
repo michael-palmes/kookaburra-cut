@@ -1,6 +1,7 @@
 /** Preset icons for the export modal: inline SVGs only, since the CSP allows no remote assets and the modal is pure UI chrome (never in exported pixels). Brand glyphs carry their platform colours for glanceability; X and TikTok ride `currentColor` so they stay legible in both themes; Kookaburra Cut rows use the accent token via the `export-icon-accent` class. */
 
 import type { ReactElement } from "react";
+import type { AspectName } from "../engine/format";
 
 function brand(path: string, fill: string): ReactElement {
   return (
@@ -155,6 +156,28 @@ const BY_ID: Record<string, ReactElement> = {
 /** The icon for a preset row: brand by id, bookmark for user (`ws:`) presets. */
 export function presetIcon(id: string): ReactElement {
   return BY_ID[id] ?? (id.startsWith("ws:") ? BOOKMARK : GLOBE);
+}
+
+/** A rect proportioned to the ratio (the RowIcon stroke treatment) so aspect lists read at a glance; shared by the inspector's aspect popover and the export modal's aspect chips. */
+export function AspectIcon({ name }: { name: AspectName }): ReactElement {
+  const [rw, rh] = name.split(":").map(Number);
+  const scale = 14 / Math.max(rw, rh);
+  const w = rw * scale;
+  const h = rh * scale;
+  return (
+    <svg
+      className="aspect-icon"
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <rect x={(20 - w) / 2} y={(20 - h) / 2} width={w} height={h} rx="1.5" />
+    </svg>
+  );
 }
 
 /** The footer Export button's glyph (arrow-up-from-tray), inherits the accent button's text colour. */

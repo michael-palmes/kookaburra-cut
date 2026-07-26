@@ -107,7 +107,7 @@ import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
-import { TextFieldRow } from "../SceneTextFields";
+import { HeaderIconField, TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
 import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
@@ -125,6 +125,8 @@ import {
   DrillGroup,
   middleTruncate,
   NumberField,
+  SegmentedRow,
+  ToggleFieldset,
   ToggleRow,
   useDragScrub,
 } from "./rows";
@@ -700,6 +702,61 @@ function FrameShapeIcon({ id }: { id: FrameShape }) {
   );
 }
 
+/** Corner-preset glyphs: one magnified top-left corner drawn at the preset's real rounding. */
+function VwCornerIcon({ id }: { id: "sharp" | "subtle" | "macos" | "rounded" }) {
+  const r = { sharp: 0, subtle: 1.5, macos: 3.5, rounded: 7 }[id];
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {r === 0 ? (
+        <path d="M16.5 4.5H4.5V16.5" />
+      ) : (
+        <path d={`M16.5 4.5H${4.5 + r}A${r} ${r} 0 0 0 4.5 ${4.5 + r}V16.5`} />
+      )}
+    </svg>
+  );
+}
+
+/** Motion-preset pictograms matching sampleVideoWindowMotion: float bobs on Y, drift sways in rotation, tilt swings flush from a tilted start, push grows from 90%. */
+function VwMotionIcon({ id }: { id: VideoWindowMotionPreset }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {id === "none" ? (
+        <rect x="4.5" y="6" width="11" height="8" rx="1.5" />
+      ) : id === "float" ? (
+        <>
+          <rect x="4.5" y="6.5" width="11" height="7" rx="1.5" />
+          <path d="M10 2.5v2M10 15.5v2" />
+        </>
+      ) : id === "drift" ? (
+        <rect x="4.5" y="6.5" width="11" height="7" rx="1.5" transform="rotate(-9 10 10)" />
+      ) : id === "tilt-reveal" ? (
+        <path d="M5 4.5l10.5 2v7L5 15.5z" />
+      ) : (
+        <>
+          <rect x="3.5" y="5" width="13" height="10" rx="1.5" />
+          <rect x="6.5" y="7.5" width="7" height="5" rx="1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 /** Small glyphs for the cutout sliders (size / corner radius / inset). */
 function CutoutSliderIcon({ id }: { id: "size" | "radius" | "inset" }) {
   const glyph = {
@@ -1026,51 +1083,49 @@ function CameraSectionBody({
       )}
       <div className="inspector-drill-body inspector-section-body">
         {doc?.layeredScreenshot ? (
-          <div className="toggle-fieldset">
-            {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
-            <div className="inspector-subtabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!lsAnimated}
-                className={`inspector-subtab${lsAnimated ? "" : " active"}`}
-                title="Animate this scene with the camera track"
-                onClick={() => {
-                  if (!lsAnimated) return;
-                  useLayeredScreenshotEditStore.getState().setLaneOpen(false);
-                  void patchDoc((next) => {
-                    delete next.animatedTrack;
-                  });
+          <ToggleFieldset
+            control={
+              // One animated track per scene: the toggle stands one track down, never deletes keys.
+              <SegmentedRow
+                options={[
+                  {
+                    value: "camera",
+                    label: "Camera",
+                    icon: <SceneRowIcon id="camera.animate" />,
+                    title: "Animate this scene with the camera track",
+                  },
+                  {
+                    value: "layeredScreenshot",
+                    label: "Screenshot stack",
+                    icon: <SceneRowIcon id="layeredScreenshot.edit" />,
+                    title:
+                      "Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)",
+                  },
+                ]}
+                value={lsAnimated ? "layeredScreenshot" : "camera"}
+                onChange={(track) => {
+                  if (track === "camera") {
+                    useLayeredScreenshotEditStore.getState().setLaneOpen(false);
+                    void patchDoc((next) => {
+                      delete next.animatedTrack;
+                    });
+                  } else {
+                    useCameraEditStore.getState().setOpen(false);
+                    void patchDoc((next) => {
+                      next.animatedTrack = "layeredScreenshot";
+                    });
+                  }
                 }}
-              >
-                <SceneRowIcon id="camera.animate" />
-                Camera
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={lsAnimated}
-                className={`inspector-subtab${lsAnimated ? " active" : ""}`}
-                title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
-                onClick={() => {
-                  if (lsAnimated) return;
-                  useCameraEditStore.getState().setOpen(false);
-                  void patchDoc((next) => {
-                    next.animatedTrack = "layeredScreenshot";
-                  });
-                }}
-              >
-                <SceneRowIcon id="layeredScreenshot.edit" />
-                Screenshot stack
-              </button>
-            </div>
+              />
+            }
+          >
             {lsAnimated && (
               <p className="modal-hint">
                 This scene animates the screenshot stack; the camera track is standing down.
               </p>
             )}
             {cameraOptions}
-          </div>
+          </ToggleFieldset>
         ) : (
           cameraOptions
         )}
@@ -1084,26 +1139,6 @@ const ALIGN_OPTIONS: { id: SceneTextAlign; label: string }[] = [
   { id: "left", label: "Left" },
   { id: "center", label: "Centre" },
   { id: "right", label: "Right" },
-];
-
-/** Common header emojis for app and product-release presentations; a pick replaces the icon field. */
-const HEADER_EMOJIS = [
-  "🚀",
-  "✨",
-  "🎉",
-  "🔥",
-  "⚡",
-  "🆕",
-  "📢",
-  "🎯",
-  "🛠️",
-  "🐛",
-  "🔒",
-  "💡",
-  "⭐",
-  "📦",
-  "✅",
-  "📈",
 ];
 
 /** Background fill-type icons for the drill-in's tile grid; same 20-viewBox stroke style as SceneRowIcon. */
@@ -1819,23 +1854,21 @@ export function SceneTab({
         <div className="inspector-drill-title">Panel colour</div>
         <div className="inspector-drill-body">
           <div className="popover-row">
-            <span className="popover-inline">
-              Colour
-              <ColourPicker
-                value={resolveColour(sceneFrame.background)}
-                label="Panel colour"
-                onCommit={(hex) =>
-                  void patchDoc((next) => {
-                    next.frame = { ...(next.frame ?? {}), background: hex };
-                  })
-                }
-                onReset={() =>
-                  void patchDoc((next) => {
-                    if (next.frame) delete next.frame.background;
-                  })
-                }
-              />
-            </span>
+            <span className="popover-inline slider-row-label">Colour</span>
+            <ColourPicker
+              value={resolveColour(sceneFrame.background)}
+              label="Panel colour"
+              onCommit={(hex) =>
+                void patchDoc((next) => {
+                  next.frame = { ...(next.frame ?? {}), background: hex };
+                })
+              }
+              onReset={() =>
+                void patchDoc((next) => {
+                  if (next.frame) delete next.frame.background;
+                })
+              }
+            />
           </div>
           <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
         </div>
@@ -2152,6 +2185,9 @@ export function SceneTab({
             radius: "macos",
           };
           applyVideoWindowMedia(next, src, meta);
+          // A staged backdrop would sit in front of the window: clear it in the same undoable entry.
+          if (stagedBackdrop !== null && stagedBackdrop !== "none")
+            next.backdrop = { type: "none" };
         },
         { resync: true },
       );
@@ -2246,18 +2282,16 @@ export function SceneTab({
           </div>
           {vw.stage.type === "color" && (
             <div className="popover-row">
-              <span className="popover-inline">
-                Colour
-                <ColourPicker
-                  value={vw.stage.color}
-                  label="Stage colour"
-                  onCommit={(hex) =>
-                    patchVW((v) => {
-                      if (v.stage.type === "color") v.stage = { type: "color", color: hex };
-                    })
-                  }
-                />
-              </span>
+              <span className="popover-inline slider-row-label">Colour</span>
+              <ColourPicker
+                value={vw.stage.color}
+                label="Stage colour"
+                onCommit={(hex) =>
+                  patchVW((v) => {
+                    if (v.stage.type === "color") v.stage = { type: "color", color: hex };
+                  })
+                }
+              />
             </div>
           )}
           {vw.stage.type === "gradient" && (
@@ -2349,21 +2383,25 @@ export function SceneTab({
             radius: "macos",
           };
           applyVideoWindowMedia(next, src, meta);
+          // A staged backdrop would sit in front of the window: clear it in the same undoable entry.
+          if (stagedBackdrop !== null && stagedBackdrop !== "none")
+            next.backdrop = { type: "none" };
         },
         { resync: true },
       );
-    const RADII: { id: "sharp" | "subtle" | "macos" | "rounded"; label: string }[] = [
-      { id: "sharp", label: "Sharp" },
-      { id: "subtle", label: "Subtle" },
-      { id: "macos", label: "macOS" },
-      { id: "rounded", label: "Rounded" },
-    ];
-    const MOTIONS: { id: VideoWindowMotionPreset; label: string }[] = [
-      { id: "none", label: "None" },
-      { id: "float", label: "Float" },
-      { id: "drift", label: "Drift" },
-      { id: "tilt-reveal", label: "Tilt in" },
-      { id: "push-in", label: "Push in" },
+    const RADII: { id: "sharp" | "subtle" | "macos" | "rounded"; label: string; title: string }[] =
+      [
+        { id: "sharp", label: "Sharp", title: "Square corners" },
+        { id: "subtle", label: "Subtle", title: "A whisper of rounding" },
+        { id: "macos", label: "macOS", title: "The macOS window look" },
+        { id: "rounded", label: "Rounded", title: "Boldly rounded corners" },
+      ];
+    const MOTIONS: { id: VideoWindowMotionPreset; label: string; title: string }[] = [
+      { id: "none", label: "None", title: "No motion" },
+      { id: "float", label: "Float", title: "A gentle vertical bob" },
+      { id: "drift", label: "Drift", title: "A slow rotational sway" },
+      { id: "tilt-reveal", label: "Tilt", title: "Swings flush from a tilted start" },
+      { id: "push-in", label: "Push", title: "Eases up from 90% to full size" },
     ];
     const radiusPreset = vw && typeof vw.radius === "string" ? vw.radius : null;
     const shadow = vw?.shadow ?? {
@@ -2439,22 +2477,22 @@ export function SceneTab({
               />
 
               <DrillGroup label="Corners">
-                <div className="wizard-presets">
-                  {RADII.map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className={`chip${radiusPreset === r.id ? " selected" : ""}`}
-                      onClick={() =>
-                        patchVW((v) => {
-                          v.radius = r.id;
-                        })
-                      }
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedRow
+                  className="subtabs-compact"
+                  options={RADII.map((r) => ({
+                    value: r.id,
+                    label: r.label,
+                    icon: <VwCornerIcon id={r.id} />,
+                    title: r.title,
+                  }))}
+                  // A custom radius leaves no preset tab active.
+                  value={(radiusPreset ?? "custom") as (typeof RADII)[number]["id"]}
+                  onChange={(id) =>
+                    patchVW((v) => {
+                      v.radius = id;
+                    })
+                  }
+                />
                 <div className="popover-row">
                   <span className="popover-inline slider-row-label">Corner radius</span>
                   <DebouncedRange
@@ -2491,18 +2529,16 @@ export function SceneTab({
                 {border.enabled && (
                   <>
                     <div className="popover-row">
-                      <span className="popover-inline">
-                        Colour
-                        <ColourPicker
-                          value={border.color}
-                          label="Border colour"
-                          onCommit={(hex) =>
-                            patchVW((v) => {
-                              v.border = { ...border, color: hex };
-                            })
-                          }
-                        />
-                      </span>
+                      <span className="popover-inline slider-row-label">Colour</span>
+                      <ColourPicker
+                        value={border.color}
+                        label="Border colour"
+                        onCommit={(hex) =>
+                          patchVW((v) => {
+                            v.border = { ...border, color: hex };
+                          })
+                        }
+                      />
                     </div>
                     <div className="popover-row">
                       <span className="popover-inline slider-row-label">Width</span>
@@ -2612,22 +2648,21 @@ export function SceneTab({
               </DrillGroup>
 
               <DrillGroup label="Motion">
-                <div className="wizard-presets">
-                  {MOTIONS.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      className={`chip${motionPreset === m.id ? " selected" : ""}`}
-                      onClick={() =>
-                        patchVW((v) => {
-                          v.motion = { preset: m.id };
-                        })
-                      }
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
+                <SegmentedRow
+                  className="subtabs-compact"
+                  options={MOTIONS.map((m) => ({
+                    value: m.id,
+                    label: m.label,
+                    icon: <VwMotionIcon id={m.id} />,
+                    title: m.title,
+                  }))}
+                  value={motionPreset}
+                  onChange={(id) =>
+                    patchVW((v) => {
+                      v.motion = { preset: id };
+                    })
+                  }
+                />
                 <div className="popover-row">
                   <span className="popover-inline slider-row-label">Window size</span>
                   <DebouncedRange
@@ -2840,21 +2875,19 @@ export function SceneTab({
           </div>
           {bgTab === "color" && doc.background?.type === "color" && (
             <div className="popover-row">
-              <span className="popover-inline">
-                Colour
-                <ColourPicker
-                  value={doc.background.color}
-                  label="Background colour"
-                  onCommit={(hex) => {
-                    void patchDoc((next) => {
-                      if (next.background?.type === "color") {
-                        next.background = { ...next.background, color: hex };
-                      }
-                      if (stagingOn) next.backdrop = floorFor(hex);
-                    });
-                  }}
-                />
-              </span>
+              <span className="popover-inline slider-row-label">Colour</span>
+              <ColourPicker
+                value={doc.background.color}
+                label="Background colour"
+                onCommit={(hex) => {
+                  void patchDoc((next) => {
+                    if (next.background?.type === "color") {
+                      next.background = { ...next.background, color: hex };
+                    }
+                    if (stagingOn) next.backdrop = floorFor(hex);
+                  });
+                }}
+              />
             </div>
           )}
           {bgTab === "gradient" && (
@@ -2937,36 +2970,34 @@ export function SceneTab({
                   <DrillGroup label="Colours and motion">
                     {shaderDef.colorSlots.map((slot, i) => (
                       <div key={slot.label} className="popover-row">
-                        <span className="popover-inline">
-                          {slot.label}
-                          <ColourPicker
-                            value={shaderSpec.colors?.[i] ?? slot.fallback}
-                            label={slot.label}
-                            defaultValue={slot.fallback}
-                            onReset={() =>
-                              patchShader((spec) => {
-                                const colors = shaderDef.colorSlots.map(
-                                  (s, j) => spec.colors?.[j] ?? s.fallback,
-                                );
-                                colors[i] = slot.fallback;
-                                spec.colors = colors;
-                              })
-                            }
-                            onCommit={(hex) =>
-                              patchShader((spec) => {
-                                const colors = shaderDef.colorSlots.map(
-                                  (s, j) => spec.colors?.[j] ?? s.fallback,
-                                );
-                                colors[i] = hex;
-                                spec.colors = colors;
-                              })
-                            }
-                          />
-                        </span>
+                        <span className="popover-inline slider-row-label">{slot.label}</span>
+                        <ColourPicker
+                          value={shaderSpec.colors?.[i] ?? slot.fallback}
+                          label={slot.label}
+                          defaultValue={slot.fallback}
+                          onReset={() =>
+                            patchShader((spec) => {
+                              const colors = shaderDef.colorSlots.map(
+                                (s, j) => spec.colors?.[j] ?? s.fallback,
+                              );
+                              colors[i] = slot.fallback;
+                              spec.colors = colors;
+                            })
+                          }
+                          onCommit={(hex) =>
+                            patchShader((spec) => {
+                              const colors = shaderDef.colorSlots.map(
+                                (s, j) => spec.colors?.[j] ?? s.fallback,
+                              );
+                              colors[i] = hex;
+                              spec.colors = colors;
+                            })
+                          }
+                        />
                       </div>
                     ))}
                     <div className="popover-row">
-                      <span className="popover-inline">Speed</span>
+                      <span className="popover-inline slider-row-label">Speed</span>
                       <DebouncedRange
                         value={shaderSpec.speed ?? 1}
                         min={0}
@@ -2981,7 +3012,7 @@ export function SceneTab({
                       />
                     </div>
                     <div className="popover-row">
-                      <span className="popover-inline">Zoom</span>
+                      <span className="popover-inline slider-row-label">Zoom</span>
                       <DebouncedRange
                         value={shaderSpec.scale ?? 1}
                         min={0.25}
@@ -2997,7 +3028,7 @@ export function SceneTab({
                     </div>
                     {Object.entries(shaderDef.params).map(([key, p]) => (
                       <div key={key} className="popover-row">
-                        <span className="popover-inline">{p.label}</span>
+                        <span className="popover-inline slider-row-label">{p.label}</span>
                         <DebouncedRange
                           value={shaderSpec.params?.[key] ?? p.default}
                           min={p.min}
@@ -3527,33 +3558,18 @@ export function SceneTab({
               </div>
             );
           })}
-          <div className="wizard-field">
-            <TextFieldRow
-              label="Header icon"
-              value={iconDraft ?? headerIcon}
-              placeholder="an emoji or assets/icon.png"
-              onChange={liveHeaderIcon}
-              onBlur={flushHeaderIcon}
-            />
-            <div className="chip-icon-grid">
-              {HEADER_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  title={e}
-                  className={`chip-icon-tile emoji${headerIcon === e ? " selected" : ""}`}
-                  onClick={() => setHeaderIcon(e)}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-            <p className="modal-hint">
-              {sceneFrame
+          <HeaderIconField
+            value={iconDraft ?? headerIcon}
+            selected={headerIcon}
+            hint={
+              sceneFrame
                 ? "Drawn above the panel title. An emoji, or a project image path."
-                : "Drawn above the headline. An emoji, or a project image path."}
-            </p>
-          </div>
+                : "Drawn above the headline. An emoji, or a project image path."
+            }
+            onChange={liveHeaderIcon}
+            onBlur={flushHeaderIcon}
+            onPick={setHeaderIcon}
+          />
           <TextMotionPanel
             current={doc.textAnimation}
             theme={sceneTheme}

@@ -17,7 +17,7 @@ import {
   parseExportPreset,
   resolvePresetToEncodeSpec,
 } from "../export/presetSchema";
-import { EXPORT_BUTTON_ICON, presetIcon } from "./exportIcons";
+import { AspectIcon, EXPORT_BUTTON_ICON, presetIcon } from "./exportIcons";
 import {
   ALL_ASPECTS,
   audioKbpsOf,
@@ -342,6 +342,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
             aria-pressed={aspect === a}
             onClick={() => setAspect(a)}
           >
+            <AspectIcon name={a} />
             {a}
           </button>
         ))}

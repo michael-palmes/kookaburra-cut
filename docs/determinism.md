@@ -43,6 +43,7 @@ GPU/driver, not across fleets.)
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
 | Hardware encoder (`h264_videotoolbox` / `hevc_videotoolbox` / `prores_videotoolbox`) bit-variance | Default to software `libx264` (deterministic); the VideoToolbox lanes are opt-in fast drafts excluded from Verify. |
 | Hardware DECODE (`-hwaccel videotoolbox`) is not pixel-identical to software decode (measured: every frame differs slightly, ~5% of pixels off by 1–3/255) | Clip extraction is dual-lane: the everyday `hw` lane and the baseline `sw` lane own separate cache dirs (`<sha>-60fps-hw` / `<sha>-60fps`), and deterministic-codec exports (all Verify runs) pin to `sw`, so hardware frames can never reach a gated export. `engine/clips.ts` lane rule. |
+| **WebKit kills the WebContent process near its 4 GB footprint ceiling** (measured 2026-07-25: a 4K verify's page footprint rode at ~3.9–4.5 GB, dominated by never-freed compositor/composer MSAA render-target pools, ~285–886 MB each; when a periodic check under system memory pressure catches it over 4096 MB the process is killed ("Unable to shrink memory footprint … Killed" in the unified log) and wry auto-reloads the page; window focus does NOT lift the ceiling) | Export frames release the pools they did not touch (`releaseIdlePools` in compositor.ts, `releaseComposer` in effects.ts; the multi-project autorun also resets between legs), dropping the 4K plateau to ~3.2 GB; the SDR pair is lazy so fx projects never allocate it, and verify releases confirmed-identical retained frames early. Transient fx-transition-window spikes can still crest ~4.1 GB on heavy projects (launch-2026), so `runAutoRun`'s reload latch stays the backstop: one benign reload tolerated, then a fast, retryable failure naming this mode. Deeper shave if ever needed: a shared MSAA scratch target with plain resolve textures for the A/B pairs. Diagnose with `log stream --predicate 'process == "kookaburra-cut" AND composedMessage CONTAINS "footprint"'`. |
 
 ## The loop (as implemented in `src/engine/exporter.ts`)
 
@@ -932,10 +933,11 @@ extra 0.0 = the byte-frozen legacy string). Projected true peak > −1.5 dBTP wa
 and proceeds, never a limiter (a limiter is content-dependent DSP; a gain is a
 constant).
 
-**4:5, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
-2160×2700, `FORMATS["3:2"]` = 3240×2160, `FORMATS["2:3"]` = 2160×3240 (2160
-short edge, the house convention); `STANDING_ASPECTS` pins Verify's "all" and
-the full matrices to the standing three (16:9 / 9:16 / 1:1).
+**4:5, 5:4, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
+2160×2700, `FORMATS["5:4"]` = 2700×2160, `FORMATS["3:2"]` = 3240×2160,
+`FORMATS["2:3"]` = 2160×3240 (2160 short edge, the house convention);
+`STANDING_ASPECTS` pins Verify's "all" and the full matrices to the standing
+three (16:9 / 9:16 / 1:1).
 
 ### The export modal & user presets
 
@@ -1001,14 +1003,20 @@ and do not need their own verifies.**
 - **Tier 0: statics (every change, free):** `pnpm vitest run` · `pnpm build` ·
   `pnpm lint`. Pure math (eases, presets, schemas, edit math) belongs in unit
   tests, not in verify runs.
-- **Tier 1: the DEFAULT gate (1–2 runs):**
-  1. ONE feature-matched project, Verify ×2, **16:9 only**: pick the project
-     whose content exercises the changed path: `showcase-tour` for
-     themes/staging/text/presets (the rolling gate project, six themes, devices,
-     video, ImageCard, camera moves and bloom in one project),
-     `ws:device-video-spike` for device/media/camera, `ws:fx-spike` for effects, a
-     hand-rolled workspace mini-project for anything narrower.
-  2. `ws:launch-2026` Verify ×2 16:9: must be EQUAL (the null-for-legacy proof).
+- **Tier 1: the DEFAULT per-change gate (1 run):** ONE feature-matched
+  project, Verify ×2, **16:9 only**: pick the project whose content exercises
+  the changed path: `showcase-tour` for themes/staging/text/presets (the
+  rolling gate project, six themes, devices, video, ImageCard, camera moves
+  and bloom in one project), `ws:device-video-spike` for device/media/camera,
+  `ws:fx-spike` for effects, a hand-rolled workspace mini-project for anything
+  narrower. `pnpm gate` runs the showcase-tour leg (~2 min).
+- **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
+  merges (and at any rebase or phase close), `pnpm gate:merge` runs
+  `showcase-tour` + `ws:launch-2026` Verify ×2 in ONE app boot (`--project`
+  takes a comma list for verify/export; per-leg results carry a `project`
+  field in `last-run.json`). `ws:launch-2026` must be EQUAL: the
+  null-for-legacy proof. A legacy regression is caught per PR instead of per
+  change; it still cannot merge.
 - **Tier 2: escalate selectively:** changes at a SHARED render seam (compositor,
   exporter, SceneStage, effects chain, camera application) add the other class
   project and ONE 9:16 spot-check (aspect-dependent code is rare: it's layout,
@@ -1035,13 +1043,14 @@ and do not need their own verifies.**
 Baselines are same-machine SHA-256 prefixes of the frozen-path (`libx264`,
 16:9 unless noted) export, recorded after a passed Verify ×2. Two projects anchor
 the set: the null-for-legacy sentinel (`ws:launch-2026`, a hash-identical
-workspace copy of the reel dropped from the bundled set on 2026-07-13) and the
-bundled rolling-gate project (`showcase-tour`):
+workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
+durations re-frozen 2026-07-25, see the splice note below) and the bundled
+rolling-gate project (`showcase-tour`):
 
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` (fixture spliced to 8.2s on 2026-07-25; full-length was `b70c9788…`) | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `97af238c…` | stale | stale | stale | `0e64593d…` | — |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — |
+| `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
@@ -1071,6 +1080,39 @@ bundled rolling-gate project (`showcase-tour`):
 > `fe701549…` (supersedes the interim 15-scene `b5d80edb…`). Every new
 > block is null-for-legacy: absent at all layers resolves the v8 path verbatim,
 > pinned by the whole-lineup theme-equivalence test.
+
+> **2026-07-25 (sentinel splice, Michael's call):** `ws:launch-2026` was
+> trimmed 19.0 s → 8.2 s (5000/3000×4/5000 → 2400/1600×4/2400 ms; scenes and
+> transitions untouched) to stop the sentinel becoming a growing time sink at
+> PR cadence, especially with multiple worktrees queueing runs. The splice was
+> done safely: the full-length hash `b70c9788…` was proven EQUAL the same
+> morning on the same render code (no render-path commits between proof and
+> re-freeze), then the trimmed anchor recorded EQUAL at `eb89826c…` with
+> per-scene frames eyeballed. The pre-trim manifest is backed up beside the
+> batch plan docs, so the old anchor remains re-verifiable. Coverage note:
+> frames past each scene's cut (late counter states, clip frames past 2.4 s)
+> left the proof at the splice.
+>
+> **2026-07-25 (gate speedup + footprint fix):** showcase-tour's scene
+> durations were trimmed for gate speed (14.2 s → 8.2 s timeline, 492
+> frames/pass; scene 05's camera end key 2700 → 2200 ms), `pnpm gate` became
+> one comma-list boot, and the WebContent footprint fix landed (idle render
+> pools released during export; a 4K export's plateau dropped 4468 → 3177 MB).
+> The trimmed 16:9 baseline recorded EQUAL at `7ad3e821…` in the same gate
+> that held `ws:launch-2026` EQUAL at `b70c9788…` (proof the pool lifecycle
+> changes move no pixels); per-scene frames eyeballed off the gated export.
+> The 3:2 baseline (`0e64593d…`) predates the trim and re-records on next
+> need. Whole-pair gate wall time: ~4:20.
+>
+> **2026-07-25 (5:4 aspect):** `5:4` (2700×2160) joined the first-class,
+> feature-scoped set. `showcase-tour` 5:4 recorded its first baseline
+> `554bbd23…` (Verify ×2 EQUAL) after eyeballing 5:4 frames via
+> `--action screenshot`; the frames also showed scene 0's headline overflow in
+> narrow aspects is pre-existing scene authoring (1:1 crops harder than 5:4),
+> not aspect plumbing. The standard 16:9 pair re-ran EQUAL with
+> `ws:launch-2026` on its anchor, so the `AspectName`/`FORMATS` addition is
+> null-for-legacy. NOTE: `554bbd23…` anchors the pre-trim showcase manifest;
+> re-record on the trimmed manifest, then give the table its 5:4 column.
 
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "Kind: device only",
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/sample-screenshot-2.jpg", "kind": "image" },
+      "placement": { "position": [0, 0, 0] },
+      "motion": { "preset": "none" },
+      "shadow": "soft"
+    }
+  ]
+}

@@ -180,6 +180,32 @@ export function CameraPill({
           {contextual}
           <button
             type="button"
+            className="camera-pill-mode"
+            title="Reset this key to the scene-default pose"
+            aria-label="Reset camera pose"
+            disabled={!targetKey}
+            onClick={() => {
+              // Trackless: nothing to reset, never seed a key.
+              if (!targetKey) return;
+              const cam = setKeyPose(camera, targetKey.id, defaultOrbitPose());
+              if (cam) void commit(cam);
+            }}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              aria-hidden="true"
+            >
+              <path d="M4.5 8.5A6.2 6.2 0 0110.4 4a6 6 0 11-5.7 8" />
+              <path d="M4.2 4.5v4h4" />
+            </svg>
+          </button>
+          <button
+            type="button"
             className="camera-pill-close"
             title="Done animating (closes the lane)"
             aria-label="Close animation mode"

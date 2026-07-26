@@ -12,6 +12,7 @@ import {
   setKeyPose,
 } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose } from "../engine/sceneDocSchema";
+import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { useCameraDoc } from "./cameraDoc";
 
 /** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held (⌘ pan, ⌃ zoom, ⌥ orbit) swap the cursor while hovering and rebase mid-drag from the current pose so the tool switch never jumps; ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. Pan drags snap gently to the scene centre (guide lines flash while captured). */
@@ -55,6 +56,7 @@ export function CameraToolOverlay({
   const [drag, setDrag] = useState<ToolDrag | null>(null);
   const [guides, setGuides] = useState({ v: false, h: false });
   const [heldTool, setHeldTool] = useState<CameraTool | null>(null);
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   // Cursor feedback while a modifier is held, before any drag starts.
@@ -152,19 +154,65 @@ export function CameraToolOverlay({
     setDrag(null);
   }
 
+  /** Right-click camera menu; ⌃-left-click stays swallowed (it is the zoom modifier here, macOS fires contextmenu for it), but a real secondary button opens the menu even with ⌃ held. */
+  function onContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    if ((e.ctrlKey && e.button !== 2) || drag) return;
+    setMenuAt({ x: e.clientX, y: e.clientY });
+  }
+
+  // Menu items derive from the CURRENT track every render, so an edit made while the menu sits open (lane keyboard shortcuts) can never be reverted by a stale closure.
+  const playheadLocal = Math.min(
+    slot.durationMs,
+    Math.max(0, useClockStore.getState().currentMs - slot.startMs),
+  );
+  const menuTargetKey =
+    camera.keys.find((k) => k.id === useCameraEditStore.getState().selectedKeyId) ??
+    nearestKey(camera, playheadLocal);
+  const menu: ContextMenuState | null = menuAt
+    ? {
+        x: menuAt.x,
+        y: menuAt.y,
+        items: [
+          {
+            id: "reset",
+            label: "Reset to default pose",
+            disabled: !menuTargetKey,
+            title: "Reset this key to the scene-default pose",
+            onSelect: () => {
+              if (!menuTargetKey) return;
+              const cam = setKeyPose(camera, menuTargetKey.id, defaultOrbitPose());
+              if (cam) void commit(cam);
+            },
+          },
+          {
+            id: "clear",
+            label: "Clear all camera keyframes",
+            confirmLabel: "Really clear?",
+            danger: true,
+            disabled: camera.keys.length === 0,
+            onSelect: () => void commit({ ...camera, keys: [], segments: [] }),
+          },
+        ],
+      }
+    : null;
+
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: a pure drag surface over the canvas — the contextmenu handler only swallows macOS ⌃-click during ⌃-zoom drags
-    <div
-      ref={overlayRef}
-      className={`camera-tool-overlay tool-${drag?.tool ?? heldTool ?? armedTool}`}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      {guides.v && <div className="camera-centre-guide v" />}
-      {guides.h && <div className="camera-centre-guide h" />}
-    </div>
+    <>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: a pure drag surface over the canvas — contextmenu opens the camera menu (⌃-left-click stays swallowed as the zoom modifier) */}
+      <div
+        ref={overlayRef}
+        className={`camera-tool-overlay tool-${drag?.tool ?? heldTool ?? armedTool}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onContextMenu={onContextMenu}
+      >
+        {guides.v && <div className="camera-centre-guide v" />}
+        {guides.h && <div className="camera-centre-guide h" />}
+      </div>
+      {menu && <ContextMenu menu={menu} onClose={() => setMenuAt(null)} />}
+    </>
   );
 }
 

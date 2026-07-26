@@ -4,6 +4,7 @@ import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { useDeviceRegistry } from "./deviceRegistry";
 import { type HistoryChange, pushHistory } from "./history";
+import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
@@ -172,15 +173,16 @@ interface MediaMetaLike {
   durationMs: number;
 }
 
-/** Re-syncs one follow-media scene's `project.json` duration from its source video's probed length (no-op for manual mode, image, or missing media); the source is the sidecar's device video when it has one, else its video background (the video scene kind). Returns whether `project.json` was rewritten so UI callers know a timing refresh is needed, since sidecar-only edits patch in memory and never reload. */
+/** Re-syncs one follow-media scene's `project.json` duration from its source video's probed length (no-op for manual mode, image, or missing media); the source is the sidecar's device video when it has one, else its video background (the video scene kind). `wrote` says `project.json` was rewritten so UI callers know a timing refresh is needed (sidecar-only edits patch in memory and never reload); when a shrink leaves keyframe tracks overhanging and `sceneFile` is given, the sidecar is rewritten with clamped tracks and handed back as `clampedDoc` for the caller's in-memory patch. */
 export async function resyncFollowMediaDuration(
   slug: string,
   index: number,
   doc: SceneDoc | undefined,
   currentDurationMs: number,
-): Promise<boolean> {
+  sceneFile?: string,
+): Promise<{ wrote: boolean; clampedDoc: SceneDoc | null }> {
   const duration = doc?.duration;
-  if (duration?.mode !== "follow-media") return false;
+  if (duration?.mode !== "follow-media") return { wrote: false, clampedDoc: null };
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === duration.sourceDeviceId) ?? devices[0];
   // An explicit source pins the follow to the block the user picked; legacy docs keep the device-first chain.
@@ -194,27 +196,56 @@ export async function resyncFollowMediaDuration(
           : doc?.background?.type === "video"
             ? doc.background.src
             : null;
-  if (!src) return false;
+  if (!src) return { wrote: false, clampedDoc: null };
   const meta = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {
     await invoke("update_project_scene", { slug, index, durationMs: meta.durationMs });
-    return true;
+    let clampedDoc: SceneDoc | null = null;
+    if (doc && sceneFile && meta.durationMs < currentDurationMs) {
+      clampedDoc = clampDocTracksToDuration(doc, meta.durationMs);
+      if (clampedDoc) await writeSceneDoc(slug, sceneFile, clampedDoc);
+    }
+    return { wrote: true, clampedDoc };
   }
-  return false;
+  return { wrote: false, clampedDoc: null };
 }
 
-/** Re-syncs every follow-media scene in a project (the `kookaburra://media-changed` sweep); workspace projects only, since bundled gate projects keep manual durations. Returns whether any scene's duration was rewritten so the caller can schedule a timing refresh. */
+/** Shrink-fit both keyed tracks (camera and the layered-screenshot animation) to a new duration; null when nothing overhangs, so callers can skip the write. */
+export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): SceneDoc | null {
+  const cam = doc.camera
+    ? clampTrackToDuration(doc.camera as KeyedTrack<unknown>, durationMs)
+    : null;
+  const anim = doc.layeredScreenshot?.animation
+    ? clampTrackToDuration(doc.layeredScreenshot.animation as KeyedTrack<unknown>, durationMs)
+    : null;
+  const camChanged = cam !== null && cam !== (doc.camera as KeyedTrack<unknown>);
+  const animChanged =
+    anim !== null && anim !== (doc.layeredScreenshot?.animation as KeyedTrack<unknown>);
+  if (!camChanged && !animChanged) return null;
+  const next = structuredClone(doc);
+  if (camChanged) next.camera = structuredClone(cam) as SceneDoc["camera"];
+  if (animChanged && next.layeredScreenshot) {
+    next.layeredScreenshot.animation = structuredClone(anim) as NonNullable<
+      SceneDoc["layeredScreenshot"]
+    >["animation"];
+  }
+  return next;
+}
+
+/** Re-syncs every follow-media scene in a project (the `kookaburra://media-changed` sweep); workspace projects only, since bundled gate projects keep manual durations. Returns whether any scene's duration was rewritten so the caller can schedule a timing refresh. Deliberately omits `sceneFile`, so this background path never clamps keyframe tracks: an event-driven sweep must not delete keys with no undo entry; the user-gesture paths (duration commits, media swaps) carry the clamp with history. */
 export async function syncFollowMediaDurations(project: LoadedProject): Promise<boolean> {
   if (!isWorkspaceProjectId(project.id)) return false;
   const slug = workspaceSlug(project.id);
   let wrote = false;
   for (let i = 0; i < project.sceneDocs.length; i++) {
     try {
-      if (
-        await resyncFollowMediaDuration(slug, i, project.sceneDocs[i], project.slots[i].durationMs)
-      ) {
-        wrote = true;
-      }
+      const result = await resyncFollowMediaDuration(
+        slug,
+        i,
+        project.sceneDocs[i],
+        project.slots[i].durationMs,
+      );
+      if (result.wrote) wrote = true;
     } catch (e) {
       console.warn(`[sceneDoc] duration-follow probe failed for scene ${i}:`, e);
     }

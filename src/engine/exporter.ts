@@ -623,10 +623,10 @@ export async function verifyDeterminism(
   const framesB: Uint32Array[] = [];
   const boundA: number[] = [];
   const boundB: number[] = [];
-  // Retains the first frames raw (the exporter reuses its buffer, so copy); the showcase-tour flake diverged only there, and on mismatch these feed the per-pixel delta report below. A few frames × ~8 MB is nothing next to the export itself.
+  // Retains the first frames raw (the exporter reuses its buffer, so copy); the showcase-tour flake diverged only there, and on mismatch these feed the per-pixel delta report below. At 4K each copy is ~33 MB and the WebContent process rides WebKit's 4 GB footprint ceiling, so pass B releases each pass-A copy the moment its tile hashes confirm the frame matched; only genuinely divergent frames keep both copies.
   const RETAIN_FRAMES = 3;
-  const rawA: Uint8Array[] = [];
-  const rawB: Uint8Array[] = [];
+  const rawA: (Uint8Array | undefined)[] = [];
+  const rawB: (Uint8Array | undefined)[] = [];
   // Holds the preview stand-down across both passes (nested over each pass's own hold; the flag is depth-counted, see engine/exportState). Without this, a wall-clock-varying number of preview frames rendered between the passes at the preview size, with the restored preview clock, and their GPU residue leaked into pass B's first frames (the showcase-tour frames-0-1 ±LSB flake); with the hold, pass B starts from exactly the state pass A ended in, deterministic by construction. Each pass's own run disables HELPER_LAYER.
   setExporting(true);
   let hashA: string;
@@ -653,7 +653,12 @@ export async function verifyDeterminism(
       onProgress,
       (f, rgba) => {
         framesB[f] = tileHashFrame(rgba, width, height);
-        if (f < RETAIN_FRAMES) rawB[f] = rgba.slice();
+        if (f < RETAIN_FRAMES) {
+          const a = framesA[f];
+          const same = !!a && a.every((v, i) => v === framesB[f][i]);
+          if (same) rawA[f] = undefined;
+          else rawB[f] = rgba.slice();
+        }
       },
       (f, bound) => {
         boundB[f] = bound;
@@ -692,13 +697,15 @@ export async function verifyDeterminism(
   }
   const frameDeltas: FrameDelta[] = [];
   for (let f = 0; f < RETAIN_FRAMES; f++) {
-    if (!rawA[f] || !rawB[f]) continue;
-    const d = frameDelta(f, rawA[f], rawB[f], width);
+    const a = rawA[f];
+    const b = rawB[f];
+    if (!a || !b) continue;
+    const d = frameDelta(f, a, b, width);
     if (!d) continue;
     if (frameDeltas.length === 0) {
-      d.imageA = frameToDataUrl(rawA[f], width, height, 480);
-      d.imageB = frameToDataUrl(rawB[f], width, height, 480);
-      d.imageDiff = frameToDataUrl(diffFrame(rawA[f], rawB[f]), width, height, 960);
+      d.imageA = frameToDataUrl(a, width, height, 480);
+      d.imageB = frameToDataUrl(b, width, height, 480);
+      d.imageDiff = frameToDataUrl(diffFrame(a, b), width, height, 960);
     }
     frameDeltas.push(d);
   }

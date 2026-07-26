@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "Kind: cutout end",
+  "text": {
+    "title": "Ship faster",
+    "subtitle": "Make it yours"
+  },
+  "frame": {
+    "cutout": { "shape": "rounded-rect", "side": "end" },
+    "chip": { "label": "New", "icon": "circle-check", "colour": "accent" }
+  }
+}

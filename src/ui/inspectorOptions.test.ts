@@ -15,14 +15,14 @@ describe("projectRows (the Project-tab pin)", () => {
       scenesCount: 3,
     });
     expect(rows.map((r) => r.id)).toEqual([
-      "media",
       "scenes",
       "theme",
+      "media",
       "appIcon",
+      "playback",
       "aspect",
       "music",
       "render",
-      "playback",
     ]);
     expect(rows.every((r) => r.chevron)).toBe(true);
     expect(rows.find((r) => r.id === "scenes")?.value).toBe("3 scenes");
@@ -56,7 +56,7 @@ describe("projectRows (the Project-tab pin)", () => {
       renderLabel: "ACES",
       scenesCount: 2,
     });
-    expect(rows.map((r) => r.id)).toEqual(["theme", "aspect", "playback"]);
+    expect(rows.map((r) => r.id)).toEqual(["theme", "playback", "aspect"]);
     expect(rows.find((r) => r.id === "theme")?.chevron).toBe(false);
     expect(rows.find((r) => r.id === "aspect")?.chevron).toBe(true);
     expect(rows.find((r) => r.id === "playback")?.chevron).toBe(true);

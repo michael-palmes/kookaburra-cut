@@ -25,6 +25,19 @@ const CANVAS_HEADROOM = 1.15;
 // closest-side), linearly interpolated like CSS does. The first style is the default.
 const STYLES = [
   {
+    id: "target",
+    label: "Dot and ring",
+    alphaStops: [
+      [0, 0.95],
+      [0.18, 0.95],
+      [0.26, 0],
+      [0.5, 0],
+      [0.56, 0.9],
+      [0.64, 0.9],
+      [0.7, 0],
+    ],
+  },
+  {
     id: "glow",
     label: "Soft glow",
     alphaStops: [
@@ -53,27 +66,14 @@ const STYLES = [
       [0.7, 0],
     ],
   },
-  {
-    id: "target",
-    label: "Dot and ring",
-    alphaStops: [
-      [0, 0.95],
-      [0.18, 0.95],
-      [0.26, 0],
-      [0.5, 0],
-      [0.56, 0.9],
-      [0.64, 0.9],
-      [0.7, 0],
-    ],
-  },
 ];
 
 // Colours: applied over the white frames as channel multipliers (render) and
 // rgba gradients (preview). The first colour is the default.
 const COLORS = [
+  { id: "blue", label: "Blue", rgb: [64, 156, 255] },
   { id: "light", label: "Light", rgb: [255, 255, 255] },
   { id: "dark", label: "Dark", rgb: [17, 17, 17] },
-  { id: "blue", label: "Blue", rgb: [64, 156, 255] },
   { id: "red", label: "Red", rgb: [255, 59, 48] },
   { id: "terracotta", label: "Terracotta", rgb: [226, 114, 91] },
 ];

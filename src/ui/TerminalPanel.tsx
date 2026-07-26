@@ -280,11 +280,12 @@ export function TerminalPanel({
     [slug],
   );
 
-  /** Open a scene wizard, kicking off the lazy thumb capture (cards fill in as it lands). */
+  /** Open a wizard, kicking off the lazy thumb capture for the kinds with scene cards (cards fill in as it lands). */
   const openSceneWizard = useCallback(
-    (which: "new-scene-native" | "edit-scene") => {
+    (which: WizardKind | "new-scene-native" | "edit-scene") => {
       setMoreOpen(false);
       setWizard(which);
+      if (which !== "new-scene-native" && which !== "edit-scene" && which !== "new-scene") return;
       getThumbs()
         .then(setThumbs)
         .catch(() => {});
@@ -346,10 +347,7 @@ export function TerminalPanel({
                       ? "Opens a small form, then pastes the prompt — edit it, then press Enter"
                       : "Start Claude Code first"
                   }
-                  onClick={() => {
-                    setMoreOpen(false);
-                    setWizard(item.kind);
-                  }}
+                  onClick={() => openSceneWizard(item.kind)}
                 >
                   {item.label}
                 </button>
@@ -451,11 +449,9 @@ export function TerminalPanel({
           scenes={scenes}
           thumbs={thumbs}
           theme={theme}
-          sessionRunning={status === "running"}
-          onDone={(_result, prompt) => {
+          onDone={() => {
             setWizard(null);
             onProjectChanged();
-            if (prompt) pasteChip(prompt);
           }}
           onCancel={() => setWizard(null)}
         />
@@ -477,6 +473,7 @@ export function TerminalPanel({
         <HelperWizard
           kind={wizard}
           scenes={scenes}
+          thumbs={thumbs}
           slug={slug}
           onInsert={(prompt) => {
             setWizard(null);

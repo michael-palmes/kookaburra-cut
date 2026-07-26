@@ -52,6 +52,13 @@ interface ComposerState {
 let composerState: ComposerState | null = null;
 const _size = new Vector2();
 
+/** Dispose the composer chain (export frames with no fx, and the autorun between legs of a multi-project run); the LUT texture cache stays, so the next ensureComposer rebuild is still synchronous. */
+export function releaseComposer(): void {
+  if (!composerState) return;
+  composerState.composer.dispose();
+  composerState = null;
+}
+
 // 3D LUT assets: project-relative `.cube` files under projects/<project>/assets/, imported as raw text; project manifests reference them relatively, loadProject resolves each `lut.url` to its glob key here so this module never needs a project id, and parsing is pure with textures cached by url so two Verify runs sample the identical texture object. See docs/determinism.md.
 const cubeGlob = import.meta.glob<string>("/projects/*/assets/**/*.cube", {
   query: "?raw",

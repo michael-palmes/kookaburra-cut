@@ -44,7 +44,7 @@ export function formatMediaDuration(ms: number): string {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-/** Move an asset to the Trash; refused while any scene/manifest references it. */
+/** Move an asset to the Trash; refused while any scene, edit or the manifest references it. */
 export function deleteMedia(slug: string, rel: string): Promise<void> {
   return invoke("delete_media", { slug, rel });
 }

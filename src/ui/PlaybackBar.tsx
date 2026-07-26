@@ -11,12 +11,13 @@ import { ensureSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
-import { ScenePicker, type WizardSceneInfo } from "./SceneWizards";
+import { SceneInsertTimeline } from "./SceneInsertTimeline";
+import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
 import { msFromTrackX, playheadFraction, sceneCellSpans } from "./scrubMath";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** Segmented per-scene playback bar: cells tile the track on start boundaries (`sceneCellSpans`) so the playhead lines up with every scene edge; the play button is deliberately not accent-coloured; right-click renames, duplicates, re-times or deletes a scene; disabled while exporting. */
+/** Segmented per-scene playback bar: cells tile the track on ATTRIBUTION boundaries (`sceneCellSpans`, mid-transition to mid-transition) so the drawn scene change sits halfway through each overlap and the bold name agrees with its cell; the play button is deliberately not accent-coloured; right-click renames, duplicates, re-times or deletes a scene; disabled while exporting. */
 export function PlaybackBar({
   project,
   playing,
@@ -344,7 +345,7 @@ export function PlaybackBar({
   );
 }
 
-/** Placement dialog for Duplicate: the New-scene "Where?" picker seeded to "after the source"; thumbs are best-effort (`ensureSceneThumbs` returns what it has, cards degrade to placeholders). Shared with the Scenes drill-in's context menu. */
+/** Placement dialog for Duplicate: the New-scene "Where?" insert strip seeded to "after the source"; thumbs are best-effort (`ensureSceneThumbs` returns what it has, cards degrade to placeholders). Shared with the Scenes drill-in's context menu. */
 export function DuplicateSceneDialog({
   project,
   index,
@@ -395,13 +396,12 @@ export function DuplicateSceneDialog({
   };
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Duplicate scene">
-      <div className="modal wizard-wide">
+      <div className="modal wizard-wide wizard-place-wide">
         <h2>Duplicate “{sourceName}”</h2>
         <p className="modal-hint">Where should the copy go?</p>
-        <ScenePicker
+        <SceneInsertTimeline
           scenes={scenes}
           thumbs={thumbs}
-          mode="placement"
           value={placement}
           onChange={setPlacement}
         />
