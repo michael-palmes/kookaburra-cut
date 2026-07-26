@@ -13,6 +13,8 @@ mod fonts;
 mod gradients;
 mod scene_doc;
 mod objects;
+mod pack;
+mod packs_win;
 mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
 mod tap_dot_frames;
@@ -930,6 +932,8 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
         .manage(present::PresentState::default())
+        .manage(packs_win::PacksState::default())
+        .manage(pack::commands::PackState::default())
         .setup(|app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
@@ -950,8 +954,9 @@ pub fn run() {
                     PredefinedMenuItem, SubmenuBuilder,
                 };
                 use tauri::Emitter;
+                // ⌥⌘E, not ⌘E: v13's File menu takes ⌘E for "Export Video…", the conventional macOS binding.
                 let edit_in_claude = MenuItemBuilder::with_id("edit-in-claude", "Edit in Claude Code")
-                    .accelerator("CmdOrCtrl+E")
+                    .accelerator("Alt+CmdOrCtrl+E")
                     .build(app)?;
                 // The ⌘K palette rides a menu accelerator like ⌘Z/⌘E/⌘/; AppKit delivers it regardless of webview focus (xterm included).
                 let find_action = MenuItemBuilder::with_id("find-action", "Find an Action…")
@@ -965,7 +970,30 @@ pub fn run() {
                     .item(&edit_in_claude)
                     .item(&shortcuts)
                     .build()?;
+                // File: where macOS users look for Import/Export. Pack items are always enabled, since an empty picker explains itself better than a greyed-out item.
+                let new_project = MenuItemBuilder::with_id("new-project", "New Project…")
+                    .accelerator("CmdOrCtrl+N")
+                    .build(app)?;
+                let import_pack = MenuItemBuilder::with_id("import-pack", "Import Pack…")
+                    .accelerator("CmdOrCtrl+Shift+I")
+                    .build(app)?;
+                let export_pack = MenuItemBuilder::with_id("export-pack", "Export Pack…")
+                    .accelerator("CmdOrCtrl+Shift+E")
+                    .build(app)?;
+                let export_video = MenuItemBuilder::with_id("export-video", "Export Video…")
+                    .accelerator("CmdOrCtrl+E")
+                    .build(app)?;
+                let file = SubmenuBuilder::new(app, "File")
+                    .item(&new_project)
+                    .separator()
+                    .item(&import_pack)
+                    .item(&export_pack)
+                    .separator()
+                    .item(&export_video)
+                    .build()?;
                 let menu = Menu::default(app.handle())?;
+                // Index 1: straight after the application submenu, before Edit.
+                menu.insert(&file, 1)?;
                 // The system settings-gear glyph (AppKit template image via muda's NativeIcon); real SF Symbols aren't exposed by Tauri's menu layer.
                 let settings_item = IconMenuItemBuilder::with_id("open-settings", "Settings…")
                     .native_icon(NativeIcon::PreferencesGeneral)
@@ -1061,6 +1089,22 @@ pub fn run() {
                     } else if event.id() == "open-settings" {
                         if let Err(e) = settings_win::open_settings_window(app) {
                             eprintln!("[settings] open failed: {e}");
+                        }
+                    } else if event.id() == "new-project" {
+                        let _ = app.emit_to("main", "kookaburra://new-project", ());
+                    } else if event.id() == "export-video" {
+                        let _ = app.emit_to("main", "kookaburra://export-video", ());
+                    } else if event.id() == "import-pack" {
+                        if let Err(e) =
+                            packs_win::open_packs_window(app, packs_win::PacksTarget::Import { path: None, queued: 0 })
+                        {
+                            eprintln!("[packs] open failed: {e}");
+                        }
+                    } else if event.id() == "export-pack" {
+                        if let Err(e) =
+                            packs_win::open_packs_window(app, packs_win::PacksTarget::Export)
+                        {
+                            eprintln!("[packs] open failed: {e}");
                         }
                     }
                 });
@@ -1176,10 +1220,58 @@ pub fn run() {
             edit::render_edit,
             present::open_present,
             present::get_present_target,
-            workspace::set_present_options
+            workspace::set_present_options,
+            packs_win::get_packs_target,
+            packs_win::open_pack_export,
+            packs_win::open_pack_import,
+            packs_win::next_queued_pack,
+            fonts::font_embedding_for,
+            fonts::pin_fonts_for_pack,
+            pack::publisher::get_publisher_profile,
+            pack::publisher::set_publisher_profile,
+            pack::publisher::rotate_publisher_key,
+            pack::publisher::list_known_publishers,
+            pack::publisher::forget_publisher,
+            pack::commands::list_packables,
+            pack::commands::plan_pack,
+            pack::commands::build_pack,
+            pack::commands::cancel_pack_build,
+            pack::commands::inspect_pack,
+            pack::commands::read_pack_scene_source,
+            pack::commands::stage_pack,
+            pack::commands::apply_import,
+            pack::commands::discard_staged_pack,
+            pack::commands::workspace_root_path,
+            pack::commands::open_imported_project
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Kookaburra Cut");
+        .build(tauri::generate_context!())
+        .expect("error while running Kookaburra Cut")
+        .run(|app, event| {
+            // Open With / double-click. Cold start fires this before any webview exists, so the path is stashed in managed state and the window reads it on mount.
+            if let tauri::RunEvent::Opened { urls } = event {
+                let mut paths = packs_win::paths_from_urls(&urls);
+                paths.retain(|p| match packs_win::validate_incoming(p) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        eprintln!("[packs] ignoring opened file: {e}");
+                        false
+                    }
+                });
+                let Some(first) = paths.first().cloned() else {
+                    return;
+                };
+                // One at a time: resolving conflicts across overlapping packs has no good UI.
+                let state = app.state::<packs_win::PacksState>();
+                state.push_queue(paths.into_iter().skip(1).collect());
+                let target = packs_win::PacksTarget::Import {
+                    path: Some(first.to_string_lossy().into_owned()),
+                    queued: state.queued(),
+                };
+                if let Err(e) = packs_win::open_packs_window(app, target) {
+                    eprintln!("[packs] open failed: {e}");
+                }
+            }
+        });
 }
 
 #[cfg(test)]

@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "packs",
+  "description": "The packs window: export and import .kbpack files. Needs dialog for the Save and Open pickers; every filesystem touch goes through path-confined Rust commands, never an fs capability.",
+  "windows": ["packs"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "dialog:default"
+  ]
+}

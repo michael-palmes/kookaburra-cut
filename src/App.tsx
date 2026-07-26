@@ -348,13 +348,23 @@ export default function App() {
   }, []);
 
   // Drag-drop import (design.md §8.9): files dropped anywhere on the window land in the open workspace project's assets/.
+  // Not gated on the editor view, because a dropped pack must work from the welcome screen too, which is where a new
+  // starter most likely is when someone sends them one.
   useEffect(() => {
-    if (isAutoRun || view !== "editor") return;
+    if (isAutoRun) return;
     const unlisten = listen<{ paths?: string[] }>("tauri://drag-drop", (event) => {
+      const dropped = event.payload.paths ?? [];
+      if (dropped.length === 0) return;
+      // A dropped pack opens the packs window; without this it would silently be filed as media.
+      const packs = dropped.filter((p) => p.toLowerCase().endsWith(".kbpack"));
+      if (packs.length > 0) {
+        void invoke("open_pack_import", { path: packs[0] }).catch((e) =>
+          setToast({ kind: "error", message: String(e) }),
+        );
+      }
+      const paths = dropped.filter((p) => !p.toLowerCase().endsWith(".kbpack"));
       const currentId = useEditorStore.getState().projectId;
-      if (!isWorkspaceProjectId(currentId)) return;
-      const paths = event.payload.paths ?? [];
-      if (paths.length === 0) return;
+      if (!isWorkspaceProjectId(currentId) || paths.length === 0) return;
       importMedia(workspaceSlug(currentId), paths)
         .then((imported) => {
           if (imported.length === 0) return;
@@ -369,7 +379,7 @@ export default function App() {
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [view, isAutoRun]);
+  }, [isAutoRun]);
 
   useEffect(() => {
     if (isAutoRun) return;
@@ -909,6 +919,28 @@ export default function App() {
     setView("editor");
     setLastProject(id).catch(() => {});
   }, []);
+
+  // The File menu (v13) and the packs window talking back: New Project ⌘N, Export Video ⌘E, and a finished import.
+  useEffect(() => {
+    if (isAutoRun) return;
+    const unlisten = [
+      listen("kookaburra://new-project", () => setShowNewProject(true)),
+      listen("kookaburra://export-video", () => {
+        if (view === "editor") setShowExport(true);
+        else setToast({ kind: "error", message: "Open a project to export a video." });
+      }),
+      // An import landed: rescan rather than restart, so new projects and themes appear straight away.
+      listen("kookaburra://workspace-changed", () => {
+        void refreshProjects();
+        setWelcomeRefresh((n) => n + 1);
+        setMediaRefresh((n) => n + 1);
+      }),
+      listen<string>("kookaburra://open-project", (e) => openProject(e.payload)),
+    ];
+    return () => {
+      for (const un of unlisten) void un.then((fn) => fn());
+    };
+  }, [isAutoRun, view, refreshProjects, openProject]);
 
   const backToProjects = useCallback(() => {
     setView("welcome");

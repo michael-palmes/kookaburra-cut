@@ -73,14 +73,15 @@ export default defineConfig({
     target: "safari26",
     minify: process.env.TAURI_DEBUG ? false : "oxc",
     sourcemap: !!process.env.TAURI_DEBUG,
-    // Three entry points: the main studio window, the M5 video-editor window and the
-    // M5.6 settings window (each its own Tauri WebviewWindow + html entry).
+    // One entry point per Tauri WebviewWindow: the main studio window, the M5 video
+    // editor, the present window, the M5.6 settings panel and the v13 packs window.
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         editor: fileURLToPath(new URL("./editor.html", import.meta.url)),
         present: fileURLToPath(new URL("./present.html", import.meta.url)),
         settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
+        packs: fileURLToPath(new URL("./packs.html", import.meta.url)),
       },
     },
   },

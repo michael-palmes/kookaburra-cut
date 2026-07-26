@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { listProjectIds } from "../engine/project";
 import {
@@ -301,6 +302,17 @@ export function Welcome({
             +
           </span>
           <span>New project</span>
+        </button>
+        {/* Someone sent a pack to a person with an empty workspace: this is where they will be. */}
+        <button
+          type="button"
+          className="project-card new-project"
+          onClick={() => void invoke("open_pack_import", { path: null })}
+        >
+          <span className="new-project-plus" aria-hidden="true">
+            ↓
+          </span>
+          <span>Import a pack</span>
         </button>
       </div>
 
