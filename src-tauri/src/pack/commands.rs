@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
-use super::deps::{self, AssetGroup, ClosureFile, PackSelection};
+use super::deps::{self, AssetGroup, ClosureFile, HashMode, PackSelection};
 use super::error::PackError;
 use super::limits::{MAX_SOURCE_VIEW_BYTES, PACK_EXTENSION};
 use super::model::*;
@@ -28,6 +28,9 @@ pub struct PackState {
     /// The full picker catalogue, scanned once. Without it, ticking one project would hide every other project, since a
     /// closure only ever contains what the selection reaches.
     catalogue: Mutex<Option<Vec<SelectableItem>>>,
+    /// The last pack this app wrote. `reveal_in_finder` confines paths to the workspace, and the Save dialog can point
+    /// anywhere, so revealing a pack means revealing a path WE chose rather than one the frontend supplies.
+    last_built: Mutex<Option<PathBuf>>,
 }
 
 impl PackState {
@@ -315,13 +318,13 @@ fn enumerate_all(root: &Path) -> PackSelection {
 
 /// Everything the picker can offer, before anything is selected. Scanned once and cached.
 #[tauri::command]
-pub fn list_packables(
+pub async fn list_packables(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
 ) -> Result<PackPlanView, String> {
     let root = workspace::require_root(&app, &settings)?;
-    let closure = deps::resolve_closure(&root, &enumerate_all(&root))?;
+    let closure = deps::resolve_closure_with(&root, &enumerate_all(&root), HashMode::Names)?;
     let view = closure_to_view(&closure);
     if let Ok(mut cache) = state.catalogue.lock() {
         *cache = Some(view.items.clone());
@@ -331,14 +334,14 @@ pub fn list_packables(
 
 /// The catalogue stays whole; only `requiredBy` changes with the selection.
 #[tauri::command]
-pub fn plan_pack(
+pub async fn plan_pack(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
     selection: PackSelection,
 ) -> Result<PackPlanView, String> {
     let root = workspace::require_root(&app, &settings)?;
-    let closure = deps::resolve_closure(&root, &selection)?;
+    let closure = deps::resolve_closure_with(&root, &selection, HashMode::Names)?;
     let mut view = closure_to_view(&closure);
 
     let cached = state.catalogue.lock().ok().and_then(|c| c.clone());
@@ -417,7 +420,7 @@ fn validate_destination(app: &AppHandle, raw: &str) -> Result<PathBuf, PackError
 }
 
 #[tauri::command]
-pub fn build_pack(
+pub async fn build_pack(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
@@ -511,10 +514,34 @@ pub fn build_pack(
         &move || cancelled.load(Ordering::SeqCst),
     )?;
 
+    if let Ok(mut last) = state.last_built.lock() {
+        *last = Some(summary.path.clone());
+    }
     Ok(BuildResult {
         path: summary.path.to_string_lossy().into_owned(),
         bytes: summary.bytes,
     })
+}
+
+/// Reveal the pack this app just wrote. Takes no path: the Save dialog can point outside the workspace, which
+/// `reveal_in_finder` rightly refuses, so the only safe reveal is the one destination we validated and wrote ourselves.
+#[tauri::command]
+pub fn reveal_pack(state: State<'_, PackState>) -> Result<(), String> {
+    let path = state
+        .last_built
+        .lock()
+        .ok()
+        .and_then(|p| p.clone())
+        .ok_or("There is no pack to show yet.")?;
+    if !path.is_file() {
+        return Err(format!("{} has moved or been deleted.", path.display()));
+    }
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -525,7 +552,7 @@ pub fn cancel_pack_build(state: State<'_, PackState>) {
 // ------------------------------------------------------------------- import
 
 #[tauri::command]
-pub fn inspect_pack(
+pub async fn inspect_pack(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     path: String,
@@ -577,7 +604,7 @@ pub fn inspect_pack(
 }
 
 #[tauri::command]
-pub fn read_pack_scene_source(
+pub async fn read_pack_scene_source(
     path: String,
     project_slug: String,
     scene_file: String,
@@ -599,7 +626,7 @@ pub fn read_pack_scene_source(
 /// Extract and plan. Deliberately called from the CONTENTS screen, not earlier: nothing is written to disk until the
 /// user has seen what is inside.
 #[tauri::command]
-pub fn stage_pack(
+pub async fn stage_pack(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,
@@ -658,7 +685,7 @@ pub fn stage_pack(
 }
 
 #[tauri::command]
-pub fn apply_import(
+pub async fn apply_import(
     app: AppHandle,
     settings: State<'_, SettingsState>,
     state: State<'_, PackState>,

@@ -369,14 +369,31 @@ struct StagedFile {
     modified: Option<SystemTime>,
 }
 
-fn stage_file(item_rel: &str, archive_path: &str, source: &Path) -> Result<StagedFile, PackError> {
+/// How much work a closure does per file. The picker only needs names, sizes and references, and hashing a multi-GB
+/// workspace to populate a list takes tens of seconds, so `Names` skips it. `Full` is mandatory for anything that
+/// reaches a manifest, since `files[].sha256` is the security spine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HashMode {
+    Full,
+    Names,
+}
+
+fn stage_file(
+    item_rel: &str,
+    archive_path: &str,
+    source: &Path,
+    mode: HashMode,
+) -> Result<StagedFile, PackError> {
     let meta = std::fs::metadata(source)?;
     Ok(StagedFile {
         item_rel: item_rel.to_owned(),
         archive_path: archive_path.to_owned(),
         source: source.to_path_buf(),
         bytes: meta.len(),
-        sha256: sha256_file(source)?,
+        sha256: match mode {
+            HashMode::Full => sha256_file(source)?,
+            HashMode::Names => String::new(),
+        },
         modified: meta.modified().ok(),
     })
 }
@@ -848,6 +865,7 @@ fn accept(path: &str, warnings: &mut Vec<ClosureWarning>) -> bool {
 fn stage_all(
     files: Vec<(String, String, PathBuf)>,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> Vec<StagedFile> {
     let mut staged = Vec::new();
     for (item_rel, archive, source) in files {
@@ -861,7 +879,7 @@ fn stage_all(
             });
             continue;
         }
-        match stage_file(&item_rel, &archive, &source) {
+        match stage_file(&item_rel, &archive, &source, mode) {
             Ok(file) => staged.push(file),
             Err(e) => warnings.push(ClosureWarning::FileSkipped {
                 path: archive,
@@ -874,6 +892,15 @@ fn stage_all(
 
 /// Resolve a selection into everything a pack needs: contents, the flat file list, and every gap found on the way.
 pub fn resolve_closure(root: &Path, selection: &PackSelection) -> Result<Closure, PackError> {
+    resolve_closure_with(root, selection, HashMode::Full)
+}
+
+/// `HashMode::Names` is for the picker only. Never build a manifest from one.
+pub fn resolve_closure_with(
+    root: &Path,
+    selection: &PackSelection,
+    mode: HashMode,
+) -> Result<Closure, PackError> {
     if !root.is_dir() {
         return Err(PackError::NoWorkspace);
     }
@@ -887,13 +914,13 @@ pub fn resolve_closure(root: &Path, selection: &PackSelection) -> Result<Closure
 
     for slug in resolver.projects.clone() {
         let (project, staged, mut assets) =
-            build_project(root, &slug, &resolver, selection, &mut warnings);
+            build_project(root, &slug, &resolver, selection, &mut warnings, mode);
         contents.projects.push(project);
         push_files(&mut files, staged);
         reviewed.append(&mut assets);
     }
     for slug in resolver.themes.clone() {
-        let (theme, staged) = build_theme(root, &slug, &resolver, &mut warnings);
+        let (theme, staged) = build_theme(root, &slug, &resolver, &mut warnings, mode);
         contents.themes.push(theme);
         push_files(&mut files, staged);
     }
@@ -902,26 +929,27 @@ pub fn resolve_closure(root: &Path, selection: &PackSelection) -> Result<Closure
         &resolver.fonts.clone(),
         &resolver.required_by,
         &mut warnings,
+        mode,
     )?;
     contents.fonts = fonts;
     push_files(&mut files, staged);
     for slug in resolver.objects.clone() {
-        let (object, staged) = build_object(root, &slug, &mut warnings);
+        let (object, staged) = build_object(root, &slug, &mut warnings, mode);
         contents.objects.push(object);
         push_files(&mut files, staged);
     }
     for slug in resolver.gradients.clone() {
-        let (item, staged) = build_flat(root, ItemKind::Gradient, &slug, &mut warnings);
+        let (item, staged) = build_flat(root, ItemKind::Gradient, &slug, &mut warnings, mode);
         contents.gradients.push(item);
         push_files(&mut files, staged);
     }
     for slug in resolver.export_presets.clone() {
-        let (item, staged) = build_flat(root, ItemKind::ExportPreset, &slug, &mut warnings);
+        let (item, staged) = build_flat(root, ItemKind::ExportPreset, &slug, &mut warnings, mode);
         contents.export_presets.push(item);
         push_files(&mut files, staged);
     }
     for name in resolver.screenshots.clone() {
-        if let Some((shot, staged)) = build_screenshot(root, &name, &mut warnings) {
+        if let Some((shot, staged)) = build_screenshot(root, &name, &mut warnings, mode) {
             contents.screenshots.push(shot);
             push_files(&mut files, staged);
         }
@@ -962,6 +990,7 @@ fn build_project(
     resolver: &Resolver<'_>,
     selection: &PackSelection,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> (PackProject, Vec<StagedFile>, Vec<ReviewedAsset>) {
     let dir = root.join(slug);
     let doc = read_json(&dir.join(MANIFEST_FILENAME)).unwrap_or(Value::Null);
@@ -1019,6 +1048,8 @@ fn build_project(
             })
             .collect(),
         warnings,
+    
+        mode,
     );
 
     let scene_files: Vec<String> = doc
@@ -1061,6 +1092,7 @@ fn build_theme(
     slug: &str,
     resolver: &Resolver<'_>,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> (PackTheme, Vec<StagedFile>) {
     let file = root.join(ItemKind::Theme.workspace_dir().unwrap_or("themes")).join(slug).join("theme.json");
     let doc = read_json(&file).unwrap_or(Value::Null);
@@ -1071,6 +1103,8 @@ fn build_theme(
             file,
         )],
         warnings,
+    
+        mode,
     );
     let swatches = doc
         .get("colors")
@@ -1101,6 +1135,7 @@ fn build_fonts(
     keys: &BTreeSet<String>,
     required_by: &BTreeMap<String, Vec<String>>,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> Result<(Vec<PackFont>, Vec<StagedFile>), PackError> {
     let dir = root.join(ItemKind::Font.workspace_dir().unwrap_or("fonts"));
     let refs: Vec<crate::fonts::FontRef> = keys
@@ -1124,6 +1159,8 @@ fn build_fonts(
         staged.append(&mut stage_all(
             vec![(file_name, archive, source)],
             warnings,
+        
+            mode,
         ));
     }
     for key in keys {
@@ -1145,6 +1182,7 @@ fn build_object(
     root: &Path,
     slug: &str,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> (PackObject, Vec<StagedFile>) {
     let dir = root
         .join(ItemKind::Object.workspace_dir().unwrap_or("objects"))
@@ -1161,6 +1199,8 @@ fn build_object(
             })
             .collect(),
         warnings,
+    
+        mode,
     );
     let in_archive = |rel: Option<String>| {
         rel.map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")))
@@ -1188,6 +1228,7 @@ fn build_flat(
     kind: ItemKind,
     slug: &str,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> (PackSimpleItem, Vec<StagedFile>) {
     let file = root
         .join(kind.workspace_dir().unwrap_or(""))
@@ -1197,6 +1238,8 @@ fn build_flat(
     let staged = stage_all(
         vec![(rel.clone(), archive_path(kind, &rel), file)],
         warnings,
+    
+        mode,
     );
     let item = PackSimpleItem {
         base: base_from(
@@ -1212,6 +1255,7 @@ fn build_screenshot(
     root: &Path,
     name: &str,
     warnings: &mut Vec<ClosureWarning>,
+    mode: HashMode,
 ) -> Option<(PackScreenshot, Vec<StagedFile>)> {
     let file = root
         .join(ItemKind::Screenshot.workspace_dir().unwrap_or("screenshots"))
@@ -1223,6 +1267,8 @@ fn build_screenshot(
             file,
         )],
         warnings,
+    
+        mode,
     );
     let first = staged.first()?;
     let shot = PackScreenshot {

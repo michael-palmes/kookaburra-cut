@@ -1240,6 +1240,7 @@ pub fn run() {
             pack::commands::plan_pack,
             pack::commands::build_pack,
             pack::commands::cancel_pack_build,
+            pack::commands::reveal_pack,
             pack::commands::inspect_pack,
             pack::commands::read_pack_scene_source,
             pack::commands::stage_pack,
