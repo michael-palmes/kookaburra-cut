@@ -6095,6 +6095,12 @@ img.inspector-scene-thumb {
   min-height: 0;
 }
 
+/* Compact segmented tabs (the video window's corner/motion preset rows): four to five glyph-bearing options fit the rail. */
+.inspector-subtabs.subtabs-compact .inspector-subtab {
+  gap: 4px;
+  padding: 0 7px;
+}
+
 /* Embedded media browser in the inspector rail (the shared 140px card floor sits it at 2-up). */
 .inspector-media-host {
   display: flex;
