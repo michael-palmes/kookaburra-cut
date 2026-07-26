@@ -3920,10 +3920,11 @@ body {
   background: var(--border-subtle);
 }
 
-/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). The inspector-context margin must go or the switch rides high in the pill. */
+/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). The inspector-context margin and flex-start alignment must go or the switch rides high in the pill. */
 .camera-pill-modes {
   flex: none;
   margin: 0;
+  align-self: center;
 }
 
 .camera-pill-blurb {
