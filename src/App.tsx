@@ -126,6 +126,7 @@ import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
 import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
 import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
+import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -1779,6 +1780,19 @@ export default function App() {
                           onDocChanged={handleDocChanged}
                         />
                       ))}
+                {/* The ghost path for a free-flight rig: above the tool surface but click-through except on its key dots, so an armed drag tool still owns the stage. */}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  !lsActive &&
+                  cameraEditOpen && (
+                    <CameraPathOverlay
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
                 {/* Decoration drag surface: DOM above the canvas, the letterboxed frame, armed while the Decorations drill-in is open. */}
                 {project &&
                   isWorkspaceProjectId(project.id) &&

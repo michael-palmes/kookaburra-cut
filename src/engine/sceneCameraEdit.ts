@@ -1,9 +1,22 @@
 import type { KeyedTrack, TrackLayout } from "./keyedTrack";
-import type { SceneDocCameraPose, SceneDocCameraPresentLoop } from "./sceneDocSchema";
+import type {
+  SceneDocCameraPose,
+  SceneDocCameraPresentLoop,
+  SceneDocRigKey,
+  SceneDocRigPose,
+  SceneDocRigSegment,
+} from "./sceneDocSchema";
 
 /** Pure edit math for a sidecar camera track: the mini-timeline's mutations, now thin specialisations of the generic `keyedTrack.ts` (extracted for the layered-screenshot animation track; the exported names, signatures and behaviour are unchanged and the existing tests pin them). The layout model is GAP-PRESERVING with HARD WALLS; sampling semantics live in `sceneCamera.ts`. */
 
 export interface CameraDoc extends KeyedTrack<SceneDocCameraPose> {
+  presentLoop?: SceneDocCameraPresentLoop;
+}
+
+/** The rig block in edit shape. Structurally a `KeyedTrack<SceneDocRigPose>` with richer keys and segments, so every generic mutation (move, add, remove, ease) applies unchanged and carries the extra fields through. */
+export interface RigDoc extends KeyedTrack<SceneDocRigPose> {
+  keys: SceneDocRigKey[];
+  segments: SceneDocRigSegment[];
   presentLoop?: SceneDocCameraPresentLoop;
 }
 

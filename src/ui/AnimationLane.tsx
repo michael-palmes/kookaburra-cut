@@ -1,29 +1,24 @@
 import { useCallback } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
+import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose } from "../engine/sceneDocSchema";
 import { useCameraDoc } from "./cameraDoc";
 import { TrackLane } from "./TrackLane";
 
-/** The per-scene camera timeline lane: a thin wrapper binding the generic `TrackLane` to the camera edit store, doc funnel and O/P/Z tool keys (the lane body itself was extracted verbatim to TrackLane.tsx for the layered-screenshot lane). */
+/** The per-scene camera timeline lane: a thin wrapper binding the generic `TrackLane` to the camera edit store, doc funnel and the mode's tool keys, O/P/Z in Orbit and M/F/L/T in Free (the lane body itself was extracted verbatim to TrackLane.tsx for the layered-screenshot lane). Neither set collides: the studio window binds no other bare letters, and the video editor's S/F/T live in a separate window. */
 
-const TOOL_KEYS: Record<string, "rotate" | "pan" | "zoom"> = {
-  o: "rotate",
-  p: "pan",
-  z: "zoom",
+const ORBIT_TOOL_KEYS: Record<string, CameraTool> = { o: "rotate", p: "pan", z: "zoom" };
+const FREE_TOOL_KEYS: Record<string, CameraTool> = {
+  m: "move",
+  f: "forward",
+  l: "look",
+  t: "tilt",
 };
 
 const getSelection = () => {
   const s = useCameraEditStore.getState();
   return { keyId: s.selectedKeyId, segment: s.selectedSegment };
-};
-
-const onToolKey = (key: string): boolean => {
-  const tool = TOOL_KEYS[key];
-  if (!tool) return false;
-  useCameraEditStore.getState().armTool(tool);
-  return true;
 };
 
 const onEscape = () => {
@@ -50,7 +45,7 @@ export function AnimationLane({
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const selectedSegment = useCameraEditStore((s) => s.selectedSegment);
   const writeError = useCameraEditStore((s) => s.writeError);
-  const { slot, camera, preview, commit, appliedPoseAt } = useCameraDoc(
+  const { slot, mode, camera, preview, commit, appliedPoseAt } = useCameraDoc(
     project,
     sceneIndex,
     onDocChanged,
@@ -58,6 +53,15 @@ export function AnimationLane({
   const onDuration = useCallback(
     (ms: number) => onSceneDuration(sceneIndex, ms),
     [onSceneDuration, sceneIndex],
+  );
+  const onToolKey = useCallback(
+    (key: string): boolean => {
+      const tool = (mode === "rig" ? FREE_TOOL_KEYS : ORBIT_TOOL_KEYS)[key];
+      if (!tool) return false;
+      useCameraEditStore.getState().armTool(tool);
+      return true;
+    },
+    [mode],
   );
 
   // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries.

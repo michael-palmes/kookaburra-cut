@@ -3817,7 +3817,8 @@ body {
 
 .camera-pill {
   position: relative;
-  width: 300px;
+  /* Wide enough for Free mode's four tools beside the mode switch; Orbit's three leave slack. */
+  width: 392px;
   height: 38px;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
@@ -3908,6 +3909,12 @@ body {
   height: 20px;
   flex: none;
   background: var(--border-subtle);
+}
+
+/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). */
+.camera-pill-modes {
+  flex: none;
+  height: 24px;
 }
 
 .camera-pill-blurb {
@@ -4143,8 +4150,98 @@ body {
   cursor: ns-resize;
 }
 
+/* Free-mode tools: Move grabs like Pan, Forward dollies like Zoom, Look turns, Tilt banks sideways. */
+.tool-move {
+  cursor: grab;
+}
+
+.tool-move:active {
+  cursor: grabbing;
+}
+
+.tool-forward {
+  cursor: ns-resize;
+}
+
+.tool-look {
+  cursor: all-scroll;
+}
+
+.tool-tilt {
+  cursor: ew-resize;
+}
+
 .tool-spread {
   cursor: row-resize;
+}
+
+/* ── The ghost path: where a free-flight rig travels, drawn over the stage.
+   Click-through except on the key dots, so an armed drag tool still owns the surface. ── */
+.camera-path-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.camera-path-svg {
+  position: absolute;
+  inset: 0;
+}
+
+.camera-path-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0.7;
+}
+
+/* Dashed means every segment is a straight dolly; solid means at least one smooths. */
+.camera-path-line.straight {
+  stroke-dasharray: 5 4;
+}
+
+.camera-path-head {
+  fill: var(--accent);
+  opacity: 0.9;
+}
+
+.camera-path-dot {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: var(--surface-elevated);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.camera-path-dot:active {
+  cursor: grabbing;
+}
+
+.camera-path-dot.selected {
+  background: var(--accent);
+}
+
+/* Amber: the bounds advisory flagged this key. Advisory only, never a block. */
+.camera-path-dot.warn {
+  border-color: var(--warning);
+}
+
+.camera-path-dot.selected.warn {
+  background: var(--warning);
+}
+
+/* A key behind the camera or off-stage clamps to the edge as a square marker, never a wild coordinate. */
+.camera-path-dot.clipped {
+  border-radius: 2px;
+  opacity: 0.6;
 }
 
 /* ── Screenshot-stack builder: a Scene-tab drill-in (the Change-device pattern) ── */
@@ -5626,6 +5723,11 @@ img.inspector-scene-thumb {
   font-weight: 590;
   color: var(--text-primary);
   background: var(--surface-raised);
+}
+/* Pill scale: the camera pill runs the same control at a smaller size. */
+.camera-pill-modes .inspector-subtab {
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 /* Reusable: a bordered container whose segmented toggle (.inspector-subtabs) straddles its top edge, centred. */

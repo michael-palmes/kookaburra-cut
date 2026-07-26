@@ -139,9 +139,18 @@ export interface SceneCameraTracks {
   rig: SceneRigTrack | null;
 }
 
-/** Wrap an orbit track as a scene's camera tracks (the editor's draft shape). */
+/** Assemble a scene's camera tracks from its two normalized blocks. The ONE place `mode` is decided, so the editor's live draft and the loaded project can't disagree about which block drives. */
+export function sceneCameraTracks(
+  orbit: SceneCameraTrack | null,
+  rig: SceneRigTrack | null,
+): SceneCameraTracks | null {
+  if (!orbit && !rig) return null;
+  return { mode: rig ? "rig" : "orbit", orbit, rig };
+}
+
+/** Wrap an orbit track alone (the orbit-only draft shape). */
 export function orbitCameraTracks(orbit: SceneCameraTrack | null): SceneCameraTracks | null {
-  return orbit ? { mode: "orbit", orbit, rig: null } : null;
+  return sceneCameraTracks(orbit, null);
 }
 
 /** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes nothing (its keys stay on disk untouched; the toggle just stands the camera down). The rig is only normalized under `cameraMode: "rig"`, so an orbit-mode scene carrying a stale rig block costs nothing and warns about nothing. */
@@ -153,8 +162,7 @@ export function buildSceneCameraTracks(
     const source = `scene ${i}`;
     const orbit = normalizeSceneCamera(doc.camera, source);
     const rig = doc.cameraMode === "rig" ? normalizeSceneRig(doc.cameraRig, source, doc) : null;
-    if (!orbit && !rig) return null;
-    return { mode: rig ? "rig" : "orbit", orbit, rig };
+    return sceneCameraTracks(orbit, rig);
   });
 }
 
