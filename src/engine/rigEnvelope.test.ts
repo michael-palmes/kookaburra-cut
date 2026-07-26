@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEPTH_BANDS } from "../toolkit/stage/DepthStage";
 import type { SceneDoc } from "./sceneDocSchema";
 import { ENVELOPE_SAMPLES, envelopeOverscan, normalizeSceneRig, rigEnvelope } from "./sceneRig";
 
@@ -112,5 +113,11 @@ describe("envelopeOverscan", () => {
   it("a band further from the camera needs less than one nearer it", () => {
     const wide = { ...still, lateral: 2 };
     expect(envelopeOverscan(wide, FRAME, -5)).toBeGreaterThan(envelopeOverscan(wide, FRAME, 1.8));
+  });
+});
+
+describe("DEPTH_BANDS", () => {
+  it("band depths are pinned (export contract)", () => {
+    expect(DEPTH_BANDS).toEqual({ foreground: 1.8, content: 0, midground: -2.4, backdrop: -5.5 });
   });
 });
