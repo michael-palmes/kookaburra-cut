@@ -1027,6 +1027,22 @@ and do not need their own verifies.**
   engine-wide constants (FPS, MSAA, shadow type, tone mapping, blending domain,
   font-atlas order), deliberate baseline rebases, phase-closing gates, and
   packaged-app parity checks.
+- **Pack round trip (v13, any change under `src-tauri/src/pack/**` or
+  `fonts.rs`):** export a gate project to a `.kbpack`, import it into a clean
+  workspace root, verify THERE, and demand the same baseline hash. Every other
+  gate compares a render against a baseline recorded from the same files in the
+  same place; a pack changes the files' location, their slug, and potentially
+  the font bytes behind them, so this is the only test that can catch a lossy
+  pack. It catches, in one assertion, a missing font byte, an over-eager
+  exclusion, a lost sidecar, a rewritten asset path, a scene dropped from the
+  manifest and a theme that silently fell back.
+  Boot 1 verifies and builds the pack; boot 2 runs with
+  `KOOKABURRA_WORKSPACE_ROOT` pointed at a throwaway root, imports with
+  everything forced to `replace`, and verifies again. **A prerequisite worth
+  re-checking if it ever fails: export hashes must be independent of a
+  project's slug and absolute path.** Nothing else in the suite proves that, so
+  a red round trip means checking path-independence first (duplicate a gate
+  project to a new slug and verify both) before suspecting the pack code.
 - **Recording rebases:** once the changed code path is PROVEN deterministic by
   the Tier-1 verify, record the other affected projects' new hashes from a
   single export batch: do not Verify ×2 each one.
