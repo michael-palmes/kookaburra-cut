@@ -5,15 +5,32 @@ import {
   defineScene,
   ImageCard,
   SceneStage,
+  useDepthBand,
   useFormat,
   useSceneDevices,
   useSceneText,
+  useTheme,
 } from "@kookaburra/toolkit";
 
 /**
  * Showcase tour scene 7 — a DepthStage fly-through: the camera rig travels through four
  * depth bands with a tangent aim, banking as it goes and narrowing its lens on the way in.
+ * The backdrop fill sizes itself from the band's envelope rect, so the gate exercises the
+ * rig-aware overscan maths, not just the band depths.
  */
+function BackdropFill() {
+  const theme = useTheme();
+  const format = useFormat();
+  const band = useDepthBand();
+  return (
+    <mesh position={[0, 0, -0.01]}>
+      <planeGeometry
+        args={[band?.width ?? format.frame.width, band?.height ?? format.frame.height]}
+      />
+      <meshStandardMaterial color={theme.colors.muted} />
+    </mesh>
+  );
+}
 export default defineScene({
   id: "tour-rig-flight",
   durationMs: 2000,
@@ -63,7 +80,12 @@ export default defineScene({
               <ImageCard src="assets/app-icon.png" position={[2.3, 0.8, 0]} width={1.1} />
             </>
           }
-          backdrop={<ImageCard src="assets/app-icon.png" position={[0.4, 0.2, 0]} width={3} />}
+          backdrop={
+            <>
+              <BackdropFill />
+              <ImageCard src="assets/app-icon.png" position={[0.4, 0.2, 0]} width={3} />
+            </>
+          }
         />
       </SceneStage>
     );
