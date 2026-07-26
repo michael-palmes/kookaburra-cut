@@ -80,7 +80,11 @@ export function SummaryView({
         {outcome.backupDir && (
           <div className="packs-note">
             What you had before was moved to a backup.{" "}
-            <button type="button" onClick={() => void revealInFinder(String(outcome.backupDir))}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void revealInFinder(String(outcome.backupDir))}
+            >
               Show backups in Finder
             </button>
           </div>
@@ -92,16 +96,20 @@ export function SummaryView({
           {queued > 0 ? `${queued} more pack${queued === 1 ? "" : "s"} waiting` : ""}
         </div>
         <div className="packs-actions">
-          <button type="button" onClick={onClose}>
+          <button type="button" className="btn" onClick={onClose}>
             Close
           </button>
           {queued > 0 && (
-            <button type="button" onClick={onNextPack}>
+            <button type="button" className="btn" onClick={onNextPack}>
               Next pack ({queued} remaining)
             </button>
           )}
           {firstProject && (
-            <button type="button" onClick={() => onOpenProject(firstProject.slug)}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => onOpenProject(firstProject.slug)}
+            >
               Open {firstProject.name}
             </button>
           )}

@@ -60,7 +60,7 @@ export function CodeView({
             it.
           </div>
           <div className="packs-actions">
-            <button type="button" onClick={onBack}>
+            <button type="button" className="btn" onClick={onBack}>
               Back
             </button>
           </div>

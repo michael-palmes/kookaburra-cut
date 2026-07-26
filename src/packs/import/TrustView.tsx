@@ -55,7 +55,7 @@ export function TrustView({
               scene file{sceneFileCount === 1 ? "" : "s"} that run on your Mac when you open them.
               Importing only copies files. You will be asked again before any code runs.
               <div style={{ marginTop: 8 }}>
-                <button type="button" onClick={onViewCode}>
+                <button type="button" className="btn" onClick={onViewCode}>
                   View the code
                 </button>
               </div>
@@ -70,10 +70,10 @@ export function TrustView({
           {formatBytes(installBytes)} installed
         </div>
         <div className="packs-actions">
-          <button type="button" onClick={onCancel}>
+          <button type="button" className="btn" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" onClick={onContinue}>
+          <button type="button" className="btn primary" onClick={onContinue}>
             Continue
           </button>
         </div>

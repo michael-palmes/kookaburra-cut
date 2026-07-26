@@ -149,3 +149,9 @@ export function getPublisherProfile(): Promise<PublisherProfileView> {
 export function revealInFinder(path: string): Promise<void> {
   return invoke("reveal_in_finder", { path });
 }
+
+/// The Save dialog can point outside the workspace, which `reveal_in_finder` refuses, so revealing a pack goes through
+/// the path Rust wrote rather than one we hand back to it.
+export function revealPack(): Promise<void> {
+  return invoke("reveal_pack");
+}

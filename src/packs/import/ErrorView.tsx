@@ -28,15 +28,19 @@ export function ErrorView({
       <div className="packs-footer">
         <div className="packs-footer-summary" />
         <div className="packs-actions">
-          <button type="button" onClick={() => void navigator.clipboard.writeText(details)}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void navigator.clipboard.writeText(details)}
+          >
             Copy details
           </button>
           {onChooseAnother && (
-            <button type="button" onClick={onChooseAnother}>
+            <button type="button" className="btn" onClick={onChooseAnother}>
               Choose another pack
             </button>
           )}
-          <button type="button" onClick={onClose}>
+          <button type="button" className="btn" onClick={onClose}>
             Close
           </button>
         </div>

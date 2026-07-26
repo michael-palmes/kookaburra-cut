@@ -160,10 +160,10 @@ export function ConflictsView({
           {willImport} of {plan.items.length} items will be written
         </div>
         <div className="packs-actions">
-          <button type="button" onClick={onBack}>
+          <button type="button" className="btn" onClick={onBack}>
             Back
           </button>
-          <button type="button" onClick={submit}>
+          <button type="button" className="btn primary" onClick={submit}>
             Import {willImport} item{willImport === 1 ? "" : "s"}
           </button>
         </div>

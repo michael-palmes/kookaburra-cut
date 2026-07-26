@@ -6,9 +6,10 @@ import {
   getPublisherProfile,
   listPackables,
   planPack,
-  revealInFinder,
+  revealPack,
 } from "../engine/packs";
 import { FONT_DISCLAIMER, fontEmbeddingNotice } from "../ui/packs/fontCopy";
+import { PackGlyph } from "./PackGlyph";
 import {
   breakageWarning,
   countByKind,
@@ -56,11 +57,14 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const [droppedAssets, setDroppedAssets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  // The first scan walks the whole workspace, so the window must say so rather than showing an empty picker.
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     listPackables()
       .then(setPlan)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
     getPublisherProfile()
       .then((p) => {
         setProfile(p);
@@ -72,6 +76,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   // Re-resolve the closure whenever the direct ticks change. Debounced: plan_pack walks every sidecar.
   const timer = useRef<number | null>(null);
   useEffect(() => {
+    if (loading) return;
     if (timer.current) window.clearTimeout(timer.current);
     setPlanning(true);
     timer.current = window.setTimeout(() => {
@@ -86,7 +91,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
-  }, [state]);
+  }, [state, loading]);
 
   const items = plan?.items ?? [];
   const counts = useMemo(() => countByKind(state, items), [state, items]);
@@ -126,6 +131,18 @@ export function ExportView({ onClose }: { onClose: () => void }) {
     }
   }, [state, items, droppedAssets, packName, description]);
 
+  if (loading) {
+    return (
+      <div className="packs-progress">
+        <div className="packs-spinner" aria-hidden="true" />
+        <div className="packs-hero-title" style={{ marginTop: 16 }}>
+          Reading your workspace
+        </div>
+        <div className="packs-hero-note">Finding your projects, themes, fonts and objects.</div>
+      </div>
+    );
+  }
+
   if (phase.step === "building") {
     const p = phase.progress;
     const pct = p && p.total > 0 ? Math.round((p.file / p.total) * 100) : 0;
@@ -141,7 +158,7 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           {p ? `${p.file} of ${p.total} files` : "Preparing…"}
         </div>
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 20 }}>
-          <button type="button" onClick={() => void cancelPackBuild()}>
+          <button type="button" className="btn" onClick={() => void cancelPackBuild()}>
             Cancel
           </button>
         </div>
@@ -152,18 +169,23 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   if (phase.step === "done") {
     return (
       <div className="packs-progress">
-        <div style={{ fontSize: 17, marginBottom: 6 }}>Pack exported</div>
-        <div style={{ fontSize: 13, opacity: 0.75 }}>
+        <PackGlyph variant="done" />
+        <div className="packs-hero-title">Pack exported</div>
+        <div className="packs-hero-note">
           {packName} · {formatBytes(phase.bytes)}
         </div>
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 22 }}>
-          <button type="button" onClick={() => void revealInFinder(phase.path)}>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => void revealPack().catch((e) => setError(String(e)))}
+          >
             Show in Finder
           </button>
-          <button type="button" onClick={() => setPhase({ step: "picking" })}>
+          <button type="button" className="btn" onClick={() => setPhase({ step: "picking" })}>
             Export another
           </button>
-          <button type="button" onClick={onClose}>
+          <button type="button" className="btn" onClick={onClose}>
             Close
           </button>
         </div>
@@ -174,12 +196,10 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   if (phase.step === "failed") {
     return (
       <div className="packs-progress">
-        <div style={{ fontSize: 17, marginBottom: 6 }}>The pack could not be written</div>
-        <div style={{ fontSize: 13, opacity: 0.8, maxWidth: 460, margin: "0 auto" }}>
-          {phase.message}
-        </div>
+        <div className="packs-hero-title">The pack could not be written</div>
+        <div className="packs-hero-note">{phase.message}</div>
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 22 }}>
-          <button type="button" onClick={() => setPhase({ step: "picking" })}>
+          <button type="button" className="btn" onClick={() => setPhase({ step: "picking" })}>
             Back
           </button>
         </div>
@@ -286,11 +306,12 @@ export function ExportView({ onClose }: { onClose: () => void }) {
               : `${packName || "Untitled pack"} · ${included.length} item${included.length === 1 ? "" : "s"} · ${planning ? "Estimating…" : formatBytes(bytes)}`}
           </div>
           <div className="packs-actions">
-            <button type="button" onClick={onClose}>
+            <button type="button" className="btn" onClick={onClose}>
               Cancel
             </button>
             <button
               type="button"
+              className="btn primary"
               disabled={included.length === 0 || !packName.trim()}
               onClick={() => void onExport()}
             >

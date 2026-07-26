@@ -8,6 +8,7 @@ import {
   type PackSelection,
   stageAndPlan,
 } from "../../engine/packs";
+import { PackGlyph } from "../PackGlyph";
 import type { ImportOutcome, ImportPlan, PackInspection, PackProgress, Resolution } from "../types";
 import { CodeView } from "./CodeView";
 import { ConflictsView } from "./ConflictsView";
@@ -139,15 +140,17 @@ export function ImportFlow({
     case "choose":
       return (
         <div className="packs-progress">
-          <div style={{ fontSize: 17, marginBottom: 8 }}>Import a pack</div>
-          <div style={{ fontSize: 13, opacity: 0.75, maxWidth: 420, margin: "0 auto" }}>
-            Drop a .kbpack file here, or choose one.
+          <PackGlyph variant="import" />
+          <div className="packs-hero-title">Import a pack</div>
+          <div className="packs-hero-note">
+            Drop a .kbpack file anywhere in this window, or choose one. Nothing is added to your
+            workspace until you have seen what is inside.
           </div>
           <div className="packs-actions" style={{ justifyContent: "center", marginTop: 22 }}>
-            <button type="button" onClick={onClose}>
+            <button type="button" className="btn" onClick={onClose}>
               Cancel
             </button>
-            <button type="button" onClick={() => void choose()}>
+            <button type="button" className="btn primary" onClick={() => void choose()}>
               Choose file…
             </button>
           </div>
@@ -256,7 +259,7 @@ function Busy({
       </div>
       {onCancel && (
         <div className="packs-actions" style={{ justifyContent: "center", marginTop: 20 }}>
-          <button type="button" onClick={onCancel}>
+          <button type="button" className="btn" onClick={onCancel}>
             Cancel
           </button>
         </div>

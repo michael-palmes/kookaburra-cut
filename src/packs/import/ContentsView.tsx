@@ -210,11 +210,12 @@ export function ContentsView({
             Cut
           </div>
           <div className="packs-actions">
-            <button type="button" onClick={onBack}>
+            <button type="button" className="btn" onClick={onBack}>
               Back
             </button>
             <button
               type="button"
+              className="btn primary"
               disabled={included.length === 0}
               onClick={() => onContinue(selection)}
             >

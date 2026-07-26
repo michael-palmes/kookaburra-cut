@@ -190,7 +190,15 @@
 
 .packs-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-3, 8px);
+}
+
+/* Footer actions are the surface's main choices: the taller control height, not the compact inline one. */
+.packs-footer .btn,
+.packs-progress .btn {
+  height: var(--control-h-lg, 34px);
+  padding: 0 var(--space-6, 18px);
+  font-size: var(--text-md, 13px);
 }
 
 .packs-empty {
@@ -335,9 +343,61 @@
   padding-left: 8px;
 }
 
+/* One-message screens (choose a pack, exporting, done, failed): centred in the window rather than pinned to the top,
+   which is what made them read as empty. */
 .packs-progress {
-  padding: 60px 24px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   text-align: center;
+}
+
+.packs-glyph {
+  color: var(--text-secondary, #a7b0bb);
+  opacity: 0.75;
+  margin-bottom: 20px;
+}
+
+.packs-glyph-accent {
+  color: var(--accent, #5b8cff);
+}
+
+.packs-hero-title {
+  font-size: 17px;
+  font-weight: 590;
+}
+
+.packs-hero-note {
+  margin-top: 6px;
+  max-width: 380px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, #a7b0bb);
+}
+
+.packs-spinner {
+  width: 22px;
+  height: 22px;
+  margin: 0 auto;
+  border: 2px solid var(--border-default, rgba(255, 255, 255, 0.14));
+  border-top-color: var(--accent, #5b8cff);
+  border-radius: 50%;
+  animation: packs-spin 720ms linear infinite;
+}
+
+@keyframes packs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .packs-spinner {
+    animation-duration: 2s;
+  }
 }
 
 .packs-progress-bar {
