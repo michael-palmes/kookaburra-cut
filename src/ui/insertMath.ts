@@ -20,14 +20,6 @@ export function gapCentres(layout: StripLayout): number[] {
   );
 }
 
-/** Stretch the final gap out to `endX` when the row underfills its width, so "At the end" parks at the strip's far edge; a computed centre already past `endX` (an overflowing strip) wins. */
-export function stretchEnd(centres: number[], endX: number): number[] {
-  if (centres.length === 0 || endX <= centres[centres.length - 1]) return centres;
-  const out = centres.slice();
-  out[out.length - 1] = endX;
-  return out;
-}
-
 /** Index of the nearest gap centre (ties go to the earlier gap; empty centres degrade to 0). */
 export function nearestGap(x: number, centres: number[]): number {
   let best = 0;

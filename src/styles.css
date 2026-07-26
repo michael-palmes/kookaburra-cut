@@ -3097,8 +3097,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  flex: 0 1 8.5rem;
+  /* Cards grow to fill the row, so the end gap hugs the last scene instead of floating at the far edge. */
+  flex: 1 1 8.5rem;
   min-width: 3.5rem;
+  max-width: 16rem;
   font-size: var(--text-xs);
   scroll-snap-align: start;
 }

@@ -8,7 +8,6 @@ import {
   nearestGap,
   placementFromGap,
   type StripLayout,
-  stretchEnd,
 } from "./insertMath";
 import type { WizardSceneInfo } from "./SceneWizards";
 
@@ -27,24 +26,19 @@ export function SceneInsertTimeline({
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<(StripLayout & { endX: number }) | null>(null);
+  const [layout, setLayout] = useState<StripLayout | null>(null);
   const [dragX, setDragX] = useState<number | null>(null);
   const drag = useRef<{ pointerId: number; clientX: number; raf: number } | null>(null);
 
   const count = scenes.length;
-  const centres = useMemo(
-    () => (layout ? stretchEnd(gapCentres(layout), layout.endX) : []),
-    [layout],
-  );
+  const centres = useMemo(() => (layout ? gapCentres(layout) : []), [layout]);
   const halfSpan = layout ? (layout.cardWidth + layout.gapWidth) / 2 : 0;
   const gap = gapFromPlacement(value, count);
 
-  // Cards flex-shrink to a floor before the strip scrolls, so geometry is measured, not assumed.
+  // Cards flex to fill the row before the strip scrolls, so geometry is measured, not assumed.
   const measure = useCallback(() => {
     const cards = cardsRef.current?.querySelectorAll<HTMLElement>(".insert-card");
-    const row = cardsRef.current;
-    const scroller = scrollerRef.current;
-    if (!cards || cards.length === 0 || !row || !scroller) {
+    if (!cards || cards.length === 0) {
       setLayout(null);
       return;
     }
@@ -52,19 +46,15 @@ export function SceneInsertTimeline({
     const cardWidth = first.offsetWidth;
     const gapWidth =
       cards.length > 1 ? cards[1].offsetLeft - first.offsetLeft - cardWidth : first.offsetLeft;
-    // An underfilled row parks the end gap at the far edge, mirroring the start inset; overflowing strips keep it after the last card.
-    const overflowing = scroller.scrollWidth > scroller.clientWidth + 1;
-    const endX = overflowing ? 0 : row.clientWidth - (first.offsetLeft - gapWidth / 2);
     // Identity-stable when nothing moved, so resize ticks can't re-trigger the reveal scroll.
     setLayout((prev) =>
       prev &&
       prev.count === cards.length &&
       prev.cardWidth === cardWidth &&
       prev.gapWidth === gapWidth &&
-      prev.padStart === first.offsetLeft &&
-      prev.endX === endX
+      prev.padStart === first.offsetLeft
         ? prev
-        : { count: cards.length, cardWidth, gapWidth, padStart: first.offsetLeft, endX },
+        : { count: cards.length, cardWidth, gapWidth, padStart: first.offsetLeft },
     );
   }, []);
 

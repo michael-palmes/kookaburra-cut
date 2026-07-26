@@ -6,7 +6,6 @@ import {
   gapFromPlacement,
   nearestGap,
   placementFromGap,
-  stretchEnd,
 } from "./insertMath";
 
 const LAYOUT = { count: 3, cardWidth: 100, gapWidth: 8, padStart: 8 };
@@ -23,22 +22,6 @@ describe("gapCentres (start and end are first-class gaps)", () => {
 
   it("an empty strip degrades to one gap", () => {
     expect(gapCentres({ ...LAYOUT, count: 0 })).toEqual([4]);
-  });
-});
-
-describe("stretchEnd (the end gap parks at the strip's far edge)", () => {
-  it("stretches the final centre when the row underfills", () => {
-    expect(stretchEnd([4, 112, 220, 328], 500)).toEqual([4, 112, 220, 500]);
-  });
-
-  it("keeps the computed centre when it already reaches endX (overflowing strips)", () => {
-    const centres = [4, 112, 220, 328];
-    expect(stretchEnd(centres, 300)).toBe(centres);
-    expect(stretchEnd(centres, 0)).toBe(centres);
-  });
-
-  it("degrades on an empty list", () => {
-    expect(stretchEnd([], 500)).toEqual([]);
   });
 });
 
