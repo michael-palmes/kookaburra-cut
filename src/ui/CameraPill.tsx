@@ -200,7 +200,7 @@ export function CameraPill({
 
   return (
     <div className="camera-pill-wrap">
-      <div className={`camera-pill${open ? " active" : ""}`}>
+      <div className={`camera-pill${open ? " active" : ""}${free ? " free" : ""}`}>
         <button
           type="button"
           className="camera-pill-idle"
@@ -402,7 +402,7 @@ export function CameraPill({
           {contextual}
           <button
             type="button"
-            className="camera-pill-mode"
+            className="camera-pill-mode camera-pill-reset"
             title="Reset this key to the scene-default pose"
             aria-label="Reset camera pose"
             disabled={!targetKey}

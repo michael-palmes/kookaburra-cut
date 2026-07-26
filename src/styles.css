@@ -3817,7 +3817,7 @@ body {
 
 .camera-pill {
   position: relative;
-  /* Wide enough for Free mode's four tools beside the mode switch; Orbit's three leave slack. */
+  /* Absolute layers cannot size the pill, so each state names its width: idle 392, then Orbit's three tools, then Free's six plus the always-on fov stepper. */
   width: 392px;
   height: 38px;
   background: var(--surface-elevated);
@@ -3825,6 +3825,15 @@ body {
   border-radius: var(--radius-full);
   box-shadow: var(--elev-popover);
   overflow: hidden;
+  transition: width var(--dur-base) var(--ease-standard);
+}
+
+.camera-pill.active {
+  width: 430px;
+}
+
+.camera-pill.active.free {
+  width: 524px;
 }
 
 /* Two stacked layers cross-fade on `open`. */
@@ -3911,10 +3920,10 @@ body {
   background: var(--border-subtle);
 }
 
-/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). */
+/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). The inspector-context margin must go or the switch rides high in the pill. */
 .camera-pill-modes {
   flex: none;
-  height: 24px;
+  margin: 0;
 }
 
 .camera-pill-blurb {
@@ -3924,14 +3933,15 @@ body {
   font-size: 11.5px;
   color: var(--text-secondary);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+/* Content-sized: the pill's per-mode width owns the layout, so the stepper never shrinks into the clip. */
 .camera-pill-zoom {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1;
-  min-width: 0;
+  flex: none;
 }
 
 .camera-pill-step {
@@ -3964,6 +3974,11 @@ body {
   text-align: center;
 }
 
+/* Reset and close group at the pill's right edge; the auto margin soaks the slack. */
+.camera-pill-reset {
+  margin-left: auto;
+}
+
 .camera-pill-close {
   display: inline-flex;
   align-items: center;
@@ -3971,7 +3986,6 @@ body {
   width: 26px;
   height: 26px;
   flex: none;
-  margin-left: auto;
   font: inherit;
   font-size: var(--text-md);
   line-height: 1;
@@ -5778,6 +5792,7 @@ img.inspector-scene-thumb {
 }
 /* Pill scale: the camera pill runs the same control at a smaller size. */
 .camera-pill-modes .inspector-subtab {
+  height: 20px;
   padding: 0 8px;
   font-size: 11px;
 }
