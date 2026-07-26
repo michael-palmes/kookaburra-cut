@@ -105,7 +105,7 @@ import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { OptionCard } from "../OptionCard";
-import { TextFieldRow } from "../SceneTextFields";
+import { HeaderIconField, TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
 import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
@@ -1067,26 +1067,6 @@ const ALIGN_OPTIONS: { id: SceneTextAlign; label: string }[] = [
   { id: "left", label: "Left" },
   { id: "center", label: "Centre" },
   { id: "right", label: "Right" },
-];
-
-/** Common header emojis for app and product-release presentations; a pick replaces the icon field. */
-const HEADER_EMOJIS = [
-  "🚀",
-  "✨",
-  "🎉",
-  "🔥",
-  "⚡",
-  "🆕",
-  "📢",
-  "🎯",
-  "🛠️",
-  "🐛",
-  "🔒",
-  "💡",
-  "⭐",
-  "📦",
-  "✅",
-  "📈",
 ];
 
 /** Background fill-type icons for the drill-in's tile grid; same 20-viewBox stroke style as SceneRowIcon. */
@@ -3510,33 +3490,18 @@ export function SceneTab({
               </div>
             );
           })}
-          <div className="wizard-field">
-            <TextFieldRow
-              label="Header icon"
-              value={iconDraft ?? headerIcon}
-              placeholder="an emoji or assets/icon.png"
-              onChange={liveHeaderIcon}
-              onBlur={flushHeaderIcon}
-            />
-            <div className="chip-icon-grid">
-              {HEADER_EMOJIS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  title={e}
-                  className={`chip-icon-tile emoji${headerIcon === e ? " selected" : ""}`}
-                  onClick={() => setHeaderIcon(e)}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-            <p className="modal-hint">
-              {sceneFrame
+          <HeaderIconField
+            value={iconDraft ?? headerIcon}
+            selected={headerIcon}
+            hint={
+              sceneFrame
                 ? "Drawn above the panel title. An emoji, or a project image path."
-                : "Drawn above the headline. An emoji, or a project image path."}
-            </p>
-          </div>
+                : "Drawn above the headline. An emoji, or a project image path."
+            }
+            onChange={liveHeaderIcon}
+            onBlur={flushHeaderIcon}
+            onPick={setHeaderIcon}
+          />
           <TextMotionPanel
             current={doc.textAnimation}
             theme={sceneTheme}

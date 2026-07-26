@@ -24,6 +24,71 @@ export interface TextFieldColour {
   onReset: () => void;
 }
 
+/** Common header emojis for app and product-release presentations; a pick replaces the icon field. */
+export const HEADER_EMOJIS = [
+  "🚀",
+  "✨",
+  "🎉",
+  "🔥",
+  "⚡",
+  "🆕",
+  "📢",
+  "🎯",
+  "🛠️",
+  "🐛",
+  "🔒",
+  "💡",
+  "⭐",
+  "📦",
+  "✅",
+  "📈",
+];
+
+/** Header-icon field with the emoji quick-pick grid, shared by the New-scene wizard and the Edit-text drill-in; the host owns the value/commit plumbing. */
+export function HeaderIconField({
+  value,
+  selected,
+  hint,
+  onChange,
+  onBlur,
+  onPick,
+}: {
+  value: string;
+  /** The committed icon, marking the active tile. */
+  selected: string;
+  hint: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  /** An emoji tile pick (commits instantly at the host). */
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div className="wizard-field">
+      <TextFieldRow
+        label="Header icon"
+        value={value}
+        placeholder="an emoji or assets/icon.png"
+        onChange={onChange}
+        onBlur={onBlur}
+      />
+      <div className="chip-icon-grid">
+        {HEADER_EMOJIS.map((e) => (
+          <button
+            key={e}
+            type="button"
+            title={e}
+            className={`chip-icon-tile emoji${selected === e ? " selected" : ""}`}
+            onClick={() => onPick(e)}
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+      <p className="modal-hint">{hint}</p>
+    </div>
+  );
+}
+
 /** Labelled auto-grow text row with an optional colour swatch: the one scene-text field shared by the wizards and the Edit-text drill-in. */
 export function TextFieldRow({
   label,
