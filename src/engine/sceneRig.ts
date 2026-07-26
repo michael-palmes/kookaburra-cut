@@ -241,7 +241,7 @@ export function normalizeSceneRig(
   if (!raw) return null;
   const keys: SceneDocRigKey[] = [];
   const seen = new Set<string>();
-  let warnedBinding = false;
+  const warnedBindings = new Set<string>();
   for (const key of raw.keys ?? []) {
     if (
       !key ||
@@ -271,8 +271,8 @@ export function normalizeSceneRig(
       const at = resolveAimTarget(pose.aim.id, doc);
       if (at) {
         pose.aim = { ...pose.aim, at };
-      } else if (!warnedBinding) {
-        warnedBinding = true;
+      } else if (!warnedBindings.has(pose.aim.id)) {
+        warnedBindings.add(pose.aim.id);
         console.warn(
           `[sceneRig] ${source}: aim binding "${pose.aim.id}" is unresolved — using the baked point`,
         );
