@@ -3659,6 +3659,11 @@ body {
   opacity: 0.4;
 }
 
+/* A segment pinned at the lane edge (living inside a trimmed transition half) dims like edge keys. */
+.anim-seg.overhang {
+  opacity: 0.4;
+}
+
 /* 2px playhead overshooting the track 4px top/bottom, with a 9×9 square cap. */
 .anim-playhead {
   position: absolute;
@@ -3835,6 +3840,13 @@ body {
 
 .camera-pill-mode:hover {
   background: var(--surface-hover);
+}
+
+/* The reset button disables on a trackless scene; dim like every other disabled control. */
+.camera-pill-mode:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+  background: none;
 }
 
 .camera-pill-mode.active {

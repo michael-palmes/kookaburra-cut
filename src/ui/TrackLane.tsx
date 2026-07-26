@@ -48,6 +48,12 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   open: boolean;
   slotStartMs: number;
   durationMs: number;
+  /** Scene-local start of the ATTRIBUTION window (half the incoming overlap): the lane's left edge. */
+  windowStartMs: number;
+  /** Scene-local end of the attribution window (duration minus half the outgoing overlap): the lane's right edge. */
+  windowEndMs: number;
+  /** No scene follows: lane seeks may land exactly on the window end (else they stop 1ms short so the chrome can never retarget to the next scene mid-drag). */
+  lastScene: boolean;
   track: T;
   selectedKeyId: string | null;
   selectedSegment: number | null;
@@ -74,6 +80,9 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   open,
   slotStartMs,
   durationMs,
+  windowStartMs,
+  windowEndMs,
+  lastScene,
   track,
   selectedKeyId,
   selectedSegment,
@@ -106,19 +115,29 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     return () => ro.disconnect();
   }, []);
 
+  // The lane spans the scene's attribution window (mid-transition to mid-transition); key times stay absolute scene-local, only the visible span changes.
+  const windowMs = Math.max(1, windowEndMs - windowStartMs);
   const innerW = Math.max(0, trackW - PAD * 2);
-  const pxPerMs = innerW > 0 ? innerW / durationMs : 0;
-  const playheadLocal = Math.min(durationMs, Math.max(0, currentMs - slotStartMs));
+  const pxPerMs = innerW > 0 ? innerW / windowMs : 0;
+  const playheadLocal = Math.min(windowEndMs, Math.max(windowStartMs, currentMs - slotStartMs));
   const layout = trackLayout(track);
 
-  const xOf = (tMs: number) => PAD + Math.min(tMs, durationMs) * pxPerMs;
+  const xOf = (tMs: number) =>
+    PAD + (Math.min(windowEndMs, Math.max(windowStartMs, tMs)) - windowStartMs) * pxPerMs;
+
+  /** Every lane seek clamps inside this scene's attribution window, one ms short of the next scene's boundary, so dragging the lane can never retarget the chrome to a neighbouring scene. The window-start floor wins on a degenerate (zero-width) window, so the cap can never undershoot into the PREVIOUS scene either. */
+  function seekLocal(tMs: number) {
+    const max = Math.max(windowStartMs, lastScene ? windowEndMs : windowEndMs - 1);
+    const capped = Math.min(max, Math.max(windowStartMs, tMs));
+    const clock = useClockStore.getState();
+    clock.setCurrentMs(Math.min(clock.durationMs, slotStartMs + capped));
+  }
 
   /** Seek to the 25% point of the containing animation when the playhead sits mid-span, where an edit is hard to see. */
   function driftPlayhead() {
     const target = playheadDriftTarget(track, playheadLocal);
     if (target === null) return;
-    const clock = useClockStore.getState();
-    clock.setCurrentMs(Math.min(clock.durationMs, slotStartMs + target));
+    seekLocal(target);
   }
 
   // Tool-arming, deselect/deletion/nudge keys, window-level so the lane needn't hold focus; the App frame-step handler stands down while a key is selected. Gated on `open` since the lane stays mounted through the collapse.
@@ -197,19 +216,21 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     });
   }
 
-  /** Scrub to the pointer: seek the playhead (snapped to keys + scene edges), then select the nearest diamond so arrows/move tools target the key you scrubbed to. */
+  /** Scrub to the pointer: seek the playhead (snapped to keys + the window edges), then select the nearest diamond so arrows/move tools target the key you scrubbed to. */
   function scrubAt(clientX: number) {
     const rect = trackRef.current?.getBoundingClientRect();
     if (!rect || pxPerMs <= 0) return;
-    let local = (clientX - rect.left - PAD) / pxPerMs;
+    let local = windowStartMs + (clientX - rect.left - PAD) / pxPerMs;
     const snapRadius = SNAP_PX / pxPerMs;
-    for (const target of [0, durationMs, ...track.keys.map((k) => Math.min(k.tMs, durationMs))]) {
+    for (const target of [
+      windowStartMs,
+      windowEndMs,
+      ...track.keys.map((k) => Math.min(windowEndMs, Math.max(windowStartMs, k.tMs))),
+    ]) {
       if (Math.abs(local - target) <= snapRadius) local = target;
     }
-    local = Math.min(durationMs, Math.max(0, local));
-    const clock = useClockStore.getState();
-    clock.setCurrentMs(Math.min(clock.durationMs, slotStartMs + local));
-    const near = nearestKey(track, local);
+    seekLocal(local);
+    const near = nearestKey(track, Math.min(windowEndMs, Math.max(windowStartMs, local)));
     if (near) select(near.id, null);
   }
 
@@ -256,15 +277,10 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
       if (drag.moved) {
         void commit(track);
       } else {
-        // Click: select the diamond AND seek the playhead to it.
+        // Click: select the diamond AND seek the playhead to it (window-clamped, so an edge key never hops the chrome to a neighbouring scene).
         select(drag.id, null);
         const key = track.keys.find((k) => k.id === drag.id);
-        if (key) {
-          const clock = useClockStore.getState();
-          clock.setCurrentMs(
-            Math.min(clock.durationMs, Math.max(0, slotStartMs + Math.min(key.tMs, durationMs))),
-          );
-        }
+        if (key) seekLocal(key.tMs);
       }
     } else {
       if (drag.moved) void commit(track);
@@ -375,15 +391,21 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           {layout.segments.map((seg) => {
             const left = xOf(seg.fromTMs);
             const width = Math.max(innerW * MIN_SEGMENT_VISUAL, xOf(seg.toTMs) - left);
+            // A segment living entirely inside a trimmed transition half pins at the lane edge, cued like edge keys.
+            const outside = seg.toTMs <= windowStartMs || seg.fromTMs >= windowEndMs;
             return (
               // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven editing surface — keyboard editing rides the window-level Delete/arrow handlers
               <div
                 key={`${seg.fromId}-${seg.toId}`}
                 className={`anim-seg${selectedSegment === seg.docIndex ? " selected" : ""}${
                   seg.ease === "jump" ? " jump" : ""
-                }${activeSegment?.docIndex === seg.docIndex ? " at-playhead" : ""}`}
+                }${activeSegment?.docIndex === seg.docIndex ? " at-playhead" : ""}${outside ? " overhang" : ""}`}
                 style={{ left, width }}
-                title={`Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`} — drag to move, click for easing, right-click to delete`}
+                title={
+                  outside
+                    ? `Animation at ${(seg.fromTMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
+                    : `Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`} — drag to move, click for easing, right-click to delete`
+                }
                 onPointerDown={(e) => onSegmentPointerDown(e, seg.docIndex, seg.fromId, seg.toId)}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
@@ -396,12 +418,14 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               key={key.id}
               className={`anim-key${selectedKeyId === key.id ? " selected" : ""}${
                 nearIds.includes(key.id) ? " near" : ""
-              }${key.tMs > durationMs ? " overhang" : ""}`}
+              }${key.tMs < windowStartMs || key.tMs > windowEndMs ? " overhang" : ""}`}
               style={{ left: xOf(key.tMs) }}
               title={
                 key.tMs > durationMs
                   ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s — past the scene end (holds clamp)`
-                  : `Keyframe at ${(key.tMs / 1000).toFixed(2)}s — drag to retime, click to select + seek`
+                  : key.tMs < windowStartMs || key.tMs > windowEndMs
+                    ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
+                    : `Keyframe at ${(key.tMs / 1000).toFixed(2)}s — drag to retime, click to select + seek`
               }
               onPointerDown={(e) => onKeyPointerDown(e, key.id)}
               onPointerMove={onPointerMove}

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   activeSceneIndex,
   applyTransitionEase,
+  attributionBoundaries,
+  attributionStartMs,
   buildSceneTimeline,
   normalizeTransitionType,
   resolveAt,
@@ -262,16 +264,32 @@ describe("activeSceneIndex (the editing chrome's dominant scene — moved from E
     expect(activeSceneIndex(slots, 2000)).toBe(1);
   });
 
-  it("prefers the LATER scene inside a transition overlap", () => {
+  it("flips to the LATER scene at the transition MIDPOINT (attribution boundaries)", () => {
     const slots = buildSceneTimeline(
       scenes(
         { id: "a", durationMs: 2000, transition: { type: "crossfade", durationMs: 600 } },
         { id: "b", durationMs: 2000 },
       ),
     );
-    // Overlap window is [1400, 2000): both scenes are live; the incoming one wins.
-    expect(activeSceneIndex(slots, 1500)).toBe(1);
+    // Overlap window is [1400, 2000); the chrome's scene change sits at its midpoint, 1700.
+    expect(attributionStartMs(slots, 1)).toBe(1700);
     expect(activeSceneIndex(slots, 1399)).toBe(0);
+    expect(activeSceneIndex(slots, 1699)).toBe(0);
+    expect(activeSceneIndex(slots, 1700)).toBe(1);
+  });
+
+  it("a scene squeezed by full-length overlaps on both sides keeps a reachable window", () => {
+    const slots = buildSceneTimeline(
+      scenes(
+        { id: "a", durationMs: 2000, transition: { type: "crossfade", durationMs: 1000 } },
+        { id: "b", durationMs: 1000, transition: { type: "crossfade", durationMs: 1000 } },
+        { id: "c", durationMs: 2000 },
+      ),
+    );
+    // Raw midpoints collide at 1500; the boundary floor keeps b's window non-empty.
+    expect(attributionBoundaries(slots)).toEqual([0, 1500, 1501]);
+    expect(activeSceneIndex(slots, 1500)).toBe(1);
+    expect(activeSceneIndex(slots, 1501)).toBe(2);
   });
 
   it("pins the out-of-range fallback: no scene under the playhead → index 0 (the v7 semantics)", () => {
