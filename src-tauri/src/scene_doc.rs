@@ -455,6 +455,7 @@ const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
 const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
+const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
 
 /// The video kind's default background, shipped in every project (`ensure_sample_assets`).
 const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
@@ -462,12 +463,11 @@ const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "title" | "blank" | "appversion" | "layeredscreenshot" | "video".
+    /// "device" | "deviceonly" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
     pub title: Option<String>,
-    /// Title scenes only; other kinds ignore it.
     pub subtitle: Option<String>,
     pub device_model: Option<String>,
     pub colour: Option<String>,
@@ -475,8 +475,16 @@ pub struct ScaffoldOptions {
     pub media_rel: Option<String>,
     /// "video" | "image".
     pub media_kind: Option<String>,
+    #[serde(default)]
     pub motion_preset: Option<String>,
+    #[serde(default)]
     pub shadow: Option<String>,
+    /// Title-icon scenes: the sidecar `headerIcon` (emoji or asset path).
+    #[serde(default)]
+    pub header_icon: Option<String>,
+    /// Video-window scenes: the backing stage colour (the wizard resolves the theme background; Rust can't).
+    #[serde(default)]
+    pub stage_color: Option<String>,
     /// Insertion index in `project.json`'s scenes array (0 = start; omitted/out-of-range = append).
     pub position: Option<usize>,
 }
@@ -534,17 +542,20 @@ pub async fn scaffold_scene(
     }
 
     let template = match options.kind.as_str() {
-        "device" => TSX_DEVICE,
-        "title" => TSX_TITLE,
+        "device" | "deviceonly" => TSX_DEVICE,
+        // The overlay trio rides the title base: the panel suppresses TitleBlock and shows the same text itself.
+        "title" | "titleicon" | "overlaystart" | "overlayend" | "overlaypanel" => TSX_TITLE,
         "blank" => TSX_BLANK,
         "appversion" => TSX_APP_VERSION,
         "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
         "video" => TSX_VIDEO,
+        "videowindow" => TSX_VIDEO_WINDOW,
         other => return Err(format!("unknown scene kind {other:?}")),
     };
+    let is_device_kind = matches!(options.kind.as_str(), "device" | "deviceonly");
 
-    // A video scene without a pick starts on the bundled laptop sample.
-    if options.kind == "video" && options.media_rel.is_none() {
+    // A video or video-window scene without a pick starts on the bundled laptop sample.
+    if matches!(options.kind.as_str(), "video" | "videowindow") && options.media_rel.is_none() {
         options.media_rel = Some(SAMPLE_LAPTOP_VIDEO.into());
         options.media_kind = Some("video".into());
     }
@@ -557,16 +568,22 @@ pub async fn scaffold_scene(
     let doc_file = format!("scenes/{stem}.json");
 
     // Duration: follow the video when the scene owns one, else the wizard default.
-    let is_video = matches!(options.kind.as_str(), "device" | "video")
-        && options.media_kind.as_deref() == Some("video")
+    let is_video = matches!(
+        options.kind.as_str(),
+        "device" | "deviceonly" | "video" | "videowindow"
+    ) && options.media_kind.as_deref() == Some("video")
         && options.media_rel.is_some();
     let mut duration_ms = DEFAULT_SCENE_DURATION_MS;
+    let mut media_aspect: Option<f64> = None;
     if is_video {
         if let Some(rel) = &options.media_rel {
             let abs = project.join(rel);
             let probed = media::probe_media(&app, &abs).await?;
             if probed.duration_ms > 0 {
                 duration_ms = probed.duration_ms;
+            }
+            if probed.width > 0 && probed.height > 0 {
+                media_aspect = Some(f64::from(probed.width) / f64::from(probed.height));
             }
         }
     }
@@ -575,8 +592,10 @@ pub async fn scaffold_scene(
     let mut doc = json!({
         "version": SCENE_DOC_VERSION,
         "name": options.name,
-        "duration": if is_video && options.kind == "device" {
+        "duration": if is_video && is_device_kind {
             json!({ "mode": "follow-media", "sourceDeviceId": "d1" })
+        } else if is_video && options.kind == "videowindow" {
+            json!({ "mode": "follow-media", "source": "videoWindow" })
         } else if is_video {
             // No device: the resync falls back to the video background as the source.
             json!({ "mode": "follow-media" })
@@ -585,18 +604,63 @@ pub async fn scaffold_scene(
         },
         "text": {},
     });
-    // Title and device scenes seed the title/subtitle pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
-    if options.kind == "title" {
+    // Text-bearing kinds seed the title/subtitle pair (empty strings keep the panel fields visible); app-version scenes seed the lockup with placeholder copy since an icon beside empty text reads as broken; other kinds write `title` only when copy was given (older scenes keep their legacy `headline` key).
+    let seeds_text_pair = matches!(
+        options.kind.as_str(),
+        "title"
+            | "titleicon"
+            | "overlaystart"
+            | "overlayend"
+            | "overlaypanel"
+            | "device"
+            | "videowindow"
+    );
+    if seeds_text_pair {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
     } else if options.kind == "appversion" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
-    } else if options.kind == "device" {
-        doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
-        doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
-    } else if let Some(title) = &options.title {
-        doc["text"]["title"] = json!(title);
+    } else {
+        if let Some(title) = &options.title {
+            doc["text"]["title"] = json!(title);
+        }
+        if let Some(subtitle) = &options.subtitle {
+            doc["text"]["subtitle"] = json!(subtitle);
+        }
+    }
+    if options.kind == "titleicon" {
+        doc["headerIcon"] = json!(options.header_icon.as_deref().unwrap_or("🚀"));
+    }
+    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant collapses its cutout to a sliver (min size, max inset) so the panel reads full-frame at every aspect.
+    let overlay_frame = match options.kind.as_str() {
+        "overlaystart" => Some(json!({ "cutout": { "shape": "rounded-rect", "side": "start" } })),
+        "overlayend" => Some(json!({ "cutout": { "shape": "rounded-rect", "side": "end" } })),
+        "overlaypanel" => Some(json!({
+            "cutout": { "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 },
+        })),
+        _ => None,
+    };
+    if let Some(mut frame) = overlay_frame {
+        // The starter chip keeps a copy-less panel visible on first insert (FramePanel bails with no text, icon or chip).
+        frame["chip"] = json!({ "label": "New", "icon": "circle-check", "colour": "accent" });
+        doc["frame"] = frame;
+    }
+    if options.kind == "videowindow" {
+        if let Some(rel) = &options.media_rel {
+            let mut media = json!({ "src": rel });
+            if let Some(aspect) = media_aspect {
+                media["aspect"] = json!(aspect);
+            }
+            doc["videoWindow"] = json!({
+                "media": media,
+                "stage": {
+                    "type": "color",
+                    "color": options.stage_color.as_deref().unwrap_or("#1b2330"),
+                },
+                "radius": "macos",
+            });
+        }
     }
     if options.kind == "layeredscreenshot" {
         // The optional first screen seeds the centre item; the builder grows the stack from there.
@@ -617,12 +681,18 @@ pub async fn scaffold_scene(
             doc["background"] = json!({ "type": "video", "src": rel });
         }
     }
-    if options.kind == "device" {
+    if is_device_kind {
+        // With no title to clear, the device sits centred instead of dropping 0.3 under the headline.
+        let position = if options.kind == "deviceonly" {
+            json!([0, 0, 0])
+        } else {
+            json!([0, -0.3, 0])
+        };
         let mut device = json!({
             "id": "d1",
             "model": options.device_model.as_deref().unwrap_or("iphone-17-pro"),
             "colour": options.colour.as_deref().unwrap_or("silver"),
-            "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
+            "placement": { "position": position, "rotationDeg": [0, 0, 0], "scale": 1 },
             "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
             "shadow": options.shadow.as_deref().unwrap_or("soft"),
         });
