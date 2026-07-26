@@ -4,7 +4,7 @@ import type { Object3D, PerspectiveCamera, Scene, WebGLRenderer } from "three";
 import { Vector2 } from "three";
 import type { EncodeSpec } from "../export/presetSchema";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
-import type { Theme } from "../theme/tokens";
+import type { LightingSpec, Theme } from "../theme/tokens";
 import { preloadCatalogModels } from "../toolkit/device/catalog";
 import { preloadDeviceModels } from "../toolkit/device/models";
 import { preloadChipIcons } from "../toolkit/frame/chipIcons";
@@ -30,10 +30,16 @@ import {
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
 import { preloadEffectLuts } from "./effects";
-import { preloadEnvironments } from "./environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
 import type { FormatSpec } from "./format";
+import { HELPER_LAYER } from "./lightEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   isWorkspaceProjectId,
@@ -46,6 +52,7 @@ import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFin
 import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
+import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { configureDeterministicEngine } from "./timeline";
@@ -71,6 +78,8 @@ export interface ExportOptions {
   /** The project's theme + resolved per-scene themes; drive the per-target scene-state plan (background/environment). Absent means the root scene is never touched (the byte-identical legacy paths). */
   theme?: Theme;
   sceneThemes?: Theme[];
+  /** The manifest's project-default lighting layer (v9); feeds per-scene environment resolution and the environment preload barrier. */
+  projectLighting?: LightingSpec;
   /** Per-scene resolved overlays; absent (or all undefined) means no scene renders through a cutout, the byte-identical legacy path. */
   sceneFrames?: (FrameSpec | undefined)[];
   /** Encoder; defaults to the deterministic libx264. */
@@ -313,9 +322,26 @@ async function exportPreamble(
   await preloadText3dFonts();
   // Preloads the project's LUT textures (usually cached by loadProject already) and forces their GPU upload before frame 0, since a mid-run first-use upload is exactly the async-asset race this preamble exists to prevent. See docs/determinism.md.
   await preloadEffectLuts({ gl });
-  // Resolves every theme environment (RGBE decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading.
+  // Resolves every environment source across the v8 theme blocks and the v9 lighting layers (RGBE/EXR decode + PMREM) before frame 0, since a themed frame must never find its environment texture still loading; a missing USER source rejects here and fails the run loudly. Env-mirror bakes ride the same barrier (one-shot fromScene, cached by content key).
   if (opts.theme) {
-    await preloadEnvironments(gl, [opts.theme, ...(opts.sceneThemes ?? [])]);
+    await preloadEnvironments(
+      gl,
+      collectEnvironmentSources(
+        opts.projectId,
+        [opts.theme, ...(opts.sceneThemes ?? [])],
+        opts.projectLighting,
+        opts.sceneDocs,
+      ),
+    );
+    await preloadMirrorEnvironments(
+      gl,
+      collectMirrorRequests(
+        opts.projectId,
+        opts.sceneThemes ?? [],
+        opts.projectLighting,
+        opts.sceneDocs,
+      ),
+    );
   }
   // Bundled backdrop images load through an awaited module cache, never suspense (the loft-1 stale-capture lesson); settle them before frame 0.
   await preloadBundledBackdrops();
@@ -401,10 +427,19 @@ export async function exportProject(
 
   // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
   const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const lightingTracks = opts.sceneThemes
+    ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
 
   // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
   const sceneStates =
-    opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
+    opts.theme && opts.sceneThemes
+      ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
+          projectId: opts.projectId,
+          projectLighting: opts.projectLighting,
+          sceneDocs: opts.sceneDocs,
+        })
+      : null;
 
   // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
   const overlays = opts.sceneThemes
@@ -416,6 +451,8 @@ export async function exportProject(
     applyCameraPose(cam, baseCameraPose());
   }
 
+  // Preview-only light helpers can never reach a capture: their layer is disabled on the camera for the whole run (the second guard on top of their mount gating).
+  cam.layers.disable(HELPER_LAYER);
   // The exporter owns rendering for the whole loop; the preview driver stands down (see engine/exportState) so no stray preview render interleaves with a capture.
   setExporting(true);
   try {
@@ -445,6 +482,7 @@ export async function exportProject(
       const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+      const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
       // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
       renderComposited(
         gl,
@@ -455,6 +493,7 @@ export async function exportProject(
         plan ?? undefined,
         statePlan,
         overlays ?? undefined,
+        lightingPlan ?? undefined,
       );
       if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
       ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
@@ -510,8 +549,17 @@ export async function captureScreenshot(
   }
 
   const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const lightingTracks = opts.sceneThemes
+    ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
   const sceneStates =
-    opts.theme && opts.sceneThemes ? buildSceneRenderStates(opts.theme, opts.sceneThemes) : null;
+    opts.theme && opts.sceneThemes
+      ? buildSceneRenderStates(opts.theme, opts.sceneThemes, {
+          projectId: opts.projectId,
+          projectLighting: opts.projectLighting,
+          sceneDocs: opts.sceneDocs,
+        })
+      : null;
   const overlays = opts.sceneThemes
     ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
     : null;
@@ -519,6 +567,7 @@ export async function captureScreenshot(
     applyCameraPose(cam, baseCameraPose());
   }
 
+  cam.layers.disable(HELPER_LAYER);
   setExporting(true);
   try {
     // One iteration of the export loop's frame block, barrier for barrier.
@@ -535,6 +584,7 @@ export async function captureScreenshot(
     const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
     if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
     renderComposited(
       gl,
       scene,
@@ -544,6 +594,7 @@ export async function captureScreenshot(
       plan ?? undefined,
       statePlan,
       overlays ?? undefined,
+      lightingPlan ?? undefined,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
     await invoke("begin_screenshot", { width, height, name });
@@ -576,7 +627,7 @@ export async function verifyDeterminism(
   const RETAIN_FRAMES = 3;
   const rawA: (Uint8Array | undefined)[] = [];
   const rawB: (Uint8Array | undefined)[] = [];
-  // Holds the preview stand-down across both passes (nested over each pass's own hold; the flag is depth-counted, see engine/exportState). Without this, a wall-clock-varying number of preview frames rendered between the passes at the preview size, with the restored preview clock, and their GPU residue leaked into pass B's first frames (the showcase-tour frames-0-1 ±LSB flake); with the hold, pass B starts from exactly the state pass A ended in, deterministic by construction.
+  // Holds the preview stand-down across both passes (nested over each pass's own hold; the flag is depth-counted, see engine/exportState). Without this, a wall-clock-varying number of preview frames rendered between the passes at the preview size, with the restored preview clock, and their GPU residue leaked into pass B's first frames (the showcase-tour frames-0-1 ±LSB flake); with the hold, pass B starts from exactly the state pass A ended in, deterministic by construction. Each pass's own run disables HELPER_LAYER.
   setExporting(true);
   let hashA: string;
   let hashB: string;

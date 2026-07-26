@@ -6,7 +6,7 @@ import { TextureLoader } from "three";
 import { assetVersionSuffix } from "../store/assetVersionStore";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
-import type { EffectsConfig, EffectsOverride, Theme } from "../theme/tokens";
+import type { EffectsConfig, EffectsOverride, LightingSpec, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
@@ -16,10 +16,12 @@ import { preloadEffectLuts } from "./effects";
 import { mergeFrameSpec, parseFrameSpec } from "./frameSchema";
 import { fsUrl } from "./media";
 import { ensureProjectTrusted } from "./projectTrust";
+import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { ensureSampleAssets } from "./sampleAssets";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
+import { normalizeLighting } from "./sceneLighting";
 import {
   buildSceneTimeline,
   type SceneSlot,
@@ -54,6 +56,10 @@ export interface ProjectManifest {
   persistent?: string;
   /** Deck-wide overlay: a camera-locked panel with a shaped cutout the scene renders through, merged with each scene's sidecar `frame` (see `mergeFrameSpec`). Absent means no overlay anywhere, the byte-identical legacy path. */
   frame?: FrameSpec;
+  /** The display transform (v9 · PR 8): `{ toneMapping?, exposure? }`, parsed with the degrade guard. Absent means ACES at 1.0, the byte-identical default. */
+  render?: unknown;
+  /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
+  lighting?: unknown;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -122,6 +128,10 @@ export interface LoadedProject {
   audio?: ProjectAudio;
   /** BASE effect stacks for scenes whose sidecar swaps the theme (sparse, keyed by scene index); a wholesale replacement of the project default for that scene, LUT urls already resolved. See `sceneBaseEffects` (engine/effectParams.ts). */
   sceneEffectDefaults: Record<number, EffectsConfig>;
+  /** The manifest's validated project-default lighting layer, if it declares one (manifest `lighting`); provided to the canvas tree via `ProjectLightingContext`. */
+  projectLighting?: LightingSpec;
+  /** The project's display transform (manifest `render`); ACES at 1.0 when absent. */
+  renderSettings: RenderSettings;
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -139,6 +149,13 @@ const sceneDocGlob = import.meta.glob<{ default: unknown }>("/projects/*/scenes/
 
 // Project-relative IMAGE assets, resolved to Vite-fingerprinted URLs that load inside the webview (textures for DeviceMockup screens, etc.); eager so the map is available synchronously during render. Scoped to images: video sources resolve to an absolute path (`resolveAssetPath`) for ffmpeg pre-extraction, not fetched as URLs.
 const assetUrlGlob = import.meta.glob<string>("/projects/*/assets/**/*.{png,jpg,jpeg,webp}", {
+  query: "?url",
+  import: "default",
+  eager: true,
+});
+
+// Project-relative environment maps (v9 lighting: user `.hdr`/`.exr` IBL sources). A separate glob from images so `preloadProjectImages` never routes an HDR through TextureLoader.
+const assetHdrGlob = import.meta.glob<string>("/projects/*/assets/**/*.{hdr,exr}", {
   query: "?url",
   import: "default",
   eager: true,
@@ -309,6 +326,68 @@ export function resolveAssetUrl(projectId: string, relPath: string): string {
   return url;
 }
 
+/** Resolve a project-relative environment map (`.hdr`/`.exr`) to a loadable URL. THROWS on a missing file, at resolve time, so a bad source fails an autorun loudly instead of exporting without reflections (the AssetBoundary lesson: boundary-caught errors still fail autoruns). */
+export function resolveProjectHdrUrl(projectId: string, relPath: string): string {
+  const clean = assertProjectRelative(relPath);
+  if (isWorkspaceProjectId(projectId)) {
+    if (workspaceEnvironmentMissing(projectId, clean)) {
+      throw new Error(
+        `Environment map "${relPath}" not found in project "${projectId}". ` +
+          "Put a .hdr or .exr under the project's assets/ folder and reference it relatively.",
+      );
+    }
+    return projectAssetKey(projectId, clean);
+  }
+  const url = assetHdrGlob[`/projects/${projectId}/${clean}`];
+  if (!url) {
+    throw new Error(
+      `Environment map "${relPath}" not found for project "${projectId}". ` +
+        "Put a .hdr or .exr under projects/<project>/assets/ and reference it relatively.",
+    );
+  }
+  return url;
+}
+
+/** Workspace environment inventory (`.hdr`/`.exr` rel paths per project), refreshed on project load; mirrors assetInventory.ts for the environment glob. */
+const workspaceEnvironments = new Map<string, Set<string>>();
+
+async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
+  if (!isWorkspaceProjectId(projectId)) return;
+  try {
+    const rels = await invoke<string[]>("list_project_environments", {
+      slug: workspaceSlug(projectId),
+    });
+    workspaceEnvironments.set(projectId, new Set(rels.map((rel) => rel.replace(/^\.?\//, ""))));
+  } catch {
+    workspaceEnvironments.delete(projectId);
+  }
+}
+
+/** True only when the inventory is loaded AND the path is absent from it. */
+function workspaceEnvironmentMissing(projectId: string, relPath: string): boolean {
+  const inventory = workspaceEnvironments.get(projectId);
+  return inventory !== undefined && !inventory.has(relPath.replace(/^\.?\//, ""));
+}
+
+/** The project's environment-map rel paths for the lighting picker ("assets/studio.hdr"). */
+export async function listProjectEnvironmentAssets(projectId: string): Promise<string[]> {
+  if (isWorkspaceProjectId(projectId)) {
+    try {
+      const rels = await invoke<string[]>("list_project_environments", {
+        slug: workspaceSlug(projectId),
+      });
+      return rels.map((rel) => rel.replace(/^\.?\//, "")).sort();
+    } catch {
+      return [];
+    }
+  }
+  const prefix = `/projects/${projectId}/`;
+  return Object.keys(assetHdrGlob)
+    .filter((key) => key.startsWith(prefix))
+    .map((key) => key.slice(prefix.length))
+    .sort();
+}
+
 /** Await every image asset of a project being fetched + decoded before frame 0, warming drei's `useTexture` cache so screen textures (e.g. DeviceMockup) resolve synchronously in the export loop. Called in the export preamble; video sources are handled separately by `preextractClips`. See docs/determinism.md. */
 export async function preloadProjectImages(projectId: string): Promise<void> {
   let urls: string[];
@@ -437,6 +516,7 @@ export async function loadProject(
     await ensureProjectTrusted(slug, manifest.name || slug);
     await ensureSampleAssets(slug);
     await refreshWorkspaceAssets(id);
+    await refreshWorkspaceEnvironments(id);
   }
 
   const scenes: SceneModule[] = [];
@@ -502,6 +582,13 @@ export async function loadProject(
     if (entry.effects) effectOverrides[i] = resolveLutUrls(id, entry.effects);
   });
   const effects = resolveLutUrls(id, theme.effects ?? {});
+
+  // The project-default lighting layer: validated with the usual degrade guard, so a malformed block loads the project unlit rather than failing the load.
+  const projectLighting =
+    manifest.lighting === undefined
+      ? undefined
+      : (normalizeLighting(manifest.lighting, `${id}/project.json`) ?? undefined);
+  const renderSettings = parseRenderSettings(manifest.render, `${id}/project.json`);
 
   // Theme-swapped scenes replace the project-wide effect base wholesale (sparse; entries only where a sidecar overrides the theme, possibly `{}`, which turns effects OFF there).
   const sceneEffectDefaults: Record<number, EffectsConfig> = {};
@@ -576,5 +663,7 @@ export async function loadProject(
     deckFrame,
     sceneFrames,
     sceneEffectDefaults,
+    projectLighting,
+    renderSettings,
   };
 }

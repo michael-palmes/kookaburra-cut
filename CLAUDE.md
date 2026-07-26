@@ -81,6 +81,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 
 - Skill `kookaburra-scene-authoring`: scene rules + toolkit `REFERENCE.md`.
 - Skill `kookaburra-background-authoring`: new animated backgrounds + the preset colour contract (`docs/backgrounds.md`).
+- Skill `kookaburra-lighting-authoring`: v9 scene lighting (layers, light spaces, fixtures, HDRIs, keyframes, tone mapping).
 - Skill `kookaburra-export-presets`: export preset schema + terminal flows.
 - Skill `kookaburra-release`: sign, notarise, DMG, packaged-parity gate, release flow.
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
@@ -147,5 +148,16 @@ intuition before the probe settled it).
   Preview-only knobs live in `src/engine/previewMedia.ts` and never leak into
   exports (`isExporting()` guards plus App pinning).
 - **Measured non-factors:** device GLB complexity (94k tris holds 60fps),
-  transmission glass, VSM shadows, canvas pixel ratio. Low-poly device models
-  are not worth building.
+  transmission glass, VSM shadows, canvas pixel ratio (but see the area-light
+  note below). Low-poly device models are not worth building.
+- **Second measured impactor (2026-07-25): area lights are FILL RATE.** One
+  `rectAreaLight` cost ~15 fps (45 → 60) in a scene staging large
+  Standard-material objects, while the v9 corridor holds 60fps with TWELVE of
+  them because it stages only a handset. The expense is per-fragment LTC
+  evaluation, so it scales with the screen coverage of the materials an area
+  light lights, NOT with how many area lights there are. `dpr-1` recovers it
+  almost as well as removing the light, which is also the caveat on "pixel ratio
+  is a non-factor": that holds until something makes a scene fill-rate bound.
+  No preview knob was added, because the existing preview-quality DPR lever
+  already covers the one measured case. Probe passes: `no-extra-lights`,
+  `no-fixtures`, `no-fixture-lights`, `no-area-lights`, `env-off`.

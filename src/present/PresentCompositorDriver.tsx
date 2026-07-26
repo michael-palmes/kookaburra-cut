@@ -4,13 +4,19 @@ import type { PerspectiveCamera } from "three";
 import { applyCameraTrack, sampleCameraTrack } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { renderComposited } from "../engine/compositor";
-import { preloadEnvironments } from "../engine/environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "../engine/environments";
 import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
 import type { LoadedProject } from "../engine/project";
 import { buildSceneCameraTracks, orbitToView, resolveFrameCameras } from "../engine/sceneCamera";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
+import { buildLightingTracks, resolveFrameLighting } from "../engine/sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "../engine/sceneState";
 import {
   applyTransitionEase,
@@ -54,8 +60,17 @@ export function PresentCompositorDriver({
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const sceneTracks = useMemo(() => buildSceneCameraTracks(project.sceneDocs), [project]);
+  const lightingTracks = useMemo(
+    () => buildLightingTracks(project.sceneThemes, project.projectLighting, project.sceneDocs),
+    [project],
+  );
   const sceneStates = useMemo(
-    () => buildSceneRenderStates(project.theme, project.sceneThemes),
+    () =>
+      buildSceneRenderStates(project.theme, project.sceneThemes, {
+        projectId: project.id,
+        projectLighting: project.projectLighting,
+        sceneDocs: project.sceneDocs,
+      }),
     [project],
   );
   const overlays = useMemo(
@@ -64,7 +79,28 @@ export function PresentCompositorDriver({
   );
 
   useEffect(() => {
-    void preloadEnvironments(gl, [project.theme, ...project.sceneThemes]).then(() => invalidate());
+    void preloadEnvironments(
+      gl,
+      collectEnvironmentSources(
+        project.id,
+        [project.theme, ...project.sceneThemes],
+        project.projectLighting,
+        project.sceneDocs,
+      ),
+    )
+      .then(() =>
+        preloadMirrorEnvironments(
+          gl,
+          collectMirrorRequests(
+            project.id,
+            project.sceneThemes,
+            project.projectLighting,
+            project.sceneDocs,
+          ),
+        ),
+      )
+      .then(() => invalidate())
+      .catch((e) => console.warn("[environments] present preload failed:", e));
   }, [gl, project, invalidate]);
 
   // Redraw on deck changes that land while the clock is parked (e.g. back nav in video pause).
@@ -231,6 +267,7 @@ export function PresentCompositorDriver({
       plan,
       statePlan,
       overlays ?? undefined,
+      resolveFrameLighting(lightingTracks, resolved) ?? undefined,
     );
   }, 1);
 

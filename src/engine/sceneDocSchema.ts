@@ -1,17 +1,12 @@
 import { parseFontString } from "../theme/fontRef";
-import {
-  parseBackdropSpec,
-  parseBackgroundSpec,
-  parseLightingOverride,
-  parseTextAnimationSpec,
-} from "../theme/schema";
+import { parseBackdropSpec, parseBackgroundSpec, parseTextAnimationSpec } from "../theme/schema";
 import type {
   FontRef,
   GradientSpec,
+  LightingSpec,
   TextAnimationSpec,
   ThemeBackdrop,
   ThemeBackground,
-  ThemeLighting,
 } from "../theme/tokens";
 import type {
   DeviceMediaSpec,
@@ -21,6 +16,7 @@ import type {
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import { parseFrameOverride } from "./frameSchema";
+import { normalizeLighting } from "./sceneLighting";
 
 /** The per-scene sidecar schema (`scenes/<stem>.json` beside a scene's TSX): holds everything machine-editable (name, text, devices, camera, duration), written atomically via `write_scene_doc`; this module is pure (types + validation only) so it's unit-testable and safe to import anywhere, with IO and hooks living in `sceneDoc.ts`. Field docs: the kookaburra-scene-authoring skill; rationale: docs/decisions.md. */
 
@@ -242,8 +238,8 @@ export interface SceneDoc {
   textAnimation?: TextAnimationSpec;
   /** Flips the resolution order for this scene (the panel's Override): text primitives ignore their own TSX animation props and follow the sidecar/theme spec instead (timing props like `from`/`to`/`outAt` still apply); written when the user overrides coded motion, absent means the normal prop-wins order. */
   textAnimationForce?: boolean;
-  /** Partial lighting override: each present field fully replaces the theme's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `key` + `shadow` override rather than a whole new theme. */
-  lighting?: Partial<ThemeLighting>;
+  /** Partial lighting override: each present field fully replaces the layer below's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `sun` + `shadow` override rather than a whole new theme. Deep validation lives in `sceneLighting.ts`. */
+  lighting?: LightingSpec;
   /** Overlay override: merges over the manifest's deck-wide `frame` for this scene (see `mergeFrameSpec`); `cutout` may be omitted to inherit the deck's shape, and `{enabled:false}` opts the scene out entirely. */
   frame?: FrameOverrideSpec;
   /** The layered-screenshot composition (one per scene; layers carry the multiplicity). Deep graph validation lives in `sceneLayeredScreenshot.ts`. */
@@ -423,7 +419,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   }
   if (doc.textAnimationForce === true) out.textAnimationForce = true;
   if (doc.lighting !== undefined) {
-    const lighting = parseLightingOverride(doc.lighting, source);
+    const lighting = normalizeLighting(doc.lighting, source);
     if (lighting) out.lighting = lighting;
   }
   if (doc.frame !== undefined) {

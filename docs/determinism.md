@@ -573,11 +573,26 @@ camera exactly:
   MSAA-resolve precedent); textures cache by source id for the app's lifetime.
   The preview fire-and-forgets the same call (a reflection-less first paint is
   preview-only, healed by an invalidate).
-- **Theme lighting is static per scene.** `<SceneStage>` mounts plain lights from
-  theme tokens (fixed `LIGHT_RADIUS`, azimuth/elevation → position, export
-  contract); staged primitives' bundled lit sets stand down via
-  `useSceneStaged()` (explicit `lit` wins). No token is ever time-derived; scene
-  "motion" of light is out of scope by design.
+- **Every lighting value is a pure function of the resolved timeline position.**
+  `<SceneStage>` mounts the resolved rig (fixed `LIGHT_RADIUS` for the sun and
+  legacy fills, export contract); staged primitives' bundled lit sets stand down
+  via `useSceneStaged()` (explicit `lit` wins). Since v9, a scene doc may carry a
+  lighting keyframe track (one sparse whole-rig track, `sceneLighting.ts`),
+  sampled per render target at the compositor seam exactly like the camera: on a
+  transition frame, targets A and B sample their own scene's track at their own
+  scene-local times. Nothing reads the wall clock and nothing accumulates across
+  frames; theme TOKENS remain static (tracks live on the scene-doc layer only).
+  This deliberately reverses the v8 "scene motion of light is out of scope" lock;
+  see docs/decisions.md.
+- **A verify cannot see an orientation bug.** Verify compares run to run, so a
+  light aimed the wrong way, an emitter across its own tube or a housing over its
+  own aperture renders consistently WRONG and certifies EQUAL. Seven such bugs
+  were found across the v9 batch and its variant comparison, all invisible to the
+  gate. `ws:lighting-audit` (9 scenes: env mirror, housed props, the shadow cap,
+  one per preset, all staging the same matte/glossy/rough subjects) exists to be
+  LOOKED at after any lighting render-path change. It is deliberately not in a
+  gate. Measure as well as look: crop to the subjects first, because a large flat
+  backdrop swamps whole-frame statistics.
 - **Degrade, never crash.** A malformed theme document falls back to the default
   theme (project level) or the project's theme (scene level), like a malformed
   sidecar. Gate assets (spike themes, sidecar theme swaps) are structure-pinned
@@ -1017,6 +1032,11 @@ and do not need their own verifies.**
   single export batch: do not Verify ×2 each one.
 - Always pair a gate with an extracted-frame visual check (byte-identical wrong
   pixels pass hashing).
+- `ws:` fixtures live in `~/Kookaburra Cut/`, NOT the repo, so they are SHARED
+  across git worktrees: a parallel session editing one silently moves another's
+  baseline with no commit to blame. Bundled projects (`projects/showcase-tour`)
+  are per-worktree and immune, so gate hard on those and treat a `ws:` hash as
+  advisory whenever more than one worktree is live.
 
 ### Current baselines
 
@@ -1035,6 +1055,31 @@ rolling-gate project (`showcase-tour`):
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
+
+> **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
+> aimed at the camera-space origin, which IS the camera, so every such rim light
+> pointed backwards at the lens and lit nothing. A defaulted aim now resolves to
+> the subject in world space, making all three spaces agree that no target means
+> aim at the thing. Found by rendering `ws:lighting-audit` side by side against
+> the parallel variant build, not by a gate: the dead rim rendered
+> deterministically and verified EQUAL. Both anchors stayed EQUAL and UNCHANGED
+> (`97af238c…` / `fe701549…`), because every light in the gate fixtures sets an
+> explicit target; only the audit fixture's untargeted rims move, and they now
+> match the variant's reference render pixel for pixel.
+
+> **2026-07-25 (scene lighting v9, the full batch):** the lighting batch (schema
+> v9 with the theme -> project -> scene layers, four free light types with
+> World/Camera/Subject spaces resolved per render target, six new bundled
+> HDRIs + user `.hdr`/`.exr` sources + `"none"`, emissive fixtures with repeat
+> arrays and the env-mirror bake, preview-only placement helpers on their own
+> camera layer, lighting keyframes, the preset grid, the explicit
+> tone-mapping/exposure contract, and the housed practical props) landed with
+> both anchors EQUAL (`97af238c…` / `eb89826c…`, the post-splice launch
+> baseline) and the 16-scene lighting fixture verifying identical ×2 at
+> `fe701549…` (supersedes the interim 15-scene `b5d80edb…`). Every new
+> block is null-for-legacy: absent at all layers resolves the v8 path verbatim,
+> pinned by the whole-lineup theme-equivalence test.
 
 > **2026-07-25 (sentinel splice, Michael's call):** `ws:launch-2026` was
 > trimmed 19.0 s → 8.2 s (5000/3000×4/5000 → 2400/1600×4/2400 ms; scenes and

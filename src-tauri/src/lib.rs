@@ -1098,6 +1098,7 @@ pub fn run() {
             workspace::is_project_trusted,
             workspace::trust_project,
             workspace::list_project_assets,
+            workspace::list_project_environments,
             workspace::list_project_media,
             workspace::set_last_project,
             workspace::set_hardware_video,

@@ -54,6 +54,7 @@ import {
   takeUndo,
 } from "./engine/history";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
+import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
 import { PersistentLayer } from "./engine/PersistentLayer";
 import {
@@ -84,9 +85,11 @@ import {
   writeProjectManifestSnapshot,
 } from "./engine/projectEdit";
 import { TrustDeniedError } from "./engine/projectTrust";
+import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
+import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
-import { ProjectIdContext } from "./engine/sceneContext";
+import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
   resyncFollowMediaDuration,
   syncFollowMediaDurations,
@@ -553,6 +556,35 @@ export default function App() {
     }
   }
 
+  async function handleSetRenderSettings(settings: RenderSettings) {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    try {
+      const slug = workspaceSlug(current.id);
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      const manifest = JSON.parse(manifestBefore);
+      // ACES at 1.0 is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
+      if (settings.toneMapping === "aces" && settings.exposure === 1) delete manifest.render;
+      else manifest.render = settings;
+      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      pushHistory({
+        label: "render settings",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+      handleTimingChanged();
+    } catch (e) {
+      setToast({ kind: "error", message: `Render settings failed: ${String(e)}` });
+    }
+  }
+
   async function handleRemoveSoundtrack() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
@@ -924,7 +956,12 @@ export default function App() {
       useEditorStore.getState().setTheme(loaded.theme);
       useEffectsStore
         .getState()
-        .setProjectEffects(loaded.effects, loaded.effectOverrides, loaded.sceneEffectDefaults);
+        .setProjectEffects(
+          loaded.effects,
+          loaded.effectOverrides,
+          loaded.sceneEffectDefaults,
+          loaded.renderSettings,
+        );
       const clock = useClockStore.getState();
       clock.setDurationMs(loaded.totalMs);
       // Keep the scrub position within the (possibly shorter) new project.
@@ -1418,6 +1455,7 @@ export default function App() {
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
           audio: project.audio,
           codec: "libx264",
@@ -1469,6 +1507,7 @@ export default function App() {
           sceneDocs: project.sceneDocs,
           theme: project.theme,
           sceneThemes: project.sceneThemes,
+          projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
           audio: project.audio,
           codec: "libx264",
@@ -1632,6 +1671,8 @@ export default function App() {
                   // Shadow maps: enabled globally, inert until a SceneStage mounts a castShadow key light (see SHADOW_MAP_TYPE; regressions prove the inert case byte-neutral).
                   shadows={{ enabled: true, type: SHADOW_MAP_TYPE }}
                   onCreated={({ gl }) => {
+                    // Area lights need the LTC uniforms initialised once, at renderer creation, never lazily on first light (a first-frame init would race the export preamble). Global and idempotent.
+                    ensureRectAreaLightUniforms();
                     console.warn(
                       "[gl] context:",
                       JSON.stringify(gl.getContext().getContextAttributes()),
@@ -1645,6 +1686,7 @@ export default function App() {
                   <color attach="background" args={[theme.colors.background]} />
                   <PreviewClock />
                   <ExportBridge />
+                  <RenderSettingsApplier />
                   {project && (
                     <CompositorDriver
                       projectId={project.id}
@@ -1653,65 +1695,68 @@ export default function App() {
                       sceneDocs={project.sceneDocs}
                       theme={project.theme}
                       sceneThemes={project.sceneThemes}
+                      projectLighting={project.projectLighting}
                       sceneFrames={project.sceneFrames}
                       commitStamp={project}
                     />
                   )}
                   {/* Scenes resolve assets against the project that owns them, the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
                   <ProjectIdContext.Provider value={project?.id ?? null}>
-                    <Suspense fallback={null}>
-                      {project?.scenes.map((scene, i) => {
-                        const slot = project.slots[i];
-                        const SceneComponent = scene.Scene;
-                        return (
-                          <SceneHost
-                            key={`${project.id}:${slot.id}`}
-                            index={i}
-                            id={slot.id}
-                            startMs={slot.startMs}
-                            durationMs={slot.durationMs}
-                            doc={project.sceneDocs[i]}
-                            theme={project.sceneThemes[i]}
-                            frame={project.sceneFrames[i]}
-                          >
-                            {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
-                            <AssetBoundary label={`scene ${i + 1}`}>
-                              {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
-                              <SceneBackground />
-                              <SceneComponent />
-                              {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
-                              <DevicesFallback />
-                              <LayeredScreenshotFallback />
-                              <VideoWindowFallback />
-                              <TextFallback />
-                            </AssetBoundary>
-                          </SceneHost>
-                        );
-                      })}
-                      {/* The persistent (hoisted morph) layer mounts once as a sibling of the scene hosts, outside every SceneContext, so it reads global time and tweens across scene seams. The compositor owns its per-frame visibility. */}
-                      {project?.persistent && (
-                        <PersistentLayer key={`${project.id}:persistent`}>
-                          <project.persistent />
-                        </PersistentLayer>
-                      )}
-                      {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
-                      {project?.scenes.map((_, i) => {
-                        const frame = project.sceneFrames[i];
-                        if (!frame) return null;
-                        const slot = project.slots[i];
-                        return (
-                          <FramePanel
-                            key={`${project.id}:panel:${slot.id}`}
-                            index={i}
-                            startMs={slot.startMs}
-                            durationMs={slot.durationMs}
-                            doc={project.sceneDocs[i]}
-                            theme={project.sceneThemes[i]}
-                            frame={frame}
-                          />
-                        );
-                      })}
-                    </Suspense>
+                    <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
+                      <Suspense fallback={null}>
+                        {project?.scenes.map((scene, i) => {
+                          const slot = project.slots[i];
+                          const SceneComponent = scene.Scene;
+                          return (
+                            <SceneHost
+                              key={`${project.id}:${slot.id}`}
+                              index={i}
+                              id={slot.id}
+                              startMs={slot.startMs}
+                              durationMs={slot.durationMs}
+                              doc={project.sceneDocs[i]}
+                              theme={project.sceneThemes[i]}
+                              frame={project.sceneFrames[i]}
+                            >
+                              {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
+                              <AssetBoundary label={`scene ${i + 1}`}>
+                                {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
+                                <SceneBackground />
+                                <SceneComponent />
+                                {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
+                                <DevicesFallback />
+                                <LayeredScreenshotFallback />
+                                <VideoWindowFallback />
+                                <TextFallback />
+                              </AssetBoundary>
+                            </SceneHost>
+                          );
+                        })}
+                        {/* The persistent (hoisted morph) layer mounts once as a sibling of the scene hosts, outside every SceneContext, so it reads global time and tweens across scene seams. The compositor owns its per-frame visibility. */}
+                        {project?.persistent && (
+                          <PersistentLayer key={`${project.id}:persistent`}>
+                            <project.persistent />
+                          </PersistentLayer>
+                        )}
+                        {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
+                        {project?.scenes.map((_, i) => {
+                          const frame = project.sceneFrames[i];
+                          if (!frame) return null;
+                          const slot = project.slots[i];
+                          return (
+                            <FramePanel
+                              key={`${project.id}:panel:${slot.id}`}
+                              index={i}
+                              startMs={slot.startMs}
+                              durationMs={slot.durationMs}
+                              doc={project.sceneDocs[i]}
+                              theme={project.sceneThemes[i]}
+                              frame={frame}
+                            />
+                          );
+                        })}
+                      </Suspense>
+                    </ProjectLightingContext.Provider>
                   </ProjectIdContext.Provider>
                 </Canvas>
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. */}
@@ -1962,6 +2007,7 @@ export default function App() {
               onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
               onPasteBackground={(i) => void handlePasteBackground(i)}
               onDuplicateSceneAt={handleDuplicateScene}
+              onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
             />
           )}
         </div>

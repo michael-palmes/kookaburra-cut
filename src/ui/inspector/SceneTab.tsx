@@ -65,6 +65,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import { LightingSectionBody } from "./LightingSection";
 
 /** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
 const SCREEN_TITLES: Record<string, string> = {
@@ -72,6 +73,7 @@ const SCREEN_TITLES: Record<string, string> = {
   device: "Device",
   frame: "Overlay",
   camera: "Camera",
+  lighting: "Lighting",
   motion: "Timing",
   "text.edit": "Edit text",
   "style.background": "Background",
@@ -143,6 +145,21 @@ const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
   switch (id) {
+    case "lighting":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <circle cx="10" cy="10" r="3.2" />
+          <path d="M10 3v2M10 15v2M3 10h2M15 10h2M5.4 5.4l1.4 1.4M13.2 13.2l1.4 1.4M14.6 5.4l-1.4 1.4M6.8 13.2l-1.4 1.4" />
+        </svg>
+      );
     case "frame":
       return (
         <svg
@@ -3792,8 +3809,24 @@ export function SceneTab({
       />
     );
   }
+  if (drillIn === "lighting" && doc) {
+    return (
+      <LightingSectionBody
+        doc={doc}
+        theme={sceneTheme ?? project.theme}
+        projectId={project.id}
+        projectLighting={project.projectLighting}
+        slot={scene}
+        onBack={closeDrill}
+        patchDoc={patchDoc}
+        commitFromBaseline={commitFromBaseline}
+      />
+    );
+  }
   const groupSection =
-    drillIn && drillIn !== "camera" ? sections.find((s) => s.id === drillIn) : undefined;
+    drillIn && drillIn !== "camera" && drillIn !== "lighting"
+      ? sections.find((s) => s.id === drillIn)
+      : undefined;
   if (groupSection) {
     return (
       <div className="inspector-drill">
@@ -3926,6 +3959,13 @@ export function SceneTab({
     icon: "camera.animate",
     onClick: () => openDrill("camera"),
   });
+  if (doc)
+    topEntries.push({
+      key: "lighting",
+      label: "Lighting",
+      icon: "lighting",
+      onClick: () => openDrill("lighting"),
+    });
   if (project.slots.length > 1) {
     topEntries.push({
       key: "transition",

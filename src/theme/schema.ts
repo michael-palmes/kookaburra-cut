@@ -1,15 +1,14 @@
+import { normalizeLighting, resolveLighting } from "../engine/sceneLighting";
 import type {
   EffectsConfig,
   FontRef,
   GradientSpec,
+  LightingSpec,
   TextAnimationSpec,
   Theme,
   ThemeBackdrop,
   ThemeBackground,
   ThemeEnvironment,
-  ThemeLighting,
-  ThemeLightSpec,
-  ThemeShadowSpec,
 } from "./tokens";
 
 /** The theme document schema: `theme.json`, one format for bundled and user themes, parsed with the same degrade-don't-crash contract as `parseSceneDoc` - a malformed OPTIONAL block drops with a warning, a malformed REQUIRED block (colors/typography/motion) rejects the whole document so a bad theme file never tears down the canvas tree. Unknown fields are ignored. PURE module (types + validation only); IO lives in `theme/registry.ts`. See docs/decisions.md ("Themes & typography"). */
@@ -31,57 +30,9 @@ function parseFontRef(v: unknown): FontRef | undefined {
   return undefined;
 }
 
-function parseLightSpec(v: unknown): ThemeLightSpec | undefined {
-  if (!isRecord(v)) return undefined;
-  if (!isNum(v.azimuthDeg) || !isNum(v.elevationDeg) || !isNum(v.intensity)) return undefined;
-  const light: ThemeLightSpec = {
-    azimuthDeg: v.azimuthDeg,
-    elevationDeg: v.elevationDeg,
-    intensity: v.intensity,
-  };
-  if (isStr(v.color)) light.color = v.color;
-  return light;
-}
-
-function parseShadow(v: unknown): ThemeShadowSpec | undefined {
-  if (!isRecord(v)) return undefined;
-  if (v.technique !== "map" && v.technique !== "none") return undefined;
-  if (!isNum(v.softness) || !isNum(v.opacity) || !isNum(v.mapSize) || !isNum(v.bias)) {
-    return undefined;
-  }
-  const shadow: ThemeShadowSpec = {
-    technique: v.technique,
-    softness: v.softness,
-    opacity: v.opacity,
-    mapSize: v.mapSize,
-    bias: v.bias,
-  };
-  if (isStr(v.color)) shadow.color = v.color;
-  return shadow;
-}
-
-function parseLighting(v: unknown, source: string): ThemeLighting | undefined {
-  if (!isRecord(v)) return undefined;
-  const key = parseLightSpec(v.key);
-  if (!key || !isNum(v.ambient)) {
-    console.warn(`[theme] ${source}: "lighting" needs a valid key light + ambient — dropped`);
-    return undefined;
-  }
-  const fills: ThemeLightSpec[] = [];
-  if (Array.isArray(v.fills)) {
-    for (const f of v.fills) {
-      const fill = parseLightSpec(f);
-      if (fill) fills.push(fill);
-      else console.warn(`[theme] ${source}: invalid fill light — dropped`);
-    }
-  }
-  const lighting: ThemeLighting = { key, fills, ambient: v.ambient };
-  if (v.shadow !== undefined) {
-    const shadow = parseShadow(v.shadow);
-    if (shadow) lighting.shadow = shadow;
-    else console.warn(`[theme] ${source}: invalid "lighting.shadow" — dropped`);
-  }
-  return lighting;
+/** Theme lighting parses through the v9 module (engine/sceneLighting.ts): the v8 `key` alias normalises to `sun` in memory, and the theme-layer gate keeps the v8 contract (a block with no renderable rig drops whole). Nothing rewrites theme files. */
+function parseLighting(v: unknown, source: string): LightingSpec | undefined {
+  return normalizeLighting(v, source, { themeLayer: true }) ?? undefined;
 }
 
 function parseEnvironment(v: unknown, source: string): ThemeEnvironment | undefined {
@@ -232,62 +183,18 @@ export function parseBackgroundSpec(
   return undefined;
 }
 
-/** A PARTIAL lighting override (scene docs): each present field fully replaces the theme's (no deep merge of `key` etc. - predictable over clever). Exported for the sidecar schema; returns undefined when nothing valid survives. */
-export function parseLightingOverride(
-  v: unknown,
-  source: string,
-): Partial<ThemeLighting> | undefined {
-  if (!isRecord(v)) return undefined;
-  const out: Partial<ThemeLighting> = {};
-  if (v.key !== undefined) {
-    const key = parseLightSpec(v.key);
-    if (key) out.key = key;
-    else console.warn(`[theme] ${source}: invalid lighting override "key" — dropped`);
-  }
-  if (Array.isArray(v.fills)) {
-    const fills: ThemeLightSpec[] = [];
-    for (const f of v.fills) {
-      const fill = parseLightSpec(f);
-      if (fill) fills.push(fill);
-      else console.warn(`[theme] ${source}: invalid lighting override fill — dropped`);
-    }
-    out.fills = fills;
-  }
-  if (isNum(v.ambient)) out.ambient = v.ambient;
-  if (v.shadow !== undefined) {
-    const shadow = parseShadow(v.shadow);
-    if (shadow) out.shadow = shadow;
-    else console.warn(`[theme] ${source}: invalid lighting override "shadow" — dropped`);
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
+/** A PARTIAL lighting override (scene docs): each present field fully replaces the layer below's (no deep merge - predictable over clever). Exported for the sidecar schema; returns undefined when nothing valid survives. */
+export function parseLightingOverride(v: unknown, source: string): LightingSpec | undefined {
+  return normalizeLighting(v, source) ?? undefined;
 }
 
-/** Merges a scene doc's partial lighting override onto the theme's lighting (field-level full replacement). Without a base, an override applies only when complete enough to light a scene (key + ambient). */
+/** Merges the three lighting layers (theme -> project -> scene), field-level full replacement. Without any renderable rig (sun + ambient, or v9 lights/fixtures) the result is undefined: the pre-v9 code path verbatim. */
 export function mergeLighting(
-  base: ThemeLighting | undefined,
-  override: Partial<ThemeLighting> | undefined,
-): ThemeLighting | undefined {
-  if (!override) return base;
-  if (base) {
-    const merged: ThemeLighting = {
-      key: override.key ?? base.key,
-      fills: override.fills ?? base.fills,
-      ambient: override.ambient ?? base.ambient,
-    };
-    const shadow = override.shadow ?? base.shadow;
-    if (shadow) merged.shadow = shadow;
-    return merged;
-  }
-  if (override.key && override.ambient !== undefined) {
-    const built: ThemeLighting = {
-      key: override.key,
-      fills: override.fills ?? [],
-      ambient: override.ambient,
-    };
-    if (override.shadow) built.shadow = override.shadow;
-    return built;
-  }
-  return undefined;
+  theme: LightingSpec | undefined,
+  project: LightingSpec | undefined,
+  scene: LightingSpec | undefined,
+): LightingSpec | undefined {
+  return resolveLighting(theme, project, scene);
 }
 
 /** Text-animation spec parser, exported for the sidecar's whole-spec `textAnimation` override. Preset NAMES stay raw strings (validated later by `coercePreset` at resolve); other params validate per-field, drop-and-warn. */

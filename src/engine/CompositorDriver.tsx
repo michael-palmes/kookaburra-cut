@@ -1,7 +1,7 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import type { PerspectiveCamera } from "three";
-import type { Theme } from "../theme/tokens";
+import type { LightingSpec, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { useCameraEditStore } from "./cameraEditStore";
 import {
@@ -12,9 +12,15 @@ import {
 } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
-import { preloadEnvironments } from "./environments";
+import {
+  collectEnvironmentSources,
+  collectMirrorRequests,
+  preloadEnvironments,
+  preloadMirrorEnvironments,
+} from "./environments";
 import { stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
+import { HELPER_LAYER } from "./lightEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   buildSceneCameraTracks,
@@ -24,6 +30,7 @@ import {
 } from "./sceneCamera";
 import type { SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
+import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 
@@ -35,6 +42,7 @@ export function CompositorDriver({
   sceneDocs,
   theme,
   sceneThemes,
+  projectLighting,
   sceneFrames,
   commitStamp,
 }: {
@@ -47,6 +55,8 @@ export function CompositorDriver({
   /** The project's theme + resolved per-scene themes; drive the scene-state plan. */
   theme?: Theme;
   sceneThemes?: Theme[];
+  /** The manifest's project-default lighting layer (v9); feeds per-scene environment resolution. */
+  projectLighting?: LightingSpec;
   /** Per-scene resolved overlays; drive the cutout render seam. */
   sceneFrames?: (FrameSpec | undefined)[];
   /** The LoadedProject identity, stamped on canvas commit (see exportBridge). */
@@ -62,10 +72,19 @@ export function CompositorDriver({
   // Normalized once per project load; null entries for scenes without a camera track.
   const sceneTracks = useMemo(() => buildSceneCameraTracks(sceneDocs ?? []), [sceneDocs]);
 
+  // Lighting keyframe tracks (scene-doc layer only); null-for-legacy when nothing keys.
+  const lightingTracks = useMemo(
+    () => (sceneThemes ? buildLightingTracks(sceneThemes, projectLighting, sceneDocs ?? []) : null),
+    [sceneThemes, projectLighting, sceneDocs],
+  );
+
   // Per-scene render states; null unless the project opts into themed scene state.
   const sceneStates = useMemo(
-    () => (theme && sceneThemes ? buildSceneRenderStates(theme, sceneThemes) : null),
-    [theme, sceneThemes],
+    () =>
+      theme && sceneThemes
+        ? buildSceneRenderStates(theme, sceneThemes, { projectId, projectLighting, sceneDocs })
+        : null,
+    [theme, sceneThemes, projectId, projectLighting, sceneDocs],
   );
 
   // Per-scene overlays with panel colours resolved; null unless some scene declares a frame.
@@ -74,12 +93,26 @@ export function CompositorDriver({
     [sceneFrames, sceneThemes],
   );
 
-  // Resolves theme environments for the preview (fire-and-forget; the export preamble awaits its own call); frames rendered before a texture lands take the shared-env fallback, and invalidate repaints with reflections once loaded.
+  // Resolves theme environments for the preview (fire-and-forget; the export preamble awaits its own call); frames rendered before a texture lands take the shared-env fallback, and invalidate repaints with reflections once loaded. A missing USER source rejects (it must fail exports loudly); the preview just logs it and renders without reflections.
   const gl = useThree((s) => s.gl);
   useEffect(() => {
     if (!theme || !sceneThemes || !sceneStates) return;
-    void preloadEnvironments(gl, [theme, ...sceneThemes]).then(() => invalidate());
-  }, [gl, theme, sceneThemes, sceneStates, invalidate]);
+    const sources = collectEnvironmentSources(
+      projectId,
+      [theme, ...sceneThemes],
+      projectLighting,
+      sceneDocs,
+    );
+    void preloadEnvironments(gl, sources)
+      .then(() =>
+        preloadMirrorEnvironments(
+          gl,
+          collectMirrorRequests(projectId, sceneThemes, projectLighting, sceneDocs),
+        ),
+      )
+      .then(() => invalidate())
+      .catch((e) => console.warn("[environments] preview preload failed:", e));
+  }, [gl, theme, sceneThemes, sceneStates, projectId, projectLighting, sceneDocs, invalidate]);
 
   // Redraws when the project's timeline changes (e.g. project swap): the scrub position may not move, so PreviewClock wouldn't otherwise invalidate (slots.length keeps the dep real).
   useEffect(() => {
@@ -106,6 +139,8 @@ export function CompositorDriver({
   useFrame((s) => {
     // Stands down while the exporter owns rendering: a stray preview render here would race the export's async text sync and capture stale glyphs (non-deterministic export).
     if (isExporting()) return;
+    // Preview frames see the light helpers' layer; the exporter disables it per run (the double guard).
+    s.camera.layers.enable(HELPER_LAYER);
     const currentMs = useClockStore.getState().currentMs;
     const resolved = resolveAt(slots, currentMs);
     // Preview-only draft merge: an in-flight camera drag replaces its scene's track for this render, read imperatively (never a subscription into the render) and unreachable during export (`isExporting` above; the export loop samples only `ExportOptions.sceneDocs`).
@@ -121,6 +156,7 @@ export function CompositorDriver({
     if (!plan) applyCameraTrack(s.camera as PerspectiveCamera, cameraTrack, currentMs);
     // Scene render state, same rules: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
+    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
     renderComposited(
       s.gl,
       s.scene,
@@ -130,6 +166,7 @@ export function CompositorDriver({
       plan ?? undefined,
       statePlan,
       overlays ?? undefined,
+      lightingPlan ?? undefined,
     );
   }, 1);
 

@@ -35,11 +35,26 @@ MAP=(
   ferndale-studio ferndale_studio_07_1k.exr
   monochrome-studio monochrome_studio_01_1k.exr
   story-studio story_studio_01_1k.exr
+  warehouse empty_warehouse_01_1k.exr
+  night-city shanghai_bund_1k.exr
+  sunset venice_sunset_1k.exr
+  cyclorama cyclorama_hard_light_1k.exr
+  dawn kiara_1_dawn_1k.exr
+  interior lebombo_1k.exr
 )
+
+# The Blender conversion is a DETERMINISM BOUNDARY: re-converting a shipped file through a
+# different Blender silently rebases every project using it, so existing outputs are skipped.
+# Re-converting on purpose (a deliberate full rebase) takes KOOKABURRA_HDRI_FORCE=1.
+FORCE="${KOOKABURRA_HDRI_FORCE:-0}"
 
 for name src_file in "${(@kv)MAP}"; do
   in="$SRC/$src_file"
   out="$DEST/$name.hdr"
+  if [[ -f "$out" && "$FORCE" != "1" ]]; then
+    echo "skip $out (exists; KOOKABURRA_HDRI_FORCE=1 rebases)"
+    continue
+  fi
   if [[ ! -f "$in" ]]; then
     echo "warn: missing $in — skipped" >&2
     continue
@@ -48,4 +63,18 @@ for name src_file in "${(@kv)MAP}"; do
     | grep -E "^wrote|Error" || true
   [[ -f "$out" ]] || { echo "error: conversion failed for $in" >&2; exit 1; }
   echo "ok $out ($(du -h "$out" | cut -f1 | tr -d ' '))"
+done
+
+# Picker thumbnails (UI-only JPEGs, safe to regenerate: never an export input). Generated
+# for every map with a source EXR present, skipping ones already baked.
+THUMBS="$ROOT/src/assets/hdri-thumbs"
+mkdir -p "$THUMBS"
+for name src_file in "${(@kv)MAP}"; do
+  in="$SRC/$src_file"
+  thumb="$THUMBS/$name.jpg"
+  [[ -f "$thumb" || ! -f "$in" ]] && continue
+  "$BLENDER" -b --factory-startup -P "$ROOT/scripts/hdri-thumb.py" -- "$in" "$thumb" \
+    | grep -E "^wrote|Error" || true
+  [[ -f "$thumb" ]] || { echo "error: thumbnail failed for $in" >&2; exit 1; }
+  echo "ok $thumb"
 done
