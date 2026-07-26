@@ -127,21 +127,6 @@ fn check_extension(raw: &str) -> Result<(), PackError> {
     Ok(())
 }
 
-/// Which store an already-validated payload path belongs to, and its slug.
-pub fn classify(raw: &str) -> Option<(ItemKind, String)> {
-    let rest = raw.strip_prefix(PAYLOAD_PREFIX)?;
-    let (dir, tail) = rest.split_once('/')?;
-    let kind = kind_for_dir(dir)?;
-    let slug = match kind {
-        // Flat stores key off the file name; the rest key off their folder.
-        ItemKind::Gradient | ItemKind::ExportPreset => {
-            tail.rsplit_once('.').map(|(s, _)| s).unwrap_or(tail).into()
-        }
-        ItemKind::Font | ItemKind::Screenshot => tail.into(),
-        _ => tail.split('/').next()?.into(),
-    };
-    Some((kind, slug))
-}
 
 #[cfg(test)]
 mod tests {
@@ -200,22 +185,6 @@ mod tests {
         assert_eq!(err("payload/projects/a/.git/config"), "extensionNotAllowed");
         assert_eq!(err("payload/themes/a/theme.tsx"), "extensionNotAllowed");
         assert_eq!(err("payload/projects/a/noext"), "extensionNotAllowed");
-    }
-
-    #[test]
-    fn classifies_by_subtree() {
-        assert_eq!(
-            classify("payload/projects/acme/scenes/01.tsx"),
-            Some((ItemKind::Project, "acme".into()))
-        );
-        assert_eq!(
-            classify("payload/gradients/sunrise.json"),
-            Some((ItemKind::Gradient, "sunrise".into()))
-        );
-        assert_eq!(
-            classify("payload/fonts/AcmeSans-Bold.ttf"),
-            Some((ItemKind::Font, "AcmeSans-Bold.ttf".into()))
-        );
     }
 
     #[test]

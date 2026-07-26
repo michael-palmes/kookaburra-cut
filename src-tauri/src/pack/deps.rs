@@ -8,12 +8,11 @@ use super::error::PackError;
 use super::fonts::{collect_pack_fonts, is_bundled_family};
 use super::hash::{content_hash, sha256_file};
 use super::model::{
-    ItemKind, PackContents, PackFile, PackFont, PackItemBase, PackObject, PackProject,
+    ItemKind, PackContents, PackFont, PackItemBase, PackObject, PackProject,
     PackRequires, PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
 };
 use super::paths::validate_archive_path;
 use super::scan::rfc3339;
-use super::write::PackEntry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -225,30 +224,6 @@ pub struct Closure {
     pub totals: PackTotals,
 }
 
-impl Closure {
-    /// The write-path view: archive path plus source, nothing else.
-    pub fn entries(&self) -> Vec<PackEntry> {
-        self.files
-            .iter()
-            .map(|f| PackEntry {
-                archive_path: f.archive_path.clone(),
-                source: f.source.clone(),
-            })
-            .collect()
-    }
-
-    /// The manifest's `files` block, already hashed.
-    pub fn pack_files(&self) -> Vec<PackFile> {
-        self.files
-            .iter()
-            .map(|f| PackFile {
-                path: f.archive_path.clone(),
-                sha256: f.sha256.clone(),
-                bytes: f.bytes,
-            })
-            .collect()
-    }
-}
 
 // - Font keys ------------------------------------------------------------------
 

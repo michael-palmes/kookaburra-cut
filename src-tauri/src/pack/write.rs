@@ -15,7 +15,6 @@ pub struct PackEntry {
 pub struct PackWriteSummary {
     pub path: PathBuf,
     pub bytes: u64,
-    pub entries: usize,
 }
 
 /// Already-compressed payloads gain ~1% from deflate and cost real CPU, so they are stored.
@@ -67,7 +66,6 @@ pub fn write_pack(
             Ok(PackWriteSummary {
                 path: out.to_path_buf(),
                 bytes,
-                entries: entries.len(),
             })
         }
         Err(e) => {

@@ -152,10 +152,6 @@ impl FontEmbedding {
     pub fn may_bundle(self) -> bool {
         !matches!(self, Self::Restricted)
     }
-
-    pub fn warns(self) -> bool {
-        matches!(self, Self::PreviewPrint | Self::Unknown)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -21,4 +21,3 @@ pub mod scan;
 mod tests;
 pub mod write;
 
-pub use error::PackError;

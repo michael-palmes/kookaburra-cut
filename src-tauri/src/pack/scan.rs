@@ -10,8 +10,6 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 pub struct ScannedItem {
-    /// (relative path, sha256), sorted by path.
-    pub files: Vec<(String, String)>,
     pub bytes: u64,
     pub content_hash: String,
     pub modified_at: SystemTime,
@@ -101,7 +99,6 @@ pub fn scan_dir(root: &Path) -> Result<ScannedItem, PackError> {
     }
     let hash = content_hash(&files);
     Ok(ScannedItem {
-        files,
         bytes,
         content_hash: hash,
         modified_at,
@@ -119,7 +116,6 @@ pub fn scan_file(path: &Path) -> Result<ScannedItem, PackError> {
     let files = vec![(name, sha256_file(path)?)];
     let hash = content_hash(&files);
     Ok(ScannedItem {
-        files,
         bytes: meta.len(),
         content_hash: hash,
         modified_at: meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
@@ -204,7 +200,7 @@ mod tests {
         let a = scan_dir(&base.join("one")).unwrap();
         let b = scan_dir(&base.join("two")).unwrap();
         assert_eq!(a.content_hash, b.content_hash);
-        assert_eq!(a.files.len(), 2);
+        assert!(a.bytes > 0);
         let _ = std::fs::remove_dir_all(&base);
     }
 }

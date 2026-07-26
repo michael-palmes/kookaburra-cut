@@ -924,7 +924,7 @@ mod tests {
         short.truncate(20);
         assert_eq!(embedding_in_face(&short, 0), FontEmbedding::Unknown);
         assert!(FontEmbedding::Unknown.may_bundle());
-        assert!(FontEmbedding::Unknown.warns());
+        assert!(!FontEmbedding::Restricted.may_bundle());
     }
 
     #[test]
