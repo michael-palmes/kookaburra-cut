@@ -18,6 +18,7 @@ import {
   addTap,
   clipIndexAt,
   freezeAt,
+  insertClipAt,
   moveTap,
   nextClipId,
   nextSourceId,
@@ -57,6 +58,48 @@ type RenderState =
   | { phase: "error"; message: string };
 
 const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 6];
+
+/** Toolbar glyphs: hand-authored 13px stroke SVGs (the MediaBrowser icon precedent; no icon package). */
+function ToolIcon({ id }: { id: "split" | "freeze" | "tap" | "delete" }) {
+  const glyph = {
+    split: (
+      <>
+        <path d="M8 1.5v13" strokeDasharray="2.2 1.8" />
+        <rect x="1.5" y="4.5" width="4" height="7" rx="1" />
+        <rect x="10.5" y="4.5" width="4" height="7" rx="1" />
+      </>
+    ),
+    freeze: <path d="M8 2v12M2.8 5l10.4 6M13.2 5L2.8 11" />,
+    tap: (
+      <>
+        <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none" />
+        <circle cx="8" cy="8" r="5.4" />
+      </>
+    ),
+    delete: (
+      <>
+        <path d="M2.5 4.5h11" />
+        <path d="M6 4.5V3h4v1.5" />
+        <path d="M4 4.5l.8 9h6.4l.8-9" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
 const AUTOSAVE_DEBOUNCE_MS = 400;
 const WHEEL_PX_PER_FRAME = 4; // horizontal-scroll scrub sensitivity
 
@@ -198,11 +241,15 @@ export function EditorApp() {
   const [render, setRender] = useState<RenderState>({ phase: "idle" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [playheadMs, setPlayheadMs] = useState(0);
+  // The clip context menu reads the playhead at CLICK time (playback keeps moving it while the menu sits open).
+  const playheadRef = useRef(playheadMs);
+  playheadRef.current = playheadMs;
   const [playing, setPlaying] = useState(false);
   const [trimScrub, setTrimScrub] = useState<TrimScrub | null>(null);
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [armedTap, setArmedTap] = useState(false);
   const [tapMenu, setTapMenu] = useState<ContextMenuState | null>(null);
+  const [clipMenu, setClipMenu] = useState<ContextMenuState | null>(null);
   const [tapMarkerScope, setTapMarkerScope] = useState<"near" | "all">("near");
 
   // Debounced autosave: rapid mutations coalesce into one save; flushSave() runs any pending write before renders (render_edit reads edit.json from disk) and on close. renderStaleRef backs the warn-on-close (changes not yet in a render).
@@ -428,9 +475,9 @@ export function EditorApp() {
     }
   }, [target, doc, flushSave]);
 
-  /** Insert a full-length clip of `rel` at clip position `index` (end when omitted); reuses the source entry when this video is already in the edit, and mediaMeta also warms the filmstrip cache. */
-  const handleAddClip = useCallback(
-    (rel: string, index?: number) => {
+  /** Shared add/insert flow: probe `rel`, reuse-or-create its EditSource, build a full-length clip and commit `place`'s arrangement; mediaMeta also warms the filmstrip cache. */
+  const spliceClip = useCallback(
+    (rel: string, place: (clips: EditClip[], clip: EditClip) => EditClip[]) => {
       if (!doc || !target) return;
       mediaMeta(target.slug, rel)
         .then((meta) => {
@@ -458,14 +505,29 @@ export function EditorApp() {
             speed: 1,
             startMs: 0,
           };
-          const clips = [...doc.clips];
-          clips.splice(Math.max(0, Math.min(clips.length, index ?? clips.length)), 0, clip);
           setMetas((prev) => ({ ...prev, [sourceId]: meta }));
-          commitDoc({ ...doc, sources, clips: relayout(clips) });
+          commitDoc({ ...doc, sources, clips: place(doc.clips, clip) });
         })
         .catch((e) => setSaveError(`Couldn't add the clip: ${String(e)}`));
     },
     [doc, target, commitDoc],
+  );
+
+  /** Insert a full-length clip of `rel` at clip position `index` (end when omitted). */
+  const handleAddClip = useCallback(
+    (rel: string, index?: number) =>
+      spliceClip(rel, (clips, clip) => {
+        const next = [...clips];
+        next.splice(Math.max(0, Math.min(next.length, index ?? next.length)), 0, clip);
+        return relayout(next);
+      }),
+    [spliceClip],
+  );
+
+  /** Splice a full-length clip of `rel` in at output time `tMs`; mid-clip splits the clip under it (the freeze-frame pattern). */
+  const handleInsertClipAt = useCallback(
+    (rel: string, tMs: number) => spliceClip(rel, (clips, clip) => insertClipAt(clips, tMs, clip)),
+    [spliceClip],
   );
 
   const handleSplit = useCallback(() => {
@@ -584,6 +646,48 @@ export function EditorApp() {
     [doc, playheadMs, canTap, commitTaps],
   );
 
+  /** Right-click menu on a timeline clip (the tap-marker menu's pattern). */
+  const handleClipContextMenu = useCallback(
+    (id: string, x: number, y: number) => {
+      const clip = doc?.clips.find((c) => c.id === id);
+      const rel = clip ? doc?.sources.find((s) => s.id === clip.sourceId)?.rel : undefined;
+      setClipMenu({
+        x,
+        y,
+        items: [
+          {
+            id: "insert",
+            label: "Insert video at playhead",
+            disabled: !rel,
+            title: "Splice this clip's video in at the playhead, full length",
+            onSelect: () => {
+              if (rel) handleInsertClipAt(rel, playheadRef.current);
+            },
+          },
+          {
+            id: "append",
+            label: "Append video to the end",
+            disabled: !rel,
+            title: "Add this clip's video again as the last clip",
+            onSelect: () => {
+              if (rel) handleAddClip(rel);
+            },
+          },
+          {
+            id: "remove",
+            label: "Remove clip",
+            confirmLabel: "Really remove?",
+            danger: true,
+            onSelect: () => {
+              if (doc) commit(removeClip(doc.clips, id));
+            },
+          },
+        ],
+      });
+    },
+    [doc, handleInsertClipAt, handleAddClip, commit],
+  );
+
   // Space plays/pauses; S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -686,177 +790,186 @@ export function EditorApp() {
             />
           )}
         </aside>
-        <main className="editor-stage" ref={stageRef}>
-          {doc && ((doc.taps?.length ?? 0) > 0 || armedTap) && (
-            <div className="editor-tap-bar">
-              <TapSettingsBar
-                scope={tapMarkerScope}
-                onScope={setTapMarkerScope}
-                styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-                onStyle={handleTapStyle}
-                colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                onColor={handleTapColor}
-                size={doc.tapSize ?? 1.25}
-                onSize={handleTapSize}
-              />
+        <div className="editor-stage-col">
+          <main className="editor-stage" ref={stageRef}>
+            {doc && ((doc.taps?.length ?? 0) > 0 || armedTap) && (
+              <div className="editor-tap-bar">
+                <TapSettingsBar
+                  scope={tapMarkerScope}
+                  onScope={setTapMarkerScope}
+                  styleId={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                  onStyle={handleTapStyle}
+                  colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                  onColor={handleTapColor}
+                  size={doc.tapSize ?? 1.25}
+                  onSize={handleTapSize}
+                />
+              </div>
+            )}
+            <div className="editor-preview-area">
+              {error ? (
+                <div className="stage-error" role="alert">
+                  <h2>This edit can’t open right now</h2>
+                  <pre>{error}</pre>
+                  {target?.sourceRel ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={handleReset}
+                      title="Keeps the broken document beside it as a .json.bak backup"
+                    >
+                      Discard and start over
+                    </button>
+                  ) : null}
+                </div>
+              ) : !doc || !firstSource ? (
+                <p className="muted">Loading edit…</p>
+              ) : (
+                <Preview
+                  clips={doc.clips}
+                  sources={doc.sources}
+                  basePath={target?.path ?? ""}
+                  playheadMs={playheadMs}
+                  playing={playing}
+                  trimScrub={trimScrub}
+                  onPlayhead={setPlayheadMs}
+                  onStop={stopPlaying}
+                  armedTap={armedTap}
+                  canPlaceTap={canTap}
+                  taps={doc.taps ?? []}
+                  tapWindowList={tapWindowList}
+                  onPlaceTap={handlePlaceTap}
+                  onCommitTap={handleCommitTap}
+                  onTapContextMenu={handleTapContextMenu}
+                  tapMarkerScope={tapMarkerScope}
+                  tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                  tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                  tapSize={doc.tapSize ?? 1.25}
+                />
+              )}
+            </div>
+          </main>
+          {doc && (
+            <div className="editor-toolbar">
+              <button
+                type="button"
+                className="btn"
+                onClick={handleSplit}
+                disabled={!canSplit}
+                title="Split the clip under the playhead (S)"
+              >
+                <ToolIcon id="split" />
+                Split
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleFreeze}
+                disabled={!canFreeze}
+                title="Hold the frame under the playhead as its own clip (F)"
+              >
+                <ToolIcon id="freeze" />
+                Freeze
+              </button>
+              <button
+                type="button"
+                className={`btn${armedTap ? " selected" : ""}`}
+                aria-pressed={armedTap}
+                onClick={() => setArmedTap((a) => !a)}
+                disabled={!armedTap && !canTap}
+                title="Tap highlight: click the preview to place a glow at the playhead (T)"
+              >
+                <ToolIcon id="tap" />
+                Tap
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => selectedId && commit(removeClip(doc.clips, selectedId))}
+                disabled={!selectedId}
+                title="Delete the selected clip (⌫)"
+              >
+                <ToolIcon id="delete" />
+                Delete
+              </button>
+              {selectedClip?.holdMs !== undefined ? (
+                <label className="editor-hold" title="Freeze length in seconds">
+                  Hold
+                  <input
+                    key={`${selectedClip.id}:${selectedClip.holdMs}`}
+                    className="editor-hold-input"
+                    type="number"
+                    min={0.1}
+                    step={0.1}
+                    defaultValue={Number((selectedClip.holdMs / 1000).toFixed(1))}
+                    onBlur={(e) => {
+                      const s = Number(e.currentTarget.value);
+                      if (Number.isFinite(s) && s > 0 && selectedId) {
+                        commit(setClipHold(doc.clips, selectedId, Math.round(s * 1000)));
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                  />
+                  s
+                </label>
+              ) : (
+                <select
+                  className="select editor-speed"
+                  value={selectedClip?.speed ?? 1}
+                  disabled={!selectedClip}
+                  title="Playback speed of the selected clip"
+                  onChange={(e) =>
+                    selectedId &&
+                    commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
+                  }
+                >
+                  {SPEED_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}×
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                className="btn editor-play"
+                onClick={togglePlay}
+                disabled={doc.clips.length === 0}
+                title="Play/pause the preview (Space)"
+              >
+                {playing ? "⏸" : "▶"}
+              </button>
+              <span className="spacer" />
+              <span className="muted editor-timecode">
+                {(playheadMs / 1000).toFixed(2)}s / {(totalMs / 1000).toFixed(2)}s
+              </span>
             </div>
           )}
-          <div className="editor-preview-area">
-            {error ? (
-              <div className="stage-error" role="alert">
-                <h2>This edit can’t open right now</h2>
-                <pre>{error}</pre>
-                {target?.sourceRel ? (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={handleReset}
-                    title="Keeps the broken document beside it as a .json.bak backup"
-                  >
-                    Discard and start over
-                  </button>
-                ) : null}
-              </div>
-            ) : !doc || !firstSource ? (
-              <p className="muted">Loading edit…</p>
-            ) : (
-              <Preview
-                clips={doc.clips}
-                sources={doc.sources}
-                basePath={target?.path ?? ""}
-                playheadMs={playheadMs}
-                playing={playing}
-                trimScrub={trimScrub}
-                onPlayhead={setPlayheadMs}
-                onStop={stopPlaying}
-                armedTap={armedTap}
-                canPlaceTap={canTap}
-                taps={doc.taps ?? []}
-                tapWindowList={tapWindowList}
-                onPlaceTap={handlePlaceTap}
-                onCommitTap={handleCommitTap}
-                onTapContextMenu={handleTapContextMenu}
-                tapMarkerScope={tapMarkerScope}
-                tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-                tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                tapSize={doc.tapSize ?? 1.25}
-              />
-            )}
-          </div>
-        </main>
+        </div>
       </div>
 
       {doc && (
-        <>
-          <div className="editor-toolbar">
-            <button
-              type="button"
-              className="btn editor-play"
-              onClick={togglePlay}
-              disabled={doc.clips.length === 0}
-              title="Play/pause the preview (Space)"
-            >
-              {playing ? "⏸" : "▶"}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={handleSplit}
-              disabled={!canSplit}
-              title="Split the clip under the playhead (S)"
-            >
-              Split
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={handleFreeze}
-              disabled={!canFreeze}
-              title="Hold the frame under the playhead as its own clip (F)"
-            >
-              Freeze
-            </button>
-            <button
-              type="button"
-              className={`btn${armedTap ? " selected" : ""}`}
-              aria-pressed={armedTap}
-              onClick={() => setArmedTap((a) => !a)}
-              disabled={!armedTap && !canTap}
-              title="Tap highlight: click the preview to place a glow at the playhead (T)"
-            >
-              Tap
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => selectedId && commit(removeClip(doc.clips, selectedId))}
-              disabled={!selectedId}
-              title="Delete the selected clip (⌫)"
-            >
-              Delete
-            </button>
-            {selectedClip?.holdMs !== undefined ? (
-              <label className="editor-hold" title="Freeze length in seconds">
-                Hold
-                <input
-                  key={`${selectedClip.id}:${selectedClip.holdMs}`}
-                  className="editor-hold-input"
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  defaultValue={Number((selectedClip.holdMs / 1000).toFixed(1))}
-                  onBlur={(e) => {
-                    const s = Number(e.currentTarget.value);
-                    if (Number.isFinite(s) && s > 0 && selectedId) {
-                      commit(setClipHold(doc.clips, selectedId, Math.round(s * 1000)));
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                  }}
-                />
-                s
-              </label>
-            ) : (
-              <select
-                className="select editor-speed"
-                value={selectedClip?.speed ?? 1}
-                disabled={!selectedClip}
-                onChange={(e) =>
-                  selectedId && commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
-                }
-                title="Playback speed of the selected clip"
-              >
-                {SPEED_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}×
-                  </option>
-                ))}
-              </select>
-            )}
-            <span className="spacer" />
-            <span className="muted editor-timecode">
-              {(playheadMs / 1000).toFixed(2)}s / {(totalMs / 1000).toFixed(2)}s
-            </span>
-          </div>
-          <Timeline
-            clips={doc.clips}
-            sources={doc.sources}
-            metas={metas}
-            selectedId={selectedId}
-            playheadMs={playheadMs}
-            onSelect={setSelectedId}
-            onPlayhead={handleSeek}
-            onCommit={commit}
-            onTrimScrub={handleTrimScrub}
-            onScrubWheel={scrubWheel}
-            onDropClip={handleAddClip}
-            tapWindowList={tapWindowList}
-          />
-        </>
+        <Timeline
+          clips={doc.clips}
+          sources={doc.sources}
+          metas={metas}
+          selectedId={selectedId}
+          playheadMs={playheadMs}
+          onSelect={setSelectedId}
+          onPlayhead={handleSeek}
+          onCommit={commit}
+          onTrimScrub={handleTrimScrub}
+          onScrubWheel={scrubWheel}
+          onDropClipAt={handleInsertClipAt}
+          onClipMenu={handleClipContextMenu}
+          tapWindowList={tapWindowList}
+        />
       )}
 
       {tapMenu && <ContextMenu menu={tapMenu} onClose={() => setTapMenu(null)} />}
+      {clipMenu && <ContextMenu menu={clipMenu} onClose={() => setClipMenu(null)} />}
 
       {render.phase === "rendering" && (
         <footer className="editor-progress">
