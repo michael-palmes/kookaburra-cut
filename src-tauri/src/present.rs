@@ -72,5 +72,9 @@ pub fn open_present(
 pub fn get_present_target(
     present: State<'_, PresentState>,
 ) -> Result<Option<PresentTarget>, String> {
-    Ok(present.0.lock().map_err(|_| "present state poisoned")?.clone())
+    Ok(present
+        .0
+        .lock()
+        .map_err(|_| "present state poisoned")?
+        .clone())
 }

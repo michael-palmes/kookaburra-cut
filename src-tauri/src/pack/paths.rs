@@ -15,7 +15,9 @@ fn allowed_extensions(kind: ItemKind) -> &'static [&'static str] {
         ItemKind::Font => &["ttf", "otf"],
         ItemKind::Object => &["json", "glb", "png", "jpg", "jpeg", "webp"],
         ItemKind::Theme | ItemKind::Gradient | ItemKind::ExportPreset => &["json"],
-        ItemKind::Screenshot => &["png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v", "webm"],
+        ItemKind::Screenshot => &[
+            "png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "m4v", "webm",
+        ],
     }
 }
 
@@ -127,7 +129,6 @@ fn check_extension(raw: &str) -> Result<(), PackError> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,7 +181,10 @@ mod tests {
 
     #[test]
     fn rejects_disallowed_extensions() {
-        assert_eq!(err("payload/projects/a/scenes/evil.sh"), "extensionNotAllowed");
+        assert_eq!(
+            err("payload/projects/a/scenes/evil.sh"),
+            "extensionNotAllowed"
+        );
         assert_eq!(err("payload/fonts/evil.dylib"), "extensionNotAllowed");
         assert_eq!(err("payload/projects/a/.git/config"), "extensionNotAllowed");
         assert_eq!(err("payload/themes/a/theme.tsx"), "extensionNotAllowed");

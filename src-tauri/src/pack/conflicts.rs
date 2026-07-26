@@ -371,8 +371,8 @@ fn plan_fonts(
 pub(crate) mod tests {
     use super::*;
     use crate::pack::model::{
-        PackContents, PackManifest, PackMeta, PackObject, PackProject, PackPublisher, PackScreenshot,
-        PackSimpleItem, PackTheme, PackTotals,
+        PackContents, PackManifest, PackMeta, PackObject, PackProject, PackPublisher,
+        PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
     };
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -556,11 +556,16 @@ pub(crate) mod tests {
                     .collect()
             }
             ItemKind::Gradient => {
-                contents.gradients = bases.into_iter().map(|base| PackSimpleItem { base }).collect()
+                contents.gradients = bases
+                    .into_iter()
+                    .map(|base| PackSimpleItem { base })
+                    .collect()
             }
             ItemKind::ExportPreset => {
-                contents.export_presets =
-                    bases.into_iter().map(|base| PackSimpleItem { base }).collect()
+                contents.export_presets = bases
+                    .into_iter()
+                    .map(|base| PackSimpleItem { base })
+                    .collect()
             }
             ItemKind::Screenshot => {
                 contents.screenshots = bases
@@ -591,11 +596,12 @@ pub(crate) mod tests {
         ] {
             let root = scratch("plan-root");
             let staging = scratch("plan-staging");
-            let dir_shaped = matches!(
-                kind,
-                ItemKind::Project | ItemKind::Theme | ItemKind::Object
-            );
-            let ext = if kind == ItemKind::Screenshot { ".png" } else { "" };
+            let dir_shaped = matches!(kind, ItemKind::Project | ItemKind::Theme | ItemKind::Object);
+            let ext = if kind == ItemKind::Screenshot {
+                ".png"
+            } else {
+                ""
+            };
 
             let cases = [
                 ("fresh", ConflictState::New, "", ""),
@@ -616,13 +622,7 @@ pub(crate) mod tests {
                     _ => FUTURE,
                 };
                 let base = if dir_shaped {
-                    stage_dir_item(
-                        &staging,
-                        kind,
-                        &slug,
-                        &[(marker_file(kind), theirs)],
-                        stamp,
-                    )
+                    stage_dir_item(&staging, kind, &slug, &[(marker_file(kind), theirs)], stamp)
                 } else {
                     stage_file_item(&staging, kind, &slug, theirs, stamp)
                 };
@@ -693,25 +693,27 @@ pub(crate) mod tests {
 
         let rel = "payload/fonts/AcmeSans-700.ttf";
         write(&staging.join(rel), "quite different bytes");
-        let mut contents = PackContents::default();
-        contents.fonts = vec![PackFont {
-            base: PackItemBase {
-                slug: "Acme Sans@700".into(),
-                name: "Acme Sans".into(),
-                bytes: 21,
-                // Newer than the incumbent, which would replace for any other kind.
-                modified_at: FUTURE.into(),
-                content_hash: super::super::hash::sha256_bytes(b"quite different bytes"),
-            },
-            family: "Acme Sans".into(),
-            weight: 700,
-            postscript: "AcmeSans-Bold".into(),
-            file: Some(rel.into()),
-            sha256: Some(super::super::hash::sha256_bytes(b"quite different bytes")),
-            instanced: None,
-            embedding: super::super::model::FontEmbedding::Installable,
-            reference_only: None,
-        }];
+        let contents = PackContents {
+            fonts: vec![PackFont {
+                base: PackItemBase {
+                    slug: "Acme Sans@700".into(),
+                    name: "Acme Sans".into(),
+                    bytes: 21,
+                    // Newer than the incumbent, which would replace for any other kind.
+                    modified_at: FUTURE.into(),
+                    content_hash: super::super::hash::sha256_bytes(b"quite different bytes"),
+                },
+                family: "Acme Sans".into(),
+                weight: 700,
+                postscript: "AcmeSans-Bold".into(),
+                file: Some(rel.into()),
+                sha256: Some(super::super::hash::sha256_bytes(b"quite different bytes")),
+                instanced: None,
+                embedding: super::super::model::FontEmbedding::Installable,
+                reference_only: None,
+            }],
+            ..Default::default()
+        };
 
         let staged = staged_pack(staging.clone(), contents);
         let plan = plan_conflicts(
@@ -758,7 +760,10 @@ pub(crate) mod tests {
     fn a_hostile_slug_never_resolves_to_a_path() {
         let root = scratch("hostile");
         for slug in ["../evil", "..", "", ".hidden", "a/b"] {
-            assert!(workspace_target(&root, ItemKind::Theme, slug).is_err(), "{slug}");
+            assert!(
+                workspace_target(&root, ItemKind::Theme, slug).is_err(),
+                "{slug}"
+            );
         }
         assert!(workspace_target(&root, ItemKind::Project, "themes").is_err());
         assert!(workspace_target(&root, ItemKind::Screenshot, "../evil.png").is_err());

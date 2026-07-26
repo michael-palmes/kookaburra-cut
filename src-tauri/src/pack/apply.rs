@@ -351,12 +351,21 @@ fn rewrite_value(value: &mut Value, key: Option<&str>, renames: &Renames) -> boo
             }
             false
         }
-        Value::Array(items) => items
-            .iter_mut()
-            .fold(false, |changed, item| rewrite_value(item, key, renames) || changed),
-        Value::Object(map) => map.iter_mut().fold(false, |changed, (k, v)| {
-            rewrite_value(v, Some(k.as_str()), renames) || changed
-        }),
+        // Explicit loops, not `any`: every child must be rewritten, and `any` would stop at the first hit.
+        Value::Array(items) => {
+            let mut changed = false;
+            for item in items.iter_mut() {
+                changed |= rewrite_value(item, key, renames);
+            }
+            changed
+        }
+        Value::Object(map) => {
+            let mut changed = false;
+            for (k, v) in map.iter_mut() {
+                changed |= rewrite_value(v, Some(k.as_str()), renames);
+            }
+            changed
+        }
         _ => false,
     }
 }
@@ -617,11 +626,9 @@ fn run_id() -> String {
 mod tests {
     use super::*;
     use crate::pack::conflicts::tests::{
-        manifest, put_local, scratch, staged_pack, stage_dir_item, stage_file_item, write, FUTURE,
+        manifest, put_local, scratch, stage_dir_item, stage_file_item, staged_pack, write, FUTURE,
     };
-    use crate::pack::model::{
-        PackContents, PackItemBase, PackProject, PackSimpleItem, PackTheme,
-    };
+    use crate::pack::model::{PackContents, PackItemBase, PackProject, PackSimpleItem, PackTheme};
 
     fn resolutions(pairs: &[(ItemKind, &str, Resolution)]) -> HashMap<String, Resolution> {
         pairs
@@ -676,7 +683,12 @@ mod tests {
         let root = scratch("kb-root");
         let staging = scratch("kb-staging");
 
-        put_local(&root, ItemKind::Theme, "acme-dark", r#"{"version":2,"name":"Acme Dark"}"#);
+        put_local(
+            &root,
+            ItemKind::Theme,
+            "acme-dark",
+            r#"{"version":2,"name":"Acme Dark"}"#,
+        );
         put_local(
             &root,
             ItemKind::Project,
@@ -709,9 +721,11 @@ mod tests {
             FUTURE,
         );
 
-        let mut contents = PackContents::default();
-        contents.themes = vec![theme_of(theme)];
-        contents.projects = vec![project_of(project, "ws:acme-dark")];
+        let contents = PackContents {
+            themes: vec![theme_of(theme)],
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
         let staged = staged_pack(staging.clone(), contents);
 
         let outcome = apply_import(
@@ -762,7 +776,12 @@ mod tests {
     fn a_skipped_theme_names_the_project_that_rebinds() {
         let root = scratch("note-root");
         let staging = scratch("note-staging");
-        put_local(&root, ItemKind::Theme, "acme-dark", r#"{"version":2,"name":"Acme Dark"}"#);
+        put_local(
+            &root,
+            ItemKind::Theme,
+            "acme-dark",
+            r#"{"version":2,"name":"Acme Dark"}"#,
+        );
 
         let theme = stage_dir_item(
             &staging,
@@ -781,9 +800,11 @@ mod tests {
             )],
             FUTURE,
         );
-        let mut contents = PackContents::default();
-        contents.themes = vec![theme_of(theme)];
-        contents.projects = vec![project_of(project, "ws:acme-dark")];
+        let mut contents = PackContents {
+            themes: vec![theme_of(theme)],
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
         contents.projects[0].base.name = "Acme Promo".into();
         let staged = staged_pack(staging.clone(), contents);
 
@@ -838,9 +859,11 @@ mod tests {
             FUTURE,
         );
 
-        let mut contents = PackContents::default();
-        contents.fonts = vec![font];
-        contents.projects = vec![project_of(project, "ws:acme-dark")];
+        let contents = PackContents {
+            fonts: vec![font],
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
         let staged = staged_pack(staging.clone(), contents);
 
         let mut labels: Vec<String> = Vec::new();
@@ -889,8 +912,10 @@ mod tests {
             &[("theme.json", r#"{"version":2,"name":"Acme Dark v2"}"#)],
             FUTURE,
         );
-        let mut contents = PackContents::default();
-        contents.themes = vec![theme_of(theme)];
+        let contents = PackContents {
+            themes: vec![theme_of(theme)],
+            ..Default::default()
+        };
         let staged = staged_pack(staging.clone(), contents);
 
         let outcome = apply_import(
@@ -928,9 +953,11 @@ mod tests {
             &[("project.json", r#"{"id":"acme-promo","name":"Acme Promo"}"#)],
             FUTURE,
         );
-        let mut contents = PackContents::default();
-        contents.gradients = vec![PackSimpleItem { base: gradient }];
-        contents.projects = vec![project_of(project, "ws:acme-dark")];
+        let contents = PackContents {
+            gradients: vec![PackSimpleItem { base: gradient }],
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
         let staged = staged_pack(staging.clone(), contents);
         let staging_root = staging.clone();
 
@@ -972,8 +999,10 @@ mod tests {
             ],
             FUTURE,
         );
-        let mut contents = PackContents::default();
-        contents.projects = vec![project_of(project, "ws:acme-dark")];
+        let contents = PackContents {
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
         let staged = staged_pack(staging.clone(), contents);
 
         let outcome = apply_import(
@@ -988,7 +1017,7 @@ mod tests {
 
         // `is_project_trusted` reads `trusted_projects`, which only a grant writes to and nothing here can reach.
         let settings = crate::workspace::AppSettings::default();
-        assert!(settings.trusted_projects.get("acme-promo").is_none());
+        assert!(!settings.trusted_projects.contains_key("acme-promo"));
 
         let granted = concat!("trust_", "project");
         assert!(!include_str!("apply.rs").contains(granted));
@@ -1002,8 +1031,10 @@ mod tests {
         let root = scratch("unselected-root");
         let staging = scratch("unselected-staging");
         let gradient = stage_file_item(&staging, ItemKind::Gradient, "dusk", "{}", FUTURE);
-        let mut contents = PackContents::default();
-        contents.gradients = vec![PackSimpleItem { base: gradient }];
+        let contents = PackContents {
+            gradients: vec![PackSimpleItem { base: gradient }],
+            ..Default::default()
+        };
         let staged = staged_pack(staging.clone(), contents);
 
         let outcome = apply_import(&root, staged, &HashMap::new(), |_, _, _| {}).unwrap();
@@ -1015,14 +1046,16 @@ mod tests {
 
     #[test]
     fn the_manifest_is_only_read_not_trusted_for_paths() {
-        let mut contents = PackContents::default();
-        contents.themes = vec![theme_of(PackItemBase {
-            slug: "../evil".into(),
-            name: "Evil".into(),
-            bytes: 0,
-            modified_at: FUTURE.into(),
-            content_hash: String::new(),
-        })];
+        let contents = PackContents {
+            themes: vec![theme_of(PackItemBase {
+                slug: "../evil".into(),
+                name: "Evil".into(),
+                bytes: 0,
+                modified_at: FUTURE.into(),
+                content_hash: String::new(),
+            })],
+            ..Default::default()
+        };
         let root = scratch("escape-root");
         let staging = scratch("escape-staging");
         write(&staging.join("payload/themes/x"), "{}");

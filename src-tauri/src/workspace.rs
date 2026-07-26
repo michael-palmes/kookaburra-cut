@@ -222,10 +222,7 @@ pub fn trash_path(path: &Path) -> Result<(), trash::Error> {
 }
 
 /// The configured workspace root, layout re-asserted. Errors if first-run hasn't completed.
-pub fn require_root(
-    app: &AppHandle,
-    state: &State<'_, SettingsState>,
-) -> Result<PathBuf, String> {
+pub fn require_root(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PathBuf, String> {
     // A gate can point one boot at a throwaway root without mutating the user's settings (the pack round trip does exactly this).
     let root = match std::env::var("KOOKABURRA_WORKSPACE_ROOT") {
         Ok(over) if !over.trim().is_empty() => PathBuf::from(over.trim()),
@@ -367,7 +364,10 @@ pub(crate) fn manifest_summary(project_dir: &Path) -> Option<(String, u64)> {
     let mut total: i64 = 0;
     if let Some(scenes) = value.get("scenes").and_then(|s| s.as_array()) {
         for (i, scene) in scenes.iter().enumerate() {
-            total += scene.get("durationMs").and_then(|d| d.as_i64()).unwrap_or(0);
+            total += scene
+                .get("durationMs")
+                .and_then(|d| d.as_i64())
+                .unwrap_or(0);
             if i > 0 {
                 if let Some(overlap) = scene
                     .get("transition")
@@ -456,8 +456,7 @@ pub fn list_projects(
         if !path.is_dir() || slug.starts_with('.') || !path.join(MANIFEST_FILENAME).is_file() {
             continue;
         }
-        let (name, duration_ms) =
-            manifest_summary(&path).unwrap_or_else(|| (slug.clone(), 0));
+        let (name, duration_ms) = manifest_summary(&path).unwrap_or_else(|| (slug.clone(), 0));
         let snap = snapshot_file(&root, &slug);
         let snapshot_mtime_ms = file_mtime_ms(&snap);
         projects.push(ProjectInfo {
@@ -566,8 +565,15 @@ pub fn duplicate_project(
     let display_name = name.trim().to_owned();
     let new_slug = slugify(&display_name);
     validate_slug(&new_slug)?;
-    if new_slug == "themes" || new_slug == "fonts" || new_slug == "gradients" || new_slug == "export-presets" || new_slug == "objects" {
-        return Err(format!("\"{new_slug}\" is a reserved folder name — pick another"));
+    if new_slug == "themes"
+        || new_slug == "fonts"
+        || new_slug == "gradients"
+        || new_slug == "export-presets"
+        || new_slug == "objects"
+    {
+        return Err(format!(
+            "\"{new_slug}\" is a reserved folder name — pick another"
+        ));
     }
     let root = require_root(&app, &state)?;
     let src = root.join(&slug);
@@ -579,7 +585,10 @@ pub fn duplicate_project(
         return Err(format!("a project named \"{new_slug}\" already exists"));
     }
     std::fs::create_dir_all(&dst).map_err(|e| e.to_string())?;
-    for entry in std::fs::read_dir(&src).map_err(|e| e.to_string())?.flatten() {
+    for entry in std::fs::read_dir(&src)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         let file_name = entry.file_name();
         let skip = matches!(file_name.to_str(), Some("exports") | Some(".kookaburra"));
         if skip {
@@ -595,8 +604,8 @@ pub fn duplicate_project(
     }
     std::fs::create_dir_all(dst.join("exports")).map_err(|e| e.to_string())?;
     let manifest_path = dst.join(MANIFEST_FILENAME);
-    let text =
-        std::fs::read_to_string(&manifest_path).map_err(|e| format!("reading project.json: {e}"))?;
+    let text = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
     manifest["id"] = serde_json::Value::String(new_slug.clone());
@@ -798,7 +807,9 @@ pub fn write_emoji_raster(
     // Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
     let valid_key = !key.is_empty()
         && key.len() <= 128
-        && key.chars().all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
+        && key
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-' || c == '@')
         && key.matches('@').count() == 1
         && !key.starts_with(['-', '@']);
     if !valid_key {
@@ -838,8 +849,15 @@ pub fn create_project(
     validate_slug(&slug)?;
     validate_slug(&template_id)?;
     // Workspace folders owned by the app, not by projects, so these names are reserved.
-    if slug == "themes" || slug == "fonts" || slug == "gradients" || slug == "export-presets" || slug == "objects" {
-        return Err(format!("\"{slug}\" is a reserved folder name — pick another"));
+    if slug == "themes"
+        || slug == "fonts"
+        || slug == "gradients"
+        || slug == "export-presets"
+        || slug == "objects"
+    {
+        return Err(format!(
+            "\"{slug}\" is a reserved folder name — pick another"
+        ));
     }
 
     let template = templates_root(&app).join(&template_id);
@@ -856,7 +874,10 @@ pub fn create_project(
     // Legacy migration: pre-v6 exports were written straight to the old default workspace root's <project>/ folder, so creating over such a folder folds its loose renders into exports/ first.
     let exports = dir.join("exports");
     std::fs::create_dir_all(&exports).map_err(|e| e.to_string())?;
-    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+    for entry in std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         let path = entry.path();
         let is_render = matches!(
             path.extension().and_then(|s| s.to_str()),
@@ -947,7 +968,10 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<(
     }
     let skill_src = skills_root(app).join("kookaburra-scene-authoring");
     if skill_src.is_dir() {
-        copy_dir_recursive(&skill_src, &claude_dir.join("skills/kookaburra-scene-authoring"))?;
+        copy_dir_recursive(
+            &skill_src,
+            &claude_dir.join("skills/kookaburra-scene-authoring"),
+        )?;
     } else {
         log::warn!("scene-authoring skill not found at {}", skill_src.display());
     }
@@ -1062,7 +1086,11 @@ pub(crate) fn compute_project_fingerprint(dir: &Path) -> String {
 }
 
 /// A stored grant still stands only if both the project path and its live sources fingerprint match.
-pub(crate) fn trust_record_matches(record: &TrustRecord, dir: &Path, live_fingerprint: &str) -> bool {
+pub(crate) fn trust_record_matches(
+    record: &TrustRecord,
+    dir: &Path,
+    live_fingerprint: &str,
+) -> bool {
     record.path == dir.to_string_lossy() && record.scenes_fingerprint == live_fingerprint
 }
 
@@ -1080,7 +1108,11 @@ pub fn is_project_trusted(
         return Ok(false);
     };
     let dir = root.join(&slug);
-    Ok(trust_record_matches(record, &dir, &compute_project_fingerprint(&dir)))
+    Ok(trust_record_matches(
+        record,
+        &dir,
+        &compute_project_fingerprint(&dir),
+    ))
 }
 
 /// Record consent for a project's current sources; called on Allow, on autorun auto-trust, and to re-stamp in-session edits so your own work never re-asks.
@@ -1190,7 +1222,11 @@ pub fn list_project_media(
     let assets = require_root(&app, &state)?.join(&slug).join("assets");
     // Stable sort, so the alphabetical pass breaks mtime ties; unreadable stamps sink last.
     files.sort_by_cached_key(|rel| {
-        std::cmp::Reverse(std::fs::metadata(assets.join(rel)).and_then(|m| m.modified()).ok())
+        std::cmp::Reverse(
+            std::fs::metadata(assets.join(rel))
+                .and_then(|m| m.modified())
+                .ok(),
+        )
     });
     Ok(files)
 }
@@ -1292,12 +1328,18 @@ mod tests {
             std::fs::read(dest.join("sample-phone-recording.mp4")).unwrap(),
             b"video-bytes"
         );
-        assert_eq!(std::fs::read(dest.join("app-icon.png")).unwrap(), b"icon-bytes");
+        assert_eq!(
+            std::fs::read(dest.join("app-icon.png")).unwrap(),
+            b"icon-bytes"
+        );
 
         // A project's own same-named file survives a later backfill.
         std::fs::write(dest.join("app-icon.png"), b"user-file").unwrap();
         copy_missing_sample_assets(&source, &dest).unwrap();
-        assert_eq!(std::fs::read(dest.join("app-icon.png")).unwrap(), b"user-file");
+        assert_eq!(
+            std::fs::read(dest.join("app-icon.png")).unwrap(),
+            b"user-file"
+        );
 
         // A missing source file is skipped, not an error (sample-laptop-recording.mp4 here).
         assert!(!dest.join("sample-laptop-recording.mp4").exists());
@@ -1321,7 +1363,10 @@ mod tests {
         assert!(confine_to_roots(root.join("assets/nested.mp4").to_str().unwrap(), &roots).is_ok());
 
         // A `..` escape to a real file outside the root is rejected.
-        let escape = root.join("../").join(outside.file_name().unwrap()).join("secret.pdf");
+        let escape = root
+            .join("../")
+            .join(outside.file_name().unwrap())
+            .join("secret.pdf");
         assert!(confine_to_roots(escape.to_str().unwrap(), &roots).is_err());
         // A file plainly outside every root is rejected.
         assert!(confine_to_roots(outside.join("secret.pdf").to_str().unwrap(), &roots).is_err());
@@ -1360,6 +1405,10 @@ mod tests {
         assert!(trust_record_matches(&record, &dir, "abc"));
         // Changed sources or a different workspace root both invalidate the grant.
         assert!(!trust_record_matches(&record, &dir, "def"));
-        assert!(!trust_record_matches(&record, &PathBuf::from("/other/demo"), "abc"));
+        assert!(!trust_record_matches(
+            &record,
+            &PathBuf::from("/other/demo"),
+            "abc"
+        ));
     }
 }

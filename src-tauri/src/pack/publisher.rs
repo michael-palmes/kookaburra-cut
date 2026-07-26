@@ -5,7 +5,9 @@
 
 use super::key;
 use super::model::PackPublisher;
-use crate::workspace::{load_settings, save_settings, KnownPublisher, PublisherProfile, SettingsState};
+use crate::workspace::{
+    load_settings, save_settings, KnownPublisher, PublisherProfile, SettingsState,
+};
 use serde::Serialize;
 use std::collections::HashMap;
 use tauri::{AppHandle, State};
@@ -212,7 +214,10 @@ pub fn manifest_publisher(
     })
 }
 
-fn profile_view(app: &AppHandle, state: &State<'_, SettingsState>) -> Result<PublisherProfileView, String> {
+fn profile_view(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+) -> Result<PublisherProfileView, String> {
     let settings = load_settings(app, state)?;
     let key = key::existing_identity(app)
         .map_err(String::from)?
@@ -309,7 +314,10 @@ pub fn forget_publisher(
 // ── macOS identity, best effort ─────────────────────────────────────
 
 fn shell_line(program: &str, args: &[&str]) -> Option<String> {
-    let output = std::process::Command::new(program).args(args).output().ok()?;
+    let output = std::process::Command::new(program)
+        .args(args)
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -356,7 +364,11 @@ fn rfc3339_from_unix(secs: u64) -> String {
 /// Howard Hinnant's civil_from_days: days since the unix epoch to a calendar date.
 fn civil_from_days(days: i64) -> (i64, u64, u64) {
     let shifted = days + 719_468;
-    let era = if shifted >= 0 { shifted } else { shifted - 146_096 } / 146_097;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
     let day_of_era = (shifted - era * 146_097) as u64;
     let year_of_era =
         (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
@@ -412,7 +424,12 @@ mod tests {
         assert_eq!(clean.organisation, None);
         assert_eq!(clean.website.as_deref(), Some("https://acme.test/brand"));
 
-        let http = validate_profile(&profile("Acme", Some(" Acme Pty Ltd "), Some("HTTP://acme.test"))).unwrap();
+        let http = validate_profile(&profile(
+            "Acme",
+            Some(" Acme Pty Ltd "),
+            Some("HTTP://acme.test"),
+        ))
+        .unwrap();
         assert_eq!(http.organisation.as_deref(), Some("Acme Pty Ltd"));
         assert_eq!(http.website.as_deref(), Some("HTTP://acme.test"));
     }
@@ -426,7 +443,12 @@ mod tests {
             PublisherVerdict::FirstTime
         );
 
-        record_import(&mut known, &publisher, "Acme Brand Kit", "2026-07-26T01:02:03Z");
+        record_import(
+            &mut known,
+            &publisher,
+            "Acme Brand Kit",
+            "2026-07-26T01:02:03Z",
+        );
         assert_eq!(
             publisher_verdict(&known, &publisher),
             PublisherVerdict::Known {

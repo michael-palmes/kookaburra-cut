@@ -99,8 +99,14 @@ struct Workspace {
 impl Workspace {
     fn new(tag: &str) -> Self {
         let dir = TempDir::new(&format!("ws-{tag}"));
-        write_file(&dir.path().join("projects/keep/project.json"), b"{\"id\":\"keep\"}");
-        write_file(&dir.path().join("themes/keep/theme.json"), b"{\"id\":\"keep\"}");
+        write_file(
+            &dir.path().join("projects/keep/project.json"),
+            b"{\"id\":\"keep\"}",
+        );
+        write_file(
+            &dir.path().join("themes/keep/theme.json"),
+            b"{\"id\":\"keep\"}",
+        );
         write_file(&dir.path().join("fonts/fonts.json"), b"[]");
         Self { dir }
     }
@@ -412,7 +418,11 @@ fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
 
     let mut at = offset;
     for _ in 0..count {
-        assert_eq!(&buffer[at..at + 4], b"PK\x01\x02", "central directory header");
+        assert_eq!(
+            &buffer[at..at + 4],
+            b"PK\x01\x02",
+            "central directory header"
+        );
         let name_len = u16::from_le_bytes(buffer[at + 28..at + 30].try_into().unwrap()) as usize;
         let extra_len = u16::from_le_bytes(buffer[at + 30..at + 32].try_into().unwrap()) as usize;
         let comment_len = u16::from_le_bytes(buffer[at + 32..at + 34].try_into().unwrap()) as usize;
@@ -430,13 +440,9 @@ fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
 fn import(archive: &Path, workspace: &Path, app_version: &str) -> Result<(), PackError> {
     let _ = app_version;
     let inspection = inspect(archive)?;
-    let staged = stage(
-        archive,
-        workspace,
-        &inspection.manifest,
-        |_, _| {},
-        &|| false,
-    )?;
+    let staged = stage(archive, workspace, &inspection.manifest, |_, _| {}, &|| {
+        false
+    })?;
     drop(staged);
     Ok(())
 }
@@ -467,14 +473,35 @@ fn assert_refused(tag: &str, fixture: Fixture, expected: &str) {
 
 /// One file per payload subtree, so the round trip covers every kind a pack can carry.
 const SOURCE_TREE: &[(&str, &[u8])] = &[
-    ("projects/acme/project.json", b"{\"id\":\"acme\",\"version\":9}"),
-    ("projects/acme/scenes/01-hero.tsx", b"export default defineScene({});\n"),
-    ("projects/acme/scenes/01-hero.json", b"{\"text\":{\"title\":\"Hi\"}}"),
-    ("projects/acme/assets/logo.png", &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3]),
+    (
+        "projects/acme/project.json",
+        b"{\"id\":\"acme\",\"version\":9}",
+    ),
+    (
+        "projects/acme/scenes/01-hero.tsx",
+        b"export default defineScene({});\n",
+    ),
+    (
+        "projects/acme/scenes/01-hero.json",
+        b"{\"text\":{\"title\":\"Hi\"}}",
+    ),
+    (
+        "projects/acme/assets/logo.png",
+        &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2, 3],
+    ),
     ("projects/acme/CLAUDE.md", b"# Acme\n"),
-    ("projects/acme/.claude/settings.json", b"{\"permissions\":{}}"),
-    ("themes/acme-dark/theme.json", b"{\"id\":\"acme-dark\",\"version\":9}"),
-    ("fonts/AcmeSans-Bold.ttf", b"\x00\x01\x00\x00 not really a font"),
+    (
+        "projects/acme/.claude/settings.json",
+        b"{\"permissions\":{}}",
+    ),
+    (
+        "themes/acme-dark/theme.json",
+        b"{\"id\":\"acme-dark\",\"version\":9}",
+    ),
+    (
+        "fonts/AcmeSans-Bold.ttf",
+        b"\x00\x01\x00\x00 not really a font",
+    ),
     ("objects/widget/object.json", b"{\"slug\":\"widget\"}"),
     ("objects/widget/model.glb", b"glTF\x02\x00\x00\x00"),
     ("gradients/sunrise.json", b"{\"slug\":\"sunrise\"}"),
@@ -495,7 +522,9 @@ fn full_manifest(source: &Path) -> PackManifest {
         .map(|(relative, _)| PackFile {
             path: format!("payload/{relative}"),
             sha256: sha256_file(&source.join(relative)).expect("hash"),
-            bytes: std::fs::metadata(source.join(relative)).expect("meta").len(),
+            bytes: std::fs::metadata(source.join(relative))
+                .expect("meta")
+                .len(),
         })
         .collect();
     let totals = PackTotals {
@@ -638,11 +667,16 @@ fn round_trip_write_inspect_stage() {
     )
     .expect("stage");
 
-    assert!(staged.root.starts_with(workspace.root().join(STATE_DIR_NAME).join(STAGING_DIR)));
+    assert!(staged
+        .root
+        .starts_with(workspace.root().join(STATE_DIR_NAME).join(STAGING_DIR)));
     assert_eq!(progress.len(), SOURCE_TREE.len());
     assert_eq!(
         progress.last().copied(),
-        Some((inspection.manifest.totals.bytes, inspection.manifest.totals.bytes))
+        Some((
+            inspection.manifest.totals.bytes,
+            inspection.manifest.totals.bytes
+        ))
     );
 
     // Byte-identical, and nothing the manifest did not list.
@@ -781,7 +815,10 @@ fn refuses_symlink_escape() {
     let workspace = Workspace::new(tag);
 
     let archive = Fixture::valid()
-        .entry(Entry::symlink("payload/projects/acme/assets.json", target.path()))
+        .entry(Entry::symlink(
+            "payload/projects/acme/assets.json",
+            target.path(),
+        ))
         .entry(Entry::new(
             "payload/projects/acme/assets.json/evil.tsx",
             b"pwned",
@@ -817,10 +854,7 @@ fn refuses_ratio_bomb() {
     let payload = vec![0u8; 1024 * 1024];
     assert_refused(
         "bomb-ratio",
-        Fixture::valid().entry(Entry::new(
-            "payload/projects/acme/assets/big.txt",
-            &payload,
-        )),
+        Fixture::valid().entry(Entry::new("payload/projects/acme/assets/big.txt", &payload)),
         "ratioExceeded",
     );
 }
@@ -849,7 +883,10 @@ fn forged_signature_fails_verification() {
         .build(source.path());
 
     let inspection = inspect(&archive).expect("inspect still opens the pack");
-    let signature = inspection.signature.clone().expect("signature entry present");
+    let signature = inspection
+        .signature
+        .clone()
+        .expect("signature entry present");
     assert_eq!(signature.len(), 64);
     assert!(
         !verify_signature(&inspection.manifest, &inspection.manifest_bytes, &signature),
@@ -909,9 +946,8 @@ fn refuses_tampered_payload() {
 fn refuses_ghost_entry() {
     assert_refused(
         "ghost-entry",
-        Fixture::valid().entry(
-            Entry::new("payload/projects/acme/scenes/ghost.tsx", b"surprise").unlisted(),
-        ),
+        Fixture::valid()
+            .entry(Entry::new("payload/projects/acme/scenes/ghost.tsx", b"surprise").unlisted()),
         "entryNotInManifest",
     );
 }
@@ -941,10 +977,7 @@ fn refuses_bad_extension() {
 fn refuses_git_directory() {
     assert_refused(
         "git-dir",
-        Fixture::valid().entry(Entry::new(
-            "payload/projects/acme/.git/config",
-            b"[core]\n",
-        )),
+        Fixture::valid().entry(Entry::new("payload/projects/acme/.git/config", b"[core]\n")),
         "extensionNotAllowed",
     );
 }
@@ -965,7 +998,9 @@ fn a_future_min_app_version_is_a_verdict_not_a_parse_failure() {
     // screen, while `stage_pack` still refuses outright.
     let tag = "future-app";
     let source = TempDir::new(tag);
-    let archive = Fixture::valid().min_app_version("99.0.0").build(source.path());
+    let archive = Fixture::valid()
+        .min_app_version("99.0.0")
+        .build(source.path());
     let inspection = inspect(&archive).expect("inspect must accept a readable manifest");
     assert_eq!(inspection.manifest.min_app_version, "99.0.0");
     assert!(super::read::version_lt(APP_VERSION, "99.0.0"));
@@ -1051,7 +1086,11 @@ fn strips_the_executable_bit() {
         .expect("meta")
         .permissions()
         .mode();
-    assert_eq!(parent & 0o777, 0o755, "extracted directories are always 0755");
+    assert_eq!(
+        parent & 0o777,
+        0o755,
+        "extracted directories are always 0755"
+    );
 }
 
 /// A dotted directory other than `.claude` never lands, whatever the file inside it is called.
@@ -1059,10 +1098,7 @@ fn strips_the_executable_bit() {
 fn refuses_other_dotted_directories() {
     assert_refused(
         "dot-dir",
-        Fixture::valid().entry(Entry::new(
-            "payload/projects/acme/.ssh/config.json",
-            b"{}",
-        )),
+        Fixture::valid().entry(Entry::new("payload/projects/acme/.ssh/config.json", b"{}")),
         "extensionNotAllowed",
     );
 }

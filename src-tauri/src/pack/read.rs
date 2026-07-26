@@ -108,7 +108,11 @@ pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
             // An empty entry is not a signature; treat it as absent rather than as an invalid one.
-            if buf.is_empty() { None } else { Some(buf) }
+            if buf.is_empty() {
+                None
+            } else {
+                Some(buf)
+            }
         }
         Err(_) => None,
     };
@@ -193,7 +197,10 @@ pub fn version_lt(a: &str, b: &str) -> bool {
     };
     let (a, b) = (parse(a), parse(b));
     for i in 0..3 {
-        let (x, y) = (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0));
+        let (x, y) = (
+            a.get(i).copied().unwrap_or(0),
+            b.get(i).copied().unwrap_or(0),
+        );
         if x != y {
             return x < y;
         }
@@ -257,7 +264,8 @@ pub fn stage(
     mut on_progress: impl FnMut(u64, u64),
     is_cancelled: &dyn Fn() -> bool,
 ) -> Result<StagedPack, PackError> {
-    let root = staging_root(workspace_root).join(unique_name(archive.as_os_str().as_encoded_bytes()));
+    let root =
+        staging_root(workspace_root).join(unique_name(archive.as_os_str().as_encoded_bytes()));
     if let Some(parent) = root.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -268,8 +276,11 @@ pub fn stage(
         manifest: manifest.clone(),
     };
 
-    let expected: HashMap<&str, &super::model::PackFile> =
-        manifest.files.iter().map(|f| (f.path.as_str(), f)).collect();
+    let expected: HashMap<&str, &super::model::PackFile> = manifest
+        .files
+        .iter()
+        .map(|f| (f.path.as_str(), f))
+        .collect();
     let total_bytes: u64 = manifest.files.iter().map(|f| f.bytes).sum();
     let mut seen: HashSet<String> = HashSet::new();
     let mut written: u64 = 0;
@@ -395,7 +406,9 @@ fn set_dir_mode(_path: &Path) {}
 pub fn sweep_stale(workspace_root: &Path) {
     let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(STALE_STAGING_SECS);
     for dir in [STAGING_DIR, BACKUP_DIR] {
-        let base = workspace_root.join(crate::workspace::STATE_DIR_NAME).join(dir);
+        let base = workspace_root
+            .join(crate::workspace::STATE_DIR_NAME)
+            .join(dir);
         let Ok(entries) = std::fs::read_dir(&base) else {
             continue;
         };

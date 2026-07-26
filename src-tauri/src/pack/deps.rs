@@ -8,8 +8,8 @@ use super::error::PackError;
 use super::fonts::{collect_pack_fonts, is_bundled_family};
 use super::hash::{content_hash, sha256_file};
 use super::model::{
-    ItemKind, PackContents, PackFont, PackItemBase, PackObject, PackProject,
-    PackRequires, PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
+    ItemKind, PackContents, PackFont, PackItemBase, PackObject, PackProject, PackRequires,
+    PackScreenshot, PackSimpleItem, PackTheme, PackTotals,
 };
 use super::paths::validate_archive_path;
 use super::scan::rfc3339;
@@ -146,25 +146,60 @@ pub struct ReviewedAsset {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase", tag = "kind", content = "detail")]
 pub enum ClosureWarning {
-    MissingProject { slug: String },
-    MissingTheme { slug: String, required_by: String },
-    MissingObject { slug: String, required_by: String },
-    MissingGradient { slug: String, required_by: String },
-    MissingScreenshot { name: String },
-    MissingExportPreset { slug: String },
+    MissingProject {
+        slug: String,
+    },
+    MissingTheme {
+        slug: String,
+        required_by: String,
+    },
+    MissingObject {
+        slug: String,
+        required_by: String,
+    },
+    MissingGradient {
+        slug: String,
+        required_by: String,
+    },
+    MissingScreenshot {
+        name: String,
+    },
+    MissingExportPreset {
+        slug: String,
+    },
     /// A referenced family/weight is not pinned in `<root>/fonts/`, so its bytes cannot travel.
-    UnpinnedFont { key: String, required_by: String },
+    UnpinnedFont {
+        key: String,
+        required_by: String,
+    },
     /// fsType says the face may not be redistributed: the name travels, the bytes do not.
-    FontReferenceOnly { key: String },
+    FontReferenceOnly {
+        key: String,
+    },
     /// A theme wants an environment map no selected project carries.
-    MissingEnvironment { path: String, required_by: String },
+    MissingEnvironment {
+        path: String,
+        required_by: String,
+    },
     /// A `ws:` id that matches no theme and no object.
-    UnknownReference { id: String, required_by: String },
-    UnreadableDocument { path: String, detail: String },
+    UnknownReference {
+        id: String,
+        required_by: String,
+    },
+    UnreadableDocument {
+        path: String,
+        detail: String,
+    },
     /// Dropped because the user unticked it; names what needed it.
-    ExcludedDependency { key: String, required_by: Vec<String> },
+    ExcludedDependency {
+        key: String,
+        required_by: Vec<String>,
+    },
     /// Present on disk but not packable (wrong extension, a symlink, an unreadable file).
-    FileSkipped { path: String, reason: String },
+    FileSkipped {
+        path: String,
+        reason: String,
+    },
 }
 
 impl ClosureWarning {
@@ -195,9 +230,14 @@ impl ClosureWarning {
             Self::UnknownReference { id, required_by } => {
                 format!("{required_by} references \"ws:{id}\", which is nothing in your workspace.")
             }
-            Self::UnreadableDocument { path, detail } => format!("{path} could not be read: {detail}"),
+            Self::UnreadableDocument { path, detail } => {
+                format!("{path} could not be read: {detail}")
+            }
             Self::ExcludedDependency { key, required_by } => {
-                format!("{key} is left out, so {} may not render as authored.", required_by.join(", "))
+                format!(
+                    "{key} is left out, so {} may not render as authored.",
+                    required_by.join(", ")
+                )
             }
             Self::FileSkipped { path, reason } => format!("{path} was left out: {reason}"),
         }
@@ -223,7 +263,6 @@ pub struct Closure {
     pub reviewed_assets: Vec<ReviewedAsset>,
     pub totals: PackTotals,
 }
-
 
 // - Font keys ------------------------------------------------------------------
 
@@ -527,7 +566,8 @@ impl<'a> Resolver<'a> {
             entry.push(by.to_owned());
         }
         if self.seen.insert(id) {
-            self.queue.push((kind, key.to_owned(), by.map(str::to_owned)));
+            self.queue
+                .push((kind, key.to_owned(), by.map(str::to_owned)));
         }
     }
 
@@ -630,10 +670,20 @@ impl<'a> Resolver<'a> {
             if refs.themes.contains(&id) {
                 continue;
             }
-            if self.dir(ItemKind::Object).join(&id).join("object.json").is_file() {
+            if self
+                .dir(ItemKind::Object)
+                .join(&id)
+                .join("object.json")
+                .is_file()
+            {
                 requires.objects.push(id.clone());
                 self.require(ItemKind::Object, &id, Some(&label));
-            } else if self.dir(ItemKind::Theme).join(&id).join("theme.json").is_file() {
+            } else if self
+                .dir(ItemKind::Theme)
+                .join(&id)
+                .join("theme.json")
+                .is_file()
+            {
                 requires.themes.push(id.clone());
                 self.require(ItemKind::Theme, &id, Some(&label));
             } else {
@@ -696,10 +746,7 @@ impl<'a> Resolver<'a> {
                 Value::String(s) => parse_font_string(s),
                 other => (
                     str_field(other, "family").unwrap_or_default(),
-                    other
-                        .get("weight")
-                        .and_then(Value::as_u64)
-                        .unwrap_or(400) as u32,
+                    other.get("weight").and_then(Value::as_u64).unwrap_or(400) as u32,
                 ),
             };
             if family.is_empty() || is_bundled_family(&family) {
@@ -1048,24 +1095,22 @@ fn build_project(
             })
             .collect(),
         warnings,
-    
         mode,
     );
 
     let scene_files: Vec<String> = doc
         .get("scenes")
         .and_then(Value::as_array)
-        .map(|scenes| {
-            scenes
-                .iter()
-                .filter_map(|s| str_field(s, "file"))
-                .collect()
-        })
+        .map(|scenes| scenes.iter().filter_map(|s| str_field(s, "file")).collect())
         .unwrap_or_default();
     let formats: Vec<String> = doc
         .get("formats")
         .and_then(Value::as_array)
-        .map(|f| f.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+        .map(|f| {
+            f.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
         .unwrap_or_default();
 
     let project = PackProject {
@@ -1094,7 +1139,10 @@ fn build_theme(
     warnings: &mut Vec<ClosureWarning>,
     mode: HashMode,
 ) -> (PackTheme, Vec<StagedFile>) {
-    let file = root.join(ItemKind::Theme.workspace_dir().unwrap_or("themes")).join(slug).join("theme.json");
+    let file = root
+        .join(ItemKind::Theme.workspace_dir().unwrap_or("themes"))
+        .join(slug)
+        .join("theme.json");
     let doc = read_json(&file).unwrap_or(Value::Null);
     let staged = stage_all(
         vec![(
@@ -1103,7 +1151,6 @@ fn build_theme(
             file,
         )],
         warnings,
-    
         mode,
     );
     let swatches = doc
@@ -1124,7 +1171,11 @@ fn build_theme(
         mode: str_field(&doc, "mode").unwrap_or_else(|| "dark".to_owned()),
         doc_version: doc.get("version").and_then(Value::as_u64).unwrap_or(1) as u32,
         swatches,
-        requires: resolver.theme_requires.get(slug).cloned().unwrap_or_default(),
+        requires: resolver
+            .theme_requires
+            .get(slug)
+            .cloned()
+            .unwrap_or_default(),
     };
     (theme, staged)
 }
@@ -1159,7 +1210,6 @@ fn build_fonts(
         staged.append(&mut stage_all(
             vec![(file_name, archive, source)],
             warnings,
-        
             mode,
         ));
     }
@@ -1199,12 +1249,10 @@ fn build_object(
             })
             .collect(),
         warnings,
-    
         mode,
     );
-    let in_archive = |rel: Option<String>| {
-        rel.map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")))
-    };
+    let in_archive =
+        |rel: Option<String>| rel.map(|r| archive_path(ItemKind::Object, &format!("{slug}/{r}")));
     let object = PackObject {
         base: base_from(
             slug,
@@ -1217,7 +1265,11 @@ fn build_object(
         tags: doc
             .get("tags")
             .and_then(Value::as_array)
-            .map(|t| t.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+            .map(|t| {
+                t.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect()
+            })
             .unwrap_or_default(),
     };
     (object, staged)
@@ -1238,7 +1290,6 @@ fn build_flat(
     let staged = stage_all(
         vec![(rel.clone(), archive_path(kind, &rel), file)],
         warnings,
-    
         mode,
     );
     let item = PackSimpleItem {
@@ -1258,7 +1309,11 @@ fn build_screenshot(
     mode: HashMode,
 ) -> Option<(PackScreenshot, Vec<StagedFile>)> {
     let file = root
-        .join(ItemKind::Screenshot.workspace_dir().unwrap_or("screenshots"))
+        .join(
+            ItemKind::Screenshot
+                .workspace_dir()
+                .unwrap_or("screenshots"),
+        )
         .join(name);
     let staged = stage_all(
         vec![(
@@ -1267,7 +1322,6 @@ fn build_screenshot(
             file,
         )],
         warnings,
-    
         mode,
     );
     let first = staged.first()?;
@@ -1331,7 +1385,11 @@ mod tests {
         write(&root, "acme/exports/render.mp4", "mp4");
         write(&root, "acme/assets/.emoji-cache/1f600.png", "cache");
         write(&root, "acme/edits/_tap_prefs.json", "{}");
-        write(&root, "acme/edits/cut.json", r#"{"source":"assets/hero.png"}"#);
+        write(
+            &root,
+            "acme/edits/cut.json",
+            r#"{"source":"assets/hero.png"}"#,
+        );
 
         write(
             &root,
@@ -1348,8 +1406,16 @@ mod tests {
                 "colors":{"background":"#fff","text":"#000","accent":"#f50","muted":"#888"},
                 "typography":{"headline":"Inter","body":"Inter","scale":1.2}}"##,
         );
-        write(&root, "gradients/acme-glow.json", r##"{"type":"linear","angleDeg":90,"stops":[["#000",0],["#fff",1]]}"##);
-        write(&root, "objects/widget/object.json", r#"{"version":1,"id":"ws:widget","name":"Widget","glb":"widget.glb"}"#);
+        write(
+            &root,
+            "gradients/acme-glow.json",
+            r##"{"type":"linear","angleDeg":90,"stops":[["#000",0],["#fff",1]]}"##,
+        );
+        write(
+            &root,
+            "objects/widget/object.json",
+            r#"{"version":1,"id":"ws:widget","name":"Widget","glb":"widget.glb"}"#,
+        );
         write(&root, "objects/widget/widget.glb", "glb-bytes");
         root
     }
@@ -1362,7 +1428,11 @@ mod tests {
     }
 
     fn archive_paths(closure: &Closure) -> Vec<String> {
-        closure.files.iter().map(|f| f.archive_path.clone()).collect()
+        closure
+            .files
+            .iter()
+            .map(|f| f.archive_path.clone())
+            .collect()
     }
 
     #[test]
@@ -1380,7 +1450,11 @@ mod tests {
         assert!(project.has_scene_code);
         assert_eq!(project.root, "payload/projects/acme");
 
-        assert!(closure.contents.themes.iter().any(|t| t.base.slug == "acme-dark"));
+        assert!(closure
+            .contents
+            .themes
+            .iter()
+            .any(|t| t.base.slug == "acme-dark"));
         // Avenir Next is not bundled and not pinned in this fixture: the reference is walked, the bytes warn.
         assert!(closure
             .contents
@@ -1392,10 +1466,9 @@ mod tests {
             .fonts
             .contains(&"Avenir Next@600".to_owned()));
         assert!(closure.required_by.contains_key("font:Avenir Next@600"));
-        assert!(closure
-            .warnings
-            .iter()
-            .any(|w| matches!(w, ClosureWarning::UnpinnedFont { key, .. } if key == "Avenir Next@600")));
+        assert!(closure.warnings.iter().any(
+            |w| matches!(w, ClosureWarning::UnpinnedFont { key, .. } if key == "Avenir Next@600")
+        ));
         // Inter is bundled, so it never becomes a dependency.
         assert!(!closure.required_by.contains_key("font:Inter@400"));
 
@@ -1466,14 +1539,12 @@ mod tests {
             .warnings
             .iter()
             .any(|w| matches!(w, ClosureWarning::UnknownReference { id, .. } if id == "widget")));
-        assert!(closure
-            .warnings
-            .iter()
-            .any(|w| matches!(w, ClosureWarning::MissingTheme { slug, .. } if slug == "acme-light")));
-        assert!(closure
-            .warnings
-            .iter()
-            .any(|w| matches!(w, ClosureWarning::MissingGradient { slug, .. } if slug == "acme-glow")));
+        assert!(closure.warnings.iter().any(
+            |w| matches!(w, ClosureWarning::MissingTheme { slug, .. } if slug == "acme-light")
+        ));
+        assert!(closure.warnings.iter().any(
+            |w| matches!(w, ClosureWarning::MissingGradient { slug, .. } if slug == "acme-glow")
+        ));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1483,7 +1554,11 @@ mod tests {
         let mut sel = selection(&["acme"]);
         sel.exclude = vec!["theme:acme-dark".to_owned()];
         let closure = resolve_closure(&root, &sel).unwrap();
-        assert!(!closure.contents.themes.iter().any(|t| t.base.slug == "acme-dark"));
+        assert!(!closure
+            .contents
+            .themes
+            .iter()
+            .any(|t| t.base.slug == "acme-dark"));
         assert!(closure.warnings.iter().any(|w| matches!(
             w,
             ClosureWarning::ExcludedDependency { key, required_by }
@@ -1499,7 +1574,10 @@ mod tests {
         let paths = archive_paths(&closure);
         let has = |p: &str| paths.iter().any(|x| x == p);
 
-        assert!(!has("payload/projects/acme/exports/render.mp4"), "exports/**");
+        assert!(
+            !has("payload/projects/acme/exports/render.mp4"),
+            "exports/**"
+        );
         assert!(
             !has("payload/projects/acme/assets/.emoji-cache/1f600.png"),
             "assets/.emoji-cache/**"
@@ -1552,7 +1630,10 @@ mod tests {
             .expect("flattened render listed in its own group even though a scene points at it");
         assert_eq!(flattened.group, AssetGroup::FlattenedRender);
         // hero.png is referenced by edits/cut.json, so it is not up for review.
-        assert!(!closure.reviewed_assets.iter().any(|a| a.rel == "assets/hero.png"));
+        assert!(!closure
+            .reviewed_assets
+            .iter()
+            .any(|a| a.rel == "assets/hero.png"));
 
         let mut sel = selection(&["acme"]);
         sel.include_flattened_renders = false;
@@ -1584,7 +1665,9 @@ mod tests {
         assert_eq!(theme.base.modified_at.len(), 20);
         assert_eq!(
             theme.base.bytes,
-            std::fs::metadata(root.join("themes/acme-dark/theme.json")).unwrap().len()
+            std::fs::metadata(root.join("themes/acme-dark/theme.json"))
+                .unwrap()
+                .len()
         );
 
         // The hash is over content, so a re-resolve with no edits is identical.
@@ -1646,7 +1729,9 @@ mod tests {
     fn a_missing_workspace_is_the_one_hard_error() {
         let root = scratch("no-root").join("gone");
         assert_eq!(
-            resolve_closure(&root, &selection(&["acme"])).unwrap_err().variant(),
+            resolve_closure(&root, &selection(&["acme"]))
+                .unwrap_err()
+                .variant(),
             "noWorkspace"
         );
         let closure = resolve_closure(&scratch("empty"), &selection(&["acme"])).unwrap();
@@ -1659,7 +1744,10 @@ mod tests {
     #[test]
     fn font_strings_parse_like_the_frontend() {
         assert_eq!(parse_font_string("Georgia"), ("Georgia".into(), 400));
-        assert_eq!(parse_font_string("Avenir Next@600"), ("Avenir Next".into(), 600));
+        assert_eq!(
+            parse_font_string("Avenir Next@600"),
+            ("Avenir Next".into(), 600)
+        );
         assert_eq!(parse_font_string("Weird@name"), ("Weird@name".into(), 400));
         assert_eq!(parse_font_string("X@0"), ("X@0".into(), 400));
         assert_eq!(parse_font_string("We@ird@600"), ("We@ird".into(), 600));
@@ -1691,7 +1779,11 @@ mod tests {
         assert_eq!(at(1_709_164_800), "2024-02-29T00:00:00Z", "leap day");
         assert_eq!(at(1_735_689_599), "2024-12-31T23:59:59Z", "year boundary");
         assert_eq!(at(1_735_689_600), "2025-01-01T00:00:00Z", "year boundary");
-        assert_eq!(at(4_102_444_800), "2100-01-01T00:00:00Z", "non-leap century");
+        assert_eq!(
+            at(4_102_444_800),
+            "2100-01-01T00:00:00Z",
+            "non-leap century"
+        );
         assert_eq!(at(1_753_500_000), "2025-07-26T03:20:00Z");
         // Pre-epoch stamps clamp rather than format negative: a file older than 1970 is a broken clock, not a date.
         assert_eq!(

@@ -2,19 +2,19 @@
 
 mod concurrency;
 mod edit;
-mod present;
 mod encode;
 mod export_presets;
+mod fonts;
 mod global_screenshots;
+mod gradients;
 mod loudness;
 mod media;
-mod pty;
-mod fonts;
-mod gradients;
-mod scene_doc;
 mod objects;
 mod pack;
 mod packs_win;
+mod present;
+mod pty;
+mod scene_doc;
 mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
 mod tap_dot_frames;
@@ -34,7 +34,10 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::oneshot;
 
-use encode::{legacy_export_args, mezzanine_render_args, spec_export_args, transcode_pass_args, EncodeSpec, ExportOptions};
+use encode::{
+    legacy_export_args, mezzanine_render_args, spec_export_args, transcode_pass_args, EncodeSpec,
+    ExportOptions,
+};
 
 /// Progress event streamed back to the frontend over an ipc `Channel`.
 #[derive(Clone, Serialize)]
@@ -178,7 +181,9 @@ fn start_export(
 
     // Defence in depth: confirm the output still resolves inside dir (the two-pass mezzanine/passlog paths reuse this same validated project_id+aspect, so they're covered too).
     let canon_dir = dir.canonicalize().map_err(|e| e.to_string())?;
-    let out_parent = output.parent().ok_or("export output has no parent directory")?;
+    let out_parent = output
+        .parent()
+        .ok_or("export output has no parent directory")?;
     let canon_parent = out_parent.canonicalize().map_err(|e| e.to_string())?;
     if !canon_parent.starts_with(&canon_dir) {
         return Err("export path escaped the output directory".into());
@@ -341,7 +346,11 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
 
     // Two-pass: the render above wrote the FFV1 mezzanine, now the file-to-file passes; pass 1 only produces the stats log, pass 2 writes the real output (and carries the audio); the mezzanine dir is cleaned on success and swept by the NEXT export either way.
     if let Some(plan) = two_pass {
-        let _ = progress.send(Progress { frame: total, total, stage: "pass1" });
+        let _ = progress.send(Progress {
+            frame: total,
+            total,
+            stage: "pass1",
+        });
         let args = transcode_pass_args(
             &plan.options,
             &plan.spec,
@@ -350,8 +359,14 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
             1,
             &plan.passlog.to_string_lossy(),
         )?;
-        run_ffmpeg_to_completion(&app, args).await.map_err(|e| format!("pass 1: {e}"))?;
-        let _ = progress.send(Progress { frame: total, total, stage: "pass2" });
+        run_ffmpeg_to_completion(&app, args)
+            .await
+            .map_err(|e| format!("pass 1: {e}"))?;
+        let _ = progress.send(Progress {
+            frame: total,
+            total,
+            stage: "pass2",
+        });
         let args = transcode_pass_args(
             &plan.options,
             &plan.spec,
@@ -360,7 +375,9 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
             2,
             &plan.passlog.to_string_lossy(),
         )?;
-        run_ffmpeg_to_completion(&app, args).await.map_err(|e| format!("pass 2: {e}"))?;
+        run_ffmpeg_to_completion(&app, args)
+            .await
+            .map_err(|e| format!("pass 2: {e}"))?;
         if let Some(dir) = plan.mezz.parent() {
             let _ = std::fs::remove_dir_all(dir);
         }
@@ -516,7 +533,9 @@ fn finish_autorun(app: AppHandle, result_json: String, ok: bool) -> Result<(), S
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
     if !gated {
-        return Err("finish_autorun is only valid during an auto-run (KOOKABURRA_ACTION unset)".into());
+        return Err(
+            "finish_autorun is only valid during an auto-run (KOOKABURRA_ACTION unset)".into(),
+        );
     }
     if result_json.len() > AUTORUN_RESULT_MAX_BYTES {
         return Err(format!(
@@ -567,7 +586,13 @@ fn begin_screenshot(
     }
     let stem: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let dir = app
         .path()
@@ -851,7 +876,9 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir));
     if has_traversal || !dir.starts_with(&cache_root) {
-        return Err(format!("refusing to touch outside the clip cache: {cache_dir}"));
+        return Err(format!(
+            "refusing to touch outside the clip cache: {cache_dir}"
+        ));
     }
     if !dir.join(".done").exists() {
         return Err("ensure_clip_previews: clip not fully extracted".into());
@@ -877,7 +904,10 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         "4".into(),
         "-start_number".into(),
         "0".into(),
-        preview.join("frame-%05d.jpg").to_string_lossy().into_owned(),
+        preview
+            .join("frame-%05d.jpg")
+            .to_string_lossy()
+            .into_owned(),
     ];
     let _permit = app
         .state::<concurrency::BackgroundLimiter>()
@@ -959,9 +989,10 @@ pub fn run() {
                 };
                 use tauri::Emitter;
                 // ⌥⌘E, not ⌘E: v13's File menu takes ⌘E for "Export Video…", the conventional macOS binding.
-                let edit_in_claude = MenuItemBuilder::with_id("edit-in-claude", "Edit in Claude Code")
-                    .accelerator("Alt+CmdOrCtrl+E")
-                    .build(app)?;
+                let edit_in_claude =
+                    MenuItemBuilder::with_id("edit-in-claude", "Edit in Claude Code")
+                        .accelerator("Alt+CmdOrCtrl+E")
+                        .build(app)?;
                 // The ⌘K palette rides a menu accelerator like ⌘Z/⌘E/⌘/; AppKit delivers it regardless of webview focus (xterm included).
                 let find_action = MenuItemBuilder::with_id("find-action", "Find an Action…")
                     .accelerator("CmdOrCtrl+K")
@@ -1099,9 +1130,13 @@ pub fn run() {
                     } else if event.id() == "export-video" {
                         let _ = app.emit_to("main", "kookaburra://export-video", ());
                     } else if event.id() == "import-pack" {
-                        if let Err(e) =
-                            packs_win::open_packs_window(app, packs_win::PacksTarget::Import { path: None, queued: 0 })
-                        {
+                        if let Err(e) = packs_win::open_packs_window(
+                            app,
+                            packs_win::PacksTarget::Import {
+                                path: None,
+                                queued: 0,
+                            },
+                        ) {
                             eprintln!("[packs] open failed: {e}");
                         }
                     } else if event.id() == "export-pack" {

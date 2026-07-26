@@ -263,7 +263,11 @@ fn closure_to_view(closure: &deps::Closure) -> PackPlanView {
 /// Every slug in the workspace, so the catalogue scan reaches everything rather than only what a selection touches.
 fn enumerate_all(root: &Path) -> PackSelection {
     let dirs_with = |sub: &str, marker: &str| -> Vec<String> {
-        let base = if sub.is_empty() { root.to_path_buf() } else { root.join(sub) };
+        let base = if sub.is_empty() {
+            root.to_path_buf()
+        } else {
+            root.join(sub)
+        };
         std::fs::read_dir(base)
             .map(|read| {
                 read.flatten()
@@ -366,13 +370,17 @@ pub async fn plan_pack(
 /// re-validated here: right extension, absolute, writable parent, and nowhere near the app bundle or a system directory.
 fn validate_destination(app: &AppHandle, raw: &str) -> Result<PathBuf, PackError> {
     let mut path = PathBuf::from(raw);
-    if path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase())
+    if path
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
         != Some(PACK_EXTENSION.into())
     {
         path.set_extension(PACK_EXTENSION);
     }
     if !path.is_absolute() {
-        return Err(PackError::DestinationInvalid("the path is not absolute".into()));
+        return Err(PackError::DestinationInvalid(
+            "the path is not absolute".into(),
+        ));
     }
     let parent = path
         .parent()
@@ -383,7 +391,14 @@ fn validate_destination(app: &AppHandle, raw: &str) -> Result<PathBuf, PackError
     if !canonical_parent.is_dir() {
         return Err(PackError::DestinationInvalid("that is not a folder".into()));
     }
-    for forbidden in ["/System", "/Library", "/usr", "/bin", "/sbin", "/private/var/db"] {
+    for forbidden in [
+        "/System",
+        "/Library",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/private/var/db",
+    ] {
         if canonical_parent.starts_with(forbidden) {
             return Err(PackError::DestinationInvalid(format!(
                 "{forbidden} is a system folder"
@@ -400,7 +415,11 @@ fn validate_destination(app: &AppHandle, raw: &str) -> Result<PathBuf, PackError
         }
     }
     if let Ok(exe) = std::env::current_exe() {
-        if let Some(bundle) = exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+        if let Some(bundle) = exe
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+        {
             if let Ok(bundle) = bundle.canonicalize() {
                 if bundle.extension().map(|e| e == "app").unwrap_or(false)
                     && canonical_parent.starts_with(&bundle)
@@ -446,7 +465,12 @@ pub async fn build_pack(
         if cancel.load(Ordering::SeqCst) {
             return Err(PackError::Cancelled.into());
         }
-        let ClosureFile { archive_path, sha256, bytes, .. } = file;
+        let ClosureFile {
+            archive_path,
+            sha256,
+            bytes,
+            ..
+        } = file;
         files.push(PackFile {
             path: archive_path.clone(),
             sha256: sha256.clone(),
@@ -471,7 +495,10 @@ pub async fn build_pack(
         min_app_version: PACK_MIN_APP_VERSION.into(),
         pack: PackMeta {
             name: meta.name.trim().into(),
-            description: meta.description.map(|d| d.trim().to_string()).filter(|d| !d.is_empty()),
+            description: meta
+                .description
+                .map(|d| d.trim().to_string())
+                .filter(|d| !d.is_empty()),
             created_at: super::scan::rfc3339(std::time::SystemTime::now()),
         },
         publisher: publisher_block,

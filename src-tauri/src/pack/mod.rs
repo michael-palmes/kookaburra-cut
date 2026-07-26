@@ -20,4 +20,3 @@ pub mod scan;
 #[cfg(test)]
 mod tests;
 pub mod write;
-

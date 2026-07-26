@@ -89,7 +89,9 @@ pub fn delete_export_preset(
 ) -> Result<(), String> {
     validate_slug(&slug)?;
     let root = require_root(&app, &state)?;
-    let path = root.join(EXPORT_PRESETS_DIR_NAME).join(format!("{slug}.json"));
+    let path = root
+        .join(EXPORT_PRESETS_DIR_NAME)
+        .join(format!("{slug}.json"));
     if !path.is_file() {
         return Ok(()); // already gone; deleting twice isn't an error
     }

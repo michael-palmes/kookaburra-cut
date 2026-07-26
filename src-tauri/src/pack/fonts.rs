@@ -98,7 +98,7 @@ pub fn collect_pack_fonts(fonts_dir: &Path, refs: &[FontRef]) -> Result<Vec<Pack
         }
         out.push(pack_font(&path, pin)?);
     }
-    out.sort_by(|a, b| a.key().cmp(&b.key()));
+    out.sort_by_key(|a| a.key());
     Ok(out)
 }
 
@@ -113,7 +113,11 @@ fn pack_font(path: &Path, pin: &PinnedFont) -> Result<PackFont, PackError> {
         content_hash: String::new(),
     };
     let instanced = pin.instanced.as_ref().map(|i| FontInstanced {
-        axes: i.axes.iter().map(|(tag, v)| (tag.clone(), *v as f32)).collect(),
+        axes: i
+            .axes
+            .iter()
+            .map(|(tag, v)| (tag.clone(), *v as f32))
+            .collect(),
         instancer: i.instancer.clone(),
     });
 
@@ -188,7 +192,10 @@ pub fn plan_font_merge(
             (state, Resolution::Skip)
         } else {
             match incumbent {
-                None => (ConflictState::New, ConflictState::New.default_resolution(ItemKind::Font)),
+                None => (
+                    ConflictState::New,
+                    ConflictState::New.default_resolution(ItemKind::Font),
+                ),
                 Some(pin) => {
                     let local = fonts_dir.join(&pin.file);
                     let incoming = incoming_sha(staged_root, font)?;
@@ -288,7 +295,11 @@ pub fn apply_font_merge(
             postscript: font.postscript.clone(),
             file: name,
             instanced: font.instanced.as_ref().map(|i| InstancedFrom {
-                axes: i.axes.iter().map(|(tag, v)| (tag.clone(), f64::from(*v))).collect(),
+                axes: i
+                    .axes
+                    .iter()
+                    .map(|(tag, v)| (tag.clone(), f64::from(*v)))
+                    .collect(),
                 instancer: i.instancer.clone(),
             }),
             path: String::new(),
@@ -327,7 +338,8 @@ fn target_file_name(
 
     let mut candidate = format!("{stem}.{ext}");
     let mut suffix = 2;
-    while fonts_dir.join(&candidate).exists() || manifest.fonts.iter().any(|f| f.file == candidate) {
+    while fonts_dir.join(&candidate).exists() || manifest.fonts.iter().any(|f| f.file == candidate)
+    {
         candidate = format!("{stem}-{suffix}.{ext}");
         suffix += 1;
     }
@@ -422,14 +434,26 @@ mod tests {
             ],
         );
         let refs = vec![
-            FontRef { family: "Inter".into(), weight: 400 },
-            FontRef { family: "space grotesk".into(), weight: 600 },
-            FontRef { family: "Acme Sans".into(), weight: 700 },
+            FontRef {
+                family: "Inter".into(),
+                weight: 400,
+            },
+            FontRef {
+                family: "space grotesk".into(),
+                weight: 600,
+            },
+            FontRef {
+                family: "Acme Sans".into(),
+                weight: 700,
+            },
         ];
         let fonts = collect_pack_fonts(&dir, &refs).unwrap();
         assert_eq!(fonts.len(), 1);
         assert_eq!(fonts[0].key(), "Acme Sans@700");
-        assert_eq!(fonts[0].file.as_deref(), Some("payload/fonts/AcmeSans-Bold.ttf"));
+        assert_eq!(
+            fonts[0].file.as_deref(),
+            Some("payload/fonts/AcmeSans-Bold.ttf")
+        );
         // contentHash is the file's own sha for a font whose bytes travel.
         assert_eq!(fonts[0].base.content_hash, fonts[0].sha256.clone().unwrap());
         let _ = std::fs::remove_dir_all(&dir);
@@ -441,8 +465,14 @@ mod tests {
         write_pins(&dir, vec![pin("Acme Sans", 400, "AcmeSans-Regular.ttf")]);
         std::fs::remove_file(dir.join("AcmeSans-Regular.ttf")).unwrap();
         let refs = vec![
-            FontRef { family: "Acme Sans".into(), weight: 400 },
-            FontRef { family: "Never Pinned".into(), weight: 400 },
+            FontRef {
+                family: "Acme Sans".into(),
+                weight: 400,
+            },
+            FontRef {
+                family: "Never Pinned".into(),
+                weight: 400,
+            },
         ];
         assert!(collect_pack_fonts(&dir, &refs).unwrap().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
@@ -459,7 +489,10 @@ mod tests {
         write_pins(&dir, vec![pinned]);
         let fonts = collect_pack_fonts(
             &dir,
-            &[FontRef { family: "Acme Var".into(), weight: 600 }],
+            &[FontRef {
+                family: "Acme Var".into(),
+                weight: 600,
+            }],
         )
         .unwrap();
         let instanced = fonts[0].instanced.as_ref().unwrap();
@@ -492,8 +525,14 @@ mod tests {
         let fonts = collect_pack_fonts(
             &dir,
             &[
-                FontRef { family: "Acme Sans".into(), weight: 700 },
-                FontRef { family: "Acme Sans".into(), weight: 400 },
+                FontRef {
+                    family: "Acme Sans".into(),
+                    weight: 700,
+                },
+                FontRef {
+                    family: "Acme Sans".into(),
+                    weight: 400,
+                },
             ],
         )
         .unwrap();
@@ -587,13 +626,8 @@ mod tests {
             (fresh.key(), Resolution::Replace),
             (refused.key(), Resolution::Skip),
         ]);
-        let summary = apply_font_merge(
-            &workspace,
-            &staged,
-            &[replaced, fresh, refused],
-            &choices,
-        )
-        .unwrap();
+        let summary =
+            apply_font_merge(&workspace, &staged, &[replaced, fresh, refused], &choices).unwrap();
         assert_eq!(summary.written, vec!["Acme Sans@400", "Acme Display@500"]);
         assert_eq!(summary.skipped, vec!["Acme Mono@400"]);
 

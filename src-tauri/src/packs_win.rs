@@ -157,7 +157,9 @@ mod tests {
 
         let wrong = dir.join("thing.zip");
         std::fs::write(&wrong, b"x").unwrap();
-        assert!(validate_incoming(&wrong).unwrap_err().contains("not a Kookaburra Pack"));
+        assert!(validate_incoming(&wrong)
+            .unwrap_err()
+            .contains("not a Kookaburra Pack"));
 
         assert!(validate_incoming(&dir).unwrap_err().contains("not a file"));
 

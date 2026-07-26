@@ -158,10 +158,8 @@ mod copy_naming_tests {
     use super::*;
 
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "kookaburra-gs-test-{tag}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("kookaburra-gs-test-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -187,7 +185,10 @@ mod copy_naming_tests {
         std::fs::write(&source, b"png").unwrap();
         let out = dir.join("out");
         std::fs::create_dir_all(&out).unwrap();
-        assert_eq!(copy_with_free_name(&source, &out).unwrap(), "screenshot.png");
+        assert_eq!(
+            copy_with_free_name(&source, &out).unwrap(),
+            "screenshot.png"
+        );
         assert!(validate_name("shot.png").is_ok());
         assert!(validate_name("../evil.png").is_err());
         assert!(validate_name("a/b.png").is_err());

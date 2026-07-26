@@ -78,7 +78,11 @@ fn style_weight(style: &str) -> u32 {
         100
     } else if s.contains("extralight") || s.contains("extra light") || s.contains("ultralight") {
         200
-    } else if s.contains("semibold") || s.contains("semi bold") || s.contains("demibold") || s.contains("demi bold") {
+    } else if s.contains("semibold")
+        || s.contains("semi bold")
+        || s.contains("demibold")
+        || s.contains("demi bold")
+    {
         600
     } else if s.contains("extrabold") || s.contains("extra bold") || s.contains("ultrabold") {
         800
@@ -164,7 +168,9 @@ pub fn list_system_fonts(
                 weight,
                 italic: is_italic(&f.style),
                 variable: f.variable,
-                pinned: pinned.iter().any(|(fam, w)| *fam == f.family && *w == weight),
+                pinned: pinned
+                    .iter()
+                    .any(|(fam, w)| *fam == f.family && *w == weight),
                 embedding,
                 family: f.family,
                 style: f.style,
@@ -203,8 +209,18 @@ pub fn pin_fonts_for_pack(
     for r in refs {
         let pinned = pin_system_font(app.clone(), state.clone(), r.family.clone(), r.weight);
         attempts.push(match pinned {
-            Ok(font) => PinAttempt { family: r.family, weight: r.weight, font: Some(font), error: None },
-            Err(error) => PinAttempt { family: r.family, weight: r.weight, font: None, error: Some(error) },
+            Ok(font) => PinAttempt {
+                family: r.family,
+                weight: r.weight,
+                font: Some(font),
+                error: None,
+            },
+            Err(error) => PinAttempt {
+                family: r.family,
+                weight: r.weight,
+                font: None,
+                error: Some(error),
+            },
         });
     }
     Ok(attempts)
@@ -367,9 +383,14 @@ fn resolve_embedding(
         }
     }
     let embedding = font_embedding(path, postscript);
-    cache
-        .entries
-        .insert(key, EmbeddingStamp { size, mtime_ms, embedding });
+    cache.entries.insert(
+        key,
+        EmbeddingStamp {
+            size,
+            mtime_ms,
+            embedding,
+        },
+    );
     *dirty = true;
     embedding
 }
@@ -398,7 +419,10 @@ pub(crate) fn load_manifest(dir: &Path) -> FontsManifest {
     std::fs::read_to_string(dir.join(MANIFEST_NAME))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or(FontsManifest { version: 1, fonts: Vec::new() })
+        .unwrap_or(FontsManifest {
+            version: 1,
+            fonts: Vec::new(),
+        })
 }
 
 /// Whole-file, tmp plus rename: a half-written index would orphan every pinned face it lists.
@@ -475,7 +499,13 @@ pub fn pin_system_font(
     let safe_name: String = best
         .postscript
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
 
     let data = std::fs::read(&best.path).map_err(|e| e.to_string())?;
@@ -496,7 +526,13 @@ pub fn pin_system_font(
             instance_pinned_face(&data, face_index, &face, &family, &best.postscript, weight)?;
         let file = format!("{safe_name}.ttf");
         std::fs::write(dir.join(&file), bytes).map_err(|e| e.to_string())?;
-        (file, Some(InstancedFrom { axes, instancer: INSTANCER.to_string() }))
+        (
+            file,
+            Some(InstancedFrom {
+                axes,
+                instancer: INSTANCER.to_string(),
+            }),
+        )
     } else {
         let file = match ext.as_str() {
             "ttf" | "otf" => {
@@ -560,9 +596,7 @@ fn face_tables(data: &[u8], face_offset: usize) -> Result<(u32, Vec<TableRecord>
     let mut tables = Vec::with_capacity(num_tables);
     for i in 0..num_tables {
         let at = face_offset + 12 + i * 16;
-        let tag_bytes = data
-            .get(at..at + 4)
-            .ok_or("font data truncated")?;
+        let tag_bytes = data.get(at..at + 4).ok_or("font data truncated")?;
         tables.push(TableRecord {
             tag: [tag_bytes[0], tag_bytes[1], tag_bytes[2], tag_bytes[3]],
             checksum: read_u32(data, at + 4)?,
@@ -593,7 +627,8 @@ fn name_string(data: &[u8], tables: &[TableRecord], want_id: u16) -> Option<Stri
         }
         let length = read_u16(data, rec + 8).ok()? as usize;
         let offset = read_u16(data, rec + 10).ok()? as usize;
-        let bytes = data.get(base + string_offset + offset..base + string_offset + offset + length)?;
+        let bytes =
+            data.get(base + string_offset + offset..base + string_offset + offset + length)?;
         let value = match platform {
             3 | 0 => String::from_utf16(
                 &bytes
@@ -676,7 +711,9 @@ fn has_table(tables: &[TableRecord], tag: &[u8; 4]) -> bool {
 
 /// A previously pinned file that still contains `fvar` is a broken pre-v10 pin; unreadable/unparseable files count as static since the untouched-pin contract wins.
 fn pinned_file_is_variable(path: &Path) -> bool {
-    let Ok(data) = std::fs::read(path) else { return false };
+    let Ok(data) = std::fs::read(path) else {
+        return false;
+    };
     match face_tables(&data, 0) {
         Ok((_, tables)) => has_table(&tables, b"fvar"),
         Err(_) => false,
@@ -734,8 +771,14 @@ fn read_fixed(data: &[u8], at: usize) -> Result<f32, String> {
     Ok(read_u32(data, at)? as i32 as f32 / 65536.0)
 }
 
-fn parse_fvar(data: &[u8], tables: &[TableRecord]) -> Result<(Vec<VarAxis>, Vec<VarInstance>), String> {
-    let fvar = tables.iter().find(|t| &t.tag == b"fvar").ok_or("no fvar table")?;
+fn parse_fvar(
+    data: &[u8],
+    tables: &[TableRecord],
+) -> Result<(Vec<VarAxis>, Vec<VarInstance>), String> {
+    let fvar = tables
+        .iter()
+        .find(|t| &t.tag == b"fvar")
+        .ok_or("no fvar table")?;
     let base = fvar.offset as usize;
     let axes_offset = read_u16(data, base + 4)? as usize;
     let axis_count = read_u16(data, base + 8)? as usize;
@@ -773,7 +816,10 @@ fn parse_fvar(data: &[u8], tables: &[TableRecord]) -> Result<(Vec<VarAxis>, Vec<
         } else {
             None
         };
-        instances.push(VarInstance { postscript_name_id, coords });
+        instances.push(VarInstance {
+            postscript_name_id,
+            coords,
+        });
     }
     Ok((axes, instances))
 }
@@ -850,16 +896,23 @@ fn instance_pinned_face(
     Ok((bytes, axes_map))
 }
 
-fn instance_variable_font(data: &[u8], face_index: usize, coords: &[f32]) -> Result<Vec<u8>, String> {
+fn instance_variable_font(
+    data: &[u8],
+    face_index: usize,
+    coords: &[f32],
+) -> Result<Vec<u8>, String> {
     use allsorts::binary::read::ReadScope;
     use allsorts::font_data::FontData;
     use allsorts::tables::Fixed;
 
     let scope = ReadScope::new(data);
     let font_file = scope.read::<FontData>().map_err(|e| e.to_string())?;
-    let provider = font_file.table_provider(face_index).map_err(|e| e.to_string())?;
+    let provider = font_file
+        .table_provider(face_index)
+        .map_err(|e| e.to_string())?;
     let tuple: Vec<Fixed> = coords.iter().map(|&c| Fixed::from(c)).collect();
-    let (bytes, _) = allsorts::variations::instance(&provider, &tuple).map_err(|e| e.to_string())?;
+    let (bytes, _) =
+        allsorts::variations::instance(&provider, &tuple).map_err(|e| e.to_string())?;
     Ok(bytes)
 }
 
@@ -903,7 +956,10 @@ mod tests {
         assert_eq!(read(0x0104), FontEmbedding::PreviewPrint);
         // 0x0200 (bitmap embedding only) refuses outlines.
         assert_eq!(read(0x0200), FontEmbedding::Restricted);
-        assert_eq!(embedding_in_face(&stub_sfnt(None), 0), FontEmbedding::Unknown);
+        assert_eq!(
+            embedding_in_face(&stub_sfnt(None), 0),
+            FontEmbedding::Unknown
+        );
     }
 
     #[test]
@@ -929,10 +985,8 @@ mod tests {
 
     #[test]
     fn embedding_cache_invalidates_on_mtime_change() {
-        let dir = std::env::temp_dir().join(format!(
-            "kookaburra-embed-cache-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("kookaburra-embed-cache-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("Stub-Regular.ttf");
         std::fs::write(&path, stub_sfnt(Some(0x0004))).unwrap();
@@ -943,7 +997,11 @@ mod tests {
         let mut cache = EmbeddingCache::default();
         cache.entries.insert(
             key.clone(),
-            EmbeddingStamp { size, mtime_ms, embedding: FontEmbedding::Restricted },
+            EmbeddingStamp {
+                size,
+                mtime_ms,
+                embedding: FontEmbedding::Restricted,
+            },
         );
         let mut dirty = false;
         assert_eq!(
@@ -955,7 +1013,11 @@ mod tests {
         // A stamp differing only in mtime is discarded and the file re-read.
         cache.entries.insert(
             key.clone(),
-            EmbeddingStamp { size, mtime_ms: mtime_ms + 1, embedding: FontEmbedding::Restricted },
+            EmbeddingStamp {
+                size,
+                mtime_ms: mtime_ms + 1,
+                embedding: FontEmbedding::Restricted,
+            },
         );
         assert_eq!(
             resolve_embedding(&mut cache, &path, None, &mut dirty),
@@ -985,14 +1047,21 @@ mod tests {
         assert_eq!(read_u16(&out, 4).unwrap() as usize, tables.len());
         // And its name table still reports the same PostScript name.
         let (_, out_tables) = face_tables(&out, 0).unwrap();
-        assert_eq!(face_postscript_name(&out, &out_tables).as_deref(), Some(ps.as_str()));
+        assert_eq!(
+            face_postscript_name(&out, &out_tables).as_deref(),
+            Some(ps.as_str())
+        );
     }
 
     /// The dev machine has descriptors that PANIC the core-text accessors; enumeration must survive them (the abort that killed the first sysfont gate runs).
     #[test]
     fn enumeration_survives_broken_descriptors() {
         let faces = enumerate_faces();
-        assert!(faces.len() > 100, "expected a real font library, got {}", faces.len());
+        assert!(
+            faces.len() > 100,
+            "expected a real font library, got {}",
+            faces.len()
+        );
     }
 
     #[test]
@@ -1014,7 +1083,12 @@ mod tests {
             data[0..2].copy_from_slice(&1u16.to_be_bytes());
             data[2..4].copy_from_slice(&minor.to_be_bytes());
             data[10..14].copy_from_slice(&fv_offset.to_be_bytes());
-            let tables = vec![TableRecord { tag: *b"GSUB", checksum: 0, offset: 0, length: 16 }];
+            let tables = vec![TableRecord {
+                tag: *b"GSUB",
+                checksum: 0,
+                offset: 0,
+                length: 16,
+            }];
             has_gsub_feature_variations(&data, &tables)
         };
         assert!(!gsub_at(0, 0x1234)); // v1.0 has no featureVariationsOffset field
@@ -1033,7 +1107,10 @@ mod tests {
         let (_, tables) = face_tables(&data, 0).unwrap();
         assert!(has_table(&tables, b"fvar"));
         let (axes, instances) = parse_fvar(&data, &tables).unwrap();
-        assert_eq!(axes.iter().map(|a| a.tag).collect::<Vec<_>>(), [*b"wdth", *b"opsz", *b"wght"]);
+        assert_eq!(
+            axes.iter().map(|a| a.tag).collect::<Vec<_>>(),
+            [*b"wdth", *b"opsz", *b"wght"]
+        );
         let coords =
             pick_instance_coords(&data, &tables, &axes, &instances, "SFPro-Semibold", 600).unwrap();
         assert_eq!(coords, vec![100.0, 28.0, 590.0]);
