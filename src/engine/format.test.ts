@@ -28,6 +28,12 @@ describe("computeFormat", () => {
     expect(FORMATS["2:3"].width).toBe(2160);
   });
 
+  it("derives 5:4 as the landscape counterpart of 4:5 at a 2160 short edge", () => {
+    expect(computeFormat(FORMATS["5:4"]).aspect).toBeCloseTo(5 / 4, 5);
+    expect(FORMATS["5:4"].width).toBe(2700);
+    expect(FORMATS["5:4"].height).toBe(2160);
+  });
+
   it("keeps a constant visible world HEIGHT across aspects (vertical FOV)", () => {
     const h = computeFormat(FORMATS["16:9"]).frame.height;
     expect(computeFormat(FORMATS["9:16"]).frame.height).toBeCloseTo(h, 5);

@@ -15,7 +15,7 @@
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  theme-starter, option-previews → preview-lab; verify/export accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
-#         --aspect 16:9|9:16|1:1|4:5|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
+#         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
 #         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene)
 #         --codec  libx264|h264_videotoolbox|prores_ks (default: libx264)

@@ -64,7 +64,7 @@ export interface ExportPresetDoc {
   };
 }
 
-const ASPECTS: readonly string[] = ["16:9", "9:16", "1:1", "4:5", "3:2", "2:3"];
+const ASPECTS: readonly string[] = ["16:9", "9:16", "1:1", "4:5", "5:4", "3:2", "2:3"];
 
 function isRate(v: unknown): v is EncodeSpec["rate"] {
   if (typeof v !== "object" || v === null) return false;

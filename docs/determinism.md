@@ -918,10 +918,11 @@ extra 0.0 = the byte-frozen legacy string). Projected true peak > −1.5 dBTP wa
 and proceeds, never a limiter (a limiter is content-dependent DSP; a gain is a
 constant).
 
-**4:5, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
-2160×2700, `FORMATS["3:2"]` = 3240×2160, `FORMATS["2:3"]` = 2160×3240 (2160
-short edge, the house convention); `STANDING_ASPECTS` pins Verify's "all" and
-the full matrices to the standing three (16:9 / 9:16 / 1:1).
+**4:5, 5:4, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
+2160×2700, `FORMATS["5:4"]` = 2700×2160, `FORMATS["3:2"]` = 3240×2160,
+`FORMATS["2:3"]` = 2160×3240 (2160 short edge, the house convention);
+`STANDING_ASPECTS` pins Verify's "all" and the full matrices to the standing
+three (16:9 / 9:16 / 1:1).
 
 ### The export modal & user presets
 
@@ -1058,6 +1059,16 @@ rolling-gate project (`showcase-tour`):
 > The 3:2 baseline (`0e64593d…`) predates the trim and re-records on next
 > need. Whole-pair gate wall time: ~4:20.
 >
+> **2026-07-25 (5:4 aspect):** `5:4` (2700×2160) joined the first-class,
+> feature-scoped set. `showcase-tour` 5:4 recorded its first baseline
+> `554bbd23…` (Verify ×2 EQUAL) after eyeballing 5:4 frames via
+> `--action screenshot`; the frames also showed scene 0's headline overflow in
+> narrow aspects is pre-existing scene authoring (1:1 crops harder than 5:4),
+> not aspect plumbing. The standard 16:9 pair re-ran EQUAL with
+> `ws:launch-2026` on its anchor, so the `AspectName`/`FORMATS` addition is
+> null-for-legacy. NOTE: `554bbd23…` anchors the pre-trim showcase manifest;
+> re-record on the trimmed manifest, then give the table its 5:4 column.
+
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,
 > editor tap/space/progress fixes, template cleanup, device subtitles, the

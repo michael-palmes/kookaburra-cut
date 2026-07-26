@@ -136,12 +136,14 @@ export function LayeredScreenshotBuilder({
     if (layer && layer.id !== selectedLayerId) select(layer.id, null);
   }, [layer, selectedLayerId, select]);
 
-  const [adding, setAdding] = useState<
-    | { mode: "add"; toId: string | null; side: LayeredScreenshotAttachSide }
-    | { mode: "change" }
-    | null
-  >(null);
+  const [adding, setAdding] = useState<{
+    toId: string | null;
+    side: LayeredScreenshotAttachSide;
+  } | null>(null);
+  /** Change media renders as a docked sub-screen (the stage stays live behind it), not a modal. */
+  const [changingMedia, setChangingMedia] = useState(false);
   useEscapeClose(() => setAdding(null), adding !== null);
+  useEscapeClose(() => setChangingMedia(false), changingMedia);
 
   // A block with no layers still opens: seed the first layer so the panel is never a dead end.
   const empty = ordered.length === 0;
@@ -208,7 +210,7 @@ export function LayeredScreenshotBuilder({
   };
 
   const addScreen = (rel: string, meta: MediaMeta | null) => {
-    if (adding?.mode !== "add") return;
+    if (!adding) return;
     const id = nextItemId(block);
     const next = addItem(block, layer.id, {
       id,
@@ -225,7 +227,7 @@ export function LayeredScreenshotBuilder({
   };
 
   const addText = () => {
-    if (adding?.mode !== "add") return;
+    if (!adding) return;
     const id = nextItemId(block);
     const next = addItem(block, layer.id, {
       id,
@@ -255,6 +257,48 @@ export function LayeredScreenshotBuilder({
   const back = ordered[0]?.id === layer.id;
   const spread = block.pose.spread;
   const frontOn = Math.abs(block.pose.azimuthDeg) < 0.5 && Math.abs(block.pose.elevationDeg) < 0.5;
+
+  const pickChangeMedia = (rel: string, meta: MediaMeta | null) => {
+    if (item?.kind !== "screen") return;
+    const next = updateItem(block, layer.id, item.id, {
+      src: rel,
+      media: meta?.kind === "video" ? "video" : "image",
+    });
+    setChangingMedia(false);
+    commitBlock(next);
+  };
+
+  // The Change-media sub-screen: one drill level down from the builder, mirroring the video window's media drill.
+  if (changingMedia && item?.kind === "screen") {
+    return (
+      <>
+        <DrillBack label="Screenshot stack" onClick={() => setChangingMedia(false)} />
+        <div className="inspector-drill-title">Change media</div>
+        <div className="inspector-drill-body">
+          {mediaError && <p className="modal-error">{mediaError}</p>}
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={projectPath}
+              kindToggle
+              kindDefault="image"
+              globalToggle
+              refreshKey={mediaRefresh}
+              selectedRel={item.src}
+              onPick={pickChangeMedia}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: pickChangeMedia,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setMediaError,
+              })}
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -405,7 +449,7 @@ export function LayeredScreenshotBuilder({
               <button
                 type="button"
                 className="btn primary ls-schematic-seed"
-                onClick={() => setAdding({ mode: "add", toId: null, side: "right" })}
+                onClick={() => setAdding({ toId: null, side: "right" })}
               >
                 ＋ First screen
               </button>
@@ -451,7 +495,7 @@ export function LayeredScreenshotBuilder({
                         title={`Add ${side}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setAdding({ mode: "add", toId: it.id, side });
+                          setAdding({ toId: it.id, side });
                         }}
                       >
                         ＋
@@ -591,7 +635,7 @@ export function LayeredScreenshotBuilder({
               <button
                 type="button"
                 className="btn ls-builder-wide"
-                onClick={() => setAdding({ mode: "change" })}
+                onClick={() => setChangingMedia(true)}
                 title="Replace this screen's media"
               >
                 Change media…
@@ -642,7 +686,7 @@ export function LayeredScreenshotBuilder({
       {adding && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal wizard-wide">
-            <h2>{adding.mode === "change" ? "Change media" : "Add to the stack"}</h2>
+            <h2>Add to the stack</h2>
             {mediaError && <p className="modal-error">{mediaError}</p>}
             <div className="wizard-media-host">
               <MediaBrowser
@@ -652,34 +696,11 @@ export function LayeredScreenshotBuilder({
                 kindDefault="image"
                 globalToggle
                 refreshKey={mediaRefresh}
-                onPick={(rel, meta) => {
-                  if (adding.mode === "change" && item?.kind === "screen") {
-                    // Change-media path: swap the selected screen's source in place.
-                    const next = updateItem(block, layer.id, item.id, {
-                      src: rel,
-                      media: meta?.kind === "video" ? "video" : "image",
-                    });
-                    setAdding(null);
-                    commitBlock(next);
-                  } else {
-                    addScreen(rel, meta);
-                  }
-                }}
+                onPick={addScreen}
                 cardMenu={mediaCardMenu({
                   slug,
                   primaryLabel: "Select",
-                  onPrimary: (rel, meta) => {
-                    if (adding.mode === "change" && item?.kind === "screen") {
-                      const next = updateItem(block, layer.id, item.id, {
-                        src: rel,
-                        media: meta?.kind === "video" ? "video" : "image",
-                      });
-                      setAdding(null);
-                      commitBlock(next);
-                    } else {
-                      addScreen(rel, meta);
-                    }
-                  },
+                  onPrimary: addScreen,
                   onChanged: () => setMediaRefresh((n) => n + 1),
                   onError: setMediaError,
                 })}
@@ -689,16 +710,14 @@ export function LayeredScreenshotBuilder({
               <button type="button" className="btn" onClick={() => setAdding(null)}>
                 Cancel
               </button>
-              {adding.mode === "add" && (
-                <button
-                  type="button"
-                  className="btn"
-                  title="Add a theme-typed text label instead of a screen"
-                  onClick={addText}
-                >
-                  Add text instead
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn"
+                title="Add a theme-typed text label instead of a screen"
+                onClick={addText}
+              >
+                Add text instead
+              </button>
             </div>
           </div>
         </div>

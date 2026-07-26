@@ -26,12 +26,11 @@ export function projectRows(input: {
   if (!input.isWorkspace) {
     return [
       { id: "theme", label: "Theme", value: input.themeName, chevron: false },
-      { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
       { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
+      { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
     ];
   }
   return [
-    { id: "media", label: "Media library", chevron: true },
     {
       id: "scenes",
       label: "Scenes",
@@ -39,10 +38,11 @@ export function projectRows(input: {
       chevron: true,
     },
     { id: "theme", label: "Theme", value: input.themeName, chevron: true },
+    { id: "media", label: "Media library", chevron: true },
     { id: "appIcon", label: "App icon", chevron: true },
+    { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
     { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },
-    { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
   ];
 }
 
