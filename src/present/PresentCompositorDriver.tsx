@@ -14,7 +14,12 @@ import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
 import type { LoadedProject } from "../engine/project";
-import { buildSceneCameraTracks, orbitToView, resolveFrameCameras } from "../engine/sceneCamera";
+import {
+  buildSceneCameraTracks,
+  orbitToView,
+  resolveFrameCameras,
+  sceneCameraEndMs,
+} from "../engine/sceneCamera";
 import { getSceneHosts } from "../engine/sceneHostRegistry";
 import { buildLightingTracks, resolveFrameLighting } from "../engine/sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "../engine/sceneState";
@@ -153,8 +158,7 @@ export function PresentCompositorDriver({
             raw >= INITIAL_SETTLE_MIN_MS &&
             stableForMs >= INITIAL_SETTLE_STABLE_MS;
           if (ready || raw >= INITIAL_SETTLE_CAP_MS) {
-            const track = sceneTracks[0];
-            const camEndMs = track ? (track.keys[track.keys.length - 1]?.tMs ?? 0) : 0;
+            const camEndMs = sceneCameraEndMs(sceneTracks[0]);
             store.setAnchor(0, clockMs - Math.max(hold.holdMs, camEndMs));
             holdsRef.current[0] = hold;
             applyHold(0, hold.holdMs);
@@ -248,7 +252,7 @@ export function PresentCompositorDriver({
       resolveFrameCameras(sceneTracks, project.cameraTrack, resolved, clockMs) ?? undefined;
     if (loopRawMs !== null) {
       const i = Math.min(deck.sceneIndex, slots.length - 1);
-      const track = sceneTracks[i];
+      const track = sceneTracks[i]?.orbit;
       const loop = project.sceneDocs[i]?.camera?.presentLoop;
       if (track && loop) {
         const view = orbitToView(sampleLoopedSceneCamera(track, loopRawMs, loop));

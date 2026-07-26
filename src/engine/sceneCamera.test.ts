@@ -295,6 +295,73 @@ describe("resolveFrameCameras", () => {
   });
 });
 
+describe("per-scene camera mode precedence", () => {
+  const slots: SceneSlot[] = [{ index: 0, id: "s0", startMs: 0, endMs: 4000, durationMs: 4000 }];
+  const orbitKeys = { keys: [{ id: "o", tMs: 0, pose: pose({ azimuthDeg: 40 }) }], segments: [] };
+  const rigKeys = {
+    keys: [
+      {
+        id: "r",
+        tMs: 0,
+        pose: {
+          position: [1, 2, 3] as [number, number, number],
+          aim: { mode: "point" as const, at: [0, 0, 0] as [number, number, number] },
+          fov: 30,
+          rollDeg: 12,
+        },
+      },
+    ],
+    segments: [],
+  };
+
+  it("rig mode wins over an orbit block on the same scene, carrying fov and roll", () => {
+    const tracks = buildSceneCameraTracks([
+      { version: 1, cameraMode: "rig", camera: orbitKeys, cameraRig: rigKeys },
+    ]);
+    expect(tracks[0]?.mode).toBe("rig");
+    const plan = resolveFrameCameras(tracks, undefined, resolveAt(slots, 0), 0);
+    expect(plan?.solo?.position).toEqual([1, 2, 3]);
+    expect(plan?.solo?.fov).toBe(30);
+    expect(plan?.solo?.rollDeg).toBe(12);
+  });
+
+  it("rig mode with NO rig keys falls through to orbit, so the switch never jumps", () => {
+    const tracks = buildSceneCameraTracks([
+      { version: 1, cameraMode: "rig", camera: orbitKeys, cameraRig: { keys: [], segments: [] } },
+    ]);
+    expect(tracks[0]?.mode).toBe("orbit");
+    const plan = resolveFrameCameras(tracks, undefined, resolveAt(slots, 0), 0);
+    expect(plan?.solo?.position[0]).toBeCloseTo(5 * Math.sin((40 * Math.PI) / 180), 12);
+    expect(plan?.solo?.rollDeg).toBeUndefined();
+  });
+
+  it("orbit mode ignores a rig block entirely (null-for-legacy is structural)", () => {
+    const tracks = buildSceneCameraTracks([{ version: 1, cameraRig: rigKeys }]);
+    expect(tracks[0]).toBeNull();
+    expect(hasSceneCameraTracks(tracks)).toBe(false);
+    expect(resolveFrameCameras(tracks, undefined, resolveAt(slots, 0), 0)).toBeNull();
+  });
+
+  it("a rig key without fov leaves it to the project-level track", () => {
+    const noFov = {
+      keys: [
+        {
+          id: "r",
+          tMs: 0,
+          pose: {
+            position: [0, 0, 4] as [number, number, number],
+            aim: { mode: "point" as const, at: [0, 0, 0] as [number, number, number] },
+          },
+        },
+      ],
+      segments: [],
+    };
+    const tracks = buildSceneCameraTracks([{ version: 1, cameraMode: "rig", cameraRig: noFov }]);
+    const projectTrack = [{ tMs: 0, fov: 28 }];
+    expect(resolveFrameCameras(tracks, projectTrack, resolveAt(slots, 0), 0)?.solo?.fov).toBe(28);
+  });
+});
+
 describe("buildSceneCameraTracks with animatedTrack", () => {
   it("stands the camera down when a scene's animated track is the layered screenshot", () => {
     const camera = {
@@ -317,8 +384,8 @@ describe("buildSceneCameraTracks with animatedTrack", () => {
       { version: 1, camera, animatedTrack: "layeredScreenshot" },
       { version: 1, camera, animatedTrack: "camera" },
     ]);
-    expect(tracks[0]?.keys).toHaveLength(1);
+    expect(tracks[0]?.orbit?.keys).toHaveLength(1);
     expect(tracks[1]).toBeNull();
-    expect(tracks[2]?.keys).toHaveLength(1);
+    expect(tracks[2]?.orbit?.keys).toHaveLength(1);
   });
 });

@@ -8,6 +8,7 @@ import {
 import { ease, isEaseName } from "./ease";
 import { lerp, lerp3 } from "./keyframes";
 import type { SceneDoc, SceneDocCameraKey, SceneDocCameraPose } from "./sceneDocSchema";
+import { normalizeSceneRig, type SceneRigTrack, sampleSceneRig } from "./sceneRig";
 import type { ActiveScene, Resolved } from "./sceneTimeline";
 
 /** A normalized segment: key ids resolved to the SHARED key objects, times validated. */
@@ -101,7 +102,12 @@ export function normalizeSceneCamera(
   return { keys, segments: ordered };
 }
 
-function mixPose(a: SceneDocCameraPose, b: SceneDocCameraPose, t: number): SceneDocCameraPose {
+/** Mix two orbit poses; the one copy, shared with the Present loop's return leg (two copies is how Present and the editor drift apart). Angles interpolate as plain numbers, no shortest-arc wrapping, so authored values are honoured verbatim. */
+export function mixPose(
+  a: SceneDocCameraPose,
+  b: SceneDocCameraPose,
+  t: number,
+): SceneDocCameraPose {
   return {
     target: lerp3(a.target, b.target, t),
     azimuthDeg: lerp(a.azimuthDeg, b.azimuthDeg, t),
@@ -126,21 +132,42 @@ export function sampleSceneCamera(track: SceneCameraTrack, localMs: number): Sce
   return { ...held.pose, target: [...held.pose.target] };
 }
 
-/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes no camera track (its keys stay on disk untouched; the toggle just stands the camera down). */
+/** One scene's camera, both blocks resolved. `mode` is "rig" only when the doc SAYS rig and the rig actually has keys, so flipping the switch before authoring anything falls through to orbit and the camera never jumps. */
+export interface SceneCameraTracks {
+  mode: "orbit" | "rig";
+  orbit: SceneCameraTrack | null;
+  rig: SceneRigTrack | null;
+}
+
+/** Wrap an orbit track as a scene's camera tracks (the editor's draft shape). */
+export function orbitCameraTracks(orbit: SceneCameraTrack | null): SceneCameraTracks | null {
+  return orbit ? { mode: "orbit", orbit, rig: null } : null;
+}
+
+/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes nothing (its keys stay on disk untouched; the toggle just stands the camera down). The rig is only normalized under `cameraMode: "rig"`, so an orbit-mode scene carrying a stale rig block costs nothing and warns about nothing. */
 export function buildSceneCameraTracks(
   sceneDocs: readonly (SceneDoc | undefined)[],
-): (SceneCameraTrack | null)[] {
-  return sceneDocs.map((doc, i) =>
-    doc?.animatedTrack === "layeredScreenshot"
-      ? null
-      : normalizeSceneCamera(doc?.camera, `scene ${i}`),
-  );
+): (SceneCameraTracks | null)[] {
+  return sceneDocs.map((doc, i) => {
+    if (!doc || doc.animatedTrack === "layeredScreenshot") return null;
+    const source = `scene ${i}`;
+    const orbit = normalizeSceneCamera(doc.camera, source);
+    const rig = doc.cameraMode === "rig" ? normalizeSceneRig(doc.cameraRig, source, doc) : null;
+    if (!orbit && !rig) return null;
+    return { mode: rig ? "rig" : "orbit", orbit, rig };
+  });
 }
 
 export function hasSceneCameraTracks(
-  tracks: readonly (SceneCameraTrack | null)[] | null | undefined,
+  tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
 ): boolean {
   return !!tracks?.some(Boolean);
+}
+
+/** The last authored key time on whichever block drives this scene (Present anchors its first scene past it). */
+export function sceneCameraEndMs(tracks: SceneCameraTracks | null | undefined): number {
+  const keys = tracks?.mode === "rig" ? tracks.rig?.keys : tracks?.orbit?.keys;
+  return keys?.[keys.length - 1]?.tMs ?? 0;
 }
 
 /** The camera plan for one frame when scene tracks are in play (null → legacy path). */
@@ -153,9 +180,9 @@ export interface FrameCameraPlan {
   overlay?: CameraPose;
 }
 
-/** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene; `fov` always comes from the project-level track. */
+/** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base; `fov` comes from the project-level track unless a rig key authored one. */
 export function resolveFrameCameras(
-  tracks: readonly (SceneCameraTrack | null)[] | null | undefined,
+  tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
   projectTrack: CameraKeyframe[] | undefined,
   resolved: Resolved,
   globalMs: number,
@@ -165,9 +192,19 @@ export function resolveFrameCameras(
 
   const fallback = sampleCameraTrack(projectTrack ?? [], globalMs);
   const poseFor = (active: ActiveScene): CameraPose => {
-    const track = tracks[active.index];
-    if (!track) return fallback;
-    const view = orbitToView(sampleSceneCamera(track, active.localMs));
+    const scene = tracks[active.index];
+    if (!scene) return fallback;
+    if (scene.mode === "rig" && scene.rig) {
+      const rig = sampleSceneRig(scene.rig, active.localMs);
+      return {
+        position: rig.position,
+        lookAt: rig.lookAt,
+        fov: rig.fov ?? fallback.fov,
+        rollDeg: rig.rollDeg,
+      };
+    }
+    if (!scene.orbit) return fallback;
+    const view = orbitToView(sampleSceneCamera(scene.orbit, active.localMs));
     return { position: view.position, lookAt: view.lookAt, fov: fallback.fov };
   };
 

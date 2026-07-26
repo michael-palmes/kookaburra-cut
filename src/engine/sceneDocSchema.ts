@@ -70,6 +70,44 @@ export interface SceneDocCameraPresentLoop {
   blendMs?: number;
 }
 
+/** How a rig key points the camera: at a fixed world point, along the path, or at a bound object. `at` is the baked look point on EVERY mode, so a degenerate tangent or a deleted binding still renders a shot instead of swinging to the origin. */
+export type SceneDocRigAim =
+  | { mode: "point"; at: [number, number, number] }
+  | { mode: "tangent"; at: [number, number, number] }
+  | { mode: "object"; id: string; at: [number, number, number] };
+
+/** A free camera pose: a position and an aim, not leashed to an orbit target. */
+export interface SceneDocRigPose {
+  position: [number, number, number];
+  aim: SceneDocRigAim;
+  /** Absent inherits the project-level track's fov; clamped 15..90 at normalise time. */
+  fov?: number;
+  /** Bank around the view axis; absent or zero applies no roll at all. */
+  rollDeg?: number;
+}
+
+export interface SceneDocRigKey {
+  id: string;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: SceneDocRigPose;
+  /** First key only: start from the previous scene's final pose (resolved at load). */
+  continueFromPrevious?: boolean;
+}
+
+export interface SceneDocRigSegment {
+  from: string;
+  to: string;
+  /** An `engine/ease.ts` name (anime.js v4 style) or `"jump"`. */
+  ease: string;
+  /** ABSENT means smooth: rig paths curve out of the box, `false` is a deliberate straight dolly. */
+  smooth?: boolean;
+  /** Per-channel ease overrides; absent means the segment's own `ease` (position covers position, rotation covers aim and roll, lens covers fov). */
+  easePosition?: string;
+  easeRotation?: string;
+  easeLens?: string;
+}
+
 /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
 export type SceneTextAlign = "left" | "center" | "right";
 
@@ -226,6 +264,14 @@ export interface SceneDoc {
   camera?: {
     keys: SceneDocCameraKey[];
     segments: SceneDocCameraSegment[];
+    presentLoop?: SceneDocCameraPresentLoop;
+  };
+  /** Which camera block drives this scene; absent = "orbit" (null-for-legacy). Switching never deletes the other block's keys, and "rig" with no rig keys falls through to orbit. */
+  cameraMode?: "orbit" | "rig";
+  /** The free-flight camera track (see `sceneRig.ts`); read only under `cameraMode: "rig"`. */
+  cameraRig?: {
+    keys: SceneDocRigKey[];
+    segments: SceneDocRigSegment[];
     presentLoop?: SceneDocCameraPresentLoop;
   };
   /** Theme override for this scene: a theme id that swaps the whole theme (colours, typography, lighting, backdrop, effects base); absent falls back to the project's theme, and unknown ids degrade rather than crash. */
@@ -400,6 +446,23 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         out.camera = rest;
       } else {
         out.camera = camera;
+      }
+    }
+  }
+  if (doc.cameraMode === "orbit" || doc.cameraMode === "rig") {
+    out.cameraMode = doc.cameraMode;
+  } else if (doc.cameraMode !== undefined) {
+    console.warn(`[sceneDoc] ${source}: cameraMode isn't orbit|rig, dropped`);
+  }
+  if (typeof doc.cameraRig === "object" && doc.cameraRig !== null) {
+    const rig = doc.cameraRig as NonNullable<SceneDoc["cameraRig"]>;
+    if (Array.isArray(rig?.keys) && Array.isArray(rig?.segments)) {
+      if (rig.presentLoop !== undefined && !validPresentLoop(rig.presentLoop)) {
+        console.warn(`[sceneDoc] ${source}: cameraRig.presentLoop is invalid, dropped`);
+        const { presentLoop: _dropped, ...rest } = rig;
+        out.cameraRig = rest;
+      } else {
+        out.cameraRig = rig;
       }
     }
   }

@@ -26,7 +26,7 @@ import {
   buildSceneCameraTracks,
   hasSceneCameraTracks,
   resolveFrameCameras,
-  type SceneCameraTrack,
+  type SceneCameraTracks,
 } from "./sceneCamera";
 import type { SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
@@ -144,7 +144,7 @@ export function CompositorDriver({
     const currentMs = useClockStore.getState().currentMs;
     const resolved = resolveAt(slots, currentMs);
     // Preview-only draft merge: an in-flight camera drag replaces its scene's track for this render, read imperatively (never a subscription into the render) and unreachable during export (`isExporting` above; the export loop samples only `ExportOptions.sceneDocs`).
-    let tracks: readonly (SceneCameraTrack | null)[] = sceneTracks;
+    let tracks: readonly (SceneCameraTracks | null)[] = sceneTracks;
     const draft = useCameraEditStore.getState().draft;
     if (draft && draft.projectId === projectId && draft.sceneIndex < sceneTracks.length) {
       const merged = sceneTracks.slice();

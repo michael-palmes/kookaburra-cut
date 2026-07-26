@@ -6,6 +6,7 @@ import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engi
 import {
   defaultOrbitPose,
   normalizeSceneCamera,
+  orbitCameraTracks,
   orbitFromView,
   sampleSceneCamera,
 } from "../engine/sceneCamera";
@@ -40,7 +41,7 @@ export function useCameraDoc(
       useCameraEditStore.getState().setDraft({
         projectId: project.id,
         sceneIndex,
-        track: normalizeSceneCamera(cam, "camera-edit"),
+        track: orbitCameraTracks(normalizeSceneCamera(cam, "camera-edit")),
         committed,
       });
     },

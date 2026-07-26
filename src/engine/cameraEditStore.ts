@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { SceneCameraTrack } from "./sceneCamera";
+import type { SceneCameraTracks } from "./sceneCamera";
 
 /** Camera-editing UI state: mini-timeline open/selection/tool state plus the live drag draft the preview renders while a pointer is down; UI-only, the export path never reads this store (exportProject samples only ExportOptions.sceneDocs). */
 
@@ -8,8 +8,8 @@ export type CameraTool = "pan" | "rotate" | "zoom";
 export interface CameraDraft {
   projectId: string;
   sceneIndex: number;
-  /** Normalized replacement for the scene's track (null = track removed). */
-  track: SceneCameraTrack | null;
+  /** Normalized replacement for the scene's camera (null = track removed). */
+  track: SceneCameraTracks | null;
   /** True once written to the sidecar; cleared by App when the reload lands. */
   committed: boolean;
 }
