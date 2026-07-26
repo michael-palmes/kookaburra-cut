@@ -2875,20 +2875,20 @@ body {
 
 .kind-picker {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
 }
 
-/* The type step: three kind cards per row need the media step's width. */
+/* The type step: twelve presets sit four across by three high. */
 .wizard-kind-wide {
-  width: min(56rem, calc(100% - 2rem));
+  width: min(68rem, calc(100% - 2rem));
 }
 
 .kind-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-5);
+  padding: var(--space-4);
   font: inherit;
   text-align: left;
   color: var(--text-primary);
@@ -3062,13 +3062,50 @@ body {
 .insert-timeline {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-4);
+}
+
+.insert-viewport {
+  position: relative;
+}
+
+/* Edge fades cue scenes sitting off-screen in an overflowing strip. */
+.insert-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+}
+
+.insert-fade.start {
+  left: 0;
+  background: linear-gradient(to right, var(--surface-elevated), transparent);
+}
+
+.insert-fade.end {
+  right: 0;
+  background: linear-gradient(to left, var(--surface-elevated), transparent);
 }
 
 .insert-strip {
   overflow-x: auto;
   scroll-snap-type: x proximity;
   border-radius: var(--radius-sm);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  cursor: grab;
+  /* Cards scale to fit instead; the rare overflow scrolls with no bar chrome. */
+  scrollbar-width: none;
+}
+
+.insert-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.insert-strip:active {
+  cursor: grabbing;
 }
 
 /* Snapping fights the drag's programmatic edge scroll. */
@@ -3085,30 +3122,18 @@ body {
   position: relative;
   display: flex;
   gap: var(--space-4);
-  /* Side insets hold the full handle at the resting start/end gaps (a scroller can't reach negative x). */
-  padding: 18px var(--space-6) var(--space-2);
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: none;
-  cursor: grab;
-}
-
-.insert-cards:active {
-  cursor: grabbing;
-}
-
-/* A real flex child, so the end gap survives the lost-trailing-padding overflow quirk. */
-.insert-cards::after {
-  content: "";
-  flex: 0 0 var(--space-6);
+  /* Top inset seats the playhead handle; side insets hold it at the resting start/end gaps (a scroller can't reach negative x), and the end gap mirrors the start exactly, so no trailing spacer. */
+  padding: 30px var(--space-6) var(--space-2);
 }
 
 .insert-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  flex: 0 1 8.5rem;
-  min-width: 6rem;
+  /* Cards grow to fill the row, so the end gap hugs the last scene instead of floating at the far edge. */
+  flex: 1 1 8.5rem;
+  min-width: 3.5rem;
+  max-width: 16rem;
   font-size: var(--text-xs);
   scroll-snap-align: start;
 }
@@ -3131,9 +3156,10 @@ body {
 }
 
 .insert-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--text-secondary);
 }
 
@@ -3150,42 +3176,57 @@ body {
   transition: none;
 }
 
+/* The line grows out of the head's taper, one continuous playhead. */
 .insert-indicator::before {
   content: "";
   position: absolute;
-  top: 12px;
+  top: 18px;
   bottom: 0;
   left: -1px;
   width: 2px;
-  background: var(--danger);
+  background: var(--danger-fill);
   border-radius: 1px;
 }
 
-/* Raised grab handle: subtle dot texture, slight shadow. */
+/* Playhead cap: flat top tapering to the line, dot texture at 20%. */
 .insert-handle {
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 22px;
-  height: 14px;
+  width: 18px;
+  height: 26px;
   background-color: var(--danger-fill);
-  background-image: radial-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1.1px);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.2) 1px, transparent 1.2px);
   background-size: 5px 5px;
-  background-position: 3px 4px;
-  border-radius: var(--radius-full);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  background-position: 2px 2.5px;
+  clip-path: polygon(0 0, 100% 0, 100% 52%, 50% 100%, 0 52%);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
 }
 
+/* The readout sits apart from the strip as a small info panel. */
 .insert-caption {
+  display: flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--space-3);
   margin: 0;
+  padding: var(--space-2) var(--space-4);
   font-size: var(--text-xs);
   color: var(--text-secondary);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+}
+
+.insert-caption svg {
+  flex: none;
+  color: var(--accent);
 }
 
 /* The placement strip needs more shoulder room than the base wizard width. */
 .wizard-place-wide {
-  width: min(56rem, calc(100% - 2rem));
+  width: min(64rem, calc(100% - 2rem));
 }
 
 /* Embedded media picker: bounded so the wizard modal, not the grid, owns scrolling. */

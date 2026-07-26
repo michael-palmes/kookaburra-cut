@@ -26,7 +26,7 @@ import { ColourPicker } from "./colour/ColourPicker";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
-import { TextFieldRow } from "./SceneTextFields";
+import { HeaderIconField, TextFieldRow } from "./SceneTextFields";
 import { backgroundOptions } from "./stageOptions";
 import { defaultDraft, draftToSpec, TEXT_PRESET_CATALOG } from "./textAnimationOptions";
 import { useEscapeClose } from "./useEscapeClose";
@@ -55,15 +55,49 @@ export interface ScaffoldedScene {
   durationMs: number;
 }
 
-type SceneKind = "device" | "title" | "appversion" | "blank" | "layeredscreenshot" | "video";
+type SceneKind =
+  | "device"
+  | "deviceonly"
+  | "title"
+  | "titleicon"
+  | "appversion"
+  | "layeredscreenshot"
+  | "video"
+  | "videowindow"
+  | "overlaystart"
+  | "overlayend"
+  | "overlaypanel"
+  | "blank";
 
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + media", blurb: "A phone playing your video or image" },
+  { id: "deviceonly", label: "Device only", blurb: "A centred phone with no title copy" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
+  { id: "titleicon", label: "Title + icon", blurb: "A title with an icon above it" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
   { id: "video", label: "Video", blurb: "A video filling the whole frame" },
+  { id: "videowindow", label: "Video window", blurb: "A floating screen recording on a stage" },
+  { id: "overlaystart", label: "Cutout start", blurb: "Panel text beside a scene window" },
+  { id: "overlayend", label: "Cutout end", blurb: "A scene window beside panel text" },
+  { id: "overlaypanel", label: "Overlay panel", blurb: "A full panel with a chip and title" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
+];
+
+/** Kinds whose media step picks the window/backdrop video, starting on the bundled sample. */
+const VIDEO_MEDIA_KINDS: SceneKind[] = ["video", "videowindow"];
+/** Kinds with no text fields at all (the device stays centred). */
+const NO_TEXT_KINDS: SceneKind[] = ["video", "deviceonly"];
+/** Kinds whose composition renders a subtitle on its own; blank/layeredscreenshot text rides TextFallback, which needs a title. */
+const SUBTITLE_KINDS: SceneKind[] = [
+  "device",
+  "title",
+  "titleicon",
+  "appversion",
+  "videowindow",
+  "overlaystart",
+  "overlayend",
+  "overlaypanel",
 ];
 
 /** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
@@ -274,7 +308,6 @@ export function NewSceneWizard({
   scenes,
   thumbs,
   theme,
-  sessionRunning,
   onDone,
   onCancel,
 }: {
@@ -283,12 +316,9 @@ export function NewSceneWizard({
   scenes: WizardSceneInfo[];
   /** Scene-thumb paths by stem (host loads them lazily on open). */
   thumbs: Record<string, string>;
-  /** The project's theme, for the text-colour swatch defaults. */
+  /** The project's theme, for the text-colour swatch defaults and the video window's stage. */
   theme: Theme;
-  /** A Claude session is running; enables the polish-description paste. */
-  sessionRunning: boolean;
-  /** Scaffold succeeded; `prompt` is the polish paste when a description was given. */
-  onDone: (result: ScaffoldedScene, prompt: string | null) => void;
+  onDone: (result: ScaffoldedScene) => void;
   onCancel: () => void;
 }) {
   const titleId = useId();
@@ -297,20 +327,15 @@ export function NewSceneWizard({
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
   const [media, setMedia] = useState<{ rel: string; kind: "video" | "image" } | null>(null);
-  const [motion, setMotion] = useState("none");
-  const [shadow, setShadow] = useState("soft");
   const [nameOverride, setNameOverride] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
   const [titleColor, setTitleColor] = useState<string | null>(null);
   const [subtitleColor, setSubtitleColor] = useState<string | null>(null);
-  const [background, setBackground] = useState("default");
-  // A user click pins the chip; until then it tracks the placement's previous scene.
-  const [backgroundTouched, setBackgroundTouched] = useState(false);
-  const [textAnim, setTextAnim] = useState("default");
-  const [placement, setPlacement] = useState("end");
-  const [description, setDescription] = useState("");
+  const [headerIcon, setHeaderIcon] = useState("🚀");
+  // Seeded after the scene under the playhead, the place a new scene usually belongs.
+  const [placement, setPlacement] = useState(() => `after:${sceneIndexAtPlayhead(scenes)}`);
   const [busy, setBusy] = useState(false);
   useEscapeClose(onCancel, !busy);
   const [error, setError] = useState<string | null>(null);
@@ -320,7 +345,6 @@ export function NewSceneWizard({
     setMedia({ rel, kind: meta?.kind ?? fallback });
     setStep("details");
   };
-  const backgroundChips = useBackgroundChips();
 
   const position = useMemo(() => {
     if (placement === "start") return 0;
@@ -331,51 +355,38 @@ export function NewSceneWizard({
 
   // Kind + insertion position, e.g. "Title 3"; a pencil edit pins the name instead.
   const kindWord =
-    kind === "device"
-      ? "Device"
-      : kind === "title"
-        ? "Title"
-        : kind === "appversion"
-          ? "App version"
-          : kind === "layeredscreenshot"
-            ? "Layered screenshot"
-            : kind === "video"
-              ? "Video"
-              : "Blank";
+    {
+      device: "Device",
+      deviceonly: "Device",
+      title: "Title",
+      titleicon: "Title",
+      appversion: "App version",
+      layeredscreenshot: "Layered screenshot",
+      video: "Video",
+      videowindow: "Video window",
+      overlaystart: "Overlay",
+      overlayend: "Overlay",
+      overlaypanel: "Panel",
+      blank: "Blank",
+    }[kind] ?? "Scene";
   const generatedName = `${kindWord} ${(position ?? scenes.length) + 1}`;
   const sceneName = nameOverride ?? generatedName;
   const titlePlaceholder =
-    kind === "title"
+    kind === "title" || kind === "titleicon"
       ? "e.g. Ship faster"
       : kind === "appversion"
         ? "e.g. Your App"
         : kind === "device"
           ? "Optional, sits above the device"
-          : "Optional";
+          : kind.startsWith("overlay")
+            ? "The panel headline"
+            : "Optional";
   // The lockup's hero line is the version; its label is muted, the reverse of a title scene.
   const isLockup = kind === "appversion";
 
-  // Only an explicit doc.background is worth inheriting; an unset one already means theme default.
-  const previousScene = position === undefined ? scenes[scenes.length - 1] : scenes[position - 1];
-  const previousBackground = previousScene?.doc?.background;
-  const backgroundChipsForNew = useMemo(
-    () =>
-      previousBackground
-        ? [
-            {
-              id: "same-as-previous",
-              label: "Same as previous",
-              value: structuredClone(previousBackground),
-            },
-            ...backgroundChips,
-          ]
-        : backgroundChips,
-    [backgroundChips, previousBackground],
-  );
-  useEffect(() => {
-    if (backgroundTouched) return;
-    setBackground(previousBackground ? "same-as-previous" : "default");
-  }, [previousBackground, backgroundTouched]);
+  const isDeviceKind = kind === "device" || kind === "deviceonly";
+  const takesMedia =
+    isDeviceKind || kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind);
 
   async function submit() {
     setBusy(true);
@@ -387,65 +398,42 @@ export function NewSceneWizard({
         options: {
           kind,
           name: finalName,
-          title: title.trim() || null,
-          subtitle: kind === "title" || kind === "appversion" ? subtitle.trim() || null : null,
-          deviceModel: kind === "device" ? model : null,
-          colour: kind === "device" ? colour : null,
-          mediaRel:
-            kind === "device" || kind === "layeredscreenshot" || kind === "video"
-              ? (media?.rel ?? null)
-              : null,
-          mediaKind:
-            kind === "device" || kind === "layeredscreenshot" || kind === "video"
-              ? (media?.kind ?? null)
-              : null,
-          motionPreset: kind === "device" ? motion : null,
-          shadow: kind === "device" ? shadow : null,
+          title: NO_TEXT_KINDS.includes(kind) ? null : title.trim() || null,
+          subtitle: SUBTITLE_KINDS.includes(kind) ? subtitle.trim() || null : null,
+          deviceModel: isDeviceKind ? model : null,
+          colour: isDeviceKind ? colour : null,
+          mediaRel: takesMedia ? (media?.rel ?? null) : null,
+          mediaKind: takesMedia ? (media?.kind ?? null) : null,
+          headerIcon: kind === "titleicon" ? headerIcon.trim() || null : null,
+          stageColor: kind === "videowindow" ? theme.colors.background : null,
           position: position ?? null,
         },
       });
-      // The scaffolder already wrote a video scene's background (the video itself); the details step hides the chips, so nothing to patch.
-      const chosenBackground =
-        kind === "video"
-          ? undefined
-          : backgroundChipsForNew.find((o) => o.id === background)?.value;
-      const chosenTextAnim =
-        kind === "video" ? undefined : TEXT_ANIMATION_CHIPS.find((o) => o.id === textAnim)?.value;
       const textStyle: Record<string, string> = {};
       if (titleColor) textStyle.titleColor = titleColor;
-      if (subtitleColor && (kind === "title" || kind === "appversion")) {
-        textStyle.subtitleColor = subtitleColor;
-      }
-      if (chosenBackground || chosenTextAnim || Object.keys(textStyle).length > 0) {
-        // The scaffolder doesn't know backgrounds/text motion; patch the fresh sidecar via the same validated write path as the edit bar, and never fail the scaffold if the patch fails.
+      if (subtitleColor) textStyle.subtitleColor = subtitleColor;
+      if (Object.keys(textStyle).length > 0) {
+        // The scaffolder doesn't know text styling; patch the fresh sidecar via the same validated write path as the edit bar.
         try {
           const docFile = result.file.replace(/\.tsx$/, ".json");
           const text = await invoke<string | null>("read_scene_doc", { slug, file: docFile });
           const parsed = text ? parseSceneDoc(JSON.parse(text), `${slug}/${docFile}`) : undefined;
           if (parsed) {
-            if (chosenBackground) parsed.background = chosenBackground;
-            if (chosenTextAnim) parsed.textAnimation = chosenTextAnim;
-            if (Object.keys(textStyle).length > 0) parsed.textStyle = textStyle;
+            parsed.textStyle = textStyle;
             await writeSceneDoc(slug, result.file, parsed);
           }
         } catch (e) {
-          // The scene already exists at this point; block the close so the user learns the chips didn't apply instead of silently shipping a half-configured scene.
+          // The scene already exists at this point; block the close so the user learns the colours didn't apply instead of silently shipping a half-configured scene.
           console.warn("[wizard] sidecar patch failed:", e);
           setError(
-            `The scene was created, but its background/text choices couldn't be ` +
+            `The scene was created, but its text colours couldn't be ` +
               `written: ${String(e)}. Close this and use Edit scene to apply them.`,
           );
           setBusy(false);
           return;
         }
       }
-      const desc = description.trim();
-      const prompt = desc
-        ? `Polish the new scene ${result.file}: ${desc}. Its machine-editable values (text, ` +
-          `devices, duration mode) live in ${result.docFile} — prefer editing that sidecar; ` +
-          `use the TSX for composition. Keep every scene-authoring rule.`
-        : null;
-      onDone(result, prompt);
+      onDone(result);
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -491,14 +479,14 @@ export function NewSceneWizard({
                 type="button"
                 className="btn primary"
                 onClick={() => {
-                  // The video kind's media step starts on the sample so "Use the sample video" is a one-click accept.
-                  if (kind === "video" && media?.kind !== "video") {
+                  // The video kinds' media step starts on the sample so "Use the sample video" is a one-click accept.
+                  if (VIDEO_MEDIA_KINDS.includes(kind) && media?.kind !== "video") {
                     setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video" });
                   }
                   setStep(
-                    kind === "device"
+                    isDeviceKind
                       ? "device"
-                      : kind === "layeredscreenshot" || kind === "video"
+                      : kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind)
                         ? "media"
                         : "details",
                   );
@@ -541,19 +529,21 @@ export function NewSceneWizard({
                   ? "First screen (the builder grows the stack from here)"
                   : kind === "video"
                     ? "What fills the frame?"
-                    : "What plays on the screen?"
+                    : kind === "videowindow"
+                      ? "What plays in the window?"
+                      : "What plays on the screen?"
               }
             >
               <div className="wizard-media-host">
                 <MediaBrowser
                   slug={slug}
                   projectPath={projectPath}
-                  kinds={kind === "video" ? ["video"] : undefined}
+                  kinds={VIDEO_MEDIA_KINDS.includes(kind) ? ["video"] : undefined}
                   kindToggle={kind === "layeredscreenshot"}
                   kindDefault={kind === "layeredscreenshot" ? "image" : undefined}
                   globalToggle
                   refreshKey={mediaRefresh}
-                  selectedRel={kind === "video" ? (media?.rel ?? null) : undefined}
+                  selectedRel={VIDEO_MEDIA_KINDS.includes(kind) ? (media?.rel ?? null) : undefined}
                   onPick={pickWizardMedia}
                   cardMenu={mediaCardMenu({
                     slug,
@@ -569,11 +559,11 @@ export function NewSceneWizard({
               <button
                 type="button"
                 className="btn"
-                onClick={() => setStep(kind === "device" ? "device" : "type")}
+                onClick={() => setStep(isDeviceKind ? "device" : "type")}
               >
                 Back
               </button>
-              {kind === "video" ? (
+              {VIDEO_MEDIA_KINDS.includes(kind) ? (
                 <button type="button" className="btn" onClick={() => setStep("details")}>
                   Use the sample video
                 </button>
@@ -632,29 +622,19 @@ export function NewSceneWizard({
                 </>
               )}
             </div>
-            {kind === "video" && media && (
+            {VIDEO_MEDIA_KINDS.includes(kind) && media && (
               <p className="modal-hint">
-                Background video: {media.rel.replace(/^assets\//, "")} (the scene will follow its
-                length)
+                {kind === "video" ? "Background video" : "Window video"}:{" "}
+                {media.rel.replace(/^assets\//, "")} (the scene will follow its length)
               </p>
             )}
-            {kind === "device" && (
-              <>
-                {media && (
-                  <p className="modal-hint">
-                    Screen media: {media.rel.replace(/^assets\//, "")} ({media.kind})
-                    {media.kind === "video" && " — the scene will follow its length"}
-                  </p>
-                )}
-                <Field label="Motion">
-                  <ChipSelect options={MOTION_OPTIONS} value={motion} onChange={setMotion} />
-                </Field>
-                <Field label="Shadow">
-                  <ChipSelect options={SHADOW_OPTIONS} value={shadow} onChange={setShadow} />
-                </Field>
-              </>
+            {isDeviceKind && media && (
+              <p className="modal-hint">
+                Screen media: {media.rel.replace(/^assets\//, "")} ({media.kind})
+                {media.kind === "video" && " — the scene will follow its length"}
+              </p>
             )}
-            {kind !== "video" && (
+            {!NO_TEXT_KINDS.includes(kind) && (
               <TextFieldRow
                 label={isLockup ? "App name" : "Title"}
                 value={title}
@@ -668,7 +648,7 @@ export function NewSceneWizard({
                 }}
               />
             )}
-            {(kind === "title" || isLockup) && (
+            {SUBTITLE_KINDS.includes(kind) && (
               <TextFieldRow
                 label={isLockup ? "Version" : "Subtitle"}
                 value={subtitle}
@@ -682,26 +662,14 @@ export function NewSceneWizard({
                 }}
               />
             )}
-            {kind !== "video" && (
-              <>
-                <Field label="Background">
-                  <ChipSelect
-                    options={backgroundChipsForNew}
-                    value={background}
-                    onChange={(id) => {
-                      setBackgroundTouched(true);
-                      setBackground(id);
-                    }}
-                  />
-                </Field>
-                <Field label="Text motion">
-                  <ChipSelect
-                    options={TEXT_ANIMATION_CHIPS}
-                    value={textAnim}
-                    onChange={setTextAnim}
-                  />
-                </Field>
-              </>
+            {kind === "titleicon" && (
+              <HeaderIconField
+                value={headerIcon}
+                selected={headerIcon}
+                hint="Drawn above the headline. An emoji, or a project image path."
+                onChange={setHeaderIcon}
+                onPick={setHeaderIcon}
+              />
             )}
             <Field label="Where?">
               <SceneInsertTimeline
@@ -711,27 +679,18 @@ export function NewSceneWizard({
                 onChange={setPlacement}
               />
             </Field>
-            <Field
-              label={
-                sessionRunning
-                  ? "Anything else? (pastes a prompt for Claude)"
-                  : "Anything else? (start Claude Code to use this)"
-              }
-            >
-              <textarea
-                className="modal-input wizard-textarea"
-                disabled={!sessionRunning}
-                placeholder="e.g. add a caption under the phone and fade everything in"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </Field>
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button
                 type="button"
                 className="btn"
-                onClick={() => setStep(kind === "device" || kind === "video" ? "media" : "type")}
+                onClick={() =>
+                  setStep(
+                    isDeviceKind || kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind)
+                      ? "media"
+                      : "type",
+                  )
+                }
               >
                 Back
               </button>

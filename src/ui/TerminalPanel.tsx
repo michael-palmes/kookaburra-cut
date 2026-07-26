@@ -449,11 +449,9 @@ export function TerminalPanel({
           scenes={scenes}
           thumbs={thumbs}
           theme={theme}
-          sessionRunning={status === "running"}
-          onDone={(_result, prompt) => {
+          onDone={() => {
             setWizard(null);
             onProjectChanged();
-            if (prompt) pasteChip(prompt);
           }}
           onCancel={() => setWizard(null)}
         />

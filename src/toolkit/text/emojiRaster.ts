@@ -188,7 +188,7 @@ export async function awaitEmojiRastersIdle(): Promise<void> {
   }
 }
 
-/** Preload barrier for project load and the export preamble: statically scan every sidecar's text through the same substitution the primitives run, then settle all rasters before frame 0. Also pins which project's cache directory receives new rasters this session. */
+/** Preload barrier for project load and the export preamble: statically scan every sidecar's emoji-bearing strings (text map, header icon, overlay icon and chip icon; chip labels render as plain troika text, never quads) through the same substitution the primitives run, then settle all rasters before frame 0. Also pins which project's cache directory receives new rasters this session. */
 export async function preloadEmojiRasters(
   projectId: string,
   sceneDocs: readonly (SceneDoc | undefined)[],
@@ -196,8 +196,14 @@ export async function preloadEmojiRasters(
   activeProjectId = projectId;
   const byKey = new Map<string, EmojiCluster>();
   for (const doc of sceneDocs) {
-    if (!doc?.text) continue;
-    for (const value of Object.values(doc.text)) {
+    const values = [
+      ...Object.values(doc?.text ?? {}),
+      doc?.headerIcon,
+      doc?.frame?.icon,
+      doc?.frame?.chip?.icon,
+    ];
+    for (const value of values) {
+      if (!value) continue;
       for (const cluster of prepareEmojiText(value).clusters) {
         if (!byKey.has(cluster.key)) byKey.set(cluster.key, cluster);
       }

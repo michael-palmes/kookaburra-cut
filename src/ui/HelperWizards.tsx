@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useId, useState } from "react";
 import { TRANSITION_CATALOG } from "../engine/transitionCatalog";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
-import type { WizardSceneInfo } from "./SceneWizards";
+import { sceneIndexAtPlayhead, type WizardSceneInfo } from "./SceneWizards";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Mini form wizards behind the terminal helper chips: each composes a concrete, well-formed prompt from a few fields, then hands it to the panel, which pastes it into the Claude session exactly like the old one-click templates (bracketed paste, never auto-submitted; the user can still edit before pressing Enter). */
@@ -106,7 +106,8 @@ export function HelperWizard({
   // Shared field state (each wizard uses the subset it renders).
   const [description, setDescription] = useState("");
   const [seconds, setSeconds] = useState(4);
-  const [placement, setPlacement] = useState("end");
+  // Seeded after the scene under the playhead, the place a new scene usually belongs.
+  const [placement, setPlacement] = useState(() => `after:${sceneIndexAtPlayhead(scenes)}`);
   // "media" defaults to "a new scene" (empty id); the scene-targeted wizards default to the first real scene. One wizard mounts per open, so per-kind init is safe.
   const [sceneId, setSceneId] = useState(kind === "media" ? "" : (scenes[0]?.id ?? ""));
   const [scope, setScope] = useState("video");
