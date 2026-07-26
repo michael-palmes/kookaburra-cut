@@ -37,6 +37,15 @@ portable-pty = "0.9"
 # instancer output bytes participate in export baselines (rebase discipline).
 allsorts = "=0.17.0"
 libc = "0.2"
+# v13: .kbpack export/import. `zip` and `walkdir` already ride in the lock file
+# via tauri-plugin-updater and tauri-build, so these add no graph weight.
+zip = "4"
+walkdir = "2"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+base64 = "0.22"
+# Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
+url = "2"
 
 # macOS-only: reach the real NSMenuItem to set a true SF Symbol on the Settings
 # menu entry (Tauri/muda's NativeIcon can't reference systemSymbolName images).

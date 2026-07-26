@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// Folder name created inside the chosen parent ("~" becomes "~/Kookaburra Cut").
 pub const WORKSPACE_DIR_NAME: &str = "Kookaburra Cut";
 /// App-state folder inside the workspace (snapshots, caches). Never user-edited.
-const STATE_DIR_NAME: &str = ".kookaburra";
+pub(crate) const STATE_DIR_NAME: &str = ".kookaburra";
 
 /// Current on-disk project manifest filename.
 pub(crate) const MANIFEST_FILENAME: &str = "project.json";
@@ -81,6 +81,39 @@ pub struct AppSettings {
     /// Cross-project default, written by the modal's "Save as default".
     #[serde(default)]
     pub present_options_default: Option<PresentOptionsDoc>,
+    /// Who this install says it is on the packs it signs; absent means never configured (the macOS full name stands in).
+    #[serde(default)]
+    pub publisher: Option<PublisherProfile>,
+    /// Publishers whose packs have been imported before, keyed by manifest key id (trust on first use).
+    #[serde(default)]
+    pub known_publishers: HashMap<String, KnownPublisher>,
+}
+
+/// Self-declared pack publisher details. Never verified: the signing key is what identifies an install, this is only what it calls itself.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublisherProfile {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organisation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
+}
+
+/// One publisher a pack has been imported from, first seen when its key was accepted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownPublisher {
+    /// `ed25519:<base64>`, so a key id collision can never be mistaken for the same publisher.
+    pub public_key: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organisation: Option<String>,
+    /// RFC3339, UTC.
+    pub first_seen: String,
+    pub last_seen: String,
+    pub pack_count: u32,
+    pub last_pack_name: String,
 }
 
 /// The Present modal's remembered options (mode/quality strings are frontend enums, nothing Rust-side branches on them).
@@ -193,11 +226,18 @@ pub fn require_root(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
 ) -> Result<PathBuf, String> {
-    let settings = load_settings(app, state)?;
-    let root = settings
-        .workspace_root
-        .ok_or("no workspace configured — complete first-run setup")?;
-    let root = PathBuf::from(root);
+    // A gate can point one boot at a throwaway root without mutating the user's settings (the pack round trip does exactly this).
+    let root = match std::env::var("KOOKABURRA_WORKSPACE_ROOT") {
+        Ok(over) if !over.trim().is_empty() => PathBuf::from(over.trim()),
+        _ => {
+            let settings = load_settings(app, state)?;
+            PathBuf::from(
+                settings
+                    .workspace_root
+                    .ok_or("no workspace configured — complete first-run setup")?,
+            )
+        }
+    };
     ensure_layout(&root)?;
     // Workspace files load in the webview as asset-protocol URLs (posters, pinned fonts, editor sources, snapshots; see engine/media.ts `fsUrl`); the static config scope only covers $APPDATA/cache + ~/Kookaburra Cut, so a user-chosen root elsewhere is allowed here at runtime instead, idempotent and best-effort since the read path reports its own errors if this fails.
     let _ = app.asset_protocol_scope().allow_directory(&root, true);
@@ -320,7 +360,7 @@ fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 /// Parse a project's manifest for listing: display name + total duration, following the overlap model (`total = Σdurations − Σoverlaps`) where a scene's `transition` pulls its start back by the transition duration; the first scene's transition has nothing to overlap and is ignored, matching `engine/sceneTimeline.ts`.
-fn manifest_summary(project_dir: &Path) -> Option<(String, u64)> {
+pub(crate) fn manifest_summary(project_dir: &Path) -> Option<(String, u64)> {
     let text = std::fs::read_to_string(project_dir.join(MANIFEST_FILENAME)).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     let name = value.get("name")?.as_str().map(str::to_owned)?;
