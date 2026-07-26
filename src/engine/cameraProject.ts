@@ -78,11 +78,11 @@ export function projectToStage(
   const px = dot(v, basis.x);
   const py = dot(v, basis.y);
   if (depth <= NEAR) {
-    // Behind the camera: keep the lateral SIGN so the marker still points the right way off-stage.
-    const dir = Math.sign(px) || 1;
+    // Behind the camera: keep the DIRECTION (both axes) so the marker points where the key actually sits.
+    const angle = Math.atan2(py, px);
     return {
-      x: stage.width * (0.5 + dir * CLIP_PUSH),
-      y: stage.height * 0.5,
+      x: stage.width * (0.5 + Math.cos(angle) * CLIP_PUSH),
+      y: stage.height * (0.5 - Math.sin(angle) * CLIP_PUSH),
       clipped: true,
       depth,
     };

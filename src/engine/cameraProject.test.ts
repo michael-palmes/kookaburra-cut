@@ -38,6 +38,14 @@ describe("projectToStage", () => {
     expect(projectToStage([-2, 0, 9], base, STAGE).x).toBeLessThan(0);
   });
 
+  it("keeps the vertical direction of a behind-camera point too", () => {
+    const above = projectToStage([0, 2, 9], base, STAGE);
+    expect(above.clipped).toBe(true);
+    expect(above.y).toBeLessThan(0);
+    expect(above.x).toBeCloseTo(STAGE.width / 2, 6);
+    expect(projectToStage([0, -2, 9], base, STAGE).y).toBeGreaterThan(STAGE.height);
+  });
+
   it("roll rotates the projection about the centre", () => {
     const up = projectToStage([0, 1, 0], base, STAGE);
     const rolled = projectToStage([0, 1, 0], { ...base, rollDeg: 90 }, STAGE);
