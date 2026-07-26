@@ -83,6 +83,14 @@ export { Ribbon, type RibbonProps } from "./shapes/Ribbon";
 export { WireGrid, type WireGridProps } from "./shapes/WireGrid";
 export { useSceneStaged } from "./stage/context";
 // Theme-driven stage: lights the scene from theme.lighting tokens; staged primitives' bundled lit sets stand down automatically (useSceneStaged).
+export {
+  DEPTH_BANDS,
+  type DepthBand,
+  type DepthBandName,
+  DepthStage,
+  useDepthBand,
+  useRigTrack,
+} from "./stage/DepthStage";
 export { SceneStage } from "./stage/SceneStage";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
 // Text primitives

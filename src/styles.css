@@ -3817,13 +3817,23 @@ body {
 
 .camera-pill {
   position: relative;
-  width: 300px;
+  /* Absolute layers cannot size the pill, so each state names its width: idle 392, then Orbit's three tools, then Free's six plus the always-on fov stepper. */
+  width: 392px;
   height: 38px;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   box-shadow: var(--elev-popover);
   overflow: hidden;
+  transition: width var(--dur-base) var(--ease-standard);
+}
+
+.camera-pill.active {
+  width: 430px;
+}
+
+.camera-pill.active.free {
+  width: 524px;
 }
 
 /* Two stacked layers cross-fade on `open`. */
@@ -3862,7 +3872,7 @@ body {
 
 .camera-pill-active {
   justify-content: flex-start;
-  padding: 0 5px;
+  padding: 0 8px 0 5px;
   gap: 8px;
   opacity: 0;
   pointer-events: none;
@@ -3910,6 +3920,13 @@ body {
   background: var(--border-subtle);
 }
 
+/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). The doubled selector outranks `.inspector-subtabs`, whose inspector-context margin and flex-start alignment otherwise ride the switch high in the pill. */
+.camera-pill-active .camera-pill-modes {
+  flex: none;
+  margin: 0;
+  align-self: center;
+}
+
 .camera-pill-blurb {
   flex: 1;
   min-width: 0;
@@ -3917,14 +3934,15 @@ body {
   font-size: 11.5px;
   color: var(--text-secondary);
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
+/* Content-sized: the pill's per-mode width owns the layout, so the stepper never shrinks into the clip. */
 .camera-pill-zoom {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1;
-  min-width: 0;
+  flex: none;
 }
 
 .camera-pill-step {
@@ -3957,6 +3975,11 @@ body {
   text-align: center;
 }
 
+/* Reset and close group at the pill's right edge; the auto margin soaks the slack. */
+.camera-pill-reset {
+  margin-left: auto;
+}
+
 .camera-pill-close {
   display: inline-flex;
   align-items: center;
@@ -3964,7 +3987,6 @@ body {
   width: 26px;
   height: 26px;
   flex: none;
-  margin-left: auto;
   font: inherit;
   font-size: var(--text-md);
   line-height: 1;
@@ -4014,6 +4036,88 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+/* The first chip row keeps clear of the close button's corner. */
+.camera-easing > .camera-easing-row:first-of-type {
+  padding-right: 30px;
+}
+
+/* Sits in the first chip row's slack; the wider families row sets the popover width. */
+.camera-easing-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font: inherit;
+  font-size: var(--text-md);
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.camera-easing-close:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+/* The rig's segment extras: smoothing, then the three channel eases behind a disclosure. */
+.camera-easing-disclosure {
+  align-self: flex-start;
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.camera-easing-disclosure:hover {
+  color: var(--text-primary);
+}
+
+.camera-easing-channel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.camera-easing-channel-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* An inline explanatory line inside a drill-in; the warn variant carries the bounds advisory. */
+.inspector-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 10px;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.inspector-note-warn {
+  color: var(--warning);
+}
+
+.camera-aim-object {
+  padding: 0 10px;
+}
+
+.camera-aim-object select {
+  width: 100%;
 }
 
 /* The armed move-tool drag surface: DOM above the canvas — never in exported pixels. */
@@ -4143,8 +4247,98 @@ body {
   cursor: ns-resize;
 }
 
+/* Free-mode tools: Move grabs like Pan, Forward dollies like Zoom, Look turns, Tilt banks sideways. */
+.tool-move {
+  cursor: grab;
+}
+
+.tool-move:active {
+  cursor: grabbing;
+}
+
+.tool-forward {
+  cursor: ns-resize;
+}
+
+.tool-look {
+  cursor: all-scroll;
+}
+
+.tool-tilt {
+  cursor: ew-resize;
+}
+
 .tool-spread {
   cursor: row-resize;
+}
+
+/* ── The ghost path: where a free-flight rig travels, drawn over the stage.
+   Click-through except on the key dots, so an armed drag tool still owns the surface. ── */
+.camera-path-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.camera-path-svg {
+  position: absolute;
+  inset: 0;
+}
+
+.camera-path-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0.7;
+}
+
+/* Dashed means every segment is a straight dolly; solid means at least one smooths. */
+.camera-path-line.straight {
+  stroke-dasharray: 5 4;
+}
+
+.camera-path-head {
+  fill: var(--accent);
+  opacity: 0.9;
+}
+
+.camera-path-dot {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
+  background: var(--surface-elevated);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.camera-path-dot:active {
+  cursor: grabbing;
+}
+
+.camera-path-dot.selected {
+  background: var(--accent);
+}
+
+/* Amber: the bounds advisory flagged this key. Advisory only, never a block. */
+.camera-path-dot.warn {
+  border-color: var(--warning);
+}
+
+.camera-path-dot.selected.warn {
+  background: var(--warning);
+}
+
+/* A key behind the camera or off-stage clamps to the edge as a square marker, never a wild coordinate. */
+.camera-path-dot.clipped {
+  border-radius: 2px;
+  opacity: 0.6;
 }
 
 /* ── Screenshot-stack builder: a Scene-tab drill-in (the Change-device pattern) ── */
@@ -5627,6 +5821,12 @@ img.inspector-scene-thumb {
   color: var(--text-primary);
   background: var(--surface-raised);
 }
+/* Pill scale: the camera pill runs the same control at a smaller size. */
+.camera-pill-modes .inspector-subtab {
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+}
 
 /* Reusable: a bordered container whose segmented toggle (.inspector-subtabs) straddles its top edge, centred. */
 .toggle-fieldset {
@@ -6295,4 +6495,54 @@ img.inspector-scene-thumb {
 .colour-popover-preview-details {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* ── Camera presets: a list of canned moves under the drill-in's rows ── */
+.camera-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px var(--space-2);
+}
+
+.camera-preset {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  text-align: left;
+  font: inherit;
+  background: var(--surface-recessed);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.camera-preset:hover {
+  border-color: var(--border-default);
+}
+
+.camera-preset.confirming {
+  border-color: var(--warning);
+}
+
+.camera-preset-label {
+  font-size: var(--text-xs);
+  font-weight: 590;
+  color: var(--text-primary);
+}
+
+.camera-preset-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+/* The selected key's safe-area rectangle, projected through that key's own pose. */
+.camera-path-safe {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+  opacity: 0.45;
 }

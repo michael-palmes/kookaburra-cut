@@ -7,7 +7,13 @@ import {
 } from "./cameraTrack";
 import { ease, isEaseName } from "./ease";
 import { lerp, lerp3 } from "./keyframes";
-import type { SceneDoc, SceneDocCameraKey, SceneDocCameraPose } from "./sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocCameraKey,
+  SceneDocCameraPose,
+  SceneDocRigPose,
+} from "./sceneDocSchema";
+import { normalizeSceneRig, type SceneRigTrack, sampleSceneRig } from "./sceneRig";
 import type { ActiveScene, Resolved } from "./sceneTimeline";
 
 /** A normalized segment: key ids resolved to the SHARED key objects, times validated. */
@@ -101,7 +107,12 @@ export function normalizeSceneCamera(
   return { keys, segments: ordered };
 }
 
-function mixPose(a: SceneDocCameraPose, b: SceneDocCameraPose, t: number): SceneDocCameraPose {
+/** Mix two orbit poses; the one copy, shared with the Present loop's return leg (two copies is how Present and the editor drift apart). Angles interpolate as plain numbers, no shortest-arc wrapping, so authored values are honoured verbatim. */
+export function mixPose(
+  a: SceneDocCameraPose,
+  b: SceneDocCameraPose,
+  t: number,
+): SceneDocCameraPose {
   return {
     target: lerp3(a.target, b.target, t),
     azimuthDeg: lerp(a.azimuthDeg, b.azimuthDeg, t),
@@ -126,21 +137,119 @@ export function sampleSceneCamera(track: SceneCameraTrack, localMs: number): Sce
   return { ...held.pose, target: [...held.pose.target] };
 }
 
-/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes no camera track (its keys stay on disk untouched; the toggle just stands the camera down). */
+/** One scene's camera, both blocks resolved. `mode` is "rig" only when the doc SAYS rig and the rig actually has keys, so flipping the switch before authoring anything falls through to orbit and the camera never jumps. */
+export interface SceneCameraTracks {
+  mode: "orbit" | "rig";
+  orbit: SceneCameraTrack | null;
+  rig: SceneRigTrack | null;
+}
+
+/** Assemble a scene's camera tracks from its two normalized blocks. The ONE place `mode` is decided, so the editor's live draft and the loaded project can't disagree about which block drives. */
+export function sceneCameraTracks(
+  orbit: SceneCameraTrack | null,
+  rig: SceneRigTrack | null,
+): SceneCameraTracks | null {
+  if (!orbit && !rig) return null;
+  return { mode: rig ? "rig" : "orbit", orbit, rig };
+}
+
+/** Wrap an orbit track alone (the orbit-only draft shape). */
+export function orbitCameraTracks(orbit: SceneCameraTrack | null): SceneCameraTracks | null {
+  return sceneCameraTracks(orbit, null);
+}
+
+/** The pose a scene's camera holds after its last key: what the NEXT scene continues from. Null when the scene drives nothing. */
+export function finalScenePose(
+  tracks: SceneCameraTracks | null | undefined,
+): SceneDocRigPose | null {
+  if (!tracks) return null;
+  if (tracks.mode === "rig" && tracks.rig) {
+    const keys = tracks.rig.keys;
+    const sample = sampleSceneRig(tracks.rig, keys[keys.length - 1].tMs);
+    const pose: SceneDocRigPose = {
+      position: sample.position,
+      aim: { mode: "point", at: sample.lookAt },
+    };
+    if (sample.fov !== undefined) pose.fov = sample.fov;
+    if (sample.rollDeg) pose.rollDeg = sample.rollDeg;
+    return pose;
+  }
+  if (!tracks.orbit) return null;
+  const keys = tracks.orbit.keys;
+  const view = orbitToView(sampleSceneCamera(tracks.orbit, keys[keys.length - 1].tMs));
+  return { position: view.position, aim: { mode: "point", at: view.lookAt } };
+}
+
+/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes nothing (its keys stay on disk untouched; the toggle just stands the camera down). The rig is only normalized under `cameraMode: "rig"`, so an orbit-mode scene carrying a stale rig block costs nothing and warns about nothing.
+ *
+ * A rig whose earliest key sets `continueFromPrevious` has that key's pose REPLACED at load with the previous scene's final applied pose. It is a load-time substitution and nothing else: `resolveFrameCameras`, the compositor and the export loop are all untouched. The walk runs forward, so a chain of continuing scenes resolves correctly and cannot cycle. */
 export function buildSceneCameraTracks(
   sceneDocs: readonly (SceneDoc | undefined)[],
-): (SceneCameraTrack | null)[] {
-  return sceneDocs.map((doc, i) =>
-    doc?.animatedTrack === "layeredScreenshot"
-      ? null
-      : normalizeSceneCamera(doc?.camera, `scene ${i}`),
-  );
+): (SceneCameraTracks | null)[] {
+  const tracks: (SceneCameraTracks | null)[] = [];
+  for (let i = 0; i < sceneDocs.length; i++) {
+    const doc = sceneDocs[i];
+    if (!doc || doc.animatedTrack === "layeredScreenshot") {
+      tracks.push(null);
+      continue;
+    }
+    const source = `scene ${i}`;
+    const orbit = normalizeSceneCamera(doc.camera, source);
+    let rigRaw = doc.cameraMode === "rig" ? doc.cameraRig : undefined;
+    if (rigRaw && continuesFromPrevious(rigRaw)) {
+      const previous = i > 0 ? finalScenePose(tracks[i - 1]) : null;
+      if (!previous) {
+        console.warn(
+          `[sceneCamera] ${source}: continueFromPrevious has no previous camera to continue — ignored`,
+        );
+      } else {
+        rigRaw = withEarliestKeyPose(rigRaw, previous);
+      }
+    }
+    tracks.push(sceneCameraTracks(orbit, normalizeSceneRig(rigRaw, source, doc)));
+  }
+  return tracks;
+}
+
+/** The earliest-by-time key, which is the only one the flag is legal on. */
+function earliestKeyIndex(raw: NonNullable<SceneDoc["cameraRig"]>): number {
+  let best = -1;
+  for (let i = 0; i < raw.keys.length; i++) {
+    const key = raw.keys[i];
+    if (!key || !Number.isFinite(key.tMs)) continue;
+    if (best < 0 || key.tMs < raw.keys[best].tMs) best = i;
+  }
+  return best;
+}
+
+function continuesFromPrevious(raw: NonNullable<SceneDoc["cameraRig"]>): boolean {
+  const i = earliestKeyIndex(raw);
+  return i >= 0 && raw.keys[i].continueFromPrevious === true;
+}
+
+/** Substitute the earliest key's pose BEFORE normalising, so the spline's shaping neighbours are computed from the pose that will actually render. */
+function withEarliestKeyPose(
+  raw: NonNullable<SceneDoc["cameraRig"]>,
+  pose: SceneDocRigPose,
+): NonNullable<SceneDoc["cameraRig"]> {
+  const i = earliestKeyIndex(raw);
+  if (i < 0) return raw;
+  return {
+    ...raw,
+    keys: raw.keys.map((key, index) => (index === i ? { ...key, pose } : key)),
+  };
 }
 
 export function hasSceneCameraTracks(
-  tracks: readonly (SceneCameraTrack | null)[] | null | undefined,
+  tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
 ): boolean {
   return !!tracks?.some(Boolean);
+}
+
+/** The last authored key time on whichever block drives this scene (Present anchors its first scene past it). */
+export function sceneCameraEndMs(tracks: SceneCameraTracks | null | undefined): number {
+  const keys = tracks?.mode === "rig" ? tracks.rig?.keys : tracks?.orbit?.keys;
+  return keys?.[keys.length - 1]?.tMs ?? 0;
 }
 
 /** The camera plan for one frame when scene tracks are in play (null → legacy path). */
@@ -153,9 +262,9 @@ export interface FrameCameraPlan {
   overlay?: CameraPose;
 }
 
-/** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene; `fov` always comes from the project-level track. */
+/** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base; `fov` comes from the project-level track unless a rig key authored one. */
 export function resolveFrameCameras(
-  tracks: readonly (SceneCameraTrack | null)[] | null | undefined,
+  tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
   projectTrack: CameraKeyframe[] | undefined,
   resolved: Resolved,
   globalMs: number,
@@ -165,9 +274,19 @@ export function resolveFrameCameras(
 
   const fallback = sampleCameraTrack(projectTrack ?? [], globalMs);
   const poseFor = (active: ActiveScene): CameraPose => {
-    const track = tracks[active.index];
-    if (!track) return fallback;
-    const view = orbitToView(sampleSceneCamera(track, active.localMs));
+    const scene = tracks[active.index];
+    if (!scene) return fallback;
+    if (scene.mode === "rig" && scene.rig) {
+      const rig = sampleSceneRig(scene.rig, active.localMs);
+      return {
+        position: rig.position,
+        lookAt: rig.lookAt,
+        fov: rig.fov ?? fallback.fov,
+        rollDeg: rig.rollDeg,
+      };
+    }
+    if (!scene.orbit) return fallback;
+    const view = orbitToView(sampleSceneCamera(scene.orbit, active.localMs));
     return { position: view.position, lookAt: view.lookAt, fov: fallback.fov };
   };
 

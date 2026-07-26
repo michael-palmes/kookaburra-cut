@@ -1,6 +1,6 @@
 ---
 description: Scaffold a new Kookaburra Cut scene (TSX + sidecar doc) and register it in its project.json
-argument-hint: <project> <scene-name> [device|deviceonly|title|titleicon|appversion|layeredscreenshot|video|videowindow|overlaystart|overlayend|overlaypanel|blank]
+argument-hint: <project> <scene-name> [device|deviceonly|title|titleicon|appversion|layeredscreenshot|video|videowindow|overlaystart|overlayend|overlaypanel|rig|blank]
 ---
 
 Create a new scene for the Kookaburra Cut project `$1` named `$2`, of kind `$3` (default `device` if the
@@ -9,7 +9,8 @@ an app icon + version lockup, `layeredscreenshot` for a 3D stack of app screens,
 for a full-frame background video, `videowindow` for a floating screen recording on a
 backing stage, `titleicon` for a title with an icon above it, `overlaystart`/`overlayend`
 for a panel beside a scene cutout window (window on the start or end side),
-`overlaypanel` for a full panel with a chip, else `title`; `blank` only when asked).
+`overlaypanel` for a full panel with a chip, `rig` for a free-camera fly-through, else
+`title`; `blank` only when asked).
 
 The app's native scaffolder (`scaffold_scene` in `src-tauri/src/scene_doc.rs`) and this
 command emit IDENTICAL scenes from the SAME templates — never invent a different shape.
@@ -51,6 +52,13 @@ Steps:
    - video: no text keys and a `background` block `{ "type": "video", "src":
      "assets/<file>" }` (the media the user gave, else the bundled
      `assets/sample-laptop-recording.mp4`).
+   - rig: uses `title.tsx.tmpl` (in-app only; the native scaffolder has no rig kind, the
+     inspector's camera presets cover it there) and seeds `cameraMode: "rig"` plus a
+     `cameraRig` block from the fly-through preset shape relative to the base camera at
+     `[0, 0, 5]`: four tangent-aim keys spread across the duration (positions
+     `[-1.2,0.5,6.6]`, `[-0.5,0.2,4.6]`, `[0.4,0,2.8]`, `[1.0,0.1,1.4]`, each key's `at`
+     baked to the NEXT position), segments `linear`, default smoothing (no `smooth`
+     field). See `docs/camera.md`.
    - videowindow: a `videoWindow` block `{ "media": { "src": "assets/<file>", "aspect":
      <width/height when known> }, "stage": { "type": "color", "color": <the theme's
      background hex> }, "radius": "macos" }` (media defaults to the bundled laptop

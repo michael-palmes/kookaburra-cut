@@ -5,12 +5,14 @@ import { FPS } from "../engine/format";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
+import type { RigDoc } from "../engine/sceneCameraEdit";
 import {
   clampDocTracksToDuration,
   resyncFollowMediaDuration,
   writeSceneDoc,
 } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { rebakeRigBindings } from "../engine/sceneRigConvert";
 import { resolveOverlapMs } from "../engine/sceneTimeline";
 
 /** The one scene-document write funnel: `patchDoc` writes a patched copy of the doc, hands the exact written doc to the host for an in-memory patch (no reload, the no-flicker rule), and records one history entry (`history: false` for the text-motion panel's live writes, since its Done records the session); a themeId change flags `reload` because resolution bakes at load; `commitDuration` writes project.json, flips the sidecar to manual mode, and records one compound history entry, then the nonce-only timing refresh. */
@@ -37,6 +39,11 @@ export function useSceneDocPatch(
       const before = structuredClone(doc);
       const next = structuredClone(doc);
       patch(next);
+      // Object-bound camera aims refresh in the SAME write, so moving a device and the keys
+      // following it are one undo. The engine only ever READS bindings; this is the editor's half.
+      if (next.cameraRig) {
+        next.cameraRig = rebakeRigBindings(next.cameraRig as RigDoc, next);
+      }
       if (!slug) return;
       const changes: HistoryChange[] = [];
       await writeSceneDoc(slug, sceneFile, next);

@@ -1,15 +1,22 @@
 import { create } from "zustand";
-import type { SceneCameraTrack } from "./sceneCamera";
+import type { SceneCameraTracks } from "./sceneCamera";
 
-/** Camera-editing UI state: mini-timeline open/selection/tool state plus the live drag draft the preview renders while a pointer is down; UI-only, the export path never reads this store (exportProject samples only ExportOptions.sceneDocs). */
+/** Camera-editing UI state: mini-timeline open/selection/tool state plus the live drag draft the preview renders while a pointer is down; UI-only, the export path never reads this store (exportProject samples only ExportOptions.sceneDocs). The camera MODE is deliberately absent: it lives in the scene doc, so an undo restores it with the keys it belongs to. */
 
-export type CameraTool = "pan" | "rotate" | "zoom";
+/** Orbit-mode tools leash the camera to a target; free-mode tools move a free pose. Which set is offered follows the DOC's `cameraMode`, never store state, so the pill switch is the one writer. */
+export type CameraTool = "pan" | "rotate" | "zoom" | "move" | "forward" | "look" | "tilt";
+
+export const ORBIT_TOOLS = ["rotate", "pan", "zoom"] as const;
+export const FREE_TOOLS = ["move", "forward", "look", "tilt"] as const;
+
+export const isFreeTool = (tool: CameraTool | null): boolean =>
+  tool === "move" || tool === "forward" || tool === "look" || tool === "tilt";
 
 export interface CameraDraft {
   projectId: string;
   sceneIndex: number;
-  /** Normalized replacement for the scene's track (null = track removed). */
-  track: SceneCameraTrack | null;
+  /** Normalized replacement for the scene's camera (null = track removed). */
+  track: SceneCameraTracks | null;
   /** True once written to the sidecar; cleared by App when the reload lands. */
   committed: boolean;
 }

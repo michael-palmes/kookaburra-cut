@@ -382,4 +382,53 @@ describe("parseSceneDoc", () => {
     const bad = parseSceneDoc({ version: 1, background: { type: "video" } }, "test");
     expect(bad?.background).toBeUndefined();
   });
+
+  it("round-trips a camera rig and leaves legacy docs without one", () => {
+    const rig = {
+      keys: [
+        {
+          id: "k1",
+          tMs: 0,
+          pose: { position: [0, 1, 6], aim: { mode: "tangent", at: [0, 0, 0] }, rollDeg: 8 },
+        },
+        {
+          id: "k2",
+          tMs: 1200,
+          pose: {
+            position: [2, 1, 2],
+            aim: { mode: "object", id: "phone", at: [0, 0, 0] },
+            fov: 32,
+          },
+        },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "inOutCubic", easeLens: "outExpo" }],
+    };
+    const doc = parseSceneDoc({ version: 1, cameraMode: "rig", cameraRig: rig }, "test");
+    expect(doc?.cameraMode).toBe("rig");
+    expect(doc?.cameraRig).toEqual(rig);
+    // Absent fields parse unchanged, which is why SCENE_DOC_VERSION stays 1.
+    const legacy = parseSceneDoc({ version: 1, camera: { keys: [], segments: [] } }, "test");
+    expect(legacy?.cameraMode).toBeUndefined();
+    expect(legacy?.cameraRig).toBeUndefined();
+  });
+
+  it("drops an unknown cameraMode and a structurally wrong rig", () => {
+    const doc = parseSceneDoc(
+      { version: 1, cameraMode: "freehand", cameraRig: { keys: "nope" } },
+      "test",
+    );
+    expect(doc?.cameraMode).toBeUndefined();
+    expect(doc?.cameraRig).toBeUndefined();
+  });
+
+  it("drops an invalid rig presentLoop but keeps the keys", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        cameraRig: { keys: [], segments: [], presentLoop: { mode: "spin" } },
+      },
+      "test",
+    );
+    expect(doc?.cameraRig).toEqual({ keys: [], segments: [] });
+  });
 });

@@ -239,6 +239,48 @@ export function setSegmentEase<P, T extends KeyedTrack<P>>(
   };
 }
 
+/** The rig's optional per-channel ease overrides. Kept off `setSegmentEase`'s shared signature deliberately: the layered-screenshot lane uses that one too and has no channels. */
+export type SegmentEaseChannel = "easePosition" | "easeRotation" | "easeLens";
+
+/** Set or clear one channel's ease override. `undefined` DELETES the field rather than writing a copy of the segment's own ease, so "same as segment" leaves no churn in the sidecar. */
+export function setSegmentChannelEase<P, T extends KeyedTrack<P>>(
+  track: T,
+  docIndex: number,
+  channel: SegmentEaseChannel,
+  ease: string | undefined,
+): T | null {
+  if (!track.segments[docIndex]) return null;
+  return {
+    ...track,
+    segments: track.segments.map((s, i) => {
+      if (i !== docIndex) return s;
+      const next = { ...s } as KeyedTrackSegment & Partial<Record<SegmentEaseChannel, string>>;
+      if (ease === undefined) delete next[channel];
+      else next[channel] = ease;
+      return next;
+    }),
+  };
+}
+
+/** Toggle a rig segment's spline smoothing. ABSENT means smooth, so turning it back on deletes the field rather than writing `true`. */
+export function setSegmentSmooth<P, T extends KeyedTrack<P>>(
+  track: T,
+  docIndex: number,
+  smooth: boolean,
+): T | null {
+  if (!track.segments[docIndex]) return null;
+  return {
+    ...track,
+    segments: track.segments.map((s, i) => {
+      if (i !== docIndex) return s;
+      const next = { ...s } as KeyedTrackSegment & { smooth?: boolean };
+      if (smooth) delete next.smooth;
+      else next.smooth = false;
+      return next;
+    }),
+  };
+}
+
 export function setKeyPose<P, T extends KeyedTrack<P>>(track: T, keyId: string, pose: P): T | null {
   if (!track.keys.some((k) => k.id === keyId)) return null;
   return {
