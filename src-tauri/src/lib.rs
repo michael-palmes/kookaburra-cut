@@ -940,6 +940,10 @@ pub fn run() {
             if let Some(main) = app.get_webview_window("main") {
                 deflash_webview(&main);
             }
+            // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
+            if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
+                pack::read::sweep_stale(&root);
+            }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
