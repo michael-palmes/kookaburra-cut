@@ -382,25 +382,38 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
     })
 }
 
-/// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
+/// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules, edit documents and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
 fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
     let mut hits = Vec::new();
-    let mut check = |path: &std::path::Path| {
+    let mut check = |path: &std::path::Path, display: String| {
         if let Ok(text) = std::fs::read_to_string(path) {
             if text.contains(rel) {
-                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    hits.push(name.to_owned());
-                }
+                hits.push(display);
             }
         }
     };
-    check(&project.join(MANIFEST_FILENAME));
+    check(&project.join(MANIFEST_FILENAME), MANIFEST_FILENAME.to_owned());
     if let Ok(entries) = std::fs::read_dir(project.join("scenes")) {
         for entry in entries.flatten() {
             let path = entry.path();
             let ext = path.extension().and_then(|s| s.to_str());
             if path.is_file() && matches!(ext, Some("json") | Some("tsx")) {
-                check(&path);
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                    let display = name.to_owned();
+                    check(&path, display);
+                }
+            }
+        }
+    }
+    // Edit documents point at their raw source videos; trashing one would break the edit.
+    if let Ok(entries) = std::fs::read_dir(project.join("edits")) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
+                if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                    let display = format!("edits/{name}");
+                    check(&path, display);
+                }
             }
         }
     }
@@ -417,7 +430,7 @@ fn validate_asset_rel(rel: &str) -> Result<(), String> {
     if ok { Ok(()) } else { Err(format!("not a project asset path: {rel}")) }
 }
 
-/// Move an asset to the TRASH, refused while any scene/manifest still references it (re-point first; a broken reference would fail the next load loudly).
+/// Move an asset to the TRASH, refused while any scene, edit or the manifest still references it (re-point first; a broken reference would fail the next load loudly).
 #[tauri::command]
 pub fn delete_media(
     app: AppHandle,
