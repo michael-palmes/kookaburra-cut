@@ -25,6 +25,7 @@ import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Dev
 import { ColourPicker } from "./colour/ColourPicker";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
+import { SceneInsertTimeline } from "./SceneInsertTimeline";
 import { TextFieldRow } from "./SceneTextFields";
 import { backgroundOptions } from "./stageOptions";
 import { defaultDraft, draftToSpec, TEXT_PRESET_CATALOG } from "./textAnimationOptions";
@@ -213,122 +214,44 @@ function DevicePicker({
   );
 }
 
-function PlacementStartIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3 3v10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-      <path
-        d="M6 4.5 9.5 8 6 11.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect x="10.5" y="5" width="3.5" height="6" rx="0.75" fill="currentColor" opacity="0.5" />
-    </svg>
-  );
-}
-
-function PlacementEndIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M13 3v10"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <path
-        d="M10 4.5 6.5 8 10 11.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <rect x="2" y="5" width="3.5" height="6" rx="0.75" fill="currentColor" opacity="0.5" />
-    </svg>
-  );
-}
-
-/** Scene cards with centre-frame thumbnails; `placement` mode adds At-start/At-end pseudo-cards and encodes value as "start" | "end" | "after:<index>", `select` mode uses the scene index as a string. */
+/** Scene cards with centre-frame thumbnails, selecting a scene by index (placement moved to SceneInsertTimeline). */
 export function ScenePicker({
   scenes,
   thumbs,
-  mode,
   value,
   onChange,
 }: {
   scenes: WizardSceneInfo[];
   thumbs: Record<string, string>;
-  mode: "select" | "placement";
   value: string;
   onChange: (value: string) => void;
 }) {
-  const card = (
-    key: string,
-    title: string,
-    subtitle: string | null,
-    thumb: string | null,
-    selected: boolean,
-    onPick: () => void,
-    icon?: React.ReactNode,
-  ) => (
-    <button
-      type="button"
-      key={key}
-      className={`scene-card${selected ? " selected" : ""}`}
-      aria-pressed={selected}
-      onClick={onPick}
-    >
-      <span className="scene-card-thumb">
-        {thumb ? (
-          <img src={fsUrl(thumb)} alt="" draggable={false} />
-        ) : (
-          (icon ?? <span aria-hidden>·</span>)
-        )}
-      </span>
-      <span className="scene-card-title" title={title}>
-        {title}
-      </span>
-      {subtitle && <span className="muted">{subtitle}</span>}
-    </button>
-  );
-
   return (
     <div className="scene-picker">
-      {mode === "placement" &&
-        card(
-          "start",
-          "At the start",
-          null,
-          null,
-          value === "start",
-          () => onChange("start"),
-          <PlacementStartIcon />,
-        )}
-      {scenes.map((s) =>
-        card(
-          s.stem,
-          s.name ?? s.id,
-          secondsLabel(s.durationMs),
-          thumbs[s.stem] ?? null,
-          mode === "placement" ? value === `after:${s.index}` : value === String(s.index),
-          () => onChange(mode === "placement" ? `after:${s.index}` : String(s.index)),
-        ),
-      )}
-      {mode === "placement" &&
-        card(
-          "end",
-          "At the end",
-          null,
-          null,
-          value === "end",
-          () => onChange("end"),
-          <PlacementEndIcon />,
-        )}
+      {scenes.map((s) => {
+        const selected = value === String(s.index);
+        return (
+          <button
+            type="button"
+            key={s.stem}
+            className={`scene-card${selected ? " selected" : ""}`}
+            aria-pressed={selected}
+            onClick={() => onChange(String(s.index))}
+          >
+            <span className="scene-card-thumb">
+              {thumbs[s.stem] ? (
+                <img src={fsUrl(thumbs[s.stem])} alt="" draggable={false} />
+              ) : (
+                <span aria-hidden>·</span>
+              )}
+            </span>
+            <span className="scene-card-title" title={s.name ?? s.id}>
+              {s.name ?? s.id}
+            </span>
+            <span className="muted">{secondsLabel(s.durationMs)}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -536,7 +459,7 @@ export function NewSceneWizard({
       <div
         className={`modal wizard-wide${step === "media" ? " wizard-media-wide" : ""}${
           step === "type" ? " wizard-kind-wide" : ""
-        }`}
+        }${step === "details" ? " wizard-place-wide" : ""}`}
       >
         <h2 id={titleId}>New scene</h2>
 
@@ -781,10 +704,9 @@ export function NewSceneWizard({
               </>
             )}
             <Field label="Where?">
-              <ScenePicker
+              <SceneInsertTimeline
                 scenes={scenes}
                 thumbs={thumbs}
-                mode="placement"
                 value={placement}
                 onChange={setPlacement}
               />
@@ -1034,7 +956,6 @@ export function EditSceneWizard({
               <ScenePicker
                 scenes={scenes}
                 thumbs={thumbs}
-                mode="select"
                 value={String(index)}
                 onChange={(v) => setIndex(Number(v))}
               />

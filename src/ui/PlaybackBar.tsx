@@ -11,7 +11,8 @@ import { ensureSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
-import { ScenePicker, type WizardSceneInfo } from "./SceneWizards";
+import { SceneInsertTimeline } from "./SceneInsertTimeline";
+import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
 import { msFromTrackX, playheadFraction, sceneCellSpans } from "./scrubMath";
 import { useEscapeClose } from "./useEscapeClose";
@@ -344,7 +345,7 @@ export function PlaybackBar({
   );
 }
 
-/** Placement dialog for Duplicate: the New-scene "Where?" picker seeded to "after the source"; thumbs are best-effort (`ensureSceneThumbs` returns what it has, cards degrade to placeholders). Shared with the Scenes drill-in's context menu. */
+/** Placement dialog for Duplicate: the New-scene "Where?" insert strip seeded to "after the source"; thumbs are best-effort (`ensureSceneThumbs` returns what it has, cards degrade to placeholders). Shared with the Scenes drill-in's context menu. */
 export function DuplicateSceneDialog({
   project,
   index,
@@ -395,13 +396,12 @@ export function DuplicateSceneDialog({
   };
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Duplicate scene">
-      <div className="modal wizard-wide">
+      <div className="modal wizard-wide wizard-place-wide">
         <h2>Duplicate “{sourceName}”</h2>
         <p className="modal-hint">Where should the copy go?</p>
-        <ScenePicker
+        <SceneInsertTimeline
           scenes={scenes}
           thumbs={thumbs}
-          mode="placement"
           value={placement}
           onChange={setPlacement}
         />
