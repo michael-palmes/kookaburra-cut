@@ -7,7 +7,8 @@ import { ExportView } from "./ExportView";
 import { ImportFlow } from "./import/ImportFlow";
 import "./packs.css";
 
-type PacksTarget = { mode: "Export" } | { mode: "Import"; path?: string | null; queued: number };
+// `mode` is serde's lowercase variant tag from `packs_win::PacksTarget`, pinned by a Rust test.
+type PacksTarget = { mode: "export" } | { mode: "import"; path?: string | null; queued: number };
 
 /** The packs window shell. Export and import are separate flows sharing one window, chosen by the target the native side stashed before opening us. */
 export function PacksApp() {
@@ -17,8 +18,8 @@ export function PacksApp() {
   useEffect(() => {
     revealApp();
     invoke<PacksTarget | null>("get_packs_target")
-      .then((t) => setTarget(t ?? { mode: "Export" }))
-      .catch(() => setTarget({ mode: "Export" }));
+      .then((t) => setTarget(t ?? { mode: "export" }))
+      .catch(() => setTarget({ mode: "export" }));
   }, []);
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export function PacksApp() {
           {dropError}
         </div>
       )}
-      {target.mode === "Export" ? (
+      {target.mode === "export" ? (
         <ExportView onClose={close} />
       ) : (
         <ImportFlow initialPath={target.path ?? null} queued={target.queued} onClose={close} />

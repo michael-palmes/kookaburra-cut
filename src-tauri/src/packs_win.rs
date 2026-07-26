@@ -172,6 +172,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The exact JSON `src/packs/PacksApp.tsx` switches on. `rename_all` renames the VARIANTS here, so the tag is
+    /// lowercase; comparing against "Export" silently rendered the import flow for every export.
+    #[test]
+    fn target_tag_is_lowercase_on_the_wire() {
+        assert_eq!(
+            serde_json::to_string(&PacksTarget::Export).unwrap(),
+            r#"{"mode":"export"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&PacksTarget::Import {
+                path: None,
+                queued: 0
+            })
+            .unwrap(),
+            r#"{"mode":"import","queued":0}"#
+        );
+    }
+
     #[test]
     fn queue_drains_in_order() {
         let state = PacksState::default();
