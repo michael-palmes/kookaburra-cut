@@ -24,6 +24,7 @@ import {
 } from "./exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
 import { captureOptionPreviews } from "./optionPreviews";
+import { runPackRoundTrip } from "./packRoundTrip";
 import { runPerfProbe } from "./perfProbe";
 import { type LoadedProject, loadProject, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
@@ -41,7 +42,8 @@ export type AutoRunAction =
   | "theme-previews"
   | "option-previews"
   | "perf"
-  | "screenshot";
+  | "screenshot"
+  | "packroundtrip";
 
 export interface AutoRunConfig {
   action: AutoRunAction;
@@ -102,6 +104,16 @@ interface AutoRunReport {
   ok: boolean;
   durationMs: number;
   results: AutoRunResult[];
+  /** packroundtrip only: the two legs' hashes and whether they matched. */
+  roundTrip?: {
+    packPath: string;
+    packBytes: number;
+    itemCount: number;
+    importedProjectId: string;
+    sourceHash?: string;
+    importedHash?: string;
+    equal: boolean;
+  };
   error?: string;
 }
 
@@ -183,10 +195,11 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "theme-previews" &&
     action !== "option-previews" &&
     action !== "perf" &&
-    action !== "screenshot"
+    action !== "screenshot" &&
+    action !== "packroundtrip"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot | packroundtrip)`,
     );
   }
   const at = env.at?.trim();
@@ -473,6 +486,30 @@ export async function runAutoRun(
     return;
   }
 
+  // The round trip packs the first project and imports it back under a new slug, then verifies BOTH legs and demands
+  // the same hash. Building the second leg here means the loop below needs no round-trip knowledge at all.
+  let roundTrip: Awaited<ReturnType<typeof runPackRoundTrip>> | undefined;
+  if (config.action === "packroundtrip") {
+    try {
+      roundTrip = await runPackRoundTrip(config.projects[0]);
+      console.warn(
+        `[autorun] packed ${config.projects[0]} -> ${roundTrip.packPath} (${roundTrip.itemCount} items, ${roundTrip.packBytes} bytes), re-imported as ${roundTrip.importedProjectId}`,
+      );
+      config = { ...config, projects: [config.projects[0], roundTrip.importedProjectId] };
+    } catch (e) {
+      await finish({
+        action: config.action,
+        project: config.projects.join(","),
+        codec: config.codec,
+        ok: false,
+        durationMs: Math.round(performance.now() - startedAt),
+        results: [],
+        error: `pack round trip failed before rendering: ${String(e)}`,
+      });
+      return;
+    }
+  }
+
   try {
     // The first project arrives loaded and committed by App's boot effect; later list entries swap in mid-run through the same load/apply/commit barriers the theme-previews batch uses.
     let current = project;
@@ -547,7 +584,7 @@ export async function runAutoRun(
             `[autorun] gl memory before ${current.id} ${format.name}: geometries ${glInfo.memory.geometries} textures ${glInfo.memory.textures} programs ${glInfo.programs?.length ?? 0}`,
           );
         }
-        if (config.action === "verify") {
+        if (config.action === "verify" || config.action === "packroundtrip") {
           const r = await verifyDeterminism(base, onProgress);
           results.push({
             aspect: format.name,
@@ -583,6 +620,27 @@ export async function runAutoRun(
     error = String(e);
   }
 
+  // The whole point of the round trip: the re-imported copy must render byte-identically to the original.
+  let roundTripSummary: AutoRunReport["roundTrip"];
+  if (config.action === "packroundtrip" && roundTrip) {
+    const source = results.find((r) => r.project === config.projects[0]);
+    const imported = results.find((r) => r.project === roundTrip.importedProjectId);
+    const equal = Boolean(source?.hashA && imported?.hashA && source.hashA === imported.hashA);
+    roundTripSummary = {
+      packPath: roundTrip.packPath,
+      packBytes: roundTrip.packBytes,
+      itemCount: roundTrip.itemCount,
+      importedProjectId: roundTrip.importedProjectId,
+      sourceHash: source?.hashA,
+      importedHash: imported?.hashA,
+      equal,
+    };
+    if (!equal) {
+      ok = false;
+      error ??= `pack round trip: the re-imported copy rendered differently (source ${source?.hashA ?? "?"}, imported ${imported?.hashA ?? "?"}). Check path-independence first: duplicate the project to a new slug and verify both.`;
+    }
+  }
+
   const report: AutoRunReport = {
     action: config.action,
     project: config.projects.join(","),
@@ -590,6 +648,7 @@ export async function runAutoRun(
     ok,
     durationMs: Math.round(performance.now() - startedAt),
     results,
+    ...(roundTripSummary ? { roundTrip: roundTripSummary } : {}),
     ...(error ? { error } : {}),
   };
 
