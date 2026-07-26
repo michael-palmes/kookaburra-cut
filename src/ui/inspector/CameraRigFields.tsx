@@ -1,5 +1,6 @@
 import { checkCameraBounds } from "../../engine/cameraBounds";
 import type { CameraPose } from "../../engine/cameraTrack";
+import { frameContentPose, stagedContentBounds } from "../../engine/rigFraming";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import { setKeyPose } from "../../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocRigAim, SceneDocRigPose } from "../../engine/sceneDocSchema";
@@ -39,6 +40,7 @@ export function CameraRigFields({
   appliedView,
   aspect,
   banded,
+  frame,
   previewPose,
   commitPose,
   commitRig,
@@ -52,6 +54,8 @@ export function CameraRigFields({
   aspect: number;
   /** The scene lays out in depth bands, so it sizes itself and needs no advisory. */
   banded: boolean;
+  /** The visible world rect at the content plane; the fallback the frame-content button fits. */
+  frame: { width: number; height: number };
   previewPose: (mutate: (p: SceneDocRigPose) => void) => void;
   commitPose: (mutate: (p: SceneDocRigPose) => void) => void;
   commitRig: (rig: RigDoc) => void;
@@ -96,6 +100,27 @@ export function CameraRigFields({
           onCommit={(n) => commitPose((p) => (p.position[2] = n))}
         />
       </div>
+
+      <button
+        type="button"
+        className="inspector-reset-btn"
+        title="Move this key back until everything the scene stages fits, keeping the current angle"
+        onClick={() =>
+          commitPose((p) => {
+            const fitted = frameContentPose(
+              stagedContentBounds(doc, frame),
+              p,
+              p.fov ?? appliedView.fov,
+              aspect,
+            );
+            if (!fitted) return;
+            p.position = fitted.position;
+            p.aim = fitted.aim;
+          })
+        }
+      >
+        Frame content
+      </button>
 
       <SegmentedRow options={AIM_OPTIONS} value={pose.aim.mode} onChange={setAimMode} />
 

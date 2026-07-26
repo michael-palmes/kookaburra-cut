@@ -122,6 +122,7 @@ import { describeSpec } from "../textAnimationOptions";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
+import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { RotationDrillIn } from "./RotationDrillIn";
@@ -1027,6 +1028,45 @@ function CameraSectionBody({
     </>
   );
 
+  const presetRow = (
+    <CameraPresetRow
+      durationMs={slot.durationMs}
+      orbitPose={pose}
+      fov={appliedViewAt(coarseLocal).fov}
+      hasKeys={keyCount > 0}
+      icon={<SceneRowIcon id="camera.animate" />}
+      onApply={(result) => {
+        if (result.mode === "rig" && result.rig) {
+          void commitRig(result.rig);
+          void setMode("rig", coarseLocal);
+        } else if (result.camera) {
+          void commit(result.camera);
+          void setMode("orbit", coarseLocal);
+        }
+      }}
+    />
+  );
+
+  /** Only legal on the first key of a scene that has one before it. */
+  const continuityRow =
+    free && sceneIndex > 0 && rig.keys.length > 0 ? (
+      <ToggleRow
+        label="Continue from previous scene"
+        description="Start this scene where the previous one's camera stopped. A continuous PATH, not a continuous image: content still dissolves across a transition."
+        checked={rig.keys[0].continueFromPrevious === true}
+        onChange={(on) => {
+          const keys = rig.keys.map((key, i) => {
+            if (i !== 0) return key;
+            const next = { ...key };
+            if (on) next.continueFromPrevious = true;
+            else delete next.continueFromPrevious;
+            return next;
+          });
+          void commitRig({ ...rig, keys });
+        }}
+      />
+    ) : null;
+
   const rigOptions = (
     <>
       {modeControl}
@@ -1038,6 +1078,7 @@ function CameraSectionBody({
         appliedView={appliedViewAt(rigTargetTMs)}
         aspect={aspect}
         banded={banded}
+        frame={format.frame}
         previewPose={previewRigPose}
         commitPose={commitRigPose}
         commitRig={(next: RigDoc) => void commitRig(next)}
@@ -1053,6 +1094,8 @@ function CameraSectionBody({
         selected={cameraOpen}
         onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
       />
+      {presetRow}
+      {continuityRow}
     </>
   );
 
@@ -1122,6 +1165,7 @@ function CameraSectionBody({
         selected={cameraOpen}
         onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
       />
+      {presetRow}
       {camera.keys.length > 1 && (
         <>
           <ToggleRow

@@ -7,7 +7,12 @@ import {
 } from "./cameraTrack";
 import { ease, isEaseName } from "./ease";
 import { lerp, lerp3 } from "./keyframes";
-import type { SceneDoc, SceneDocCameraKey, SceneDocCameraPose } from "./sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocCameraKey,
+  SceneDocCameraPose,
+  SceneDocRigPose,
+} from "./sceneDocSchema";
 import { normalizeSceneRig, type SceneRigTrack, sampleSceneRig } from "./sceneRig";
 import type { ActiveScene, Resolved } from "./sceneTimeline";
 
@@ -153,17 +158,86 @@ export function orbitCameraTracks(orbit: SceneCameraTrack | null): SceneCameraTr
   return sceneCameraTracks(orbit, null);
 }
 
-/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes nothing (its keys stay on disk untouched; the toggle just stands the camera down). The rig is only normalized under `cameraMode: "rig"`, so an orbit-mode scene carrying a stale rig block costs nothing and warns about nothing. */
+/** The pose a scene's camera holds after its last key: what the NEXT scene continues from. Null when the scene drives nothing. */
+export function finalScenePose(
+  tracks: SceneCameraTracks | null | undefined,
+): SceneDocRigPose | null {
+  if (!tracks) return null;
+  if (tracks.mode === "rig" && tracks.rig) {
+    const keys = tracks.rig.keys;
+    const sample = sampleSceneRig(tracks.rig, keys[keys.length - 1].tMs);
+    const pose: SceneDocRigPose = {
+      position: sample.position,
+      aim: { mode: "point", at: sample.lookAt },
+    };
+    if (sample.fov !== undefined) pose.fov = sample.fov;
+    if (sample.rollDeg) pose.rollDeg = sample.rollDeg;
+    return pose;
+  }
+  if (!tracks.orbit) return null;
+  const keys = tracks.orbit.keys;
+  const view = orbitToView(sampleSceneCamera(tracks.orbit, keys[keys.length - 1].tMs));
+  return { position: view.position, aim: { mode: "point", at: view.lookAt } };
+}
+
+/** Normalize every scene doc's camera once per project load (index-aligned with the slots). A scene whose animated track is the layered screenshot contributes nothing (its keys stay on disk untouched; the toggle just stands the camera down). The rig is only normalized under `cameraMode: "rig"`, so an orbit-mode scene carrying a stale rig block costs nothing and warns about nothing.
+ *
+ * A rig whose earliest key sets `continueFromPrevious` has that key's pose REPLACED at load with the previous scene's final applied pose. It is a load-time substitution and nothing else: `resolveFrameCameras`, the compositor and the export loop are all untouched. The walk runs forward, so a chain of continuing scenes resolves correctly and cannot cycle. */
 export function buildSceneCameraTracks(
   sceneDocs: readonly (SceneDoc | undefined)[],
 ): (SceneCameraTracks | null)[] {
-  return sceneDocs.map((doc, i) => {
-    if (!doc || doc.animatedTrack === "layeredScreenshot") return null;
+  const tracks: (SceneCameraTracks | null)[] = [];
+  for (let i = 0; i < sceneDocs.length; i++) {
+    const doc = sceneDocs[i];
+    if (!doc || doc.animatedTrack === "layeredScreenshot") {
+      tracks.push(null);
+      continue;
+    }
     const source = `scene ${i}`;
     const orbit = normalizeSceneCamera(doc.camera, source);
-    const rig = doc.cameraMode === "rig" ? normalizeSceneRig(doc.cameraRig, source, doc) : null;
-    return sceneCameraTracks(orbit, rig);
-  });
+    let rigRaw = doc.cameraMode === "rig" ? doc.cameraRig : undefined;
+    if (rigRaw && continuesFromPrevious(rigRaw)) {
+      const previous = i > 0 ? finalScenePose(tracks[i - 1]) : null;
+      if (!previous) {
+        console.warn(
+          `[sceneCamera] ${source}: continueFromPrevious has no previous camera to continue — ignored`,
+        );
+      } else {
+        rigRaw = withEarliestKeyPose(rigRaw, previous);
+      }
+    }
+    tracks.push(sceneCameraTracks(orbit, normalizeSceneRig(rigRaw, source, doc)));
+  }
+  return tracks;
+}
+
+/** The earliest-by-time key, which is the only one the flag is legal on. */
+function earliestKeyIndex(raw: NonNullable<SceneDoc["cameraRig"]>): number {
+  let best = -1;
+  for (let i = 0; i < raw.keys.length; i++) {
+    const key = raw.keys[i];
+    if (!key || !Number.isFinite(key.tMs)) continue;
+    if (best < 0 || key.tMs < raw.keys[best].tMs) best = i;
+  }
+  return best;
+}
+
+function continuesFromPrevious(raw: NonNullable<SceneDoc["cameraRig"]>): boolean {
+  const i = earliestKeyIndex(raw);
+  return i >= 0 && raw.keys[i].continueFromPrevious === true;
+}
+
+/** Substitute the earliest key's pose BEFORE normalising, so the spline's shaping neighbours are computed from the pose that will actually render. */
+function withEarliestKeyPose(
+  raw: NonNullable<SceneDoc["cameraRig"]>,
+  pose: SceneDocRigPose,
+): NonNullable<SceneDoc["cameraRig"]> {
+  const i = earliestKeyIndex(raw);
+  if (i < 0) return raw;
+  return {
+    ...raw,
+    keys: raw.keys.map((key, index) => (index === i ? { ...key, pose } : key)),
+  };
 }
 
 export function hasSceneCameraTracks(

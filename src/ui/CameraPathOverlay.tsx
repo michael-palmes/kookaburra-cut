@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { checkCameraBounds } from "../engine/cameraBounds";
 import { useCameraEditStore } from "../engine/cameraEditStore";
-import { clampToStage, projectToStage, worldPerPixel } from "../engine/cameraProject";
+import { clampToStage, projectToStage, viewBasis, worldPerPixel } from "../engine/cameraProject";
 import type { CameraPose } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { useSceneIsBanded } from "../engine/depthStageRegistry";
@@ -14,6 +14,28 @@ import { rigBasis } from "../engine/sceneRigEdit";
 import { useCameraDoc } from "./cameraDoc";
 
 /** The ghost path: an SVG layer over the stage drawing where a free-flight rig travels, with a draggable dot per key. Projection is a pure RECOMPUTE (`engine/cameraProject.ts`) of the pose the seam would apply, never a read of the live camera, so there is no r3f bridge and the export cannot see any of this by construction. Only free mode has a path to draw; orbit keeps its existing affordances. */
+
+/** The four world corners of what a shot frames at its own aim distance, clockwise from top-left. Pure geometry against the applied pose, the same recompute the rest of this overlay runs on. */
+function keyFrameCorners(
+  shot: { position: [number, number, number]; lookAt: [number, number, number] },
+  fovDeg: number,
+  aspect: number,
+): [number, number, number][] {
+  const basis = viewBasis({ position: shot.position, lookAt: shot.lookAt, fov: fovDeg });
+  const dx = shot.lookAt[0] - shot.position[0];
+  const dy = shot.lookAt[1] - shot.position[1];
+  const dz = shot.lookAt[2] - shot.position[2];
+  const distance = Math.max(0.2, Math.sqrt(dx * dx + dy * dy + dz * dz));
+  const halfH = Math.tan((fovDeg * Math.PI) / 360) * distance;
+  const halfW = halfH * aspect;
+  const at = shot.lookAt;
+  const corner = (sx: number, sy: number): [number, number, number] => [
+    at[0] + basis.x[0] * halfW * sx + basis.y[0] * halfH * sy,
+    at[1] + basis.x[1] * halfW * sx + basis.y[1] * halfH * sy,
+    at[2] + basis.x[2] * halfW * sx + basis.y[2] * halfH * sy,
+  ];
+  return [corner(-1, 1), corner(1, 1), corner(1, -1), corner(-1, -1)];
+}
 
 /** How finely the path is sampled, in scene-local ms; small enough that a smoothed segment reads as a curve. */
 const SAMPLE_STEP_MS = 50;
@@ -136,8 +158,22 @@ export function CameraPathOverlay({
       };
     });
     const head = projectToStage(sampleSceneRig(track, localMs).position, view, rect, aspect);
-    return { points: points.join(" "), dots, anySmooth: shape.anySmooth, head };
-  }, [track, shape, verdicts, view, rect, aspect, localMs]);
+    // With a key selected, draw the rectangle THAT key frames, projected through the current view,
+    // so a key composes like a real shot without having to sit on it.
+    const selected = track.keys.find((k) => k.id === selectedKeyId);
+    let safe: string | null = null;
+    if (selected) {
+      const shot = sampleSceneRig(track, selected.tMs);
+      const projected = keyFrameCorners(shot, shot.fov ?? view.fov, aspect).map((corner) =>
+        projectToStage(corner, view, rect, aspect),
+      );
+      // A frame with any corner behind the camera has no honest outline; draw nothing.
+      if (projected.every((p) => !p.clipped)) {
+        safe = projected.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      }
+    }
+    return { points: points.join(" "), dots, anySmooth: shape.anySmooth, head, safe };
+  }, [track, shape, verdicts, view, rect, aspect, localMs, selectedKeyId]);
 
   if (!open || mode !== "rig" || !path || rect.width === 0) {
     return <div ref={hostRef} className="camera-path-overlay" aria-hidden="true" />;
@@ -212,6 +248,7 @@ export function CameraPathOverlay({
             points={path.points}
           />
         )}
+        {path.safe && <polygon className="camera-path-safe" points={path.safe} />}
         {!path.head.clipped && (
           <circle className="camera-path-head" cx={path.head.x} cy={path.head.y} r={4} />
         )}

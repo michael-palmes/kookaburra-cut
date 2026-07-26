@@ -389,3 +389,78 @@ describe("buildSceneCameraTracks with animatedTrack", () => {
     expect(tracks[2]?.orbit?.keys).toHaveLength(1);
   });
 });
+
+describe("cross-scene continuity", () => {
+  const rigScene = (
+    position: [number, number, number],
+    continueFromPrevious?: boolean,
+  ): SceneDoc => ({
+    version: 1,
+    cameraMode: "rig",
+    cameraRig: {
+      keys: [
+        {
+          id: "k1",
+          tMs: 0,
+          pose: { position, aim: { mode: "point", at: [0, 0, 0] } },
+          ...(continueFromPrevious ? { continueFromPrevious: true } : {}),
+        },
+        {
+          id: "k2",
+          tMs: 900,
+          pose: { position: [0, 0, 3], aim: { mode: "point", at: [0, 0, 0] } },
+        },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "linear", smooth: false }],
+    },
+  });
+
+  it("replaces the flagged first key with the previous scene's final pose", () => {
+    const tracks = buildSceneCameraTracks([rigScene([6, 0, 6]), rigScene([-9, -9, -9], true)]);
+    // Scene 0 holds its last key (0,0,3) after 900ms; scene 1 starts exactly there.
+    expect(tracks[1]?.rig?.keys[0].pose.position).toEqual([0, 0, 3]);
+    expect(tracks[0]?.rig?.keys[0].pose.position).toEqual([6, 0, 6]);
+  });
+
+  it("bakes an ORBIT predecessor through its view", () => {
+    const orbitScene: SceneDoc = {
+      version: 1,
+      camera: {
+        keys: [{ id: "o", tMs: 0, pose: pose({ azimuthDeg: 90, distance: 4 }) }],
+        segments: [],
+      },
+    };
+    const tracks = buildSceneCameraTracks([orbitScene, rigScene([-9, -9, -9], true)]);
+    const start = tracks[1]?.rig?.keys[0].pose.position ?? [0, 0, 0];
+    expect(start[0]).toBeCloseTo(4, 10);
+    expect(start[2]).toBeCloseTo(0, 10);
+  });
+
+  it("chains across three scenes, each starting where the last stopped", () => {
+    const tracks = buildSceneCameraTracks([
+      rigScene([6, 0, 6]),
+      rigScene([-9, -9, -9], true),
+      rigScene([-9, -9, -9], true),
+    ]);
+    expect(tracks[1]?.rig?.keys[0].pose.position).toEqual([0, 0, 3]);
+    expect(tracks[2]?.rig?.keys[0].pose.position).toEqual([0, 0, 3]);
+  });
+
+  it("no-ops with one warning for scene 0, a trackless predecessor, or a screenshot-animated one", () => {
+    const warn = vi.spyOn(console, "warn");
+    expect(
+      buildSceneCameraTracks([rigScene([1, 2, 3], true)])[0]?.rig?.keys[0].pose.position,
+    ).toEqual([1, 2, 3]);
+    expect(
+      buildSceneCameraTracks([{ version: 1 }, rigScene([1, 2, 3], true)])[1]?.rig?.keys[0].pose
+        .position,
+    ).toEqual([1, 2, 3]);
+    const lsFirst: SceneDoc = { ...rigScene([6, 0, 6]), animatedTrack: "layeredScreenshot" };
+    expect(
+      buildSceneCameraTracks([lsFirst, rigScene([1, 2, 3], true)])[1]?.rig?.keys[0].pose.position,
+    ).toEqual([1, 2, 3]);
+    expect(
+      warn.mock.calls.filter((c) => String(c[0]).includes("continueFromPrevious")),
+    ).toHaveLength(3);
+  });
+});
