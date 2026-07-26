@@ -1137,13 +1137,26 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `b65ec5fc…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `27d6383b…` | — | — | — | — | — |
+
+> **2026-07-26 (camera rigging, the full batch):** free-flight camera rigs
+> (`cameraMode` + `cameraRig`, the canonical sampler, centripetal smoothing,
+> the three aim modes, roll, per-channel eases), the Free-mode tools and ghost
+> path, the rig inspector and conversions, DepthStage with envelope-driven
+> layer sizing, presets, Present rig looping and cross-scene continuity.
+> `ws:launch-2026` stayed EQUAL and UNCHANGED (`eb89826c…`) throughout: every
+> block is null-for-legacy, and the orbit sampler is untouched code rather than
+> a branch. `showcase-tour` moved DELIBERATELY, from `7ad3e821…` to
+> `b65ec5fc…`, when scene 7 (`07-rig-flight`, a DepthStage fly-through) was
+> added to close the batch; the gate leg grows from ~8.2 s to ~10.2 s. The rig
+> fixture `ws:camera-rig-spike-opus` verifies at `27d6383b…` across ten scenes,
+> one concern each.
 
 > **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
 > aimed at the camera-space origin, which IS the camera, so every such rim light

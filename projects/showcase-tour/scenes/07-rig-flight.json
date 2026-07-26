@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "name": "Rig \u00b7 depth fly-through",
+  "themeId": "kookaburra-abyss",
+  "text": {
+    "headline": "Fly right through it"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/sample-phone-recording.mp4",
+        "kind": "video",
+        "startMs": 1200
+      },
+      "placement": {
+        "rotationDeg": [0, -14, 0]
+      },
+      "motion": {
+        "preset": "none"
+      }
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-0.9, 0.9, 7.6],
+          "aim": {
+            "mode": "tangent",
+            "at": [-0.45, 0.6, 6.4]
+          },
+          "fov": 52
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 700,
+        "pose": {
+          "position": [-0.45, 0.6, 6.4],
+          "aim": {
+            "mode": "tangent",
+            "at": [-0.1, 0.35, 5.2]
+          }
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 1400,
+        "pose": {
+          "position": [-0.1, 0.35, 5.2],
+          "aim": {
+            "mode": "tangent",
+            "at": [0.1, 0.2, 4.5]
+          },
+          "rollDeg": -4
+        }
+      },
+      {
+        "id": "k4",
+        "tMs": 2000,
+        "pose": {
+          "position": [0.1, 0.2, 4.5],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.1, 0]
+          },
+          "fov": 38
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutSine"
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "linear"
+      },
+      {
+        "from": "k3",
+        "to": "k4",
+        "ease": "inOutQuad",
+        "easeLens": "inCubic"
+      }
+    ]
+  }
+}
