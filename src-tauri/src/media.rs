@@ -383,7 +383,7 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
 }
 
 /// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules, edit documents and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
-fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
+pub(crate) fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
     let mut hits = Vec::new();
     let mut check = |path: &std::path::Path, display: String| {
         if let Ok(text) = std::fs::read_to_string(path) {
