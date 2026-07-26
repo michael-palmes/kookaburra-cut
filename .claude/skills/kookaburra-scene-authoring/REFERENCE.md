@@ -102,6 +102,9 @@ Rules for Claude:
 
 ## Per-scene camera tracks (v7 · M5)
 
+> Two modes exist: this orbit track, and the free-flight `cameraRig` block below.
+> The full authoring guide is `docs/camera.md`.
+
 The sidecar's `camera` field animates the camera for THIS scene only, in **scene-local
 milliseconds**, sampled by `engine/sceneCamera.ts` at both render seams. Prefer it over
 the project-level `camera` in `project.json` for anything scoped to one scene; the project track
@@ -151,6 +154,53 @@ Worked example — settle in, hold, then a jump cut to a close-up:
 
 (`jump` holds the `from` pose for the segment's whole span and lands `to` exactly at the
 `to` key's time — a jump segment IS the hold before the cut, no extra keys needed.)
+
+## Camera rigs: free flight (`cameraRig`)
+
+Set `"cameraMode": "rig"` and author a `cameraRig` block for shots an orbit cannot
+express: fly-throughs, cranes, parallax slides, dolly zooms. The orbit block is left
+alone, and a rig with no keys falls straight through to it, so the switch is safe.
+Full guide, including the tool and shortcut map: `docs/camera.md`.
+
+**A pose is a position plus an aim**, not a target sphere:
+
+```jsonc
+"cameraMode": "rig",
+"cameraRig": {
+  "keys": [
+    { "id": "k1", "tMs": 0,    "pose": { "position": [-2.8, 0.9, 5.6],
+                                         "aim": { "mode": "tangent", "at": [-1, 0.5, 3.6] } } },
+    { "id": "k2", "tMs": 700,  "pose": { "position": [-1, 0.5, 3.6],
+                                         "aim": { "mode": "tangent", "at": [1.2, 0.4, 2.2] } } },
+    { "id": "k3", "tMs": 1400, "pose": { "position": [1.2, 0.4, 2.2],
+                                         "aim": { "mode": "point", "at": [0, -0.2, 0] },
+                                         "fov": 34, "rollDeg": -6 } }
+  ],
+  "segments": [
+    { "from": "k1", "to": "k2", "ease": "linear" },
+    { "from": "k2", "to": "k3", "ease": "inOutQuad", "easeLens": "inCubic" }
+  ]
+}
+```
+
+- **`aim.mode`** is `point` (a fixed world position), `tangent` (look along the path) or
+  `object` (`{ mode, id, at }`, following a device id, `"videoWindow"` or
+  `"layeredScreenshot"`). `at` is stored on EVERY mode as the baked fallback, so a
+  degenerate tangent or a deleted device still renders the shot.
+- **`fov`** is optional and clamps to 15..90; absent, the project-level track keeps
+  owning it. **`rollDeg`** banks the frame; absent or zero applies no roll at all.
+- **`smooth`** on a segment is ABSENT-means-smooth: rig paths curve through their
+  neighbouring keys by default. Set `"smooth": false` for a deliberate straight dolly.
+- **`easePosition` / `easeRotation` / `easeLens`** optionally override the segment's ease
+  per channel. Omit them unless you want the divergence: a dolly zoom lags its lens.
+- **`continueFromPrevious": true`** on the FIRST key starts the scene where the previous
+  scene's camera stopped. A continuous path, not a continuous image.
+- Everything else matches the orbit track: half-open segments, hold outside, shared
+  boundary keys, the same ease names, degrade-don't-crash validation.
+
+**`<DepthStage>`** gives a rig something to fly through: four named slots at pinned
+depths (`foreground` 1.8, `content` 0, `midground` -2.4, `backdrop` -5.5), each sizing
+itself from the scene's camera travel so full-bleed layers stay full-bleed.
 
 ## Layered screenshot
 

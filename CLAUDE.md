@@ -109,7 +109,8 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 The app is feature-complete through its planned pre-release phases: deterministic
 multi-scene export in four aspects (16:9 / 9:16 / 1:1 / 4:5) with transitions,
 effects, themes (10 bundled + workspace user themes), devices with on-screen
-media, per-scene cameras, fixed/video backgrounds, a text-motion pack, one
+media, camera rigging (orbit plus free-flight poses, depth bands),
+fixed/video backgrounds, a text-motion pack, one
 soundtrack per project, platform export presets, the studio workspace
 (`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
 Claude Code terminal), a packaged signed/notarised `.app`, the night-studio

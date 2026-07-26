@@ -48,6 +48,14 @@
     {
       "file": "scenes/06-sunrise-close.tsx",
       "durationMs": 1600
+    },
+    {
+      "file": "scenes/07-rig-flight.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
     }
   ]
 }

@@ -4,18 +4,21 @@ import { useClockStore } from "../engine/clock";
 import { CAMERA } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import { defaultOrbitPose } from "../engine/sceneCamera";
-import type { CameraDoc } from "../engine/sceneCameraEdit";
+import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
 import {
   nearestKey,
   panCentreSnap,
   playheadDriftTarget,
   setKeyPose,
 } from "../engine/sceneCameraEdit";
-import type { SceneDoc, SceneDocCameraPose } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
+import { defaultRigPose } from "../engine/sceneRig";
+import { forwardRigPose, lookRigPose, moveRigPose, tiltRigPose } from "../engine/sceneRigEdit";
+import { toolMatchesMode } from "./CameraPill";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { useCameraDoc } from "./cameraDoc";
 
-/** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held (⌘ pan, ⌃ zoom, ⌥ orbit) swap the cursor while hovering and rebase mid-drag from the current pose so the tool switch never jumps; ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. Pan drags snap gently to the scene centre (guide lines flash while captured). */
+/** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held swap the cursor while hovering and rebase mid-drag from the current pose so the tool switch never jumps (⌘/⌃/⌥ map to the current mode's equivalents: pan/zoom/orbit in Orbit, move/forward/look in Free); ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. Pan drags snap gently to the scene centre (guide lines flash while captured). */
 
 /** Pointer distance within which a pan drag captures onto the scene centre, per axis. */
 const CENTRE_SNAP_PX = 8;
@@ -29,13 +32,41 @@ interface ToolDrag {
   startY: number;
 }
 
-/** The tool the held modifiers want: ⌘ = pan, ⌃ = zoom, ⌥ = orbit, else null. */
-function modifierTool(e: {
-  metaKey: boolean;
-  ctrlKey: boolean;
-  altKey: boolean;
-}): CameraTool | null {
-  return e.metaKey ? "pan" : e.ctrlKey ? "zoom" : e.altKey ? "rotate" : null;
+interface RigDrag {
+  keyId: string;
+  tool: CameraTool;
+  origPose: SceneDocRigPose;
+  origRig: RigDoc;
+  fov: number;
+  startX: number;
+  startY: number;
+}
+
+/** The tool the held modifiers want, in the current mode's vocabulary: ⌘ slides, ⌃ dollies, ⌥ turns. Tilt has no modifier, matching orbit's three. */
+function modifierTool(
+  e: { metaKey: boolean; ctrlKey: boolean; altKey: boolean },
+  free: boolean,
+): CameraTool | null {
+  if (e.metaKey) return free ? "move" : "pan";
+  if (e.ctrlKey) return free ? "forward" : "zoom";
+  if (e.altKey) return free ? "look" : "rotate";
+  return null;
+}
+
+/** Apply a free-mode drag; each tool's maths is a pure function in `sceneRigEdit.ts`. */
+function dragRigPose(
+  tool: CameraTool,
+  orig: SceneDocRigPose,
+  dxPx: number,
+  dyPx: number,
+  stageW: number,
+  stageH: number,
+  fov: number,
+): SceneDocRigPose {
+  if (tool === "forward") return forwardRigPose(orig, dyPx, stageH);
+  if (tool === "look") return lookRigPose(orig, dxPx, dyPx, stageW, stageH);
+  if (tool === "tilt") return tiltRigPose(orig, dxPx, stageW);
+  return moveRigPose(orig, dxPx, dyPx, fov, stageH);
 }
 
 export function CameraToolOverlay({
@@ -48,12 +79,22 @@ export function CameraToolOverlay({
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
   const armedTool = useCameraEditStore((s) => s.armedTool);
-  const { slot, camera, preview, commit, appliedPoseAt } = useCameraDoc(
-    project,
-    sceneIndex,
-    onDocChanged,
-  );
+  const {
+    slot,
+    mode,
+    camera,
+    rig,
+    preview,
+    previewRig,
+    commit,
+    commitRig,
+    appliedPoseAt,
+    appliedRigAt,
+    inheritedFov,
+  } = useCameraDoc(project, sceneIndex, onDocChanged);
+  const free = mode === "rig";
   const [drag, setDrag] = useState<ToolDrag | null>(null);
+  const [rigDrag, setRigDrag] = useState<RigDrag | null>(null);
   const [guides, setGuides] = useState({ v: false, h: false });
   const [heldTool, setHeldTool] = useState<CameraTool | null>(null);
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
@@ -61,7 +102,7 @@ export function CameraToolOverlay({
 
   // Cursor feedback while a modifier is held, before any drag starts.
   useEffect(() => {
-    const update = (e: KeyboardEvent) => setHeldTool(modifierTool(e));
+    const update = (e: KeyboardEvent) => setHeldTool(modifierTool(e, free));
     const clear = () => setHeldTool(null);
     window.addEventListener("keydown", update);
     window.addEventListener("keyup", update);
@@ -71,29 +112,57 @@ export function CameraToolOverlay({
       window.removeEventListener("keyup", update);
       window.removeEventListener("blur", clear);
     };
-  }, []);
+  }, [free]);
 
-  if (!armedTool) return null;
+  // An armed tool from the other mode (a mode switch mid-session) drags nothing rather than mangling the pose.
+  if (!armedTool || !toolMatchesMode(armedTool, mode)) return null;
 
   function setGuideState(v: boolean, h: boolean) {
     setGuides((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
+  }
+
+  /** Park the playhead somewhere the edit is visible, and return the scene-local time to seed from. */
+  function anchorPlayhead(track: { keys: { id: string; tMs: number }[] }): number {
+    let playheadLocal = Math.min(
+      slot.durationMs,
+      Math.max(0, useClockStore.getState().currentMs - slot.startMs),
+    );
+    // Drift to the 25% point of the containing animation first, so the pose edit stays visible mid-span.
+    const drift = playheadDriftTarget(track as never, playheadLocal);
+    if (drift !== null) {
+      const clock = useClockStore.getState();
+      clock.setCurrentMs(Math.min(clock.durationMs, slot.startMs + drift));
+      playheadLocal = drift;
+    }
+    return playheadLocal;
   }
 
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0 || !armedTool) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const state = useCameraEditStore.getState();
-    let playheadLocal = Math.min(
-      slot.durationMs,
-      Math.max(0, useClockStore.getState().currentMs - slot.startMs),
-    );
-    // Drift to the 25% point of the containing animation first, so the pose edit stays visible mid-span.
-    const drift = playheadDriftTarget(camera, playheadLocal);
-    if (drift !== null) {
-      const clock = useClockStore.getState();
-      clock.setCurrentMs(Math.min(clock.durationMs, slot.startMs + drift));
-      playheadLocal = drift;
+    if (free) {
+      const playheadLocal = anchorPlayhead(rig);
+      let track = rig;
+      let key =
+        track.keys.find((k) => k.id === state.selectedKeyId) ?? nearestKey(track, playheadLocal);
+      if (!key) {
+        key = { id: "k1", tMs: 0, pose: appliedRigAt(playheadLocal) };
+        track = { keys: [key], segments: [] };
+      }
+      setRigDrag({
+        keyId: key.id,
+        tool: modifierTool(e, true) ?? armedTool,
+        origPose: { ...key.pose, position: [...key.pose.position], aim: { ...key.pose.aim } },
+        origRig: track,
+        fov: key.pose.fov ?? inheritedFov(playheadLocal),
+        startX: e.clientX,
+        startY: e.clientY,
+      });
+      state.select(key.id, null);
+      return;
     }
+    const playheadLocal = anchorPlayhead(camera);
     let cam = camera;
     let key = cam.keys.find((k) => k.id === state.selectedKeyId) ?? nearestKey(cam, playheadLocal);
     if (!key) {
@@ -103,7 +172,7 @@ export function CameraToolOverlay({
     }
     setDrag({
       keyId: key.id,
-      tool: modifierTool(e) ?? armedTool,
+      tool: modifierTool(e, false) ?? armedTool,
       origPose: { ...key.pose, target: [...key.pose.target] },
       origCamera: cam,
       startX: e.clientX,
@@ -113,11 +182,42 @@ export function CameraToolOverlay({
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    if (!drag || !armedTool) return;
+    if (!armedTool) return;
     const rect = overlayRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return;
-    // A modifier change mid-drag rebases the drag on the current pose; reinterpreting the accumulated delta under a new tool would jump.
-    const want = modifierTool(e) ?? armedTool;
+    if (rigDrag) {
+      // A modifier change mid-drag rebases on the current pose; reinterpreting the accumulated delta under a new tool would jump.
+      const want = modifierTool(e, true) ?? armedTool;
+      let base = rigDrag;
+      if (want !== rigDrag.tool) {
+        const key = rig.keys.find((k) => k.id === rigDrag.keyId);
+        base = {
+          ...rigDrag,
+          tool: want,
+          origPose: key
+            ? { ...key.pose, position: [...key.pose.position], aim: { ...key.pose.aim } }
+            : rigDrag.origPose,
+          origRig: rig,
+          startX: e.clientX,
+          startY: e.clientY,
+        };
+        setRigDrag(base);
+      }
+      const pose = dragRigPose(
+        base.tool,
+        base.origPose,
+        e.clientX - base.startX,
+        e.clientY - base.startY,
+        rect.width,
+        rect.height,
+        base.fov,
+      );
+      const next = setKeyPose(base.origRig, base.keyId, pose);
+      if (next) previewRig(next as RigDoc, false);
+      return;
+    }
+    if (!drag) return;
+    const want = modifierTool(e, false) ?? armedTool;
     let base = drag;
     if (want !== drag.tool) {
       const key = camera.keys.find((k) => k.id === drag.keyId);
@@ -148,6 +248,11 @@ export function CameraToolOverlay({
   }
 
   function onPointerUp() {
+    if (rigDrag) {
+      void commitRig(rig);
+      setRigDrag(null);
+      return;
+    }
     if (!drag) return;
     setGuideState(false, false);
     void commit(camera);
@@ -157,7 +262,7 @@ export function CameraToolOverlay({
   /** Right-click camera menu; ⌃-left-click stays swallowed (it is the zoom modifier here, macOS fires contextmenu for it), but a real secondary button opens the menu even with ⌃ held. */
   function onContextMenu(e: React.MouseEvent) {
     e.preventDefault();
-    if ((e.ctrlKey && e.button !== 2) || drag) return;
+    if ((e.ctrlKey && e.button !== 2) || drag || rigDrag) return;
     setMenuAt({ x: e.clientX, y: e.clientY });
   }
 
@@ -166,9 +271,11 @@ export function CameraToolOverlay({
     slot.durationMs,
     Math.max(0, useClockStore.getState().currentMs - slot.startMs),
   );
-  const menuTargetKey =
-    camera.keys.find((k) => k.id === useCameraEditStore.getState().selectedKeyId) ??
-    nearestKey(camera, playheadLocal);
+  const selectedId = useCameraEditStore.getState().selectedKeyId;
+  const menuTargetKey = free
+    ? (rig.keys.find((k) => k.id === selectedId) ?? nearestKey(rig, playheadLocal))
+    : (camera.keys.find((k) => k.id === selectedId) ?? nearestKey(camera, playheadLocal));
+  const trackKeyCount = free ? rig.keys.length : camera.keys.length;
   const menu: ContextMenuState | null = menuAt
     ? {
         x: menuAt.x,
@@ -181,8 +288,13 @@ export function CameraToolOverlay({
             title: "Reset this key to the scene-default pose",
             onSelect: () => {
               if (!menuTargetKey) return;
-              const cam = setKeyPose(camera, menuTargetKey.id, defaultOrbitPose());
-              if (cam) void commit(cam);
+              if (free) {
+                const next = setKeyPose(rig, menuTargetKey.id, defaultRigPose());
+                if (next) void commitRig(next as RigDoc);
+              } else {
+                const cam = setKeyPose(camera, menuTargetKey.id, defaultOrbitPose());
+                if (cam) void commit(cam);
+              }
             },
           },
           {
@@ -190,8 +302,11 @@ export function CameraToolOverlay({
             label: "Clear all camera keyframes",
             confirmLabel: "Really clear?",
             danger: true,
-            disabled: camera.keys.length === 0,
-            onSelect: () => void commit({ ...camera, keys: [], segments: [] }),
+            disabled: trackKeyCount === 0,
+            onSelect: () =>
+              free
+                ? void commitRig({ ...rig, keys: [], segments: [] })
+                : void commit({ ...camera, keys: [], segments: [] }),
           },
         ],
       }
@@ -202,7 +317,7 @@ export function CameraToolOverlay({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: a pure drag surface over the canvas — contextmenu opens the camera menu (⌃-left-click stays swallowed as the zoom modifier) */}
       <div
         ref={overlayRef}
-        className={`camera-tool-overlay tool-${drag?.tool ?? heldTool ?? armedTool}`}
+        className={`camera-tool-overlay tool-${rigDrag?.tool ?? drag?.tool ?? heldTool ?? armedTool}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

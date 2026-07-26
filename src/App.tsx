@@ -126,6 +126,7 @@ import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
 import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
 import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
+import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
@@ -1791,7 +1792,7 @@ export default function App() {
                     </ProjectLightingContext.Provider>
                   </ProjectIdContext.Provider>
                 </Canvas>
-                {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. */}
+                {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
                   isWorkspaceProjectId(project.id) &&
                   !exporting &&
@@ -1805,11 +1806,18 @@ export default function App() {
                         />
                       )
                     : cameraEditOpen && (
-                        <CameraToolOverlay
-                          project={project}
-                          sceneIndex={camSceneIndex}
-                          onDocChanged={handleDocChanged}
-                        />
+                        <>
+                          <CameraToolOverlay
+                            project={project}
+                            sceneIndex={camSceneIndex}
+                            onDocChanged={handleDocChanged}
+                          />
+                          <CameraPathOverlay
+                            project={project}
+                            sceneIndex={camSceneIndex}
+                            onDocChanged={handleDocChanged}
+                          />
+                        </>
                       ))}
                 {/* Decoration drag surface: DOM above the canvas, the letterboxed frame, armed while the Decorations drill-in is open. */}
                 {project &&

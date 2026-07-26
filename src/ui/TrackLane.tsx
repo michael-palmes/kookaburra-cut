@@ -11,11 +11,13 @@ import {
   playheadDriftTarget,
   removeKey,
   removeSegment,
+  type SegmentEaseChannel,
   setSegmentEase,
   syncSegmentStartToPrevious,
   trackLayout,
 } from "../engine/keyedTrack";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { ToggleRow } from "./inspector/rows";
 
 /** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16), drag clamps remain the engine's MIN_KEY_GAP_MS. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
 
@@ -74,6 +76,18 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   addTitle: string;
   /** Copy ahead of the write-error detail, e.g. "Save failed — this camera edit isn't on disk:". */
   writeErrorPrefix: string;
+  /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) renders the popover exactly as it always did; the lane NEVER branches on track type to decide this. */
+  segmentExtras?: SegmentExtras;
+}
+
+/** The rig's per-segment controls, passed in rather than detected: smoothing and the three optional channel eases. */
+export interface SegmentExtras {
+  /** Absent in the sidecar means smooth, so the toggle shows on for absent. */
+  smooth: (docIndex: number) => boolean;
+  onSmooth: (docIndex: number, smooth: boolean) => void;
+  /** The override for one channel, or undefined when it follows the segment's ease. */
+  channelEase: (docIndex: number, channel: SegmentEaseChannel) => string | undefined;
+  onChannelEase: (docIndex: number, channel: SegmentEaseChannel, ease: string | undefined) => void;
 }
 
 export function TrackLane<P, T extends KeyedTrack<P>>({
@@ -97,6 +111,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   onSceneDuration,
   addTitle,
   writeErrorPrefix,
+  segmentExtras,
 }: TrackLaneProps<P, T>) {
   const currentMs = useClockStore((s) => s.currentMs);
 
@@ -477,6 +492,9 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             const next = setSegmentEase(track, selectedSegmentLayout.docIndex, ease);
             if (next) void commit(next);
           }}
+          extras={segmentExtras}
+          docIndex={selectedSegmentLayout.docIndex}
+          onClose={() => select(null, null)}
         />
       )}
 
@@ -487,7 +505,26 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
 
 // ── Easing popover ───────────────────────────────────
 
-function EasingPopover({ ease, onPick }: { ease: string; onPick: (ease: string) => void }) {
+const CHANNELS: { channel: SegmentEaseChannel; label: string; hint: string }[] = [
+  { channel: "easePosition", label: "Position", hint: "How the camera's travel is paced" },
+  { channel: "easeRotation", label: "Rotation", hint: "How the aim and roll are paced" },
+  { channel: "easeLens", label: "Lens", hint: "How the field of view is paced" },
+];
+
+function EasingPopover({
+  ease,
+  onPick,
+  extras,
+  docIndex,
+  onClose,
+}: {
+  ease: string;
+  onPick: (ease: string) => void;
+  extras?: SegmentExtras;
+  docIndex: number;
+  onClose: () => void;
+}) {
+  const [channelsOpen, setChannelsOpen] = useState(false);
   // Parse "inQuad"/"outSine"/"inOutBack" into direction + family for the grid state.
   const m = /^(in|out|inOut)([A-Z][a-z]+)$/.exec(ease);
   const family = m ? m[2] : "Quad";
@@ -503,6 +540,15 @@ function EasingPopover({ ease, onPick }: { ease: string; onPick: (ease: string) 
   );
   return (
     <div className="camera-easing" role="menu" aria-label="Segment easing">
+      <button
+        type="button"
+        className="camera-easing-close"
+        title="Done (deselects the animation)"
+        aria-label="Close easing options"
+        onClick={onClose}
+      >
+        ×
+      </button>
       <div className="camera-easing-row">
         {chip(DEFAULT_EASE, "Default")}
         {chip("linear", "Linear")}
@@ -526,6 +572,48 @@ function EasingPopover({ ease, onPick }: { ease: string; onPick: (ease: string) 
           );
         })}
       </div>
+      {extras && (
+        <>
+          <ToggleRow
+            label="Smooth through keys"
+            description="Curve the path through its neighbouring keys instead of running straight"
+            checked={extras.smooth(docIndex)}
+            onChange={(on) => extras.onSmooth(docIndex, on)}
+          />
+          <button
+            type="button"
+            className="camera-easing-disclosure"
+            aria-expanded={channelsOpen}
+            onClick={() => setChannelsOpen((open) => !open)}
+          >
+            {channelsOpen ? "▾" : "▸"} Per-channel easing
+          </button>
+          {channelsOpen &&
+            CHANNELS.map(({ channel, label, hint }) => {
+              const value = extras.channelEase(docIndex, channel);
+              return (
+                <div key={channel} className="camera-easing-channel" title={hint}>
+                  <span className="camera-easing-channel-label">{label}</span>
+                  <select
+                    value={value ?? ""}
+                    onChange={(e) =>
+                      extras.onChannelEase(docIndex, channel, e.target.value || undefined)
+                    }
+                  >
+                    <option value="">Same as segment</option>
+                    <option value="linear">Linear</option>
+                    <option value="jump">Jump cut</option>
+                    {EASE_FAMILIES.flatMap((f) =>
+                      (["in", "out", "inOut"] as const).map((dir) => (
+                        <option key={`${dir}${f}`} value={`${dir}${f}`}>{`${dir}${f}`}</option>
+                      )),
+                    )}
+                  </select>
+                </div>
+              );
+            })}
+        </>
+      )}
     </div>
   );
 }

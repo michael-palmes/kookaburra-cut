@@ -16,6 +16,8 @@ export interface CameraPose {
   position: [number, number, number];
   fov: number;
   lookAt: [number, number, number];
+  /** Bank around the view axis in degrees, which `lookAt` can't express on its own (three's lookAt uses a fixed world up). Only the per-scene rig writes it; absent or zero applies no rotation at all. */
+  rollDeg?: number;
 }
 
 /** The base pose every property falls back to: the shared CAMERA config, which the preview `<Canvas>` mounts with and the safe-area math assumes. */
@@ -39,11 +41,14 @@ export function sampleCameraTrack(track: CameraKeyframe[], globalMs: number): Ca
   };
 }
 
-/** Writes a resolved pose onto the shared camera; never touches `camera.aspect`, the exporter (and its resize guard) own aspect per format. */
+const DEG2RAD = Math.PI / 180;
+
+/** Writes a resolved pose onto the shared camera; never touches `camera.aspect`, the exporter (and its resize guard) own aspect per format. The roll guard is load-bearing: absent or zero makes NO rotateZ call, so every legacy pose produces bit-for-bit the matrix it always did. */
 export function applyCameraPose(camera: PerspectiveCamera, pose: CameraPose): void {
   if (!camera.isPerspectiveCamera) return;
   camera.position.set(pose.position[0], pose.position[1], pose.position[2]);
   camera.lookAt(pose.lookAt[0], pose.lookAt[1], pose.lookAt[2]);
+  if (pose.rollDeg) camera.rotateZ(pose.rollDeg * DEG2RAD);
   if (camera.fov !== pose.fov) {
     camera.fov = pose.fov;
     camera.updateProjectionMatrix();

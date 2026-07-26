@@ -26,18 +26,20 @@ import { AssetBoundary } from "../media/AssetBoundary";
 
 // ── Stage geometry constants (export contract) ────────────────────────────────
 /** Cyclorama width along x; generous so every aspect/camera orbit stays covered. */
-const CYC_WIDTH = 40;
+export const CYC_WIDTH = 40;
 /** Floor extends from here (toward/past the camera at z≈5)... */
-const CYC_FRONT_Z = 9;
+export const CYC_FRONT_Z = 9;
 /** ...to the wall plane. */
-const CYC_WALL_Z = -6;
-const CYC_WALL_HEIGHT = 14;
+export const CYC_WALL_Z = -6;
+export const CYC_WALL_HEIGHT = 14;
 const CYC_ARC_SEGMENTS = 24;
 const DEFAULT_FILLET = 2.5;
+/** Stage floor height when a scene doesn't set one. */
+export const DEFAULT_FLOOR_Y = -1.5;
 /** Vertical backdrops (gradient/image): a generous plane behind the content. */
-const BACKDROP_WIDTH = 44;
-const BACKDROP_HEIGHT = 22;
-const BACKDROP_Z = -6;
+export const BACKDROP_WIDTH = 44;
+export const BACKDROP_HEIGHT = 22;
+export const BACKDROP_Z = -6;
 /** Gradient texture resolution (pure-JS DataTexture, deterministic everywhere). */
 const GRADIENT_SIZE = 512;
 
@@ -200,7 +202,7 @@ interface BackdropProps {
 function CycFloor({
   spec,
   shadow,
-  floorY = -1.5,
+  floorY = DEFAULT_FLOOR_Y,
 }: BackdropProps & { spec: Extract<ThemeBackdrop, { type: "floor" }> }) {
   const geometry = useMemo(
     () => cycGeometry(spec.filletRadius ?? DEFAULT_FILLET),

@@ -2,6 +2,8 @@ import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } fro
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
+import { useSceneIsBanded } from "../../engine/depthStageRegistry";
+import { useFormat } from "../../engine/format";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -9,15 +11,18 @@ import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPrevie
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
-import { type CameraDoc, nearestKey, setKeyPose } from "../../engine/sceneCameraEdit";
+import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
 import type {
   SceneDoc,
   SceneDocCameraPose,
+  SceneDocRigPose,
   SceneDocVideoWindow,
   SceneTextAlign,
   VideoWindowMotionPreset,
 } from "../../engine/sceneDocSchema";
+import { defaultRigPose } from "../../engine/sceneRig";
+import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/sceneRigConvert";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
 import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
@@ -117,6 +122,8 @@ import { describeSpec } from "../textAnimationOptions";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
+import { CameraPresetRow } from "./CameraPresetRow";
+import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { RotationDrillIn } from "./RotationDrillIn";
 import {
@@ -883,29 +890,65 @@ function CameraSectionBody({
   onBack: () => void;
   patchDoc: (patch: (next: SceneDoc) => void) => Promise<void>;
 }) {
-  const { doc, slot, camera, preview, commit, appliedPoseAt } = useCameraDoc(
-    project,
-    sceneIndex,
-    onDocChanged,
-  );
+  const {
+    doc,
+    slot,
+    mode,
+    camera,
+    rig,
+    preview,
+    previewRig,
+    commit,
+    commitRig,
+    setMode,
+    appliedPoseAt,
+    appliedRigAt,
+    appliedViewAt,
+  } = useCameraDoc(project, sceneIndex, onDocChanged);
+  const free = mode === "rig";
+  const format = useFormat();
+  const aspect = format.width / format.height;
+  const banded = useSceneIsBanded(sceneIndex);
   const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const cameraOpen = useCameraEditStore((s) => s.open);
+  const keyCount = free ? rig.keys.length : camera.keys.length;
   // Re-render only when the target key changes, not per playhead tick; for a trackless scene, follow the playhead in coarse quarter-second buckets (display only, commits snapshot the live clock).
   const targetKeyId = useClockStore((s) => {
-    if (camera.keys.length === 0) return null;
+    if (keyCount === 0) return null;
     const local = Math.min(slot.durationMs, Math.max(0, s.currentMs - slot.startMs));
-    return (
-      (camera.keys.find((k) => k.id === selectedKeyId) ?? nearestKey(camera, local))?.id ?? null
-    );
+    const found = free
+      ? (rig.keys.find((k) => k.id === selectedKeyId) ?? nearestKey(rig, local))
+      : (camera.keys.find((k) => k.id === selectedKeyId) ?? nearestKey(camera, local));
+    return found?.id ?? null;
   });
   const coarseLocal = useClockStore((s) =>
-    camera.keys.length === 0
+    keyCount === 0
       ? Math.round(Math.min(slot.durationMs, Math.max(0, s.currentMs - slot.startMs)) / 250) * 250
       : 0,
   );
   const targetKey = camera.keys.find((k) => k.id === targetKeyId) ?? null;
+  const rigKey = rig.keys.find((k) => k.id === targetKeyId) ?? null;
   const pose: SceneDocCameraPose = targetKey?.pose ?? appliedPoseAt(coarseLocal);
+  const rigPose: SceneDocRigPose = rigKey?.pose ?? appliedRigAt(coarseLocal);
+  const rigTargetTMs = rigKey?.tMs ?? coarseLocal;
+
+  const rigPosePatch = (mutate: (p: SceneDocRigPose) => void): RigDoc => {
+    const next: SceneDocRigPose = {
+      ...rigPose,
+      position: [...rigPose.position],
+      aim: { ...rigPose.aim, at: [...rigPose.aim.at] },
+    };
+    mutate(next);
+    return seedRig(rig, rigKey?.id ?? null, next);
+  };
+  const previewRigPose = (mutate: (p: SceneDocRigPose) => void) =>
+    previewRig(rigPosePatch(mutate), false);
+  const commitRigPose = (mutate: (p: SceneDocRigPose) => void) => {
+    const seeding = !rigKey;
+    void commitRig(rigPosePatch(mutate));
+    if (seeding) useCameraEditStore.getState().select("k1", null);
+  };
 
   const posePatch = (mutate: (p: SceneDocCameraPose) => void): CameraDoc => {
     const next: SceneDocCameraPose = { ...pose, target: [...pose.target] };
@@ -926,15 +969,139 @@ function CameraSectionBody({
     if (seeding) useCameraEditStore.getState().select("k1", null);
   };
 
-  /** Per-key Reset (decision 6, moved here from the old strip's tools row): the selected-else-nearest key back to the scene-default pose. */
+  /** Per-key Reset (decision 6, moved here from the old strip's tools row): the selected-else-nearest key back to the scene-default pose, in whichever mode drives the scene. */
   const onResetKey = () => {
+    if (free) {
+      if (!rigKey) return;
+      const next = setKeyPose(rig, rigKey.id, defaultRigPose());
+      if (next) void commitRig(next as RigDoc);
+      return;
+    }
     if (!targetKey) return;
     const cam = setKeyPose(camera, targetKey.id, defaultOrbitPose());
     if (cam) void commit(cam);
   };
 
+  /** The Orbit/Free switch plus the one-history-entry conversions between them. Switching alone never touches keys; converting rewrites them so the applied pose is unchanged. */
+  const modeControl = (
+    <>
+      <SegmentedRow
+        options={[
+          { value: "orbit" as const, label: "Orbit", title: "Poses orbit a target" },
+          {
+            value: "rig" as const,
+            label: "Free",
+            title: "Free-flight poses: a position and an aim",
+          },
+        ]}
+        value={mode}
+        onChange={(next) => void setMode(next, coarseLocal)}
+      />
+      {!free && camera.keys.length > 0 && (
+        <button
+          type="button"
+          className="inspector-reset-btn"
+          title="Rewrite every orbit key as a free pose; the shot does not move"
+          onClick={() => {
+            void commitRig(orbitToRig(camera));
+            void setMode("rig", coarseLocal);
+          }}
+        >
+          Convert to free
+        </button>
+      )}
+      {free && canRigConvertToOrbit(rig) && (
+        <button
+          type="button"
+          className="inspector-reset-btn"
+          title="Rewrite every free pose as an orbit key; field of view and roll are dropped"
+          onClick={() => {
+            const next = rigToOrbit(rig);
+            if (!next) return;
+            void commit(next);
+            void setMode("orbit", coarseLocal);
+          }}
+        >
+          Convert to orbit
+        </button>
+      )}
+    </>
+  );
+
+  const presetRow = (
+    <CameraPresetRow
+      durationMs={slot.durationMs}
+      orbitPose={pose}
+      fov={appliedViewAt(coarseLocal).fov}
+      hasKeys={keyCount > 0}
+      icon={<SceneRowIcon id="camera.animate" />}
+      onApply={(result) => {
+        if (result.mode === "rig" && result.rig) {
+          void commitRig(result.rig);
+          void setMode("rig", coarseLocal);
+        } else if (result.camera) {
+          void commit(result.camera);
+          void setMode("orbit", coarseLocal);
+        }
+      }}
+    />
+  );
+
+  /** Only legal on the first key of a scene that has one before it. */
+  const continuityRow =
+    free && sceneIndex > 0 && rig.keys.length > 0 ? (
+      <ToggleRow
+        label="Continue from previous scene"
+        description="Start this scene where the previous one's camera stopped. A continuous PATH, not a continuous image: content still dissolves across a transition."
+        checked={rig.keys[0].continueFromPrevious === true}
+        onChange={(on) => {
+          const keys = rig.keys.map((key, i) => {
+            if (i !== 0) return key;
+            const next = { ...key };
+            if (on) next.continueFromPrevious = true;
+            else delete next.continueFromPrevious;
+            return next;
+          });
+          void commitRig({ ...rig, keys });
+        }}
+      />
+    ) : null;
+
+  const rigOptions = (
+    <>
+      {modeControl}
+      <CameraRigFields
+        doc={doc}
+        rig={rig}
+        pose={rigPose}
+        targetKeyId={rigKey?.id ?? null}
+        appliedView={appliedViewAt(rigTargetTMs)}
+        aspect={aspect}
+        banded={banded}
+        frame={format.frame}
+        previewPose={previewRigPose}
+        commitPose={commitRigPose}
+        commitRig={(next: RigDoc) => void commitRig(next)}
+      />
+      <ActionRow
+        icon={<SceneRowIcon id="camera.animate" />}
+        label="Animate scene"
+        value={
+          rig.keys.length > 0
+            ? `${rig.keys.length} key${rig.keys.length === 1 ? "" : "s"}`
+            : undefined
+        }
+        selected={cameraOpen}
+        onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
+      />
+      {presetRow}
+      {continuityRow}
+    </>
+  );
+
   const cameraOptions = (
     <>
+      {modeControl}
       <div className="inspector-pose-grid">
         <NumberField
           label="orbit °"
@@ -998,6 +1165,7 @@ function CameraSectionBody({
         selected={cameraOpen}
         onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
       />
+      {presetRow}
       {camera.keys.length > 1 && (
         <>
           <ToggleRow
@@ -1069,7 +1237,7 @@ function CameraSectionBody({
     <div className="inspector-drill">
       <DrillBack label="Scene" onClick={onBack} />
       <div className="inspector-drill-title">Camera</div>
-      {camera.keys.length > 0 && (
+      {keyCount > 0 && (
         <div className="inspector-drill-reset">
           <button
             type="button"
@@ -1124,8 +1292,10 @@ function CameraSectionBody({
                 This scene animates the screenshot stack; the camera track is standing down.
               </p>
             )}
-            {cameraOptions}
+            {free ? rigOptions : cameraOptions}
           </ToggleFieldset>
+        ) : free ? (
+          rigOptions
         ) : (
           cameraOptions
         )}

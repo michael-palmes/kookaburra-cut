@@ -468,6 +468,96 @@ result. The invariants:
   stands down for the entire export (`isExporting`), so the export loop samples
   only what the sidecar declares.
 
+## Camera rig (free flight)
+
+A scene's sidecar may instead declare a `cameraRig` block and `cameraMode: "rig"`:
+**free poses** (`{ position, aim, fov?, rollDeg? }`) at scene-local times, where
+`aim` is a fixed `point`, the path `tangent`, or a bound `object`. Everything
+samples in `engine/sceneRig.ts` (pure, no three.js, unit-tested). The invariants:
+
+- **A separate block, not a per-key union.** The orbit sampler is untouched code,
+  so null-for-legacy is structural rather than argued: an absent `cameraMode`
+  never reaches `sceneRig.ts` at all, and `buildSceneCameraTracks` only
+  normalizes a rig under `cameraMode: "rig"`. Per-scene precedence is
+  **rig, then orbit, then the project track, then the base pose**, and rig mode
+  with ZERO rig keys falls through to orbit, so flipping the switch before
+  authoring never jumps the camera.
+- **Poses interpolate through a canonical form.** `{ position, forward (unit),
+  aimDistance, rollDeg, fov }`, not through the look POINT: position lerps (or
+  splines), `forward` slerps, `aimDistance` interpolates **logarithmically**,
+  roll and fov lerp. This is what lets a 180 degree pan-in-place rotate instead
+  of dragging its aim through the camera. All of it is export contract.
+- **Guard rules are pinned, never "whatever the floats do".** `slerpUnit` falls
+  back to a normalised lerp above dot 0.9995 and, below dot -0.9999, rotates
+  about the perpendicular built from the **least-aligned basis axis** (first
+  minimum wins: x, then y, then z) so an antipodal turn picks the same arc every
+  run. A zero-length aim guards to forward `[0,0,-1]` at distance 1; a
+  non-positive aim distance degrades to a linear mix rather than a NaN.
+- **Smoothing shapes POSITION only, and is the default.** A segment's `smooth`
+  flag is absent-means-true; `false` is a deliberate straight dolly. Smooth
+  segments run a **centripetal Catmull-Rom** (alpha 0.5, `engine/keyframes.ts`)
+  whose parameter is the already-eased progress, keeping timing separate from
+  path shape. A missing end neighbour is **reflected** (`2*near - far`), not
+  duplicated: duplication would give a lone segment a smoothstep speed profile
+  on top of its ease and a zero start tangent. Direction still slerps between
+  the two keys, because splining the aim too gives a wandering look direction.
+- **Tangent aim has four rules, all of them fallbacks to the baked `at`.**
+  Inside a smoothed segment it is the **analytic** spline derivative (never a
+  finite difference); inside a straight one it is the segment chord; a held key
+  outside any segment has no path; and a near-zero derivative or chord has none
+  either. `at` is stored on every aim mode precisely so each of those degrades
+  to a still-renderable shot.
+- **Bindings are read at load, never written.** An `object` aim resolves at
+  normalise time against the owning doc (`devices[]` by id, then the video
+  window, then the layered-screenshot stack) and rewrites only the in-memory
+  `at`; an unresolved id warns once and keeps the baked point. Rebaking `at`
+  when the bound object moves is the inspector's job, so the engine stays pure.
+- **The lens and the clamp.** `fov` is clamped to 15..90 at NORMALISE time only
+  (a sample-time clamp could kink a segment mid-flight) and stays absent when
+  unauthored, in which case the project-level track keeps owning fov exactly as
+  before. Per-channel eases (`easePosition` / `easeRotation` / `easeLens`) are
+  optional; an unknown name warns and drops back to the segment's own ease.
+- **Roll is the one new camera write, behind a falsy guard.** `applyCameraPose`
+  calls `rotateZ` only when `rollDeg` is present and non-zero, so every legacy
+  pose still produces bit-for-bit the matrix it always did. The project-level
+  track gains no roll channel.
+
+### Depth bands and the travel envelope
+
+A rig needs something to fly through, and a full-bleed layer sized for a static
+camera stops being full-bleed once one travels. Both come from one summary:
+
+- **The envelope is a fixed-count sample, not a frame read.** `rigOverscan`
+  (`engine/sceneRig.ts`) samples the track at exactly `ENVELOPE_SAMPLES` (64)
+  evenly spaced instants across its authored span. At each sample the camera's
+  four frustum corner rays (aim direction and roll included, through the same
+  `viewBasis` the overlay projects with) intersect the layer's plane, and the
+  widest hit sets the rect. The count is EXPORT CONTRACT: sizing maths that
+  depended on frame rate or scene length would resolve differently in preview
+  and export.
+- **Sizing only, never the pose.** `rigOverscan(track, frame, z, minimum)`
+  answers "how many base frames wide must a layer at depth `z` be", takes the
+  existing constant as its FLOOR and `OVERSCAN_CAP` (4) as its ceiling (a band
+  the camera crosses goes edge-on and would otherwise ask for an infinite
+  rect). A rig can therefore only ever ask for more; a rig-less scene resolves
+  the constant unchanged, which is what keeps every existing project
+  byte-identical. `VideoWindow`'s `STAGE_OVERSCAN` is the one existing layer
+  that reads it: its backing stage is a real world-space plane, so travel can
+  bring its edge into frame. The fixed background does NOT read it and needs
+  nothing, because its quad is rewritten from the live camera every draw and so
+  cannot show an edge at any pose.
+- **DepthStage band depths are pinned.** `foreground` 1.8, `content` 0,
+  `midground` −2.4, `backdrop` −5.5 (`toolkit/stage/DepthStage.tsx`), chosen to
+  read as parallax while staying inside the cyclorama's back wall at z −6. Each
+  band sizes its rect through `rigOverscan` at its own depth, so nearer bands
+  (which the camera passes closer to) get more overscan than far ones.
+- **The track resolves from context, not a registry.** `useRigTrack` reads the
+  scene doc already provided by `SceneHost`, so preview and export compute it
+  from the same input by construction rather than by a plumbing convention. The
+  DepthStage *registry* exists only so the editor's bounds advisory can tell a
+  banded scene from a staged one; it is UI-only and the render path never reads
+  it.
+
 ## Layered screenshot
 
 A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
@@ -1063,15 +1153,48 @@ workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
 durations re-frozen 2026-07-25, see the splice note below) and the bundled
 rolling-gate project (`showcase-tour`):
 
-| Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | stale (pre-trim) | — |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
+| Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
+| `showcase-tour` (rolling gate) | `355f9429…` | stale | stale | stale | stale | stale (pre-trim) | — |
+| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
+
+> **2026-07-26 (camera rigging, the full batch):** free-flight camera rigs
+> (`cameraMode` + `cameraRig`, the canonical sampler, centripetal smoothing,
+> the three aim modes, roll, per-channel eases), the Free-mode tools and ghost
+> path, the rig inspector and conversions, DepthStage with envelope-driven
+> layer sizing, presets, Present rig looping and cross-scene continuity.
+> `ws:launch-2026` stayed EQUAL and UNCHANGED (`eb89826c…`) throughout: every
+> block is null-for-legacy, and the orbit sampler is untouched code rather than
+> a branch. `showcase-tour` moved DELIBERATELY, from `7ad3e821…` to
+> `b65ec5fc…`, when scene 7 (`07-rig-flight`, a DepthStage fly-through) was
+> added to close the batch; the gate leg grows from ~8.2 s to ~10.2 s. The rig
+> fixture `ws:camera-rig-spike-opus` verifies at `27d6383b…` across ten scenes,
+> one concern each.
+
+> **2026-07-27 (variant decision and the footprint overscan):** this build won
+> the two-variant race (evidence: byte-identical raw frames on seven of ten
+> twinned fixture scenes; the mp4 SSIM differences on the other equal scenes
+> were x264 rate-control and lookahead bleed, proven by md5-equal
+> `--action screenshot` frames) and absorbed the loser's wins. Making the
+> showcase backdrop actually size from the envelope exposed a real gap:
+> `envelopeOverscan` ignored view direction and roll, so a banked tangent
+> flight overran its rect. `rigOverscan` replaces it, intersecting the four
+> frustum corner rays with the layer's plane at each of the 64 fixed samples,
+> floored by the existing constant and capped at `OVERSCAN_CAP` (4).
+> `showcase-tour` moved DELIBERATELY again, `b65ec5fc…` to `355f9429…` (the
+> envelope-sized backdrop plus the footprint maths); the repaired rig fixture
+> (roll restored after an in-hand edit zeroed it) re-recorded at `f5107f56…`.
+> `ws:launch-2026` stayed EQUAL and UNCHANGED at `eb89826c…` through the whole
+> port: no rig, no rect, nothing to resize. The 5:4 showcase hash #67 recorded
+> on the trimmed manifest (`9db959e2…`) is stale again for the same reason:
+> scene 7 changed the project; re-run it (and 3:2 if wanted) after this batch
+> lands.
 
 > **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
 > aimed at the camera-space origin, which IS the camera, so every such rim light
@@ -1127,8 +1250,9 @@ rolling-gate project (`showcase-tour`):
 > narrow aspects is pre-existing scene authoring (1:1 crops harder than 5:4),
 > not aspect plumbing. The standard 16:9 pair re-ran EQUAL with
 > `ws:launch-2026` on its anchor, so the `AspectName`/`FORMATS` addition is
-> null-for-legacy. NOTE: `554bbd23…` anchors the pre-trim showcase manifest;
-> re-record on the trimmed manifest, then give the table its 5:4 column.
+> null-for-legacy. `554bbd23…` anchored the pre-trim showcase manifest and is
+> STALE: re-recorded `9db959e2…` on the trimmed manifest (Verify ×2 EQUAL,
+> 2026-07-26), now the table's 5:4 column.
 
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,
