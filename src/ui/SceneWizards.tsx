@@ -334,7 +334,8 @@ export function NewSceneWizard({
   const [titleColor, setTitleColor] = useState<string | null>(null);
   const [subtitleColor, setSubtitleColor] = useState<string | null>(null);
   const [headerIcon, setHeaderIcon] = useState("🚀");
-  const [placement, setPlacement] = useState("end");
+  // Seeded after the scene under the playhead, the place a new scene usually belongs.
+  const [placement, setPlacement] = useState(() => `after:${sceneIndexAtPlayhead(scenes)}`);
   const [busy, setBusy] = useState(false);
   useEscapeClose(onCancel, !busy);
   const [error, setError] = useState<string | null>(null);

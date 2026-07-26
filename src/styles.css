@@ -3083,14 +3083,8 @@ body {
   position: relative;
   display: flex;
   gap: var(--space-4);
-  /* Top inset seats the playhead handle; side insets hold it at the resting start/end gaps (a scroller can't reach negative x). */
+  /* Top inset seats the playhead handle; side insets hold it at the resting start/end gaps (a scroller can't reach negative x), and the end gap mirrors the start exactly, so no trailing spacer. */
   padding: 30px var(--space-6) var(--space-2);
-}
-
-/* A real flex child, so the end gap survives the lost-trailing-padding overflow quirk. */
-.insert-cards::after {
-  content: "";
-  flex: 0 0 var(--space-6);
 }
 
 .insert-card {
