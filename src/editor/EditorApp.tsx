@@ -55,7 +55,7 @@ type RenderState =
   | { phase: "rendering"; frame: number; total: number }
   | { phase: "error"; message: string };
 
-const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
+const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4, 6];
 const AUTOSAVE_DEBOUNCE_MS = 400;
 const WHEEL_PX_PER_FRAME = 4; // horizontal-scroll scrub sensitivity
 
@@ -684,7 +684,7 @@ export function EditorApp() {
                 onStyle={handleTapStyle}
                 colorId={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
                 onColor={handleTapColor}
-                size={doc.tapSize ?? 1}
+                size={doc.tapSize ?? 1.25}
                 onSize={handleTapSize}
               />
             </div>
@@ -727,7 +727,7 @@ export function EditorApp() {
                 tapMarkerScope={tapMarkerScope}
                 tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
                 tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                tapSize={doc.tapSize ?? 1}
+                tapSize={doc.tapSize ?? 1.25}
               />
             )}
           </div>

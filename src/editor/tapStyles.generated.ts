@@ -16,6 +16,19 @@ export interface TapColor {
 
 export const TAP_STYLES: TapStyle[] = [
   {
+    id: "target",
+    label: "Dot and ring",
+    alphaStops: [
+      [0, 0.95],
+      [0.18, 0.95],
+      [0.26, 0],
+      [0.5, 0],
+      [0.56, 0.9],
+      [0.64, 0.9],
+      [0.7, 0],
+    ],
+  },
+  {
     id: "glow",
     label: "Soft glow",
     alphaStops: [
@@ -44,28 +57,15 @@ export const TAP_STYLES: TapStyle[] = [
       [0.7, 0],
     ],
   },
-  {
-    id: "target",
-    label: "Dot and ring",
-    alphaStops: [
-      [0, 0.95],
-      [0.18, 0.95],
-      [0.26, 0],
-      [0.5, 0],
-      [0.56, 0.9],
-      [0.64, 0.9],
-      [0.7, 0],
-    ],
-  },
 ];
 
 export const TAP_COLORS: TapColor[] = [
+  { id: "blue", label: "Blue", rgb: [64, 156, 255] },
   { id: "light", label: "Light", rgb: [255, 255, 255] },
   { id: "dark", label: "Dark", rgb: [17, 17, 17] },
-  { id: "blue", label: "Blue", rgb: [64, 156, 255] },
   { id: "red", label: "Red", rgb: [255, 59, 48] },
   { id: "terracotta", label: "Terracotta", rgb: [226, 114, 91] },
 ];
 
-export const DEFAULT_TAP_STYLE_ID = "glow";
-export const DEFAULT_TAP_COLOR_ID = "light";
+export const DEFAULT_TAP_STYLE_ID = "target";
+export const DEFAULT_TAP_COLOR_ID = "blue";
