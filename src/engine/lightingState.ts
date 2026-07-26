@@ -22,8 +22,8 @@ export function ensureRectAreaLightUniforms(): void {
 export interface RelativeLightSpec {
   space: Exclude<LightSpace, "world">;
   placement: Placement;
-  /** Aim point in the light's own space. */
-  target: [number, number, number];
+  /** Aim point in the light's own space. Absent when the author set no `target`, which aims at the SUBJECT instead of at the space's own origin. That distinction only bites `camera` space, and it bites hard: the camera-space origin IS the camera, so a defaulted aim points every rim light backwards at the lens and lights nothing. World space already has its origin at the subject and subject space is defined by it, so this makes all three spaces agree that no target means aim at the thing. */
+  target?: [number, number, number];
 }
 
 interface RelativeLightEntry {
@@ -69,6 +69,9 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
   if (entries.size === 0) return;
   camera.updateMatrixWorld();
   _camPos.setFromMatrixPosition(camera.matrixWorld);
+  // The subject, in world space: the applied pose's look-at, or the origin on the legacy path.
+  // Both the subject basis and every defaulted aim resolve from it.
+  _origin.set(...(pose ? pose.lookAt : ([0, 0, 0] as [number, number, number])));
 
   for (const { object, targetObject, aimSelf, orient, spec } of entries.values()) {
     if (spec.space === "camera") {
@@ -76,7 +79,6 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
       _basis.copy(camera.matrixWorld);
     } else {
       // Subject frame: origin at the pose's look-at, z toward the camera, yaw-only (world up).
-      _origin.set(...(pose ? pose.lookAt : ([0, 0, 0] as [number, number, number])));
       _z.copy(_camPos).sub(_origin);
       if (_z.lengthSq() < 1e-10) _z.set(0, 0, 1);
       _z.normalize();
@@ -93,7 +95,10 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
     }
 
     _pos.set(...placementPosition(spec.placement, spec.target)).applyMatrix4(_basis);
-    _aim.set(...spec.target).applyMatrix4(_basis);
+    // An explicit target reads in the light's own space; a defaulted one is the subject in WORLD
+    // space, so a camera-space rim aims at the product rather than back at the lens.
+    if (spec.target) _aim.set(...spec.target).applyMatrix4(_basis);
+    else _aim.copy(_origin);
     object.position.copy(_pos);
     if (orient) object.quaternion.setFromRotationMatrix(_basis);
     if (targetObject) {

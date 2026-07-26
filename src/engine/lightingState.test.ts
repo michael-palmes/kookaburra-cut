@@ -1,4 +1,4 @@
-import { Object3D, PerspectiveCamera } from "three";
+import { Object3D, PerspectiveCamera, RectAreaLight, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import type { CameraPose } from "./cameraTrack";
 import { applyRelativeLights, registerRelativeLight, relativeLightCount } from "./lightingState";
@@ -128,6 +128,75 @@ describe("applyRelativeLights", () => {
     try {
       applyRelativeLights(cameraAt(pose([0, 0, 5], [0, 0, 0])), null);
       expect(light.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, 2]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("THE DEAD RIM TRAP: a camera-space light with no target aims at the subject, not the lens", () => {
+    // A rectAreaLight, not a bare Object3D: three's lookAt points -Z at the target for lights and
+    // +Z for everything else, so a plain object would assert the opposite convention.
+    const light = new RectAreaLight(0xffffff, 1, 1, 3);
+    const unregister = registerRelativeLight("t6", {
+      object: light,
+      targetObject: null,
+      aimSelf: true,
+      spec: {
+        space: "camera",
+        placement: { mode: "point", position: [2, 0, -1] },
+      },
+    });
+    try {
+      const p = pose([0, 0, 6], [0, 0, 0]);
+      applyRelativeLights(cameraAt(p), p);
+      // Right of a camera at z=6 and 1 unit in front of it.
+      expect(light.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([2, 0, 5]);
+      const forward = new Vector3(0, 0, -1).applyQuaternion(light.quaternion);
+      const toSubject = new Vector3(0, 0, 0).sub(light.position).normalize();
+      expect(forward.dot(toSubject)).toBeCloseTo(1, 5);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("an explicit camera-space target still reads in the camera's own frame", () => {
+    const light = new Object3D();
+    const target = new Object3D();
+    const unregister = registerRelativeLight("t7", {
+      object: light,
+      targetObject: target,
+      aimSelf: false,
+      spec: {
+        space: "camera",
+        placement: { mode: "point", position: [0, 0, -1] },
+        target: [0, 0, -4],
+      },
+    });
+    try {
+      const p = pose([0, 0, 6], [0, 0, 0]);
+      applyRelativeLights(cameraAt(p), p);
+      // 4 in front of a camera at z=6, NOT the subject at the origin.
+      expect(target.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, 2]);
+    } finally {
+      unregister();
+    }
+  });
+
+  it("a defaulted aim falls back to the world origin without a pose", () => {
+    const light = new Object3D();
+    const target = new Object3D();
+    const unregister = registerRelativeLight("t8", {
+      object: light,
+      targetObject: target,
+      aimSelf: false,
+      spec: {
+        space: "camera",
+        placement: { mode: "point", position: [2, 1, -1] },
+      },
+    });
+    try {
+      applyRelativeLights(cameraAt(pose([0, 0, 6], [0, 0, 0])), null);
+      expect(target.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, 0]);
     } finally {
       unregister();
     }

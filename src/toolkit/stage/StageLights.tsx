@@ -54,10 +54,11 @@ function FreeLight({
       spec: {
         space: (spec.space ?? "world") as "camera" | "subject",
         placement: spec.placement,
-        target: aim,
+        // Raw, not defaulted: an absent target means "aim at the subject", which the seam resolves.
+        target: spec.target,
       },
     });
-  }, [key, relative, aimed, spec, aim, targetObject]);
+  }, [key, relative, aimed, spec, targetObject]);
 
   // Keyframe apply-seam registration (intensity/kelvin per light id; placement for world lights).
   const sceneIndex = useSceneContext()?.index;
