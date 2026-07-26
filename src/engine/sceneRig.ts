@@ -1,4 +1,5 @@
 /** Per-SCENE camera RIG: free-flight pose keyframes stored in a scene's sidecar `cameraRig` block and sampled in SCENE-LOCAL time. A separate block behind `cameraMode`, so the orbit sampler (sceneCamera.ts) is untouched and projects without a rig render byte-identically. Pure (no three.js, no clock reads) like every sampler here, with hand-rolled directional maths: poses interpolate through a CANONICAL form (position + unit forward + aim distance), which is what lets a 180 degree pan-in-place turn without the look point sweeping through the camera. See docs/determinism.md. */
+import { viewBasis } from "./cameraProject";
 import { ease, isEaseName } from "./ease";
 import { CAMERA } from "./format";
 import { catmullRom, catmullRomTangent, lerp, lerp3 } from "./keyframes";
@@ -393,60 +394,50 @@ export function sampleSceneRig(track: SceneRigTrack, localMs: number): RigPose {
 /** How many evenly spaced samples summarise a rig's travel. FIXED and documented: the envelope feeds SIZING maths, which must land on the same numbers in preview and export, so it can never depend on frame rate or scene length. EXPORT CONTRACT. */
 export const ENVELOPE_SAMPLES = 64;
 
-/** What a rig's travel asks of the set: how far off-centre it goes, how close and far it gets from the content plane, and the lens range it uses. Sizing maths only, never the per-frame pose. */
-export interface RigEnvelope {
-  /** Largest |x| the camera reaches. */
-  lateral: number;
-  /** Largest |y|. */
-  vertical: number;
-  /** Distance from the content plane (z = 0) at the nearest and furthest points of travel. */
-  minDistance: number;
-  maxDistance: number;
-  minFov: number;
-  maxFov: number;
-}
+/** Cap on the overscan factor: a band the camera crosses goes edge-on and would ask for an infinite rect it can never usefully fill. */
+export const OVERSCAN_CAP = 4;
 
-/** Summarise a rig's travel from a fixed number of samples across its authored span. */
-export function rigEnvelope(track: SceneRigTrack, fallbackFov = CAMERA.fov): RigEnvelope {
+/** How much a full-bleed layer at depth `z` must be oversized to stay full-bleed for this rig's whole travel: at each of the fixed samples the camera's four frustum corner rays (roll and aim direction included, via the same basis the overlay projects through) intersect the layer's plane, and the widest hit sets the rect. `minimum` keeps an existing constant as the floor, so a rig can only ever ask for MORE, never shrink what a rig-less scene renders. Pure sizing maths, evaluated once per scene, never per frame. */
+export function rigOverscan(
+  track: SceneRigTrack,
+  frame: { width: number; height: number },
+  z = 0,
+  minimum = 1,
+  fallbackFov = CAMERA.fov,
+): number {
   const first = track.keys[0].tMs;
   const last = track.keys[track.keys.length - 1].tMs;
   const span = last - first;
-  let lateral = 0;
-  let vertical = 0;
-  let minDistance = Number.POSITIVE_INFINITY;
-  let maxDistance = 0;
-  let minFov = Number.POSITIVE_INFINITY;
-  let maxFov = 0;
+  const aspect = frame.width / frame.height;
+  let halfW = 0;
+  let halfH = 0;
   for (let i = 0; i < ENVELOPE_SAMPLES; i++) {
     // A zero-span track (one key, or every key at the same instant) samples that one pose.
     const t = span <= 0 ? first : first + (span * i) / (ENVELOPE_SAMPLES - 1);
     const pose = sampleSceneRig(track, t);
-    lateral = Math.max(lateral, Math.abs(pose.position[0]));
-    vertical = Math.max(vertical, Math.abs(pose.position[1]));
-    const distance = Math.abs(pose.position[2]);
-    minDistance = Math.min(minDistance, distance);
-    maxDistance = Math.max(maxDistance, distance);
     const fov = pose.fov ?? fallbackFov;
-    minFov = Math.min(minFov, fov);
-    maxFov = Math.max(maxFov, fov);
+    const basis = viewBasis({ ...pose, fov });
+    const tanV = Math.tan((fov * Math.PI) / 360);
+    const [px, py, pz] = pose.position;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        const d: [number, number, number] = [
+          -basis.z[0] + sx * tanV * aspect * basis.x[0] + sy * tanV * basis.y[0],
+          -basis.z[1] + sx * tanV * aspect * basis.x[1] + sy * tanV * basis.y[1],
+          -basis.z[2] + sx * tanV * aspect * basis.x[2] + sy * tanV * basis.y[2],
+        ];
+        // A corner that never reaches the plane sees past it; no rect covers that, so it asks nothing.
+        if (Math.abs(d[2]) < 1e-6) continue;
+        const along = (z - pz) / d[2];
+        if (along <= 0) continue;
+        halfW = Math.max(halfW, Math.abs(px + d[0] * along));
+        halfH = Math.max(halfH, Math.abs(py + d[1] * along));
+      }
+    }
   }
-  return { lateral, vertical, minDistance, maxDistance, minFov, maxFov };
-}
-
-/** How much a full-bleed layer at depth `z` must be oversized to stay full-bleed for this rig's whole travel: the widest the frame ever gets on that plane, plus how far off-centre the camera ever goes, as a multiple of the base frame. `minimum` keeps an existing constant as the floor, so a rig can only ever ask for MORE, never shrink what a rig-less scene renders. Pure sizing maths, evaluated once per scene, never per frame. */
-export function envelopeOverscan(
-  env: RigEnvelope,
-  frame: { width: number; height: number },
-  z = 0,
-  minimum = 1,
-): number {
-  const distance = Math.max(0.1, env.maxDistance - z);
-  const halfH = distance * Math.tan((env.maxFov * Math.PI) / 360);
-  const halfW = halfH * (frame.width / frame.height);
   return Math.max(
     minimum,
-    (env.lateral + halfW) / (frame.width / 2),
-    (env.vertical + halfH) / (frame.height / 2),
+    Math.min(OVERSCAN_CAP, Math.max(halfW / (frame.width / 2), halfH / (frame.height / 2))),
   );
 }
 

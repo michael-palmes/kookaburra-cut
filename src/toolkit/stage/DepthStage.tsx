@@ -2,12 +2,7 @@ import { createContext, type ReactNode, useContext, useEffect, useMemo } from "r
 import { useDepthStageRegistry } from "../../engine/depthStageRegistry";
 import { useFormat } from "../../engine/format";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
-import {
-  envelopeOverscan,
-  normalizeSceneRig,
-  type RigEnvelope,
-  rigEnvelope,
-} from "../../engine/sceneRig";
+import { normalizeSceneRig, rigOverscan, type SceneRigTrack } from "../../engine/sceneRig";
 
 /** Named depth bands for a scene a camera rig flies THROUGH: content where scenes already lay out, a foreground layer between the camera and it, and two layers behind. Every band sizes its full-bleed rect from the scene's rig envelope, so a layer that fills the frame at rest still fills it at the far end of a fly-through. A scene with no rig gets today's static sizing, which is why adding the container to an existing scene changes nothing. Band depths are EXPORT CONTRACT; see docs/determinism.md. */
 
@@ -36,13 +31,12 @@ export function useDepthBand(): DepthBand | null {
   return useContext(DepthBandContext);
 }
 
-/** The scene's camera travel, or null when it has no rig. Derived from the scene doc already in context, so preview and export resolve it identically by construction rather than by a plumbing rule. */
-export function useRigEnvelope(): RigEnvelope | null {
+/** The scene's normalised rig track, or null when it has no rig. Derived from the scene doc already in context, so preview and export resolve it identically by construction rather than by a plumbing rule. */
+export function useRigTrack(): SceneRigTrack | null {
   const doc = useContext(SceneDocContext);
   return useMemo(() => {
     if (doc?.cameraMode !== "rig") return null;
-    const track = normalizeSceneRig(doc.cameraRig, "rig-envelope", doc);
-    return track ? rigEnvelope(track) : null;
+    return normalizeSceneRig(doc.cameraRig, "rig-envelope", doc);
   }, [doc]);
 }
 
@@ -58,7 +52,7 @@ export function DepthStage({
   backdrop?: ReactNode;
 }) {
   const format = useFormat();
-  const envelope = useRigEnvelope();
+  const track = useRigTrack();
   // Mount-time reporting, so the bounds advisory knows this scene sizes its own layers.
   const sceneIndex = useSceneContext()?.index;
   useEffect(() => {
@@ -70,7 +64,7 @@ export function DepthStage({
     const build = (name: DepthBandName): DepthBand => {
       const z = DEPTH_BANDS[name];
       // No rig: the band covers exactly what the base camera sees there, today's assumption.
-      const scale = envelope ? envelopeOverscan(envelope, format.frame, z) : 1;
+      const scale = track ? rigOverscan(track, format.frame, z) : 1;
       return {
         name,
         z,
@@ -84,7 +78,7 @@ export function DepthStage({
       midground: build("midground"),
       backdrop: build("backdrop"),
     };
-  }, [envelope, format.frame]);
+  }, [track, format.frame]);
 
   // Rear to front, so a band's children draw over the ones behind them without depth tricks.
   return (

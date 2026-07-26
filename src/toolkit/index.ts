@@ -89,7 +89,7 @@ export {
   type DepthBandName,
   DepthStage,
   useDepthBand,
-  useRigEnvelope,
+  useRigTrack,
 } from "./stage/DepthStage";
 export { SceneStage } from "./stage/SceneStage";
 export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCounter";
