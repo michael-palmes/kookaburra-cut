@@ -216,10 +216,10 @@ export function Fixture({ entry, colors }: { entry: FixturePlanEntry; colors: Th
   useEffect(() => () => geometry.dispose(), [geometry]);
   const material = useMemo(
     () =>
-      new MeshBasicMaterial({
-        toneMapped: false,
-        side: spec.form === "panel" ? DoubleSide : undefined,
-      }),
+      // `side` is omitted rather than passed as undefined, which three warns about per material.
+      new MeshBasicMaterial(
+        spec.form === "panel" ? { toneMapped: false, side: DoubleSide } : { toneMapped: false },
+      ),
     [spec.form],
   );
   useEffect(() => () => material.dispose(), [material]);
