@@ -428,7 +428,8 @@ fn overwrite_declared_sizes(buffer: &mut [u8], bytes: u32) {
 
 /// What an importer does before it is allowed to touch the workspace: inspect, then stage and hash-verify.
 fn import(archive: &Path, workspace: &Path, app_version: &str) -> Result<(), PackError> {
-    let inspection = inspect(archive, app_version)?;
+    let _ = app_version;
+    let inspection = inspect(archive)?;
     let staged = stage(
         archive,
         workspace,
@@ -613,7 +614,7 @@ fn round_trip_write_inspect_stage() {
     let archive = out.path().join("acme.kbpack");
     let (_, manifest_bytes) = write_valid_pack(source.path(), &archive);
 
-    let inspection = inspect(&archive, APP_VERSION).expect("inspect");
+    let inspection = inspect(&archive).expect("inspect");
     assert_eq!(inspection.manifest_bytes, manifest_bytes);
     assert_eq!(inspection.manifest.files.len(), SOURCE_TREE.len());
     assert_eq!(
@@ -696,12 +697,6 @@ fn staged_pack_drop_removes_the_tree() {
     drop(staged);
     assert!(!root.exists(), "Drop must remove the staging tree");
     assert!(workspace.staging_is_empty());
-
-    // `into_kept_root` is the one escape hatch, for an apply that succeeded.
-    let staged = stage(&archive, workspace.root(), &manifest, |_, _| {}, &|| false).expect("stage");
-    let kept = staged.into_kept_root();
-    assert!(kept.is_dir(), "into_kept_root must not delete the tree");
-    let _ = std::fs::remove_dir_all(&kept);
 }
 
 #[test]
@@ -853,7 +848,7 @@ fn forged_signature_fails_verification() {
         .signature(SigMode::Forged)
         .build(source.path());
 
-    let inspection = inspect(&archive, APP_VERSION).expect("inspect still opens the pack");
+    let inspection = inspect(&archive).expect("inspect still opens the pack");
     let signature = inspection.signature.clone().expect("signature entry present");
     assert_eq!(signature.len(), 64);
     assert!(
@@ -870,7 +865,7 @@ fn unsigned_pack_has_no_signature() {
         .signature(SigMode::Absent)
         .build(source.path());
 
-    let inspection = inspect(&archive, APP_VERSION).expect("inspect");
+    let inspection = inspect(&archive).expect("inspect");
     assert!(
         inspection.signature.is_none(),
         "an unsigned pack must report no signature, not an empty one"
@@ -890,7 +885,7 @@ fn refuses_tampered_payload() {
         .build(source.path());
 
     // The signature is genuine: only the payload was touched, which is what the staged hashes are for.
-    let inspection = inspect(&archive, APP_VERSION).expect("inspect");
+    let inspection = inspect(&archive).expect("inspect");
     let signature = inspection.signature.clone().expect("signature");
     assert!(verify_signature(
         &inspection.manifest,
@@ -964,12 +959,17 @@ fn refuses_future_format_version() {
 }
 
 #[test]
-fn refuses_future_min_app_version() {
-    assert_refused(
-        "future-app",
-        Fixture::valid().min_app_version("99.0.0"),
-        "appTooOld",
-    );
+fn a_future_min_app_version_is_a_verdict_not_a_parse_failure() {
+    // A too-new FORMAT is a parse refusal (the shape cannot be trusted); a too-new APP version is not, since the
+    // manifest reads perfectly. `inspect` accepts it and the caller turns it into the "needs a newer Kookaburra Cut"
+    // screen, while `stage_pack` still refuses outright.
+    let tag = "future-app";
+    let source = TempDir::new(tag);
+    let archive = Fixture::valid().min_app_version("99.0.0").build(source.path());
+    let inspection = inspect(&archive).expect("inspect must accept a readable manifest");
+    assert_eq!(inspection.manifest.min_app_version, "99.0.0");
+    assert!(super::read::version_lt(APP_VERSION, "99.0.0"));
+    assert!(!super::read::version_lt("99.0.0", APP_VERSION));
 }
 
 #[test]
@@ -1034,7 +1034,7 @@ fn strips_the_executable_bit() {
         .entry(Entry::new("payload/projects/acme/scenes/01.tsx", b"code").mode(0o755))
         .build(source.path());
 
-    let inspection = inspect(&archive, APP_VERSION).expect("inspect");
+    let inspection = inspect(&archive).expect("inspect");
     let staged = stage(
         &archive,
         workspace.root(),
@@ -1089,7 +1089,7 @@ fn ignores_macos_archive_litter() {
         .entry(Entry::new("payload/projects/acme/._project.json", b"x").unlisted())
         .build(source.path());
 
-    let inspection = inspect(&archive, APP_VERSION).expect("inspect");
+    let inspection = inspect(&archive).expect("inspect");
     let staged = stage(
         &archive,
         workspace.root(),
@@ -1128,7 +1128,7 @@ fn refuses_hostile_paths_in_contents() {
     });
     let archive = Fixture::valid().contents(contents).build(source.path());
 
-    let error = inspect(&archive, APP_VERSION)
+    let error = inspect(&archive)
         .err()
         .expect("a contents path outside payload/ must be refused");
     assert!(

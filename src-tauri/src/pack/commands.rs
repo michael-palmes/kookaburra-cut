@@ -533,7 +533,7 @@ pub fn inspect_pack(
     let archive = Path::new(&path);
     crate::packs_win::validate_incoming(archive)?;
     let running = app.package_info().version.to_string();
-    let inspection = read::inspect(archive, &running)?;
+    let inspection = read::inspect(archive)?;
 
     let signature = match &inspection.signature {
         None => "missing",
@@ -557,11 +557,20 @@ pub fn inspect_pack(
     );
     let install_bytes = inspection.manifest.files.iter().map(|f| f.bytes).sum();
 
+    // A pack for a newer app gets its own screen (with Check for Updates) rather than a generic failure.
+    let compatibility = if read::version_lt(&running, &inspection.manifest.min_app_version) {
+        CompatibilityView::NeedsNewerApp {
+            min: inspection.manifest.min_app_version.clone(),
+        }
+    } else {
+        CompatibilityView::Ok
+    };
+
     Ok(PackInspectionView {
         manifest: inspection.manifest,
         signature,
         publisher: verdict,
-        compatibility: CompatibilityView::Ok,
+        compatibility,
         archive_bytes: inspection.archive_bytes,
         install_bytes,
     })
@@ -569,7 +578,6 @@ pub fn inspect_pack(
 
 #[tauri::command]
 pub fn read_pack_scene_source(
-    app: AppHandle,
     path: String,
     project_slug: String,
     scene_file: String,
@@ -577,8 +585,7 @@ pub fn read_pack_scene_source(
     let archive = Path::new(&path);
     crate::packs_win::validate_incoming(archive)?;
     workspace::validate_slug(&project_slug)?;
-    let running = app.package_info().version.to_string();
-    let inspection = read::inspect(archive, &running)?;
+    let inspection = read::inspect(archive)?;
     // `sceneFile` is project-relative ("scenes/01-intro.tsx"); validate_archive_path is the gate, not this join.
     let entry = format!("payload/projects/{project_slug}/{scene_file}");
     Ok(read::read_entry(
@@ -605,7 +612,14 @@ pub fn stage_pack(
     let root = workspace::require_root(&app, &settings)?;
     let running = app.package_info().version.to_string();
 
-    let inspection = read::inspect(archive, &running)?;
+    let inspection = read::inspect(archive)?;
+    if read::version_lt(&running, &inspection.manifest.min_app_version) {
+        return Err(PackError::AppTooOld {
+            needs: inspection.manifest.min_app_version.clone(),
+            running,
+        }
+        .into());
+    }
     // Never stage a pack whose signature does not hold, whatever the UI thinks it saw earlier.
     let Some(signature) = &inspection.signature else {
         return Err(PackError::SignatureMissing.into());

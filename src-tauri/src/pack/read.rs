@@ -31,15 +31,6 @@ impl Drop for StagedPack {
     }
 }
 
-impl StagedPack {
-    /// Hand the tree to the caller so a successful apply keeps its files. Only `apply` calls this.
-    pub fn into_kept_root(self) -> PathBuf {
-        let root = self.root.clone();
-        std::mem::forget(self);
-        root
-    }
-}
-
 /// Stops inflation the moment a stream exceeds its budget, regardless of what the header claimed.
 struct CountingReader<'a, R: Read> {
     inner: R,
@@ -70,7 +61,7 @@ fn open(archive: &Path) -> Result<(zip::ZipArchive<std::fs::File>, u64), PackErr
 }
 
 /// Central directory plus two small entries. Must stay fast on a 500 MB pack: nothing here inflates payload.
-pub fn inspect(archive: &Path, app_version: &str) -> Result<PackInspection, PackError> {
+pub fn inspect(archive: &Path) -> Result<PackInspection, PackError> {
     let (mut zip, archive_bytes) = open(archive)?;
 
     if zip.len() > MAX_ENTRIES {
@@ -134,12 +125,6 @@ pub fn inspect(archive: &Path, app_version: &str) -> Result<PackInspection, Pack
             supported: PACK_FORMAT_VERSION,
         });
     }
-    if version_lt(app_version, &manifest.min_app_version) {
-        return Err(PackError::AppTooOld {
-            needs: manifest.min_app_version.clone(),
-            running: app_version.to_string(),
-        });
-    }
     validate_contents_paths(&manifest)?;
 
     Ok(PackInspection {
@@ -155,7 +140,7 @@ pub fn inspect(archive: &Path, app_version: &str) -> Result<PackInspection, Pack
 /// Every one of them is validated here and required to appear in `files`, the same as any zip entry.
 fn validate_contents_paths(manifest: &PackManifest) -> Result<(), PackError> {
     let listed: HashSet<&str> = manifest.files.iter().map(|f| f.path.as_str()).collect();
-    let mut check = |path: &str| -> Result<(), PackError> {
+    let check = |path: &str| -> Result<(), PackError> {
         validate_archive_path(path)?;
         if !listed.contains(path) {
             return Err(PackError::EntryNotInManifest(path.to_string()));
@@ -199,7 +184,7 @@ fn validate_contents_paths(manifest: &PackManifest) -> Result<(), PackError> {
 }
 
 /// Semver-ish compare, tolerant of pre-release suffixes: only the numeric prefix decides.
-fn version_lt(a: &str, b: &str) -> bool {
+pub fn version_lt(a: &str, b: &str) -> bool {
     let parse = |v: &str| -> Vec<u32> {
         v.split(['.', '-', '+'])
             .take(3)
