@@ -3049,6 +3049,29 @@ body {
   gap: var(--space-4);
 }
 
+.insert-viewport {
+  position: relative;
+}
+
+/* Edge fades cue scenes sitting off-screen in an overflowing strip. */
+.insert-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+}
+
+.insert-fade.start {
+  left: 0;
+  background: linear-gradient(to right, var(--surface-elevated), transparent);
+}
+
+.insert-fade.end {
+  right: 0;
+  background: linear-gradient(to left, var(--surface-elevated), transparent);
+}
+
 .insert-strip {
   overflow-x: auto;
   scroll-snap-type: x proximity;

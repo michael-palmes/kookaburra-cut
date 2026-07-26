@@ -28,6 +28,7 @@ export function SceneInsertTimeline({
   const cardsRef = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<StripLayout | null>(null);
   const [dragX, setDragX] = useState<number | null>(null);
+  const [fades, setFades] = useState({ start: false, end: false });
   const drag = useRef<{ pointerId: number; clientX: number; raf: number } | null>(null);
 
   const count = scenes.length;
@@ -35,28 +36,43 @@ export function SceneInsertTimeline({
   const halfSpan = layout ? (layout.cardWidth + layout.gapWidth) / 2 : 0;
   const gap = gapFromPlacement(value, count);
 
-  // Cards flex to fill the row before the strip scrolls, so geometry is measured, not assumed.
+  // Edge fades cue off-screen scenes whenever the strip can scroll further.
+  const updateFades = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const start = scroller.scrollLeft > 1;
+    const end = scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 1;
+    setFades((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
+  }, []);
+
+  // Cards flex to fill the row before the strip scrolls; geometry is measured from fractional rects, since integer offsetLeft rounding compounds per gap across a long strip.
   const measure = useCallback(() => {
     const cards = cardsRef.current?.querySelectorAll<HTMLElement>(".insert-card");
-    if (!cards || cards.length === 0) {
+    const row = cardsRef.current;
+    if (!cards || cards.length === 0 || !row) {
       setLayout(null);
       return;
     }
-    const first = cards[0];
-    const cardWidth = first.offsetWidth;
+    const rowRect = row.getBoundingClientRect();
+    const firstRect = cards[0].getBoundingClientRect();
+    const cardWidth = firstRect.width;
+    const padStart = firstRect.left - rowRect.left;
     const gapWidth =
-      cards.length > 1 ? cards[1].offsetLeft - first.offsetLeft - cardWidth : first.offsetLeft;
+      cards.length > 1
+        ? cards[1].getBoundingClientRect().left - firstRect.left - cardWidth
+        : padStart;
     // Identity-stable when nothing moved, so resize ticks can't re-trigger the reveal scroll.
     setLayout((prev) =>
       prev &&
       prev.count === cards.length &&
       prev.cardWidth === cardWidth &&
       prev.gapWidth === gapWidth &&
-      prev.padStart === first.offsetLeft
+      prev.padStart === padStart
         ? prev
-        : { count: cards.length, cardWidth, gapWidth, padStart: first.offsetLeft },
+        : { count: cards.length, cardWidth, gapWidth, padStart },
     );
-  }, []);
+    updateFades();
+  }, [updateFades]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: count re-measures when the card set changes
   useLayoutEffect(measure, [measure, count]);
@@ -175,47 +191,52 @@ export function SceneInsertTimeline({
   return (
     <div className="insert-timeline">
       {/* The scroller owns the pointer handlers so the whole strip drags, including the end gap's overhang past the cards row. */}
-      <div
-        ref={scrollerRef}
-        className={`insert-strip${dragX !== null ? " dragging" : ""}`}
-        role="slider"
-        tabIndex={0}
-        aria-label="Insert position"
-        aria-orientation="horizontal"
-        aria-valuemin={0}
-        aria-valuemax={count}
-        aria-valuenow={activeGap}
-        aria-valuetext={valueText}
-        onKeyDown={onKeyDown}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={(e) => endDrag(e, true)}
-        onPointerCancel={(e) => endDrag(e, false)}
-      >
-        <div ref={cardsRef} className="insert-cards">
-          {scenes.map((s) => (
-            <div key={s.stem} className="insert-card">
-              <span className="insert-card-thumb">
-                {thumbs[s.stem] ? (
-                  <img src={fsUrl(thumbs[s.stem])} alt="" draggable={false} />
-                ) : (
-                  <span aria-hidden>·</span>
-                )}
-              </span>
-              <span className="insert-card-name" title={sceneLabel(s)}>
-                {sceneLabel(s)}
-              </span>
-            </div>
-          ))}
-          {indicatorX !== undefined && (
-            <div
-              className={`insert-indicator${dragX !== null ? " dragging" : ""}`}
-              style={{ left: `${indicatorX}px` }}
-            >
-              <span className="insert-handle" />
-            </div>
-          )}
+      <div className="insert-viewport">
+        <div
+          ref={scrollerRef}
+          className={`insert-strip${dragX !== null ? " dragging" : ""}`}
+          role="slider"
+          tabIndex={0}
+          aria-label="Insert position"
+          aria-orientation="horizontal"
+          aria-valuemin={0}
+          aria-valuemax={count}
+          aria-valuenow={activeGap}
+          aria-valuetext={valueText}
+          onKeyDown={onKeyDown}
+          onScroll={updateFades}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={(e) => endDrag(e, true)}
+          onPointerCancel={(e) => endDrag(e, false)}
+        >
+          <div ref={cardsRef} className="insert-cards">
+            {scenes.map((s) => (
+              <div key={s.stem} className="insert-card">
+                <span className="insert-card-thumb">
+                  {thumbs[s.stem] ? (
+                    <img src={fsUrl(thumbs[s.stem])} alt="" draggable={false} />
+                  ) : (
+                    <span aria-hidden>·</span>
+                  )}
+                </span>
+                <span className="insert-card-name" title={sceneLabel(s)}>
+                  {sceneLabel(s)}
+                </span>
+              </div>
+            ))}
+            {indicatorX !== undefined && (
+              <div
+                className={`insert-indicator${dragX !== null ? " dragging" : ""}`}
+                style={{ left: `${indicatorX}px` }}
+              >
+                <span className="insert-handle" />
+              </div>
+            )}
+          </div>
         </div>
+        {fades.start && <div className="insert-fade start" aria-hidden />}
+        {fades.end && <div className="insert-fade end" aria-hidden />}
       </div>
       <p className="insert-caption">
         <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
