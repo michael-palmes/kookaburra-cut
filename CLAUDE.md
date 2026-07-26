@@ -24,7 +24,8 @@ pnpm format             # biome format --write .
 # Bundled gate projects take NO prefix (showcase-tour); workspace fixtures take ws:.
 pnpm kookaburra:run --action verify --project ws:launch-2026 --aspect all
 pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:9 --codec libx264
-pnpm gate               # the standard gate pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
+pnpm gate               # the default per-change gate: showcase-tour Verify ×2, 16:9 (~2 min)
+pnpm gate:merge         # pre-merge pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
 
 # SEE a frame without driving the app: one deterministic frame via the export path → PNG
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
@@ -37,9 +38,11 @@ pnpm package:dmg       # DMG only, from an already-built release/Kookaburra Cut.
 pnpm release           # guards -> package:signed -> zip + checksum -> tag -> draft GH release
 ```
 
-**Gate economy:** verifies are slow (~2–3 min each); default to **1–2 runs**:
-ONE feature-matched project Verify ×2 in 16:9 (`showcase-tour` is the rolling gate
-project) + `ws:launch-2026` 16:9 (must be EQUAL: the null-for-legacy proof).
+**Gate economy:** the default per-change gate is ONE feature-matched project
+Verify ×2 in 16:9 (`showcase-tour` is the rolling gate project, ~2 min). The
+legacy sentinel gates PRE-MERGE: `pnpm gate:merge` runs showcase-tour +
+`ws:launch-2026` in one boot (~3 min); `ws:launch-2026` must be EQUAL (the
+null-for-legacy proof).
 Theme/scene DATA variations don't need their own verifies; only changed CODE
 PATHS do. Full matrices (all projects × all aspects) are reserved for engine-wide
 constants, deliberate rebases and phase-closing gates. Full tier policy and the
