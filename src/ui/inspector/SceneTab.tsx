@@ -123,6 +123,8 @@ import {
   DrillGroup,
   middleTruncate,
   NumberField,
+  SegmentedRow,
+  ToggleFieldset,
   ToggleRow,
   useDragScrub,
 } from "./rows";
@@ -1009,51 +1011,49 @@ function CameraSectionBody({
       )}
       <div className="inspector-drill-body inspector-section-body">
         {doc?.layeredScreenshot ? (
-          <div className="toggle-fieldset">
-            {/* One animated track per scene: the toggle stands one track down, never deletes keys. */}
-            <div className="inspector-subtabs" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!lsAnimated}
-                className={`inspector-subtab${lsAnimated ? "" : " active"}`}
-                title="Animate this scene with the camera track"
-                onClick={() => {
-                  if (!lsAnimated) return;
-                  useLayeredScreenshotEditStore.getState().setLaneOpen(false);
-                  void patchDoc((next) => {
-                    delete next.animatedTrack;
-                  });
+          <ToggleFieldset
+            control={
+              // One animated track per scene: the toggle stands one track down, never deletes keys.
+              <SegmentedRow
+                options={[
+                  {
+                    value: "camera",
+                    label: "Camera",
+                    icon: <SceneRowIcon id="camera.animate" />,
+                    title: "Animate this scene with the camera track",
+                  },
+                  {
+                    value: "layeredScreenshot",
+                    label: "Screenshot stack",
+                    icon: <SceneRowIcon id="layeredScreenshot.edit" />,
+                    title:
+                      "Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)",
+                  },
+                ]}
+                value={lsAnimated ? "layeredScreenshot" : "camera"}
+                onChange={(track) => {
+                  if (track === "camera") {
+                    useLayeredScreenshotEditStore.getState().setLaneOpen(false);
+                    void patchDoc((next) => {
+                      delete next.animatedTrack;
+                    });
+                  } else {
+                    useCameraEditStore.getState().setOpen(false);
+                    void patchDoc((next) => {
+                      next.animatedTrack = "layeredScreenshot";
+                    });
+                  }
                 }}
-              >
-                <SceneRowIcon id="camera.animate" />
-                Camera
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={lsAnimated}
-                className={`inspector-subtab${lsAnimated ? " active" : ""}`}
-                title="Animate this scene with the screenshot stack's pose track (the camera stands down; its keys are kept)"
-                onClick={() => {
-                  if (lsAnimated) return;
-                  useCameraEditStore.getState().setOpen(false);
-                  void patchDoc((next) => {
-                    next.animatedTrack = "layeredScreenshot";
-                  });
-                }}
-              >
-                <SceneRowIcon id="layeredScreenshot.edit" />
-                Screenshot stack
-              </button>
-            </div>
+              />
+            }
+          >
             {lsAnimated && (
               <p className="modal-hint">
                 This scene animates the screenshot stack; the camera track is standing down.
               </p>
             )}
             {cameraOptions}
-          </div>
+          </ToggleFieldset>
         ) : (
           cameraOptions
         )}
