@@ -88,6 +88,17 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
 const VIDEO_MEDIA_KINDS: SceneKind[] = ["video", "videowindow"];
 /** Kinds with no text fields at all (the device stays centred). */
 const NO_TEXT_KINDS: SceneKind[] = ["video", "deviceonly"];
+/** Kinds whose composition renders a subtitle on its own; blank/layeredscreenshot text rides TextFallback, which needs a title. */
+const SUBTITLE_KINDS: SceneKind[] = [
+  "device",
+  "title",
+  "titleicon",
+  "appversion",
+  "videowindow",
+  "overlaystart",
+  "overlayend",
+  "overlaypanel",
+];
 
 /** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
 const SAMPLE_LAPTOP_VIDEO = "assets/sample-laptop-recording.mp4";
@@ -387,7 +398,7 @@ export function NewSceneWizard({
           kind,
           name: finalName,
           title: NO_TEXT_KINDS.includes(kind) ? null : title.trim() || null,
-          subtitle: NO_TEXT_KINDS.includes(kind) ? null : subtitle.trim() || null,
+          subtitle: SUBTITLE_KINDS.includes(kind) ? subtitle.trim() || null : null,
           deviceModel: isDeviceKind ? model : null,
           colour: isDeviceKind ? colour : null,
           mediaRel: takesMedia ? (media?.rel ?? null) : null,
@@ -623,32 +634,32 @@ export function NewSceneWizard({
               </p>
             )}
             {!NO_TEXT_KINDS.includes(kind) && (
-              <>
-                <TextFieldRow
-                  label={isLockup ? "App name" : "Title"}
-                  value={title}
-                  placeholder={titlePlaceholder}
-                  onChange={setTitle}
-                  colour={{
-                    value: titleColor ?? (isLockup ? theme.colors.muted : theme.colors.text),
-                    defaultValue: isLockup ? theme.colors.muted : theme.colors.text,
-                    onCommit: setTitleColor,
-                    onReset: () => setTitleColor(null),
-                  }}
-                />
-                <TextFieldRow
-                  label={isLockup ? "Version" : "Subtitle"}
-                  value={subtitle}
-                  placeholder={isLockup ? "e.g. 3.1.5" : "Optional supporting line"}
-                  onChange={setSubtitle}
-                  colour={{
-                    value: subtitleColor ?? (isLockup ? theme.colors.text : theme.colors.muted),
-                    defaultValue: isLockup ? theme.colors.text : theme.colors.muted,
-                    onCommit: setSubtitleColor,
-                    onReset: () => setSubtitleColor(null),
-                  }}
-                />
-              </>
+              <TextFieldRow
+                label={isLockup ? "App name" : "Title"}
+                value={title}
+                placeholder={titlePlaceholder}
+                onChange={setTitle}
+                colour={{
+                  value: titleColor ?? (isLockup ? theme.colors.muted : theme.colors.text),
+                  defaultValue: isLockup ? theme.colors.muted : theme.colors.text,
+                  onCommit: setTitleColor,
+                  onReset: () => setTitleColor(null),
+                }}
+              />
+            )}
+            {SUBTITLE_KINDS.includes(kind) && (
+              <TextFieldRow
+                label={isLockup ? "Version" : "Subtitle"}
+                value={subtitle}
+                placeholder={isLockup ? "e.g. 3.1.5" : "Optional supporting line"}
+                onChange={setSubtitle}
+                colour={{
+                  value: subtitleColor ?? (isLockup ? theme.colors.text : theme.colors.muted),
+                  defaultValue: isLockup ? theme.colors.text : theme.colors.muted,
+                  onCommit: setSubtitleColor,
+                  onReset: () => setSubtitleColor(null),
+                }}
+              />
             )}
             {kind === "titleicon" && (
               <HeaderIconField
