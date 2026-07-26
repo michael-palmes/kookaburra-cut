@@ -216,8 +216,8 @@ function validRigPose(raw: unknown): raw is SceneDocRigPose {
   );
 }
 
-/** Where a bound object sits in the scene: a device by its own id, else the two singletons. Placement is read, never written: rebaking `at` when the object moves is the inspector's job, so the engine stays pure. */
-function resolveAimTarget(id: string, doc: SceneDoc | undefined): V3 | null {
+/** Where a bound object sits in the scene: a device by its own id, else the two singletons. Placement is read, never written: rebaking `at` when the object moves is the inspector's job (`sceneRigConvert.ts`), so the engine stays pure. */
+export function resolveAimTarget(id: string, doc: SceneDoc | undefined): V3 | null {
   if (!doc) return null;
   const device = doc.devices?.find((d) => d.id === id);
   if (device) {

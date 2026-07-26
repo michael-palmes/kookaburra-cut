@@ -32,8 +32,11 @@ export {
   playheadDriftTarget,
   removeKey,
   removeSegment,
+  type SegmentEaseChannel,
   setKeyPose,
+  setSegmentChannelEase,
   setSegmentEase,
+  setSegmentSmooth,
   syncSegmentStartToPrevious,
   trackLayout as cameraLayout,
 } from "./keyedTrack";

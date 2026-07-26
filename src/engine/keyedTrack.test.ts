@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { clampTrackToDuration, type KeyedTrack, MIN_KEY_GAP_MS } from "./keyedTrack";
+import {
+  clampTrackToDuration,
+  type KeyedTrack,
+  MIN_KEY_GAP_MS,
+  setSegmentChannelEase,
+  setSegmentSmooth,
+} from "./keyedTrack";
 
 type Pose = { d: number };
 
@@ -139,5 +145,48 @@ describe("clampTrackToDuration", () => {
     );
     const next = clampTrackToDuration(t, 2000);
     expect(next.presentLoop).toEqual({ mode: "bounce" });
+  });
+});
+
+describe("setSegmentChannelEase / setSegmentSmooth", () => {
+  const rig: KeyedTrack<{ n: number }> = {
+    keys: [
+      { id: "a", tMs: 0, pose: { n: 0 } },
+      { id: "b", tMs: 500, pose: { n: 1 } },
+      { id: "c", tMs: 1000, pose: { n: 2 } },
+    ],
+    segments: [
+      { from: "a", to: "b", ease: "linear" },
+      { from: "b", to: "c", ease: "inOutQuad" },
+    ],
+  };
+
+  it("sets one channel on one segment, leaving its neighbours untouched", () => {
+    const next = setSegmentChannelEase(rig, 0, "easeLens", "outExpo");
+    expect(next?.segments[0]).toMatchObject({ ease: "linear", easeLens: "outExpo" });
+    expect(next?.segments[1]).toEqual(rig.segments[1]);
+  });
+
+  it("clearing DELETES the field rather than duplicating the segment's ease", () => {
+    const set = setSegmentChannelEase(rig, 0, "easeRotation", "inSine");
+    const cleared = setSegmentChannelEase(
+      set as KeyedTrack<{ n: number }>,
+      0,
+      "easeRotation",
+      undefined,
+    );
+    expect(cleared?.segments[0]).not.toHaveProperty("easeRotation");
+  });
+
+  it("returns null for an unknown segment index", () => {
+    expect(setSegmentChannelEase(rig, 7, "easePosition", "linear")).toBeNull();
+    expect(setSegmentSmooth(rig, 7, false)).toBeNull();
+  });
+
+  it("smooth polarity: turning it off writes false, turning it back on deletes the field", () => {
+    const off = setSegmentSmooth(rig, 1, false);
+    expect(off?.segments[1]).toMatchObject({ smooth: false });
+    const on = setSegmentSmooth(off as KeyedTrack<{ n: number }>, 1, true);
+    expect(on?.segments[1]).not.toHaveProperty("smooth");
   });
 });

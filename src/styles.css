@@ -4023,6 +4023,58 @@ body {
   gap: var(--space-1);
 }
 
+/* The rig's segment extras: smoothing, then the three channel eases behind a disclosure. */
+.camera-easing-disclosure {
+  align-self: flex-start;
+  padding: 2px 0;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.camera-easing-disclosure:hover {
+  color: var(--text-primary);
+}
+
+.camera-easing-channel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.camera-easing-channel-label {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* An inline explanatory line inside a drill-in; the warn variant carries the bounds advisory. */
+.inspector-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 10px;
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.inspector-note-warn {
+  color: var(--warning);
+}
+
+.camera-aim-object {
+  padding: 0 10px;
+}
+
+.camera-aim-object select {
+  width: 100%;
+}
+
 /* The armed move-tool drag surface: DOM above the canvas — never in exported pixels. */
 .camera-tool-overlay {
   position: absolute;

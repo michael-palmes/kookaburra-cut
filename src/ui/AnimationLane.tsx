@@ -1,12 +1,17 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
 import type { LoadedProject } from "../engine/project";
-import type { CameraDoc } from "../engine/sceneCameraEdit";
-import type { SceneDoc, SceneDocCameraPose } from "../engine/sceneDocSchema";
+import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
+import {
+  type SegmentEaseChannel,
+  setSegmentChannelEase,
+  setSegmentSmooth,
+} from "../engine/sceneCameraEdit";
+import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { useCameraDoc } from "./cameraDoc";
-import { TrackLane } from "./TrackLane";
+import { type SegmentExtras, TrackLane } from "./TrackLane";
 
-/** The per-scene camera timeline lane: a thin wrapper binding the generic `TrackLane` to the camera edit store, doc funnel and the mode's tool keys, O/P/Z in Orbit and M/F/L/T in Free (the lane body itself was extracted verbatim to TrackLane.tsx for the layered-screenshot lane). Neither set collides: the studio window binds no other bare letters, and the video editor's S/F/T live in a separate window. */
+/** The per-scene camera timeline lane: a thin wrapper binding the generic `TrackLane` to the camera edit store, doc funnel and the mode's tool keys, O/P/Z in Orbit and M/F/L/T in Free (the lane body itself was extracted verbatim to TrackLane.tsx for the layered-screenshot lane). Neither set collides: the studio window binds no other bare letters, and the video editor's S/F/T live in a separate window. Free mode drives the RIG track and opts the popover into the rig's smoothing and channel-ease rows; the layered-screenshot lane passes neither, so it is unchanged. */
 
 const ORBIT_TOOL_KEYS: Record<string, CameraTool> = { o: "rotate", p: "pan", z: "zoom" };
 const FREE_TOOL_KEYS: Record<string, CameraTool> = {
@@ -45,11 +50,18 @@ export function AnimationLane({
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const selectedSegment = useCameraEditStore((s) => s.selectedSegment);
   const writeError = useCameraEditStore((s) => s.writeError);
-  const { slot, mode, camera, preview, commit, appliedPoseAt } = useCameraDoc(
-    project,
-    sceneIndex,
-    onDocChanged,
-  );
+  const {
+    slot,
+    mode,
+    camera,
+    rig,
+    preview,
+    previewRig,
+    commit,
+    commitRig,
+    appliedPoseAt,
+    appliedRigAt,
+  } = useCameraDoc(project, sceneIndex, onDocChanged);
   const onDuration = useCallback(
     (ms: number) => onSceneDuration(sceneIndex, ms),
     [onSceneDuration, sceneIndex],
@@ -64,30 +76,64 @@ export function AnimationLane({
     [mode],
   );
 
+  const segmentExtras: SegmentExtras = useMemo(
+    () => ({
+      // Absent in the sidecar means smooth, so the toggle reads on until someone turns it off.
+      smooth: (i) => rig.segments[i]?.smooth !== false,
+      onSmooth: (i, on) => {
+        const next = setSegmentSmooth(rig, i, on);
+        if (next) void commitRig(next as RigDoc);
+      },
+      channelEase: (i, channel: SegmentEaseChannel) => rig.segments[i]?.[channel],
+      onChannelEase: (i, channel, ease) => {
+        const next = setSegmentChannelEase(rig, i, channel, ease);
+        if (next) void commitRig(next as RigDoc);
+      },
+    }),
+    [rig, commitRig],
+  );
+
   // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries.
   const nextSlot = project.slots[sceneIndex + 1];
+  const shared = {
+    open,
+    slotStartMs: slot.startMs,
+    durationMs: slot.durationMs,
+    windowStartMs: (slot.transitionIn?.durationMs ?? 0) / 2,
+    windowEndMs: slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2,
+    lastScene: !nextSlot,
+    selectedKeyId,
+    selectedSegment,
+    writeError,
+    select,
+    getSelection,
+    onToolKey,
+    onEscape,
+    onSceneDuration: onDuration,
+    writeErrorPrefix: "Save failed — this camera edit isn’t on disk:",
+  };
+
+  if (mode === "rig") {
+    return (
+      <TrackLane<SceneDocRigPose, RigDoc>
+        {...shared}
+        track={rig}
+        preview={previewRig}
+        commit={commitRig}
+        poseAt={appliedRigAt}
+        segmentExtras={segmentExtras}
+        addTitle="Insert a 1s camera flight at the playhead (it starts from the current pose)"
+      />
+    );
+  }
   return (
     <TrackLane<SceneDocCameraPose, CameraDoc>
-      open={open}
-      slotStartMs={slot.startMs}
-      durationMs={slot.durationMs}
-      windowStartMs={(slot.transitionIn?.durationMs ?? 0) / 2}
-      windowEndMs={slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2}
-      lastScene={!nextSlot}
+      {...shared}
       track={camera}
-      selectedKeyId={selectedKeyId}
-      selectedSegment={selectedSegment}
-      writeError={writeError}
-      select={select}
-      getSelection={getSelection}
-      onToolKey={onToolKey}
-      onEscape={onEscape}
       preview={preview}
       commit={commit}
       poseAt={appliedPoseAt}
-      onSceneDuration={onDuration}
       addTitle="Insert a 1s camera animation at the playhead (it starts from the current pose)"
-      writeErrorPrefix="Save failed — this camera edit isn’t on disk:"
     />
   );
 }
