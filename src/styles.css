@@ -3872,7 +3872,7 @@ body {
 
 .camera-pill-active {
   justify-content: flex-start;
-  padding: 0 5px;
+  padding: 0 8px 0 5px;
   gap: 8px;
   opacity: 0;
   pointer-events: none;
@@ -3920,8 +3920,8 @@ body {
   background: var(--border-subtle);
 }
 
-/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). The inspector-context margin and flex-start alignment must go or the switch rides high in the pill. */
-.camera-pill-modes {
+/* The Orbit/Free switch: the shared SegmentedRow, shrunk to pill scale (its subtab override sits with .inspector-subtab). The doubled selector outranks `.inspector-subtabs`, whose inspector-context margin and flex-start alignment otherwise ride the switch high in the pill. */
+.camera-pill-active .camera-pill-modes {
   flex: none;
   margin: 0;
   align-self: center;
@@ -4036,6 +4036,36 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+/* The first chip row keeps clear of the close button's corner. */
+.camera-easing > .camera-easing-row:first-of-type {
+  padding-right: 30px;
+}
+
+/* Sits in the first chip row's slack; the wider families row sets the popover width. */
+.camera-easing-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font: inherit;
+  font-size: var(--text-md);
+  line-height: 1;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.camera-easing-close:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
 }
 
 /* The rig's segment extras: smoothing, then the three channel eases behind a disclosure. */

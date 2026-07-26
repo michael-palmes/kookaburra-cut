@@ -494,6 +494,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           }}
           extras={segmentExtras}
           docIndex={selectedSegmentLayout.docIndex}
+          onClose={() => select(null, null)}
         />
       )}
 
@@ -515,11 +516,13 @@ function EasingPopover({
   onPick,
   extras,
   docIndex,
+  onClose,
 }: {
   ease: string;
   onPick: (ease: string) => void;
   extras?: SegmentExtras;
   docIndex: number;
+  onClose: () => void;
 }) {
   const [channelsOpen, setChannelsOpen] = useState(false);
   // Parse "inQuad"/"outSine"/"inOutBack" into direction + family for the grid state.
@@ -537,6 +540,15 @@ function EasingPopover({
   );
   return (
     <div className="camera-easing" role="menu" aria-label="Segment easing">
+      <button
+        type="button"
+        className="camera-easing-close"
+        title="Done (deselects the animation)"
+        aria-label="Close easing options"
+        onClick={onClose}
+      >
+        ×
+      </button>
       <div className="camera-easing-row">
         {chip(DEFAULT_EASE, "Default")}
         {chip("linear", "Linear")}
