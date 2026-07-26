@@ -1047,15 +1047,15 @@ workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
 durations re-frozen 2026-07-25, see the splice note below) and the bundled
 rolling-gate project (`showcase-tour`):
 
-| Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | stale (pre-trim) | — |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
+| Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
+| `showcase-tour` (rolling gate) | `7ad3e821…` | stale | stale | stale | `9db959e2…` | stale (pre-trim) | — |
+| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 
 > **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
 > aimed at the camera-space origin, which IS the camera, so every such rim light
@@ -1111,8 +1111,9 @@ rolling-gate project (`showcase-tour`):
 > narrow aspects is pre-existing scene authoring (1:1 crops harder than 5:4),
 > not aspect plumbing. The standard 16:9 pair re-ran EQUAL with
 > `ws:launch-2026` on its anchor, so the `AspectName`/`FORMATS` addition is
-> null-for-legacy. NOTE: `554bbd23…` anchors the pre-trim showcase manifest;
-> re-record on the trimmed manifest, then give the table its 5:4 column.
+> null-for-legacy. `554bbd23…` anchored the pre-trim showcase manifest and is
+> STALE: re-recorded `9db959e2…` on the trimmed manifest (Verify ×2 EQUAL,
+> 2026-07-26), now the table's 5:4 column.
 
 > **2026-07-24 (editor improvements batch 2 + 3:2/2:3):** the batch (inspector
 > fixes, video-window loading/aspect seeding, follow-media for video windows,
