@@ -468,6 +468,60 @@ result. The invariants:
   stands down for the entire export (`isExporting`), so the export loop samples
   only what the sidecar declares.
 
+## Camera rig (free flight)
+
+A scene's sidecar may instead declare a `cameraRig` block and `cameraMode: "rig"`:
+**free poses** (`{ position, aim, fov?, rollDeg? }`) at scene-local times, where
+`aim` is a fixed `point`, the path `tangent`, or a bound `object`. Everything
+samples in `engine/sceneRig.ts` (pure, no three.js, unit-tested). The invariants:
+
+- **A separate block, not a per-key union.** The orbit sampler is untouched code,
+  so null-for-legacy is structural rather than argued: an absent `cameraMode`
+  never reaches `sceneRig.ts` at all, and `buildSceneCameraTracks` only
+  normalizes a rig under `cameraMode: "rig"`. Per-scene precedence is
+  **rig, then orbit, then the project track, then the base pose**, and rig mode
+  with ZERO rig keys falls through to orbit, so flipping the switch before
+  authoring never jumps the camera.
+- **Poses interpolate through a canonical form.** `{ position, forward (unit),
+  aimDistance, rollDeg, fov }`, not through the look POINT: position lerps (or
+  splines), `forward` slerps, `aimDistance` interpolates **logarithmically**,
+  roll and fov lerp. This is what lets a 180 degree pan-in-place rotate instead
+  of dragging its aim through the camera. All of it is export contract.
+- **Guard rules are pinned, never "whatever the floats do".** `slerpUnit` falls
+  back to a normalised lerp above dot 0.9995 and, below dot -0.9999, rotates
+  about the perpendicular built from the **least-aligned basis axis** (first
+  minimum wins: x, then y, then z) so an antipodal turn picks the same arc every
+  run. A zero-length aim guards to forward `[0,0,-1]` at distance 1; a
+  non-positive aim distance degrades to a linear mix rather than a NaN.
+- **Smoothing shapes POSITION only, and is the default.** A segment's `smooth`
+  flag is absent-means-true; `false` is a deliberate straight dolly. Smooth
+  segments run a **centripetal Catmull-Rom** (alpha 0.5, `engine/keyframes.ts`)
+  whose parameter is the already-eased progress, keeping timing separate from
+  path shape. A missing end neighbour is **reflected** (`2*near - far`), not
+  duplicated: duplication would give a lone segment a smoothstep speed profile
+  on top of its ease and a zero start tangent. Direction still slerps between
+  the two keys, because splining the aim too gives a wandering look direction.
+- **Tangent aim has four rules, all of them fallbacks to the baked `at`.**
+  Inside a smoothed segment it is the **analytic** spline derivative (never a
+  finite difference); inside a straight one it is the segment chord; a held key
+  outside any segment has no path; and a near-zero derivative or chord has none
+  either. `at` is stored on every aim mode precisely so each of those degrades
+  to a still-renderable shot.
+- **Bindings are read at load, never written.** An `object` aim resolves at
+  normalise time against the owning doc (`devices[]` by id, then the video
+  window, then the layered-screenshot stack) and rewrites only the in-memory
+  `at`; an unresolved id warns once and keeps the baked point. Rebaking `at`
+  when the bound object moves is the inspector's job, so the engine stays pure.
+- **The lens and the clamp.** `fov` is clamped to 15..90 at NORMALISE time only
+  (a sample-time clamp could kink a segment mid-flight) and stays absent when
+  unauthored, in which case the project-level track keeps owning fov exactly as
+  before. Per-channel eases (`easePosition` / `easeRotation` / `easeLens`) are
+  optional; an unknown name warns and drops back to the segment's own ease.
+- **Roll is the one new camera write, behind a falsy guard.** `applyCameraPose`
+  calls `rotateZ` only when `rollDeg` is present and non-zero, so every legacy
+  pose still produces bit-for-bit the matrix it always did. The project-level
+  track gains no roll channel.
+
 ## Layered screenshot
 
 A scene's sidecar may declare a `layeredScreenshot` block (a 3D stack of
@@ -1056,6 +1110,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `596c4a79…` | — | — | — | — | — |
 
 > **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
 > aimed at the camera-space origin, which IS the camera, so every such rim light
