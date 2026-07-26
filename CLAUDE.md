@@ -78,6 +78,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 
 - Skill `kookaburra-scene-authoring`: scene rules + toolkit `REFERENCE.md`.
 - Skill `kookaburra-background-authoring`: new animated backgrounds + the preset colour contract (`docs/backgrounds.md`).
+- Skill `kookaburra-lighting-authoring`: v9 scene lighting (layers, light spaces, fixtures, HDRIs, keyframes, tone mapping).
 - Skill `kookaburra-export-presets`: export preset schema + terminal flows.
 - Skill `kookaburra-release`: sign, notarise, DMG, packaged-parity gate, release flow.
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
