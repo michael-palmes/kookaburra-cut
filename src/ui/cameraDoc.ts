@@ -63,13 +63,15 @@ export function useCameraDoc(
     [project.id, sceneIndex, doc],
   );
 
-  /** Write the camera slice to the sidecar (creating a minimal doc for doc-less scenes) and hand the written doc to the host for the in-memory patch. An orbit-only scene writes exactly what it wrote before: `cameraMode`/`cameraRig` are omitted entirely, keeping legacy sidecars byte-identical. */
+  /** Write the camera slice to the sidecar (creating a minimal doc for doc-less scenes) and hand the written doc to the host for the in-memory patch. Empty blocks are omitted entirely (`camera` included, so a rig-only scene never grows an empty orbit stub), keeping legacy sidecars byte-identical. */
   const commitSlice = useCallback(
     async (next: { mode: CameraMode; camera: CameraDoc; rig: RigDoc }, label: string) => {
       if (!slug || !sceneFile) return;
       previewSlice(next, true); // hold the pose until the patched project lands
       const base: SceneDoc = doc ? structuredClone(doc) : { version: 1 };
-      const written: SceneDoc = { ...base, camera: next.camera };
+      const written: SceneDoc = { ...base };
+      if (next.camera.keys.length > 0) written.camera = next.camera;
+      else delete written.camera;
       if (next.mode === "rig") written.cameraMode = "rig";
       else delete written.cameraMode;
       if (next.rig.keys.length > 0) written.cameraRig = next.rig;
