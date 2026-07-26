@@ -1140,13 +1140,13 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — |
-| `showcase-tour` (rolling gate) | `b65ec5fc…` | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `355f9429…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `27d6383b…` | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — |
 
 > **2026-07-26 (camera rigging, the full batch):** free-flight camera rigs
 > (`cameraMode` + `cameraRig`, the canonical sampler, centripetal smoothing,
@@ -1160,6 +1160,22 @@ rolling-gate project (`showcase-tour`):
 > added to close the batch; the gate leg grows from ~8.2 s to ~10.2 s. The rig
 > fixture `ws:camera-rig-spike-opus` verifies at `27d6383b…` across ten scenes,
 > one concern each.
+
+> **2026-07-27 (variant decision and the footprint overscan):** this build won
+> the two-variant race (evidence: byte-identical raw frames on seven of ten
+> twinned fixture scenes; the mp4 SSIM differences on the other equal scenes
+> were x264 rate-control and lookahead bleed, proven by md5-equal
+> `--action screenshot` frames) and absorbed the loser's wins. Making the
+> showcase backdrop actually size from the envelope exposed a real gap:
+> `envelopeOverscan` ignored view direction and roll, so a banked tangent
+> flight overran its rect. `rigOverscan` replaces it, intersecting the four
+> frustum corner rays with the layer's plane at each of the 64 fixed samples,
+> floored by the existing constant and capped at `OVERSCAN_CAP` (4).
+> `showcase-tour` moved DELIBERATELY again, `b65ec5fc…` to `355f9429…` (the
+> envelope-sized backdrop plus the footprint maths); the repaired rig fixture
+> (roll restored after an in-hand edit zeroed it) re-recorded at `f5107f56…`.
+> `ws:launch-2026` stayed EQUAL and UNCHANGED at `eb89826c…` through the whole
+> port: no rig, no rect, nothing to resize.
 
 > **2026-07-26 (relative-light aim fix):** a camera-space light with no `target`
 > aimed at the camera-space origin, which IS the camera, so every such rim light
