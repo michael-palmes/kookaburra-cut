@@ -3,7 +3,9 @@
   "name": "Preview Lab (dev-only)",
   "version": 2,
   "themeId": "kookaburra-studio-white",
-  "formats": ["16:9"],
+  "formats": [
+    "16:9"
+  ],
   "scenes": [
     {
       "file": "scenes/tm-none.tsx",
@@ -336,6 +338,30 @@
     {
       "file": "scenes/kind-video.tsx",
       "durationMs": 3650
+    },
+    {
+      "file": "scenes/kind-deviceonly.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-titleicon.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-videowindow.tsx",
+      "durationMs": 3650
+    },
+    {
+      "file": "scenes/kind-overlaystart.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-overlayend.tsx",
+      "durationMs": 3000
+    },
+    {
+      "file": "scenes/kind-overlaypanel.tsx",
+      "durationMs": 3000
     }
   ]
 }

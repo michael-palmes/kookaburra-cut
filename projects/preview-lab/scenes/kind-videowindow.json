@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Kind: video window",
+  "text": {},
+  "videoWindow": {
+    "media": { "src": "assets/sample-laptop-recording.mp4", "aspect": 1.5468277945619335 },
+    "stage": { "type": "color", "color": "#f4f6f8" },
+    "radius": "macos"
+  }
+}

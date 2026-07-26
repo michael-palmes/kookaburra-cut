@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Kind: title + icon",
+  "text": {
+    "title": "Ship faster",
+    "subtitle": "Make it yours"
+  },
+  "headerIcon": "🚀"
+}
