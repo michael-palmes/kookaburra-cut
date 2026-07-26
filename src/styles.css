@@ -3172,20 +3172,21 @@ body {
 /* The readout sits apart from the strip as a small info panel. */
 .insert-caption {
   display: flex;
+  align-self: flex-start;
   align-items: center;
   gap: var(--space-3);
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  background: var(--surface-recessed);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
 }
 
 .insert-caption svg {
   flex: none;
-  color: var(--text-tertiary);
+  color: var(--accent);
 }
 
 /* The placement strip needs more shoulder room than the base wizard width. */
