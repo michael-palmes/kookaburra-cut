@@ -174,6 +174,7 @@ export function SceneInsertTimeline({
 
   return (
     <div className="insert-timeline">
+      {/* The scroller owns the pointer handlers so the whole strip drags, including the end gap's overhang past the cards row. */}
       <div
         ref={scrollerRef}
         className={`insert-strip${dragX !== null ? " dragging" : ""}`}
@@ -186,15 +187,12 @@ export function SceneInsertTimeline({
         aria-valuenow={activeGap}
         aria-valuetext={valueText}
         onKeyDown={onKeyDown}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endDrag(e, true)}
+        onPointerCancel={(e) => endDrag(e, false)}
       >
-        <div
-          ref={cardsRef}
-          className="insert-cards"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={(e) => endDrag(e, true)}
-          onPointerCancel={(e) => endDrag(e, false)}
-        >
+        <div ref={cardsRef} className="insert-cards">
           {scenes.map((s) => (
             <div key={s.stem} className="insert-card">
               <span className="insert-card-thumb">
@@ -219,7 +217,14 @@ export function SceneInsertTimeline({
           )}
         </div>
       </div>
-      <p className="insert-caption">{valueText}</p>
+      <p className="insert-caption">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <path d="M8 7.2v3.6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <circle cx="8" cy="4.9" r="0.9" fill="currentColor" />
+        </svg>
+        {valueText}
+      </p>
     </div>
   );
 }
