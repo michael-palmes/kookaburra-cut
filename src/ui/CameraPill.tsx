@@ -1,11 +1,16 @@
 import { type CameraTool, isFreeTool, useCameraEditStore } from "../engine/cameraEditStore";
 import { useClockStore } from "../engine/clock";
+import { DEFAULT_EASE } from "../engine/ease";
+import { useFormat } from "../engine/format";
+import { nextKeyId } from "../engine/keyedTrack";
 import type { LoadedProject } from "../engine/project";
+import { frameContentPose, stagedContentBounds } from "../engine/rigFraming";
 import { defaultOrbitPose } from "../engine/sceneCamera";
 import { nearestKey, setKeyPose } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { defaultRigPose, RIG_FOV_MAX, RIG_FOV_MIN } from "../engine/sceneRig";
 import { useCameraDoc } from "./cameraDoc";
+import { seedRig } from "./inspector/CameraRigFields";
 import { SegmentedRow } from "./inspector/rows";
 
 /** Floating camera control pill: idle "Animate scene" opens animation mode via `cameraEditStore.open`; active state offers an Orbit/Free switch, that mode's drag tools, and a contextual stepper (orbit's zoom percent, free's field of view). Every stepper edits the selected-else-nearest key through the same `useCameraDoc` commit as other camera edits; 100% zoom is the scene-default pose's distance. */
@@ -33,8 +38,20 @@ export function CameraPill({
 }) {
   const open = useCameraEditStore((s) => s.open);
   const armedTool = useCameraEditStore((s) => s.armedTool);
-  const { slot, mode, camera, rig, commit, commitRig, setMode, appliedPoseAt, appliedRigAt } =
-    useCameraDoc(project, sceneIndex, onDocChanged);
+  const {
+    doc,
+    slot,
+    mode,
+    camera,
+    rig,
+    commit,
+    commitRig,
+    setMode,
+    appliedPoseAt,
+    appliedRigAt,
+    inheritedFov,
+  } = useCameraDoc(project, sceneIndex, onDocChanged);
+  const format = useFormat();
   const free = mode === "rig";
   const keyCount = free ? rig.keys.length : camera.keys.length;
 
@@ -92,6 +109,35 @@ export function CameraPill({
     }
   };
 
+  const playheadLocalNow = () =>
+    Math.min(slot.durationMs, Math.max(0, useClockStore.getState().currentMs - slot.startMs));
+
+  /** Pose-and-snapshot: a single key at the playhead holding the applied pose, chained off the previous key with the default ease. */
+  const addRigKey = () => {
+    const tMs = Math.round(playheadLocalNow());
+    if (rig.keys.some((k) => Math.abs(k.tMs - tMs) < 40)) return;
+    const id = nextKeyId(rig);
+    const keys = [...rig.keys, { id, tMs, pose: appliedRigAt(tMs) }].sort((a, b) => a.tMs - b.tMs);
+    const prev = keys[keys.findIndex((k) => k.id === id) - 1];
+    const segments = prev
+      ? [...rig.segments, { from: prev.id, to: id, ease: DEFAULT_EASE }]
+      : [...rig.segments];
+    void commitRig({ keys, segments });
+    useCameraEditStore.getState().select(id, null);
+  };
+
+  /** Fit everything the scene stages into this key, keeping the current view direction. */
+  const frameContent = () => {
+    const local = playheadLocalNow();
+    const fitted = frameContentPose(
+      stagedContentBounds(doc, format.frame),
+      rigPose,
+      rigPose.fov ?? inheritedFov(local),
+      format.aspect,
+    );
+    if (fitted) void commitRig(seedRig(rig, rigKey?.id ?? null, fitted));
+  };
+
   const armTool = useCameraEditStore.getState().armTool;
   const modeButton = (tool: CameraTool, label: string, glyph: React.ReactNode) => (
     <button
@@ -133,15 +179,8 @@ export function CameraPill({
     </span>
   );
 
-  const FREE_BLURBS: Partial<Record<CameraTool, string>> = {
-    move: "Drag to move",
-    forward: "Drag to fly",
-    look: "Drag to look",
-    tilt: "Drag to bank",
-  };
-
   let contextual: React.ReactNode;
-  if (free && armedTool === "forward") {
+  if (free) {
     contextual = stepper(
       "Field of view",
       `${fovDeg}°`,
@@ -149,16 +188,12 @@ export function CameraPill({
       "Wider field of view",
       stepFov,
     );
-  } else if (!free && armedTool === "zoom") {
+  } else if (armedTool === "zoom") {
     contextual = stepper("Zoom", `${zoomPct}%`, "Zoom out", "Zoom in", stepZoom);
   } else {
     contextual = (
       <span className="camera-pill-blurb">
-        {free
-          ? (FREE_BLURBS[armedTool ?? "move"] ?? "Drag to move")
-          : armedTool === "pan"
-            ? "Drag to pan"
-            : "Drag to orbit"}
+        {armedTool === "pan" ? "Drag to pan" : "Drag to orbit"}
       </span>
     );
   }
@@ -206,7 +241,6 @@ export function CameraPill({
               useCameraEditStore.getState().armTool(next === "free" ? "move" : "rotate");
             }}
           />
-          <span className="camera-pill-divider" />
           {free ? (
             <>
               {modeButton(
@@ -236,8 +270,8 @@ export function CameraPill({
                   strokeWidth="1.5"
                   aria-hidden="true"
                 >
-                  <path d="M10 16.5V4M10 4L6 8M10 4l4 4" />
-                  <path d="M4 18h12" />
+                  <path d="M10 17V5M10 5l-4 4m4-4l4 4" />
+                  <circle cx="10" cy="10" r="8" strokeDasharray="2 3" />
                 </svg>,
               )}
               {modeButton(
@@ -252,8 +286,8 @@ export function CameraPill({
                   strokeWidth="1.5"
                   aria-hidden="true"
                 >
-                  <path d="M1.8 10S5 4.8 10 4.8 18.2 10 18.2 10 15 15.2 10 15.2 1.8 10 1.8 10z" />
-                  <circle cx="10" cy="10" r="2.4" />
+                  <circle cx="10" cy="10" r="3" />
+                  <path d="M2.5 10C4.5 6 7 4.5 10 4.5s5.5 1.5 7.5 5.5c-2 4-4.5 5.5-7.5 5.5S4.5 14 2.5 10z" />
                 </svg>,
               )}
               {modeButton(
@@ -268,10 +302,49 @@ export function CameraPill({
                   strokeWidth="1.5"
                   aria-hidden="true"
                 >
-                  <path d="M3.4 13.2l9.4-9.4a1.4 1.4 0 012 0l1.4 1.4a1.4 1.4 0 010 2l-9.4 9.4z" />
-                  <path d="M2 17.6h6" />
+                  <path d="M3 13l14-6M6 16l8-1M5 6l2 2" />
+                  <circle cx="10" cy="10" r="8" strokeDasharray="2 3" />
                 </svg>,
               )}
+              <button
+                type="button"
+                className="camera-pill-mode"
+                title="Frame the scene's content in this key (fits the staged bounds, keeping the angle)"
+                aria-label="Frame content"
+                onClick={frameContent}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  aria-hidden="true"
+                >
+                  <path d="M3 7V4a1 1 0 011-1h3M13 3h3a1 1 0 011 1v3M17 13v3a1 1 0 01-1 1h-3M7 17H4a1 1 0 01-1-1v-3" />
+                  <circle cx="10" cy="10" r="2.6" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="camera-pill-mode"
+                title="Add a camera key at the playhead (snapshots the current pose)"
+                aria-label="Add camera key"
+                onClick={addRigKey}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  aria-hidden="true"
+                >
+                  <path d="M10 4v12M4 10h12" />
+                </svg>
+              </button>
             </>
           ) : (
             <>

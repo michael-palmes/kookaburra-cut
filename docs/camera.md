@@ -82,10 +82,20 @@ are offered:
 | Orbit | Orbit, Pan, Zoom | O / P / Z | ⌥ orbit, ⌘ pan, ⌃ zoom |
 | Free | Move, Forward, Look, Tilt | M / F / L / T | ⌥ look, ⌘ move, ⌃ forward |
 
-Field of view is a stepper, never a drag tool. Move is grab-style and holds a
-point or object aim, so moving reframes; Forward dollies exponentially and stops
-at an aim-distance floor; Look swings the aim about the camera and rewrites the
-aim to a point (a deliberate, visible consequence); Tilt banks the frame.
+Field of view is a stepper, never a drag tool; in Free mode the stepper is
+always on the pill. Move is grab-style and holds a point or object aim, so
+moving reframes; Forward dollies exponentially and stops at an aim-distance
+floor; Look swings the aim about the camera and rewrites the aim to a point (a
+deliberate, visible consequence); Tilt banks the frame.
+
+The pill carries two more Free-mode actions. **Add key** snapshots the applied
+pose at the playhead as a single key, chained off the previous key with the
+default ease (pose-and-snapshot: fly, then keep what you see). **Frame content**
+refits the current key so everything the scene stages sits inside the frame,
+keeping the view direction. Bounds come from the scene DOC (device placements,
+the video window, the screenshot stack, else the content plane), so the fit
+resolves identically everywhere; content a scene's TSX places by hand is not
+counted. The same button lives in the Camera drill-in.
 
 ## The ghost path
 
