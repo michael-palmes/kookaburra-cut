@@ -34,7 +34,32 @@ pub fn content_hash(files: &[(String, String)]) -> String {
         hasher.update(path.as_bytes());
         hasher.update([0u8]);
         hasher.update(sha.as_bytes());
-        hasher.update([b'\n']);
+        hasher.update(*b"\n");
     }
     crate::hex_digest(hasher.finalize().as_slice())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `contentHash` is the conflict key, so its exact byte recipe is contract: a drift would make every previously
+    /// packed item read as changed. Pinned against an independent computation, not against itself.
+    #[test]
+    fn content_hash_recipe_is_pinned() {
+        let files = vec![
+            ("a.tsx".to_owned(), "aa".to_owned()),
+            ("b.json".to_owned(), "bb".to_owned()),
+        ];
+        assert_eq!(
+            content_hash(&files),
+            "4619a8c322cea193c39da778acb76a155068fe08dffcf1d8aca6222d04342782"
+        );
+        // Order in must not matter: the recipe sorts.
+        let reversed = vec![
+            ("b.json".to_owned(), "bb".to_owned()),
+            ("a.tsx".to_owned(), "aa".to_owned()),
+        ];
+        assert_eq!(content_hash(&files), content_hash(&reversed));
+    }
 }
