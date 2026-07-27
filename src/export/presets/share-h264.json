@@ -5,7 +5,6 @@
   "description": "A compact share-ready clip for Slack, Confluence or GitHub: small file, still crisp.",
   "platform": "General",
   "favouredAspect": "16:9",
-  "allowedAspects": ["16:9", "9:16", "1:1", "4:5"],
   "notes": "Constant-quality CRF 32 at native resolution, so file size varies with content.",
   "video": {
     "codec": "libx264",
