@@ -122,10 +122,10 @@ export const meshGradient: ShaderBackgroundDef = {
   name: "Mesh gradient",
   fragment,
   colorSlots: [
-    { label: "Colour 1", fallback: "#0d1826" },
-    { label: "Colour 2", fallback: "#26425c" },
-    { label: "Colour 3", fallback: "#406285" },
-    { label: "Colour 4", fallback: "#16293c" },
+    { label: "Colour 1", fallback: "#0c1827" },
+    { label: "Colour 2", fallback: "#244460" },
+    { label: "Colour 3", fallback: "#3e648a" },
+    { label: "Colour 4", fallback: "#152a3f" },
   ],
   maxColors: MAX_COLORS,
   params: {

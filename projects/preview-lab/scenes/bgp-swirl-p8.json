@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "swirl",
-    "colors": ["#0d1410", "#24422e", "#3f6a4c", "#16251a"],
+    "colors": ["#0c1410", "#22432d", "#3c6b4a", "#152519"],
     "speed": 0.45,
     "params": {
       "bandCount": 8,

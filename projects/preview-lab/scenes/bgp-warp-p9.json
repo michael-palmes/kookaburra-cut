@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "warp",
-    "colors": ["#12100d", "#575145", "#242019", "#665f52"],
+    "colors": ["#13100c", "#5a5242", "#252016", "#69604f"],
     "speed": 0.35,
     "params": {
       "proportion": 0.55,

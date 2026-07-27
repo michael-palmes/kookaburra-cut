@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "simplex-noise",
-    "colors": ["#081411", "#12251f", "#1d3a30", "#2a5244", "#386b59"],
+    "colors": ["#071411", "#10251f", "#1a3a2f", "#265243", "#336b58"],
     "speed": 0.35,
     "params": {
       "stepsPerColor": 3,

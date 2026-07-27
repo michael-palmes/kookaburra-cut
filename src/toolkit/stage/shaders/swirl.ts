@@ -97,10 +97,10 @@ export const swirl: ShaderBackgroundDef = {
   name: "Swirl",
   fragment,
   colorSlots: [
-    { label: "Back", fallback: "#0a141c" },
-    { label: "Colour 1", fallback: "#1e3a50" },
-    { label: "Colour 2", fallback: "#38617f" },
-    { label: "Colour 3", fallback: "#12242f" },
+    { label: "Back", fallback: "#09141d" },
+    { label: "Colour 1", fallback: "#1d3d55" },
+    { label: "Colour 2", fallback: "#366687" },
+    { label: "Colour 3", fallback: "#102430" },
   ],
   maxColors: MAX_COLORS,
   params: {

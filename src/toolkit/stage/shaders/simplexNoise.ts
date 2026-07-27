@@ -95,11 +95,11 @@ export const simplexNoise: ShaderBackgroundDef = {
   name: "Simplex noise",
   fragment,
   colorSlots: [
-    { label: "Colour 1", fallback: "#0b101d" },
-    { label: "Colour 2", fallback: "#151e31" },
-    { label: "Colour 3", fallback: "#223048" },
-    { label: "Colour 4", fallback: "#334666" },
-    { label: "Colour 5", fallback: "#47608c" },
+    { label: "Colour 1", fallback: "#0b101e" },
+    { label: "Colour 2", fallback: "#141e32" },
+    { label: "Colour 3", fallback: "#21314b" },
+    { label: "Colour 4", fallback: "#32476a" },
+    { label: "Colour 5", fallback: "#466291" },
   ],
   maxColors: MAX_COLORS,
   params: {

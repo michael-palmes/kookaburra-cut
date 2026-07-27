@@ -128,8 +128,8 @@ export const smokeRing: ShaderBackgroundDef = {
   name: "Smoke ring",
   fragment,
   colorSlots: [
-    { label: "Back", fallback: "#05100f" },
-    { label: "Colour 1", fallback: "#326861" },
+    { label: "Back", fallback: "#04100f" },
+    { label: "Colour 1", fallback: "#2d6b63" },
   ],
   maxColors: MAX_COLORS,
   noise: true,
