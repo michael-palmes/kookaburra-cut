@@ -8,6 +8,7 @@ Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loa
 - [Scene documents (sidecars)](#scene-documents-sidecars)
 - [Per-scene camera tracks](#per-scene-camera-tracks-v7--m5)
 - [Layered screenshot](#layered-screenshot)
+- [Scene overlays (the frame block)](#scene-overlays-the-frame-block)
 - [Themes & staging](#themes--staging-v8)
 - [Hooks](#hooks)
 - [Text primitives](#text-primitives)
@@ -80,6 +81,7 @@ normally and simply shows no editing affordances.
     "segments": [ { "from": "k1", "to": "k2", "ease": "inOutQuad" } ]  // ease: engine/ease.ts name or "jump"
   },
   "layeredScreenshot": { /* the 3D screen stack — see "Layered screenshot" */ },
+  "frame": { /* the scene overlay (panel + cutout) — see "Scene overlays (the frame block)" */ },
   "animatedTrack": "camera"                  // which keyed track animates this scene:
                                              // "camera" (also the absent default) or "layeredScreenshot"
 }
@@ -328,6 +330,64 @@ video screen holds its last frame when the clip ends (`startMs` offsets its star
 scene-local ms); exports pre-extract every sidecar-declared stack video before frame 0,
 so nothing else is needed. Deleting an asset a stack references leaves a silently missing
 card: grep the sidecars first.
+
+## Scene overlays (the frame block)
+
+A camera-locked panel with a shaped **cutout** the scene renders through, like a slide
+deck — what users call an "overlay", "cutout" or "slide". The block is named `frame`
+because `overlay` already means the compositor's transition layer. Two levels, same
+schema: `project.json` root `frame` is the deck default (every scene shows it);
+a sidecar `frame` merges over it per scene. **A sidecar frame that carries a `cutout`
+stands alone** — no deck frame needed — which is how single-scene overlays and the
+wizard's Cutout start / Cutout end / Overlay panel presets work. A sidecar `cutout`
+replaces the deck's outright (never deep-merges); other fields override field-by-field.
+
+```jsonc
+"frame": {
+  "enabled": false,               // hide on this scene (deck opt-out, or a standalone's off
+                                  // switch); prefer this over deleting the block — styling
+                                  // survives, and the app's Show-on-this-scene toggle round-trips
+  "cutout": {                     // the scene's window; REQUIRED for a standalone sidecar frame
+    "shape": "rounded-rect",      // rect | rounded-rect | squircle | circle | capsule
+    "radius": 0.12,               // corner radius, fraction of the shorter cutout edge (rounded-rect only)
+    "size": 0.55,                 // fraction of the frame's split axis the cutout occupies
+    "side": "end",                // start = left/top, end = right/bottom; the split axis follows
+                                  // the aspect, so ONE config serves landscape and portrait
+    "inset": 0.06                 // margin to the frame edge, fraction of the shorter frame edge
+  },
+  "background": "accent",         // panel fill: theme token or "#hex"; absent = the panel default
+  "icon": "🚀",                   // emoji or project-relative asset path, drawn above the title
+  "chip": { "label": "New", "icon": "circle-check", "colour": "accent" },
+  "decorations": [                // images placed on the panel (avatars, logos, illustrations)
+    { "id": "a1", "src": "assets/avatar.png", "position": [-0.62, 0.3],
+      "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" }
+  ],                              // position is frame-relative -1..1 both axes; size is a
+                                  // fraction of frame width; "above" draws OVER the cutout
+                                  // (the deliberate breakout), "below" tucks behind it
+  "textAlign": "left",
+  "claimsSceneText": true         // default true: the panel takes the sidecar's text.title /
+                                  // text.subtitle / text.bullets and suppresses the in-world
+                                  // headline; false = panel chrome only, scene text stays put
+}
+```
+
+Rules:
+
+- **A full panel (no visible scene window) is a collapsed cutout, not a missing one.**
+  `cutout` is required, so the Overlay panel preset ships `size: 0.1, inset: 0.2` — a
+  sliver that reads as full-frame at every aspect. Never omit `cutout` hoping for a panel.
+- **An empty panel renders nothing.** `FramePanel` bails without text, an icon or a chip;
+  that is why scaffolded overlays carry the starter `"New"` chip. Keep at least one of the
+  three or the panel silently disappears.
+- **Bullets** are one sidecar string split on newlines: `text.bullets = "First\nSecond"`.
+- Decoration and icon assets follow the media rules above: project-relative, copied into
+  `assets/` first, path checked before writing.
+- Terminal edits ride the sidecar helper, e.g.
+  `sidecar.py 02-tour set frame.cutout.side end` ·
+  `sidecar.py 02-tour set frame.enabled false` ·
+  `sidecar.py 02-tour set text.bullets "Fast\nDeterministic"`.
+- Layout maths, zone budgets and design rationale: `docs/overlays.md` (repo background,
+  not on user machines).
 
 ## Themes & staging (v8)
 
@@ -989,4 +1049,8 @@ Add new tokens here; never hard-code values in scenes.
 | `Device` (catalog + media screens + presets + shadows) | v7 · M1 | implemented + gated — `ws:device-video-spike` project |
 | Scene documents (sidecars, `useSceneText`/`useSceneDevices`, scaffolder) | v7 · M2 | implemented |
 | Per-scene camera track (orbit keys/segments, mini-timeline UI) | v7 · M5 | implemented |
-| `LayeredScreenshot` (sidecar stack, cards, global screenshots, wizard) | slides · PR 2 | in progress: rest pose + engine + wizard shipped; builder/lane UI landing |
+| `LayeredScreenshot` (sidecar stack, cards, global screenshots, wizard) | slides · PR 2 | implemented + gated — builder, animation lane, present-mode holds |
+| Scene overlays (`frame` block: panel + cutout + chip + decorations) | v0.5.0 | implemented + gated — deck default + per-scene sidecar, standalone cutouts |
+| Video window (`videoWindow` block: recording over a backing stage) | v0.5.0 | implemented + gated — `ws:video-window-spike` fixture |
+| Scene lighting v9 (sun, free lights, fixtures, HDRIs, keyframes) | v0.7.0 | implemented + gated — sidecar `lighting`, see the lighting skill |
+| Camera rigs (free flight, depth bands, presets) | v0.7.0 | implemented + gated — sidecar `cameraRig`, see "Camera rigs" |
