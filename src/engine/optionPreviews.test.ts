@@ -6,13 +6,19 @@ import { largestSceneText } from "./sceneTextRegistry";
 
 // The committed bgp-* fixtures, loaded through the same glob machinery the app uses for bundled docs.
 const bgpFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
-  "../../projects/preview-lab/scenes/bgp-*.json",
+  "../../projects/preview-lab-bg-*/scenes/bgp-*.json",
   { eager: true, import: "default" },
 );
 
 // The committed bg-*-light fixtures: the light-theme type-card clips.
 const bgLightFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
-  "../../projects/preview-lab/scenes/bg-*-light.json",
+  "../../projects/preview-lab-bg-*/scenes/bg-*-light.json",
+  { eager: true, import: "default" },
+);
+
+// Every lab project manifest, for the background/lab pairing guard.
+const labManifests = import.meta.glob<{ id?: string }>(
+  "../../projects/preview-lab-*/project.json",
   { eager: true, import: "default" },
 );
 
@@ -70,7 +76,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     for (const [shader, presets] of Object.entries(SHADER_BACKGROUND_PRESETS)) {
       for (const preset of presets) {
         const stem = `bgp-${shader}-${preset.id}`;
-        const doc = bgpFixtures[`../../projects/preview-lab/scenes/${stem}.json`];
+        const doc = bgpFixtures[`../../projects/preview-lab-bg-${shader}/scenes/${stem}.json`];
         expect(doc, stem).toBeDefined();
         expect(doc.background, stem).toEqual({
           type: "shader",
@@ -96,7 +102,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       expect(p1, shader).toBeDefined();
       if (!p1) continue;
       const stem = `bg-${shader}-light`;
-      const doc = bgLightFixtures[`../../projects/preview-lab/scenes/${stem}.json`];
+      const doc = bgLightFixtures[`../../projects/preview-lab-bg-${shader}/scenes/${stem}.json`];
       expect(doc, stem).toBeDefined();
       expect(doc.background, stem).toEqual({
         type: "shader",
@@ -110,6 +116,18 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       checked++;
     }
     expect(checked).toBe(Object.keys(bgLightFixtures).length);
+  });
+
+  it("every background has its preview-lab-bg-* project (the discovery convention)", () => {
+    // The option-previews action finds lab projects by directory prefix; a background without one silently ships with placeholder cards.
+    const labIds = Object.values(labManifests)
+      .map((m) => m.id)
+      .filter((id): id is string => !!id);
+    for (const shader of Object.keys(SHADER_BACKGROUND_PRESETS)) {
+      expect(labIds, shader).toContain(`preview-lab-bg-${shader}`);
+    }
+    expect(labIds).toContain("preview-lab-text");
+    expect(labIds).toContain("preview-lab-stage");
   });
 });
 

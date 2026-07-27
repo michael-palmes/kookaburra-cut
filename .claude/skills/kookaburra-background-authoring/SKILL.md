@@ -53,17 +53,24 @@ file live in this skill's `REFERENCE.md`.
    preset's darkest and lightest stop (flatter than that and the motion disappears) and give
    every preset its own parameter personality, not just a hue swap. Set the def's
    `colorSlots[].fallback` to the `p6` colours; a vitest pins the match.
-7. **Add the preview fixtures** in `projects/preview-lab/`: one `bg-<shader>` pair (the type
-   card's motion clip) and nine `bgp-<shader>-p1..p9` pairs (preset tiles), each a trivial
-   `.tsx` plus a sidecar whose `background` block mirrors the preset exactly (templates in
-   REFERENCE.md). Register all ten in `project.json`. `optionPreviews.test.ts` fails on any
-   drift between fixtures and presets.
+7. **Add the preview fixtures** in a NEW `projects/preview-lab-bg-<shader>/` project (the
+   option-previews action discovers lab projects by directory prefix; a vitest guards the
+   pairing): one `bg-<shader>` pair (the type
+   card's motion clip), one `bg-<shader>-light` pair (the light-theme card, mirroring p1) and
+   nine `bgp-<shader>-p1..p9` pairs (preset tiles), each a trivial `.tsx` plus a sidecar whose
+   `background` block mirrors the preset exactly (templates in REFERENCE.md). Register all
+   eleven in the lab's own `project.json`. `optionPreviews.test.ts` fails on any drift between
+   fixtures and presets.
 8. **Validate, then regenerate thumbnails.**
 
    ```bash
    pnpm build && pnpm test && pnpm lint          # fix and rerun until clean
-   pnpm kookaburra:run --action option-previews  # rewrites src/assets/option-previews/
+   pnpm kookaburra:run --action option-previews  # renders ONLY stale sets (manifest diff)
    ```
+
+   The run hashes fixtures against `src/assets/option-previews/manifest.json` and captures
+   only stale sets, so a new shader renders its own eleven sets in its own small lab project;
+   `--all` forces a full re-record (engine-change refreshes).
 
    Then eyeball the new stills in `src/assets/option-previews/`. Verify proves determinism,
    not correctness; a black tile means a missing `out vec4 fragColor;` or a bad uniform.

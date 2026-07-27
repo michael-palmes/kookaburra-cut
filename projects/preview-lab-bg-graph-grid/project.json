@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-graph-grid",
+  "name": "Preview Lab — bg-graph-grid (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-graph-grid.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-graph-grid-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-graph-grid-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

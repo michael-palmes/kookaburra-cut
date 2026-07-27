@@ -23,10 +23,10 @@ import {
   verifyDeterminism,
 } from "./exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from "./format";
-import { captureOptionPreviews } from "./optionPreviews";
+import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
 import { runPerfProbe } from "./perfProbe";
-import { type LoadedProject, loadProject, sceneFileStem } from "./project";
+import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import {
   awaitProjectCommitted,
@@ -62,6 +62,8 @@ export interface AutoRunConfig {
   scene?: string;
   /** screenshot: seconds into the scene (or the project when no scene is given). */
   atSeconds?: number;
+  /** option-previews: stale set names to capture (from the wrapper's manifest diff); absent = every set (`--all`). */
+  sets?: string[];
 }
 
 /** A single aspect's outcome: determinism digests (verify) or the output path (export). */
@@ -150,6 +152,7 @@ interface AutoRunEnv {
   encodeJson: string | null;
   scene: string | null;
   at: string | null;
+  sets: string | null;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -180,6 +183,7 @@ export async function initAutoRunConfig(): Promise<void> {
       encodeJson: null,
       scene: null,
       at: null,
+      sets: null,
     };
   }
 }
@@ -227,7 +231,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     (action === "theme-previews"
       ? "theme-starter"
       : action === "option-previews"
-        ? "preview-lab"
+        ? (previewLabProjectIds()[0] ?? "preview-lab-text")
         : useEditorStore.getState().projectId)
   )
     .split(",")
@@ -255,6 +259,12 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     outputSuffix,
     scene: env.scene?.trim() || undefined,
     atSeconds,
+    sets: env.sets?.trim()
+      ? env.sets
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined,
   };
 }
 
@@ -320,20 +330,26 @@ export async function runAutoRun(
   };
 
   if (config.action === "option-previews") {
-    // Loads the dev-only preview-lab project and captures picker preview sets (text-motion clips, shadow/stage stills) off the preview canvas using a borrowed clock; frames go native and the wrapper encodes/copies them into src/assets/option-previews/.
+    // Iterates the dev-only preview-lab projects (one per option-preview family) and captures picker preview sets off the preview canvas using a borrowed clock; `config.sets` (the wrapper's manifest diff) limits capture to stale sets, and lab projects owning none are never mounted. Frames go native and the wrapper encodes/copies them into src/assets/option-previews/.
     try {
       if (!applyProject) throw new Error("option-previews needs the applyProject hook");
       useEditorStore.getState().setFormat(FORMATS["16:9"]);
       await nextCommit();
       await preloadBundledBackdrops();
-      const loaded = await loadProject(config.project);
-      applyProject(loaded);
-      await nextCommit();
-      await awaitProjectCommitted(loaded);
-      await awaitSceneHostsCommitted(loaded.slots.length);
-      const sets = await captureOptionPreviews(loaded);
-      if (sets === null) throw new Error("option-previews: capture unavailable");
-      results.push({ aspect: "16:9", path: `option-previews (${sets} sets)` });
+      const only = config.sets ? new Set(config.sets) : null;
+      let total = 0;
+      for (const labId of previewLabProjectIds()) {
+        const loaded = await loadProject(labId);
+        if (only && !optionPreviewSetsOf(loaded).some((s) => only.has(s))) continue;
+        applyProject(loaded);
+        await nextCommit();
+        await awaitProjectCommitted(loaded);
+        await awaitSceneHostsCommitted(loaded.slots.length);
+        const sets = await captureOptionPreviews(loaded, only ?? undefined);
+        if (sets === null) throw new Error("option-previews: capture unavailable");
+        total += sets;
+      }
+      results.push({ aspect: "16:9", path: `option-previews (${total} sets)` });
     } catch (e) {
       ok = false;
       error = String(e);

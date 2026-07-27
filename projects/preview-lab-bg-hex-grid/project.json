@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-hex-grid",
+  "name": "Preview Lab — bg-hex-grid (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-hex-grid.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-hex-grid-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-hex-grid-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

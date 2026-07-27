@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-simplex-noise",
+  "name": "Preview Lab — bg-simplex-noise (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-simplex-noise.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-simplex-noise-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bg-simplex-noise-light.tsx",
+      "durationMs": 2000
+    }
+  ]
+}

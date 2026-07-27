@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-horizon-grid",
+  "name": "Preview Lab — bg-horizon-grid (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-horizon-grid.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-horizon-grid-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-horizon-grid-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

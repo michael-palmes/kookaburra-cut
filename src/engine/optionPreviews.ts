@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { type LoadedProject, sceneFileStem } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
-/** Option previews: committed app-rendered preview assets for the inspector's option pickers (text-motion clips, shadow stills, stage/backdrop stills, New-scene kind stills), rendered from the dev-only `projects/preview-lab` project via `pnpm kookaburra:run --action option-previews` and committed under `src/assets/option-previews/`; missing assets degrade to swatch placeholders, never a broken card. Set naming (pinned in tests): `textanim-<preset>` · `shadow-<mode>` · `stage-<type>` · `kind-<sceneKind>`; clips ship as `<set>.mp4` + `<set>-poster.jpg`, stills as `<set>.jpg`. */
+/** Option previews: committed app-rendered preview assets for the inspector's option pickers (text-motion clips, shadow stills, stage/backdrop stills, New-scene kind stills), rendered from the dev-only `projects/preview-lab-*` projects (one per family: text, stage, one per background) via `pnpm kookaburra:run --action option-previews` and committed under `src/assets/option-previews/` beside `manifest.json` (per-set source hashes; the wrapper re-renders only stale sets, `--all` re-records everything). Missing assets degrade to swatch placeholders, never a broken card. Set naming (pinned in tests, MIRRORED by scripts/option-preview-stale.mjs): `textanim-<preset>` · `shadow-<mode>` · `stage-<type>` · `kind-<sceneKind>`; clips ship as `<set>.mp4` + `<set>-poster.jpg`, stills as `<set>.jpg`. */
 
 /** Capture rate for clip sets; the generator captures one frame per 1000/fps ms. */
 export const OPTION_CLIP_FPS = 20;
@@ -62,10 +62,18 @@ export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
   return jobs;
 }
 
-/** Capture every option-preview set off the loaded preview-lab project (the caller holds the usual project-commit + scene-hosts barriers): stills capture the scene middle; clips capture the whole scene window at `OPTION_CLIP_FPS`. Frames land natively via `write_option_preview` (`~/Kookaburra Cut/_autorun/option-previews/<set>/NNN.jpg`); the `kookaburra:run` wrapper encodes clips and promotes everything into `src/assets/`. Returns the number of sets written, or null when capture isn't possible right now. */
-export async function captureOptionPreviews(project: LoadedProject): Promise<number | null> {
+/** The set names a loaded lab project owns; the autorun action uses this to skip mounting projects with nothing stale. */
+export function optionPreviewSetsOf(project: LoadedProject): string[] {
+  return optionPreviewJobs(project.sceneFiles.map(sceneFileStem)).map((j) => j.set);
+}
+
+/** Capture option-preview sets off a loaded preview-lab project (the caller holds the usual project-commit + scene-hosts barriers): stills capture the scene middle; clips capture the whole scene window at `OPTION_CLIP_FPS`. `only` limits capture to the named stale sets (absent = all, the `--all` re-record). Frames land natively via `write_option_preview` (`~/Kookaburra Cut/_autorun/option-previews/<set>/NNN.jpg`); the `kookaburra:run` wrapper encodes clips, promotes everything staged into `src/assets/` and commits the captured sets' source hashes to the manifest. Returns the number of sets written, or null when capture isn't possible right now. */
+export async function captureOptionPreviews(
+  project: LoadedProject,
+  only?: ReadonlySet<string>,
+): Promise<number | null> {
   const stems = project.sceneFiles.map(sceneFileStem);
-  const jobs = optionPreviewJobs(stems);
+  const jobs = optionPreviewJobs(stems).filter((j) => !only || only.has(j.set));
   return withBorrowedClock(async () => {
     for (const job of jobs) {
       const slot = project.slots[stems.indexOf(job.stem)];
