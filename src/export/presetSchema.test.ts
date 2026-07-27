@@ -9,8 +9,10 @@ function bundled(id: string) {
   return preset;
 }
 
-/** The 2026 marketing set (decision 21) plus the two internal-sharing presets; the id list IS the contract. */
+/** The two General share presets, the Studio master, then the 2026 marketing set (decision 21); the id list IS the contract. */
 const LINEUP = [
+  "share-h264",
+  "share-h265",
   "kookaburra-master",
   "meta-reels",
   "meta-feed",
@@ -23,13 +25,10 @@ const LINEUP = [
   "reddit",
   "telegram",
   "ctv",
-  "web",
-  "share-h264",
-  "share-h265",
 ];
 
 describe("bundled export presets (the structure pin)", () => {
-  it("the lineup is exactly the 13-preset marketing set, every doc resolving", () => {
+  it("the lineup is exactly the 14-preset set, every doc resolving", () => {
     expect(BUNDLED_EXPORT_PRESETS.map((p) => p.id)).toEqual(LINEUP);
     for (const doc of BUNDLED_EXPORT_PRESETS) {
       const spec = resolvePresetToEncodeSpec(doc);

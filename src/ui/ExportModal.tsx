@@ -29,12 +29,14 @@ import {
   estimateSizeMB,
   fitToCap,
   groupPresets,
+  HIGH_QUALITY_DISPLAY_DOC,
   isHardwareEncode,
   isProRes,
   isVideotoolbox,
   KOOKABURRA_STANDARD_ID,
   type PresetRow,
   presetAspects,
+  railPresets,
   resolveDraft,
   slugifyPresetName,
   specChips,
@@ -138,7 +140,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   useEscapeClose(onClose);
 
   const groups = useMemo(
-    () => groupPresets(BUNDLED_EXPORT_PRESETS, userRows, search, aspectFilter),
+    () => groupPresets(railPresets(BUNDLED_EXPORT_PRESETS), userRows, search, aspectFilter),
     [userRows, search, aspectFilter],
   );
 
@@ -398,12 +400,20 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
             {selectedId === KOOKABURRA_STANDARD_ID && (
               <>
                 <h3 className="export-detail-title">
-                  {presetIcon(KOOKABURRA_STANDARD_ID)} Kookaburra Standard
+                  {presetIcon(KOOKABURRA_STANDARD_ID)} High quality
                 </h3>
                 <p className="export-desc">
-                  The studio default — deterministic H.264 (CRF 18) at the render's native
-                  resolution and 60 fps. This is the exact path Verify ×2 gates.
+                  Full-quality deterministic H.264 at the render's native resolution and 60 fps:
+                  much larger files than the General share presets. This is the exact path Verify ×2
+                  gates.
                 </p>
+                <span className="export-row-chips">
+                  {specChips(HIGH_QUALITY_DISPLAY_DOC).map((c) => (
+                    <span key={c} className="export-chip">
+                      {c}
+                    </span>
+                  ))}
+                </span>
                 {aspectRowFor(ALL_ASPECTS)}
                 <p className="export-estimate">Size varies with content (constant quality).</p>
               </>
@@ -496,19 +506,6 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
               ))}
             </fieldset>
             <div className="export-list">
-              <button
-                type="button"
-                className={`export-row ${selectedId === KOOKABURRA_STANDARD_ID ? "export-row-active" : ""}`}
-                onClick={() => select(KOOKABURRA_STANDARD_ID)}
-              >
-                <span className="export-row-icon">{presetIcon(KOOKABURRA_STANDARD_ID)}</span>
-                <span className="export-row-body">
-                  <span className="export-row-name">Kookaburra Standard</span>
-                  <span className="export-row-desc">
-                    The studio default — full quality, byte-reproducible.
-                  </span>
-                </span>
-              </button>
               {groups.map((g) => (
                 <div key={g.platform} className="export-group">
                   <h3 className="export-group-title">{g.platform}</h3>

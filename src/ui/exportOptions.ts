@@ -12,6 +12,28 @@ import {
 export const KOOKABURRA_STANDARD_ID = "kookaburra-standard";
 export const CUSTOM_ID = "custom";
 
+/** The frozen legacy path as a display-only rail doc (High quality in the Studio group). Never resolved to an encode: selecting this id still exports with the spec omitted, keeping the frozen-path contract. */
+export const HIGH_QUALITY_DISPLAY_DOC: ExportPresetDoc = {
+  version: EXPORT_PRESET_VERSION,
+  id: KOOKABURRA_STANDARD_ID,
+  name: "High quality",
+  description:
+    "The studio default: full quality and byte-reproducible, much larger than the General share files.",
+  platform: "Studio",
+  favouredAspect: "16:9",
+  notes: "Constant-quality CRF 18 at native resolution; the exact path Verify ×2 gates.",
+  video: { codec: "libx264", fps: 60, rate: { crf: 18 }, faststart: false, colourTags: false },
+  audio: { codec: { aacKbps: 192 } },
+};
+
+/** The rail lineup: the frozen path's display doc slots in at the head of the Studio group. */
+export function railPresets(bundled: ExportPresetDoc[]): ExportPresetDoc[] {
+  const out = [...bundled];
+  const i = out.findIndex((p) => p.platform === "Studio");
+  out.splice(i < 0 ? out.length : i, 0, HIGH_QUALITY_DISPLAY_DOC);
+  return out;
+}
+
 /** Decision 18's mux margin. */
 export const MUX_MARGIN = 1.05;
 
