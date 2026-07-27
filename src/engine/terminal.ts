@@ -122,12 +122,16 @@ export function binaryDir(path: string): string | null {
 }
 
 /** The command the panel runs for a project session. `claudePath` is the detected binary (detect_claude), exec'd by full path since detection probes the filesystem while a login non-interactive shell resolves via zprofile PATH only, and the two disagree on a default install (~/.zshrc owns the PATH line), which is exactly the packaged-app case; `continueLast` resumes the folder's most recent conversation (only valid when `hasClaudeSession` is true). */
-export function claudeSessionCommand(continueLast: boolean, claudePath: string): string {
-  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode acceptEdits`;
+export function claudeSessionCommand(
+  continueLast: boolean,
+  claudePath: string,
+): string {
+  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto  --model claude-opus-5 --effort high`;
 }
 
 /** The official installer, run VISIBLY inside the terminal for transparency. */
-export const CLAUDE_INSTALL_COMMAND = "curl -fsSL https://claude.ai/install.sh | bash";
+export const CLAUDE_INSTALL_COMMAND =
+  "curl -fsSL https://claude.ai/install.sh | bash";
 
 /** Native/npm installs update in place, by full path (same PATH rationale as sessions). */
 export function claudeUpdateCommand(claudePath: string): string {
