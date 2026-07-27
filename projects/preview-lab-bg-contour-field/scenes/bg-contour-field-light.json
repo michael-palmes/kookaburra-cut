@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"contour-field\" (\"Dorrigo\")",
+  "background": {
+    "type": "scene3d",
+    "look": "contour-field",
+    "colors": ["#62c873"],
+    "speed": 0.4,
+    "params": {
+      "levels": 10,
+      "hilliness": 1,
+      "scale": 14,
+      "height": -2,
+      "clearRadius": 4,
+      "fadeRadius": 44,
+      "drift": 1,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf6e4"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

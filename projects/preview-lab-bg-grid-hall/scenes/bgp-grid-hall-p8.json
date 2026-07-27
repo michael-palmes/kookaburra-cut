@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Abercrombie\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#85583f"],
+    "speed": 0.45,
+    "params": {
+      "width": 21,
+      "depth": 36,
+      "height": 10,
+      "spacing": 1.7,
+      "clearRadius": 5.5,
+      "drift": 0.7,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17110c"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-shell\" 3D background (\"Yamba\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-shell",
+    "colors": ["#61c5a3"],
+    "speed": 0.45,
+    "params": {
+      "radius": 26,
+      "latCount": 12,
+      "lonCount": 18,
+      "horizonBias": 0.6,
+      "drift": 0.7,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf5ef"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

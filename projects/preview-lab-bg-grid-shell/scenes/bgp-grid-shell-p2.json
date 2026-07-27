@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-shell\" 3D background (\"Kiama\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-shell",
+    "colors": ["#75baeb"],
+    "speed": 0.35,
+    "params": {
+      "radius": 19,
+      "latCount": 20,
+      "lonCount": 28,
+      "horizonBias": 0.35,
+      "drift": 1.3,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e4f2fe"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

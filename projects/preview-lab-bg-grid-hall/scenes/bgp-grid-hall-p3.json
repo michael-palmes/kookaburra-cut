@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Buchan\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#61c694"],
+    "speed": 0.45,
+    "params": {
+      "width": 14,
+      "depth": 24,
+      "height": 14,
+      "spacing": 1,
+      "clearRadius": 3.5,
+      "drift": 1.3,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf6eb"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
