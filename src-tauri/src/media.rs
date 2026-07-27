@@ -23,7 +23,7 @@ pub struct MediaMeta {
     pub kind: String, // "video" | "image"
     pub width: u32,
     pub height: u32,
-    pub fps: f64,        // 0 for images
+    pub fps: f64,         // 0 for images
     pub duration_ms: u64, // 0 for images
     /// Absolute paths (the webview loads them via /@fs in dev).
     pub poster_path: String,
@@ -185,7 +185,7 @@ pub(crate) struct ProbeInfo {
     pub kind: String, // "video" | "image"
     pub width: u32,
     pub height: u32,
-    pub fps: f64,        // 0 for images
+    pub fps: f64,         // 0 for images
     pub duration_ms: u64, // 0 for images
 }
 
@@ -374,7 +374,11 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
         0.0
     };
     Ok(ProbeInfo {
-        kind: if video { "video".into() } else { "image".into() },
+        kind: if video {
+            "video".into()
+        } else {
+            "image".into()
+        },
         width,
         height,
         fps,
@@ -383,7 +387,7 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
 }
 
 /// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules, edit documents and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
-fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
+pub(crate) fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
     let mut hits = Vec::new();
     let mut check = |path: &std::path::Path, display: String| {
         if let Ok(text) = std::fs::read_to_string(path) {
@@ -392,7 +396,10 @@ fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
             }
         }
     };
-    check(&project.join(MANIFEST_FILENAME), MANIFEST_FILENAME.to_owned());
+    check(
+        &project.join(MANIFEST_FILENAME),
+        MANIFEST_FILENAME.to_owned(),
+    );
     if let Ok(entries) = std::fs::read_dir(project.join("scenes")) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -427,7 +434,11 @@ fn validate_asset_rel(rel: &str) -> Result<(), String> {
         && !rel.contains("..")
         && !rel.contains('\\')
         && rel.len() > "assets/".len();
-    if ok { Ok(()) } else { Err(format!("not a project asset path: {rel}")) }
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("not a project asset path: {rel}"))
+    }
 }
 
 /// Move an asset to the TRASH, refused while any scene, edit or the manifest still references it (re-point first; a broken reference would fail the next load loudly).
@@ -533,8 +544,7 @@ pub fn import_media(
             candidate = format!("{base}-{n}.{ext}");
         }
         let dest = assets.join(&candidate);
-        std::fs::copy(&source, &dest)
-            .map_err(|e| format!("copying {}: {e}", source.display()))?;
+        std::fs::copy(&source, &dest).map_err(|e| format!("copying {}: {e}", source.display()))?;
         imported.push(format!("assets/{candidate}"));
     }
     Ok(imported)
@@ -672,7 +682,11 @@ pub(crate) async fn ensure_media_cache(
     }
 
     let cached = CachedMeta {
-        kind: if video { "video".into() } else { "image".into() },
+        kind: if video {
+            "video".into()
+        } else {
+            "image".into()
+        },
         width,
         height,
         fps,

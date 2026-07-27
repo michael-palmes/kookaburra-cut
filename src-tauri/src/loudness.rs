@@ -60,8 +60,7 @@ pub async fn measure_loudness(
     let cache_file = cache_dir.join(format!("{key}.json"));
     if let Ok(text) = std::fs::read_to_string(&cache_file) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let (Some(i), Some(p)) = (v["integratedLufs"].as_f64(), v["truePeakDbtp"].as_f64())
-            {
+            if let (Some(i), Some(p)) = (v["integratedLufs"].as_f64(), v["truePeakDbtp"].as_f64()) {
                 return Ok(LoudnessInfo {
                     integrated_lufs: i,
                     true_peak_dbtp: p,

@@ -56,8 +56,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf' or 'screenshot'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot' or 'packroundtrip'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -110,6 +110,32 @@ fi
 # renamed or removed themes would be resurrected into src/assets on each run.
 if [[ "$ACTION" == "theme-previews" ]]; then
   rm -rf "$RESULT_DIR/theme-previews"
+fi
+
+# The pack round trip renders in a THROWAWAY workspace root seeded from the real one, so the
+# import lands beside a copy and the user's workspace is never written to. `finish_autorun`
+# always writes to ~/Kookaburra Cut/_autorun, so the result still lands where we look for it.
+if [[ "$ACTION" == "packroundtrip" ]]; then
+  if [[ "$PROJECT" != ws:* ]]; then
+    echo "kookaburra:run: --action packroundtrip needs a workspace project (ws:<slug>); bundled projects do not live in the workspace" >&2
+    exit 2
+  fi
+  RT_SLUG="${PROJECT#ws:}"
+  RT_SRC="$HOME/Kookaburra Cut"
+  RT_ROOT="$RESULT_DIR/roundtrip-root"
+  if [[ ! -d "$RT_SRC/$RT_SLUG" ]]; then
+    echo "kookaburra:run: no project at '$RT_SRC/$RT_SLUG'" >&2
+    exit 2
+  fi
+  rm -rf "$RT_ROOT"
+  mkdir -p "$RT_ROOT"
+  cp -R "$RT_SRC/$RT_SLUG" "$RT_ROOT/$RT_SLUG"
+  for shared in themes fonts objects gradients export-presets screenshots; do
+    [[ -d "$RT_SRC/$shared" ]] && cp -R "$RT_SRC/$shared" "$RT_ROOT/$shared"
+  done
+  mkdir -p "$RT_ROOT/_autorun/roundtrip"
+  export KOOKABURRA_WORKSPACE_ROOT="$RT_ROOT"
+  echo "kookaburra:run: round trip in $RT_ROOT"
 fi
 
 # KOOKABURRA_* is the canonical runtime channel (v9 · M2 — read by the native

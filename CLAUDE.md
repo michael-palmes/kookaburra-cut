@@ -27,6 +27,11 @@ pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:
 pnpm gate               # the default per-change gate: showcase-tour Verify ×2, 16:9 (~2 min)
 pnpm gate:merge         # pre-merge pair (showcase-tour + ws:launch-2026, 16:9) in ONE app boot
 
+# Pack round trip: export a project to .kbpack, import it into a throwaway workspace
+# root, verify there, demand the SAME hash. Required for any change under
+# src-tauri/src/pack/** or fonts.rs (docs/determinism.md, "Pack round trip").
+pnpm kookaburra:run --action packroundtrip --project ws:launch-2026
+
 # SEE a frame without driving the app: one deterministic frame via the export path → PNG
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
 pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
@@ -86,6 +91,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 - Skill `kookaburra-release`: sign, notarise, DMG, packaged-parity gate, release flow.
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
+- Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
@@ -107,8 +113,10 @@ media, camera rigging (orbit plus free-flight poses, depth bands),
 fixed/video backgrounds, a text-motion pack, one
 soundtrack per project, platform export presets, the studio workspace
 (`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
-Claude Code terminal), a packaged signed/notarised `.app`, and the night-studio
-chrome (⌘K palette, right inspector, camera lane, playback bar).
+Claude Code terminal), a packaged signed/notarised `.app`, the night-studio
+chrome (⌘K palette, right inspector, camera lane, playback bar), and `.kbpack`
+packs: one signed file carrying projects, themes, fonts, 3D objects, gradients,
+export presets and screenshots between machines (`docs/packs.md`).
 
 Operational anchors for any change:
 

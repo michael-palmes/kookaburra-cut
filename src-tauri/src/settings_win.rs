@@ -13,16 +13,17 @@ pub(crate) fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         win.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("Settings")
-        .inner_size(520.0, 480.0)
-        .resizable(false)
-        .maximizable(false)
-        .theme(Some(tauri::Theme::Dark))
-        // --surface-window; the NSWindow layer of the anti-flash work.
-        .background_color(tauri::window::Color(0x0E, 0x11, 0x13, 0xFF))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let window =
+        WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("Settings")
+            .inner_size(520.0, 480.0)
+            .resizable(false)
+            .maximizable(false)
+            .theme(Some(tauri::Theme::Dark))
+            // --surface-window; the NSWindow layer of the anti-flash work.
+            .background_color(tauri::window::Color(0x0E, 0x11, 0x13, 0xFF))
+            .build()
+            .map_err(|e| e.to_string())?;
     #[cfg(target_os = "macos")]
     crate::deflash_webview(&window);
     #[cfg(not(target_os = "macos"))]

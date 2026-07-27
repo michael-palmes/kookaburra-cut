@@ -304,8 +304,8 @@ pub fn duplicate_scene(
     workspace::validate_slug(&slug)?;
     let project = root.join(&slug);
     let manifest_path = project.join(MANIFEST_FILENAME);
-    let text =
-        std::fs::read_to_string(&manifest_path).map_err(|e| format!("reading project.json: {e}"))?;
+    let text = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
     migrate_manifest_transitions(&mut manifest);
@@ -324,7 +324,8 @@ pub fn duplicate_scene(
     if !file.starts_with("scenes/") || file.contains("..") {
         return Err(format!("invalid scene path: {file:?}"));
     }
-    let tsx = std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
+    let tsx =
+        std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
     let doc_file_src = file.replace(".tsx", ".json");
     let doc = match std::fs::read_to_string(project.join(&doc_file_src)) {
         Ok(text) => Some(
@@ -343,9 +344,12 @@ pub fn duplicate_scene(
         .and_then(Value::as_str)
         .map(str::to_string);
     // Display-name fallback mirrors the frontend: sidecar name, else the stem minus its numeric prefix.
-    let base_name = source_name
-        .clone()
-        .unwrap_or_else(|| stem_src.split_once('-').map_or(stem_src, |(_, rest)| rest).replace('-', " "));
+    let base_name = source_name.clone().unwrap_or_else(|| {
+        stem_src
+            .split_once('-')
+            .map_or(stem_src, |(_, rest)| rest)
+            .replace('-', " ")
+    });
     let base = slugify(&format!("{base_name} copy"));
     let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
     let new_file = format!("scenes/{stem}.tsx");
@@ -508,7 +512,11 @@ fn slugify(name: &str) -> String {
         }
     }
     let trimmed = out.trim_matches('-').to_string();
-    if trimmed.is_empty() { "scene".into() } else { trimmed }
+    if trimmed.is_empty() {
+        "scene".into()
+    } else {
+        trimmed
+    }
 }
 
 /// Next zero-padded numeric prefix in `scenes/` (the `/new-scene` convention).
@@ -717,8 +725,8 @@ pub async fn scaffold_scene(
 
     // Register in project.json (atomic), at `position` when given (in range), else appended.
     let manifest_path = project.join(MANIFEST_FILENAME);
-    let text =
-        std::fs::read_to_string(&manifest_path).map_err(|e| format!("reading project.json: {e}"))?;
+    let text = std::fs::read_to_string(&manifest_path)
+        .map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
     migrate_manifest_transitions(&mut manifest);

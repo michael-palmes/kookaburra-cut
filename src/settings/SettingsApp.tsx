@@ -21,6 +21,7 @@ import {
   setLagWarningSetting,
 } from "../engine/workspace";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
+import { PublisherPane } from "./PublisherPane";
 
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the opt-in update lane (toggle + Check now), and read-only info (workspace path, sidecar versions, app version). */
 
@@ -227,6 +228,8 @@ export function SettingsApp() {
           </button>
         </div>
       </section>
+
+      <PublisherPane />
 
       <section className="settings-section">
         <h2>About</h2>

@@ -18,12 +18,9 @@ impl Codec {
     /// Audio encoder per container: AAC 192k in .mp4, uncompressed 16-bit PCM in .mov; AAC's run-to-run determinism is proven by the Verify ×2 gate, not assumed (recorded contingency: cache-encode once + stream-copy).
     pub(crate) fn audio_encoder_args(self) -> Vec<String> {
         match self {
-            Codec::Libx264 | Codec::Videotoolbox => vec![
-                "-c:a".into(),
-                "aac".into(),
-                "-b:a".into(),
-                "192k".into(),
-            ],
+            Codec::Libx264 | Codec::Videotoolbox => {
+                vec!["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]
+            }
             Codec::ProresKs => vec!["-c:a".into(), "pcm_s16le".into()],
         }
     }
@@ -142,7 +139,10 @@ pub(crate) fn audio_filter_graph_gained(
     let n_samples = (total_frames as u64) * (AUDIO_RATE / fps as u64);
     let mut parts: Vec<String> = vec![
         format!("aformat=sample_fmts=fltp:sample_rates={AUDIO_RATE}:channel_layouts=stereo"),
-        format!("atrim=start_sample={}", audio.start_offset_ms * AUDIO_RATE / 1000),
+        format!(
+            "atrim=start_sample={}",
+            audio.start_offset_ms * AUDIO_RATE / 1000
+        ),
         "asetpts=PTS-STARTPTS".into(),
     ];
     let gain_db = audio.gain_db + extra_db;
@@ -227,7 +227,6 @@ pub(crate) fn legacy_export_args(
     Ok(args)
 }
 
-
 // The EncodeSpec argv family: the FRONTEND resolves a preset/custom into a fully-resolved spec (the registry stays in TS like themes), Rust builds argv from the spec only, and every lane below is pinned by `spec_argv_goldens` - the strings are the contract.
 
 /// Video encoder for the spec family: software x264/x265 are deterministic; the VideoToolbox lanes are "fast drafts" (excluded from Verify by policy).
@@ -264,7 +263,10 @@ impl EncodeCodec {
         )
     }
     fn is_prores(self) -> bool {
-        matches!(self, EncodeCodec::ProresKs | EncodeCodec::ProresVideotoolbox)
+        matches!(
+            self,
+            EncodeCodec::ProresKs | EncodeCodec::ProresVideotoolbox
+        )
     }
 }
 
@@ -280,7 +282,9 @@ pub(crate) enum RateControl {
         #[serde(default)]
         two_pass: bool,
     },
-    Crf { crf: u32 },
+    Crf {
+        crf: u32,
+    },
 }
 
 /// Audio encode for the spec family: `None` on the spec = follow the project (aac/pcm by container, exactly the legacy lane); PCM is resolve-time rejected outside .mov.
@@ -398,10 +402,20 @@ impl EncodeSpec {
         let mut args: Vec<String> = Vec::new();
         match self.codec {
             EncodeCodec::Libx264 => {
-                args.extend(["-c:v".into(), "libx264".into(), "-preset".into(), "medium".into()]);
+                args.extend([
+                    "-c:v".into(),
+                    "libx264".into(),
+                    "-preset".into(),
+                    "medium".into(),
+                ]);
             }
             EncodeCodec::Libx265 => {
-                args.extend(["-c:v".into(), "libx265".into(), "-preset".into(), "medium".into()]);
+                args.extend([
+                    "-c:v".into(),
+                    "libx265".into(),
+                    "-preset".into(),
+                    "medium".into(),
+                ]);
             }
             EncodeCodec::H264Videotoolbox => {
                 args.extend(["-c:v".into(), "h264_videotoolbox".into()]);
@@ -435,7 +449,12 @@ impl EncodeSpec {
                     args.extend(["-crf".into(), crf.to_string()]);
                 }
             }
-            RateControl::Bitrate { target_kbps, max_kbps, bufsize_kbps, .. } => {
+            RateControl::Bitrate {
+                target_kbps,
+                max_kbps,
+                bufsize_kbps,
+                ..
+            } => {
                 args.extend(["-b:v".into(), format!("{target_kbps}k")]);
                 if !self.codec.is_videotoolbox() {
                     args.extend([
@@ -458,7 +477,10 @@ impl EncodeSpec {
             args.extend(["-level".into(), level.clone()]);
         }
         if let Some(gop) = self.gop_seconds {
-            args.extend(["-g".into(), ((self.fps as f64 * gop).round() as u32).to_string()]);
+            args.extend([
+                "-g".into(),
+                ((self.fps as f64 * gop).round() as u32).to_string(),
+            ]);
         }
         if let Some(bf) = self.b_frames {
             args.extend(["-bf".into(), bf.to_string()]);
@@ -478,13 +500,19 @@ impl EncodeSpec {
 
     fn audio_encoder_args(&self) -> Vec<String> {
         match &self.audio {
-            Some(EncodeAudio { codec: EncodeAudioCodec::Aac { aac_kbps }, .. }) => vec![
+            Some(EncodeAudio {
+                codec: EncodeAudioCodec::Aac { aac_kbps },
+                ..
+            }) => vec![
                 "-c:a".into(),
                 "aac".into(),
                 "-b:a".into(),
                 format!("{aac_kbps}k"),
             ],
-            Some(EncodeAudio { codec: EncodeAudioCodec::Pcm { pcm_bits }, .. }) => {
+            Some(EncodeAudio {
+                codec: EncodeAudioCodec::Pcm { pcm_bits },
+                ..
+            }) => {
                 vec!["-c:a".into(), format!("pcm_s{pcm_bits}le")]
             }
             None => vec!["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()],
@@ -538,11 +566,18 @@ pub(crate) fn spec_export_args(
     if let Some(audio) = &options.audio {
         args.extend(["-i".into(), audio.file.clone()]);
     }
-    args.extend(["-vf".into(), spec.vf_chain(options.width, options.height, options.fps)]);
+    args.extend([
+        "-vf".into(),
+        spec.vf_chain(options.width, options.height, options.fps),
+    ]);
     match &options.audio {
         None => args.push("-an".into()),
         Some(audio) => {
-            let extra_db = spec.audio.as_ref().map(|a| a.loudness_gain_db).unwrap_or(0.0);
+            let extra_db = spec
+                .audio
+                .as_ref()
+                .map(|a| a.loudness_gain_db)
+                .unwrap_or(0.0);
             args.extend([
                 "-map".into(),
                 "0:v".into(),
@@ -575,7 +610,10 @@ pub(crate) fn mezzanine_render_args(
     mezz_path: &str,
 ) -> Vec<String> {
     let mut args = raw_input_args(options);
-    args.extend(["-vf".into(), spec.vf_chain(options.width, options.height, options.fps)]);
+    args.extend([
+        "-vf".into(),
+        spec.vf_chain(options.width, options.height, options.fps),
+    ]);
     args.extend([
         "-an".into(),
         "-c:v".into(),
@@ -612,7 +650,11 @@ pub(crate) fn transcode_pass_args(
     }
     match (&options.audio, pass) {
         (Some(audio), 2) => {
-            let extra_db = spec.audio.as_ref().map(|a| a.loudness_gain_db).unwrap_or(0.0);
+            let extra_db = spec
+                .audio
+                .as_ref()
+                .map(|a| a.loudness_gain_db)
+                .unwrap_or(0.0);
             args.extend([
                 "-map".into(),
                 "0:v".into(),
@@ -634,7 +676,12 @@ pub(crate) fn transcode_pass_args(
     args.extend(spec.encoder_args());
     match spec.codec {
         EncodeCodec::Libx264 => {
-            args.extend(["-pass".into(), pass.to_string(), "-passlogfile".into(), passlog.into()]);
+            args.extend([
+                "-pass".into(),
+                pass.to_string(),
+                "-passlogfile".into(),
+                passlog.into(),
+            ]);
         }
         EncodeCodec::Libx265 => {
             args.extend([
@@ -736,10 +783,37 @@ mod legacy_argv_goldens {
     fn libx264_no_audio_is_byte_frozen() {
         let args = legacy_export_args(&base_options(Codec::Libx264, None), "/out/x.mp4").unwrap();
         let expected: Vec<&str> = vec![
-            "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "3840x2160", "-r", "60",
-            "-i", "pipe:0", "-vf", "vflip", "-an", "-c:v", "libx264", "-preset", "medium",
-            "-crf", "18", "-pix_fmt", "yuv420p", "-r", "60", "-flags:v", "+bitexact",
-            "-fflags", "+bitexact", "-map_metadata", "-1", "/out/x.mp4",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            "3840x2160",
+            "-r",
+            "60",
+            "-i",
+            "pipe:0",
+            "-vf",
+            "vflip",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            "60",
+            "-flags:v",
+            "+bitexact",
+            "-fflags",
+            "+bitexact",
+            "-map_metadata",
+            "-1",
+            "/out/x.mp4",
         ];
         assert_eq!(args, expected);
     }
@@ -763,13 +837,50 @@ mod legacy_argv_goldens {
             "afade=t=out:st=9.000000:d=1.000:curve=qsin"
         );
         let expected: Vec<&str> = vec![
-            "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "3840x2160", "-r", "60",
-            "-i", "pipe:0", "-i", "/abs/track.mp3", "-vf", "vflip",
-            "-map", "0:v", "-map", "1:a:0", "-af", graph,
-            "-c:a", "aac", "-b:a", "192k", "-flags:a", "+bitexact",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-            "-pix_fmt", "yuv420p", "-r", "60", "-flags:v", "+bitexact",
-            "-fflags", "+bitexact", "-map_metadata", "-1", "/out/x.mp4",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            "3840x2160",
+            "-r",
+            "60",
+            "-i",
+            "pipe:0",
+            "-i",
+            "/abs/track.mp3",
+            "-vf",
+            "vflip",
+            "-map",
+            "0:v",
+            "-map",
+            "1:a:0",
+            "-af",
+            graph,
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-flags:a",
+            "+bitexact",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "18",
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            "60",
+            "-flags:v",
+            "+bitexact",
+            "-fflags",
+            "+bitexact",
+            "-map_metadata",
+            "-1",
+            "/out/x.mp4",
         ];
         assert_eq!(args, expected);
     }
@@ -779,10 +890,37 @@ mod legacy_argv_goldens {
     fn prores_no_audio_is_byte_frozen() {
         let args = legacy_export_args(&base_options(Codec::ProresKs, None), "/out/x.mov").unwrap();
         let expected: Vec<&str> = vec![
-            "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "3840x2160", "-r", "60",
-            "-i", "pipe:0", "-vf", "vflip", "-an", "-c:v", "prores_ks", "-profile:v", "3",
-            "-vendor", "apl0", "-pix_fmt", "yuv422p10le", "-r", "60", "-flags:v",
-            "+bitexact", "-fflags", "+bitexact", "-map_metadata", "-1", "/out/x.mov",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            "3840x2160",
+            "-r",
+            "60",
+            "-i",
+            "pipe:0",
+            "-vf",
+            "vflip",
+            "-an",
+            "-c:v",
+            "prores_ks",
+            "-profile:v",
+            "3",
+            "-vendor",
+            "apl0",
+            "-pix_fmt",
+            "yuv422p10le",
+            "-r",
+            "60",
+            "-flags:v",
+            "+bitexact",
+            "-fflags",
+            "+bitexact",
+            "-map_metadata",
+            "-1",
+            "/out/x.mov",
         ];
         assert_eq!(args, expected);
     }
@@ -810,7 +948,11 @@ mod spec_argv_goldens {
 
     /// The 30fps lane shape: the frontend renders AT the output rate, so the raw input arrives at 30 with the 30fps frame count already.
     fn options_30fps() -> ExportOptions {
-        ExportOptions { fps: 30, total_frames: 300, ..options() }
+        ExportOptions {
+            fps: 30,
+            total_frames: 300,
+            ..options()
+        }
     }
 
     fn reels_1080p30() -> EncodeSpec {
@@ -841,17 +983,58 @@ mod spec_argv_goldens {
     fn x264_scaled_30fps_lane_is_pinned() {
         let args = spec_export_args(&options_30fps(), &reels_1080p30(), "/out/r.mp4").unwrap();
         let expected: Vec<&str> = vec![
-            "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "3840x2160", "-r", "30",
-            "-i", "pipe:0", "-vf",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            "3840x2160",
+            "-r",
+            "30",
+            "-i",
+            "pipe:0",
+            "-vf",
             "vflip,scale=1920:1080:flags=lanczos:out_color_matrix=bt709,format=yuv420p",
-            "-an", "-c:v", "libx264", "-preset", "medium",
-            "-b:v", "12000k", "-maxrate", "16000k", "-bufsize", "24000k",
-            "-threads", "1",
-            "-profile:v", "high", "-level", "4.2", "-g", "60", "-bf", "2",
-            "-pix_fmt", "yuv420p",
-            "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
-            "-r", "30", "-movflags", "+faststart",
-            "-flags:v", "+bitexact", "-fflags", "+bitexact", "-map_metadata", "-1",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-b:v",
+            "12000k",
+            "-maxrate",
+            "16000k",
+            "-bufsize",
+            "24000k",
+            "-threads",
+            "1",
+            "-profile:v",
+            "high",
+            "-level",
+            "4.2",
+            "-g",
+            "60",
+            "-bf",
+            "2",
+            "-pix_fmt",
+            "yuv420p",
+            "-color_primaries",
+            "bt709",
+            "-color_trc",
+            "bt709",
+            "-colorspace",
+            "bt709",
+            "-r",
+            "30",
+            "-movflags",
+            "+faststart",
+            "-flags:v",
+            "+bitexact",
+            "-fflags",
+            "+bitexact",
+            "-map_metadata",
+            "-1",
             "/out/r.mp4",
         ];
         assert_eq!(args, expected);
@@ -877,11 +1060,38 @@ mod spec_argv_goldens {
         };
         let args = spec_export_args(&options(), &spec, "/out/h.mp4").unwrap();
         let expected: Vec<&str> = vec![
-            "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "3840x2160", "-r", "60",
-            "-i", "pipe:0", "-vf", "vflip", "-an",
-            "-c:v", "libx265", "-preset", "medium", "-crf", "22",
-            "-pix_fmt", "yuv420p10le", "-r", "60", "-tag:v", "hvc1",
-            "-flags:v", "+bitexact", "-fflags", "+bitexact", "-map_metadata", "-1",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            "3840x2160",
+            "-r",
+            "60",
+            "-i",
+            "pipe:0",
+            "-vf",
+            "vflip",
+            "-an",
+            "-c:v",
+            "libx265",
+            "-preset",
+            "medium",
+            "-crf",
+            "22",
+            "-pix_fmt",
+            "yuv420p10le",
+            "-r",
+            "60",
+            "-tag:v",
+            "hvc1",
+            "-flags:v",
+            "+bitexact",
+            "-fflags",
+            "+bitexact",
+            "-map_metadata",
+            "-1",
             "/out/h.mp4",
         ];
         assert_eq!(args, expected);
@@ -901,21 +1111,42 @@ mod spec_argv_goldens {
         let opts = options_30fps();
         let mezz = mezzanine_render_args(&opts, &spec, "/mezz/m.mkv");
         let expected_mezz: Vec<&str> = vec![
-            "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "3840x2160", "-r", "30",
-            "-i", "pipe:0", "-vf",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgba",
+            "-s",
+            "3840x2160",
+            "-r",
+            "30",
+            "-i",
+            "pipe:0",
+            "-vf",
             "vflip,scale=1920:1080:flags=lanczos:out_color_matrix=bt709,format=yuv420p",
-            "-an", "-c:v", "ffv1", "-pix_fmt", "yuv420p", "-r", "30",
-            "-flags:v", "+bitexact", "-fflags", "+bitexact", "-map_metadata", "-1",
+            "-an",
+            "-c:v",
+            "ffv1",
+            "-pix_fmt",
+            "yuv420p",
+            "-r",
+            "30",
+            "-flags:v",
+            "+bitexact",
+            "-fflags",
+            "+bitexact",
+            "-map_metadata",
+            "-1",
             "/mezz/m.mkv",
         ];
         assert_eq!(mezz, expected_mezz);
 
-        let p1 = transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/t.mp4", 1, "/mezz/log")
-            .unwrap();
+        let p1 =
+            transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/t.mp4", 1, "/mezz/log").unwrap();
         assert!(p1.ends_with(&["-f".into(), "null".into(), "/dev/null".into()]));
         assert!(p1.contains(&"-pass".to_string()) && p1.contains(&"1".to_string()));
-        let p2 = transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/t.mp4", 2, "/mezz/log")
-            .unwrap();
+        let p2 =
+            transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/t.mp4", 2, "/mezz/log").unwrap();
         assert!(p2.ends_with(&["/out/t.mp4".into()]));
         assert!(p2.contains(&"-passlogfile".to_string()));
         // The vf chain must NOT run again over the mezzanine (its pixels are final).
@@ -970,7 +1201,9 @@ mod spec_argv_goldens {
             audio: None,
         };
         let args = spec_export_args(&options(), &spec, "/out/p.mov").unwrap();
-        assert!(args.windows(2).any(|w| w == ["-c:v", "prores_videotoolbox"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["-c:v", "prores_videotoolbox"]));
         assert!(args.windows(2).any(|w| w == ["-profile:v", "3"]));
         assert!(args.windows(2).any(|w| w == ["-pix_fmt", "p210le"]));
         assert!(!args.contains(&"-crf".to_string()));

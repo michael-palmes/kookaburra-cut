@@ -2,17 +2,19 @@
 
 mod concurrency;
 mod edit;
-mod present;
 mod encode;
 mod export_presets;
+mod fonts;
 mod global_screenshots;
+mod gradients;
 mod loudness;
 mod media;
-mod pty;
-mod fonts;
-mod gradients;
-mod scene_doc;
 mod objects;
+mod pack;
+mod packs_win;
+mod present;
+mod pty;
+mod scene_doc;
 mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
 mod tap_dot_frames;
@@ -32,7 +34,10 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::oneshot;
 
-use encode::{legacy_export_args, mezzanine_render_args, spec_export_args, transcode_pass_args, EncodeSpec, ExportOptions};
+use encode::{
+    legacy_export_args, mezzanine_render_args, spec_export_args, transcode_pass_args, EncodeSpec,
+    ExportOptions,
+};
 
 /// Progress event streamed back to the frontend over an ipc `Channel`.
 #[derive(Clone, Serialize)]
@@ -176,7 +181,9 @@ fn start_export(
 
     // Defence in depth: confirm the output still resolves inside dir (the two-pass mezzanine/passlog paths reuse this same validated project_id+aspect, so they're covered too).
     let canon_dir = dir.canonicalize().map_err(|e| e.to_string())?;
-    let out_parent = output.parent().ok_or("export output has no parent directory")?;
+    let out_parent = output
+        .parent()
+        .ok_or("export output has no parent directory")?;
     let canon_parent = out_parent.canonicalize().map_err(|e| e.to_string())?;
     if !canon_parent.starts_with(&canon_dir) {
         return Err("export path escaped the output directory".into());
@@ -339,7 +346,11 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
 
     // Two-pass: the render above wrote the FFV1 mezzanine, now the file-to-file passes; pass 1 only produces the stats log, pass 2 writes the real output (and carries the audio); the mezzanine dir is cleaned on success and swept by the NEXT export either way.
     if let Some(plan) = two_pass {
-        let _ = progress.send(Progress { frame: total, total, stage: "pass1" });
+        let _ = progress.send(Progress {
+            frame: total,
+            total,
+            stage: "pass1",
+        });
         let args = transcode_pass_args(
             &plan.options,
             &plan.spec,
@@ -348,8 +359,14 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
             1,
             &plan.passlog.to_string_lossy(),
         )?;
-        run_ffmpeg_to_completion(&app, args).await.map_err(|e| format!("pass 1: {e}"))?;
-        let _ = progress.send(Progress { frame: total, total, stage: "pass2" });
+        run_ffmpeg_to_completion(&app, args)
+            .await
+            .map_err(|e| format!("pass 1: {e}"))?;
+        let _ = progress.send(Progress {
+            frame: total,
+            total,
+            stage: "pass2",
+        });
         let args = transcode_pass_args(
             &plan.options,
             &plan.spec,
@@ -358,7 +375,9 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
             2,
             &plan.passlog.to_string_lossy(),
         )?;
-        run_ffmpeg_to_completion(&app, args).await.map_err(|e| format!("pass 2: {e}"))?;
+        run_ffmpeg_to_completion(&app, args)
+            .await
+            .map_err(|e| format!("pass 2: {e}"))?;
         if let Some(dir) = plan.mezz.parent() {
             let _ = std::fs::remove_dir_all(dir);
         }
@@ -514,7 +533,9 @@ fn finish_autorun(app: AppHandle, result_json: String, ok: bool) -> Result<(), S
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
     if !gated {
-        return Err("finish_autorun is only valid during an auto-run (KOOKABURRA_ACTION unset)".into());
+        return Err(
+            "finish_autorun is only valid during an auto-run (KOOKABURRA_ACTION unset)".into(),
+        );
     }
     if result_json.len() > AUTORUN_RESULT_MAX_BYTES {
         return Err(format!(
@@ -565,7 +586,13 @@ fn begin_screenshot(
     }
     let stem: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let dir = app
         .path()
@@ -849,7 +876,9 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir));
     if has_traversal || !dir.starts_with(&cache_root) {
-        return Err(format!("refusing to touch outside the clip cache: {cache_dir}"));
+        return Err(format!(
+            "refusing to touch outside the clip cache: {cache_dir}"
+        ));
     }
     if !dir.join(".done").exists() {
         return Err("ensure_clip_previews: clip not fully extracted".into());
@@ -875,7 +904,10 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         "4".into(),
         "-start_number".into(),
         "0".into(),
-        preview.join("frame-%05d.jpg").to_string_lossy().into_owned(),
+        preview
+            .join("frame-%05d.jpg")
+            .to_string_lossy()
+            .into_owned(),
     ];
     let _permit = app
         .state::<concurrency::BackgroundLimiter>()
@@ -930,11 +962,17 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
         .manage(present::PresentState::default())
+        .manage(packs_win::PacksState::default())
+        .manage(pack::commands::PackState::default())
         .setup(|app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
             if let Some(main) = app.get_webview_window("main") {
                 deflash_webview(&main);
+            }
+            // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
+            if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
+                pack::read::sweep_stale(&root);
             }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -950,9 +988,11 @@ pub fn run() {
                     PredefinedMenuItem, SubmenuBuilder,
                 };
                 use tauri::Emitter;
-                let edit_in_claude = MenuItemBuilder::with_id("edit-in-claude", "Edit in Claude Code")
-                    .accelerator("CmdOrCtrl+E")
-                    .build(app)?;
+                // ⌥⌘E, not ⌘E: v13's File menu takes ⌘E for "Export Video…", the conventional macOS binding.
+                let edit_in_claude =
+                    MenuItemBuilder::with_id("edit-in-claude", "Edit in Claude Code")
+                        .accelerator("Alt+CmdOrCtrl+E")
+                        .build(app)?;
                 // The ⌘K palette rides a menu accelerator like ⌘Z/⌘E/⌘/; AppKit delivers it regardless of webview focus (xterm included).
                 let find_action = MenuItemBuilder::with_id("find-action", "Find an Action…")
                     .accelerator("CmdOrCtrl+K")
@@ -965,7 +1005,30 @@ pub fn run() {
                     .item(&edit_in_claude)
                     .item(&shortcuts)
                     .build()?;
+                // File: where macOS users look for Import/Export. Pack items are always enabled, since an empty picker explains itself better than a greyed-out item.
+                let new_project = MenuItemBuilder::with_id("new-project", "New Project…")
+                    .accelerator("CmdOrCtrl+N")
+                    .build(app)?;
+                let import_pack = MenuItemBuilder::with_id("import-pack", "Import Pack…")
+                    .accelerator("CmdOrCtrl+Shift+I")
+                    .build(app)?;
+                let export_pack = MenuItemBuilder::with_id("export-pack", "Export Pack…")
+                    .accelerator("CmdOrCtrl+Shift+E")
+                    .build(app)?;
+                let export_video = MenuItemBuilder::with_id("export-video", "Export Video…")
+                    .accelerator("CmdOrCtrl+E")
+                    .build(app)?;
+                let file = SubmenuBuilder::new(app, "File")
+                    .item(&new_project)
+                    .separator()
+                    .item(&import_pack)
+                    .item(&export_pack)
+                    .separator()
+                    .item(&export_video)
+                    .build()?;
                 let menu = Menu::default(app.handle())?;
+                // Index 1: straight after the application submenu, before Edit.
+                menu.insert(&file, 1)?;
                 // The system settings-gear glyph (AppKit template image via muda's NativeIcon); real SF Symbols aren't exposed by Tauri's menu layer.
                 let settings_item = IconMenuItemBuilder::with_id("open-settings", "Settings…")
                     .native_icon(NativeIcon::PreferencesGeneral)
@@ -1061,6 +1124,26 @@ pub fn run() {
                     } else if event.id() == "open-settings" {
                         if let Err(e) = settings_win::open_settings_window(app) {
                             eprintln!("[settings] open failed: {e}");
+                        }
+                    } else if event.id() == "new-project" {
+                        let _ = app.emit_to("main", "kookaburra://new-project", ());
+                    } else if event.id() == "export-video" {
+                        let _ = app.emit_to("main", "kookaburra://export-video", ());
+                    } else if event.id() == "import-pack" {
+                        if let Err(e) = packs_win::open_packs_window(
+                            app,
+                            packs_win::PacksTarget::Import {
+                                path: None,
+                                queued: 0,
+                            },
+                        ) {
+                            eprintln!("[packs] open failed: {e}");
+                        }
+                    } else if event.id() == "export-pack" {
+                        if let Err(e) =
+                            packs_win::open_packs_window(app, packs_win::PacksTarget::Export)
+                        {
+                            eprintln!("[packs] open failed: {e}");
                         }
                     }
                 });
@@ -1176,10 +1259,59 @@ pub fn run() {
             edit::render_edit,
             present::open_present,
             present::get_present_target,
-            workspace::set_present_options
+            workspace::set_present_options,
+            packs_win::get_packs_target,
+            packs_win::open_pack_export,
+            packs_win::open_pack_import,
+            packs_win::next_queued_pack,
+            fonts::font_embedding_for,
+            fonts::pin_fonts_for_pack,
+            pack::publisher::get_publisher_profile,
+            pack::publisher::set_publisher_profile,
+            pack::publisher::rotate_publisher_key,
+            pack::publisher::list_known_publishers,
+            pack::publisher::forget_publisher,
+            pack::commands::list_packables,
+            pack::commands::plan_pack,
+            pack::commands::build_pack,
+            pack::commands::cancel_pack_build,
+            pack::commands::reveal_pack,
+            pack::commands::inspect_pack,
+            pack::commands::read_pack_scene_source,
+            pack::commands::stage_pack,
+            pack::commands::apply_import,
+            pack::commands::discard_staged_pack,
+            pack::commands::workspace_root_path,
+            pack::commands::open_imported_project
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Kookaburra Cut");
+        .build(tauri::generate_context!())
+        .expect("error while running Kookaburra Cut")
+        .run(|app, event| {
+            // Open With / double-click. Cold start fires this before any webview exists, so the path is stashed in managed state and the window reads it on mount.
+            if let tauri::RunEvent::Opened { urls } = event {
+                let mut paths = packs_win::paths_from_urls(&urls);
+                paths.retain(|p| match packs_win::validate_incoming(p) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        eprintln!("[packs] ignoring opened file: {e}");
+                        false
+                    }
+                });
+                let Some(first) = paths.first().cloned() else {
+                    return;
+                };
+                // One at a time: resolving conflicts across overlapping packs has no good UI.
+                let state = app.state::<packs_win::PacksState>();
+                state.push_queue(paths.into_iter().skip(1).collect());
+                let target = packs_win::PacksTarget::Import {
+                    path: Some(first.to_string_lossy().into_owned()),
+                    queued: state.queued(),
+                };
+                if let Err(e) = packs_win::open_packs_window(app, target) {
+                    eprintln!("[packs] open failed: {e}");
+                }
+            }
+        });
 }
 
 #[cfg(test)]
