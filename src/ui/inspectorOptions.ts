@@ -101,7 +101,7 @@ export function sceneSections(input: {
   // The Device panel: the device's own controls (media, model, pose, shadow). The screenshot stack
   // and video window are their own top-level entries now, not device rows.
   if (device) {
-    const rows: SceneRowModel[] = [{ id: "device.media", label: "Change media", chevron: true }];
+    const rows: SceneRowModel[] = [{ id: "device.media", label: "Change video", chevron: true }];
     if (device.media?.kind === "video") {
       rows.push({ id: "device.editVideo", label: "Edit video", chevron: true });
     }
