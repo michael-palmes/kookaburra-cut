@@ -375,7 +375,12 @@ export function InspectorPanel({
             <ThemeGrid
               choices={themeChoices}
               value={themeDraft}
-              onChange={setThemeDraft}
+              onChange={(id) => {
+                // Applies on selection; the draft doubles as the same-id de-dupe.
+                if (id === themeDraft) return;
+                setThemeDraft(id);
+                onApplyTheme(id);
+              }}
               onCardContextMenu={themeMenu.openMenu}
             />
           </div>
@@ -387,20 +392,6 @@ export function InspectorPanel({
               onClick={() => onOpenTheme()}
             >
               Manage…
-            </button>
-            <button type="button" className="btn" onClick={() => setDrillIn(null)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={themeDraft === project.theme.id}
-              onClick={() => {
-                setDrillIn(null);
-                onApplyTheme(themeDraft);
-              }}
-            >
-              Apply
             </button>
           </div>
           {themeMenu.menuElement}
