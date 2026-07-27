@@ -53,10 +53,12 @@ import type {
   FrameSide,
 } from "../../toolkit/frame/types";
 import {
+  deriveThemeShaderColors,
   SHADER_BACKGROUND_IDS,
   SHADER_BACKGROUND_PRESETS,
   SHADER_BACKGROUNDS,
   type ShaderBackgroundPreset,
+  themePresetAnchor,
 } from "../../toolkit/stage/shaders";
 import {
   emojiRasterVersion,
@@ -2979,16 +2981,44 @@ export function SceneTab({
     const applyShaderPreset = (preset: ShaderBackgroundPreset) =>
       patchShader((spec) => {
         spec.colors = [...preset.colors];
+        spec.themeColors = undefined;
         spec.speed = preset.speed ?? 1;
         spec.scale = preset.scale;
         spec.params = preset.params ? { ...preset.params } : undefined;
         spec.preset = preset.id;
+      });
+    // The Theme tile: colours resolve live from the theme (motion stamps from the mode's anchor preset).
+    const applyThemePreset = () =>
+      patchShader((spec) => {
+        const anchor = sceneTheme ? themePresetAnchor(spec.shader, sceneTheme) : undefined;
+        spec.colors = undefined;
+        spec.themeColors = true;
+        spec.speed = anchor?.speed ?? 1;
+        spec.scale = anchor?.scale;
+        spec.params = anchor?.params ? { ...anchor.params } : undefined;
+        spec.preset = undefined;
       });
     const selectedShaderPreset =
       shaderSpec?.preset && shaderSpec
         ? SHADER_BACKGROUND_PRESETS[shaderSpec.shader]?.find((p) => p.id === shaderSpec.preset)
         : undefined;
     const lightTheme = sceneTheme?.mode === "light";
+    // Derived Theme-preset colours for the current pick: the tile swatch always, the pickers only while the flag is on.
+    const themeSwatchColors =
+      shaderSpec && sceneTheme ? deriveThemeShaderColors(shaderSpec.shader, sceneTheme) : null;
+    const themeDerivedColors = shaderSpec?.themeColors ? themeSwatchColors : null;
+    const themeSwatchImage = themeSwatchColors
+      ? `data:image/svg+xml,${encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">${themeSwatchColors
+            .map(
+              (c, i) =>
+                `<rect x="${((320 / themeSwatchColors.length) * i).toFixed(2)}" y="0" width="${(
+                  320 / themeSwatchColors.length + 1
+                ).toFixed(2)}" height="180" fill="${c}"/>`,
+            )
+            .join("")}</svg>`,
+        )}`
+      : null;
     const shaderPresets = shaderSpec ? (SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []) : [];
     // Presets matching the theme's mode lead the grid; the other mode follows.
     const orderedShaderPresets = [
@@ -3146,6 +3176,13 @@ export function SceneTab({
                   {orderedShaderPresets.length > 0 && (
                     <DrillGroup label="Presets">
                       <div className="option-grid three-up">
+                        <OptionCard
+                          key="theme"
+                          label="Theme"
+                          image={themeSwatchImage}
+                          selected={!!shaderSpec.themeColors}
+                          onSelect={applyThemePreset}
+                        />
                         {orderedShaderPresets.map((preset) => (
                           <OptionCard
                             key={preset.id}
@@ -3163,25 +3200,28 @@ export function SceneTab({
                       <div key={slot.label} className="popover-row">
                         <span className="popover-inline slider-row-label">{slot.label}</span>
                         <ColourPicker
-                          value={shaderSpec.colors?.[i] ?? slot.fallback}
+                          value={themeDerivedColors?.[i] ?? shaderSpec.colors?.[i] ?? slot.fallback}
                           label={slot.label}
                           defaultValue={slot.fallback}
                           onReset={() =>
                             patchShader((spec) => {
+                              // A manual edit leaves the live Theme preset: seed from its derived colours, then go explicit.
                               const colors = shaderDef.colorSlots.map(
-                                (s, j) => spec.colors?.[j] ?? s.fallback,
+                                (s, j) => (themeDerivedColors ?? spec.colors)?.[j] ?? s.fallback,
                               );
                               colors[i] = slot.fallback;
                               spec.colors = colors;
+                              spec.themeColors = undefined;
                             })
                           }
                           onCommit={(hex) =>
                             patchShader((spec) => {
                               const colors = shaderDef.colorSlots.map(
-                                (s, j) => spec.colors?.[j] ?? s.fallback,
+                                (s, j) => (themeDerivedColors ?? spec.colors)?.[j] ?? s.fallback,
                               );
                               colors[i] = hex;
                               spec.colors = colors;
+                              spec.themeColors = undefined;
                             })
                           }
                         />
