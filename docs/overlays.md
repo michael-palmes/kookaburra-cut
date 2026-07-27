@@ -181,10 +181,11 @@ and golden-pinned like `fixedQuadSize`, since it feeds the export contract.
 The panel splits into two zones, following the reference slides. The header
 (icon, title, subtitle) anchors to the column top; the body (bullets, then the
 chip) stacks directly beneath it, so the lower panel stays clear for a breakout
-illustration. Each block's height is budgeted (the title's from a word-wrap
-estimate of its line count, the subtitle at a two-line worst case, since troika
-wraps async) and the stack scales by one factor to fit the column, so the header
-and body never overlap. Bullets and titles are short by design here, like the
+illustration. Each block's height is budgeted (the title's from a greedy
+word-wrap simulation over per-character advance classes, biased slightly wide
+(`framePanelText.ts`); the subtitle at a two-line worst case, since troika wraps
+async) and the stack scales by one factor to fit the column, so the header and
+body never overlap. Bullets and titles are short by design here, like the
 reference decks; a very long title is capped and shrunk by the fit scale rather
 than measured.
 

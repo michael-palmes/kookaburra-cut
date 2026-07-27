@@ -10,6 +10,7 @@ import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
 import { framePanelLayout } from "./framePanelLayout";
 import { registerFramePanel, unregisterFramePanel } from "./framePanelRegistry";
+import { estimateTitleLines } from "./framePanelText";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
@@ -19,11 +20,8 @@ const TITLE_WIDTH_FRACTION = 0.2;
 const TITLE_HEIGHT_FRACTION = 0.18;
 /** Troika's default line height, so a wrapped block's budget is `lines x this x size`. */
 const LINE_HEIGHT = 1.2;
-/** Subtitle line budget so a wrapped subtitle never collides with what follows (troika wraps async, so height is budgeted, not measured). The title's budget is estimated from its length instead, since titles vary the most. */
+/** Subtitle line budget so a wrapped subtitle never collides with what follows (troika wraps async, so height is budgeted, not measured). The title's budget is estimated from its length instead, since titles vary the most (framePanelText.ts). */
 const SUBTITLE_LINE_BUDGET = 2;
-/** Rough average glyph advance (em) for estimating a title's wrapped line count, and the cap on it; titles are short by design (the reference slides run to two words), so the fit scale absorbs any longer one. */
-const AVG_CHAR_ADVANCE = 0.5;
-const TITLE_MAX_LINES = 4;
 /** Icon edge as a multiple of the title height, and its gap above the title in title-heights. */
 const ICON_SIZE = 1.25;
 const ICON_GAP = 0.4;
@@ -48,22 +46,6 @@ function splitBullets(raw: string | undefined): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-}
-
-/** Estimates how many lines a title wraps to at `size` in `width` world units, so its vertical budget adapts to length (troika wraps async, so this cannot be measured at layout time). Simulates troika's greedy word-wrap (whole words per line) rather than dividing by characters, so a two long-word title like "Repository Standard" reads as two lines, not three. */
-function estimateTitleLines(text: string, size: number, width: number): number {
-  const perLine = Math.max(1, Math.floor(width / (size * AVG_CHAR_ADVANCE)));
-  let lines = 1;
-  let filled = 0;
-  for (const word of text.trim().split(/\s+/)) {
-    if (filled === 0) filled = word.length;
-    else if (filled + 1 + word.length <= perLine) filled += 1 + word.length;
-    else {
-      lines++;
-      filled = word.length;
-    }
-  }
-  return Math.min(TITLE_MAX_LINES, lines);
 }
 
 /** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Every block's height is budgeted (title from a length estimate, subtitle at a 2-line worst case) and the stack scales to fit the column, so the header and body never overlap. Reads the sidecar text DIRECTLY (like `TextFallback`) so it never registers as a text-key consumer, and lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
