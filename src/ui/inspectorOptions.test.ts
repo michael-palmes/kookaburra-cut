@@ -72,7 +72,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "video", src: "assets/a.mp4" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 3 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows.map((r) => r.id);
     expect(deviceRows).toEqual([
       "device.media",
@@ -89,7 +89,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "image", src: "assets/a.png" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
     const textRows = sections.find((s) => s.id === "text")?.rows;
     expect(textRows?.map((r) => r.id)).toEqual(["text.add"]);
     expect(textRows?.[0].chevron).toBe(false);
@@ -102,7 +102,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
   it("no device → the device section offers a single Add device row and no Shadow row", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows;
     expect(deviceRows?.map((r) => r.id)).toEqual(["device.add"]);
     expect(deviceRows?.[0].chevron).toBe(false);
@@ -174,10 +174,50 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
 describe("sceneSections Overlay section", () => {
   const cutoutFrame: FrameSpec = { cutout: { shape: "rounded-rect" } };
 
-  it("no deck frame → no Overlay section at all", () => {
+  it("no deck frame and no sidecar cutout → the Add overlay row", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2 });
+    const rows = sections.find((s) => s.id === "frame")?.rows;
+    expect(rows?.map((r) => r.id)).toEqual(["frame.add"]);
+    expect(rows?.[0].chevron).toBe(false);
+  });
+
+  it("no doc → no Overlay section at all", () => {
+    const sections = sceneSections({ doc: undefined, slotsCount: 2 });
     expect(sections.map((s) => s.id)).not.toContain("frame");
+  });
+
+  it("a standalone sidecar cutout shows the full section without a deck frame", () => {
+    const doc = docWith({
+      text: { headline: "Hi" },
+      frame: { cutout: { shape: "rounded-rect", side: "start" } },
+    });
+    const sections = sceneSections({ doc, slotsCount: 2, frame: cutoutFrame });
+    expect(sections.find((s) => s.id === "frame")?.rows.map((r) => r.id)).toEqual([
+      "frame.enabled",
+      "frame.cutout",
+      "frame.panel",
+      "frame.chip",
+      "frame.decorations",
+      "frame.text",
+    ]);
+  });
+
+  it("a hidden standalone cutout (enabled: false) keeps the toggle, not Add overlay", () => {
+    const doc = docWith({
+      text: { headline: "Hi" },
+      frame: { enabled: false, cutout: { shape: "rounded-rect", side: "start" } },
+    });
+    const sections = sceneSections({ doc, slotsCount: 2, frame: undefined });
+    expect(sections.find((s) => s.id === "frame")?.rows.map((r) => r.id)).toEqual([
+      "frame.enabled",
+    ]);
+  });
+
+  it("a sidecar override without a cutout can't stand alone → the Add overlay row", () => {
+    const doc = docWith({ text: { headline: "Hi" }, frame: { enabled: false } });
+    const sections = sceneSections({ doc, slotsCount: 2 });
+    expect(sections.find((s) => s.id === "frame")?.rows.map((r) => r.id)).toEqual(["frame.add"]);
   });
 
   it("a deck frame that resolves for this scene shows Overlay after device, with cutout + panel rows", () => {

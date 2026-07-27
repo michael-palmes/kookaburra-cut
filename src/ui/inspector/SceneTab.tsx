@@ -183,6 +183,22 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M6 12h8M6 14h5" />
         </svg>
       );
+    case "frame.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="2.5" y="3.5" width="11.5" height="13" rx="2" />
+          <rect x="5" y="6.5" width="6.5" height="2.6" rx="1" />
+          <path d="M16 12v5M13.5 14.5h5" />
+        </svg>
+      );
     case "text.edit":
       return (
         <svg
@@ -1688,6 +1704,14 @@ export function SceneTab({
           shadow: "soft",
         },
       ];
+    });
+  const addOverlay = () =>
+    void patchDoc((next) => {
+      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger.
+      next.frame = {
+        cutout: { shape: "rounded-rect", side: "start" },
+        chip: { label: "New", icon: "circle-check", colour: "accent" },
+      };
     });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
@@ -3854,7 +3878,11 @@ export function SceneTab({
             key={row.id}
             icon={<SceneRowIcon id="frame.enabled" />}
             label="Show on this scene"
-            description="Shows the deck's overlay panel on this scene."
+            description={
+              project.deckFrame !== undefined
+                ? "Shows the deck's overlay panel on this scene."
+                : "Shows the overlay panel on this scene."
+            }
             checked={sceneFrame !== undefined}
             onChange={(on) =>
               void patchDoc((next) => {
@@ -3876,6 +3904,7 @@ export function SceneTab({
         "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
+        "frame.add": addOverlay,
         "device.rotation": () => openDrill("device.rotation"),
         // Both paths drill into the builder; it seeds the first layer for scenes without a block.
         "layeredScreenshot.edit": () => openDrill("layeredScreenshot.edit"),
@@ -4093,12 +4122,20 @@ export function SceneTab({
         onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
       });
   }
-  if (project.deckFrame !== undefined)
+  if (project.deckFrame !== undefined || doc?.frame?.cutout !== undefined)
     topEntries.push({
       key: "frame",
       label: "Overlay",
       icon: "frame",
       onClick: () => openDrill("frame"),
+    });
+  else if (doc)
+    topEntries.push({
+      key: "frame.add",
+      label: "Add overlay",
+      icon: "frame.add",
+      chevron: false,
+      onClick: addOverlay,
     });
   if (doc) {
     const themeId = doc.themeId ?? "";
