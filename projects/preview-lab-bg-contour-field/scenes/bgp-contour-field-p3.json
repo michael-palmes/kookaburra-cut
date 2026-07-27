@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"contour-field\" 3D background (\"Monaro\")",
+  "background": {
+    "type": "scene3d",
+    "look": "contour-field",
+    "colors": ["#cbb164"],
+    "speed": 0.45,
+    "params": {
+      "levels": 8,
+      "hilliness": 0.8,
+      "scale": 18,
+      "height": -2.2,
+      "clearRadius": 5,
+      "fadeRadius": 52,
+      "drift": 0.7,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f0dc"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

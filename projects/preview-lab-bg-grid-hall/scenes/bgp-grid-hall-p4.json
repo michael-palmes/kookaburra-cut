@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Capricorn Coast\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#67c0d1"],
+    "speed": 0.3,
+    "params": {
+      "width": 22,
+      "depth": 36,
+      "height": 12,
+      "spacing": 1.8,
+      "clearRadius": 6,
+      "drift": 0.8,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e0f3f9"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

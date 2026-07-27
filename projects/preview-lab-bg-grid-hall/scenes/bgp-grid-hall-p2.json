@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Naracoorte\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#d2ae68"],
+    "speed": 0.35,
+    "params": {
+      "width": 20,
+      "depth": 34,
+      "height": 10,
+      "spacing": 1.6,
+      "clearRadius": 5,
+      "drift": 0.7,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f0de"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

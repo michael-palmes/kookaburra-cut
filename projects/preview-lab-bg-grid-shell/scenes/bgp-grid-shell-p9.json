@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-shell\" 3D background (\"Kalbarri Night\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-shell",
+    "colors": ["#7e4da0"],
+    "speed": 0.3,
+    "params": {
+      "radius": 22,
+      "latCount": 17,
+      "lonCount": 26,
+      "horizonBias": 0.5,
+      "drift": 1.4,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#170f1b"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

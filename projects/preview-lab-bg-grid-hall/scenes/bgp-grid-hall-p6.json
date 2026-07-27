@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Wombeyan\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#45648f"],
+    "speed": 0.4,
+    "params": {
+      "width": 16,
+      "depth": 28,
+      "height": 12,
+      "spacing": 1.2,
+      "clearRadius": 4,
+      "drift": 1,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

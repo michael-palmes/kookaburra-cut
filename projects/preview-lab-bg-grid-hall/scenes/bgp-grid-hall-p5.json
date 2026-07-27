@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Margaret River\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#63c863"],
+    "speed": 0.5,
+    "params": {
+      "width": 15,
+      "depth": 26,
+      "height": 9,
+      "spacing": 1.1,
+      "clearRadius": 4.5,
+      "drift": 1.1,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e0f6dd"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
