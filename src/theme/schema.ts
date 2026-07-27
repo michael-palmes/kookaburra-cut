@@ -166,6 +166,8 @@ export function parseBackgroundSpec(
         const colors = (v.colors as unknown[]).filter(isStr);
         if (colors.length > 0) out.colors = colors;
       }
+      // Only `true` is stored; the renderer derives the colours from the active theme.
+      if (v.themeColors === true) out.themeColors = true;
       if (isNum(v.speed)) out.speed = Math.min(4, Math.max(0, v.speed));
       if (isNum(v.scale)) out.scale = Math.min(4, Math.max(0.1, v.scale));
       if (isRecord(v.params)) {
