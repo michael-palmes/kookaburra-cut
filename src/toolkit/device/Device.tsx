@@ -34,7 +34,7 @@ import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
-import { useSceneStaged, useStageMapShadows } from "../stage/context";
+import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
 import { DEVICE_CATALOG, type DeviceId, deviceColour } from "./catalog";
 import { HIDDEN_NODES } from "./models";
@@ -70,6 +70,8 @@ export interface DevicePlacement {
   rotationDeg?: V3;
   /** Multiplier on the auto-fit scale. */
   scale?: number;
+  /** Rest the fitted base on the staged floor (its y replaces `position[1]`); inert when the scene stages no floor backdrop, so the authored position stands. */
+  ground?: boolean;
 }
 
 export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
@@ -457,7 +459,7 @@ export function Device(props: DeviceProps) {
     lit,
     lidDeg,
   } = props;
-  const { position = [0, 0, 0], rotationDeg = [0, 0, 0], scale = 1 } = placement;
+  const { position = [0, 0, 0], rotationDeg = [0, 0, 0], scale = 1, ground = false } = placement;
 
   const { localMs } = useTimeline();
   const contextProjectId = useContext(ProjectIdContext);
@@ -482,6 +484,7 @@ export function Device(props: DeviceProps) {
   const isLit = lit ?? !staged;
   // Map-shadowed stages: the device casts (and receives, VSM wants casters receiving) real shadows, and the procedural blob default flips off so the two systems never stack; explicit props win.
   const mapShadows = useStageMapShadows();
+  const stageFloorY = useStageFloorY();
   const shadowMode = shadow ?? (mapShadows ? "none" : "soft");
 
   const spec = DEVICE_CATALOG[model];
@@ -623,9 +626,14 @@ export function Device(props: DeviceProps) {
   }
 
   const groundY = -(fittedHeight / 2) * scale - GROUND_EPSILON;
+  // Grounded placement: the fitted base rests on the staged floor; no floor leaves the authored position byte-identical.
+  const groupPosition: V3 =
+    ground && stageFloorY !== null
+      ? [position[0], stageFloorY + (fittedHeight / 2) * scale, position[2]]
+      : position;
 
   return (
-    <group ref={groupRef} position={position}>
+    <group ref={groupRef} position={groupPosition}>
       {isLit && (
         <>
           <ambientLight intensity={0.7} />
