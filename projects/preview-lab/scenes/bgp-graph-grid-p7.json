@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "graph-grid",
-    "colors": ["#0a140f", "#20432f", "#2d6d48", "#16281c"],
+    "colors": ["#0a140f", "#264d37", "#2d6d48", "#203728"],
     "speed": 0.35,
     "params": {
       "density": 15,

@@ -61,9 +61,9 @@ export const graphGrid: ShaderBackgroundDef = {
   fragment,
   colorSlots: [
     { label: "Back", fallback: "#18100d" },
-    { label: "Lines", fallback: "#513529" },
+    { label: "Lines", fallback: "#5e3e30" },
     { label: "Highlight", fallback: "#8a543b" },
-    { label: "Fill", fallback: "#2e221a" },
+    { label: "Fill", fallback: "#3e2f25" },
   ],
   params: {
     density: { label: "Density", default: 12, min: 4, max: 32, step: 1 },

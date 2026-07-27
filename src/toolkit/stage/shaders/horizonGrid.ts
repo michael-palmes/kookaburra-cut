@@ -53,7 +53,7 @@ export const horizonGrid: ShaderBackgroundDef = {
   fragment,
   colorSlots: [
     { label: "Back", fallback: "#150e0b" },
-    { label: "Lines", fallback: "#5e4230" },
+    { label: "Lines", fallback: "#6b4c37" },
     { label: "Glow", fallback: "#805936" },
   ],
   params: {
