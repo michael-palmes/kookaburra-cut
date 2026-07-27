@@ -1003,8 +1003,12 @@ export default function App() {
       const focusFile = focusSceneFileRef.current;
       focusSceneFileRef.current = null;
       const focusIndex = focusFile ? loaded.sceneFiles.indexOf(focusFile) : -1;
-      if (focusIndex >= 0) {
-        clock.setCurrentMs(loaded.slots[focusIndex]?.startMs ?? 0);
+      const focusSlot = focusIndex >= 0 ? loaded.slots[focusIndex] : undefined;
+      if (focusSlot) {
+        // Land past the entry transition and 10% in, so the new scene's own content is showing.
+        const entryMs = focusSlot.startMs + (focusSlot.transitionIn?.durationMs ?? 0);
+        const target = Math.min(entryMs + 0.1 * focusSlot.durationMs, focusSlot.endMs - 1000 / FPS);
+        clock.setCurrentMs(Math.max(focusSlot.startMs, target));
       } else {
         // Keep the scrub position within the (possibly shorter) new project.
         clock.setCurrentMs(Math.min(clock.currentMs, loaded.totalMs));
