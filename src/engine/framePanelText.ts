@@ -23,20 +23,23 @@ function wordAdvance(word: string): number {
   return em;
 }
 
-/** Estimates how many lines a title wraps to at `size` in `width` world units, so its vertical budget adapts to length. Simulates troika's greedy word-wrap (whole words per line) over per-character advances, so both "Repository Standard" and an m-heavy title budget the lines they actually take. */
+/** Estimates how many lines a text block takes at `size` in `width` world units, so its vertical budget adapts to length. Explicit `\n` breaks count as real lines (troika's only hard break); within each line, simulates troika's greedy word-wrap (whole words per line) over per-character advances, so both "Repository Standard" and an m-heavy title budget the lines they actually take. */
 export function estimateTitleLines(text: string, size: number, width: number): number {
   const lineEm = Math.max(charAdvance("m"), width / size);
   const spaceEm = charAdvance(" ");
-  let lines = 1;
-  let filled = 0;
-  for (const word of text.trim().split(/\s+/)) {
-    const em = wordAdvance(word);
-    if (filled === 0) filled = em;
-    else if (filled + spaceEm + em <= lineEm) filled += spaceEm + em;
-    else {
-      lines++;
-      filled = em;
+  let lines = 0;
+  for (const segment of text.split("\n")) {
+    lines++;
+    let filled = 0;
+    for (const word of segment.trim().split(/\s+/).filter(Boolean)) {
+      const em = wordAdvance(word);
+      if (filled === 0) filled = em;
+      else if (filled + spaceEm + em <= lineEm) filled += spaceEm + em;
+      else {
+        lines++;
+        filled = em;
+      }
     }
   }
-  return Math.min(TITLE_MAX_LINES, lines);
+  return Math.min(TITLE_MAX_LINES, Math.max(1, lines));
 }

@@ -37,4 +37,11 @@ describe("estimateTitleLines", () => {
     expect(estimateTitleLines("Hyperconfiguration", SIZE, 4)).toBe(1);
     expect(estimateTitleLines("Hyperconfiguration Management", SIZE, 4)).toBe(2);
   });
+
+  it("explicit newlines are hard breaks, each segment wrapping on its own", () => {
+    expect(estimateTitleLines("Example:\nfeat/overlay-polish", SIZE, WIDTH)).toBe(2);
+    expect(estimateTitleLines("Line one\nLine two\nLine three", SIZE, WIDTH)).toBe(3);
+    expect(estimateTitleLines("a\n\nb", SIZE, WIDTH)).toBe(3);
+    expect(estimateTitleLines("mmmmmmmmmm mmmmmmmmmm\nmore", SIZE, WIDTH)).toBe(3);
+  });
 });
