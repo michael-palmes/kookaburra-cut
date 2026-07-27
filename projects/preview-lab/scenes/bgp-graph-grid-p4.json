@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Ninety Mile",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#f8f1da", "#e1cd9d", "#ceb270", "#f4e4c8"],
+    "speed": 0.35,
+    "params": {
+      "density": 20,
+      "lineWeight": 0.25,
+      "highlightWidth": 0.6,
+      "fillDensity": 0.08,
+      "cadence": 0.2
+    },
+    "preset": "p4"
+  }
+}

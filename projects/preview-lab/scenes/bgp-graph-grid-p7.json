@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Gippsland",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#0a140f", "#20432f", "#2d6d48", "#16281c"],
+    "speed": 0.35,
+    "params": {
+      "density": 15,
+      "lineWeight": 0.35,
+      "highlightWidth": 0.45,
+      "fillDensity": 0.25,
+      "cadence": 0.35
+    },
+    "preset": "p7"
+  }
+}

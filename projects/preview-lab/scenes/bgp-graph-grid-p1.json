@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Rottnest",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#dbf6f9", "#99dadb", "#6bc3c4", "#c3eeeb"],
+    "speed": 0.4,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.4,
+      "highlightWidth": 0.35,
+      "fillDensity": 0.18,
+      "cadence": 0.25
+    },
+    "preset": "p1"
+  }
+}

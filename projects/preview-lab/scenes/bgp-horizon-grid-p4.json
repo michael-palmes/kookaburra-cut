@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Wilpena",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#feede0", "#e1b69d", "#ffc0a9"],
+    "speed": 0.45,
+    "params": {
+      "horizon": 0.08,
+      "density": 12,
+      "lineWeight": 0.45,
+      "glow": 0.55,
+      "fade": 0.45
+    },
+    "preset": "p4"
+  }
+}

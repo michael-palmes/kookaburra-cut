@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Ben Lomond",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#16121f", "#483668", "#734aab"],
+    "speed": 0.3,
+    "params": {
+      "density": 10,
+      "lineWeight": 0.4,
+      "glow": 0.65,
+      "softness": 0.55,
+      "cadence": 0.6
+    },
+    "preset": "p9"
+  }
+}

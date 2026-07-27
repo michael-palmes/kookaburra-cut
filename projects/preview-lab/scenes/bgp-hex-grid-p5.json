@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Shark Bay",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#dff3fd", "#a1d3e7", "#77c3da"],
+    "speed": 0.5,
+    "params": {
+      "density": 14,
+      "lineWeight": 0.3,
+      "glow": 0.55,
+      "softness": 0.4,
+      "cadence": 1.1
+    },
+    "preset": "p5"
+  }
+}

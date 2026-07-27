@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Menindee",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#19130e", "#513b28", "#855738"],
+    "speed": 0.3,
+    "params": {
+      "density": 17,
+      "dotSize": 0.28,
+      "pulse": 0.55,
+      "waveWidth": 0.8,
+      "driftAngle": 15
+    },
+    "preset": "p9"
+  }
+}

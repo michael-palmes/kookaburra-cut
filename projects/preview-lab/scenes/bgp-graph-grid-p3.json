@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Otway",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#dbf9e0", "#9bdea1", "#6dc875", "#c6f1c6"],
+    "speed": 0.45,
+    "params": {
+      "density": 16,
+      "lineWeight": 0.3,
+      "highlightWidth": 0.25,
+      "fillDensity": 0.28,
+      "cadence": 0.35
+    },
+    "preset": "p3"
+  }
+}

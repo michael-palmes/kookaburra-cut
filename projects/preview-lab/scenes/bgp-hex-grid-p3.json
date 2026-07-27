@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Atherton",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#daf8da", "#9ddb99", "#7bcb6e"],
+    "speed": 0.3,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.28,
+      "glow": 0.45,
+      "softness": 0.35,
+      "cadence": 1.3
+    },
+    "preset": "p3"
+  }
+}

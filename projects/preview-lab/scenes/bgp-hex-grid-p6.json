@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Litchfield",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#0c1612", "#224635", "#2c6b49"],
+    "speed": 0.4,
+    "params": {
+      "density": 9,
+      "lineWeight": 0.35,
+      "glow": 0.6,
+      "softness": 0.5,
+      "cadence": 1
+    },
+    "preset": "p6"
+  }
+}

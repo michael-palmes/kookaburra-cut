@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Hyams",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#dcf3fa", "#9cd5e0", "#6bbec5"],
+    "speed": 0.35,
+    "params": {
+      "density": 20,
+      "dotSize": 0.22,
+      "pulse": 0.3,
+      "waveWidth": 0.9,
+      "driftAngle": 90
+    },
+    "preset": "p2"
+  }
+}

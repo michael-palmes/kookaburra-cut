@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Freycinet",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#ffeaed", "#ffb9c2", "#ff919a"],
+    "speed": 0.5,
+    "params": {
+      "density": 12,
+      "dotSize": 0.4,
+      "pulse": 0.7,
+      "waveWidth": 0.75,
+      "driftAngle": 200
+    },
+    "preset": "p5"
+  }
+}

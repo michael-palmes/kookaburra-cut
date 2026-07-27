@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Background \u2014 dot-grid",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "speed": 1
+  }
+}

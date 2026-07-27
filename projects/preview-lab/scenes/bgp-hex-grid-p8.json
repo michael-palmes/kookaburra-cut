@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Torres",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#0f151a", "#2d4159", "#3f6092"],
+    "speed": 0.45,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.3,
+      "glow": 0.5,
+      "softness": 0.35,
+      "cadence": 1.2
+    },
+    "preset": "p8"
+  }
+}

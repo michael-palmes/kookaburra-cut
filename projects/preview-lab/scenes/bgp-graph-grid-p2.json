@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Barossa",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#ffedf1", "#ffbdca", "#ff96ab", "#ffdee3"],
+    "speed": 0.3,
+    "params": {
+      "density": 9,
+      "lineWeight": 0.55,
+      "highlightWidth": 0.5,
+      "fillDensity": 0.1,
+      "cadence": 0.15
+    },
+    "preset": "p2"
+  }
+}
