@@ -5649,6 +5649,12 @@ body {
   cursor: pointer;
 }
 
+.inspector-clear-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .inspector-reset-btn:hover {
   color: var(--text-primary);
   background: var(--surface-hover);
