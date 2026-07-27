@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-plain\" 3D background (\"Pemberton\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-plain",
+    "colors": ["#82d272"],
+    "speed": 0.3,
+    "params": {
+      "spacing": 2.2,
+      "height": -2.5,
+      "clearRadius": 6,
+      "fadeRadius": 60,
+      "drift": 0.8,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3f5dd"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

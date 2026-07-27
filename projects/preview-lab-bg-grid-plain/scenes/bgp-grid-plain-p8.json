@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-plain\" 3D background (\"Oodnadatta\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-plain",
+    "colors": ["#8b424f"],
+    "speed": 0.45,
+    "params": {
+      "spacing": 1,
+      "height": -1.8,
+      "clearRadius": 3.5,
+      "fadeRadius": 40,
+      "drift": 1.3,
+      "opacity": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#1a0f10"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

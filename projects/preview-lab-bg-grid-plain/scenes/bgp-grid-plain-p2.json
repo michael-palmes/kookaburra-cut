@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-plain\" 3D background (\"Currumbin\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-plain",
+    "colors": ["#d6bd74"],
+    "speed": 0.35,
+    "params": {
+      "spacing": 1.6,
+      "height": -2.2,
+      "clearRadius": 5,
+      "fadeRadius": 50,
+      "drift": 0.6,
+      "opacity": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f0dc"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
