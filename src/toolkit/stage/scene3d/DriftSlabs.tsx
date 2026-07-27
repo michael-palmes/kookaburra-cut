@@ -43,7 +43,7 @@ export function DriftSlabs({ colors, params, speed }: Scene3dLookProps) {
         const tilt = 0.25 * Math.sin(t * 0.12 * params.drift + p.phase * 1.7);
         return (
           <mesh
-            key={`${i}-${p.phase.toFixed(4)}`}
+            key={`${p.phase}-${p.position[0]}`}
             position={[p.position[0], p.position[1] + bob, p.position[2]]}
             rotation={[tilt * 0.4, p.phase, tilt]}
             scale={p.scale * params.size}

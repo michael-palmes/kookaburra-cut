@@ -42,7 +42,7 @@ export function OrbField({ colors, params, speed }: Scene3dLookProps) {
         const sway = 0.15 * Math.sin(t * 0.18 * params.drift + p.phase * 2.1);
         return (
           <mesh
-            key={`${i}-${p.phase.toFixed(4)}`}
+            key={`${p.phase}-${p.position[0]}`}
             position={[p.position[0] + sway, p.position[1] + bob, p.position[2]]}
             scale={p.scale * params.size}
           >

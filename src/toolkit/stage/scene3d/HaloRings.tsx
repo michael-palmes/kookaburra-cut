@@ -41,7 +41,7 @@ export function HaloRings({ colors, params, speed }: Scene3dLookProps) {
         const turn = t * 0.06 * params.drift + p.phase;
         return (
           <mesh
-            key={`${i}-${p.phase.toFixed(4)}`}
+            key={`${p.phase}-${p.position[0]}`}
             position={p.position}
             rotation={[p.phase * 0.5 + 0.4, turn, p.phase * 0.3]}
             scale={p.scale * params.size}

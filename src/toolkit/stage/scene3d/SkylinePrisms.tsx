@@ -46,7 +46,7 @@ export function SkylinePrisms({ colors, params, speed }: Scene3dLookProps) {
         const sway = 0.012 * Math.sin(t * 0.25 * params.drift + p.phase);
         return (
           <mesh
-            key={`${i}-${p.phase.toFixed(4)}`}
+            key={`${p.phase}-${p.x}`}
             position={[p.x, FLOOR_Y + p.height / 2, p.z]}
             rotation={[0, p.phase * 0.2, sway]}
           >
