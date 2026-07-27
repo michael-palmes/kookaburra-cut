@@ -172,8 +172,15 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     setError(null);
     setConfirmDelete(false);
     if (doc) {
+      // The working aspect survives preset hops whenever the preset allows it; only then the favoured fallback.
       const allowed = presetAspects(doc);
-      setAspect(allowed.includes(doc.favouredAspect) ? doc.favouredAspect : allowed[0]);
+      setAspect((cur) =>
+        allowed.includes(cur)
+          ? cur
+          : allowed.includes(doc.favouredAspect)
+            ? doc.favouredAspect
+            : allowed[0],
+      );
     }
   }, []);
 
