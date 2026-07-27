@@ -129,6 +129,40 @@ export function claudeSessionCommand(continueLast: boolean, claudePath: string):
 /** The official installer, run VISIBLY inside the terminal for transparency. */
 export const CLAUDE_INSTALL_COMMAND = "curl -fsSL https://claude.ai/install.sh | bash";
 
+/** Native/npm installs update in place, by full path (same PATH rationale as sessions). */
+export function claudeUpdateCommand(claudePath: string): string {
+  return `${shellQuote(claudePath)} update`;
+}
+
+/** Brew never auto-updates and lags the release channel: drop the cask(s), then the official installer. */
+export const CLAUDE_BREW_SWITCH_COMMAND =
+  "brew uninstall --cask claude-code claude-code@latest 2>/dev/null; curl -fsSL https://claude.ai/install.sh | bash";
+
+/** Read-only install diagnostics, run visibly. */
+export function claudeDoctorCommand(claudePath: string): string {
+  return `${shellQuote(claudePath)} doctor`;
+}
+
+/** The native probe's result: local `--version` + the daily-cached latest (see claude_update.rs). */
+export interface ClaudeVersionInfo {
+  path: string;
+  method: "native" | "brew" | "npm" | "other";
+  installed: string | null;
+  latest: string | null;
+  outdated: boolean;
+  dismissed: boolean;
+}
+
+/** Null when Claude Code isn't installed; latest is cached daily and silent offline. */
+export function claudeVersionInfo(): Promise<ClaudeVersionInfo | null> {
+  return invoke<ClaudeVersionInfo | null>("claude_version_info");
+}
+
+/** "Later" on the update banner: never re-offer this version. */
+export function dismissClaudeUpdate(version: string): Promise<void> {
+  return invoke<void>("dismiss_claude_update", { version });
+}
+
 // ── Live session registry ────────────────────────────────────────
 // Sessions outlive the panel component: switching projects detaches the terminal's DOM but keeps the PTY (and any mid-flight Claude work) alive, and switching back re-attaches with full scrollback. Entries end when the child exits, on explicit end, or with the app (the PTY master dies with this process, so the child gets SIGHUP).
 

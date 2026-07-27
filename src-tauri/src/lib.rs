@@ -1,5 +1,6 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+mod claude_update;
 mod concurrency;
 mod edit;
 mod encode;
@@ -1248,6 +1249,8 @@ pub fn run() {
             pty::pty_resume,
             pty::detect_claude,
             pty::has_claude_session,
+            claude_update::claude_version_info,
+            claude_update::dismiss_claude_update,
             media::import_media,
             media::media_meta,
             global_screenshots::list_global_screenshots,

@@ -78,6 +78,15 @@ pub struct AppSettings {
     /// Last version offered and declined ("Later"), so the same version isn't re-offered every launch.
     #[serde(default)]
     pub last_offered_version: Option<String>,
+    /// Unix-ms of the last Claude Code version check (the daily throttle marker; stamped on attempt).
+    #[serde(default)]
+    pub last_claude_check_ms: Option<u64>,
+    /// Cached latest Claude Code version from the last successful check.
+    #[serde(default)]
+    pub last_claude_latest: Option<String>,
+    /// Last Claude Code version offered and dismissed, so the banner isn't re-shown for it.
+    #[serde(default)]
+    pub last_offered_claude_version: Option<String>,
     /// Last Present-modal selection per project id, restored on modal open.
     #[serde(default)]
     pub present_options_by_project: HashMap<String, PresentOptionsDoc>,
