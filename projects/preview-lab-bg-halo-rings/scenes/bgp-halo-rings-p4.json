@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"halo-rings\" 3D background (\"Sawtell\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#8cdbea", "#64cbcb"],
+    "speed": 0.3,
+    "params": {
+      "count": 3,
+      "spread": 11,
+      "depth": 13,
+      "size": 1.1,
+      "tube": 0.18,
+      "drift": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e0f3f9"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

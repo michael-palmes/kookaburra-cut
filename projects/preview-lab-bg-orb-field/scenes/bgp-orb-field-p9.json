@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "preset still for the \"orb-field\" 3D background (\"Gosses Bluff\")",
+  "background": {
+    "type": "scene3d",
+    "look": "orb-field",
+    "colors": ["#4f3c6a", "#83458f"],
+    "speed": 0.3,
+    "params": {
+      "count": 5,
+      "spread": 11,
+      "depth": 14,
+      "size": 1.15,
+      "drift": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#15101b"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

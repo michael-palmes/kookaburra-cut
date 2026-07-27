@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-skyline-prisms",
+  "name": "Preview Lab — bg-skyline-prisms (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-skyline-prisms.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-skyline-prisms-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-skyline-prisms-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

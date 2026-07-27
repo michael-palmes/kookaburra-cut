@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-halo-rings",
+  "name": "Preview Lab — bg-halo-rings (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-halo-rings.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-halo-rings-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-halo-rings-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

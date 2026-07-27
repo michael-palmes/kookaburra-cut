@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skyline-prisms\" 3D background (\"Glasshouse\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#87e2a5", "#67d179"],
+    "speed": 0.3,
+    "params": {
+      "count": 10,
+      "spread": 15,
+      "depth": 15,
+      "tallest": 9,
+      "drift": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf6e7"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

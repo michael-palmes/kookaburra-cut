@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"halo-rings\" 3D background (\"Pinnacles\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#e1ce86", "#c3c060"],
+    "speed": 0.45,
+    "params": {
+      "count": 4,
+      "spread": 12,
+      "depth": 12,
+      "size": 0.85,
+      "tube": 0.12,
+      "drift": 1.3
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f4f0dc"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

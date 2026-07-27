@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"halo-rings\" 3D background (\"Bungle Bungle\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#5a3f32", "#6d5b33"],
+    "speed": 0.35,
+    "params": {
+      "count": 2,
+      "spread": 8,
+      "depth": 14,
+      "size": 1.3,
+      "tube": 0.24,
+      "drift": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17110d"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

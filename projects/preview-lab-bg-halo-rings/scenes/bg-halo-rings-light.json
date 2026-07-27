@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"halo-rings\" (\"Wave Rock\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#eacb8c", "#ebb075"],
+    "speed": 0.4,
+    "params": {
+      "count": 3,
+      "spread": 10,
+      "depth": 13,
+      "size": 1,
+      "tube": 0.16,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f6f0de"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
