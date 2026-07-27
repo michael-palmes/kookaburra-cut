@@ -1,10 +1,12 @@
 import { ContourField } from "./ContourField";
 import { DriftSlabs } from "./DriftSlabs";
+import { DustDrift } from "./DustDrift";
 import { GridHall } from "./GridHall";
 import { GridPlain } from "./GridPlain";
 import { GridShell } from "./GridShell";
 import { HaloRings } from "./HaloRings";
 import { OrbField } from "./OrbField";
+import { PointSwell } from "./PointSwell";
 import { SkylinePrisms } from "./SkylinePrisms";
 import type { Scene3dBackgroundDef } from "./types";
 
@@ -136,6 +138,43 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
     },
     Component: SkylinePrisms,
   },
+  "point-swell": {
+    id: "point-swell",
+    name: "Point swell",
+    colorSlots: [
+      { label: "Points", fallback: "#42607e" },
+      { label: "Crest", fallback: "#855838" },
+    ],
+    params: {
+      spacing: { label: "Spacing", default: 0.9, min: 0.6, max: 2, step: 0.05 },
+      amplitude: { label: "Swell height", default: 0.45, min: 0, max: 1.2, step: 0.05 },
+      wavelength: { label: "Wavelength", default: 9, min: 4, max: 20, step: 0.5 },
+      clearRadius: { label: "Clearing", default: 4, min: 0, max: 24, step: 0.5 },
+      fadeRadius: { label: "Fade distance", default: 40, min: 16, max: 70, step: 1 },
+      pointSize: { label: "Point size", default: 0.08, min: 0.03, max: 0.2, step: 0.005 },
+      drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },
+      opacity: { label: "Strength", default: 0.9, min: 0.1, max: 1, step: 0.01 },
+    },
+    Component: PointSwell,
+  },
+  "dust-drift": {
+    id: "dust-drift",
+    name: "Dust drift",
+    colorSlots: [
+      { label: "Dust", fallback: "#496489" },
+      { label: "Sparkle", fallback: "#72612f" },
+    ],
+    params: {
+      count: { label: "Count", default: 900, min: 200, max: 1500, step: 10 },
+      innerRadius: { label: "Clearing", default: 10, min: 6, max: 16, step: 0.5 },
+      outerRadius: { label: "Reach", default: 26, min: 16, max: 40, step: 1 },
+      twinkle: { label: "Twinkle", default: 0.6, min: 0, max: 1, step: 0.01 },
+      pointSize: { label: "Point size", default: 0.09, min: 0.02, max: 0.15, step: 0.005 },
+      drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },
+      opacity: { label: "Strength", default: 0.9, min: 0.1, max: 1, step: 0.01 },
+    },
+    Component: DustDrift,
+  },
 };
 
 export const SCENE3D_BACKGROUND_IDS: string[] = [
@@ -147,6 +186,8 @@ export const SCENE3D_BACKGROUND_IDS: string[] = [
   "orb-field",
   "halo-rings",
   "skyline-prisms",
+  "point-swell",
+  "dust-drift",
 ];
 
 export {
