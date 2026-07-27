@@ -1,6 +1,6 @@
 ---
 name: kookaburra-background-authoring
-description: Ships a new animated (shader) background for Kookaburra Cut end to end, whether ported from paper-design/shaders or written from scratch. Covers the ShaderBackgroundDef anatomy, GLSL3 + determinism patches (PCG hash, engine-owned uniforms, noise texture), the 9 AA colour presets, preview-lab fixtures and thumbnail regeneration. Use when asked to "add a background", "new animated background", "new shader background", "port a paper-design shader", "add or change background presets", or when touching src/toolkit/stage/shaders/.
+description: Ships a new animated background for Kookaburra Cut end to end, shader (2D) or scene3d (world-space 3D look), whether ported from paper-design/shaders or written from scratch. Covers the ShaderBackgroundDef anatomy, GLSL3 + determinism patches (PCG hash, engine-owned uniforms, noise texture), the scene3d look contract, the 9 AA colour presets, preview-lab fixtures and incremental thumbnail regeneration. Use when asked to "add a background", "new animated background", "new shader background", "new 3D background", "port a paper-design shader", "add or change background presets", or when touching src/toolkit/stage/shaders/ or src/toolkit/stage/scene3d/.
 ---
 
 # kookaburra-background-authoring
@@ -77,3 +77,24 @@ file live in this skill's `REFERENCE.md`.
 9. **Gate it.** A new shader is a new render code path: run the standard gate pair from
    CLAUDE.md (feature-matched project Verify x2 in 16:9, plus `ws:launch-2026` 16:9 EQUAL as
    the null-for-legacy proof). Preset colour changes alone are data and need no Verify.
+
+## 3D looks (scene3d)
+
+World-space animated backgrounds live in `src/toolkit/stage/scene3d/` (registry `index.ts`,
+presets `presets.ts`); the contract is in `docs/backgrounds.md` ("3D backgrounds"). The same
+shipping flow applies, with these differences:
+
+1. A look is a React component receiving `{ colors, params, speed }`, mounted inside the
+   scene's identity group. Motion comes from `useTimeline()` only (commit-phase CPU updates or
+   whole-group transforms); seeded randomness via `createSeededRandom` with a fixed seed.
+2. Stay OUT of the content volume (x/y roughly +-4/+-2, z -6..9): keep-out clearances and
+   distance fades, tag the root `userData.kookaburraBg3d` (the perf probe's `no-bg3d` pass).
+   Floors want a small stage-courtesy clearing (~4u), not a content-radius ring.
+3. Unlit looks hold exact colours (`toneMapped: false`); `lit: true` looks use standard
+   materials with an `ABSTRACT_EMISSIVE` floor so they read on unlit scenes.
+4. Presets carry geometry `colors` plus a flat `backing` hex; bands and AA apply to ALL of
+   them (`scene3d/presets.test.ts`). Fixtures include a static elevated camera pose
+   (`segments: []` is REQUIRED beside `keys` or the block drops whole).
+5. Thin 1px lines vanish at tile size and can whisper at 4K: densify geometry and push dark
+   lines toward the 0.125 cap before reaching for preview tricks; eyeball at BOTH scales via
+   an `ws:` spike screenshot.
