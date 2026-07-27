@@ -4,9 +4,10 @@ Render the Android device's picker-card previews, one per catalog colour.
     blender -b --python scripts/render-android-previews.py -- <in>.glb <out-dir>
 
 Imports the committed GLB, applies each colour's frame + back-glass override (the same
-values as src/toolkit/device/catalog.ts, kept in sync by hand), and renders a front-on
-orthographic PNG with a transparent background. Outputs <out-dir>/<colour>.png for the
-catalog's `previews` map. See src/assets/models/README.md.
+values as src/toolkit/device/catalog.ts, kept in sync by hand), and renders a perspective
+back three-quarter PNG with a transparent background, matching the vendor-authored iPhone
+cards' framing. Outputs <out-dir>/<colour>.png for the catalog's `previews` map. See
+src/assets/models/README.md.
 """
 
 import math
@@ -52,17 +53,26 @@ center = (lo + hi) / 2
 size = hi - lo
 extent = max(size.x, size.z, 0.001)
 
+del extent
+# Back three-quarter view: the front faces -Y, so the camera orbits to the +Y side,
+# yawed and slightly elevated, aimed at the centre (the iPhone cards' pose).
 cam_data = bpy.data.cameras.new("C")
-cam_data.type = "ORTHO"
-cam_data.ortho_scale = extent * 1.3
+cam_data.lens = 85
 cam_data.clip_end = 1000
 cam = bpy.data.objects.new("C", cam_data)
-cam.location = (center.x, lo.y - max(size.length, 1), center.z)
-cam.rotation_euler = (math.radians(90), 0, 0)
+yaw = math.radians(35)
+elev = math.radians(8)
+dist = max(size.z, 0.001) * 3.4
+cam.location = (
+    center.x + dist * math.cos(elev) * math.sin(yaw),
+    center.y + dist * math.cos(elev) * math.cos(yaw),
+    center.z + dist * math.sin(elev),
+)
+cam.rotation_euler = (center - cam.location).to_track_quat("-Z", "Y").to_euler()
 bpy.context.scene.collection.objects.link(cam)
 bpy.context.scene.camera = cam
 
-for ang, energy in [((55, 0, 20), 3.0), ((65, 0, -45), 1.6)]:
+for ang, energy in [((55, 0, 200), 3.0), ((65, 0, 135), 1.6)]:
     ld = bpy.data.lights.new("S", type="SUN")
     ld.energy = energy
     s = bpy.data.objects.new("S", ld)
