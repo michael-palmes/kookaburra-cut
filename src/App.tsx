@@ -233,6 +233,8 @@ export default function App() {
   useEffect(() => {
     loadedProjectRef.current = project;
   }, [project]);
+  // Scene file to land the playhead on after the next reload (set by create/duplicate).
+  const focusSceneFileRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
@@ -684,7 +686,8 @@ export default function App() {
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
       // No history entry (delete's semantics: a manifest revert can't un-create files); a new TSX needs the full module reload.
-      await duplicateProjectScene(workspaceSlug(current.id), sceneIndex, position);
+      const result = await duplicateProjectScene(workspaceSlug(current.id), sceneIndex, position);
+      focusSceneFileRef.current = result.file;
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
     } catch (e) {
@@ -997,8 +1000,15 @@ export default function App() {
         );
       const clock = useClockStore.getState();
       clock.setDurationMs(loaded.totalMs);
-      // Keep the scrub position within the (possibly shorter) new project.
-      clock.setCurrentMs(Math.min(clock.currentMs, loaded.totalMs));
+      const focusFile = focusSceneFileRef.current;
+      focusSceneFileRef.current = null;
+      const focusIndex = focusFile ? loaded.sceneFiles.indexOf(focusFile) : -1;
+      if (focusIndex >= 0) {
+        clock.setCurrentMs(loaded.slots[focusIndex]?.startMs ?? 0);
+      } else {
+        // Keep the scrub position within the (possibly shorter) new project.
+        clock.setCurrentMs(Math.min(clock.currentMs, loaded.totalMs));
+      }
     },
     [isAutoRun],
   );
@@ -1675,7 +1685,8 @@ export default function App() {
                 }))}
                 theme={project.theme}
                 getThumbs={() => ensureSceneThumbs(project)}
-                onProjectChanged={() => {
+                onProjectChanged={(focusSceneFile) => {
+                  if (focusSceneFile) focusSceneFileRef.current = focusSceneFile;
                   bumpWorkspaceReloadToken();
                   setLoadNonce((n) => n + 1);
                 }}
