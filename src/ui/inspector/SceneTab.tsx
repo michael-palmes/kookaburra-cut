@@ -1860,7 +1860,7 @@ export function SceneTab({
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal wizard-wide media-modal-wide">
         <div className="modal-title-row">
-          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change media"}</h2>
+          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change video"}</h2>
         </div>
         <div className="wizard-media-host">
           <MediaBrowser
@@ -4096,6 +4096,19 @@ export function SceneTab({
         onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
       });
   }
+  // The everyday swap, one hop from the root; the device's picker wins when a scene has both surfaces.
+  if (device || doc?.videoWindow)
+    topEntries.push({
+      key: "changeVideo",
+      label: "Change video",
+      icon: "device.media",
+      onClick: device
+        ? () => {
+            setMediaTarget({ kind: "device" });
+            setModal("media");
+          }
+        : () => openDrill("videoWindow.media"),
+    });
   if (project.deckFrame !== undefined || doc?.frame?.cutout !== undefined)
     topEntries.push({
       key: "frame",
