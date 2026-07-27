@@ -114,7 +114,9 @@ export function parseBackgroundSpec(
 ): ThemeBackground | undefined {
   if (!isRecord(v)) return undefined;
   const parallax = isNum(v.parallax) ? Math.min(0.5, Math.max(0, v.parallax)) : undefined;
-  const withParallax = <T extends Exclude<ThemeBackground, { type: "none" }>>(out: T): T => {
+  const withParallax = <T extends Exclude<ThemeBackground, { type: "none" } | { type: "scene3d" }>>(
+    out: T,
+  ): T => {
     if (parallax !== undefined) out.parallax = parallax;
     return out;
   };
@@ -155,6 +157,34 @@ export function parseBackgroundSpec(
         return withParallax(out);
       }
       break;
+    case "scene3d": {
+      if (!isStr(v.look)) break;
+      // Schema-light like the shader case; no parallax (world geometry parallaxes via the camera itself).
+      const out: Extract<ThemeBackground, { type: "scene3d" }> = {
+        type: "scene3d",
+        look: v.look,
+      };
+      if (Array.isArray(v.colors)) {
+        const colors = (v.colors as unknown[]).filter(isStr);
+        if (colors.length > 0) out.colors = colors;
+      }
+      if (v.themeColors === true) out.themeColors = true;
+      if (isNum(v.speed)) out.speed = Math.min(4, Math.max(0, v.speed));
+      if (isRecord(v.params)) {
+        const params: Record<string, number> = {};
+        for (const [key, value] of Object.entries(v.params)) {
+          if (isNum(value)) params[key] = value;
+        }
+        if (Object.keys(params).length > 0) out.params = params;
+      }
+      // One nesting level only: a scene3d backing inside a scene3d drops the backing.
+      if (isRecord(v.backing) && v.backing.type !== "scene3d") {
+        const backing = parseBackgroundSpec(v.backing, `${source} backing`, opts);
+        if (backing) out.backing = backing;
+      }
+      if (isStr(v.preset)) out.preset = v.preset;
+      return out;
+    }
     case "shader": {
       if (!isStr(v.shader)) break;
       // Schema-light like transitions: the renderer degrades unknown ids/params, the parser only pins the shape.

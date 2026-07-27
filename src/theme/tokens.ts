@@ -269,6 +269,19 @@ export type ThemeBackground =
   | { type: "image"; src: string; parallax?: number }
   /** A looping video fill riding the clip frame pipeline. SCENE-DOC ONLY (decision 5: themes are workspace-shared and can't reference project assets; the theme parser drops it). Absent `loop` = true; `loop: false` holds the last frame. Absent `fit` = `fill` (cover-crop to fill the frame); `fit` letterboxes the whole video with bars in the theme background colour. */
   | { type: "video"; src: string; parallax?: number; loop?: boolean; fit?: "fill" | "fit" }
+  /** A world-space animated 3D background (SCENE3D_BACKGROUNDS): real geometry mounted in the scene, so it parallaxes with camera rigs, staged outside the content volume with a keep-out clearance and distance fades. `backing` nests any camera-locked 2D background behind the geometry (another scene3d is rejected by the parser). Theme-safe (no asset references). */
+  | {
+      type: "scene3d";
+      look: string;
+      colors?: string[];
+      /** Live Theme preset: derive geometry colours from the active theme at resolve time (scene3d/Scene3dBackdrop.tsx); while set, explicit `colors` are ignored. */
+      themeColors?: boolean;
+      speed?: number;
+      params?: Record<string, number>;
+      backing?: ThemeBackground;
+      /** Bundled preset id last applied by the picker; the renderer never reads it, only the inspector's Reset and tile highlight do. */
+      preset?: string;
+    }
   /** An animated GLSL fill (the vendored paper-design pack): `shader` names a SHADER_BACKGROUNDS id, `colors` are hexes filling the effect's slots, `speed` multiplies the ABSOLUTE project clock (continuous across scene cuts), `params` are the effect's own numeric knobs. Theme-safe (no asset references). */
   | {
       type: "shader";

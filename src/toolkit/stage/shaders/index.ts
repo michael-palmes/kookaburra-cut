@@ -37,6 +37,10 @@ export const SHADER_BACKGROUND_IDS: string[] = [
 ];
 
 export { SHADER_BACKGROUND_PRESETS, type ShaderBackgroundPreset } from "./presets";
-export { deriveThemeShaderColors, themePresetAnchor } from "./themePreset";
+export {
+  deriveThemeColorsFromAnchor,
+  deriveThemeShaderColors,
+  themePresetAnchor,
+} from "./themePreset";
 export type { ShaderBackgroundDef, ShaderBackgroundParamDef } from "./types";
 export { shaderBackgroundVertex } from "./vertex";

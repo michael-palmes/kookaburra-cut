@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SCENE3D_BACKGROUND_PRESETS } from "../toolkit/stage/scene3d/presets";
 import { SHADER_BACKGROUND_PRESETS } from "../toolkit/stage/shaders/presets";
 import { TEXT_PRESET_NAMES } from "../toolkit/text/presets";
 import { optionPreviewJobs } from "./optionPreviews";
@@ -90,8 +91,39 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
         checked++;
       }
     }
-    // Both sides enumerated: no fixture left unchecked, no preset without a fixture.
-    expect(checked).toBe(Object.keys(bgpFixtures).length);
+    // Both sides enumerated within the type: the scene3d packs check their own fixtures below.
+    const shaderFixtures = Object.values(bgpFixtures).filter(
+      (d) => (d.background as { type?: string } | undefined)?.type === "shader",
+    ).length;
+    expect(checked).toBe(shaderFixtures);
+  });
+
+  it("preview-lab's scene3d bgp-* fixtures match SCENE3D_BACKGROUND_PRESETS exactly (no drift)", () => {
+    let checked = 0;
+    for (const [look, presets] of Object.entries(SCENE3D_BACKGROUND_PRESETS)) {
+      for (const preset of presets) {
+        const stem = `bgp-${look}-${preset.id}`;
+        const doc = bgpFixtures[`../../projects/preview-lab-bg-${look}/scenes/${stem}.json`];
+        expect(doc, stem).toBeDefined();
+        expect(doc.background, stem).toEqual({
+          type: "scene3d",
+          look,
+          colors: preset.colors,
+          speed: preset.speed ?? 1,
+          ...(preset.params ? { params: preset.params } : {}),
+          backing: { type: "color", color: preset.backing },
+          preset: preset.id,
+        });
+        checked++;
+      }
+    }
+    const scene3dFixtures = Object.values(bgpFixtures).filter(
+      (d) => (d.background as { type?: string } | undefined)?.type === "scene3d",
+    ).length;
+    expect(checked).toBe(scene3dFixtures);
+    expect(checked + Object.keys(SHADER_BACKGROUND_PRESETS).length * 9).toBe(
+      Object.keys(bgpFixtures).length,
+    );
   });
 
   it("preview-lab's bg-*-light fixtures match each shader's p1 preset exactly (no drift)", () => {
@@ -115,7 +147,36 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       });
       checked++;
     }
-    expect(checked).toBe(Object.keys(bgLightFixtures).length);
+    const shaderLights = Object.values(bgLightFixtures).filter(
+      (d) => (d.background as { type?: string } | undefined)?.type === "shader",
+    ).length;
+    expect(checked).toBe(shaderLights);
+  });
+
+  it("preview-lab's scene3d bg-*-light fixtures match each look's p1 preset exactly (no drift)", () => {
+    let checked = 0;
+    for (const [look, presets] of Object.entries(SCENE3D_BACKGROUND_PRESETS)) {
+      const p1 = presets.find((p) => p.id === "p1");
+      expect(p1, look).toBeDefined();
+      if (!p1) continue;
+      const stem = `bg-${look}-light`;
+      const doc = bgLightFixtures[`../../projects/preview-lab-bg-${look}/scenes/${stem}.json`];
+      expect(doc, stem).toBeDefined();
+      expect(doc.background, stem).toEqual({
+        type: "scene3d",
+        look,
+        colors: p1.colors,
+        speed: p1.speed ?? 1,
+        ...(p1.params ? { params: p1.params } : {}),
+        backing: { type: "color", color: p1.backing },
+        preset: "p1",
+      });
+      checked++;
+    }
+    const scene3dLights = Object.values(bgLightFixtures).filter(
+      (d) => (d.background as { type?: string } | undefined)?.type === "scene3d",
+    ).length;
+    expect(checked).toBe(scene3dLights);
   });
 
   it("every background has its preview-lab-bg-* project (the discovery convention)", () => {
@@ -125,6 +186,9 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       .filter((id): id is string => !!id);
     for (const shader of Object.keys(SHADER_BACKGROUND_PRESETS)) {
       expect(labIds, shader).toContain(`preview-lab-bg-${shader}`);
+    }
+    for (const look of Object.keys(SCENE3D_BACKGROUND_PRESETS)) {
+      expect(labIds, look).toContain(`preview-lab-bg-${look}`);
     }
     expect(labIds).toContain("preview-lab-text");
     expect(labIds).toContain("preview-lab-stage");
