@@ -95,6 +95,9 @@ pub(crate) struct ExportOptions {
     /// Output filename suffix: preset/custom exports write `<project>-<aspect>-<suffix>.<ext>` so they never overwrite the legacy `<project>-<aspect>` file; absent = today's exact name (the frozen path and Verify never carry one), slug-validated in `start_export`.
     #[serde(default)]
     pub(crate) output_suffix: Option<String>,
+    /// "downloads" routes the final file to ~/Downloads (app-triggered exports honouring the setting); absent = the canonical project paths, which terminal autoruns always use so baselines never move.
+    #[serde(default)]
+    pub(crate) destination: Option<String>,
 }
 
 /// The project soundtrack, resolved by the frontend to an absolute path (the `extract_clip_frames` precedent - argv structure stays Rust-owned).
@@ -775,6 +778,7 @@ mod legacy_argv_goldens {
             audio,
             encode: None,
             output_suffix: None,
+            destination: None,
         }
     }
 
@@ -943,6 +947,7 @@ mod spec_argv_goldens {
             audio: None,
             encode: None,
             output_suffix: None,
+            destination: None,
         }
     }
 

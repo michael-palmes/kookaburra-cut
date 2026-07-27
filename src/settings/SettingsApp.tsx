@@ -17,6 +17,7 @@ import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
 import {
   getSettings,
   type LagWarningMode,
+  setExportToDownloadsSetting,
   setHardwareVideoSetting,
   setLagWarningSetting,
 } from "../engine/workspace";
@@ -40,6 +41,7 @@ export function SettingsApp() {
   const [hwEnabled, setHwEnabled] = useState<boolean | null>(null);
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
   const [lagWarning, setLagWarning] = useState<LagWarningMode | null>(null);
+  const [downloadsExport, setDownloadsExport] = useState<boolean | null>(null);
 
   const refreshStats = useCallback(() => {
     cacheStats()
@@ -57,6 +59,7 @@ export function SettingsApp() {
         setWorkspace(s.workspaceRoot ?? null);
         setHwEnabled(!s.disableHardwareVideo);
         setLagWarning((s.lagWarning as LagWarningMode) ?? "off");
+        setDownloadsExport(!s.keepExportsInProject);
       })
       .catch(() => setWorkspace(null));
     hardwareVideoSupport()
@@ -75,6 +78,11 @@ export function SettingsApp() {
   const changeLagWarning = useCallback((mode: LagWarningMode) => {
     setLagWarning(mode);
     setLagWarningSetting(mode).catch((e) => setError(String(e)));
+  }, []);
+
+  const toggleDownloadsExport = useCallback((enabled: boolean) => {
+    setDownloadsExport(enabled);
+    setExportToDownloadsSetting(enabled).catch((e) => setError(String(e)));
   }, []);
 
   const hwDetail = hwSupport
@@ -183,6 +191,22 @@ export function SettingsApp() {
             <option value="sustained">Sustained</option>
             <option value="strict">Strict</option>
           </select>
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Save exports to Downloads</span>
+            <span className="muted settings-row-detail">
+              Finished exports land in your Downloads folder; off keeps them in each project's
+              exports folder. Terminal runs always use the project folder.
+            </span>
+          </div>
+          <input
+            type="checkbox"
+            aria-label="Save exports to Downloads"
+            checked={downloadsExport ?? true}
+            disabled={downloadsExport === null}
+            onChange={(e) => toggleDownloadsExport(e.target.checked)}
+          />
         </div>
       </section>
 
