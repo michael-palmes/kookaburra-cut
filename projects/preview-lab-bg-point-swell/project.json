@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-point-swell",
+  "name": "Preview Lab — bg-point-swell (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-point-swell.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-point-swell-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-point-swell-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

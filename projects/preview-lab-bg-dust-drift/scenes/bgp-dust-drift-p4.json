@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"dust-drift\" 3D background (\"Brigalow\")",
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#68d268", "#67c255"],
+    "speed": 0.3,
+    "params": {
+      "count": 800,
+      "innerRadius": 11,
+      "outerRadius": 28,
+      "twinkle": 0.55,
+      "pointSize": 0.09,
+      "drift": 0.85,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#def6df"
+    },
+    "preset": "p4"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

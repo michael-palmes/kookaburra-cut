@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"point-swell\" 3D background (\"Merimbula\")",
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#65ceb4", "#55c194"],
+    "speed": 0.5,
+    "params": {
+      "spacing": 0.8,
+      "amplitude": 0.4,
+      "wavelength": 8,
+      "clearRadius": 4,
+      "fadeRadius": 38,
+      "pointSize": 0.07,
+      "drift": 1.1,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf5f0"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

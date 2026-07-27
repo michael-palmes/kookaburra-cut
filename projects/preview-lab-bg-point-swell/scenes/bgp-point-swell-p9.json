@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"point-swell\" 3D background (\"Winkipop\")",
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#685197", "#8a46a1"],
+    "speed": 0.3,
+    "params": {
+      "spacing": 1,
+      "amplitude": 0.5,
+      "wavelength": 10,
+      "clearRadius": 4.5,
+      "fadeRadius": 42,
+      "pointSize": 0.09,
+      "drift": 0.9,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#14101c"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

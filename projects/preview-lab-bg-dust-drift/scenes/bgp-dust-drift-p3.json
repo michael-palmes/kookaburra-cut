@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"dust-drift\" 3D background (\"Saltbush\")",
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#66cf9b", "#56c27a"],
+    "speed": 0.45,
+    "params": {
+      "count": 1200,
+      "innerRadius": 9,
+      "outerRadius": 24,
+      "twinkle": 0.75,
+      "pointSize": 0.08,
+      "drift": 1.3,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf6eb"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

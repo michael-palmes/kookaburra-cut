@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"dust-drift\" 3D background (\"Parkes\")",
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#72549c", "#8e449d"],
+    "speed": 0.3,
+    "params": {
+      "count": 1050,
+      "innerRadius": 10,
+      "outerRadius": 28,
+      "twinkle": 0.7,
+      "pointSize": 0.09,
+      "drift": 0.9,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#15101b"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

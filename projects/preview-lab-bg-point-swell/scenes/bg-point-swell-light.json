@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"point-swell\" (\"Bondi\")",
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#76c5ed", "#5bbbce"],
+    "speed": 0.4,
+    "params": {
+      "spacing": 0.9,
+      "amplitude": 0.45,
+      "wavelength": 9,
+      "clearRadius": 4,
+      "fadeRadius": 40,
+      "pointSize": 0.08,
+      "drift": 1,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3f2fc"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
