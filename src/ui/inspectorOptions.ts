@@ -66,11 +66,11 @@ export interface SceneSectionModel {
   rows: SceneRowModel[];
 }
 
-/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows need `doc.devices[0]` (Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section needs the project to declare a deck frame (`deckFrame`), its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
+/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows need `doc.devices[0]` (Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
 export function sceneSections(input: {
   doc: SceneDoc | undefined;
   slotsCount: number;
-  /** The project's deck-wide overlay is declared (project.json `frame`); an override alone can't create one, so this gates the Overlay section. Absent = no overlay anywhere. */
+  /** The project's deck-wide overlay is declared (project.json `frame`). A sidecar frame with a cutout stands alone (`mergeFrameSpec`), so either source produces an overlay to edit. */
   deckFrame?: boolean;
   /** This scene's RESOLVED overlay (deck merged with the sidecar override), `undefined` when it renders full-bleed (opted out); drives the enabled state and the row set. */
   frame?: FrameSpec | undefined;
@@ -123,9 +123,10 @@ export function sceneSections(input: {
     });
   }
 
-  if (deckFrame) {
-    // The Overlay section: the enabled toggle opts this scene in/out of the deck frame; the cutout
-    // and panel rows appear only while it's shown. All edits write the sidecar `frame` override.
+  if (deckFrame || doc?.frame?.cutout !== undefined) {
+    // The Overlay section: the enabled toggle opts this scene in/out of its overlay (the deck's,
+    // or the sidecar's own standalone cutout); the cutout and panel rows appear only while it's
+    // shown. All edits write the sidecar `frame` override.
     const rows: SceneRowModel[] = [
       { id: "frame.enabled", label: "Show on this scene", chevron: false },
     ];
@@ -139,6 +140,12 @@ export function sceneSections(input: {
       );
     }
     sections.push({ id: "frame", label: "Overlay", rows });
+  } else if (doc) {
+    sections.push({
+      id: "frame",
+      label: "Overlay",
+      rows: [{ id: "frame.add", label: "Add overlay", chevron: false }],
+    });
   }
 
   sections.push({
