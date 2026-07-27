@@ -2073,7 +2073,7 @@ dependencies = [
 
 [[package]]
 name = "kookaburra-cut"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "allsorts",
  "base64 0.22.1",

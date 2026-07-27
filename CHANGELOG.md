@@ -4,6 +4,45 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-27
+
+### Added
+
+- Packs. Export projects, themes, fonts, 3D objects, gradients, export
+  presets and screenshots as one signed .kbpack file, and import someone
+  else's through a trust, contents and conflicts flow. Double-click a
+  pack or drop it onto the app.
+- Camera rigs: free-flight camera poses alongside orbit, with depth
+  bands, rig presets and shot continuity between scenes.
+- Scene lighting. A sun, free lights in world, camera or subject space,
+  emissive light fixtures, HDRI environments, lighting keyframes,
+  presets and tone-mapping controls, per scene.
+- Three new aspect ratios: 5:4, 3:2 and 2:3.
+- Twelve scene presets in a leaner create flow.
+- Video editor: clips can be spliced at the playhead, and freeze frames
+  resize after placing.
+- Scenes are placed with a draggable insert strip instead of a dialog.
+- Tap highlights remember their settings per project and add a 6x speed.
+- Inspector shortcuts for editing video, transitions and duplication.
+
+### Changed
+
+- The media pickers share the one library view everywhere.
+- Video window presets are polished and inspector rows align.
+- Shortening a scene clamps cleanly at either edge, and the editor
+  chrome flips sides mid-transition.
+- New scenes default to a 600 ms crossfade; project settings are tidier.
+- Edit in Claude Code moves from Cmd+E to Opt+Cmd+E, freeing Cmd+E for
+  Export Video.
+
+### Fixed
+
+- Exports use far less memory on long projects.
+- Animated backgrounds hold their exact colours through transitions.
+- A missing image asset degrades to a placeholder instead of failing
+  the render.
+- Project manifests that list the same scene file twice are refused.
+
 ## [0.6.0] - 2026-07-24
 
 ### Added
