@@ -704,20 +704,32 @@ pub async fn scaffold_scene(
         }
     }
     if is_device_kind {
-        // With no title to clear, the device sits centred instead of dropping 0.3 under the headline.
-        let position = if options.kind == "deviceonly" {
+        let device_only = options.kind == "deviceonly";
+        // With no title to clear, the device-only kind sits centred and dominant, grounded when the theme stages a floor; the titled kind drops 0.3 under the headline.
+        let position = if device_only {
             json!([0, 0, 0])
         } else {
             json!([0, -0.3, 0])
         };
+        let mut placement = json!({
+            "position": position,
+            "rotationDeg": [0, 0, 0],
+            "scale": if device_only { 1.35 } else { 1.0 },
+        });
+        if device_only {
+            placement["ground"] = json!(true);
+        }
         let mut device = json!({
             "id": "d1",
             "model": options.device_model.as_deref().unwrap_or("iphone-17-pro"),
             "colour": options.colour.as_deref().unwrap_or("silver"),
-            "placement": { "position": position, "rotationDeg": [0, 0, 0], "scale": 1 },
+            "placement": placement,
             "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
-            "shadow": options.shadow.as_deref().unwrap_or("soft"),
         });
+        // Both device kinds omit the field so Device auto-resolves: real map shadows over a staged floor, the soft blob when floating. An explicit option still wins.
+        if let Some(shadow) = options.shadow.as_deref() {
+            device["shadow"] = json!(shadow);
+        }
         if let (Some(rel), Some(kind)) = (&options.media_rel, &options.media_kind) {
             device["media"] = json!({ "src": rel, "kind": kind });
         }

@@ -20,7 +20,7 @@ import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";
 import { StageFixtures } from "../lighting/Fixture";
 import { LightHelpers } from "../lighting/LightHelpers";
-import { StageBackdrop } from "./backdrops";
+import { DEFAULT_FLOOR_Y, StageBackdrop } from "./backdrops";
 import { SceneStageContext, type SceneStageState } from "./context";
 import { StageLights } from "./StageLights";
 import {
@@ -68,9 +68,10 @@ export function SceneStage({
     return () => useStageRegistry.getState().unregister(sceneIndex);
   }, [sceneIndex, backdropType]);
 
+  const stageFloorY = backdrop?.type === "floor" ? (floorY ?? DEFAULT_FLOOR_Y) : null;
   const stageState = useMemo<SceneStageState | null>(
-    () => (lighting ? { mapShadows } : null),
-    [lighting, mapShadows],
+    () => (lighting ? { mapShadows, floorY: stageFloorY } : null),
+    [lighting, mapShadows, stageFloorY],
   );
 
   // Keyframe apply-seam registration: the sun and ambient are animatable per scene (no track mounted means the registry is populated but never read).

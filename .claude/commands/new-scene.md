@@ -36,9 +36,11 @@ Steps:
    `title`/`subtitle` only when the user gave copy (`headline` is the legacy key on old
    scenes; never write it for new ones). Then per kind:
    - device/deviceonly: one `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`,
-     `media` if given, `placement` position `[0, -0.3, 0]` for device or `[0, 0, 0]` for
-     deviceonly (no title to clear), `rotationDeg: [0, 0, 0]`, `scale: 1`,
-     `motion: { "preset": "none" }`, `shadow: "soft"`).
+     `media` if given, `motion: { "preset": "none" }`) and NO `shadow` key for either
+     kind, so Device auto-resolves it (map shadows over a staged floor, soft blob when
+     floating). device: `placement` position `[0, -0.3, 0]`, `rotationDeg: [0, 0, 0]`,
+     `scale: 1`. deviceonly: position `[0, 0, 0]` (no title to clear), `scale: 1.35`
+     (dominant framing), `ground: true` (rests on a staged floor when the theme has one).
    - titleicon: `headerIcon` (the user's emoji or `assets/` image path, else `"🚀"`).
    - overlaystart/overlayend: `frame` = `{ "cutout": { "shape": "rounded-rect", "side":
      "start"|"end" }, "background": "background", "chip": { "label": "New", "icon":
