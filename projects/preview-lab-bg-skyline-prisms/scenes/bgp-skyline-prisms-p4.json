@@ -5,10 +5,9 @@
     "type": "scene3d",
     "look": "skyline-prisms",
     "colors": ["#87e2a5", "#67d179"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
-      "count": 10,
-      "spread": 15,
+      "count": 18,
       "depth": 15,
       "tallest": 9,
       "drift": 0.85

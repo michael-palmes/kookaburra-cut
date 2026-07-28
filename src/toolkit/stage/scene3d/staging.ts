@@ -1,29 +1,30 @@
-import { createSeededRandom, type SeededRandom } from "../../../engine/rng";
+import { createSeededRandom } from "../../../engine/rng";
 
-/** Seeded placement for lit abstract looks: positions in the backdrop band, reject-sampled OUT of the content volume (x/y roughly +-4/+-2, z -6..9 plus margin) so shapes never crowd the device or title. Pure function of the seed; every look builds its ensemble once. */
+/** Seeded ring placement for lit abstract looks: even azimuthal coverage with jitter, so a full 360 orbit never finds an empty sector. `distance` is the ring radius from the stage centre, `thickness` the radial variance; the hard floor keeps every shape outside the content volume regardless of slider combinations. Pure function of the seed; every look builds its ensemble once. */
 export interface AbstractPlacement {
   position: [number, number, number];
   phase: number;
   scale: number;
 }
 
-export function seededPlacements(
+const MIN_RING_RADIUS = 9.5;
+
+export function ringPlacements(
   seed: number,
   count: number,
-  opts: { spread: number; depthMid: number; depthRange: number; yMin: number; yMax: number },
-): { rng: SeededRandom; placements: AbstractPlacement[] } {
+  opts: { distance: number; thickness: number; yMin: number; yMax: number },
+): AbstractPlacement[] {
   const rng = createSeededRandom(seed);
-  const placements: AbstractPlacement[] = [];
-  let guard = 0;
-  while (placements.length < count && guard++ < count * 30) {
-    const x = (rng() - 0.5) * 2 * opts.spread;
+  return Array.from({ length: count }, (_, k) => {
+    const angle = ((k + 0.5) / count) * Math.PI * 2 + (rng() - 0.5) * (Math.PI / count);
+    const r = Math.max(MIN_RING_RADIUS, opts.distance + (rng() - 0.5) * 2 * opts.thickness);
     const y = opts.yMin + rng() * (opts.yMax - opts.yMin);
-    const z = opts.depthMid + (rng() - 0.5) * 2 * opts.depthRange;
-    // Keep-out: nothing near the stage volume (content x/y +-4/+-2, z -6..9 with margin).
-    if (Math.abs(x) < 6 && z > -9) continue;
-    placements.push({ position: [x, y, z], phase: rng() * Math.PI * 2, scale: 0.7 + rng() * 0.6 });
-  }
-  return { rng, placements };
+    return {
+      position: [r * Math.cos(angle), y, r * Math.sin(angle)],
+      phase: rng() * Math.PI * 2,
+      scale: 0.7 + rng() * 0.6,
+    };
+  });
 }
 
 /** Emissive floor keeps lit looks visible on scenes without any lighting rig; scene lights add the modelling on top. */

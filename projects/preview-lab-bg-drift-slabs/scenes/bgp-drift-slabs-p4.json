@@ -5,11 +5,11 @@
     "type": "scene3d",
     "look": "drift-slabs",
     "colors": ["#e4cd88", "#e3b471"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
       "count": 6,
-      "spread": 11,
-      "depth": 13,
+      "spread": 2.5,
+      "depth": 16,
       "size": 1.1,
       "drift": 0.9
     },

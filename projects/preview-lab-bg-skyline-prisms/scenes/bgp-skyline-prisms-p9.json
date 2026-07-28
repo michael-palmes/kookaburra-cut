@@ -5,13 +5,12 @@
     "type": "scene3d",
     "look": "skyline-prisms",
     "colors": ["#294b46", "#306847"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
-      "count": 10,
-      "spread": 15,
-      "depth": 15,
+      "count": 14,
+      "depth": 13,
       "tallest": 9,
-      "drift": 0.85
+      "drift": 0.9
     },
     "backing": {
       "type": "color",

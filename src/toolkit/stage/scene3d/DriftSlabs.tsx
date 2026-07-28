@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Color } from "three";
 import { useTimeline } from "../../../engine/timeline";
-import { ABSTRACT_EMISSIVE, seededPlacements } from "./staging";
+import { ABSTRACT_EMISSIVE, ringPlacements } from "./staging";
 import type { Scene3dLookProps } from "./types";
 
 /** Drift slabs: large matte panes hovering in the backdrop band, tilting and bobbing on seeded phases. Lit (`lit: true`): standard materials take the scene's v9 lighting; an emissive floor keeps them visible on unlit scenes. No shadow casting (backdrop discipline, and shadow maps stay scene-owned). */
@@ -11,12 +11,11 @@ const SEED = 0x51ab5;
 export function DriftSlabs({ colors, params, speed }: Scene3dLookProps) {
   const { localMs } = useTimeline();
   const count = Math.round(params.count);
-  const { placements } = useMemo(
+  const placements = useMemo(
     () =>
-      seededPlacements(SEED, count, {
-        spread: params.spread,
-        depthMid: -params.depth,
-        depthRange: 4,
+      ringPlacements(SEED, count, {
+        distance: params.depth,
+        thickness: params.spread,
         yMin: -1.5,
         yMax: 4,
       }),
@@ -34,7 +33,8 @@ export function DriftSlabs({ colors, params, speed }: Scene3dLookProps) {
     };
   }, [colors[0], colors[1]]);
 
-  const t = (localMs / 1000) * speed;
+  // Pace baked so speed 1 is the tuned house default.
+  const t = (localMs / 1000) * speed * 2;
   return (
     <group userData={{ kookaburraBg3d: true }}>
       {placements.map((p, i) => {

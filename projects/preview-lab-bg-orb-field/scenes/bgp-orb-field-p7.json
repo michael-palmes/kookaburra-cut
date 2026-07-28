@@ -5,10 +5,10 @@
     "type": "scene3d",
     "look": "orb-field",
     "colors": ["#5b3f33", "#6e5b33"],
-    "speed": 0.35,
+    "speed": 0.7,
     "params": {
       "count": 4,
-      "spread": 10,
+      "spread": 2,
       "depth": 15,
       "size": 1.35,
       "drift": 0.7

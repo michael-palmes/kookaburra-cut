@@ -5,7 +5,7 @@ import { useTimeline } from "../../../engine/timeline";
 import { ABSTRACT_EMISSIVE } from "./staging";
 import type { Scene3dLookProps } from "./types";
 
-/** Skyline prisms: a back row of rounded vertical prisms rising from floor level like a distant skyline, swaying imperceptibly. Lit: standard materials take the scene's v9 lighting; the emissive floor keeps them visible on unlit scenes. Placement is a seeded row (not the shared volume sampler): the look IS a line across the back. */
+/** Skyline prisms: a ring of vertical prisms encircling the stage like a distant skyline, swaying imperceptibly. Lit: standard materials take the scene's v9 lighting; the emissive floor keeps them visible on unlit scenes. Placement is a seeded even ring so no orbit angle faces a gap. */
 
 const SEED = 0x5c11e;
 const FLOOR_Y = -2;
@@ -15,18 +15,20 @@ export function SkylinePrisms({ colors, params, speed }: Scene3dLookProps) {
   const count = Math.round(params.count);
   const prisms = useMemo(() => {
     const rng = createSeededRandom(SEED);
+    // A full ring skyline: even azimuthal spacing with jitter, alternating lanes for depth, so no orbit angle faces a gap.
     return Array.from({ length: count }, (_, k) => {
       const lane = k % 2;
-      const x = ((k / (count - 1 || 1)) * 2 - 1) * params.spread + (rng() - 0.5) * 2.4;
+      const angle = ((k + 0.5) / count) * Math.PI * 2 + (rng() - 0.5) * (Math.PI / count);
+      const r = params.depth + lane * 3.5 + rng() * 2;
       return {
-        x,
-        z: -params.depth - lane * 3.5 - rng() * 2,
+        x: r * Math.cos(angle),
+        z: r * Math.sin(angle),
         width: 1.2 + rng() * 1.4,
         height: 3 + rng() * (params.tallest - 3),
         phase: rng() * Math.PI * 2,
       };
     });
-  }, [count, params.spread, params.depth, params.tallest]);
+  }, [count, params.depth, params.tallest]);
   const palette = useMemo(() => {
     const shape = new Color(colors[0] ?? "#3b5c7d");
     const accent = new Color(colors[1] ?? "#48628c");
@@ -38,7 +40,8 @@ export function SkylinePrisms({ colors, params, speed }: Scene3dLookProps) {
     };
   }, [colors[0], colors[1]]);
 
-  const t = (localMs / 1000) * speed;
+  // Pace baked so speed 1 is the tuned house default.
+  const t = (localMs / 1000) * speed * 2;
   return (
     <group userData={{ kookaburraBg3d: true }}>
       {prisms.map((p, i) => {

@@ -5,11 +5,11 @@
     "type": "scene3d",
     "look": "halo-rings",
     "colors": ["#8cdbea", "#64cbcb"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
       "count": 3,
-      "spread": 11,
-      "depth": 13,
+      "spread": 2.5,
+      "depth": 15,
       "size": 1.1,
       "tube": 0.18,
       "drift": 0.9
