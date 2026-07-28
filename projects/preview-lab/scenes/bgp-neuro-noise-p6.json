@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "neuro-noise",
-    "colors": ["#52616f", "#232a32", "#0b0e12"],
+    "colors": ["#546371", "#242b33", "#0b0e12"],
     "speed": 0.4,
     "params": {
       "brightness": 0.07,

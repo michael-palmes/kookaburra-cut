@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "mesh-gradient",
-    "colors": ["#20130d", "#4f3021", "#7a5230", "#331f15"],
+    "colors": ["#21130c", "#563321", "#85572e", "#341f13"],
     "speed": 0.3,
     "params": {
       "distortion": 0.55,

@@ -78,8 +78,8 @@ export const neuroNoise: ShaderBackgroundDef = {
   name: "Neuro noise",
   fragment,
   colorSlots: [
-    { label: "Front", fallback: "#52616f" },
-    { label: "Mid", fallback: "#232a32" },
+    { label: "Front", fallback: "#546371" },
+    { label: "Mid", fallback: "#242b33" },
     { label: "Back", fallback: "#0b0e12" },
   ],
   params: {

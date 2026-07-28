@@ -2988,6 +2988,13 @@ export function SceneTab({
       shaderSpec?.preset && shaderSpec
         ? SHADER_BACKGROUND_PRESETS[shaderSpec.shader]?.find((p) => p.id === shaderSpec.preset)
         : undefined;
+    const lightTheme = sceneTheme?.mode === "light";
+    const shaderPresets = shaderSpec ? (SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []) : [];
+    // Presets matching the theme's mode lead the grid; the other mode follows.
+    const orderedShaderPresets = [
+      ...shaderPresets.filter((p) => (p.mode === "light") === lightTheme),
+      ...shaderPresets.filter((p) => (p.mode === "light") !== lightTheme),
+    ];
     const types: { id: Exclude<typeof bgTab, "default">; label: string }[] = [
       { id: "none", label: "None" },
       { id: "color", label: "Colour" },
@@ -3091,7 +3098,13 @@ export function SceneTab({
               <div className="option-grid">
                 {SHADER_BACKGROUND_IDS.map((id) => {
                   const def = SHADER_BACKGROUNDS[id];
-                  const preview = optionPreviewClip(`bg-${id}`);
+                  // Light themes preview and apply the shader's p1 preset so the card shows what the click writes.
+                  const lightP1 = lightTheme
+                    ? SHADER_BACKGROUND_PRESETS[id]?.find((p) => p.id === "p1")
+                    : undefined;
+                  const preview =
+                    (lightP1 ? optionPreviewClip(`bg-${id}-light`) : null) ??
+                    optionPreviewClip(`bg-${id}`);
                   return (
                     <OptionCard
                       key={id}
@@ -3103,12 +3116,22 @@ export function SceneTab({
                       onSelect={() => {
                         setBgTabOverride(null);
                         void patchDoc((next) => {
-                          next.background = {
-                            type: "shader",
-                            shader: id,
-                            colors: def.colorSlots.map((slot) => slot.fallback),
-                            speed: 1,
-                          };
+                          next.background = lightP1
+                            ? {
+                                type: "shader",
+                                shader: id,
+                                colors: [...lightP1.colors],
+                                speed: lightP1.speed ?? 1,
+                                ...(lightP1.scale !== undefined ? { scale: lightP1.scale } : {}),
+                                ...(lightP1.params ? { params: { ...lightP1.params } } : {}),
+                                preset: "p1",
+                              }
+                            : {
+                                type: "shader",
+                                shader: id,
+                                colors: def.colorSlots.map((slot) => slot.fallback),
+                                speed: 1,
+                              };
                           // A staged backdrop would hide the animation: clear it in the same undoable entry.
                           if (stagingOn) next.backdrop = { type: "none" };
                         });
@@ -3120,10 +3143,10 @@ export function SceneTab({
               </div>
               {shaderSpec && shaderDef && (
                 <>
-                  {(SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []).length > 0 && (
+                  {orderedShaderPresets.length > 0 && (
                     <DrillGroup label="Presets">
                       <div className="option-grid three-up">
-                        {(SHADER_BACKGROUND_PRESETS[shaderSpec.shader] ?? []).map((preset) => (
+                        {orderedShaderPresets.map((preset) => (
                           <OptionCard
                             key={preset.id}
                             label={preset.name}

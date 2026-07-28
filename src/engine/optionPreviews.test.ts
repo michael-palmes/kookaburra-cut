@@ -10,6 +10,12 @@ const bgpFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
   { eager: true, import: "default" },
 );
 
+// The committed bg-*-light fixtures: the light-theme type-card clips.
+const bgLightFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
+  "../../projects/preview-lab/scenes/bg-*-light.json",
+  { eager: true, import: "default" },
+);
+
 /** Pins for the option-preview generator: the set-naming scheme is a CONTRACT between preview-lab's scene stems, the autorun capture, the wrapper's encode/promote step, and the pickers' asset lookups; a rename anywhere goes dark silently (cards degrade to swatches), so the vocabulary is pinned here. */
 
 describe("optionPreviewJobs (the set-naming contract)", () => {
@@ -80,6 +86,30 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     }
     // Both sides enumerated: no fixture left unchecked, no preset without a fixture.
     expect(checked).toBe(Object.keys(bgpFixtures).length);
+  });
+
+  it("preview-lab's bg-*-light fixtures match each shader's p1 preset exactly (no drift)", () => {
+    // Light-theme type cards show these clips as "the shader"; they must render what applying p1 writes.
+    let checked = 0;
+    for (const [shader, presets] of Object.entries(SHADER_BACKGROUND_PRESETS)) {
+      const p1 = presets.find((p) => p.id === "p1");
+      expect(p1, shader).toBeDefined();
+      if (!p1) continue;
+      const stem = `bg-${shader}-light`;
+      const doc = bgLightFixtures[`../../projects/preview-lab/scenes/${stem}.json`];
+      expect(doc, stem).toBeDefined();
+      expect(doc.background, stem).toEqual({
+        type: "shader",
+        shader,
+        colors: p1.colors,
+        speed: p1.speed ?? 1,
+        ...(p1.scale !== undefined ? { scale: p1.scale } : {}),
+        ...(p1.params ? { params: p1.params } : {}),
+        preset: "p1",
+      });
+      checked++;
+    }
+    expect(checked).toBe(Object.keys(bgLightFixtures).length);
   });
 });
 

@@ -360,6 +360,30 @@
     {
       "file": "scenes/kind-overlaypanel.tsx",
       "durationMs": 3000
+    },
+    {
+      "file": "scenes/bg-mesh-gradient-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-simplex-noise-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-swirl-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-neuro-noise-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-warp-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-smoke-ring-light.tsx",
+      "durationMs": 2000
     }
   ]
 }

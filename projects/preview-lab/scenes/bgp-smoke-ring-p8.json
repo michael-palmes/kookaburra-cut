@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "smoke-ring",
-    "colors": ["#0a0c14", "#525c9c"],
+    "colors": ["#0a0c15", "#515ca1"],
     "speed": 0.5,
     "params": {
       "thickness": 0.5,
