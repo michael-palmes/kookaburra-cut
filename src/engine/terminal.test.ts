@@ -5,22 +5,16 @@ import { binaryDir, claudeSessionCommand, shellQuote } from "./terminal";
 
 describe("shellQuote", () => {
   it("wraps in single quotes", () => {
-    expect(shellQuote("/Users/m/.local/bin/claude")).toBe(
-      "'/Users/m/.local/bin/claude'",
-    );
+    expect(shellQuote("/Users/m/.local/bin/claude")).toBe("'/Users/m/.local/bin/claude'");
   });
 
   it("survives spaces and metacharacters", () => {
-    expect(shellQuote("/Users/m/My Tools/claude")).toBe(
-      "'/Users/m/My Tools/claude'",
-    );
+    expect(shellQuote("/Users/m/My Tools/claude")).toBe("'/Users/m/My Tools/claude'");
     expect(shellQuote("$HOME/`x`;rm")).toBe("'$HOME/`x`;rm'");
   });
 
   it("splices embedded single quotes", () => {
-    expect(shellQuote("/Users/m/o'brien/claude")).toBe(
-      "'/Users/m/o'\\''brien/claude'",
-    );
+    expect(shellQuote("/Users/m/o'brien/claude")).toBe("'/Users/m/o'\\''brien/claude'");
   });
 });
 
