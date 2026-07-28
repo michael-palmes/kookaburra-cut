@@ -5,7 +5,7 @@
     "type": "scene3d",
     "look": "drift-slabs",
     "colors": ["#523c69", "#894289"],
-    "speed": 0.6,
+    "speed": 0.9,
     "params": {
       "count": 11,
       "spread": 2.5,

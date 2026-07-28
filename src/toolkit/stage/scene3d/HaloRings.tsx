@@ -16,6 +16,7 @@ export function HaloRings({ colors, params, speed }: Scene3dLookProps) {
       ringPlacements(SEED, count, {
         distance: params.depth,
         thickness: params.spread,
+        backExtra: 0.6,
         yMin: -0.5,
         yMax: 4,
       }),

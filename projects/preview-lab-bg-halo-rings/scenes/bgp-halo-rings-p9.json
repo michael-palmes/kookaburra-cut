@@ -5,7 +5,7 @@
     "type": "scene3d",
     "look": "halo-rings",
     "colors": ["#4e3d6b", "#814590"],
-    "speed": 0.6,
+    "speed": 0.9,
     "params": {
       "count": 5,
       "spread": 2.5,

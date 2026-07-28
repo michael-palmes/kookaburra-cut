@@ -5,7 +5,7 @@
     "type": "scene3d",
     "look": "orb-field",
     "colors": ["#33475b", "#765738"],
-    "speed": 1,
+    "speed": 1.5,
     "params": {
       "count": 12,
       "spread": 3,

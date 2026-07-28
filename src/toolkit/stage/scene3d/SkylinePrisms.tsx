@@ -16,10 +16,15 @@ export function SkylinePrisms({ colors, params, speed }: Scene3dLookProps) {
   const prisms = useMemo(() => {
     const rng = createSeededRandom(SEED);
     // A full ring skyline: even azimuthal spacing with jitter, alternating lanes for depth, so no orbit angle faces a gap.
-    return Array.from({ length: count }, (_, k) => {
+    // Ring plus a half-count back-arc lane so the main backdrop reads full.
+    const backCount = Math.round(count * 0.5);
+    return Array.from({ length: count + backCount }, (_, k) => {
+      const inBack = k >= count;
       const lane = k % 2;
-      const angle = ((k + 0.5) / count) * Math.PI * 2 + (rng() - 0.5) * (Math.PI / count);
-      const r = params.depth + lane * 3.5 + rng() * 2;
+      const angle = inBack
+        ? Math.PI * (1.15 + ((k - count + 0.5) / backCount) * 0.7) + (rng() - 0.5) * 0.2
+        : ((k + 0.5) / count) * Math.PI * 2 + (rng() - 0.5) * (Math.PI / count);
+      const r = params.depth + lane * 3.5 + rng() * 2 + (inBack ? 3 : 0);
       return {
         x: r * Math.cos(angle),
         z: r * Math.sin(angle),
