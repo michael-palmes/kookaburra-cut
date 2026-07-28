@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "dot-grid",
-    "colors": ["#e5f4f9", "#cceaf0", "#b7e2e6"],
+    "colors": ["#ebf4f7", "#ddedf0", "#d0eaec"],
     "speed": 0.7,
     "params": {
       "density": 64,
