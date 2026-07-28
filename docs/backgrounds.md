@@ -46,6 +46,19 @@ lean night and deep country (Bass Strait, Nullarbor Night, Ironbark, Red Centre)
 so a freshly picked background reads correctly with white text on the default dark theme. A
 vitest pins the match.
 
+## The Theme preset
+
+Every shader also offers a live **Theme** tile: applying it stores `themeColors: true` (no
+explicit colours) and the renderer derives the slot colours from the active theme's tokens at
+resolve time (`shaders/themePreset.ts`), so the fill follows theme switches instead of going
+stale. The derivation retints the mode's anchor preset (`p1` light, `p6` dark) toward the
+theme's background and accent hues while preserving each anchor stop's relative luminance
+exactly, which keeps the bands (and therefore AA) by construction; saturation is capped so
+vivid accent tokens stay muted. Motion (speed, zoom, params) stamps from the anchor at apply
+time. `themePreset.test.ts` enforces bands plus AA against every bundled theme's actual text
+token. Editing any colour by hand seeds the pickers from the derived values and drops back to
+explicit `colors`.
+
 ## Themes
 
 - `theme.colors.background` is the frame-clear colour only; the animated/gradient `background`

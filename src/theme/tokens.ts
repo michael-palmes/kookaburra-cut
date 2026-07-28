@@ -274,6 +274,8 @@ export type ThemeBackground =
       type: "shader";
       shader: string;
       colors?: string[];
+      /** Live Theme preset: derive slot colours from the active theme's tokens at resolve time (shaders/themePreset.ts); while set, explicit `colors` are ignored and the fill follows theme switches. */
+      themeColors?: boolean;
       speed?: number;
       scale?: number;
       params?: Record<string, number>;

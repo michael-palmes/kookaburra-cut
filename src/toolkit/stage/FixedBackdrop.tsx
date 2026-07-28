@@ -56,6 +56,7 @@ import {
 } from "./fixedMath";
 import { SHADER_BACKGROUNDS } from "./shaders";
 import { getShaderNoiseTexture } from "./shaders/noiseTexture";
+import { deriveThemeShaderColors } from "./shaders/themePreset";
 import { shaderBackgroundVertex } from "./shaders/vertex";
 import { wrapDisplayDomainFragment } from "./shaders/wrap";
 
@@ -384,8 +385,11 @@ function FixedShader({ spec }: { spec: Extract<ThemeBackground, { type: "shader"
   const format = useFormat();
   const def = SHADER_BACKGROUNDS[spec.shader];
   const speed = spec.speed ?? 1;
+  const theme = useTheme();
+  // Live Theme preset: derived colours bake into the key as `colors`, so the material path below stays untouched and the fill re-derives on theme switches.
+  const themeDerived = spec.themeColors ? deriveThemeShaderColors(spec.shader, theme) : null;
   // Spec identity via JSON: sidecar writes replace the whole background object, so stringify is a stable memo key that survives unrelated doc patches; the memo re-parses it so its dependencies stay honest.
-  const specKey = JSON.stringify(spec);
+  const specKey = JSON.stringify(themeDerived ? { ...spec, colors: themeDerived } : spec);
   const material = useMemo(() => {
     if (!def) return null;
     const s = JSON.parse(specKey) as Extract<ThemeBackground, { type: "shader" }>;
