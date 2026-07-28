@@ -7,7 +7,7 @@
     "colors": ["#eacb8c", "#ebb075"],
     "speed": 1,
     "params": {
-      "count": 3,
+      "count": 5,
       "spread": 3,
       "depth": 13,
       "size": 1,
@@ -26,13 +26,29 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "target": [0, 0, 0],
-          "azimuthDeg": 14,
-          "elevationDeg": 16,
-          "distance": 6.5
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
         }
       }
     ],
-    "segments": []
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
   }
 }

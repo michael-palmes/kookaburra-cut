@@ -7,7 +7,7 @@
     "colors": ["#e1ce86", "#c3c060"],
     "speed": 0.9,
     "params": {
-      "count": 4,
+      "count": 6,
       "spread": 3.5,
       "depth": 12,
       "size": 0.85,
@@ -26,10 +26,10 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "target": [0, 0, 0],
-          "azimuthDeg": 14,
-          "elevationDeg": 16,
-          "distance": 6.5
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
         }
       }
     ],

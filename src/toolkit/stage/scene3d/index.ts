@@ -77,7 +77,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
       { label: "Accent", fallback: "#7b553a" },
     ],
     params: {
-      count: { label: "Count", default: 7, min: 3, max: 10, step: 1 },
+      count: { label: "Count", default: 13, min: 4, max: 18, step: 1 },
       spread: { label: "Thickness", default: 3, min: 0, max: 4, step: 0.25 },
       depth: { label: "Distance", default: 13, min: 11, max: 24, step: 0.5 },
       size: { label: "Size", default: 1, min: 0.5, max: 1.6, step: 0.05 },
@@ -94,7 +94,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
       { label: "Accent", fallback: "#765738" },
     ],
     params: {
-      count: { label: "Count", default: 6, min: 3, max: 10, step: 1 },
+      count: { label: "Count", default: 12, min: 4, max: 18, step: 1 },
       spread: { label: "Thickness", default: 3, min: 0, max: 4, step: 0.25 },
       depth: { label: "Distance", default: 13, min: 11, max: 24, step: 0.5 },
       size: { label: "Size", default: 1, min: 0.5, max: 1.6, step: 0.05 },
@@ -111,7 +111,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
       { label: "Accent", fallback: "#785639" },
     ],
     params: {
-      count: { label: "Count", default: 3, min: 2, max: 5, step: 1 },
+      count: { label: "Count", default: 5, min: 2, max: 8, step: 1 },
       spread: { label: "Thickness", default: 3, min: 0, max: 4, step: 0.25 },
       depth: { label: "Distance", default: 13, min: 11, max: 24, step: 0.5 },
       size: { label: "Size", default: 1, min: 0.6, max: 1.5, step: 0.05 },
@@ -129,7 +129,7 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
       { label: "Accent", fallback: "#765738" },
     ],
     params: {
-      count: { label: "Count", default: 16, min: 8, max: 24, step: 1 },
+      count: { label: "Count", default: 20, min: 10, max: 30, step: 1 },
       depth: { label: "Distance", default: 14, min: 11, max: 24, step: 0.5 },
       tallest: { label: "Tallest", default: 8, min: 4, max: 12, step: 0.5 },
       drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },

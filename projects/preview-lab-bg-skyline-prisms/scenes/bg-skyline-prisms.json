@@ -7,7 +7,7 @@
     "colors": ["#36465f", "#765738"],
     "speed": 1,
     "params": {
-      "count": 16,
+      "count": 20,
       "depth": 14,
       "tallest": 8,
       "drift": 1
@@ -24,13 +24,29 @@
         "id": "k1",
         "tMs": 0,
         "pose": {
-          "target": [0, 0, 0],
-          "azimuthDeg": 14,
-          "elevationDeg": 16,
-          "distance": 6.5
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
         }
       }
     ],
-    "segments": []
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
   }
 }

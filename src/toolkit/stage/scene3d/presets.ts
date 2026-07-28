@@ -654,7 +654,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#95d7f9", "#6dc9db"],
       backing: "#e3f2fd",
       speed: 1,
-      params: { count: 7, spread: 3, depth: 13, size: 1, drift: 1 },
+      params: { count: 13, spread: 3, depth: 13, size: 1, drift: 1 },
     },
     {
       id: "p2",
@@ -664,7 +664,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#a9d3ff", "#9dbbff"],
       backing: "#e5f1ff",
       speed: 0.7,
-      params: { count: 5, spread: 2, depth: 15, size: 1.25, drift: 0.7 },
+      params: { count: 10, spread: 2, depth: 15, size: 1.25, drift: 0.7 },
     },
     {
       id: "p3",
@@ -674,7 +674,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#84ded6", "#65ceb4"],
       backing: "#dcf5f5",
       speed: 0.9,
-      params: { count: 9, spread: 3.5, depth: 12, size: 0.85, drift: 1.3 },
+      params: { count: 16, spread: 3.5, depth: 12, size: 0.85, drift: 1.3 },
     },
     {
       id: "p4",
@@ -684,7 +684,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#e4cd88", "#e3b471"],
       backing: "#f5f0dc",
       speed: 0.6,
-      params: { count: 6, spread: 2.5, depth: 16, size: 1.1, drift: 0.9 },
+      params: { count: 11, spread: 2.5, depth: 16, size: 1.1, drift: 0.9 },
     },
     {
       id: "p5",
@@ -694,7 +694,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#ffbec7", "#ffa0bd"],
       backing: "#ffebee",
       speed: 1.2,
-      params: { count: 8, spread: 3, depth: 13, size: 0.95, drift: 1.1 },
+      params: { count: 14, spread: 3, depth: 13, size: 0.95, drift: 1.1 },
     },
     {
       id: "p6",
@@ -704,7 +704,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#35465e", "#7b553a"],
       backing: "#0e1219",
       speed: 1,
-      params: { count: 7, spread: 3, depth: 13, size: 1, drift: 1 },
+      params: { count: 13, spread: 3, depth: 13, size: 1, drift: 1 },
     },
     {
       id: "p7",
@@ -714,7 +714,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#5c3e34", "#914652"],
       backing: "#18100d",
       speed: 0.7,
-      params: { count: 5, spread: 2, depth: 15, size: 1.3, drift: 0.7 },
+      params: { count: 10, spread: 2, depth: 15, size: 1.3, drift: 0.7 },
     },
     {
       id: "p8",
@@ -724,7 +724,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#2c4a50", "#2f665d"],
       backing: "#0b1316",
       speed: 0.9,
-      params: { count: 9, spread: 3.5, depth: 12, size: 0.85, drift: 1.2 },
+      params: { count: 16, spread: 3.5, depth: 12, size: 0.85, drift: 1.2 },
     },
     {
       id: "p9",
@@ -734,7 +734,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#523c69", "#894289"],
       backing: "#160f1b",
       speed: 0.6,
-      params: { count: 6, spread: 2.5, depth: 14, size: 1.1, drift: 0.9 },
+      params: { count: 11, spread: 2.5, depth: 14, size: 1.1, drift: 0.9 },
     },
   ],
   "orb-field": [
@@ -746,7 +746,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#90d9f1", "#68cad3"],
       backing: "#e2f3fb",
       speed: 1,
-      params: { count: 6, spread: 3, depth: 13, size: 1, drift: 1 },
+      params: { count: 12, spread: 3, depth: 13, size: 1, drift: 1 },
     },
     {
       id: "p2",
@@ -756,7 +756,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#e8cc8b", "#ebb075"],
       backing: "#f6f0dd",
       speed: 0.7,
-      params: { count: 4, spread: 2, depth: 15, size: 1.3, drift: 0.7 },
+      params: { count: 9, spread: 2, depth: 15, size: 1.3, drift: 0.7 },
     },
     {
       id: "p3",
@@ -766,7 +766,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#86e0c2", "#66cf9b"],
       backing: "#ddf5ef",
       speed: 0.9,
-      params: { count: 8, spread: 3.5, depth: 12, size: 0.8, drift: 1.3 },
+      params: { count: 15, spread: 3.5, depth: 12, size: 0.8, drift: 1.3 },
     },
     {
       id: "p4",
@@ -776,7 +776,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#a9d3ff", "#a6b9ff"],
       backing: "#e6f1ff",
       speed: 0.6,
-      params: { count: 5, spread: 2.5, depth: 16, size: 1.15, drift: 0.85 },
+      params: { count: 10, spread: 2.5, depth: 16, size: 1.15, drift: 0.85 },
     },
     {
       id: "p5",
@@ -786,7 +786,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#ffbcd1", "#ff9ecb"],
       backing: "#ffebf0",
       speed: 1.2,
-      params: { count: 7, spread: 3, depth: 13, size: 0.9, drift: 1.1 },
+      params: { count: 13, spread: 3, depth: 13, size: 0.9, drift: 1.1 },
     },
     {
       id: "p6",
@@ -796,7 +796,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#33475b", "#765738"],
       backing: "#0e1219",
       speed: 1,
-      params: { count: 6, spread: 3, depth: 13, size: 1, drift: 1 },
+      params: { count: 12, spread: 3, depth: 13, size: 1, drift: 1 },
     },
     {
       id: "p7",
@@ -806,7 +806,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#5b3f33", "#6e5b33"],
       backing: "#18100d",
       speed: 0.7,
-      params: { count: 4, spread: 2, depth: 15, size: 1.35, drift: 0.7 },
+      params: { count: 9, spread: 2, depth: 15, size: 1.35, drift: 0.7 },
     },
     {
       id: "p8",
@@ -816,7 +816,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#2b4a4d", "#306755"],
       backing: "#0b1315",
       speed: 0.9,
-      params: { count: 8, spread: 3.5, depth: 12, size: 0.8, drift: 1.25 },
+      params: { count: 15, spread: 3.5, depth: 12, size: 0.8, drift: 1.25 },
     },
     {
       id: "p9",
@@ -826,7 +826,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#4f3c6a", "#83458f"],
       backing: "#15101b",
       speed: 0.6,
-      params: { count: 5, spread: 2.5, depth: 14, size: 1.15, drift: 0.85 },
+      params: { count: 10, spread: 2.5, depth: 14, size: 1.15, drift: 0.85 },
     },
   ],
   "halo-rings": [
@@ -838,7 +838,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#eacb8c", "#ebb075"],
       backing: "#f6f0de",
       speed: 1,
-      params: { count: 3, spread: 3, depth: 13, size: 1, tube: 0.16, drift: 1 },
+      params: { count: 5, spread: 3, depth: 13, size: 1, tube: 0.16, drift: 1 },
     },
     {
       id: "p2",
@@ -848,7 +848,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#9cd5ff", "#71c7e4"],
       backing: "#e4f2fe",
       speed: 0.7,
-      params: { count: 2, spread: 2, depth: 15, size: 1.25, tube: 0.22, drift: 0.7 },
+      params: { count: 4, spread: 2, depth: 15, size: 1.25, tube: 0.22, drift: 0.7 },
     },
     {
       id: "p3",
@@ -858,7 +858,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#e1ce86", "#c3c060"],
       backing: "#f4f0dc",
       speed: 0.9,
-      params: { count: 4, spread: 3.5, depth: 12, size: 0.85, tube: 0.12, drift: 1.3 },
+      params: { count: 6, spread: 3.5, depth: 12, size: 0.85, tube: 0.12, drift: 1.3 },
     },
     {
       id: "p4",
@@ -868,7 +868,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#8cdbea", "#64cbcb"],
       backing: "#e0f3f9",
       speed: 0.6,
-      params: { count: 3, spread: 2.5, depth: 15, size: 1.1, tube: 0.18, drift: 0.9 },
+      params: { count: 5, spread: 2.5, depth: 15, size: 1.1, tube: 0.18, drift: 0.9 },
     },
     {
       id: "p5",
@@ -878,7 +878,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#b2d0ff", "#aab8ff"],
       backing: "#e8f0ff",
       speed: 1.2,
-      params: { count: 3, spread: 3, depth: 13, size: 0.95, tube: 0.14, drift: 1.1 },
+      params: { count: 5, spread: 3, depth: 13, size: 0.95, tube: 0.14, drift: 1.1 },
     },
     {
       id: "p6",
@@ -888,7 +888,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#35475e", "#785639"],
       backing: "#0e1219",
       speed: 1,
-      params: { count: 3, spread: 3, depth: 13, size: 1, tube: 0.16, drift: 1 },
+      params: { count: 5, spread: 3, depth: 13, size: 1, tube: 0.16, drift: 1 },
     },
     {
       id: "p7",
@@ -898,7 +898,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#5a3f32", "#6d5b33"],
       backing: "#17110d",
       speed: 0.7,
-      params: { count: 2, spread: 2, depth: 15, size: 1.3, tube: 0.24, drift: 0.7 },
+      params: { count: 4, spread: 2, depth: 15, size: 1.3, tube: 0.24, drift: 0.7 },
     },
     {
       id: "p8",
@@ -908,7 +908,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#603c36", "#765738"],
       backing: "#19100e",
       speed: 0.9,
-      params: { count: 4, spread: 3.5, depth: 12, size: 0.85, tube: 0.12, drift: 1.25 },
+      params: { count: 6, spread: 3.5, depth: 12, size: 0.85, tube: 0.12, drift: 1.25 },
     },
     {
       id: "p9",
@@ -918,7 +918,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#4e3d6b", "#814590"],
       backing: "#15101c",
       speed: 0.6,
-      params: { count: 3, spread: 2.5, depth: 14, size: 1.05, tube: 0.18, drift: 0.9 },
+      params: { count: 5, spread: 2.5, depth: 14, size: 1.05, tube: 0.18, drift: 0.9 },
     },
   ],
   "skyline-prisms": [
@@ -930,7 +930,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#9cd5ff", "#71c7e4"],
       backing: "#e4f2fe",
       speed: 1,
-      params: { count: 16, depth: 14, tallest: 8, drift: 1 },
+      params: { count: 20, depth: 14, tallest: 8, drift: 1 },
     },
     {
       id: "p2",
@@ -940,7 +940,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#b9cfff", "#83c1ff"],
       backing: "#eaf0ff",
       speed: 0.7,
-      params: { count: 20, depth: 16, tallest: 10, drift: 0.7 },
+      params: { count: 24, depth: 16, tallest: 10, drift: 0.7 },
     },
     {
       id: "p3",
@@ -950,7 +950,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#86e0c2", "#66cf9b"],
       backing: "#ddf5ef",
       speed: 0.9,
-      params: { count: 12, depth: 12, tallest: 6, drift: 1.3 },
+      params: { count: 16, depth: 12, tallest: 6, drift: 1.3 },
     },
     {
       id: "p4",
@@ -960,7 +960,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#87e2a5", "#67d179"],
       backing: "#ddf6e7",
       speed: 0.6,
-      params: { count: 18, depth: 15, tallest: 9, drift: 0.85 },
+      params: { count: 22, depth: 15, tallest: 9, drift: 0.85 },
     },
     {
       id: "p5",
@@ -970,7 +970,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#ffbfb7", "#ffa2a9"],
       backing: "#ffece8",
       speed: 1.2,
-      params: { count: 14, depth: 13, tallest: 7, drift: 1.1 },
+      params: { count: 18, depth: 13, tallest: 7, drift: 1.1 },
     },
     {
       id: "p6",
@@ -980,7 +980,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#36465f", "#765738"],
       backing: "#0e1219",
       speed: 1,
-      params: { count: 16, depth: 14, tallest: 8, drift: 1 },
+      params: { count: 20, depth: 14, tallest: 8, drift: 1 },
     },
     {
       id: "p7",
@@ -990,7 +990,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#304955", "#2f6662"],
       backing: "#0c1317",
       speed: 0.7,
-      params: { count: 12, depth: 12, tallest: 10, drift: 1.2 },
+      params: { count: 16, depth: 12, tallest: 10, drift: 1.2 },
     },
     {
       id: "p8",
@@ -1000,7 +1000,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#473f6e", "#774998"],
       backing: "#13101c",
       speed: 0.9,
-      params: { count: 20, depth: 16, tallest: 6, drift: 0.7 },
+      params: { count: 24, depth: 16, tallest: 6, drift: 0.7 },
     },
     {
       id: "p9",
@@ -1010,7 +1010,7 @@ export const SCENE3D_BACKGROUND_PRESETS: Record<string, Scene3dBackgroundPreset[
       colors: ["#294b46", "#306847"],
       backing: "#0a1413",
       speed: 0.6,
-      params: { count: 14, depth: 13, tallest: 9, drift: 0.9 },
+      params: { count: 18, depth: 13, tallest: 9, drift: 0.9 },
     },
   ],
 };
