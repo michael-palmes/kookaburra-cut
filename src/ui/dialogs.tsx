@@ -3,23 +3,25 @@ import { PROJECT_TEMPLATES, slugifyName } from "../engine/workspace";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "./ThemePicker";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** First-run workspace chooser: Continue picks ~/Kookaburra Cut, or a custom parent via the native folder picker. Blocks the editor until a workspace exists, since everything project-shaped depends on it. (Default moved out of ~/Documents 2026-07-05: macOS TCC guards Documents and kept breaking headless gates and terminal-driven workflows.) */
-export function FirstRunDialog({
-  onContinue,
+/** Setup-failure escape hatch, never seen on a healthy first run: the workspace is created silently at ~/Kookaburra Cut and only ever moved from Settings. This appears when that creation failed (unwritable home folder, full disk), so a blocked default is recoverable without a reinstall. (Default moved out of ~/Documents 2026-07-05: macOS TCC guards Documents and kept breaking headless gates and terminal-driven workflows.) */
+export function SetupFailedDialog({
+  error,
+  onRetry,
   onChoose,
 }: {
-  onContinue: () => Promise<void>;
+  error: string;
+  onRetry: () => Promise<void>;
   onChoose: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
   const run = (action: () => Promise<void>) => async () => {
     setBusy(true);
-    setError(null);
+    setRetryError(null);
     try {
       await action();
     } catch (e) {
-      setError(String(e));
+      setRetryError(String(e));
       setBusy(false);
     }
   };
@@ -31,18 +33,18 @@ export function FirstRunDialog({
       aria-label="Set up Kookaburra Cut"
     >
       <div className="modal">
-        <h2>Where should Kookaburra Cut keep your projects?</h2>
+        <h2>Kookaburra Cut could not set up your projects folder</h2>
         <p className="muted">
-          Kookaburra Cut creates a <code>Kookaburra Cut</code> folder for your video projects. The
-          default is your home folder — you can pick somewhere else.
+          It tried to create a <code>Kookaburra Cut</code> folder in your home folder. Try again, or
+          pick somewhere else to keep your projects.
         </p>
-        {error && <p className="modal-error">{error}</p>}
+        <p className="modal-error">{retryError ?? error}</p>
         <div className="modal-actions">
           <button type="button" className="btn" onClick={run(onChoose)} disabled={busy}>
             Choose folder…
           </button>
-          <button type="button" className="btn primary" onClick={run(onContinue)} disabled={busy}>
-            Continue
+          <button type="button" className="btn primary" onClick={run(onRetry)} disabled={busy}>
+            Try again
           </button>
         </div>
       </div>

@@ -96,7 +96,7 @@ The full contract and its failure catalogue are in
 
 | Decision | Choice | Why |
 | --- | --- | --- |
-| Workspace | `~/Kookaburra Cut`, chosen at first run; projects are self-contained folders (scenes, assets, per-project `exports/`, own git repo) | Sharing or deleting a project carries everything with it; home-folder root avoids macOS privacy prompts on headless runs |
+| Workspace | `~/Kookaburra Cut`, created silently at first run (2026-07-28: no chooser, Settings moves it); projects are self-contained folders (scenes, assets, per-project `exports/`, own git repo) | Sharing or deleting a project carries everything with it; home-folder root avoids macOS privacy prompts on headless runs, and asking on launch put people in TCC-guarded folders they had to be talked back out of |
 | Project trust | Every new project is `git init`-ed with an initial commit | Agent tooling persists trust for git repos; free checkpointing |
 | Embedded terminal | xterm.js (DOM renderer) over a native PTY (portable-pty; raw byte channel with flow control; login shell; environment scrubbed so the session presents as plain standalone) | GUI apps inherit a bare PATH; the event system is unsuited to PTY throughput |
 | Prompt insertion | Helper wizards paste composed prompts via bracketed paste and never auto-submit | The user reads, tweaks, and presses Enter |

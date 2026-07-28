@@ -1,5 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
   type CacheStats,
@@ -15,16 +16,20 @@ import {
 import { revealApp } from "../engine/reveal";
 import { formatUpdateStatus, useUpdateCheck } from "../engine/updates";
 import {
+  defaultWorkspaceRoot,
   getSettings,
   type LagWarningMode,
+  moveWorkspace,
   setExportToDownloadsSetting,
   setHardwareVideoSetting,
   setLagWarningSetting,
+  shortenPath,
+  userHomeDir,
 } from "../engine/workspace";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { PublisherPane } from "./PublisherPane";
 
-/** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the opt-in update lane (toggle + Check now), and read-only info (workspace path, sidecar versions, app version). */
+/** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
   // Fade the UI in on first commit (anti-flash reveal).
@@ -35,8 +40,10 @@ export function SettingsApp() {
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [versions, setVersions] = useState<SidecarVersions | null>(null);
   const [workspace, setWorkspace] = useState<string | null>(null);
+  const [defaultRoot, setDefaultRoot] = useState<string | null>(null);
+  const [home, setHome] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
-  const [busy, setBusy] = useState<"media" | "clips" | null>(null);
+  const [busy, setBusy] = useState<"media" | "clips" | "workspace" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hwEnabled, setHwEnabled] = useState<boolean | null>(null);
   const [hwSupport, setHwSupport] = useState<HardwareVideoSupport | null>(null);
@@ -62,6 +69,12 @@ export function SettingsApp() {
         setDownloadsExport(!s.keepExportsInProject);
       })
       .catch(() => setWorkspace(null));
+    defaultWorkspaceRoot()
+      .then(setDefaultRoot)
+      .catch(() => setDefaultRoot(null));
+    userHomeDir()
+      .then(setHome)
+      .catch(() => setHome(null));
     hardwareVideoSupport()
       .then(setHwSupport)
       .catch(() => setHwSupport(null));
@@ -108,11 +121,82 @@ export function SettingsApp() {
     [refreshStats],
   );
 
+  // A move can take a while on a big workspace across volumes, so the whole row goes busy rather than one button.
+  const relocate = useCallback((parent: string | null) => {
+    setBusy("workspace");
+    setError(null);
+    moveWorkspace(parent)
+      .then(setWorkspace)
+      .catch((e) => setError(String(e)))
+      .finally(() => setBusy(null));
+  }, []);
+
+  const chooseLocation = useCallback(async () => {
+    try {
+      const picked = await openFolderPicker({
+        directory: true,
+        multiple: false,
+        title: "Choose where Kookaburra Cut keeps your projects",
+      });
+      if (typeof picked === "string") relocate(picked);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [relocate]);
+
   // Manual checks only in this window; the launch check belongs to the main window.
   const updates = useUpdateCheck({ autoCheck: false });
 
   return (
     <div className="settings-window">
+      <section className="settings-section">
+        <h2>Workspace</h2>
+        <div className="settings-row stacked">
+          <div className="settings-row-text">
+            <span className="settings-row-title">Location</span>
+            <span className="muted settings-row-detail settings-path" title={workspace ?? ""}>
+              {busy === "workspace"
+                ? "Moving your projects…"
+                : workspace
+                  ? shortenPath(workspace, home)
+                  : "not set up yet"}
+            </span>
+          </div>
+          <div className="settings-row-actions">
+            {workspace && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy !== null}
+                onClick={() => void invoke("reveal_in_finder", { path: workspace })}
+              >
+                Show in Finder
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn"
+              disabled={busy !== null || !workspace}
+              onClick={() => void chooseLocation()}
+              title="Moves your projects, themes and fonts to the folder you pick"
+            >
+              Change location…
+            </button>
+            {workspace && defaultRoot && workspace !== defaultRoot && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy !== null}
+                onClick={() => relocate(null)}
+                title={`Moves everything back to ${shortenPath(defaultRoot, home)}`}
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="settings-section">
         <h2>Storage</h2>
         <div className="settings-row">
@@ -257,23 +341,6 @@ export function SettingsApp() {
 
       <section className="settings-section">
         <h2>About</h2>
-        <div className="settings-row">
-          <div className="settings-row-text">
-            <span className="settings-row-title">Workspace</span>
-            <span className="muted settings-row-detail settings-path" title={workspace ?? ""}>
-              {workspace ?? "not set up yet"}
-            </span>
-          </div>
-          {workspace && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void invoke("reveal_in_finder", { path: workspace })}
-            >
-              Show in Finder
-            </button>
-          )}
-        </div>
         <div className="settings-row">
           <div className="settings-row-text">
             <span className="settings-row-title">ffmpeg</span>

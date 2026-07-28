@@ -2810,6 +2810,24 @@ body {
   text-overflow: ellipsis;
 }
 
+/* A row whose actions outgrow one line: the detail takes the full width and the buttons band below it. */
+.settings-row.stacked {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+.settings-row.stacked .settings-path {
+  max-width: none;
+}
+
+.settings-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .settings-error {
   margin: 0;
   color: var(--danger);
