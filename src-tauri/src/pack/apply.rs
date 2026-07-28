@@ -8,7 +8,7 @@
 use super::conflicts::{keep_both_slug, local_name, workspace_target};
 use super::deps::item_key;
 use super::error::PackError;
-use super::fonts::apply_font_merge;
+use super::fonts::{apply_font_merge, FontApplySummary};
 use super::hash::sha256_bytes;
 use super::limits::{BACKUP_DIR, PAYLOAD_PREFIX};
 use super::model::{ItemKind, PackFont, PackManifest, Resolution};
@@ -451,50 +451,22 @@ fn apply_fonts(
         }
     }
 
-    let summary = match apply_font_merge(&fonts_dir, staging, fonts, &choices) {
-        Ok(summary) => summary,
-        Err(error) => {
-            let message = error.user_message();
-            let results = fonts
-                .iter()
-                .map(|font| ItemResult {
-                    kind: ItemKind::Font,
-                    slug: font.key(),
-                    name: font_name(font),
-                    outcome: ItemOutcome::Failed,
-                    detail: Some(message.clone()),
-                })
-                .collect();
-            return (results, Vec::new(), backed_up, Some("the fonts".into()));
-        }
-    };
+    let summary = apply_font_merge(&fonts_dir, staging, fonts, &choices);
 
     let mut results = Vec::with_capacity(fonts.len());
     let mut notes = Vec::new();
+    let mut stopped = None;
     for font in fonts {
         let key = font.key();
         tick(&font.family);
-        let (outcome, detail) = if summary.written.contains(&key) {
-            let existed = before
-                .fonts
-                .iter()
-                .any(|p| p.family == font.family && p.weight == font.weight);
-            (
-                if existed {
-                    ItemOutcome::Replaced
-                } else {
-                    ItemOutcome::Added
-                },
-                None,
-            )
-        } else if summary.referenced.contains(&key) {
-            notes.push(format!(
-                "{} was not included. Install it to see this project as intended.",
-                font.family
-            ));
-            (ItemOutcome::Skipped, Some("name only".into()))
+        let blamed = summary.failed.as_ref().filter(|(k, _)| k == &key);
+        let (outcome, detail) = if let Some((_, message)) = blamed {
+            stopped = Some(format!("{} ({})", font_name(font), label(ItemKind::Font)));
+            (ItemOutcome::Failed, Some(message.clone()))
+        } else if summary.not_attempted.contains(&key) {
+            (ItemOutcome::Skipped, Some("Not attempted".into()))
         } else {
-            (ItemOutcome::Skipped, None)
+            written_or_skipped(font, &key, &summary, &before, &mut notes)
         };
         results.push(ItemResult {
             kind: ItemKind::Font,
@@ -504,7 +476,51 @@ fn apply_fonts(
             detail,
         });
     }
-    (results, notes, backed_up, None)
+
+    // The index would not rewrite, so the bytes that landed are unreachable: report them as the failure they are.
+    if let Some(message) = &summary.index_error {
+        for result in &mut results {
+            if summary.written.contains(&result.slug) {
+                result.outcome = ItemOutcome::Failed;
+                result.detail = Some(message.clone());
+            }
+        }
+        notes.clear();
+        stopped = Some("the font list".into());
+    }
+    (results, notes, backed_up, stopped)
+}
+
+/// The ordinary outcomes: what landed, what travelled as a name only, and what was never selected.
+fn written_or_skipped(
+    font: &PackFont,
+    key: &str,
+    summary: &FontApplySummary,
+    before: &crate::fonts::FontsManifest,
+    notes: &mut Vec<String>,
+) -> (ItemOutcome, Option<String>) {
+    if summary.written.iter().any(|w| w == key) {
+        let existed = before
+            .fonts
+            .iter()
+            .any(|p| p.family == font.family && p.weight == font.weight);
+        return (
+            if existed {
+                ItemOutcome::Replaced
+            } else {
+                ItemOutcome::Added
+            },
+            None,
+        );
+    }
+    if summary.referenced.iter().any(|r| r == key) {
+        notes.push(format!(
+            "{} was not included. Install it to see this project as intended.",
+            font.family
+        ));
+        return (ItemOutcome::Skipped, Some("name only".into()));
+    }
+    (ItemOutcome::Skipped, None)
 }
 
 fn font_name(font: &PackFont) -> String {
@@ -894,6 +910,86 @@ mod tests {
         assert!(font_at < project_at);
         assert_eq!(read(&fonts_dir.join("AcmeSans-Bold.ttf")), "the real bold");
         assert!(root.join("acme-promo/project.json").is_file());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// One font failing used to mark every font in the pack Failed with the same message, which is what a bug report
+    /// of "3 fonts failed" from a pack carrying one real problem looks like.
+    #[test]
+    fn only_the_font_that_failed_is_reported_as_failed() {
+        let root = scratch("blame-root");
+        let staging = scratch("blame-staging");
+        std::fs::create_dir_all(root.join("fonts")).unwrap();
+        // A directory where the second font's write wants its temp file.
+        std::fs::create_dir_all(root.join("fonts/AcmeBravo-400.part")).unwrap();
+
+        let fonts: Vec<PackFont> = ["Acme Alpha", "Acme Bravo", "Acme Delta"]
+            .iter()
+            .map(|family| {
+                let rel = format!("payload/fonts/{}-400.ttf", family.replace(' ', ""));
+                write(&staging.join(&rel), "bytes");
+                PackFont {
+                    base: PackItemBase {
+                        slug: format!("{family}@400"),
+                        name: (*family).into(),
+                        bytes: 5,
+                        modified_at: FUTURE.into(),
+                        content_hash: sha256_bytes(b"bytes"),
+                    },
+                    family: (*family).into(),
+                    weight: 400,
+                    postscript: format!("{}-400", family.replace(' ', "")),
+                    file: Some(rel),
+                    sha256: Some(sha256_bytes(b"bytes")),
+                    instanced: None,
+                    embedding: crate::pack::model::FontEmbedding::Installable,
+                    reference_only: None,
+                }
+            })
+            .collect();
+
+        let contents = PackContents {
+            fonts,
+            ..Default::default()
+        };
+        let outcome = apply_import(
+            &root,
+            staged_pack(staging.clone(), contents),
+            &resolutions(&[
+                (ItemKind::Font, "Acme Alpha@400", Resolution::Replace),
+                (ItemKind::Font, "Acme Bravo@400", Resolution::Replace),
+                (ItemKind::Font, "Acme Delta@400", Resolution::Replace),
+            ]),
+            |_, _, _| {},
+        )
+        .unwrap();
+
+        let by_slug = |slug: &str| {
+            outcome
+                .results
+                .iter()
+                .find(|r| r.slug == slug)
+                .unwrap_or_else(|| panic!("no result for {slug}"))
+                .clone()
+        };
+        assert_eq!(by_slug("Acme Alpha@400").outcome, ItemOutcome::Added);
+        let failed = by_slug("Acme Bravo@400");
+        assert_eq!(failed.outcome, ItemOutcome::Failed);
+        assert!(
+            failed
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .starts_with("Could not write into your workspace"),
+            "{:?}",
+            failed.detail
+        );
+        let queued = by_slug("Acme Delta@400");
+        assert_eq!(queued.outcome, ItemOutcome::Skipped);
+        assert_eq!(queued.detail.as_deref(), Some("Not attempted"));
+        // The stop names the font, the way the project loop names the project.
+        assert_eq!(outcome.stopped_at.as_deref(), Some("Acme Bravo 400 (font)"));
 
         let _ = std::fs::remove_dir_all(&root);
     }
