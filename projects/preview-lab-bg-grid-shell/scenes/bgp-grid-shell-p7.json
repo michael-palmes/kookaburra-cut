@@ -5,14 +5,14 @@
     "type": "scene3d",
     "look": "grid-shell",
     "colors": ["#994a57"],
-    "speed": 0.35,
+    "speed": 0.7,
     "params": {
-      "radius": 20,
-      "latCount": 19,
-      "lonCount": 28,
+      "radius": 16,
+      "latCount": 14,
+      "lonCount": 40,
       "horizonBias": 0.4,
       "drift": 1.2,
-      "opacity": 1
+      "opacity": 0.8
     },
     "backing": {
       "type": "color",

@@ -108,7 +108,8 @@ export function ContourField({ colors, params, speed }: Scene3dLookProps) {
   }, [levels, hilliness, scale, clearRadius, fadeRadius, lineHex]);
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
 
-  const t = (localMs / 1000) * speed;
+  // Pace baked so speed 1 is the tuned house default.
+  const t = (localMs / 1000) * speed * 2.75;
   const drift = params.drift;
   // Contours have no lattice period, so the drift is a bounded oscillation (no wrap, no snap on long holds).
   const offX = 4 * Math.sin(t * 0.05 * drift);
