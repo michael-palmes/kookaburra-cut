@@ -36,7 +36,7 @@ void main() {
   // The wave travels along dir; a hashed per-cell jitter keeps the front organic.
   float jitter = 0.35 * hash01(uvec3(cid, 7u));
   float wave =
-    0.5 + 0.5 * sin(TWO_PI * (dot(centre, dir) / max(u_waveWidth, 1e-3) + jitter) - u_time);
+    0.5 + 0.5 * sin(TWO_PI * (dot(centre, dir) / max(u_waveWidth, 1e-3) + jitter) - 3.0 * u_time);
 
   float radius = 0.5 * u_dotSize * mix(1.0 - 0.45 * u_pulse, 1.0 + 0.25 * u_pulse, wave);
   float d = length(f);
@@ -59,11 +59,11 @@ export const dotGrid: ShaderBackgroundDef = {
     { label: "Accent", fallback: "#416198" },
   ],
   params: {
-    density: { label: "Density", default: 14, min: 4, max: 40, step: 1 },
-    dotSize: { label: "Dot size", default: 0.35, min: 0.05, max: 0.9, step: 0.01 },
-    pulse: { label: "Pulse", default: 0.5, min: 0, max: 1, step: 0.01 },
-    waveWidth: { label: "Wave width", default: 0.6, min: 0.1, max: 1.5, step: 0.01 },
-    driftAngle: { label: "Drift angle", default: 30, min: 0, max: 360, step: 1 },
+    density: { label: "Density", default: 50, min: 8, max: 80, step: 1 },
+    dotSize: { label: "Dot size", default: 0.19, min: 0.05, max: 0.9, step: 0.01 },
+    pulse: { label: "Pulse", default: 0.45, min: 0, max: 1, step: 0.01 },
+    waveWidth: { label: "Wave width", default: 0.5, min: 0.1, max: 1.5, step: 0.01 },
+    driftAngle: { label: "Drift angle", default: 70, min: 0, max: 360, step: 1 },
   },
   uniforms(colors, params): Record<string, IUniform> {
     return {

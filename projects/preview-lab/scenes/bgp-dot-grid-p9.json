@@ -5,12 +5,12 @@
     "type": "shader",
     "shader": "dot-grid",
     "colors": ["#19130e", "#513b28", "#855738"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
-      "density": 17,
-      "dotSize": 0.28,
+      "density": 58,
+      "dotSize": 0.16,
       "pulse": 0.55,
-      "waveWidth": 0.8,
+      "waveWidth": 0.65,
       "driftAngle": 15
     },
     "preset": "p9"

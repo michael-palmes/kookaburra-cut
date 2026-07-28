@@ -5,10 +5,10 @@
     "type": "shader",
     "shader": "dot-grid",
     "colors": ["#ddf6d8", "#aad897", "#8cbf68"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
-      "density": 16,
-      "dotSize": 0.3,
+      "density": 56,
+      "dotSize": 0.17,
       "pulse": 0.5,
       "waveWidth": 0.35,
       "driftAngle": 60
