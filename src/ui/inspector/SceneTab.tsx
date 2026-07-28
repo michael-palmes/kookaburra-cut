@@ -3610,6 +3610,31 @@ export function SceneTab({
         },
         { history },
       );
+    const clearAllText = () => {
+      // Drop pending live edits first so a focused field can't write itself back.
+      if (textEditTimer.current !== null) {
+        window.clearTimeout(textEditTimer.current);
+        textEditTimer.current = null;
+      }
+      textEditBaseline.current = null;
+      setTextValues({});
+      if (iconEditTimer.current !== null) {
+        window.clearTimeout(iconEditTimer.current);
+        iconEditTimer.current = null;
+      }
+      iconEditBaseline.current = null;
+      setIconDraft(null);
+      // Blank every key the doc holds or the scene consumes, never delete: an absent key
+      // resurfaces the TSX fallback in the preview.
+      const keys = new Set([...baseKeys, ...textKeys, ...consumed]);
+      void patchDoc(
+        (next) => {
+          next.text = Object.fromEntries([...keys].map((k) => [k, ""]));
+          writeHeaderIcon(next, undefined);
+        },
+        { history: "clear text" },
+      );
+    };
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -3619,7 +3644,32 @@ export function SceneTab({
             closeDrill();
           }}
         />
-        <div className="inspector-drill-title">Text</div>
+        <div className="inspector-drill-title">
+          Text
+          <button
+            type="button"
+            className="inspector-reset-btn inspector-clear-text"
+            title="Blank every text field on this scene (undoable)"
+            onClick={clearAllText}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8.5 16.5H4.8L3 14.7a1.5 1.5 0 010-2.1l8.1-8.1a1.5 1.5 0 012.1 0l3.4 3.4a1.5 1.5 0 010 2.1l-6.6 6.5z" />
+              <path d="M7.3 7.6l5.6 5.6" />
+              <path d="M11 16.5h6" />
+            </svg>
+            Clear text
+          </button>
+        </div>
         <div className="inspector-drill-body">
           <div className="wizard-field">
             <span className="wizard-label">Alignment</span>
