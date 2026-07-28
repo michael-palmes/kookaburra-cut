@@ -47,7 +47,8 @@ export function PointSwell({ colors, params, speed }: Scene3dLookProps) {
   }, [pointHex, crestHex]);
 
   useLayoutEffect(() => {
-    const t = (localMs / 1000) * speed;
+    // Pace baked so speed 1 is the tuned house default.
+    const t = (localMs / 1000) * speed * 2;
     const k = (Math.PI * 2) / params.wavelength;
     const phase = t * 0.6 * params.drift;
     const amp = params.amplitude;

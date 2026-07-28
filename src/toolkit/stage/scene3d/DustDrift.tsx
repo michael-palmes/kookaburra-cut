@@ -53,7 +53,8 @@ export function DustDrift({ colors, params, speed }: Scene3dLookProps) {
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
 
   useLayoutEffect(() => {
-    const t = (localMs / 1000) * speed;
+    // Pace baked so speed 1 is the tuned house default.
+    const t = (localMs / 1000) * speed * 2;
     const twinkle = params.twinkle;
     const col = rgba.array as Float32Array;
     for (let i = 0; i < motes.length; i++) {
@@ -65,7 +66,7 @@ export function DustDrift({ colors, params, speed }: Scene3dLookProps) {
     rgba.needsUpdate = true;
   }, [localMs, speed, rgba, motes, params.twinkle]);
 
-  const spin = ((localMs / 1000) * speed * 0.012 * params.drift) % (Math.PI * 2);
+  const spin = ((localMs / 1000) * speed * 2 * 0.012 * params.drift) % (Math.PI * 2);
   return (
     <group rotation={[0, spin, 0]} userData={{ kookaburraBg3d: true }}>
       <points ref={pointsRef} geometry={geometry} frustumCulled={false}>

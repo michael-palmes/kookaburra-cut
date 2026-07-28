@@ -4,8 +4,8 @@
   "background": {
     "type": "scene3d",
     "look": "point-swell",
-    "colors": ["#d4ba69", "#d6a55f"],
-    "speed": 0.3,
+    "colors": ["#b0974d", "#bf8e4a"],
+    "speed": 0.6,
     "params": {
       "spacing": 1,
       "amplitude": 0.5,

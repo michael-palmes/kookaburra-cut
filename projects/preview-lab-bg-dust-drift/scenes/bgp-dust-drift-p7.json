@@ -5,7 +5,7 @@
     "type": "scene3d",
     "look": "dust-drift",
     "colors": ["#3e6876", "#2c6c67"],
-    "speed": 0.35,
+    "speed": 0.7,
     "params": {
       "count": 1300,
       "innerRadius": 9,

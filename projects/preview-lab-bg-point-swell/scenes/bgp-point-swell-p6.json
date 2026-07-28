@@ -5,7 +5,7 @@
     "type": "scene3d",
     "look": "point-swell",
     "colors": ["#42607e", "#855838"],
-    "speed": 0.4,
+    "speed": 1,
     "params": {
       "spacing": 0.9,
       "amplitude": 0.45,

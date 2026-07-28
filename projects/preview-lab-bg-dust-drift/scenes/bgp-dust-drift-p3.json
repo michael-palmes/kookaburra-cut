@@ -4,8 +4,8 @@
   "background": {
     "type": "scene3d",
     "look": "dust-drift",
-    "colors": ["#66cf9b", "#56c27a"],
-    "speed": 0.45,
+    "colors": ["#4bab7b", "#42aa65"],
+    "speed": 0.9,
     "params": {
       "count": 1200,
       "innerRadius": 9,
