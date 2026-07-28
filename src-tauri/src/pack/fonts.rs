@@ -255,20 +255,32 @@ pub struct FontApplySummary {
     pub skipped: Vec<String>,
     /// Keys that travelled as a name only; the recipient needs the face installed.
     pub referenced: Vec<String>,
+    /// The one font whose bytes would not land, and why. Everything queued behind it is `not_attempted`.
+    pub failed: Option<(String, String)>,
+    /// Never tried, because `failed` stopped the phase. Reported as skipped, never as broken.
+    pub not_attempted: Vec<String>,
+    /// `fonts.json` would not rewrite, so nothing in `written` is reachable and the phase is a failure whole.
+    pub index_error: Option<String>,
 }
 
 /// Write the accepted fonts into the workspace and rewrite `fonts.json` whole. Anything not explicitly resolved is skipped.
+///
+/// Never `Err`: one font refusing to land says nothing about the others, and the caller reports each on its own terms.
 pub fn apply_font_merge(
     fonts_dir: &Path,
     staged_root: &Path,
     staged: &[PackFont],
     resolutions: &HashMap<String, Resolution>,
-) -> Result<FontApplySummary, PackError> {
+) -> FontApplySummary {
     let mut manifest = crate::fonts::load_manifest(fonts_dir);
     let mut summary = FontApplySummary::default();
 
     for font in staged {
         let key = font.key();
+        if summary.failed.is_some() {
+            summary.not_attempted.push(key);
+            continue;
+        }
         if font.is_reference_only() {
             summary.referenced.push(key);
             continue;
@@ -285,7 +297,10 @@ pub fn apply_font_merge(
         }
 
         let name = target_file_name(fonts_dir, &manifest, font);
-        write_font_file(&source, &fonts_dir.join(&name))?;
+        if let Err(error) = write_font_file(&source, &fonts_dir.join(&name)) {
+            summary.failed = Some((key, error.user_message()));
+            continue;
+        }
         manifest
             .fonts
             .retain(|f| !(f.family == font.family && f.weight == font.weight));
@@ -307,11 +322,14 @@ pub fn apply_font_merge(
         summary.written.push(key);
     }
 
-    // An all-skip import must not rewrite the recipient's index at all.
+    // An all-skip import must not rewrite the recipient's index at all. Whatever DID land is still recorded, even
+    // when a later font failed: bytes on disk that `fonts.json` does not list are unreachable and invisible.
     if !summary.written.is_empty() {
-        crate::fonts::save_manifest(fonts_dir, &manifest).map_err(PackError::Io)?;
+        if let Err(error) = crate::fonts::save_manifest(fonts_dir, &manifest) {
+            summary.index_error = Some(PackError::Write(error).user_message());
+        }
     }
-    Ok(summary)
+    summary
 }
 
 /// The incumbent file name for this key, else the postscript name, suffixed while another key already owns it.
@@ -351,12 +369,13 @@ fn target_file_name(
 /// The folder is created here rather than up front: only a workspace that has pinned a font has one, and an all-skip
 /// import must leave a workspace that has not exactly as it found it.
 fn write_font_file(source: &Path, target: &Path) -> Result<(), PackError> {
+    let write_err = |e: std::io::Error| PackError::Write(e.to_string());
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::create_dir_all(parent).map_err(write_err)?;
     }
     let tmp = target.with_extension("part");
-    std::fs::copy(source, &tmp)?;
-    std::fs::rename(&tmp, target)?;
+    std::fs::copy(source, &tmp).map_err(write_err)?;
+    std::fs::rename(&tmp, target).map_err(write_err)?;
     Ok(())
 }
 
@@ -608,7 +627,7 @@ mod tests {
         assert!(plan[0].reference_only);
 
         let all_in = HashMap::from([(font.key(), Resolution::Replace)]);
-        let summary = apply_font_merge(&workspace, &staged, &[font], &all_in).unwrap();
+        let summary = apply_font_merge(&workspace, &staged, &[font], &all_in);
         assert_eq!(summary.referenced, vec!["Acme Sans@700"]);
         assert!(summary.written.is_empty());
         assert!(crate::fonts::load_manifest(&workspace).fonts.is_empty());
@@ -632,8 +651,7 @@ mod tests {
             (fresh.key(), Resolution::Replace),
             (refused.key(), Resolution::Skip),
         ]);
-        let summary =
-            apply_font_merge(&workspace, &staged, &[replaced, fresh, refused], &choices).unwrap();
+        let summary = apply_font_merge(&workspace, &staged, &[replaced, fresh, refused], &choices);
         assert_eq!(summary.written, vec!["Acme Sans@400", "Acme Display@500"]);
         assert_eq!(summary.skipped, vec!["Acme Mono@400"]);
 
@@ -662,7 +680,7 @@ mod tests {
 
         let incoming = stage_font(&staged, "Messina Modern", 400, "the pinned bytes");
         let choices = HashMap::from([(incoming.key(), Resolution::Replace)]);
-        let summary = apply_font_merge(&workspace, &staged, &[incoming], &choices).unwrap();
+        let summary = apply_font_merge(&workspace, &staged, &[incoming], &choices);
 
         assert_eq!(summary.written, vec!["Messina Modern@400"]);
         assert_eq!(
@@ -684,7 +702,7 @@ mod tests {
 
         let incoming = stage_font(&staged, "Acme Sans", 700, "the real bold");
         let choices = HashMap::from([(incoming.key(), Resolution::Replace)]);
-        apply_font_merge(&workspace, &staged, &[incoming], &choices).unwrap();
+        apply_font_merge(&workspace, &staged, &[incoming], &choices);
 
         let after = crate::fonts::load_manifest(&workspace);
         let bold = after.fonts.iter().find(|f| f.weight == 700).unwrap();
@@ -693,6 +711,47 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(workspace.join("AcmeSans-700.ttf")).unwrap(),
             "bytes-of-AcmeSans-700.ttf"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace);
+        let _ = std::fs::remove_dir_all(&staged);
+    }
+
+    /// One font refusing to land says nothing about the others: they are queued, not broken.
+    #[test]
+    fn a_font_that_cannot_be_written_does_not_condemn_the_rest() {
+        let workspace = temp_dir("one-bad-ws");
+        let staged = temp_dir("one-bad-staged");
+
+        let good = stage_font(&staged, "Acme Alpha", 400, "first bytes");
+        let bad = stage_font(&staged, "Acme Bravo", 400, "second bytes");
+        let queued = stage_font(&staged, "Acme Delta", 400, "third bytes");
+        // A directory where the write wants its temp file, so this one font cannot land.
+        std::fs::create_dir_all(workspace.join("AcmeBravo-400.part")).unwrap();
+
+        let choices = HashMap::from([
+            (good.key(), Resolution::Replace),
+            (bad.key(), Resolution::Replace),
+            (queued.key(), Resolution::Replace),
+        ]);
+        let summary = apply_font_merge(&workspace, &staged, &[good, bad, queued], &choices);
+
+        assert_eq!(summary.written, vec!["Acme Alpha@400"]);
+        let (key, message) = summary.failed.expect("the blocked font");
+        assert_eq!(key, "Acme Bravo@400");
+        assert!(
+            message.starts_with("Could not write into your workspace"),
+            "{message}"
+        );
+        assert_eq!(summary.not_attempted, vec!["Acme Delta@400"]);
+
+        // What did land is still indexed: bytes fonts.json does not list are unreachable.
+        let after = crate::fonts::load_manifest(&workspace);
+        assert_eq!(after.fonts.len(), 1);
+        assert_eq!(after.fonts[0].family, "Acme Alpha");
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("AcmeAlpha-400.ttf")).unwrap(),
+            "first bytes"
         );
 
         let _ = std::fs::remove_dir_all(&workspace);
@@ -712,9 +771,9 @@ mod tests {
 
         let incoming = stage_font(&staged, "Acme Display", 500, "brand new bytes");
         let choices = HashMap::from([(incoming.key(), Resolution::Replace)]);
-        let result = apply_font_merge(&workspace, &staged, &[incoming], &choices);
+        let summary = apply_font_merge(&workspace, &staged, &[incoming], &choices);
 
-        assert!(result.is_err());
+        assert!(summary.index_error.is_some());
         assert_eq!(
             std::fs::read_to_string(workspace.join("fonts.json")).unwrap(),
             before

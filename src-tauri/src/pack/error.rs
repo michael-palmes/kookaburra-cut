@@ -7,6 +7,7 @@ use std::fmt;
 #[serde(rename_all = "camelCase", tag = "kind", content = "detail")]
 pub enum PackError {
     Io(String),
+    Write(String),
     NotAPack(String),
     ManifestMissing,
     ManifestTooLarge { bytes: u64 },
@@ -43,6 +44,7 @@ impl PackError {
     pub fn user_message(&self) -> String {
         match self {
             Self::Io(e) => format!("Could not read the pack: {e}"),
+            Self::Write(e) => format!("Could not write into your workspace: {e}"),
             Self::NotAPack(p) => format!("{p} is not a Kookaburra Pack."),
             Self::ManifestMissing => {
                 "This pack has no manifest, so there is nothing to verify it against.".into()
@@ -111,6 +113,7 @@ impl PackError {
     pub fn variant(&self) -> &'static str {
         match self {
             Self::Io(_) => "io",
+            Self::Write(_) => "write",
             Self::NotAPack(_) => "notAPack",
             Self::ManifestMissing => "manifestMissing",
             Self::ManifestTooLarge { .. } => "manifestTooLarge",
