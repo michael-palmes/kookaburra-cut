@@ -458,6 +458,17 @@ pub fn default_workspace_root(app: AppHandle) -> Result<String, String> {
     Ok(default_root(&app)?.to_string_lossy().into_owned())
 }
 
+/// So the UI can show `~/Desktop/Vids` where a full path would not fit; the tooltip still carries the real one.
+#[tauri::command]
+pub fn user_home_dir(app: AppHandle) -> Result<String, String> {
+    Ok(app
+        .path()
+        .home_dir()
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .into_owned())
+}
+
 /// A path with every symlink it can resolve resolved, so `/tmp` and `/private/tmp` compare equal. Falls back to the
 /// nearest existing ancestor, since a move destination does not exist yet and `canonicalize` refuses those outright.
 fn resolved(path: &Path) -> PathBuf {

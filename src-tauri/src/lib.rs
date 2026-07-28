@@ -1188,6 +1188,7 @@ pub fn run() {
             workspace::get_settings,
             workspace::init_workspace,
             workspace::default_workspace_root,
+            workspace::user_home_dir,
             workspace::move_workspace,
             workspace::list_projects,
             workspace::create_project,

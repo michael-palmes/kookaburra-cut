@@ -23,6 +23,8 @@ import {
   setExportToDownloadsSetting,
   setHardwareVideoSetting,
   setLagWarningSetting,
+  shortenPath,
+  userHomeDir,
 } from "../engine/workspace";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
 import { PublisherPane } from "./PublisherPane";
@@ -39,6 +41,7 @@ export function SettingsApp() {
   const [versions, setVersions] = useState<SidecarVersions | null>(null);
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [defaultRoot, setDefaultRoot] = useState<string | null>(null);
+  const [home, setHome] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("");
   const [busy, setBusy] = useState<"media" | "clips" | "workspace" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +72,9 @@ export function SettingsApp() {
     defaultWorkspaceRoot()
       .then(setDefaultRoot)
       .catch(() => setDefaultRoot(null));
+    userHomeDir()
+      .then(setHome)
+      .catch(() => setHome(null));
     hardwareVideoSupport()
       .then(setHwSupport)
       .catch(() => setHwSupport(null));
@@ -145,43 +151,49 @@ export function SettingsApp() {
     <div className="settings-window">
       <section className="settings-section">
         <h2>Workspace</h2>
-        <div className="settings-row">
+        <div className="settings-row stacked">
           <div className="settings-row-text">
             <span className="settings-row-title">Location</span>
             <span className="muted settings-row-detail settings-path" title={workspace ?? ""}>
-              {busy === "workspace" ? "Moving your projects…" : (workspace ?? "not set up yet")}
+              {busy === "workspace"
+                ? "Moving your projects…"
+                : workspace
+                  ? shortenPath(workspace, home)
+                  : "not set up yet"}
             </span>
           </div>
-          {workspace && (
+          <div className="settings-row-actions">
+            {workspace && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy !== null}
+                onClick={() => void invoke("reveal_in_finder", { path: workspace })}
+              >
+                Show in Finder
+              </button>
+            )}
             <button
               type="button"
               className="btn"
-              disabled={busy !== null}
-              onClick={() => void invoke("reveal_in_finder", { path: workspace })}
+              disabled={busy !== null || !workspace}
+              onClick={() => void chooseLocation()}
+              title="Moves your projects, themes and fonts to the folder you pick"
             >
-              Show in Finder
+              Change location…
             </button>
-          )}
-          <button
-            type="button"
-            className="btn"
-            disabled={busy !== null || !workspace}
-            onClick={() => void chooseLocation()}
-            title="Moves your projects, themes and fonts to the folder you pick"
-          >
-            Change location…
-          </button>
-          {workspace && defaultRoot && workspace !== defaultRoot && (
-            <button
-              type="button"
-              className="btn"
-              disabled={busy !== null}
-              onClick={() => relocate(null)}
-              title={`Moves everything back to ${defaultRoot}`}
-            >
-              Reset to default
-            </button>
-          )}
+            {workspace && defaultRoot && workspace !== defaultRoot && (
+              <button
+                type="button"
+                className="btn"
+                disabled={busy !== null}
+                onClick={() => relocate(null)}
+                title={`Moves everything back to ${shortenPath(defaultRoot, home)}`}
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
         </div>
       </section>
 

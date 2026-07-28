@@ -68,6 +68,18 @@ export function defaultWorkspaceRoot(): Promise<string> {
   return invoke<string>("default_workspace_root");
 }
 
+/** The user's home folder, so a long workspace path can display as `~/…`. */
+export function userHomeDir(): Promise<string> {
+  return invoke<string>("user_home_dir");
+}
+
+/** `~`-abbreviated for display; the real path still belongs in the tooltip. */
+export function shortenPath(path: string, home: string | null): string {
+  if (!home) return path;
+  if (path === home) return "~";
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
 /** Move the whole workspace under `parent` (omit to reset to the default) and repoint settings at it. */
 export function moveWorkspace(parent?: string | null): Promise<string> {
   return invoke<string>("move_workspace", { parent: parent ?? null });
