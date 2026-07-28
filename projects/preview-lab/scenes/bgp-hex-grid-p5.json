@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "hex-grid",
-    "colors": ["#dff3fd", "#a1d3e7", "#77c3da"],
+    "colors": ["#e8f2f6", "#d3e8f0", "#c5e2ea"],
     "speed": 0.5,
     "params": {
       "density": 14,
