@@ -41,8 +41,8 @@ libc = "0.2"
 # via tauri-plugin-updater and tauri-build, so these add no graph weight.
 zip = "4"
 walkdir = "2"
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
+ed25519-dalek = "3"
+getrandom = "0.4"
 base64 = "0.22"
 # Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
 url = "2"

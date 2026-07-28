@@ -119,7 +119,7 @@ pub fn sign_at(path: &Path, bytes: &[u8]) -> Result<Vec<u8>, PackError> {
 }
 
 pub fn rotate_at(path: &Path) -> Result<PackIdentity, PackError> {
-    let key = SigningKey::generate(&mut rand_core::OsRng);
+    let key = generate_key()?;
     write_key(path, &key)?;
     Ok(identity_of(&key))
 }
@@ -128,9 +128,17 @@ fn load_or_create(path: &Path) -> Result<SigningKey, PackError> {
     if path.exists() {
         return read_key(path);
     }
-    let key = SigningKey::generate(&mut rand_core::OsRng);
+    let key = generate_key()?;
     write_key(path, &key)?;
     Ok(key)
+}
+
+/// An Ed25519 signing key is 32 uniform random bytes, so the OS entropy source is the whole generator.
+fn generate_key() -> Result<SigningKey, PackError> {
+    let mut raw = [0u8; 32];
+    getrandom::fill(&mut raw)
+        .map_err(|e| PackError::Io(format!("could not read system entropy: {e}")))?;
+    Ok(SigningKey::from_bytes(&raw))
 }
 
 fn read_key(path: &Path) -> Result<SigningKey, PackError> {
