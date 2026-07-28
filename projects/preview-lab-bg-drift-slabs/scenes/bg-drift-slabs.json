@@ -4,7 +4,7 @@
   "background": {
     "type": "scene3d",
     "look": "drift-slabs",
-    "colors": ["#35465e", "#7b553a"],
+    "colors": ["#2b3139", "#4e4035"],
     "speed": 1.5,
     "params": {
       "count": 13,

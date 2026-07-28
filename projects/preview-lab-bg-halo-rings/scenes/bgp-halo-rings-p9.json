@@ -4,7 +4,7 @@
   "background": {
     "type": "scene3d",
     "look": "halo-rings",
-    "colors": ["#4e3d6b", "#814590"],
+    "colors": ["#332e3c", "#503b55"],
     "speed": 0.9,
     "params": {
       "count": 5,

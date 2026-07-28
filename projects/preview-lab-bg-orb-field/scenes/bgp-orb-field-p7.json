@@ -4,7 +4,7 @@
   "background": {
     "type": "scene3d",
     "look": "orb-field",
-    "colors": ["#5b3f33", "#6e5b33"],
+    "colors": ["#382f2b", "#494232"],
     "speed": 1.05,
     "params": {
       "count": 9,

@@ -73,8 +73,8 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
     name: "Drift slabs",
     lit: true,
     colorSlots: [
-      { label: "Shapes", fallback: "#35465e" },
-      { label: "Accent", fallback: "#7b553a" },
+      { label: "Shapes", fallback: "#2b3139" },
+      { label: "Accent", fallback: "#4e4035" },
     ],
     params: {
       count: { label: "Count", default: 13, min: 4, max: 18, step: 1 },
@@ -90,8 +90,8 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
     name: "Orb field",
     lit: true,
     colorSlots: [
-      { label: "Orbs", fallback: "#33475b" },
-      { label: "Accent", fallback: "#765738" },
+      { label: "Orbs", fallback: "#2b3138" },
+      { label: "Accent", fallback: "#4c4034" },
     ],
     params: {
       count: { label: "Count", default: 12, min: 4, max: 18, step: 1 },
@@ -107,8 +107,8 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
     name: "Halo rings",
     lit: true,
     colorSlots: [
-      { label: "Rings", fallback: "#35475e" },
-      { label: "Accent", fallback: "#785639" },
+      { label: "Rings", fallback: "#2b3139" },
+      { label: "Accent", fallback: "#4d4035" },
     ],
     params: {
       count: { label: "Count", default: 5, min: 2, max: 8, step: 1 },
@@ -125,8 +125,8 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
     name: "Skyline prisms",
     lit: true,
     colorSlots: [
-      { label: "Prisms", fallback: "#36465f" },
-      { label: "Accent", fallback: "#765738" },
+      { label: "Prisms", fallback: "#2b3139" },
+      { label: "Accent", fallback: "#4c4034" },
     ],
     params: {
       count: { label: "Count", default: 20, min: 10, max: 30, step: 1 },

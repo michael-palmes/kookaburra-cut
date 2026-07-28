@@ -4,7 +4,7 @@
   "background": {
     "type": "scene3d",
     "look": "skyline-prisms",
-    "colors": ["#304955", "#2f6662"],
+    "colors": ["#293236", "#304745"],
     "speed": 1.05,
     "params": {
       "count": 16,
