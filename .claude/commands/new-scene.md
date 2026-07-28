@@ -22,9 +22,10 @@ Steps:
 2. Determine the next numeric prefix by listing `projects/$1/scenes/` (e.g. `03`), and
    slugify the name: stem = `<NN>-<slug>` (e.g. `03-hero-demo`).
 3. Read the TSX template for the kind from `src-tauri/templates/scenes/<kind>.tsx.tmpl`
-   (`deviceonly` uses `device.tsx.tmpl`; `titleicon` and the overlay trio use
-   `title.tsx.tmpl`; `videowindow` uses `videowindow.tsx.tmpl`) and replace the
-   placeholders: `__SCENE_ID__` = the slug, `__STEM__` = the stem, `__NAME__` =
+   (`deviceonly` uses `device.tsx.tmpl`; `titleicon` and `overlaypanel` use
+   `title.tsx.tmpl`; `overlaystart`/`overlayend` use `overlay.tsx.tmpl`, whose scene
+   clear lifts the background toward the text colour; `videowindow` uses
+   `videowindow.tsx.tmpl`) and replace the placeholders: `__SCENE_ID__` = the slug, `__STEM__` = the stem, `__NAME__` =
    the human name, `__DURATION_MS__` = the duration (step 5). Write it to
    `projects/$1/scenes/<stem>.tsx`.
 4. Write the sidecar `projects/$1/scenes/<stem>.json` per the skill's schema: `version: 1`,
@@ -40,8 +41,9 @@ Steps:
      `motion: { "preset": "none" }`, `shadow: "soft"`).
    - titleicon: `headerIcon` (the user's emoji or `assets/` image path, else `"🚀"`).
    - overlaystart/overlayend: `frame` = `{ "cutout": { "shape": "rounded-rect", "side":
-     "start"|"end" }, "chip": { "label": "New", "icon": "circle-check", "colour":
-     "accent" } }`.
+     "start"|"end" }, "background": "background", "chip": { "label": "New", "icon":
+     "circle-check", "colour": "accent" } }`; user bullet lines (one per line) go to
+     `text.bullets`.
    - overlaypanel: same `frame` but the cutout collapses to a sliver so the panel reads
      full-frame: `{ "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 }`.
    - layeredscreenshot: a `layeredScreenshot` block with one layer (`{ "id": "l1",

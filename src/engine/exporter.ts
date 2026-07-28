@@ -38,7 +38,8 @@ import {
 } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
-import type { FormatSpec } from "./format";
+import { computeFormat, type FormatSpec } from "./format";
+import { preloadPanelMeasures } from "./framePanelMeasure";
 import { HELPER_LAYER } from "./lightEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
@@ -351,6 +352,16 @@ async function exportPreamble(
   await preloadChipIcons();
   // Colour-emoji rasters for every sidecar string settle before frame 0 (write-once per-project cache; docs/determinism.md "Emoji").
   await preloadEmojiRasters(opts.projectId, opts.sceneDocs ?? []);
+  // Overlay panel title/subtitle measurements settle before frame 0, so the panel lays out from real troika blocks on every frame (framePanelMeasure.ts).
+  if (opts.sceneFrames?.some(Boolean)) {
+    const panelThemes = (opts.sceneFrames ?? []).map((_, i) => opts.sceneThemes?.[i] ?? opts.theme);
+    await preloadPanelMeasures(
+      computeFormat(opts.format),
+      opts.sceneFrames ?? [],
+      opts.sceneDocs ?? [],
+      panelThemes,
+    );
+  }
   onStep?.(3);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);

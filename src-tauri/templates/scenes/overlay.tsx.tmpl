@@ -1,0 +1,33 @@
+import {
+  defineScene,
+  liftColour,
+  SceneStage,
+  TitleBlock,
+  useSceneText,
+  useTheme,
+} from "@kookaburra/toolkit";
+
+/**
+ * __NAME__: scaffolded cutout scene. The overlay panel carries the copy (the sidecar
+ * `frame` claims the scene text, which suppresses `<TitleBlock>`), and the panel fill
+ * is the flat theme background; the scene clear lifts that background toward the text
+ * colour so the window behind the cutout reads as its own surface.
+ */
+export default defineScene({
+  id: "__SCENE_ID__",
+  durationMs: __DURATION_MS__,
+  Scene() {
+    const theme = useTheme();
+    const title = useSceneText("title");
+    const subtitle = useSceneText("subtitle");
+    return (
+      <SceneStage>
+        <color
+          attach="background"
+          args={[liftColour(theme.colors.background, theme.colors.text, 0.18)]}
+        />
+        <TitleBlock title={title} subtitle={subtitle} />
+      </SceneStage>
+    );
+  },
+});

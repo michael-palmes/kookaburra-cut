@@ -455,6 +455,7 @@ pub fn set_project_audio(
 // Scene TSX templates (compile-time baked, packaged-build safe); the same files are the single source for the `/new-scene` command, which reads them from the repo tree.
 const TSX_DEVICE: &str = include_str!("../templates/scenes/device.tsx.tmpl");
 const TSX_TITLE: &str = include_str!("../templates/scenes/title.tsx.tmpl");
+const TSX_OVERLAY: &str = include_str!("../templates/scenes/overlay.tsx.tmpl");
 const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
@@ -473,6 +474,9 @@ pub struct ScaffoldOptions {
     pub name: String,
     pub title: Option<String>,
     pub subtitle: Option<String>,
+    /// Cutout scenes: newline-delimited bullet lines for the panel body (sidecar `text.bullets`).
+    #[serde(default)]
+    pub bullets: Option<String>,
     pub device_model: Option<String>,
     pub colour: Option<String>,
     /// Project-relative media path (e.g. "assets/demo.mp4").
@@ -551,8 +555,9 @@ pub async fn scaffold_scene(
 
     let template = match options.kind.as_str() {
         "device" | "deviceonly" => TSX_DEVICE,
-        // The overlay trio rides the title base: the panel suppresses TitleBlock and shows the same text itself.
-        "title" | "titleicon" | "overlaystart" | "overlayend" | "overlaypanel" => TSX_TITLE,
+        // The overlay kinds ride the title base: the panel suppresses TitleBlock and shows the same text itself; the cutout pair's variant lifts the scene clear so the window reads against the flat panel.
+        "title" | "titleicon" | "overlaypanel" => TSX_TITLE,
+        "overlaystart" | "overlayend" => TSX_OVERLAY,
         "blank" => TSX_BLANK,
         "appversion" => TSX_APP_VERSION,
         "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
@@ -626,6 +631,9 @@ pub async fn scaffold_scene(
     if seeds_text_pair {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or(""));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
+        if let Some(bullets) = options.bullets.as_deref().filter(|b| !b.trim().is_empty()) {
+            doc["text"]["bullets"] = json!(bullets);
+        }
     } else if options.kind == "appversion" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or("1.0"));
@@ -640,10 +648,16 @@ pub async fn scaffold_scene(
     if options.kind == "titleicon" {
         doc["headerIcon"] = json!(options.header_icon.as_deref().unwrap_or("🚀"));
     }
-    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant collapses its cutout to a sliver (min size, max inset) so the panel reads full-frame at every aspect.
+    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant collapses its cutout to a sliver (min size, max inset) so the panel reads full-frame at every aspect. The cutout pair pins the panel to the flat background token, paired with the template's lifted scene clear.
     let overlay_frame = match options.kind.as_str() {
-        "overlaystart" => Some(json!({ "cutout": { "shape": "rounded-rect", "side": "start" } })),
-        "overlayend" => Some(json!({ "cutout": { "shape": "rounded-rect", "side": "end" } })),
+        "overlaystart" => Some(json!({
+            "cutout": { "shape": "rounded-rect", "side": "start" },
+            "background": "background",
+        })),
+        "overlayend" => Some(json!({
+            "cutout": { "shape": "rounded-rect", "side": "end" },
+            "background": "background",
+        })),
         "overlaypanel" => Some(json!({
             "cutout": { "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 },
         })),

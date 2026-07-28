@@ -80,9 +80,11 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "videowindow", label: "Video window", blurb: "A floating screen recording on a stage" },
   { id: "overlaystart", label: "Cutout start", blurb: "Panel text beside a scene window" },
   { id: "overlayend", label: "Cutout end", blurb: "A scene window beside panel text" },
-  { id: "overlaypanel", label: "Overlay panel", blurb: "A full panel with a chip and title" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
 ];
+
+/** Kinds whose panel body takes bullet lines at create time (same storage as the Edit text drill-in). */
+const BULLET_KINDS: SceneKind[] = ["overlaystart", "overlayend"];
 
 /** Kinds whose media step picks the window/backdrop video, starting on the bundled sample. */
 const VIDEO_MEDIA_KINDS: SceneKind[] = ["video", "videowindow"];
@@ -331,6 +333,7 @@ export function NewSceneWizard({
   const [editingName, setEditingName] = useState(false);
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
+  const [bullets, setBullets] = useState("");
   const [titleColor, setTitleColor] = useState<string | null>(null);
   const [subtitleColor, setSubtitleColor] = useState<string | null>(null);
   const [headerIcon, setHeaderIcon] = useState("🚀");
@@ -400,6 +403,7 @@ export function NewSceneWizard({
           name: finalName,
           title: NO_TEXT_KINDS.includes(kind) ? null : title.trim() || null,
           subtitle: SUBTITLE_KINDS.includes(kind) ? subtitle.trim() || null : null,
+          bullets: BULLET_KINDS.includes(kind) ? bullets.trim() || null : null,
           deviceModel: isDeviceKind ? model : null,
           colour: isDeviceKind ? colour : null,
           mediaRel: takesMedia ? (media?.rel ?? null) : null,
@@ -669,6 +673,14 @@ export function NewSceneWizard({
                 hint="Drawn above the headline. An emoji, or a project image path."
                 onChange={setHeaderIcon}
                 onPick={setHeaderIcon}
+              />
+            )}
+            {BULLET_KINDS.includes(kind) && (
+              <TextFieldRow
+                label="Bullets"
+                value={bullets}
+                placeholder="one bullet per line"
+                onChange={setBullets}
               />
             )}
             <Field label="Where?">

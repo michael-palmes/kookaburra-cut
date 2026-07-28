@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Group } from "three";
+import { useTheme } from "../theme";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
@@ -9,36 +10,29 @@ import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
 import { framePanelLayout } from "./framePanelLayout";
+import {
+  BULLET_LINE_GAP,
+  BULLET_OF_TITLE,
+  CHIP_GAP,
+  CHIP_HEIGHT_FRAC,
+  HEADER_BODY_GAP,
+  ICON_GAP,
+  ICON_SIZE,
+  LINE_HEIGHT,
+  panelMeasureVersion,
+  requestPanelTextMeasure,
+  SUBTITLE_OF_TITLE,
+  solvePanelLayout,
+  subscribePanelMeasures,
+  TITLE_GAP,
+  TITLE_HEIGHT_FRACTION,
+  TITLE_WIDTH_FRACTION,
+} from "./framePanelMeasure";
 import { registerFramePanel, unregisterFramePanel } from "./framePanelRegistry";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
 
-/** Title size as a fraction of the column's width, clamped by its height (the title-slide size, before the fit-to-column scale). */
-const TITLE_WIDTH_FRACTION = 0.2;
-const TITLE_HEIGHT_FRACTION = 0.18;
-/** Troika's default line height, so a wrapped block's budget is `lines x this x size`. */
-const LINE_HEIGHT = 1.2;
-/** Subtitle line budget so a wrapped subtitle never collides with what follows (troika wraps async, so height is budgeted, not measured). The title's budget is estimated from its length instead, since titles vary the most. */
-const SUBTITLE_LINE_BUDGET = 2;
-/** Rough average glyph advance (em) for estimating a title's wrapped line count, and the cap on it; titles are short by design (the reference slides run to two words), so the fit scale absorbs any longer one. */
-const AVG_CHAR_ADVANCE = 0.5;
-const TITLE_MAX_LINES = 4;
-/** Icon edge as a multiple of the title height, and its gap above the title in title-heights. */
-const ICON_SIZE = 1.25;
-const ICON_GAP = 0.4;
-/** Subtitle and bullet sizes as a fraction of the title (bullets read as small body copy, well under the headline, like the reference slides). */
-const SUBTITLE_OF_TITLE = 0.44;
-const BULLET_OF_TITLE = 0.32;
-/** Gap below the title before the subtitle, in title-heights. */
-const TITLE_GAP = 0.35;
-/** Extra gap between bullet lines, and the chip's gap above the bullets, in bullet-heights. */
-const BULLET_LINE_GAP = 0.6;
-const CHIP_GAP = 1.4;
-/** Chip pill height as a fraction of the frame height (about 64px on a 1080p reference frame). */
-const CHIP_HEIGHT_FRAC = 0.059;
-/** The body (bullets + chip) stacks directly under the header, this gap below it (title-heights). */
-const HEADER_BODY_GAP = 0.5;
 /** Nudges the whole editorial column (title/subtitle/bullets/chip, not the decorations) left, as a fraction of the column width. */
 const CONTENT_LEFT_SHIFT = 0.06;
 
@@ -50,63 +44,42 @@ function splitBullets(raw: string | undefined): string[] {
     .filter((line) => line.length > 0);
 }
 
-/** Estimates how many lines a title wraps to at `size` in `width` world units, so its vertical budget adapts to length (troika wraps async, so this cannot be measured at layout time). Simulates troika's greedy word-wrap (whole words per line) rather than dividing by characters, so a two long-word title like "Repository Standard" reads as two lines, not three. */
-function estimateTitleLines(text: string, size: number, width: number): number {
-  const perLine = Math.max(1, Math.floor(width / (size * AVG_CHAR_ADVANCE)));
-  let lines = 1;
-  let filled = 0;
-  for (const word of text.trim().split(/\s+/)) {
-    if (filled === 0) filled = word.length;
-    else if (filled + 1 + word.length <= perLine) filled += 1 + word.length;
-    else {
-      lines++;
-      filled = word.length;
-    }
-  }
-  return Math.min(TITLE_MAX_LINES, lines);
-}
-
-/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Every block's height is budgeted (title from a length estimate, subtitle at a 2-line worst case) and the stack scales to fit the column, so the header and body never overlap. Reads the sidecar text DIRECTLY (like `TextFallback`) so it never registers as a text-key consumer, and lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
+/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Title and subtitle heights come from `solvePanelLayout`'s measured fixpoint (the wrap estimate standing in until measurements land), so reserved and rendered space agree and the header and body never overlap. Reads the sidecar text DIRECTLY (like `TextFallback`) so it never registers as a text-key consumer, and lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
 function PanelContent({ frame }: { frame: FrameSpec }) {
   const doc = useSceneDoc();
   const format = useFormat();
+  const theme = useTheme();
   // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
   const claimed = frame.claimsSceneText !== false;
   const title = claimed ? (doc?.text?.title ?? "") : "";
   const subtitle = claimed ? (doc?.text?.subtitle ?? "") : "";
   const bullets = claimed ? splitBullets(doc?.text?.bullets) : [];
   const decorations = frame.decorations ?? [];
+  // The measured fixpoint: the cache fills async (pre-warmed by the export preamble); each landing bumps the store, re-solving until nothing is pending.
+  const measureTick = useSyncExternalStore(
+    subscribePanelMeasures,
+    panelMeasureVersion,
+    panelMeasureVersion,
+  );
+  const solution = useMemo(() => {
+    void measureTick;
+    return solvePanelLayout(format, frame, doc ?? undefined, theme);
+  }, [format, frame, doc, theme, measureTick]);
+  useEffect(() => {
+    for (const spec of solution.pending) requestPanelTextMeasure(spec);
+  }, [solution]);
   const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
   if (!hasText && !frame.icon && !frame.chip && decorations.length === 0) return null;
 
   const col = framePanelLayout(format, frame);
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
-  const baseSub = baseTitle * SUBTITLE_OF_TITLE;
-  const baseBullet = baseTitle * BULLET_OF_TITLE;
-  const baseIcon = baseTitle * ICON_SIZE;
-  const baseChip = CHIP_HEIGHT_FRAC * format.frame.height;
-
-  // One fit scale from worst-case budgets keeps the top-anchored header and the body apart.
-  const iconBudget = frame.icon ? baseIcon + ICON_GAP * baseTitle : 0;
-  const titleLines = title.trim() ? estimateTitleLines(title, baseTitle, col.width) : 0;
-  const titleBudget = titleLines * LINE_HEIGHT * baseTitle;
-  const titleGap = title.trim() && subtitle.trim() ? TITLE_GAP * baseTitle : 0;
-  const subBudget = subtitle.trim() ? SUBTITLE_LINE_BUDGET * LINE_HEIGHT * baseSub : 0;
-  const headerBudget = iconBudget + titleBudget + titleGap + subBudget;
-  const bulletsBudget =
-    bullets.length > 0
-      ? (bullets.length - 1) * (LINE_HEIGHT + BULLET_LINE_GAP) * baseBullet +
-        LINE_HEIGHT * baseBullet
-      : 0;
-  const chipBudget = frame.chip ? (bullets.length > 0 ? CHIP_GAP * baseBullet : 0) + baseChip : 0;
-  const stack = headerBudget + HEADER_BODY_GAP * baseTitle + bulletsBudget + chipBudget;
-  const fit = stack > col.height ? col.height / stack : 1;
+  const { fit, titleH, subH } = solution;
 
   const titleSize = baseTitle * fit;
-  const subtitleSize = baseSub * fit;
-  const bulletSize = baseBullet * fit;
-  const iconSize = baseIcon * fit;
-  const chipHeight = baseChip * fit;
+  const subtitleSize = baseTitle * SUBTITLE_OF_TITLE * fit;
+  const bulletSize = baseTitle * BULLET_OF_TITLE * fit;
+  const iconSize = baseTitle * ICON_SIZE * fit;
+  const chipHeight = CHIP_HEIGHT_FRAC * format.frame.height * fit;
   // Text alignment: the anchor x sits at the column's left (nudged), centre or right edge, with the
   // headlines and chip anchored to match. Default "left" reproduces the original contentX exactly.
   const align = frame.textAlign ?? "left";
@@ -119,15 +92,15 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const chipAnchor = align === "center" ? 0.5 : align === "right" ? 1 : 0;
   const at = (worldY: number): V3 => [alignX, worldY, 0];
 
-  // Header, top-anchored.
+  // Header, top-anchored; titleH/subH are the solved heights at the fitted size.
   let y = col.top;
   const iconTop = y;
   if (frame.icon) y -= iconSize + ICON_GAP * titleSize;
   const titleTop = y;
-  if (title.trim()) y -= titleLines * LINE_HEIGHT * titleSize;
+  if (title.trim()) y -= titleH;
   if (title.trim() && subtitle.trim()) y -= TITLE_GAP * titleSize;
   const subtitleTop = y;
-  if (subtitle.trim()) y -= SUBTITLE_LINE_BUDGET * LINE_HEIGHT * subtitleSize;
+  if (subtitle.trim()) y -= subH;
   const headerBottom = y;
 
   // Body (bullets + chip): stacked directly under the header, kept inside the bottom edge.

@@ -28,6 +28,7 @@ export { useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";
 export type { Theme } from "../theme/tokens";
 // Scene registration + types
+export { liftColour } from "./colour";
 export { defineScene } from "./defineScene";
 // The device catalog + Device primitive, the device+media pillar.
 export {
