@@ -15,6 +15,17 @@ declare module "troika-three-text" {
     /** Base URL for the unicode-font-resolver data; we pin it to a dead same-origin path. */
     unicodeFontsURL?: string;
   }): void;
+  /** The renderable text node; we drive it off-screen for panel-height measurement (framePanelMeasure.ts). Only the members we touch. */
+  export class Text {
+    text: string;
+    font: string;
+    fontSize: number;
+    maxWidth: number;
+    textAlign: string;
+    textRenderInfo?: { blockBounds: [number, number, number, number] };
+    sync(callback?: () => void): void;
+    dispose(): void;
+  }
   /** Derives troika's glyph-rendering material from a base material; the stagger material chains a second derivation on top of this one. Untyped upstream. */
   export function createTextDerivedMaterial(baseMaterial: Material): Material & {
     isTroikaTextMaterial: true;

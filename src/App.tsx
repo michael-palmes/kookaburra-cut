@@ -233,6 +233,8 @@ export default function App() {
   useEffect(() => {
     loadedProjectRef.current = project;
   }, [project]);
+  // Scene file to land the playhead on after the next reload (set by create/duplicate).
+  const focusSceneFileRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
@@ -684,7 +686,8 @@ export default function App() {
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
       // No history entry (delete's semantics: a manifest revert can't un-create files); a new TSX needs the full module reload.
-      await duplicateProjectScene(workspaceSlug(current.id), sceneIndex, position);
+      const result = await duplicateProjectScene(workspaceSlug(current.id), sceneIndex, position);
+      focusSceneFileRef.current = result.file;
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
     } catch (e) {
@@ -997,8 +1000,19 @@ export default function App() {
         );
       const clock = useClockStore.getState();
       clock.setDurationMs(loaded.totalMs);
-      // Keep the scrub position within the (possibly shorter) new project.
-      clock.setCurrentMs(Math.min(clock.currentMs, loaded.totalMs));
+      const focusFile = focusSceneFileRef.current;
+      focusSceneFileRef.current = null;
+      const focusIndex = focusFile ? loaded.sceneFiles.indexOf(focusFile) : -1;
+      const focusSlot = focusIndex >= 0 ? loaded.slots[focusIndex] : undefined;
+      if (focusSlot) {
+        // Land past the entry transition and 10% in, so the new scene's own content is showing.
+        const entryMs = focusSlot.startMs + (focusSlot.transitionIn?.durationMs ?? 0);
+        const target = Math.min(entryMs + 0.1 * focusSlot.durationMs, focusSlot.endMs - 1000 / FPS);
+        clock.setCurrentMs(Math.max(focusSlot.startMs, target));
+      } else {
+        // Keep the scrub position within the (possibly shorter) new project.
+        clock.setCurrentMs(Math.min(clock.currentMs, loaded.totalMs));
+      }
     },
     [isAutoRun],
   );
@@ -1476,6 +1490,10 @@ export default function App() {
         await new Promise((r) => setTimeout(r, 0));
         await new Promise((r) => setTimeout(r, 0));
       }
+      // App exports honour the Downloads setting (default on, the inverted flag); autorun exports never pass a destination.
+      const toDownloads = await getSettings()
+        .then((s) => !s.keepExportsInProject)
+        .catch(() => true);
       // Render at the output rate: a 30fps spec steps the clock at 30 directly since i·(1000/30) is bit-identical to 2i·(1000/60) in float64, giving the same bytes the old fps=30 decimation kept, at half the render.
       const output = await exportProject(
         {
@@ -1494,6 +1512,7 @@ export default function App() {
           codec: "libx264",
           encode: sel.encode,
           outputSuffix: sel.outputSuffix,
+          destination: toDownloads ? "downloads" : undefined,
         },
         (p) => {
           setExportPrepStep(null); // first frame progress: the preamble is done, hand off to the % counter
@@ -1675,7 +1694,8 @@ export default function App() {
                 }))}
                 theme={project.theme}
                 getThumbs={() => ensureSceneThumbs(project)}
-                onProjectChanged={() => {
+                onProjectChanged={(focusSceneFile) => {
+                  if (focusSceneFile) focusSceneFileRef.current = focusSceneFile;
                   bumpWorkspaceReloadToken();
                   setLoadNonce((n) => n + 1);
                 }}

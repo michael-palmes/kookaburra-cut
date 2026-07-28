@@ -1590,43 +1590,41 @@ function FixtureEditor({
             />
           </div>
           {repeat && (
-            <>
-              <div className="camera-loop-modes">
-                <span className="drill-group-hint">Axis</span>
-                {(["x", "y", "z"] as const).map((axis) => (
-                  <button
-                    key={axis}
-                    type="button"
-                    className={`chip${repeat.axis === axis ? " selected" : ""}`}
-                    onClick={() =>
-                      onCommit((f) => {
-                        if (f.repeat) f.repeat.axis = axis;
-                      })
-                    }
-                  >
-                    {axis}
-                  </button>
-                ))}
-                <span className="drill-group-hint">Mirror</span>
-                {(["x", "y", "z"] as const).map((axis) => (
-                  <button
-                    key={`m${axis}`}
-                    type="button"
-                    className={`chip${repeat.mirrorAxis === axis ? " selected" : ""}`}
-                    title={`Duplicate the run mirrored across ${axis}`}
-                    onClick={() =>
-                      onCommit((f) => {
-                        if (!f.repeat) return;
-                        if (f.repeat.mirrorAxis === axis) delete f.repeat.mirrorAxis;
-                        else f.repeat.mirrorAxis = axis;
-                      })
-                    }
-                  >
-                    {axis}
-                  </button>
-                ))}
-              </div>
-            </>
+            <div className="camera-loop-modes">
+              <span className="drill-group-hint">Axis</span>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <button
+                  key={axis}
+                  type="button"
+                  className={`chip${repeat.axis === axis ? " selected" : ""}`}
+                  onClick={() =>
+                    onCommit((f) => {
+                      if (f.repeat) f.repeat.axis = axis;
+                    })
+                  }
+                >
+                  {axis}
+                </button>
+              ))}
+              <span className="drill-group-hint">Mirror</span>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <button
+                  key={`m${axis}`}
+                  type="button"
+                  className={`chip${repeat.mirrorAxis === axis ? " selected" : ""}`}
+                  title={`Duplicate the run mirrored across ${axis}`}
+                  onClick={() =>
+                    onCommit((f) => {
+                      if (!f.repeat) return;
+                      if (f.repeat.mirrorAxis === axis) delete f.repeat.mirrorAxis;
+                      else f.repeat.mirrorAxis = axis;
+                    })
+                  }
+                >
+                  {axis}
+                </button>
+              ))}
+            </div>
           )}
         </DrillGroup>
 

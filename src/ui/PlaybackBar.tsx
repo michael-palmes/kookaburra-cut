@@ -154,7 +154,21 @@ export function PlaybackBar({
   };
 
   return (
-    <div className="playback-bar">
+    // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu only, so the dead chrome around the track (down to the window's bottom edge) still opens the scene menu
+    <div
+      className="playback-bar"
+      onContextMenu={(e) => {
+        // The track and labels handle their own right-clicks (defaultPrevented); everything else clamps into the track to resolve a scene.
+        if (e.defaultPrevented || !project) return;
+        const rect = trackRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
+        const ms = msFromTrackX(x, rect.width, durationMs);
+        const index =
+          ms >= durationMs ? project.slots.length - 1 : activeSceneIndex(project.slots, ms);
+        openSceneMenu(e, index);
+      }}
+    >
       <div className="pb-left">
         <button
           type="button"

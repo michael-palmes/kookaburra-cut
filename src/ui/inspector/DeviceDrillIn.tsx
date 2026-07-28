@@ -103,6 +103,10 @@ export function DeviceDrillIn({
               </button>
             ))}
           </div>
+          <span className="modal-hint">
+            Motion animates the device itself. For cinematic movement, animate the camera instead
+            (Camera in the inspector).
+          </span>
         </div>
       </div>
       <div className="inspector-drill-actions">

@@ -57,9 +57,7 @@ export const FULLSCREEN_ICON = stroked(
 
 /** A four-point sparkle for exact full frames. */
 export const FULL_QUALITY_ICON = stroked(
-  <>
-    <path d="M12 3.5 13.8 10l6.7 2-6.7 2L12 20.5 10.2 14l-6.7-2 6.7-2L12 3.5z" />
-  </>,
+  <path d="M12 3.5 13.8 10l6.7 2-6.7 2L12 20.5 10.2 14l-6.7-2 6.7-2L12 3.5z" />,
 );
 
 /** Fast-forward chevrons for smooth playback. */

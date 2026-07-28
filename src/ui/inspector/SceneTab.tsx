@@ -1753,6 +1753,8 @@ export function SceneTab({
           parallax !== undefined
             ? { type: "video", src: rel, parallax }
             : { type: "video", src: rel };
+        // A staged backdrop would hide the video: clear it in the same undoable entry.
+        if (stagedBackdrop !== null && stagedBackdrop !== "none") next.backdrop = { type: "none" };
       },
       { resync: true },
     );
@@ -1768,6 +1770,8 @@ export function SceneTab({
         parallax !== undefined
           ? { type: "image", src: rel, parallax }
           : { type: "image", src: rel };
+      // A staged backdrop would hide the image: clear it in the same undoable entry.
+      if (stagedBackdrop !== null && stagedBackdrop !== "none") next.backdrop = { type: "none" };
     });
   };
 
@@ -1856,7 +1860,7 @@ export function SceneTab({
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal wizard-wide media-modal-wide">
         <div className="modal-title-row">
-          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change media"}</h2>
+          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change video"}</h2>
         </div>
         <div className="wizard-media-host">
           <MediaBrowser
@@ -1887,6 +1891,15 @@ export function SceneTab({
 
   // ── Drill-in views ────────────────────────────────────────────────────────
   if (drillIn === "style.theme" && doc) {
+    // Applies on selection; the draft doubles as the same-id de-dupe.
+    const applySceneTheme = (id: string) => {
+      if (id === themeDraft) return;
+      setThemeDraft(id);
+      // Theme resolution bakes at load; the write chains the nonce reload.
+      void patchDoc((next) => {
+        next.themeId = id || undefined;
+      }).then(onTimingChanged);
+    };
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
@@ -1896,7 +1909,7 @@ export function SceneTab({
             <button
               type="button"
               className={`chip${themeDraft === "" ? " selected" : ""}`}
-              onClick={() => setThemeDraft("")}
+              onClick={() => applySceneTheme("")}
             >
               Project theme
             </button>
@@ -1904,7 +1917,7 @@ export function SceneTab({
           <ThemeGrid
             choices={themeChoices}
             value={themeDraft}
-            onChange={setThemeDraft}
+            onChange={applySceneTheme}
             onCardContextMenu={themeMenu.openMenu}
           />
         </div>
@@ -1916,23 +1929,6 @@ export function SceneTab({
             onClick={() => onOpenTheme()}
           >
             Manage…
-          </button>
-          <button type="button" className="btn" onClick={() => closeDrill()}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={themeDraft === (doc.themeId ?? "")}
-            onClick={() => {
-              closeDrill();
-              // Theme resolution bakes at load; the write chains the nonce reload.
-              void patchDoc((next) => {
-                next.themeId = themeDraft || undefined;
-              }).then(onTimingChanged);
-            }}
-          >
-            Apply
           </button>
         </div>
         {themeMenu.menuElement}
@@ -2508,36 +2504,34 @@ export function SceneTab({
             />
           )}
           {vw.stage.type === "image" && (
-            <>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["image"]}
-                  globalToggle
-                  refreshKey={mediaRefreshKey + mediaRefresh}
-                  selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
-                  onPick={(rel, meta) => {
+            <div className="inspector-media-host">
+              <MediaBrowser
+                slug={slug}
+                projectPath={workspaceProjectPath(slug) ?? ""}
+                kinds={["image"]}
+                globalToggle
+                refreshKey={mediaRefreshKey + mediaRefresh}
+                selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
+                onPick={(rel, meta) => {
+                  if (meta && meta.kind !== "image") return;
+                  patchVW((v) => {
+                    v.stage = { type: "image", src: rel };
+                  });
+                }}
+                cardMenu={mediaCardMenu({
+                  slug,
+                  primaryLabel: "Select",
+                  onPrimary: (rel, meta) => {
                     if (meta && meta.kind !== "image") return;
                     patchVW((v) => {
                       v.stage = { type: "image", src: rel };
                     });
-                  }}
-                  cardMenu={mediaCardMenu({
-                    slug,
-                    primaryLabel: "Select",
-                    onPrimary: (rel, meta) => {
-                      if (meta && meta.kind !== "image") return;
-                      patchVW((v) => {
-                        v.stage = { type: "image", src: rel };
-                      });
-                    },
-                    onChanged: () => setMediaRefresh((n) => n + 1),
-                    onError: setError,
-                  })}
-                />
-              </div>
-            </>
+                  },
+                  onChanged: () => setMediaRefresh((n) => n + 1),
+                  onError: setError,
+                })}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -2972,22 +2966,6 @@ export function SceneTab({
         else if (value.type === "color" && stagingOn) next.backdrop = floorFor(value.color);
       });
     };
-    const removeStageBackdrop = () =>
-      void patchDoc((next) => {
-        next.backdrop = { type: "none" };
-      });
-    const occlusionWarning = (kind: "image" | "video" | "animation") =>
-      stagingOn && (
-        <div className="bg-occlusion">
-          <span className="modal-hint">
-            This scene stages a {stagedBackdrop} backdrop that will hide the {kind}: remove it so
-            the {kind} shows.
-          </span>
-          <button type="button" className="btn" onClick={removeStageBackdrop}>
-            Remove stage backdrop
-          </button>
-        </div>
-      );
     const shaderSpec = doc.background?.type === "shader" ? doc.background : null;
     const shaderDef = shaderSpec ? SHADER_BACKGROUNDS[shaderSpec.shader] : undefined;
     const patchShader = (mutate: (spec: Extract<ThemeBackground, { type: "shader" }>) => void) =>
@@ -3105,20 +3083,14 @@ export function SceneTab({
                       ? next.background.parallax
                       : undefined;
                   next.background = parallax !== undefined ? { ...value, parallax } : value;
-                  // The same gradient drives the stage plane, so the edit is visible on staged scenes.
-                  if (stagingOn && value.type === "gradient") {
-                    const backdrop: ThemeBackdrop = { type: "gradient" };
-                    if (value.gradient) backdrop.gradient = value.gradient;
-                    if (value.spec) backdrop.spec = value.spec;
-                    next.backdrop = backdrop;
-                  }
+                  // A staged backdrop would hide the gradient: clear it in the same undoable entry.
+                  if (stagingOn) next.backdrop = { type: "none" };
                 });
               }}
             />
           )}
           {bgTab === "shader" && (
             <>
-              {occlusionWarning("animation")}
               <p className="modal-hint">
                 Animated fills run on the project clock, so the motion is continuous across scene
                 cuts when neighbouring scenes share the same pick.
@@ -3160,6 +3132,8 @@ export function SceneTab({
                                 colors: def.colorSlots.map((slot) => slot.fallback),
                                 speed: 1,
                               };
+                          // A staged backdrop would hide the animation: clear it in the same undoable entry.
+                          if (stagingOn) next.backdrop = { type: "none" };
                         });
                       }}
                       onHoverChange={(h) => setBgHover((cur) => (h ? id : cur === id ? null : cur))}
@@ -3267,7 +3241,6 @@ export function SceneTab({
           )}
           {bgTab === "image" && (
             <>
-              {occlusionWarning("image")}
               <span className="modal-hint">
                 Fills the frame behind everything and stays locked to the camera; pick an image with
                 a safe centre (it cover-crops per aspect).
@@ -3286,7 +3259,6 @@ export function SceneTab({
           )}
           {bgTab === "video" && (
             <>
-              {occlusionWarning("video")}
               <span className="modal-hint">Video that fills the frame behind everything.</span>
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
@@ -3659,6 +3631,31 @@ export function SceneTab({
         },
         { history },
       );
+    const clearAllText = () => {
+      // Drop pending live edits first so a focused field can't write itself back.
+      if (textEditTimer.current !== null) {
+        window.clearTimeout(textEditTimer.current);
+        textEditTimer.current = null;
+      }
+      textEditBaseline.current = null;
+      setTextValues({});
+      if (iconEditTimer.current !== null) {
+        window.clearTimeout(iconEditTimer.current);
+        iconEditTimer.current = null;
+      }
+      iconEditBaseline.current = null;
+      setIconDraft(null);
+      // Blank every key the doc holds or the scene consumes, never delete: an absent key
+      // resurfaces the TSX fallback in the preview.
+      const keys = new Set([...baseKeys, ...textKeys, ...consumed]);
+      void patchDoc(
+        (next) => {
+          next.text = Object.fromEntries([...keys].map((k) => [k, ""]));
+          writeHeaderIcon(next, undefined);
+        },
+        { history: "clear text" },
+      );
+    };
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -3668,7 +3665,32 @@ export function SceneTab({
             closeDrill();
           }}
         />
-        <div className="inspector-drill-title">Text</div>
+        <div className="inspector-drill-title">
+          Text
+          <button
+            type="button"
+            className="inspector-reset-btn inspector-clear-text"
+            title="Blank every text field on this scene (undoable)"
+            onClick={clearAllText}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8.5 16.5H4.8L3 14.7a1.5 1.5 0 010-2.1l8.1-8.1a1.5 1.5 0 012.1 0l3.4 3.4a1.5 1.5 0 010 2.1l-6.6 6.5z" />
+              <path d="M7.3 7.6l5.6 5.6" />
+              <path d="M11 16.5h6" />
+            </svg>
+            Clear text
+          </button>
+        </div>
         <div className="inspector-drill-body">
           <div className="wizard-field">
             <span className="wizard-label">Alignment</span>
@@ -4078,9 +4100,11 @@ export function SceneTab({
           video: "Video",
         }[doc.background.type]
     : undefined;
-  // The Scene tab's top level: a flat, ordered list of entries (some open a group panel, some a
-  // detail screen directly). Gating mirrors sceneSections; icons reuse the SceneRowIcon glyphs.
-  const topEntries: {
+  // The Scene tab's top level, in three divided sections: what the scene HAS (with the
+  // Change/Edit video pair adjacent), what can be ADDED, then the scene settings; the
+  // Delete row keeps its own bottom section. Gating mirrors sceneSections; icons reuse
+  // the SceneRowIcon glyphs.
+  interface TopEntry {
     key: string;
     label: string;
     icon: string;
@@ -4088,9 +4112,12 @@ export function SceneTab({
     /** False for instant in-place actions that open nothing (Add device). */
     chevron?: boolean;
     onClick: () => void;
-  }[] = [];
+  }
+  const contentEntries: TopEntry[] = [];
+  const addEntries: TopEntry[] = [];
+  const settingEntries: TopEntry[] = [];
   if (doc)
-    topEntries.push({
+    contentEntries.push({
       key: "text",
       label: "Text",
       icon: "text.edit",
@@ -4098,62 +4125,97 @@ export function SceneTab({
     });
   const deviceVideo = device?.media?.kind === "video" ? device.media.src : undefined;
   const windowVideo = doc?.videoWindow?.media.src;
-  if (device) {
-    topEntries.push({
+  if (device)
+    contentEntries.push({
       key: "device",
       label: "Device",
       icon: "device.change",
       value: deviceName,
       onClick: () => openDrill("device"),
     });
-    if (deviceVideo)
-      topEntries.push({
-        key: "editVideo.device",
-        label: windowVideo ? "Edit device video" : "Edit video",
-        icon: "device.editVideo",
-        chevron: false,
-        onClick: () => onOpenEditVideo(sceneIndex, deviceVideo),
-      });
-  } else if (doc)
-    topEntries.push({
+  else if (doc)
+    addEntries.push({
       key: "device.add",
       label: "Add device",
       icon: "device.add",
       chevron: false,
       onClick: addDevice,
     });
-  if (doc)
-    topEntries.push({
+  if (doc?.layeredScreenshot)
+    contentEntries.push({
       key: "stack",
-      label: doc.layeredScreenshot ? "Screenshot stack" : "Add screenshot stack",
+      label: "Screenshot stack",
       icon: "layeredScreenshot.edit",
       onClick: () => openDrill("layeredScreenshot.edit"),
     });
-  if (doc) {
-    topEntries.push({
+  else if (doc)
+    addEntries.push({
+      key: "stack",
+      label: "Add screenshot stack",
+      icon: "layeredScreenshot.edit",
+      onClick: () => openDrill("layeredScreenshot.edit"),
+    });
+  if (doc?.videoWindow)
+    contentEntries.push({
       key: "vw",
-      label: doc.videoWindow ? "Video window" : "Add video window",
+      label: "Video window",
       icon: "videoWindow.edit",
       onClick: () => openDrill("videoWindow.edit"),
     });
-    if (windowVideo)
-      topEntries.push({
-        key: "editVideo.vw",
-        label: deviceVideo ? "Edit recording" : "Edit video",
-        icon: "device.editVideo",
-        chevron: false,
-        onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
-      });
-  }
+  else if (doc)
+    addEntries.push({
+      key: "vw",
+      label: "Add video window",
+      icon: "videoWindow.edit",
+      onClick: () => openDrill("videoWindow.edit"),
+    });
+  // The video pair closes the content section, always adjacent: Change video first (the
+  // device's picker wins when a scene has both surfaces), its edit right under.
+  if (device || doc?.videoWindow)
+    contentEntries.push({
+      key: "changeVideo",
+      label: "Change video",
+      icon: "device.media",
+      onClick: device
+        ? () => {
+            setMediaTarget({ kind: "device" });
+            setModal("media");
+          }
+        : () => openDrill("videoWindow.media"),
+    });
+  if (deviceVideo)
+    contentEntries.push({
+      key: "editVideo.device",
+      label: windowVideo ? "Edit device video" : "Edit video",
+      icon: "device.editVideo",
+      chevron: false,
+      onClick: () => onOpenEditVideo(sceneIndex, deviceVideo),
+    });
+  else if (windowVideo)
+    contentEntries.push({
+      key: "editVideo.vw",
+      label: "Edit video",
+      icon: "device.editVideo",
+      chevron: false,
+      onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
+    });
+  if (deviceVideo && windowVideo)
+    contentEntries.push({
+      key: "editVideo.vw",
+      label: "Edit recording",
+      icon: "device.editVideo",
+      chevron: false,
+      onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
+    });
   if (project.deckFrame !== undefined || doc?.frame?.cutout !== undefined)
-    topEntries.push({
+    contentEntries.push({
       key: "frame",
       label: "Overlay",
       icon: "frame",
       onClick: () => openDrill("frame"),
     });
   else if (doc)
-    topEntries.push({
+    addEntries.push({
       key: "frame.add",
       label: "Add overlay",
       icon: "frame.add",
@@ -4162,7 +4224,7 @@ export function SceneTab({
     });
   if (doc) {
     const themeId = doc.themeId ?? "";
-    topEntries.push({
+    settingEntries.push({
       key: "theme",
       label: "Theme",
       icon: "style.theme",
@@ -4172,7 +4234,7 @@ export function SceneTab({
         openDrill("style.theme");
       },
     });
-    topEntries.push({
+    settingEntries.push({
       key: "background",
       label: "Background",
       icon: "style.background",
@@ -4183,21 +4245,21 @@ export function SceneTab({
       },
     });
   }
-  topEntries.push({
+  settingEntries.push({
     key: "camera",
     label: "Camera",
     icon: "camera.animate",
     onClick: () => openDrill("camera"),
   });
   if (doc)
-    topEntries.push({
+    settingEntries.push({
       key: "lighting",
       label: "Lighting",
       icon: "lighting",
       onClick: () => openDrill("lighting"),
     });
   if (project.slots.length > 1) {
-    topEntries.push({
+    settingEntries.push({
       key: "transition",
       label: "Transition",
       icon: "motion.transition",
@@ -4208,6 +4270,16 @@ export function SceneTab({
       },
     });
   }
+  const renderEntry = (entry: TopEntry) => (
+    <ActionRow
+      key={entry.key}
+      icon={<SceneRowIcon id={entry.icon} />}
+      label={entry.label}
+      value={entry.value}
+      chevron={entry.chevron ?? true}
+      onClick={entry.onClick}
+    />
+  );
 
   return (
     <>
@@ -4223,17 +4295,20 @@ export function SceneTab({
           Ask Claude to add one in the terminal, or edit the scene file directly.
         </p>
       )}
-      <div className="inspector-rows">
-        {topEntries.map((entry) => (
-          <ActionRow
-            key={entry.key}
-            icon={<SceneRowIcon id={entry.icon} />}
-            label={entry.label}
-            value={entry.value}
-            chevron={entry.chevron ?? true}
-            onClick={entry.onClick}
-          />
-        ))}
+      {contentEntries.length > 0 && (
+        <>
+          <div className="inspector-rows">{contentEntries.map(renderEntry)}</div>
+          <div className="inspector-section-divider" />
+        </>
+      )}
+      {addEntries.length > 0 && (
+        <>
+          <div className="inspector-rows inspector-section-body">{addEntries.map(renderEntry)}</div>
+          <div className="inspector-section-divider" />
+        </>
+      )}
+      <div className="inspector-rows inspector-section-body">
+        {settingEntries.map(renderEntry)}
         <DurationRow
           durationMs={scene.durationMs}
           mode={durationMode}

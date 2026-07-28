@@ -13,13 +13,14 @@ describe("LIGHTING_PRESETS", () => {
     expect(new Set(LIGHTING_PRESETS.map((p) => p.id)).size).toBe(6);
   });
 
-  it.each(
-    LIGHTING_PRESETS.map((p) => [p.id, p] as const),
-  )("%s parses verbatim and resolves renderable", (_id, preset) => {
-    const parsed = normalizeLighting({ ...preset.spec, preset: preset.id }, "preset");
-    expect(parsed).toEqual({ ...preset.spec, preset: preset.id });
-    expect(resolveLighting(undefined, undefined, parsed ?? undefined)).toBeDefined();
-  });
+  it.each(LIGHTING_PRESETS.map((p) => [p.id, p] as const))(
+    "%s parses verbatim and resolves renderable",
+    (_id, preset) => {
+      const parsed = normalizeLighting({ ...preset.spec, preset: preset.id }, "preset");
+      expect(parsed).toEqual({ ...preset.spec, preset: preset.id });
+      expect(resolveLighting(undefined, undefined, parsed ?? undefined)).toBeDefined();
+    },
+  );
 
   it("dark-rim demonstrates theme-linked colour and camera space", () => {
     const darkRim = LIGHTING_PRESETS.find((p) => p.id === "dark-rim");

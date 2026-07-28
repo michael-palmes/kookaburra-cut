@@ -1106,6 +1106,21 @@ body {
   border-top: 1px solid var(--border-subtle);
 }
 
+/* The Claude Code update banner: advisory, never blocks starting a session. */
+.terminal-update-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.terminal-update-banner .muted {
+  flex: 1;
+  font-size: 11px;
+}
+
 /* ── Stage (§7.2) — recessed matte around a letterboxed, aspect-locked frame ─ */
 
 /* A size container so the frame can contain-fit with cq units; min sizes are pinned to 0
@@ -5649,6 +5664,12 @@ body {
   cursor: pointer;
 }
 
+.inspector-clear-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .inspector-reset-btn:hover {
   color: var(--text-primary);
   background: var(--surface-hover);
@@ -6208,18 +6229,6 @@ img.inspector-scene-thumb {
 .bg-type-tile.selected {
   color: var(--text-primary);
   border-color: var(--accent);
-}
-
-/* The staged-backdrop occlusion notice: text over its action, never side by side. */
-.bg-occlusion {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
 }
 
 .option-grid.three-up {

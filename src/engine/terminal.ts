@@ -123,11 +123,45 @@ export function binaryDir(path: string): string | null {
 
 /** The command the panel runs for a project session. `claudePath` is the detected binary (detect_claude), exec'd by full path since detection probes the filesystem while a login non-interactive shell resolves via zprofile PATH only, and the two disagree on a default install (~/.zshrc owns the PATH line), which is exactly the packaged-app case; `continueLast` resumes the folder's most recent conversation (only valid when `hasClaudeSession` is true). */
 export function claudeSessionCommand(continueLast: boolean, claudePath: string): string {
-  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode acceptEdits`;
+  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto --model claude-opus-5 --effort high`;
 }
 
 /** The official installer, run VISIBLY inside the terminal for transparency. */
 export const CLAUDE_INSTALL_COMMAND = "curl -fsSL https://claude.ai/install.sh | bash";
+
+/** Native/npm installs update in place, by full path (same PATH rationale as sessions). */
+export function claudeUpdateCommand(claudePath: string): string {
+  return `${shellQuote(claudePath)} update`;
+}
+
+/** Brew never auto-updates and lags the release channel: drop the cask(s), then the official installer. */
+export const CLAUDE_BREW_SWITCH_COMMAND =
+  "brew uninstall --cask claude-code claude-code@latest 2>/dev/null; curl -fsSL https://claude.ai/install.sh | bash";
+
+/** Read-only install diagnostics, run visibly. */
+export function claudeDoctorCommand(claudePath: string): string {
+  return `${shellQuote(claudePath)} doctor`;
+}
+
+/** The native probe's result: local `--version` + the daily-cached latest (see claude_update.rs). */
+export interface ClaudeVersionInfo {
+  path: string;
+  method: "native" | "brew" | "npm" | "other";
+  installed: string | null;
+  latest: string | null;
+  outdated: boolean;
+  dismissed: boolean;
+}
+
+/** Null when Claude Code isn't installed; latest is cached daily and silent offline. */
+export function claudeVersionInfo(): Promise<ClaudeVersionInfo | null> {
+  return invoke<ClaudeVersionInfo | null>("claude_version_info");
+}
+
+/** "Later" on the update banner: never re-offer this version. */
+export function dismissClaudeUpdate(version: string): Promise<void> {
+  return invoke<void>("dismiss_claude_update", { version });
+}
 
 // ── Live session registry ────────────────────────────────────────
 // Sessions outlive the panel component: switching projects detaches the terminal's DOM but keeps the PTY (and any mid-flight Claude work) alive, and switching back re-attaches with full scrollback. Entries end when the child exits, on explicit end, or with the app (the PTY master dies with this process, so the child gets SIGHUP).

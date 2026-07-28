@@ -63,6 +63,9 @@ pub struct AppSettings {
     /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
     #[serde(default)]
     pub disable_hardware_video: bool,
+    /// Inverted so the serde/Default false means Downloads ON: app-triggered exports land in ~/Downloads; terminal autoruns always keep the canonical paths.
+    #[serde(default)]
+    pub keep_exports_in_project: bool,
     /// Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off".
     #[serde(default)]
     pub lag_warning: Option<String>,
@@ -75,6 +78,15 @@ pub struct AppSettings {
     /// Last version offered and declined ("Later"), so the same version isn't re-offered every launch.
     #[serde(default)]
     pub last_offered_version: Option<String>,
+    /// Unix-ms of the last Claude Code version check (the daily throttle marker; stamped on attempt).
+    #[serde(default)]
+    pub last_claude_check_ms: Option<u64>,
+    /// Cached latest Claude Code version from the last successful check.
+    #[serde(default)]
+    pub last_claude_latest: Option<String>,
+    /// Last Claude Code version offered and dismissed, so the banner isn't re-shown for it.
+    #[serde(default)]
+    pub last_offered_claude_version: Option<String>,
     /// Last Present-modal selection per project id, restored on modal open.
     #[serde(default)]
     pub present_options_by_project: HashMap<String, PresentOptionsDoc>,
@@ -508,6 +520,19 @@ pub fn set_hardware_video(
     settings.disable_hardware_video = !enabled;
     save_settings(&app, &state, settings)?;
     let _ = app.emit("kookaburra://hardware-video-changed", enabled);
+    Ok(())
+}
+
+/// Toggle the Downloads export destination (app-triggered exports only; the inverted field keeps Downloads the serde/Default ON state).
+#[tauri::command]
+pub fn set_export_to_downloads(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = load_settings(&app, &state)?;
+    settings.keep_exports_in_project = !enabled;
+    save_settings(&app, &state, settings)?;
     Ok(())
 }
 

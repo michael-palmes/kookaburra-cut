@@ -14,6 +14,8 @@ export interface AppSettings {
   lastExportPreset?: string | null;
   /** Inverted flag so its default (false) means hardware video ON. */
   disableHardwareVideo?: boolean;
+  /** Inverted flag so its default (false) means app exports land in ~/Downloads. */
+  keepExportsInProject?: boolean;
   /** Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off". */
   lagWarning?: string | null;
   /** Tri-state auto-update consent: absent/null = undecided (first-run ask still owed). */
@@ -91,6 +93,11 @@ export function setLastProject(projectId: string | null): Promise<void> {
 /** Toggle hardware video for the everyday paths (thumbnails, clip extraction, editor render); emits `kookaburra://hardware-video-changed`. */
 export function setHardwareVideoSetting(enabled: boolean): Promise<void> {
   return invoke<void>("set_hardware_video", { enabled });
+}
+
+/** Toggle the Downloads export destination (app-triggered exports only). */
+export function setExportToDownloadsSetting(enabled: boolean): Promise<void> {
+  return invoke<void>("set_export_to_downloads", { enabled });
 }
 
 export type LagWarningMode = "off" | "sustained" | "strict";

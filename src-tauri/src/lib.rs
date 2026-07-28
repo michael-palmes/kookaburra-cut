@@ -1,5 +1,6 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+mod claude_update;
 mod concurrency;
 mod edit;
 mod encode;
@@ -144,20 +145,29 @@ fn start_export(
     workspace::validate_slug(&options.project_id)?;
     workspace::validate_slug(&options.aspect)?;
 
-    // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path.
-    let dir = match &options.project_slug {
-        Some(slug) => {
-            workspace::validate_slug(slug)?;
-            workspace::require_root(&app, &settings)?
-                .join(slug)
-                .join("exports")
+    // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path. "downloads" (app-triggered exports honouring the setting) routes only the FINAL file to ~/Downloads; terminal autoruns never send it.
+    let to_downloads = match options.destination.as_deref() {
+        Some("downloads") => true,
+        Some(other) => return Err(format!("unknown export destination: {other}")),
+        None => false,
+    };
+    let dir = if to_downloads {
+        app.path().download_dir().map_err(|e| e.to_string())?
+    } else {
+        match &options.project_slug {
+            Some(slug) => {
+                workspace::validate_slug(slug)?;
+                workspace::require_root(&app, &settings)?
+                    .join(slug)
+                    .join("exports")
+            }
+            None => app
+                .path()
+                .home_dir()
+                .map_err(|e| e.to_string())?
+                .join(workspace::WORKSPACE_DIR_NAME)
+                .join(&options.project_id),
         }
-        None => app
-            .path()
-            .home_dir()
-            .map_err(|e| e.to_string())?
-            .join(workspace::WORKSPACE_DIR_NAME)
-            .join(&options.project_id),
     };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // Preset/custom exports suffix the filename so they never overwrite the legacy `<project>-<aspect>` output; absent suffix means the exact legacy name, so the frozen path and Verify stay untouched.
@@ -168,16 +178,20 @@ fn start_export(
         }
         None => String::new(),
     };
-    let output = dir.join(format!(
-        "{}-{}{}.{}",
-        options.project_id,
-        options.aspect,
-        suffix,
-        match &options.encode {
-            Some(spec) => spec.codec.container_ext(),
-            None => options.codec.container_ext(),
+    let ext = match &options.encode {
+        Some(spec) => spec.codec.container_ext(),
+        None => options.codec.container_ext(),
+    };
+    let base = format!("{}-{}{}", options.project_id, options.aspect, suffix);
+    let mut output = dir.join(format!("{base}.{ext}"));
+    // Downloads is shared space: never overwrite, suffix Finder-style. The canonical paths keep overwrite semantics (baselines re-record in place).
+    if to_downloads {
+        let mut n = 2;
+        while output.exists() {
+            output = dir.join(format!("{base} {n}.{ext}"));
+            n += 1;
         }
-    ));
+    }
 
     // Defence in depth: confirm the output still resolves inside dir (the two-pass mezzanine/passlog paths reuse this same validated project_id+aspect, so they're covered too).
     let canon_dir = dir.canonicalize().map_err(|e| e.to_string())?;
@@ -1185,6 +1199,7 @@ pub fn run() {
             workspace::list_project_media,
             workspace::set_last_project,
             workspace::set_hardware_video,
+            workspace::set_export_to_downloads,
             workspace::set_lag_warning,
             workspace::rename_project,
             workspace::duplicate_project,
@@ -1234,6 +1249,8 @@ pub fn run() {
             pty::pty_resume,
             pty::detect_claude,
             pty::has_claude_session,
+            claude_update::claude_version_info,
+            claude_update::dismiss_claude_update,
             media::import_media,
             media::media_meta,
             global_screenshots::list_global_screenshots,

@@ -35,13 +35,13 @@ describe("binaryDir", () => {
 describe("claudeSessionCommand", () => {
   it("execs the detected path quoted, with the pinned permission mode", () => {
     expect(claudeSessionCommand(false, "/Users/m/.local/bin/claude")).toBe(
-      "exec '/Users/m/.local/bin/claude' --permission-mode acceptEdits",
+      "exec '/Users/m/.local/bin/claude' --permission-mode auto --model claude-opus-5 --effort high",
     );
   });
 
   it("adds --continue when resuming", () => {
     expect(claudeSessionCommand(true, "/opt/homebrew/bin/claude")).toBe(
-      "exec '/opt/homebrew/bin/claude' --continue --permission-mode acceptEdits",
+      "exec '/opt/homebrew/bin/claude' --continue --permission-mode auto --model claude-opus-5 --effort high",
     );
   });
 });

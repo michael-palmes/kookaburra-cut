@@ -298,31 +298,26 @@ describe("builtin theme documents (structure pins)", () => {
     },
   ];
 
-  it.each(LINEUP_PINS)("$id parses with its signature blocks (v8 · M4 lineup pin)", ({
-    id,
-    doc,
-    mode,
-    headline,
-    backdrop,
-    environment,
-    animIn,
-  }) => {
-    const theme = parseThemeDoc(doc, "pin");
-    expect(theme).toBeDefined();
-    expect(theme?.id).toBe(id);
-    expect(theme?.mode).toBe(mode);
-    expect(theme?.typography.headline).toEqual(headline);
-    expect(theme?.backdrop?.type).toBe(backdrop);
-    expect(theme?.environment?.source).toBe(environment);
-    expect(theme?.textAnimation?.in).toBe(animIn);
-    // Every lineup theme lights its stage (SceneStage would silently stand down without).
-    expect(theme?.lighting?.sun).toBeDefined();
-    // A gradient backdrop must name a gradient that actually exists in the theme (bundled themes never use inline specs).
-    if (theme?.backdrop?.type === "gradient") {
-      expect(theme.backdrop.gradient).toBeDefined();
-      expect(theme?.gradients?.[theme.backdrop.gradient ?? ""]).toBeDefined();
-    }
-  });
+  it.each(LINEUP_PINS)(
+    "$id parses with its signature blocks (v8 · M4 lineup pin)",
+    ({ id, doc, mode, headline, backdrop, environment, animIn }) => {
+      const theme = parseThemeDoc(doc, "pin");
+      expect(theme).toBeDefined();
+      expect(theme?.id).toBe(id);
+      expect(theme?.mode).toBe(mode);
+      expect(theme?.typography.headline).toEqual(headline);
+      expect(theme?.backdrop?.type).toBe(backdrop);
+      expect(theme?.environment?.source).toBe(environment);
+      expect(theme?.textAnimation?.in).toBe(animIn);
+      // Every lineup theme lights its stage (SceneStage would silently stand down without).
+      expect(theme?.lighting?.sun).toBeDefined();
+      // A gradient backdrop must name a gradient that actually exists in the theme (bundled themes never use inline specs).
+      if (theme?.backdrop?.type === "gradient") {
+        expect(theme.backdrop.gradient).toBeDefined();
+        expect(theme?.gradients?.[theme.backdrop.gradient ?? ""]).toBeDefined();
+      }
+    },
+  );
 
   it("the LINEUP carries fixed backgrounds; default/fx stay clean (v12 · M5 flip)", () => {
     // The null-for-legacy pin flipped DELIBERATELY with the theme visual pass: every lineup theme now stages a camera-locked gradient wash (naming a gradient in its own theme), while legacy-resolved default/fx stay background-free so every non-themed project keeps its bytes.
