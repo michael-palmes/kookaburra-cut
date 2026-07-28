@@ -27,7 +27,7 @@ export function duplicateProjectScene(
   slug: string,
   index: number,
   position?: number,
-): Promise<void> {
+): Promise<{ file: string; docFile: string; sceneId: string; durationMs: number }> {
   return invoke("duplicate_scene", { slug, index, position: position ?? null });
 }
 

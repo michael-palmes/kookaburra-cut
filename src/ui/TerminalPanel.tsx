@@ -77,8 +77,8 @@ export function TerminalPanel({
   theme: Theme;
   /** Lazily capture/fetch scene-picker thumbnails. */
   getThumbs: () => Promise<Record<string, string>>;
-  /** A native write changed project.json/scenes; reload the preview immediately. */
-  onProjectChanged: () => void;
+  /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
+  onProjectChanged: (focusSceneFile?: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -449,9 +449,9 @@ export function TerminalPanel({
           scenes={scenes}
           thumbs={thumbs}
           theme={theme}
-          onDone={() => {
+          onDone={(result) => {
             setWizard(null);
-            onProjectChanged();
+            onProjectChanged(result.file);
           }}
           onCancel={() => setWizard(null)}
         />
