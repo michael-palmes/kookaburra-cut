@@ -2504,36 +2504,34 @@ export function SceneTab({
             />
           )}
           {vw.stage.type === "image" && (
-            <>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["image"]}
-                  globalToggle
-                  refreshKey={mediaRefreshKey + mediaRefresh}
-                  selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
-                  onPick={(rel, meta) => {
+            <div className="inspector-media-host">
+              <MediaBrowser
+                slug={slug}
+                projectPath={workspaceProjectPath(slug) ?? ""}
+                kinds={["image"]}
+                globalToggle
+                refreshKey={mediaRefreshKey + mediaRefresh}
+                selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
+                onPick={(rel, meta) => {
+                  if (meta && meta.kind !== "image") return;
+                  patchVW((v) => {
+                    v.stage = { type: "image", src: rel };
+                  });
+                }}
+                cardMenu={mediaCardMenu({
+                  slug,
+                  primaryLabel: "Select",
+                  onPrimary: (rel, meta) => {
                     if (meta && meta.kind !== "image") return;
                     patchVW((v) => {
                       v.stage = { type: "image", src: rel };
                     });
-                  }}
-                  cardMenu={mediaCardMenu({
-                    slug,
-                    primaryLabel: "Select",
-                    onPrimary: (rel, meta) => {
-                      if (meta && meta.kind !== "image") return;
-                      patchVW((v) => {
-                        v.stage = { type: "image", src: rel };
-                      });
-                    },
-                    onChanged: () => setMediaRefresh((n) => n + 1),
-                    onError: setError,
-                  })}
-                />
-              </div>
-            </>
+                  },
+                  onChanged: () => setMediaRefresh((n) => n + 1),
+                  onError: setError,
+                })}
+              />
+            </div>
           )}
         </div>
       </div>
