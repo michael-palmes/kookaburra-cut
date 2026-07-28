@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Background \u2014 hex-grid",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "speed": 1
+  }
+}

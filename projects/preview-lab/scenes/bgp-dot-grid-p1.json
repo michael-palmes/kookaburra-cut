@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Cottesloe",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#f0f4f8", "#e9f0f5", "#e2ecf4"],
+    "speed": 1,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p1"
+  }
+}

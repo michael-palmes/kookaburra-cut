@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Arafura",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 1,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

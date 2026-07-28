@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Background \u2014 horizon-grid",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "speed": 1
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Coober Pedy",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0c1616", "#224541", "#2c6c5f"],
+    "speed": 0.9,
+    "params": {
+      "density": 40,
+      "dotSize": 0.23,
+      "pulse": 0.65,
+      "waveWidth": 0.4,
+      "driftAngle": 300
+    },
+    "preset": "p8"
+  }
+}

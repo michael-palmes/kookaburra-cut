@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Palm Cove",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#eff4f7", "#eaf1f4", "#e3eef2", "#edf3f4"],
+    "speed": 0.5,
+    "params": {
+      "density": 11,
+      "lineWeight": 0.5,
+      "highlightWidth": 0.3,
+      "fillDensity": 0.22,
+      "cadence": 0.3
+    },
+    "preset": "p5"
+  }
+}

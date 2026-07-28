@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Arnhem",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#150d17", "#6f407a", "#8e429a"],
+    "speed": 0.45,
+    "params": {
+      "horizon": -0.08,
+      "density": 16,
+      "lineWeight": 0.35,
+      "glow": 0.75,
+      "fade": 0.4
+    },
+    "preset": "p9"
+  }
+}

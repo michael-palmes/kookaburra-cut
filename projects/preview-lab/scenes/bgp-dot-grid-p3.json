@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Noosa",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#f6f3ee", "#f3eee7", "#f2eae1"],
+    "speed": 0.9,
+    "params": {
+      "density": 38,
+      "dotSize": 0.24,
+      "pulse": 0.6,
+      "waveWidth": 0.4,
+      "driftAngle": 25
+    },
+    "preset": "p3"
+  }
+}

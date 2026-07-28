@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Esperance",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#f0f4f8", "#e8eef4", "#e7f0f6"],
+    "speed": 0.3,
+    "params": {
+      "horizon": 0,
+      "density": 18,
+      "lineWeight": 0.3,
+      "glow": 0.4,
+      "fade": 0.7
+    },
+    "preset": "p3"
+  }
+}

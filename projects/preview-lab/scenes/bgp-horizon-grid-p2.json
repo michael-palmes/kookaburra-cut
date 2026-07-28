@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Airlie",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#f0f4f7", "#e7eff3", "#e6f0f5"],
+    "speed": 0.35,
+    "params": {
+      "horizon": 0.12,
+      "density": 10,
+      "lineWeight": 0.5,
+      "glow": 0.65,
+      "fade": 0.5
+    },
+    "preset": "p2"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Mission Beach",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#edf4ef", "#e7f1ea", "#e2eee5"],
+    "speed": 0.35,
+    "params": {
+      "density": 6,
+      "lineWeight": 0.5,
+      "glow": 0.5,
+      "softness": 0.7,
+      "cadence": 0.7
+    },
+    "preset": "p2"
+  }
+}

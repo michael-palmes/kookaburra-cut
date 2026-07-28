@@ -58,6 +58,18 @@ float hash21(vec2 p) {
 `;
 
 // PATCHED: the source's dither line is fract(sin(...)) whose sin precision is driver-defined; replaced with the same house PCG hash applied to gl_FragCoord (always non-negative window coordinates).
+// The house PCG-style integer hash (the transitionShader convention): bit-reproducible where driver float hashes are not.
+// language=GLSL
+export const pcgHash01: string = /* glsl */ `
+float hash01(uvec3 v) {
+  uint h = v.x * 374761393u ^ v.y * 668265263u ^ v.z * 2246822519u;
+  h ^= h >> 13;
+  h *= 1274126177u;
+  h ^= h >> 16;
+  return float(h & 0x00FFFFFFu) / 16777216.0;
+}
+`;
+
 // language=GLSL
 export const colorBandingFix: string = /* glsl */ `
   {

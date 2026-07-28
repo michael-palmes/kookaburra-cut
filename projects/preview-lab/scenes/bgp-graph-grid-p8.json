@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Macquarie",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#0d1218", "#2f485c", "#3a6588", "#25343e"],
+    "speed": 0.3,
+    "params": {
+      "density": 8,
+      "lineWeight": 0.6,
+      "highlightWidth": 0.55,
+      "fillDensity": 0.12,
+      "cadence": 0.15
+    },
+    "preset": "p8"
+  }
+}

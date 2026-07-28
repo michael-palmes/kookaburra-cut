@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Simpson Night",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#18100d", "#5e3e30", "#8a543b", "#3e2f25"],
+    "speed": 0.85,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.4,
+      "highlightWidth": 0.35,
+      "fillDensity": 0.18,
+      "cadence": 0.25
+    },
+    "preset": "p6"
+  }
+}

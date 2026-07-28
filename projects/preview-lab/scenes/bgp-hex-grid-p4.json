@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 hex-grid Kata Tjuta",
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#f6f1ef", "#f4edeb", "#f2e9e6"],
+    "speed": 0.45,
+    "params": {
+      "density": 8,
+      "lineWeight": 0.45,
+      "glow": 0.7,
+      "softness": 0.6,
+      "cadence": 0.9
+    },
+    "preset": "p4"
+  }
+}

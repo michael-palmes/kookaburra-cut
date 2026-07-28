@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Broome",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#f8f2f1", "#f5ece8", "#f7ede8"],
+    "speed": 0.5,
+    "params": {
+      "horizon": -0.05,
+      "density": 15,
+      "lineWeight": 0.35,
+      "glow": 0.7,
+      "fade": 0.55
+    },
+    "preset": "p5"
+  }
+}

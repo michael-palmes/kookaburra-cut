@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Background \u2014 graph-grid",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "speed": 1
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Port Davey",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#091112", "#2f595d", "#2d6a6c"],
+    "speed": 0.35,
+    "params": {
+      "horizon": 0,
+      "density": 11,
+      "lineWeight": 0.5,
+      "glow": 0.6,
+      "fade": 0.5
+    },
+    "preset": "p8"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 graph-grid Timor Deep",
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#11111d", "#403f79", "#5654be", "#312f4c"],
+    "speed": 0.45,
+    "params": {
+      "density": 18,
+      "lineWeight": 0.3,
+      "highlightWidth": 0.28,
+      "fillDensity": 0.3,
+      "cadence": 0.4
+    },
+    "preset": "p9"
+  }
+}

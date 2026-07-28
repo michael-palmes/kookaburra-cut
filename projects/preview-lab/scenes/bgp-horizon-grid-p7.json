@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 horizon-grid Snowy Night",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#0c1017", "#3d5375", "#3d638f"],
+    "speed": 0.3,
+    "params": {
+      "horizon": 0.1,
+      "density": 20,
+      "lineWeight": 0.3,
+      "glow": 0.35,
+      "fade": 0.75
+    },
+    "preset": "p7"
+  }
+}

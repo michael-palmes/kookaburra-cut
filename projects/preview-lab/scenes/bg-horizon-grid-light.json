@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background (light) \u2014 horizon-grid Cable Beach",
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#eef5f5", "#e4f0ef", "#e3f2f0"],
+    "speed": 0.4,
+    "params": {
+      "horizon": 0.05,
+      "density": 14,
+      "lineWeight": 0.4,
+      "glow": 0.5,
+      "fade": 0.6
+    },
+    "preset": "p1"
+  }
+}

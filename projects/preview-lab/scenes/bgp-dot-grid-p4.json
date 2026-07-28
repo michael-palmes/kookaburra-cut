@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Background preset \u2014 dot-grid Clare Valley",
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#eff5ee", "#e9f1e5", "#e4eedd"],
+    "speed": 0.6,
+    "params": {
+      "density": 56,
+      "dotSize": 0.17,
+      "pulse": 0.5,
+      "waveWidth": 0.35,
+      "driftAngle": 60
+    },
+    "preset": "p4"
+  }
+}
