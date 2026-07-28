@@ -5,13 +5,13 @@
     "type": "scene3d",
     "look": "grid-hall",
     "colors": ["#6f52a9"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
-      "width": 17,
-      "depth": 30,
+      "width": 20,
+      "depth": 52,
       "height": 13,
       "spacing": 1.3,
-      "clearRadius": 4.5,
+      "clearRadius": 4,
       "drift": 0.9,
       "opacity": 0.95
     },

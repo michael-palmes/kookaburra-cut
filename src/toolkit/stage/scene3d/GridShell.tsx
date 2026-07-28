@@ -73,7 +73,8 @@ export function GridShell({ colors, params, speed }: Scene3dLookProps) {
   }, [radius, latCount, lonCount, horizonBias, lineHex]);
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
 
-  const t = (localMs / 1000) * speed;
+  // Pace baked so speed 1 is the tuned house default.
+  const t = (localMs / 1000) * speed * 1.35;
   const spin = t * 0.04 * params.drift;
   const breathe = opacity * (0.88 + 0.12 * Math.sin(t * 0.7));
 
