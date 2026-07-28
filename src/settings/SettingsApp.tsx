@@ -126,12 +126,16 @@ export function SettingsApp() {
   }, []);
 
   const chooseLocation = useCallback(async () => {
-    const picked = await openFolderPicker({
-      directory: true,
-      multiple: false,
-      title: "Choose where Kookaburra Cut keeps your projects",
-    });
-    if (typeof picked === "string") relocate(picked);
+    try {
+      const picked = await openFolderPicker({
+        directory: true,
+        multiple: false,
+        title: "Choose where Kookaburra Cut keeps your projects",
+      });
+      if (typeof picked === "string") relocate(picked);
+    } catch (e) {
+      setError(String(e));
+    }
   }, [relocate]);
 
   // Manual checks only in this window; the launch check belongs to the main window.

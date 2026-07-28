@@ -38,6 +38,12 @@ impl PackState {
         self.cancel.store(false, Ordering::SeqCst);
         self.cancel.clone()
     }
+
+    /// True from the moment a pack is staged until it is applied or discarded; a workspace move mid-import would pull
+    /// the staging tree and the rollback backups out from under `apply_import`.
+    pub(crate) fn importing(&self) -> bool {
+        self.staged.lock().map(|g| g.is_some()).unwrap_or(true)
+    }
 }
 
 // ------------------------------------------------------------------ wire types

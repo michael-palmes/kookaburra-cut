@@ -12,6 +12,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub const WORKSPACE_DIR_NAME: &str = "Kookaburra Cut";
 /// App-state folder inside the workspace (snapshots, caches). Never user-edited.
 pub(crate) const STATE_DIR_NAME: &str = ".kookaburra";
+/// `EXDEV`: the one `rename` failure a copy can still satisfy. Same value on every platform this ships to.
+const EXDEV: i32 = 18;
 
 /// Current on-disk project manifest filename.
 pub(crate) const MANIFEST_FILENAME: &str = "project.json";
@@ -40,7 +42,7 @@ const SAMPLE_SCREENSHOTS: [(&str, &[u8]); 4] = [
     ),
 ];
 
-/// Persisted app settings (`$APPDATA/settings.json`); absent `workspace_root` means the first-run dialog has not completed yet.
+/// Persisted app settings (`$APPDATA/settings.json`); absent `workspace_root` means first run has not set one up yet.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -353,13 +355,21 @@ fn skills_root(app: &AppHandle) -> PathBuf {
     dev
 }
 
+/// Symlinks are recreated, never followed: a link pointing at an ancestor would recurse until the disk gave out, and a
+/// broken one would abort the whole copy on a file nobody can read.
 fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
     for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let src = entry.path();
         let dst = to.join(entry.file_name());
-        if src.is_dir() {
+        let meta = std::fs::symlink_metadata(&src).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            let target = std::fs::read_link(&src).map_err(|e| e.to_string())?;
+            let _ = std::fs::remove_file(&dst);
+            std::os::unix::fs::symlink(&target, &dst)
+                .map_err(|e| format!("linking {}: {e}", src.display()))?;
+        } else if meta.is_dir() {
             copy_dir_recursive(&src, &dst)?;
         } else {
             std::fs::copy(&src, &dst).map_err(|e| format!("copying {}: {e}", src.display()))?;
@@ -470,6 +480,13 @@ fn check_move(from: &Path, to: &Path) -> Result<(), String> {
             from.display()
         ));
     }
+    // `rename` would move the link and leave every byte on the other volume, then report success.
+    if std::fs::symlink_metadata(from).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(format!(
+            "{} is a linked folder: move the folder it points at instead",
+            from.display()
+        ));
+    }
     let (from_real, to_real) = (resolved(from), resolved(to));
     if to_real == from_real {
         return Err("your workspace is already there".into());
@@ -499,10 +516,17 @@ fn perform_move(from: &Path, to: &Path) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     // Rename is atomic and instant, but only within one volume; a workspace on an external disk needs the slow path.
-    if std::fs::rename(from, to).is_ok() {
-        return Ok(());
+    match std::fs::rename(from, to) {
+        Ok(()) => return Ok(()),
+        // Only a cross-volume refusal is worth copying for. Anything else is a real failure, reported as itself.
+        Err(e) if e.raw_os_error() != Some(EXDEV) => return Err(e.to_string()),
+        Err(_) => {}
     }
-    copy_dir_recursive(from, to)?;
+    if let Err(error) = copy_dir_recursive(from, to) {
+        // The source is untouched, so the half-copy is pure waste, and leaving it would refuse every later attempt.
+        let _ = std::fs::remove_dir_all(to);
+        return Err(error);
+    }
     std::fs::remove_dir_all(from).map_err(|e| {
         format!(
             "copied to {} but could not remove the old folder: {e}",
@@ -511,16 +535,37 @@ fn perform_move(from: &Path, to: &Path) -> Result<(), String> {
     })
 }
 
+/// Trust is keyed by absolute project folder, so a move would otherwise re-ask the F-001 gate for every project.
+fn retarget_trust(settings: &mut AppSettings, from: &Path, to: &Path) {
+    let (from_prefix, to_prefix) = (from.to_string_lossy(), to.to_string_lossy());
+    for record in settings.trusted_projects.values_mut() {
+        // The remainder must start at a path boundary: a sibling named "Kookaburra Cut copy" is not inside this move.
+        let Some(rest) = record.path.strip_prefix(from_prefix.as_ref()) else {
+            continue;
+        };
+        if rest.is_empty() || rest.starts_with('/') {
+            record.path = format!("{to_prefix}{rest}");
+        }
+    }
+}
+
 /// Move the whole workspace to a new home and repoint settings at it. `parent` of `None` is the reset to default.
 #[tauri::command]
 pub fn move_workspace(
     app: AppHandle,
     state: State<'_, SettingsState>,
     export: State<'_, crate::ExportState>,
+    packs: State<'_, crate::pack::commands::PackState>,
     parent: Option<String>,
 ) -> Result<String, String> {
     if export.busy() {
         return Err("an export is running: move your workspace after it finishes".into());
+    }
+    // The packs window imports from its own window: moving now would pull staging and the rollback backups out from under it.
+    if packs.importing() {
+        return Err(
+            "a pack import is open: finish or cancel it before moving your workspace".into(),
+        );
     }
     // A gate boot runs against a throwaway root the settings file knows nothing about; moving would repoint the real one.
     if std::env::var("KOOKABURRA_WORKSPACE_ROOT").is_ok_and(|v| !v.trim().is_empty()) {
@@ -541,8 +586,11 @@ pub fn move_workspace(
     perform_move(&from, &to)?;
 
     ensure_layout(&to)?;
-    let mut settings = settings;
+    // Re-read rather than reusing the clone above: a cross-volume copy runs for minutes, and saving a stale snapshot
+    // would silently revert anything the main window persisted meanwhile (last opened, a trust grant, consent).
+    let mut settings = load_settings(&app, &state)?;
     settings.workspace_root = Some(to.to_string_lossy().into_owned());
+    retarget_trust(&mut settings, &from, &to);
     save_settings(&app, &state, settings)?;
     let _ = app.asset_protocol_scope().allow_directory(&to, true);
     let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
@@ -1510,6 +1558,101 @@ mod tests {
             .exists());
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `rename` on a symlinked root moves the link and leaves every byte behind, while reporting success.
+    #[test]
+    fn a_linked_workspace_is_refused_rather_than_relinked() {
+        let base = scratch_dir();
+        let real = base.join("on-the-external-disk");
+        let link = base.join("Kookaburra Cut");
+        std::fs::create_dir_all(real.join("my-video")).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let error = check_move(&link, &base.join("elsewhere")).unwrap_err();
+        assert!(error.contains("linked folder"), "{error}");
+        // The folder it points at is a fine thing to move.
+        assert!(check_move(&real, &base.join("elsewhere")).is_ok());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Following a link that points at an ancestor never terminates, and a broken one aborts the whole move.
+    #[test]
+    fn copying_recreates_symlinks_instead_of_following_them() {
+        let base = scratch_dir();
+        let from = base.join("from");
+        let to = base.join("to");
+        std::fs::create_dir_all(from.join("assets")).unwrap();
+        std::fs::write(from.join("assets/real.mp4"), "bytes").unwrap();
+        std::os::unix::fs::symlink(&from, from.join("assets/loop")).unwrap();
+        std::os::unix::fs::symlink(base.join("nothing-here"), from.join("assets/broken")).unwrap();
+
+        copy_dir_recursive(&from, &to).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(to.join("assets/real.mp4")).unwrap(),
+            "bytes"
+        );
+        for link in ["assets/loop", "assets/broken"] {
+            let meta = std::fs::symlink_metadata(to.join(link)).unwrap();
+            assert!(meta.file_type().is_symlink(), "{link} was followed");
+        }
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_move_carries_trust_grants_across() {
+        let mut settings = AppSettings {
+            trusted_projects: HashMap::from([
+                (
+                    "mine".to_string(),
+                    TrustRecord {
+                        scenes_fingerprint: "abc".into(),
+                        path: "/Users/x/Desktop/Vids/Kookaburra Cut/mine".into(),
+                        allowed_at_ms: 1,
+                    },
+                ),
+                (
+                    "elsewhere".to_string(),
+                    TrustRecord {
+                        scenes_fingerprint: "def".into(),
+                        path: "/Users/x/Other/elsewhere".into(),
+                        allowed_at_ms: 2,
+                    },
+                ),
+                (
+                    "sibling".to_string(),
+                    TrustRecord {
+                        scenes_fingerprint: "ghi".into(),
+                        path: "/Users/x/Desktop/Vids/Kookaburra Cut copy/sibling".into(),
+                        allowed_at_ms: 3,
+                    },
+                ),
+            ]),
+            ..Default::default()
+        };
+        retarget_trust(
+            &mut settings,
+            Path::new("/Users/x/Desktop/Vids/Kookaburra Cut"),
+            Path::new("/Users/x/Kookaburra Cut"),
+        );
+
+        assert_eq!(
+            settings.trusted_projects["mine"].path,
+            "/Users/x/Kookaburra Cut/mine"
+        );
+        // A grant for a project outside the workspace is not ours to rewrite.
+        assert_eq!(
+            settings.trusted_projects["elsewhere"].path,
+            "/Users/x/Other/elsewhere"
+        );
+        // Nor one whose folder merely starts with the same characters.
+        assert_eq!(
+            settings.trusted_projects["sibling"].path,
+            "/Users/x/Desktop/Vids/Kookaburra Cut copy/sibling"
+        );
     }
 
     #[test]

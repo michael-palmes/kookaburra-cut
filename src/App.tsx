@@ -981,6 +981,8 @@ export default function App() {
       .catch((e) => {
         console.warn("[workspace] settings unavailable:", e);
         setSettings({ workspaceRoot: null });
+        // Without this the silent setup has nothing to report and no dialog offers a way out.
+        setSetupError(String(e));
         if (!isAutoRun) setView("welcome");
       });
     void refreshProjects();
