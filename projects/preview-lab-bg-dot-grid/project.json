@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-dot-grid",
+  "name": "Preview Lab — bg-dot-grid (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-dot-grid.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-dot-grid-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dot-grid-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

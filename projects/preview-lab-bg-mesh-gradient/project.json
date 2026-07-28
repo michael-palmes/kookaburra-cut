@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-mesh-gradient",
+  "name": "Preview Lab — bg-mesh-gradient (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-mesh-gradient.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-mesh-gradient-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bg-mesh-gradient-light.tsx",
+      "durationMs": 2000
+    }
+  ]
+}

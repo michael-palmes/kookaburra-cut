@@ -1,0 +1,45 @@
+{
+  "id": "preview-lab-text",
+  "name": "Preview Lab — text (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/tm-none.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-fade.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-fade-up.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-blur-in.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-slide.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-mask-reveal.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-fade-scale.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-twist-scale.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-scatter-scale.tsx",
+      "durationMs": 1600
+    }
+  ]
+}

@@ -13,7 +13,9 @@
 #
 # Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
-#                  theme-starter, option-previews → preview-lab; verify/export accept a
+#                  theme-starter, option-previews → the preview-lab-* projects (incremental
+#                  via the src/assets/option-previews/manifest.json diff; --all re-records
+#                  everything); verify/export accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
 #         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
@@ -40,10 +42,11 @@ DEV_LOG="$RESULT_DIR/dev.log"
 # backgroundThrottling in tauri.conf.json); even with throttling disabled, AFK margin is cheap.
 TIMEOUT="${KOOKABURRA_RUN_TIMEOUT:-2400}"
 
-ACTION="" PROJECT="" ASPECT="all" CODEC="libx264" APP="" ASPECT_EXPLICIT=0
+ACTION="" PROJECT="" ASPECT="all" CODEC="libx264" APP="" ASPECT_EXPLICIT=0 ALL_PREVIEWS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --action)  ACTION="${2:-}";  shift 2 ;;
+    --all)     ALL_PREVIEWS=1;   shift ;;
     --project) PROJECT="${2:-}"; shift 2 ;;
     --aspect) ASPECT="${2:-}"; ASPECT_EXPLICIT=1; shift 2 ;;
     --codec)  CODEC="${2:-}";  shift 2 ;;
@@ -103,8 +106,20 @@ mkdir -p "$RESULT_DIR"
 rm -f "$RESULT_FILE"
 # A fresh option-preview batch must not inherit frames from a previous (longer) run —
 # the encoder consumes the whole contiguous %03d sequence in each set directory.
+# Incremental by default: the manifest diff names the stale sets and the app only mounts
+# lab projects owning one; nothing stale skips the boot entirely. --all forces a full
+# re-record (deliberate engine-change refreshes, docs/backgrounds.md).
 if [[ "$ACTION" == "option-previews" ]]; then
   rm -rf "$RESULT_DIR/option-previews"
+  if [[ "$ALL_PREVIEWS" != "1" ]]; then
+    STALE_SETS="$(node "$ROOT/scripts/option-preview-stale.mjs" list)"
+    if [[ -z "$STALE_SETS" ]]; then
+      echo "kookaburra:run: option previews are all fresh — nothing to do (--all forces a re-record)"
+      exit 0
+    fi
+    export KOOKABURRA_SETS="$STALE_SETS"
+    echo "kookaburra:run: $(echo "$STALE_SETS" | tr ',' '\n' | wc -l | tr -d ' ') stale option-preview set(s) to capture"
+  fi
 fi
 # Same for theme previews: the promotion loop copies EVERY staged dir, so stale dirs from
 # renamed or removed themes would be resurrected into src/assets on each run.
@@ -239,6 +254,7 @@ if [[ "$ACTION" == "option-previews" ]]; then
   DEST="$ROOT/src/assets/option-previews"
   mkdir -p "$DEST"
   sets=0
+  PROMOTED=()
   for dir in "$SRC"/*/; do
     [[ -d "$dir" ]] || continue
     set_name="$(basename "$dir")"
@@ -254,8 +270,13 @@ if [[ "$ACTION" == "option-previews" ]]; then
         -c:v libx264 -pix_fmt yuv420p -crf 24 -an -movflags +faststart \
         "$DEST/$set_name.mp4"
     fi
+    PROMOTED+=("$set_name")
     sets=$((sets + 1))
   done
+  # Only promoted sets earn a manifest entry, so a mid-run failure re-records the rest next time.
+  if [[ "$sets" -gt 0 ]]; then
+    node "$ROOT/scripts/option-preview-stale.mjs" commit "${PROMOTED[@]}"
+  fi
   echo "kookaburra:run: promoted $sets option-preview set(s) → src/assets/option-previews/"
 fi
 exit 0

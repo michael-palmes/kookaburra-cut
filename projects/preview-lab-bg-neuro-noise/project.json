@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-neuro-noise",
+  "name": "Preview Lab — bg-neuro-noise (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-neuro-noise.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-neuro-noise-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bg-neuro-noise-light.tsx",
+      "durationMs": 2000
+    }
+  ]
+}

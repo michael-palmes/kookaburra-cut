@@ -514,6 +514,8 @@ struct AutorunEnv {
     scene: Option<String>,
     /// screenshot: seconds into the scene (or the project when no scene is given).
     at: Option<String>,
+    /// option-previews: comma list of stale set names to capture (unset = all).
+    sets: Option<String>,
 }
 
 #[tauri::command]
@@ -533,6 +535,7 @@ fn get_autorun_config() -> AutorunEnv {
         encode_json: var("KOOKABURRA_ENCODE_JSON"),
         scene: var("KOOKABURRA_SCENE"),
         at: var("KOOKABURRA_AT"),
+        sets: var("KOOKABURRA_SETS"),
     }
 }
 

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-smoke-ring",
+  "name": "Preview Lab — bg-smoke-ring (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-smoke-ring.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-smoke-ring-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bg-smoke-ring-light.tsx",
+      "durationMs": 2000
+    }
+  ]
+}

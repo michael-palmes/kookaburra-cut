@@ -161,14 +161,22 @@ const assetHdrGlob = import.meta.glob<string>("/projects/*/assets/**/*.{hdr,exr}
   eager: true,
 });
 
-/** Dev-only lab projects stay out of every picker; `loadProject` still resolves them by id (the option-preview generator loads `preview-lab` explicitly). */
-const HIDDEN_PROJECT_IDS = new Set(["preview-lab"]);
+/** Dev-only lab projects stay out of every picker; `loadProject` still resolves them by id (the option-preview generator iterates `previewLabProjectIds()`). */
+const isHiddenProjectId = (id: string) => id.startsWith("preview-lab");
 
 /** Project ids discoverable under `projects/`. */
 export function listProjectIds(): string[] {
   return Object.keys(manifestGlob)
     .map((path) => path.split("/")[2])
-    .filter((id) => !HIDDEN_PROJECT_IDS.has(id));
+    .filter((id) => !isHiddenProjectId(id));
+}
+
+/** The dev-only preview-lab projects (one per option-preview family: text, stage, one per background), in stable order. Discovery is the directory-prefix convention: adding a background means adding its `preview-lab-bg-<id>` project; a vitest guards the pairing. */
+export function previewLabProjectIds(): string[] {
+  return Object.keys(manifestGlob)
+    .map((path) => path.split("/")[2])
+    .filter((id) => id.startsWith("preview-lab-"))
+    .sort();
 }
 
 // ── Workspace projects ─────────────────────────────────────────────────────

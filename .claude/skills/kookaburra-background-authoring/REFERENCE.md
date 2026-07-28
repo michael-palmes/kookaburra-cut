@@ -96,7 +96,7 @@ dark preset, params inside the def's min/max, speed/scale inside the schema clam
 
 ## Preview-lab fixture pair
 
-Sidecar (`projects/preview-lab/scenes/bgp-<shader>-<pid>.json`) mirroring the preset exactly
+Sidecar (`projects/preview-lab-bg-<shader>/scenes/bgp-<shader>-<pid>.json`) mirroring the preset exactly
 (speed defaults to 1 when the preset omits it):
 
 ```json
@@ -130,7 +130,7 @@ export default defineScene({
 
 Also add one `bg-<shader>` pair (same stub shape, sidecar with just `shader` + `speed`, no
 colours) for the type card's motion clip, and register every fixture in
-`projects/preview-lab/project.json` with `"durationMs": 1000`.
+the lab's own `projects/preview-lab-bg-<shader>/project.json` with `"durationMs": 1000`.
 
 Naming contract (pinned by `optionPreviews.test.ts`): `bg-<shader>` renders a CLIP set,
 `bgp-<shader>-<pid>` renders a STILL set, both keyed by their stem in

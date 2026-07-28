@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-swirl",
+  "name": "Preview Lab — bg-swirl (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-swirl.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-swirl-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-swirl-p9.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bg-swirl-light.tsx",
+      "durationMs": 2000
+    }
+  ]
+}
