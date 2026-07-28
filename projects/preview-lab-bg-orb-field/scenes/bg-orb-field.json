@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"orb-field\" (\"Wolfe Creek\")",
+  "background": {
+    "type": "scene3d",
+    "look": "orb-field",
+    "colors": ["#2b3138", "#4c4034"],
+    "speed": 1.5,
+    "params": {
+      "count": 12,
+      "spread": 3,
+      "depth": 13,
+      "size": 1,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

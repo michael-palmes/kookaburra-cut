@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"drift-slabs\" (\"Whitehaven\")",
+  "background": {
+    "type": "scene3d",
+    "look": "drift-slabs",
+    "colors": ["#95d7f9", "#6dc9db"],
+    "speed": 1.5,
+    "params": {
+      "count": 13,
+      "spread": 3,
+      "depth": 13,
+      "size": 1,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3f2fd"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

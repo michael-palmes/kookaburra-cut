@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skyline-prisms\" 3D background (\"Balls Pyramid\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#293236", "#304745"],
+    "speed": 1.05,
+    "params": {
+      "count": 16,
+      "depth": 12,
+      "tallest": 10,
+      "drift": 1.2
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0c1317"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

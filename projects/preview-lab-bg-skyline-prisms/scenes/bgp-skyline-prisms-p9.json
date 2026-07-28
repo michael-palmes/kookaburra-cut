@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skyline-prisms\" 3D background (\"Federation Peak\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#273331", "#31473a"],
+    "speed": 0.9,
+    "params": {
+      "count": 18,
+      "depth": 13,
+      "tallest": 9,
+      "drift": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a1413"
+    },
+    "preset": "p9"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

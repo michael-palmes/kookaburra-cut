@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skyline-prisms\" 3D background (\"Frenchmans Cap\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#312f3d", "#4c3c57"],
+    "speed": 1.35,
+    "params": {
+      "count": 24,
+      "depth": 16,
+      "tallest": 6,
+      "drift": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#13101c"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

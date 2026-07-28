@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"halo-rings\" 3D background (\"Currarong\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#b2d0ff", "#aab8ff"],
+    "speed": 1.8,
+    "params": {
+      "count": 5,
+      "spread": 3,
+      "depth": 13,
+      "size": 0.95,
+      "tube": 0.14,
+      "drift": 1.1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e8f0ff"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

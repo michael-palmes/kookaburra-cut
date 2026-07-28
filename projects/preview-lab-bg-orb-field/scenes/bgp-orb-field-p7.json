@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "preset still for the \"orb-field\" 3D background (\"Henbury\")",
+  "background": {
+    "type": "scene3d",
+    "look": "orb-field",
+    "colors": ["#382f2b", "#494232"],
+    "speed": 1.05,
+    "params": {
+      "count": 9,
+      "spread": 2,
+      "depth": 15,
+      "size": 1.35,
+      "drift": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#18100d"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

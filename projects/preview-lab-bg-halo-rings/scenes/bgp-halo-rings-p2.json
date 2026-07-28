@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"halo-rings\" 3D background (\"Remarkables\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#9cd5ff", "#71c7e4"],
+    "speed": 1.05,
+    "params": {
+      "count": 4,
+      "spread": 2,
+      "depth": 15,
+      "size": 1.25,
+      "tube": 0.22,
+      "drift": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e4f2fe"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

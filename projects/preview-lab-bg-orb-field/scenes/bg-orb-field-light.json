@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"orb-field\" (\"Moreton\")",
+  "background": {
+    "type": "scene3d",
+    "look": "orb-field",
+    "colors": ["#90d9f1", "#68cad3"],
+    "speed": 1.5,
+    "params": {
+      "count": 12,
+      "spread": 3,
+      "depth": 13,
+      "size": 1,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e2f3fb"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

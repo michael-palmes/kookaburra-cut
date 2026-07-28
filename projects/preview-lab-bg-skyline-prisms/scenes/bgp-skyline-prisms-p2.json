@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "preset still for the \"skyline-prisms\" 3D background (\"Organ Pipes\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#b9cfff", "#83c1ff"],
+    "speed": 1.05,
+    "params": {
+      "count": 24,
+      "depth": 16,
+      "tallest": 10,
+      "drift": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#eaf0ff"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

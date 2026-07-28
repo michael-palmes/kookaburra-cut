@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"halo-rings\" 3D background (\"Devils Marbles\")",
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#2b3139", "#4d4035"],
+    "speed": 1.5,
+    "params": {
+      "count": 5,
+      "spread": 3,
+      "depth": 13,
+      "size": 1,
+      "tube": 0.16,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 20,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": []
+  }
+}

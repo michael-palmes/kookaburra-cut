@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"skyline-prisms\" (\"Three Sisters\")",
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#2b3139", "#4c4034"],
+    "speed": 1.5,
+    "params": {
+      "count": 20,
+      "depth": 14,
+      "tallest": 8,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": -35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1900,
+        "pose": {
+          "target": [0, 0.6, 0],
+          "azimuthDeg": 35,
+          "elevationDeg": 6,
+          "distance": 7
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

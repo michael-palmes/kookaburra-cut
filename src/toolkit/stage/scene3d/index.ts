@@ -1,7 +1,11 @@
 import { ContourField } from "./ContourField";
+import { DriftSlabs } from "./DriftSlabs";
 import { GridHall } from "./GridHall";
 import { GridPlain } from "./GridPlain";
 import { GridShell } from "./GridShell";
+import { HaloRings } from "./HaloRings";
+import { OrbField } from "./OrbField";
+import { SkylinePrisms } from "./SkylinePrisms";
 import type { Scene3dBackgroundDef } from "./types";
 
 export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
@@ -64,6 +68,74 @@ export const SCENE3D_BACKGROUNDS: Record<string, Scene3dBackgroundDef> = {
     },
     Component: ContourField,
   },
+  "drift-slabs": {
+    id: "drift-slabs",
+    name: "Drift slabs",
+    lit: true,
+    colorSlots: [
+      { label: "Shapes", fallback: "#2b3139" },
+      { label: "Accent", fallback: "#4e4035" },
+    ],
+    params: {
+      count: { label: "Count", default: 13, min: 4, max: 18, step: 1 },
+      spread: { label: "Thickness", default: 3, min: 0, max: 4, step: 0.25 },
+      depth: { label: "Distance", default: 13, min: 11, max: 24, step: 0.5 },
+      size: { label: "Size", default: 1, min: 0.5, max: 1.6, step: 0.05 },
+      drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },
+    },
+    Component: DriftSlabs,
+  },
+  "orb-field": {
+    id: "orb-field",
+    name: "Orb field",
+    lit: true,
+    colorSlots: [
+      { label: "Orbs", fallback: "#2b3138" },
+      { label: "Accent", fallback: "#4c4034" },
+    ],
+    params: {
+      count: { label: "Count", default: 12, min: 4, max: 18, step: 1 },
+      spread: { label: "Thickness", default: 3, min: 0, max: 4, step: 0.25 },
+      depth: { label: "Distance", default: 13, min: 11, max: 24, step: 0.5 },
+      size: { label: "Size", default: 1, min: 0.5, max: 1.6, step: 0.05 },
+      drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },
+    },
+    Component: OrbField,
+  },
+  "halo-rings": {
+    id: "halo-rings",
+    name: "Halo rings",
+    lit: true,
+    colorSlots: [
+      { label: "Rings", fallback: "#2b3139" },
+      { label: "Accent", fallback: "#4d4035" },
+    ],
+    params: {
+      count: { label: "Count", default: 5, min: 2, max: 8, step: 1 },
+      spread: { label: "Thickness", default: 3, min: 0, max: 4, step: 0.25 },
+      depth: { label: "Distance", default: 13, min: 11, max: 24, step: 0.5 },
+      size: { label: "Size", default: 1, min: 0.6, max: 1.5, step: 0.05 },
+      tube: { label: "Tube", default: 0.16, min: 0.08, max: 0.35, step: 0.01 },
+      drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },
+    },
+    Component: HaloRings,
+  },
+  "skyline-prisms": {
+    id: "skyline-prisms",
+    name: "Skyline prisms",
+    lit: true,
+    colorSlots: [
+      { label: "Prisms", fallback: "#2b3139" },
+      { label: "Accent", fallback: "#4c4034" },
+    ],
+    params: {
+      count: { label: "Count", default: 20, min: 10, max: 30, step: 1 },
+      depth: { label: "Distance", default: 14, min: 11, max: 24, step: 0.5 },
+      tallest: { label: "Tallest", default: 8, min: 4, max: 12, step: 0.5 },
+      drift: { label: "Drift", default: 1, min: 0, max: 3, step: 0.05 },
+    },
+    Component: SkylinePrisms,
+  },
 };
 
 export const SCENE3D_BACKGROUND_IDS: string[] = [
@@ -71,6 +143,10 @@ export const SCENE3D_BACKGROUND_IDS: string[] = [
   "grid-shell",
   "grid-hall",
   "contour-field",
+  "drift-slabs",
+  "orb-field",
+  "halo-rings",
+  "skyline-prisms",
 ];
 
 export {

@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-orb-field",
+  "name": "Preview Lab — bg-orb-field (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-orb-field.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-orb-field-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-orb-field-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}
