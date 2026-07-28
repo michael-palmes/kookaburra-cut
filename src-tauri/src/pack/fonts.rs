@@ -347,7 +347,13 @@ fn target_file_name(
 }
 
 /// Tmp plus rename, so a font file is never half written under a name `fonts.json` already points at.
+///
+/// The folder is created here rather than up front: only a workspace that has pinned a font has one, and an all-skip
+/// import must leave a workspace that has not exactly as it found it.
 fn write_font_file(source: &Path, target: &Path) -> Result<(), PackError> {
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let tmp = target.with_extension("part");
     std::fs::copy(source, &tmp)?;
     std::fs::rename(&tmp, target)?;
@@ -643,6 +649,29 @@ mod tests {
         assert!(!workspace.join("AcmeMono-400.ttf").exists());
 
         let _ = std::fs::remove_dir_all(&workspace);
+        let _ = std::fs::remove_dir_all(&staged);
+    }
+
+    /// A workspace that has never pinned a font has no `fonts/` folder; the first thing to create it must be the import.
+    #[test]
+    fn apply_creates_the_fonts_folder_when_the_workspace_has_none() {
+        let root = temp_dir("virgin-ws");
+        let workspace = root.join("fonts");
+        let staged = temp_dir("virgin-staged");
+        assert!(!workspace.exists());
+
+        let incoming = stage_font(&staged, "Messina Modern", 400, "the pinned bytes");
+        let choices = HashMap::from([(incoming.key(), Resolution::Replace)]);
+        let summary = apply_font_merge(&workspace, &staged, &[incoming], &choices).unwrap();
+
+        assert_eq!(summary.written, vec!["Messina Modern@400"]);
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("MessinaModern-400.ttf")).unwrap(),
+            "the pinned bytes"
+        );
+        assert_eq!(crate::fonts::load_manifest(&workspace).fonts.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&staged);
     }
 

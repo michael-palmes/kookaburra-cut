@@ -898,6 +898,72 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The first-time recipient: a workspace that has never pinned a font, so `fonts/` does not exist yet. The font
+    /// phase runs first, so anything it refuses stops the whole import before a single project lands.
+    #[test]
+    fn a_workspace_with_no_fonts_folder_imports_everything() {
+        let root = scratch("virgin-root");
+        let staging = scratch("virgin-staging");
+        assert!(!root.join("fonts").exists());
+
+        let rel = "payload/fonts/MessinaModern-Regular.otf";
+        write(&staging.join(rel), "the pinned bytes");
+        let font = PackFont {
+            base: PackItemBase {
+                slug: "Messina Modern@400".into(),
+                name: "Messina Modern".into(),
+                bytes: 16,
+                modified_at: FUTURE.into(),
+                content_hash: sha256_bytes(b"the pinned bytes"),
+            },
+            family: "Messina Modern".into(),
+            weight: 400,
+            postscript: "MessinaModern-Regular".into(),
+            file: Some(rel.into()),
+            sha256: Some(sha256_bytes(b"the pinned bytes")),
+            instanced: None,
+            embedding: crate::pack::model::FontEmbedding::Installable,
+            reference_only: None,
+        };
+        let project = stage_dir_item(
+            &staging,
+            ItemKind::Project,
+            "acme-promo",
+            &[("project.json", r#"{"id":"acme-promo","name":"Acme Promo"}"#)],
+            FUTURE,
+        );
+
+        let contents = PackContents {
+            fonts: vec![font],
+            projects: vec![project_of(project, "ws:acme-dark")],
+            ..Default::default()
+        };
+        let outcome = apply_import(
+            &root,
+            staged_pack(staging.clone(), contents),
+            &resolutions(&[
+                (ItemKind::Project, "acme-promo", Resolution::Replace),
+                (ItemKind::Font, "Messina Modern@400", Resolution::Replace),
+            ]),
+            |_, _, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(outcome.stopped_at, None);
+        assert!(outcome
+            .results
+            .iter()
+            .all(|r| r.outcome != ItemOutcome::Failed));
+        assert_eq!(
+            read(&root.join("fonts/MessinaModern-Regular.otf")),
+            "the pinned bytes"
+        );
+        assert!(root.join("fonts/fonts.json").is_file());
+        assert!(root.join("acme-promo/project.json").is_file());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn a_replace_backs_the_incumbent_up_byte_for_byte() {
         let root = scratch("backup-root");
