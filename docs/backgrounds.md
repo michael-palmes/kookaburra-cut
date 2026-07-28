@@ -59,6 +59,30 @@ time. `themePreset.test.ts` enforces bands plus AA against every bundled theme's
 token. Editing any colour by hand seeds the pickers from the derived values and drops back to
 explicit `colors`.
 
+## 3D backgrounds
+
+`background.type: "scene3d"` mounts real world-space geometry (SCENE3D_BACKGROUNDS,
+`src/toolkit/stage/scene3d/`) inside the scene's identity group, so it parallaxes with camera
+rigs. The contract on every look:
+
+- **Stay out of the content volume.** Scene content occupies roughly x/y +-4/+-2, z -6..9;
+  looks keep a clearing (keep-out radius or equivalent) around the stage and fade off with
+  distance so text, devices and stacks never clip through geometry. Camera distances reach ~50
+  (the orbit UI cap), so surrounding shells sit beyond the plausible orbit or fade before it.
+- **Unlit looks hold exact colours** (`MeshBasicMaterial`/line materials, `toneMapped: false`,
+  the backdrop discipline); `lit: true` looks respond to the scene's v9 lighting and tone
+  mapping, and their preset contract applies to albedo. Fill rate is the measured lighting
+  cost: keep lit surface coverage modest (CLAUDE.md, Performance).
+- **Motion from the deterministic clock only** (`useTimeline()` / the clock store), seeded
+  randomness via the PCG hash; the perf probe's `no-bg3d` pass hides anything tagged
+  `userData.kookaburraBg3d`.
+- **`backing` nests any 2D background** (colour, gradient, image, video in scene docs, or an
+  animated shader) drawn camera-locked behind the geometry; another `scene3d` is rejected.
+  Presets stamp a flat backing colour and follow the same 9-preset structure, bands and AA
+  rules as the shader packs, applied to every geometry colour AND the backing
+  (`scene3d/presets.test.ts`). Preview fixtures live in the look's own
+  `projects/preview-lab-bg-<look>/` project like every background.
+
 ## Themes
 
 - `theme.colors.background` is the frame-clear colour only; the animated/gradient `background`

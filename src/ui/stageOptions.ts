@@ -29,9 +29,9 @@ export function backgroundMatches(
   return current.type === option.type;
 }
 
-/** Stamp or strip the Drift parallax on a background override (`none` passes through). */
+/** Stamp or strip the Drift parallax on a background override (`none` and `scene3d` pass through; world geometry parallaxes via the camera itself). */
 export function toggleDrift(spec: ThemeBackground, on: boolean): ThemeBackground {
-  if (spec.type === "none") return spec;
+  if (spec.type === "none" || spec.type === "scene3d") return spec;
   const next = { ...spec };
   if (on) next.parallax = DRIFT_PARALLAX;
   else delete next.parallax;

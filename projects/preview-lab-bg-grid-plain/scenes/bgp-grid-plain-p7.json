@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-plain\" 3D background (\"Tanami\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-plain",
+    "colors": ["#765137"],
+    "speed": 0.35,
+    "params": {
+      "spacing": 1.8,
+      "height": -2.4,
+      "clearRadius": 5.5,
+      "fadeRadius": 55,
+      "drift": 0.7,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17110d"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

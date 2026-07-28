@@ -122,6 +122,10 @@ const PASSES: PerfPass[] = [
       };
     },
   },
+  {
+    id: "no-bg3d",
+    apply: (_gl, scene) => hidePass(scene, (obj) => obj.userData.kookaburraBg3d === true),
+  },
   // ── v9 lighting eliminations ─────────────────────────────────────
   {
     id: "no-extra-lights",

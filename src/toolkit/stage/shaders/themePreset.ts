@@ -55,16 +55,14 @@ function capSaturation(rgb: Rgb): Rgb {
   return mix(rgb, [grey, grey, grey], 1 - MAX_SATURATION / sat);
 }
 
-/** Derived slot colours for a `themeColors` spec, or null when the shader (or a malformed token) can't derive; callers fall back to slot fallbacks. */
-export function deriveThemeShaderColors(shader: string, theme: Theme): string[] | null {
-  const presets = SHADER_BACKGROUND_PRESETS[shader];
+/** The retint core, shared by the shader and 3D Theme presets: derive stops from ANY anchor palette by preserving its luminances exactly while tinting toward the theme's background and accent hues. Null on a malformed token or anchor. */
+export function deriveThemeColorsFromAnchor(anchorColors: string[], theme: Theme): string[] | null {
   const mode = theme.mode ?? "dark";
-  const anchor = presets?.find((p) => p.id === (mode === "light" ? "p1" : "p6"));
   const background = parseHex(theme.colors.background);
   const accent = parseHex(theme.colors.accent);
-  if (!anchor || !background || !accent) return null;
+  if (!background || !accent) return null;
 
-  const anchorRgb = anchor.colors.map(parseHex);
+  const anchorRgb = anchorColors.map(parseHex);
   if (anchorRgb.some((c) => c === null)) return null;
   const levels = (anchorRgb as Rgb[]).map(luminance);
   // Luminance rank, 0 = darkest stop: dark presets carry the accent in their bright stops, light presets in their deep stops (matching how the hand-tuned packs are built).
@@ -74,6 +72,12 @@ export function deriveThemeShaderColors(shader: string, theme: Theme): string[] 
     const accentAmount = ACCENT_CEILING * (mode === "light" ? 1 - t : t);
     return toHex(withLuminance(capSaturation(mix(background, accent, accentAmount)), level));
   });
+}
+
+/** Derived slot colours for a `themeColors` shader spec, or null when the shader (or a malformed token) can't derive; callers fall back to slot fallbacks. */
+export function deriveThemeShaderColors(shader: string, theme: Theme): string[] | null {
+  const anchor = themePresetAnchor(shader, theme);
+  return anchor ? deriveThemeColorsFromAnchor(anchor.colors, theme) : null;
 }
 
 /** The anchor preset backing the Theme tile's motion (speed, zoom, params): `p1` for light themes, `p6` for dark. */

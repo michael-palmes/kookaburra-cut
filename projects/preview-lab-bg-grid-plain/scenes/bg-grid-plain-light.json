@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "light-mode 3D background sample for \"grid-plain\" (\"Lord Howe\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-plain",
+    "colors": ["#7ccae3"],
+    "speed": 0.4,
+    "params": {
+      "spacing": 1.2,
+      "height": -2,
+      "clearRadius": 4,
+      "fadeRadius": 44,
+      "drift": 1,
+      "opacity": 0.8
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e2f3fb"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -54,6 +54,7 @@ import {
   fixedParallaxOffset,
   fixedQuadSize,
 } from "./fixedMath";
+import { Scene3dBackdrop } from "./scene3d/Scene3dBackdrop";
 import { SHADER_BACKGROUNDS } from "./shaders";
 import { getShaderNoiseTexture } from "./shaders/noiseTexture";
 import { deriveThemeShaderColors } from "./shaders/themePreset";
@@ -456,6 +457,14 @@ export function FixedBackdrop({ spec }: { spec: ThemeBackground }) {
       return <FixedVideo spec={spec} />;
     case "shader":
       return <FixedShader spec={spec} />;
+    case "scene3d":
+      // Backing first (camera-locked, renderOrder-driven), then the world geometry.
+      return (
+        <>
+          {spec.backing && spec.backing.type !== "none" && <FixedBackdrop spec={spec.backing} />}
+          <Scene3dBackdrop spec={spec} />
+        </>
+      );
     default:
       return null;
   }
