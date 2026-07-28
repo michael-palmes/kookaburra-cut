@@ -7,9 +7,15 @@ import "@xterm/xterm/css/xterm.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   binaryDir,
+  CLAUDE_BREW_SWITCH_COMMAND,
   CLAUDE_INSTALL_COMMAND,
+  type ClaudeVersionInfo,
+  claudeDoctorCommand,
   claudeSessionCommand,
+  claudeUpdateCommand,
+  claudeVersionInfo,
   detectClaude,
+  dismissClaudeUpdate,
   getLiveSession,
   hasClaudeSession,
   removeLiveSession,
@@ -91,6 +97,8 @@ export function TerminalPanel({
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   /** Why the last session ended immediately (shell error text), or null. */
   const [exitNote, setExitNote] = useState<string | null>(null);
+  /** The version probe: null = not installed or not probed yet. */
+  const [versionInfo, setVersionInfo] = useState<ClaudeVersionInfo | null>(null);
 
   // Stable notifier the registry can call when a (possibly detached) session exits.
   const notifyRef = useRef((next: "idle" | "exited") => setStatus(next));
@@ -170,6 +178,20 @@ export function TerminalPanel({
     };
   }, [status, cwd]);
 
+  // Version probe on startable states (so an install/update run refreshes it on exit); the native side caches the latest-version fetch for a day and stays silent offline.
+  useEffect(() => {
+    if (status !== "idle" && status !== "exited" && status !== "running") return;
+    let cancelled = false;
+    claudeVersionInfo()
+      .then((v) => {
+        if (!cancelled) setVersionInfo(v);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
   const startSession = useCallback(
     async (continueLast: boolean) => {
       const term = termRef.current;
@@ -224,41 +246,65 @@ export function TerminalPanel({
     [slug, cwd],
   );
 
-  // Install flow: an interactive login shell with the official installer typed into it, so the user watches exactly what a curl|bash runs; when it finishes they click through to start Claude, which re-detects.
-  const startInstall = useCallback(async () => {
-    const term = termRef.current;
-    const fit = fitRef.current;
-    if (!term || !fit || getLiveSession(slug)) return;
-    setStatus("installing");
-    setExitNote(null);
-    term.clear();
-    try {
-      const session = await spawnTerminalSession({
-        term,
-        cwd,
-        onExit: () => {
-          const entry = getLiveSession(slug);
-          if (entry?.session === session) {
-            removeLiveSession(slug);
-            entry.notify?.("idle");
-          }
-        },
-      });
-      setLiveSession(slug, {
-        term,
-        fit,
-        session,
-        status: "installing",
-        notify: notifyRef.current,
-      });
-      session.resize(term.cols, term.rows);
-      await invoke("pty_write", { id: session.id, data: `${CLAUDE_INSTALL_COMMAND}\n` });
-      term.focus();
-    } catch (e) {
-      termRef.current?.writeln(`\r\n${String(e)}`);
-      setStatus("exited");
-    }
-  }, [slug, cwd]);
+  // Install/update/diagnostics flow: an interactive login shell with the command typed into it, so the user watches exactly what runs; when it finishes they click through to start Claude, which re-detects.
+  const runVisibleCommand = useCallback(
+    async (command: string) => {
+      const term = termRef.current;
+      const fit = fitRef.current;
+      if (!term || !fit || getLiveSession(slug)) return;
+      setStatus("installing");
+      setExitNote(null);
+      term.clear();
+      try {
+        const session = await spawnTerminalSession({
+          term,
+          cwd,
+          onExit: () => {
+            const entry = getLiveSession(slug);
+            if (entry?.session === session) {
+              removeLiveSession(slug);
+              entry.notify?.("idle");
+            }
+          },
+        });
+        setLiveSession(slug, {
+          term,
+          fit,
+          session,
+          status: "installing",
+          notify: notifyRef.current,
+        });
+        session.resize(term.cols, term.rows);
+        await invoke("pty_write", { id: session.id, data: `${command}\n` });
+        term.focus();
+      } catch (e) {
+        termRef.current?.writeln(`\r\n${String(e)}`);
+        setStatus("exited");
+      }
+    },
+    [slug, cwd],
+  );
+
+  const startInstall = useCallback(
+    () => runVisibleCommand(CLAUDE_INSTALL_COMMAND),
+    [runVisibleCommand],
+  );
+
+  // The banner's one click: brew installs switch to the official installer (brew's cask never auto-updates and trails the release channel); everything else updates in place.
+  const startUpdate = useCallback(() => {
+    const info = versionInfo;
+    if (!info) return;
+    return runVisibleCommand(
+      info.method === "brew" ? CLAUDE_BREW_SWITCH_COMMAND : claudeUpdateCommand(info.path),
+    );
+  }, [runVisibleCommand, versionInfo]);
+
+  const dismissUpdateBanner = useCallback(() => {
+    const latest = versionInfo?.latest;
+    if (!latest) return;
+    setVersionInfo((v) => (v ? { ...v, dismissed: true } : v));
+    void dismissClaudeUpdate(latest).catch(() => {});
+  }, [versionInfo]);
 
   /** Kill whatever is running and start a fresh Claude conversation; used by the "New session" chip and the install-flow handoff. */
   const startNewSession = useCallback(() => {
@@ -371,6 +417,27 @@ export function TerminalPanel({
         </div>
       </div>
 
+      {versionInfo?.outdated && !versionInfo.dismissed && status !== "installing" && (
+        <div className="terminal-update-banner">
+          <span className="muted">
+            {versionInfo.method === "brew"
+              ? `Claude Code ${versionInfo.latest} is out (you have ${versionInfo.installed}). Homebrew's build trails behind and never updates itself; the official installer keeps itself current.`
+              : `Claude Code ${versionInfo.latest} is available (you have ${versionInfo.installed}).`}
+          </span>
+          <button
+            type="button"
+            className="btn btn-small primary"
+            title="Runs visibly in the terminal below"
+            onClick={() => void startUpdate()}
+          >
+            {versionInfo.method === "brew" ? "Switch and update" : "Update"}
+          </button>
+          <button type="button" className="btn btn-small" onClick={dismissUpdateBanner}>
+            Later
+          </button>
+        </div>
+      )}
+
       <div className="terminal-host">
         <div ref={containerRef} className="terminal-screen" />
 
@@ -381,8 +448,9 @@ export function TerminalPanel({
                 <h3>Claude Code isn’t installed</h3>
                 <p className="muted">
                   Kookaburra Cut uses the Claude Code command-line tool as your editing assistant.
-                  The official installer runs right here in the terminal, so you can see exactly
-                  what it does.
+                  Install runs Anthropic’s official installer right here in the terminal, so you can
+                  see exactly what it does; the first session asks you to log in with your Claude
+                  account in the browser, then it keeps itself up to date.
                 </p>
                 <button type="button" className="btn primary" onClick={() => void startInstall()}>
                   Install Claude Code
@@ -426,6 +494,16 @@ export function TerminalPanel({
                       Start fresh
                     </button>
                   )}
+                  {status === "exited" && versionInfo && (
+                    <button
+                      type="button"
+                      className="btn"
+                      title="Runs claude doctor visibly: read-only install and settings checks"
+                      onClick={() => void runVisibleCommand(claudeDoctorCommand(versionInfo.path))}
+                    >
+                      Run diagnostics
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -435,7 +513,7 @@ export function TerminalPanel({
 
       {status === "installing" && (
         <div className="rail-footer">
-          <span className="muted">When the installer finishes:</span>
+          <span className="muted">When it finishes:</span>
           <button type="button" className="btn" onClick={startNewSession}>
             Start Claude Code
           </button>

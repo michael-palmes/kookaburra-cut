@@ -1106,6 +1106,21 @@ body {
   border-top: 1px solid var(--border-subtle);
 }
 
+/* The Claude Code update banner: advisory, never blocks starting a session. */
+.terminal-update-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+}
+
+.terminal-update-banner .muted {
+  flex: 1;
+  font-size: 11px;
+}
+
 /* ── Stage (§7.2) — recessed matte around a letterboxed, aspect-locked frame ─ */
 
 /* A size container so the frame can contain-fit with cq units; min sizes are pinned to 0
