@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"dust-drift\" 3D background (\"Mallee\")",
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#b0974d", "#bf8e4a"],
+    "speed": 1,
+    "params": {
+      "count": 900,
+      "innerRadius": 10,
+      "outerRadius": 26,
+      "twinkle": 0.6,
+      "pointSize": 0.09,
+      "drift": 1,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f0dc"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"point-swell\" 3D background (\"Cactus\")",
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#356656", "#72612f"],
+    "speed": 0.9,
+    "params": {
+      "spacing": 0.7,
+      "amplitude": 0.35,
+      "wavelength": 7,
+      "clearRadius": 3.5,
+      "fadeRadius": 36,
+      "pointSize": 0.06,
+      "drift": 1.25,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0a1411"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"dust-drift\" (\"Coalsack\")",
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#496489", "#72612f"],
+    "speed": 1,
+    "params": {
+      "count": 900,
+      "innerRadius": 10,
+      "outerRadius": 26,
+      "twinkle": 0.6,
+      "pointSize": 0.09,
+      "drift": 1,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

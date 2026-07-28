@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"point-swell\" 3D background (\"Snapper\")",
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#49a7a7", "#40a796"],
+    "speed": 0.7,
+    "params": {
+      "spacing": 1.2,
+      "amplitude": 0.6,
+      "wavelength": 12,
+      "clearRadius": 5,
+      "fadeRadius": 46,
+      "pointSize": 0.1,
+      "drift": 0.8,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ddf4f6"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

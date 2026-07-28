@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"point-swell\" 3D background (\"Bells\")",
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#669be5", "#539ed3"],
+    "speed": 0.9,
+    "params": {
+      "spacing": 0.7,
+      "amplitude": 0.35,
+      "wavelength": 7,
+      "clearRadius": 3.5,
+      "fadeRadius": 36,
+      "pointSize": 0.06,
+      "drift": 1.3,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e8f0ff"
+    },
+    "preset": "p3"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

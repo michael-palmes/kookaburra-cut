@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-dust-drift",
+  "name": "Preview Lab — bg-dust-drift (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-dust-drift.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-dust-drift-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-dust-drift-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

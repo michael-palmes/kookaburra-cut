@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"dust-drift\" 3D background (\"Emu Sky\")",
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#825945", "#765f31"],
+    "speed": 0.9,
+    "params": {
+      "count": 650,
+      "innerRadius": 12,
+      "outerRadius": 32,
+      "twinkle": 0.5,
+      "pointSize": 0.09,
+      "drift": 0.7,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17110d"
+    },
+    "preset": "p8"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
