@@ -5,7 +5,7 @@
     "type": "shader",
     "shader": "graph-grid",
     "colors": ["#18100d", "#5e3e30", "#8a543b", "#3e2f25"],
-    "speed": 0.4,
+    "speed": 0.85,
     "params": {
       "density": 12,
       "lineWeight": 0.4,

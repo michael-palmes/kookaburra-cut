@@ -5,7 +5,7 @@
     "type": "shader",
     "shader": "dot-grid",
     "colors": ["#0f141b", "#2e405b", "#416198"],
-    "speed": 0.4,
+    "speed": 0.85,
     "params": {
       "density": 14,
       "dotSize": 0.35,

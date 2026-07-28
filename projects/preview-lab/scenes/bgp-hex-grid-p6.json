@@ -5,7 +5,7 @@
     "type": "shader",
     "shader": "hex-grid",
     "colors": ["#0c1612", "#224635", "#2c6b49"],
-    "speed": 0.4,
+    "speed": 0.85,
     "params": {
       "density": 9,
       "lineWeight": 0.35,

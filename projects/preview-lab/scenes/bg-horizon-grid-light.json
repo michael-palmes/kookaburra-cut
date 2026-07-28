@@ -4,7 +4,7 @@
   "background": {
     "type": "shader",
     "shader": "horizon-grid",
-    "colors": ["#d8f6f6", "#8dcac6", "#7ae0d2"],
+    "colors": ["#e5f4f4", "#c3e6e6", "#c2ede7"],
     "speed": 0.4,
     "params": {
       "horizon": 0.05,

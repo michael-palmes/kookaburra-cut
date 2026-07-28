@@ -4,8 +4,8 @@
   "background": {
     "type": "shader",
     "shader": "hex-grid",
-    "colors": ["#d9f6f1", "#97d8c9", "#6dc9ad"],
-    "speed": 0.4,
+    "colors": ["#e4f3f1", "#ceebe6", "#c0e5da"],
+    "speed": 0.85,
     "params": {
       "density": 9,
       "lineWeight": 0.35,

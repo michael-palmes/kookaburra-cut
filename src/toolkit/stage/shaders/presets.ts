@@ -538,8 +538,8 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       name: "Cottesloe",
       mode: "light",
       textColor: "#000000",
-      colors: ["#e2f0ff", "#a9d0f1", "#7cb8e3"],
-      speed: 0.4,
+      colors: ["#e8f2fc", "#d4e7fa", "#c2def2"],
+      speed: 0.85,
       params: { density: 14, dotSize: 0.32, pulse: 0.45, waveWidth: 0.6, driftAngle: 25 },
     },
     {
@@ -584,7 +584,7 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       mode: "dark",
       textColor: "#ffffff",
       colors: ["#0f141b", "#2e405b", "#416198"],
-      speed: 0.4,
+      speed: 0.85,
       params: { density: 14, dotSize: 0.35, pulse: 0.5, waveWidth: 0.6, driftAngle: 30 },
     },
     {
@@ -621,8 +621,8 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       name: "Rottnest",
       mode: "light",
       textColor: "#000000",
-      colors: ["#dbf6f9", "#99dadb", "#6bc3c4", "#c3eeeb"],
-      speed: 0.4,
+      colors: ["#e6f4f5", "#d2ecef", "#bbe5e2", "#daf0f3"],
+      speed: 0.85,
       params: {
         density: 12,
         lineWeight: 0.4,
@@ -697,7 +697,7 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       mode: "dark",
       textColor: "#ffffff",
       colors: ["#18100d", "#5e3e30", "#8a543b", "#3e2f25"],
-      speed: 0.4,
+      speed: 0.85,
       params: {
         density: 12,
         lineWeight: 0.4,
@@ -758,7 +758,7 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       name: "Cable Beach",
       mode: "light",
       textColor: "#000000",
-      colors: ["#d8f6f6", "#8dcac6", "#7ae0d2"],
+      colors: ["#e5f4f4", "#c3e6e6", "#c2ede7"],
       speed: 0.4,
       params: { horizon: 0.05, density: 14, lineWeight: 0.4, glow: 0.5, fade: 0.6 },
     },
@@ -841,8 +841,8 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       name: "Bronte",
       mode: "light",
       textColor: "#000000",
-      colors: ["#d9f6f1", "#97d8c9", "#6dc9ad"],
-      speed: 0.4,
+      colors: ["#e4f3f1", "#ceebe6", "#c0e5da"],
+      speed: 0.85,
       params: { density: 9, lineWeight: 0.35, glow: 0.6, softness: 0.5, cadence: 1 },
     },
     {
@@ -887,7 +887,7 @@ export const SHADER_BACKGROUND_PRESETS: Record<string, ShaderBackgroundPreset[]>
       mode: "dark",
       textColor: "#ffffff",
       colors: ["#0c1612", "#224635", "#2c6b49"],
-      speed: 0.4,
+      speed: 0.85,
       params: { density: 9, lineWeight: 0.35, glow: 0.6, softness: 0.5, cadence: 1 },
     },
     {
