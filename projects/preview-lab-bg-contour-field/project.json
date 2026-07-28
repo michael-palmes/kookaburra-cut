@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-contour-field",
+  "name": "Preview Lab — bg-contour-field (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-contour-field.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-contour-field-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-contour-field-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

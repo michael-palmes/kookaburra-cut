@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"contour-field\" 3D background (\"Breadknife\")",
+  "background": {
+    "type": "scene3d",
+    "look": "contour-field",
+    "colors": ["#3e6783"],
+    "speed": 1,
+    "params": {
+      "levels": 11,
+      "hilliness": 0.5,
+      "scale": 10,
+      "height": -2,
+      "clearRadius": 8.5,
+      "fadeRadius": 60,
+      "drift": 1,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0d1218"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

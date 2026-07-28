@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"contour-field\" 3D background (\"Barrington\")",
+  "background": {
+    "type": "scene3d",
+    "look": "contour-field",
+    "colors": ["#72c662"],
+    "speed": 0.7,
+    "params": {
+      "levels": 14,
+      "hilliness": 0.65,
+      "scale": 8,
+      "height": -1.8,
+      "clearRadius": 7,
+      "fadeRadius": 52,
+      "drift": 1.2,
+      "opacity": 0.85
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3f5dd"
+    },
+    "preset": "p2"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

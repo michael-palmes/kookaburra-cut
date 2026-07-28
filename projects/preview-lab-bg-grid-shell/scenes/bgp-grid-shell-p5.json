@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-shell\" 3D background (\"Seacliff\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-shell",
+    "colors": ["#ff92b4"],
+    "speed": 1.2,
+    "params": {
+      "radius": 20,
+      "latCount": 10,
+      "lonCount": 28,
+      "horizonBias": 0.55,
+      "drift": 1.1,
+      "opacity": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#ffebf0"
+    },
+    "preset": "p5"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

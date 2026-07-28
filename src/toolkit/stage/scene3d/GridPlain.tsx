@@ -51,7 +51,8 @@ export function GridPlain({ colors, params, speed }: Scene3dLookProps) {
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
 
   // Seamless scroll: offset cycles within one cell, so the baked fade ring wobbles under a unit (invisible against a 20u feather).
-  const t = (localMs / 1000) * speed;
+  // Pace baked so speed 1 is the tuned house default.
+  const t = (localMs / 1000) * speed * 1.3;
   const drift = params.drift;
   const offX = (((t * 0.35 * drift) % spacing) + spacing) % spacing;
   const offZ = (((t * 0.22 * drift) % spacing) + spacing) % spacing;

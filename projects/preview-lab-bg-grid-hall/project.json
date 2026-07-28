@@ -1,0 +1,53 @@
+{
+  "id": "preview-lab-bg-grid-hall",
+  "name": "Preview Lab — bg-grid-hall (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/bg-grid-hall.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bg-grid-hall-light.tsx",
+      "durationMs": 2000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p1.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p2.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p3.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p4.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p5.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p6.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p7.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p8.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/bgp-grid-hall-p9.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

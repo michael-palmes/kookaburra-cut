@@ -5,12 +5,12 @@
     "type": "scene3d",
     "look": "grid-plain",
     "colors": ["#694997"],
-    "speed": 0.3,
+    "speed": 0.6,
     "params": {
       "spacing": 1.4,
-      "height": -2.1,
+      "height": -1.4,
       "clearRadius": 4.5,
-      "fadeRadius": 48,
+      "fadeRadius": 44,
       "drift": 0.9,
       "opacity": 0.85
     },

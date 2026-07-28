@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "3D background sample for \"grid-shell\" (\"Birdsville\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-shell",
+    "colors": ["#815a3d"],
+    "speed": 1,
+    "params": {
+      "radius": 18,
+      "latCount": 11,
+      "lonCount": 32,
+      "horizonBias": 0.5,
+      "drift": 1,
+      "opacity": 0.75
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17110d"
+    },
+    "preset": "p6"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "preset still for the \"contour-field\" 3D background (\"Warrego\")",
+  "background": {
+    "type": "scene3d",
+    "look": "contour-field",
+    "colors": ["#865740"],
+    "speed": 0.7,
+    "params": {
+      "levels": 14,
+      "hilliness": 0.7,
+      "scale": 7,
+      "height": -1.8,
+      "clearRadius": 7,
+      "fadeRadius": 50,
+      "drift": 1.3,
+      "opacity": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#17110c"
+    },
+    "preset": "p7"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}

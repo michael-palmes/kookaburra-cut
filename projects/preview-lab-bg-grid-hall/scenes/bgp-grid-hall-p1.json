@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "preset still for the \"grid-hall\" 3D background (\"Jenolan\")",
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#70bce2"],
+    "speed": 1,
+    "params": {
+      "width": 19,
+      "depth": 48,
+      "height": 12,
+      "spacing": 1.2,
+      "clearRadius": 3.5,
+      "drift": 1,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e3f2fd"
+    },
+    "preset": "p1"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": 14,
+          "elevationDeg": 16,
+          "distance": 6.5
+        }
+      }
+    ],
+    "segments": []
+  }
+}
