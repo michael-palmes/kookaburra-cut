@@ -9,6 +9,7 @@ import {
   fitToCap,
   groupPresets,
   presetAspects,
+  railPresets,
   resolveDraft,
   slugifyPresetName,
   specChips,
@@ -38,7 +39,7 @@ describe("size estimate + Fit to cap (the decision-18 goldens)", () => {
   });
 
   it("CRF and ProRes skip the check (size varies with content)", () => {
-    expect(estimateSizeMB(bundled("web"), 30_000, 128)).toBeNull();
+    expect(estimateSizeMB(bundled("share-h264"), 30_000, 128)).toBeNull();
     expect(estimateSizeMB(bundled("kookaburra-master"), 30_000, 128)).toBeNull();
   });
 
@@ -101,7 +102,8 @@ describe("grouping + filtering", () => {
   it("groups the bundled lineup by platform in lineup order", () => {
     const groups = groupPresets(BUNDLED_EXPORT_PRESETS, [], "", null);
     expect(groups.map((g) => g.platform)).toEqual([
-      "Kookaburra Cut",
+      "General",
+      "Studio",
       "Meta",
       "TikTok",
       "YouTube",
@@ -110,13 +112,20 @@ describe("grouping + filtering", () => {
       "Reddit",
       "Telegram",
       "CTV",
-      "Web",
-      "Sharing",
     ]);
     expect(present(groups.find((g) => g.platform === "Meta")).rows.map((r) => r.id)).toEqual([
       "meta-reels",
       "meta-feed",
     ]);
+  });
+
+  it("the rail lineup slots High quality (the frozen path) at the head of Studio", () => {
+    const groups = groupPresets(railPresets(BUNDLED_EXPORT_PRESETS), [], "", null);
+    expect(present(groups.find((g) => g.platform === "Studio")).rows.map((r) => r.id)).toEqual([
+      "kookaburra-standard",
+      "kookaburra-master",
+    ]);
+    expect(groups.map((g) => g.platform).slice(0, 2)).toEqual(["General", "Studio"]);
   });
 
   it("the aspect chip filters on allowedAspects; user rows group under Your presets", () => {
@@ -159,7 +168,7 @@ describe("the Custom draft", () => {
   });
 
   it("doc → draft → doc round-trips the video and audio blocks", () => {
-    for (const id of ["meta-reels", "ctv", "web", "kookaburra-master"]) {
+    for (const id of ["meta-reels", "ctv", "share-h265", "kookaburra-master"]) {
       const doc = bundled(id);
       const back = draftToDoc(
         draftFromDoc(doc),

@@ -63,6 +63,9 @@ pub struct AppSettings {
     /// Inverted so the serde/Default false means hardware ON; deterministic exports pin to software regardless.
     #[serde(default)]
     pub disable_hardware_video: bool,
+    /// Inverted so the serde/Default false means Downloads ON: app-triggered exports land in ~/Downloads; terminal autoruns always keep the canonical paths.
+    #[serde(default)]
+    pub keep_exports_in_project: bool,
     /// Playback slowdown-badge sensitivity: "off" | "sustained" | "strict"; absent = "off".
     #[serde(default)]
     pub lag_warning: Option<String>,
@@ -508,6 +511,19 @@ pub fn set_hardware_video(
     settings.disable_hardware_video = !enabled;
     save_settings(&app, &state, settings)?;
     let _ = app.emit("kookaburra://hardware-video-changed", enabled);
+    Ok(())
+}
+
+/// Toggle the Downloads export destination (app-triggered exports only; the inverted field keeps Downloads the serde/Default ON state).
+#[tauri::command]
+pub fn set_export_to_downloads(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = load_settings(&app, &state)?;
+    settings.keep_exports_in_project = !enabled;
+    save_settings(&app, &state, settings)?;
     Ok(())
 }
 

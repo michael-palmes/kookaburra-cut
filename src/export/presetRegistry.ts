@@ -10,13 +10,14 @@ import shareH264 from "./presets/share-h264.json";
 import shareH265 from "./presets/share-h265.json";
 import telegram from "./presets/telegram.json";
 import tiktok from "./presets/tiktok.json";
-import web from "./presets/web.json";
 import x from "./presets/x.json";
 import youtube from "./presets/youtube.json";
 import youtubeShorts from "./presets/youtube-shorts.json";
 
-/** The bundled preset lineup: the 2026 marketing set (decision 21) plus the two internal-sharing presets. Explicit imports so the structure pin asserts every bundled doc parses and resolves; array order is the modal's display order within groups. */
+/** The bundled preset lineup: the two General share presets, the Studio master, then the 2026 marketing set (decision 21). Explicit imports so the structure pin asserts every bundled doc parses and resolves; array order is the modal's display order within groups. */
 const RAW: [string, unknown][] = [
+  ["share-h264", shareH264],
+  ["share-h265", shareH265],
   ["kookaburra-master", kookaburraMaster],
   ["meta-reels", metaReels],
   ["meta-feed", metaFeed],
@@ -29,9 +30,6 @@ const RAW: [string, unknown][] = [
   ["reddit", reddit],
   ["telegram", telegram],
   ["ctv", ctv],
-  ["web", web],
-  ["share-h264", shareH264],
-  ["share-h265", shareH265],
 ];
 
 export const BUNDLED_EXPORT_PRESETS: ExportPresetDoc[] = RAW.flatMap(([id, raw]) => {

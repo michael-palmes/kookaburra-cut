@@ -88,6 +88,8 @@ export interface ExportOptions {
   encode?: EncodeSpec;
   /** Output filename suffix: preset id or "custom", the file becomes `<project>-<aspect>-<suffix>.<ext>`. Absent means the exact legacy name. */
   outputSuffix?: string;
+  /** "downloads" routes the final file to ~/Downloads (the app's Settings toggle). Absent means the canonical project paths; autorun/terminal exports never set it. */
+  destination?: "downloads";
 }
 
 export interface ExportProgress {
@@ -411,6 +413,7 @@ export async function exportProject(
       codec: opts.codec ?? "libx264",
       encode: opts.encode ?? null,
       outputSuffix: opts.outputSuffix ?? null,
+      destination: opts.destination ?? null,
       projectSlug: slug,
       audio: opts.audio
         ? {
