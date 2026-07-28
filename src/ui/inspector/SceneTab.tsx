@@ -1887,6 +1887,15 @@ export function SceneTab({
 
   // ── Drill-in views ────────────────────────────────────────────────────────
   if (drillIn === "style.theme" && doc) {
+    // Applies on selection; the draft doubles as the same-id de-dupe.
+    const applySceneTheme = (id: string) => {
+      if (id === themeDraft) return;
+      setThemeDraft(id);
+      // Theme resolution bakes at load; the write chains the nonce reload.
+      void patchDoc((next) => {
+        next.themeId = id || undefined;
+      }).then(onTimingChanged);
+    };
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
@@ -1896,7 +1905,7 @@ export function SceneTab({
             <button
               type="button"
               className={`chip${themeDraft === "" ? " selected" : ""}`}
-              onClick={() => setThemeDraft("")}
+              onClick={() => applySceneTheme("")}
             >
               Project theme
             </button>
@@ -1904,7 +1913,7 @@ export function SceneTab({
           <ThemeGrid
             choices={themeChoices}
             value={themeDraft}
-            onChange={setThemeDraft}
+            onChange={applySceneTheme}
             onCardContextMenu={themeMenu.openMenu}
           />
         </div>
@@ -1916,23 +1925,6 @@ export function SceneTab({
             onClick={() => onOpenTheme()}
           >
             Manage…
-          </button>
-          <button type="button" className="btn" onClick={() => closeDrill()}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn primary"
-            disabled={themeDraft === (doc.themeId ?? "")}
-            onClick={() => {
-              closeDrill();
-              // Theme resolution bakes at load; the write chains the nonce reload.
-              void patchDoc((next) => {
-                next.themeId = themeDraft || undefined;
-              }).then(onTimingChanged);
-            }}
-          >
-            Apply
           </button>
         </div>
         {themeMenu.menuElement}
