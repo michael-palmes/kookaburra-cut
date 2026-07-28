@@ -726,11 +726,9 @@ pub async fn scaffold_scene(
             "placement": placement,
             "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
         });
-        // Device-only omits the field so Device auto-resolves: real map shadows over a staged floor, the soft blob when floating. An explicit option still wins.
+        // Both device kinds omit the field so Device auto-resolves: real map shadows over a staged floor, the soft blob when floating. An explicit option still wins.
         if let Some(shadow) = options.shadow.as_deref() {
             device["shadow"] = json!(shadow);
-        } else if !device_only {
-            device["shadow"] = json!("soft");
         }
         if let (Some(rel), Some(kind)) = (&options.media_rel, &options.media_kind) {
             device["media"] = json!({ "src": rel, "kind": kind });

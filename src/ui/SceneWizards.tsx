@@ -70,7 +70,7 @@ type SceneKind =
   | "blank";
 
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
-  { id: "device", label: "Device + media", blurb: "A phone playing your video or image" },
+  { id: "device", label: "Device + title", blurb: "A titled phone playing your media" },
   { id: "deviceonly", label: "Device only", blurb: "A centred phone with no title copy" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
   { id: "titleicon", label: "Title + icon", blurb: "A title with an icon above it" },
