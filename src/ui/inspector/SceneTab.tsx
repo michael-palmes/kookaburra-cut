@@ -1753,6 +1753,8 @@ export function SceneTab({
           parallax !== undefined
             ? { type: "video", src: rel, parallax }
             : { type: "video", src: rel };
+        // A staged backdrop would hide the video: clear it in the same undoable entry.
+        if (stagedBackdrop !== null && stagedBackdrop !== "none") next.backdrop = { type: "none" };
       },
       { resync: true },
     );
@@ -1768,6 +1770,8 @@ export function SceneTab({
         parallax !== undefined
           ? { type: "image", src: rel, parallax }
           : { type: "image", src: rel };
+      // A staged backdrop would hide the image: clear it in the same undoable entry.
+      if (stagedBackdrop !== null && stagedBackdrop !== "none") next.backdrop = { type: "none" };
     });
   };
 
@@ -2964,22 +2968,6 @@ export function SceneTab({
         else if (value.type === "color" && stagingOn) next.backdrop = floorFor(value.color);
       });
     };
-    const removeStageBackdrop = () =>
-      void patchDoc((next) => {
-        next.backdrop = { type: "none" };
-      });
-    const occlusionWarning = (kind: "image" | "video" | "animation") =>
-      stagingOn && (
-        <div className="bg-occlusion">
-          <span className="modal-hint">
-            This scene stages a {stagedBackdrop} backdrop that will hide the {kind}: remove it so
-            the {kind} shows.
-          </span>
-          <button type="button" className="btn" onClick={removeStageBackdrop}>
-            Remove stage backdrop
-          </button>
-        </div>
-      );
     const shaderSpec = doc.background?.type === "shader" ? doc.background : null;
     const shaderDef = shaderSpec ? SHADER_BACKGROUNDS[shaderSpec.shader] : undefined;
     const patchShader = (mutate: (spec: Extract<ThemeBackground, { type: "shader" }>) => void) =>
@@ -3090,20 +3078,14 @@ export function SceneTab({
                       ? next.background.parallax
                       : undefined;
                   next.background = parallax !== undefined ? { ...value, parallax } : value;
-                  // The same gradient drives the stage plane, so the edit is visible on staged scenes.
-                  if (stagingOn && value.type === "gradient") {
-                    const backdrop: ThemeBackdrop = { type: "gradient" };
-                    if (value.gradient) backdrop.gradient = value.gradient;
-                    if (value.spec) backdrop.spec = value.spec;
-                    next.backdrop = backdrop;
-                  }
+                  // A staged backdrop would hide the gradient: clear it in the same undoable entry.
+                  if (stagingOn) next.backdrop = { type: "none" };
                 });
               }}
             />
           )}
           {bgTab === "shader" && (
             <>
-              {occlusionWarning("animation")}
               <p className="modal-hint">
                 Animated fills run on the project clock, so the motion is continuous across scene
                 cuts when neighbouring scenes share the same pick.
@@ -3129,6 +3111,8 @@ export function SceneTab({
                             colors: def.colorSlots.map((slot) => slot.fallback),
                             speed: 1,
                           };
+                          // A staged backdrop would hide the animation: clear it in the same undoable entry.
+                          if (stagingOn) next.backdrop = { type: "none" };
                         });
                       }}
                       onHoverChange={(h) => setBgHover((cur) => (h ? id : cur === id ? null : cur))}
@@ -3236,7 +3220,6 @@ export function SceneTab({
           )}
           {bgTab === "image" && (
             <>
-              {occlusionWarning("image")}
               <span className="modal-hint">
                 Fills the frame behind everything and stays locked to the camera; pick an image with
                 a safe centre (it cover-crops per aspect).
@@ -3255,7 +3238,6 @@ export function SceneTab({
           )}
           {bgTab === "video" && (
             <>
-              {occlusionWarning("video")}
               <span className="modal-hint">Video that fills the frame behind everything.</span>
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
