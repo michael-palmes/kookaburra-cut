@@ -131,7 +131,7 @@ import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
-import { FirstRunDialog, NewProjectDialog, TrustGateModal } from "./ui/dialogs";
+import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
@@ -247,8 +247,10 @@ export default function App() {
   // Auto-run latch: `started` guards the single run through StrictMode's double-invoke; error reporting is deduped in engine/autorun.
   const autoRunRef = useRef({ started: false });
 
-  // `settings === null` = still loading; a missing workspaceRoot triggers the first-run dialog, except in auto-run mode which must never block on a dialog nobody can answer.
+  // `settings === null` = still loading; a missing workspaceRoot sets one up silently, except in auto-run mode which must never block on a dialog nobody can answer.
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  // Set only when that silent setup failed; the one thing that still brings up a chooser.
+  const [setupError, setSetupError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectListing[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
   const isAutoRun = useMemo(() => {
@@ -955,12 +957,22 @@ export default function App() {
 
   useEffect(() => {
     getSettings()
-      .then((loaded) => {
-        setSettings(loaded);
+      .then(async (loaded) => {
+        // First run asks nothing: the workspace appears at ~/Kookaburra Cut and Settings is where it moves.
+        let current = loaded;
+        if (!current.workspaceRoot && !isAutoRun) {
+          try {
+            current = { ...current, workspaceRoot: await initWorkspace(null) };
+            void refreshProjects();
+          } catch (e) {
+            setSetupError(String(e));
+          }
+        }
+        setSettings(current);
         if (isAutoRun) return;
         // Reopen where the user left off; otherwise land on the welcome screen.
-        if (loaded.lastProject) {
-          useEditorStore.getState().setProjectId(loaded.lastProject);
+        if (current.lastProject) {
+          useEditorStore.getState().setProjectId(current.lastProject);
           setView("editor");
         } else {
           setView("welcome");
@@ -973,6 +985,18 @@ export default function App() {
       });
     void refreshProjects();
   }, [refreshProjects, isAutoRun]);
+
+  // Settings moved the workspace: every path in hand now points at the old root, so drop the open project and start again from welcome.
+  useEffect(() => {
+    if (isAutoRun) return;
+    const unlisten = listen<string>("kookaburra://workspace-moved", (e) => {
+      setSettings((prev) => ({ ...(prev ?? {}), workspaceRoot: e.payload }));
+      backToProjects();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [isAutoRun, backToProjects]);
 
   const handleWorkspaceChosen = useCallback(
     async (parent: string | null) => {
@@ -2073,13 +2097,14 @@ export default function App() {
         </div>
       )}
 
-      {settings && !settings.workspaceRoot && !isAutoRun && (
-        <FirstRunDialog
-          onContinue={() => handleWorkspaceChosen(null)}
+      {settings && !settings.workspaceRoot && setupError && !isAutoRun && (
+        <SetupFailedDialog
+          error={setupError}
+          onRetry={() => handleWorkspaceChosen(null)}
           onChoose={handleChooseWorkspace}
         />
       )}
-      {/* Consent ask waits for a workspace so it never stacks on the first-run dialog. */}
+      {/* Consent ask waits for a workspace so it never stacks on the setup-failure dialog. */}
       {settings?.workspaceRoot && updates.consent === "undecided" && !isAutoRun && (
         <UpdateConsentDialog onAnswer={(on) => void updates.answerConsent(on)} />
       )}

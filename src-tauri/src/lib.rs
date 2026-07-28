@@ -1187,6 +1187,8 @@ pub fn run() {
             save_screenshot,
             workspace::get_settings,
             workspace::init_workspace,
+            workspace::default_workspace_root,
+            workspace::move_workspace,
             workspace::list_projects,
             workspace::create_project,
             workspace::read_project_manifest,

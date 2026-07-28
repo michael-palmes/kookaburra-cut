@@ -427,6 +427,128 @@ pub fn get_settings(
     load_settings(&app, &state)
 }
 
+/// The root a chosen parent resolves to: picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
+fn root_under(parent: PathBuf) -> PathBuf {
+    if parent.file_name().and_then(|n| n.to_str()) == Some(WORKSPACE_DIR_NAME) {
+        parent
+    } else {
+        parent.join(WORKSPACE_DIR_NAME)
+    }
+}
+
+/// Where a workspace lands with no parent chosen, and the target "Reset to default" moves back to.
+fn default_root(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(root_under(
+        app.path().home_dir().map_err(|e| e.to_string())?,
+    ))
+}
+
+#[tauri::command]
+pub fn default_workspace_root(app: AppHandle) -> Result<String, String> {
+    Ok(default_root(&app)?.to_string_lossy().into_owned())
+}
+
+/// A path with every symlink it can resolve resolved, so `/tmp` and `/private/tmp` compare equal. Falls back to the
+/// nearest existing ancestor, since a move destination does not exist yet and `canonicalize` refuses those outright.
+fn resolved(path: &Path) -> PathBuf {
+    if let Ok(real) = path.canonicalize() {
+        return real;
+    }
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) => resolved(parent).join(name),
+        _ => path.to_path_buf(),
+    }
+}
+
+/// Everything that makes a move unsafe, before a single byte is touched.
+///
+/// Refuses rather than merges: two workspaces folded together would silently pick a winner for every clashing slug.
+fn check_move(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_dir() {
+        return Err(format!(
+            "your workspace is not where it used to be: {}",
+            from.display()
+        ));
+    }
+    let (from_real, to_real) = (resolved(from), resolved(to));
+    if to_real == from_real {
+        return Err("your workspace is already there".into());
+    }
+    if to_real.starts_with(&from_real) {
+        return Err("that folder is inside your workspace, pick one outside it".into());
+    }
+    if std::fs::read_dir(to).is_ok_and(|mut d| d.next().is_some()) {
+        return Err(format!(
+            "there is already a workspace at {}: move or rename it first",
+            to.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Relocate the workspace tree itself, once `check_move` has cleared it.
+fn perform_move(from: &Path, to: &Path) -> Result<(), String> {
+    // Staging and backup trees are transient (swept after a day) and can be large; they do not travel.
+    for transient in [
+        crate::pack::limits::STAGING_DIR,
+        crate::pack::limits::BACKUP_DIR,
+    ] {
+        let _ = std::fs::remove_dir_all(from.join(STATE_DIR_NAME).join(transient));
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    // Rename is atomic and instant, but only within one volume; a workspace on an external disk needs the slow path.
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    copy_dir_recursive(from, to)?;
+    std::fs::remove_dir_all(from).map_err(|e| {
+        format!(
+            "copied to {} but could not remove the old folder: {e}",
+            to.display()
+        )
+    })
+}
+
+/// Move the whole workspace to a new home and repoint settings at it. `parent` of `None` is the reset to default.
+#[tauri::command]
+pub fn move_workspace(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    export: State<'_, crate::ExportState>,
+    parent: Option<String>,
+) -> Result<String, String> {
+    if export.busy() {
+        return Err("an export is running: move your workspace after it finishes".into());
+    }
+    // A gate boot runs against a throwaway root the settings file knows nothing about; moving would repoint the real one.
+    if std::env::var("KOOKABURRA_WORKSPACE_ROOT").is_ok_and(|v| !v.trim().is_empty()) {
+        return Err("this run is pinned to a workspace by KOOKABURRA_WORKSPACE_ROOT".into());
+    }
+    let settings = load_settings(&app, &state)?;
+    let from = PathBuf::from(
+        settings
+            .workspace_root
+            .clone()
+            .ok_or("no workspace configured yet")?,
+    );
+    let to = match parent {
+        Some(p) => root_under(PathBuf::from(p)),
+        None => default_root(&app)?,
+    };
+    check_move(&from, &to)?;
+    perform_move(&from, &to)?;
+
+    ensure_layout(&to)?;
+    let mut settings = settings;
+    settings.workspace_root = Some(to.to_string_lossy().into_owned());
+    save_settings(&app, &state, settings)?;
+    let _ = app.asset_protocol_scope().allow_directory(&to, true);
+    let _ = app.emit("kookaburra://workspace-moved", to.to_string_lossy());
+    Ok(to.to_string_lossy().into_owned())
+}
+
 /// Create (or adopt) the workspace under `parent` (default: the home folder) and persist it; picking a folder already named "Kookaburra Cut" adopts it rather than nesting another.
 #[tauri::command]
 pub fn init_workspace(
@@ -438,11 +560,7 @@ pub fn init_workspace(
         Some(p) => PathBuf::from(p),
         None => app.path().home_dir().map_err(|e| e.to_string())?,
     };
-    let root = if parent.file_name().and_then(|n| n.to_str()) == Some(WORKSPACE_DIR_NAME) {
-        parent
-    } else {
-        parent.join(WORKSPACE_DIR_NAME)
-    };
+    let root = root_under(parent);
     ensure_layout(&root)?;
     let mut settings = load_settings(&app, &state)?;
     settings.workspace_root = Some(root.to_string_lossy().into_owned());
@@ -1316,6 +1434,82 @@ mod tests {
         assert_eq!(slugify("  Q3 — Update!  "), "q3-update");
         assert_eq!(slugify("---"), "");
         assert_eq!(slugify("Ünïcode Née"), "n-code-n-e");
+    }
+
+    #[test]
+    fn root_under_adopts_a_folder_already_named_for_the_workspace() {
+        assert_eq!(
+            root_under(PathBuf::from("/Users/x/Desktop/Vids")),
+            PathBuf::from("/Users/x/Desktop/Vids/Kookaburra Cut")
+        );
+        assert_eq!(
+            root_under(PathBuf::from("/Users/x/Kookaburra Cut")),
+            PathBuf::from("/Users/x/Kookaburra Cut")
+        );
+    }
+
+    #[test]
+    fn a_move_refuses_the_cases_that_would_lose_work() {
+        let base = scratch_dir();
+        let from = base.join("Kookaburra Cut");
+        std::fs::create_dir_all(from.join("my-video")).unwrap();
+
+        assert!(check_move(&from, &base.join("elsewhere")).is_ok());
+        // Already there, including the path that only differs by a symlinked prefix.
+        assert!(check_move(&from, &from).is_err());
+        // Into itself: the move would consume its own source.
+        assert!(check_move(&from, &from.join("nested")).is_err());
+        // A destination holding someone else's work is never merged into.
+        let occupied = base.join("occupied");
+        std::fs::create_dir_all(occupied.join("their-video")).unwrap();
+        assert!(check_move(&from, &occupied).is_err());
+        // An empty folder is a fine destination; only content refuses.
+        let empty = base.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(check_move(&from, &empty).is_ok());
+        // A workspace that has been moved or deleted behind our back.
+        assert!(check_move(&base.join("gone"), &base.join("elsewhere")).is_err());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_move_takes_the_work_and_leaves_the_transient_trees() {
+        let base = scratch_dir();
+        let from = base.join("Kookaburra Cut");
+        let to = base.join("moved/Kookaburra Cut");
+        std::fs::create_dir_all(from.join("my-video/scenes")).unwrap();
+        std::fs::write(from.join("my-video/project.json"), r#"{"id":"my-video"}"#).unwrap();
+        std::fs::create_dir_all(from.join("fonts")).unwrap();
+        std::fs::write(from.join("fonts/fonts.json"), "{}").unwrap();
+        let state = from.join(STATE_DIR_NAME);
+        std::fs::create_dir_all(state.join("snapshots")).unwrap();
+        std::fs::write(state.join("snapshots/one.png"), "snap").unwrap();
+        std::fs::create_dir_all(state.join(crate::pack::limits::STAGING_DIR)).unwrap();
+        std::fs::create_dir_all(state.join(crate::pack::limits::BACKUP_DIR)).unwrap();
+
+        perform_move(&from, &to).unwrap();
+
+        assert!(!from.exists());
+        assert_eq!(
+            std::fs::read_to_string(to.join("my-video/project.json")).unwrap(),
+            r#"{"id":"my-video"}"#
+        );
+        assert_eq!(
+            std::fs::read_to_string(to.join(STATE_DIR_NAME).join("snapshots/one.png")).unwrap(),
+            "snap"
+        );
+        assert!(to.join("fonts/fonts.json").is_file());
+        assert!(!to
+            .join(STATE_DIR_NAME)
+            .join(crate::pack::limits::STAGING_DIR)
+            .exists());
+        assert!(!to
+            .join(STATE_DIR_NAME)
+            .join(crate::pack::limits::BACKUP_DIR)
+            .exists());
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
