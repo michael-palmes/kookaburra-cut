@@ -173,7 +173,7 @@ interface MediaMetaLike {
   durationMs: number;
 }
 
-/** The video sources a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). An explicit `source: "videoWindow"` or a matching `sourceDeviceId` pins one; unpinned (or stale-pinned) docs return every device video, so a multi-device comparison follows whichever recording runs longer; device-less docs keep the videoWindow-then-background chain. */
+/** The video sources a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). An explicit `source: "videoWindow"` or a matching `sourceDeviceId` pins one device; a comparison's `compare.b.media` videos count beside each device's own (both sides render, so neither recording may cut short); unpinned (or stale-pinned) docs return every qualifying video; device-less docs keep the videoWindow-then-background chain. */
 export function followMediaSources(doc: SceneDoc | undefined): string[] {
   const duration = doc?.duration;
   if (duration?.mode !== "follow-media") return [];
@@ -182,9 +182,11 @@ export function followMediaSources(doc: SceneDoc | undefined): string[] {
   }
   const devices = doc?.devices ?? [];
   const pinned = devices.find((d) => d.id === duration.sourceDeviceId);
-  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) =>
-    d.media?.kind === "video" ? [d.media.src] : [],
-  );
+  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) => {
+    const own = d.media?.kind === "video" ? [d.media.src] : [];
+    const after = doc?.compare?.b?.media?.[d.id];
+    return after?.kind === "video" ? [...own, after.src] : own;
+  });
   if (deviceVideos.length > 0) return deviceVideos;
   if (doc?.videoWindow?.media?.src) return [doc.videoWindow.media.src];
   if (doc?.background?.type === "video") return [doc.background.src];

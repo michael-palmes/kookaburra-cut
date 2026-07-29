@@ -87,6 +87,27 @@ describe("followMediaSources (the follow-media source rule)", () => {
     expect(followMediaSources(doc)).toEqual(["assets/bg.mp4"]);
   });
 
+  it("a comparison's after-side videos count beside each device's own", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+      compare: { b: { media: { d2: { src: "assets/after.mp4", kind: "video" } } } },
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/a.mp4", "assets/b.mp4", "assets/after.mp4"]);
+    const pinned = docWith({
+      duration: { mode: "follow-media", sourceDeviceId: "d2" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+      compare: { b: { media: { d2: { src: "assets/after.mp4", kind: "video" } } } },
+    });
+    expect(followMediaSources(pinned)).toEqual(["assets/b.mp4", "assets/after.mp4"]);
+  });
+
   it("source videoWindow pins the window; device-less docs fall to the background video", () => {
     const vw = docWith({
       duration: { mode: "follow-media", source: "videoWindow" },
