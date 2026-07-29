@@ -25,6 +25,8 @@ interface SceneHostProps {
   theme?: Theme;
   /** The scene's resolved overlay (`LoadedProject.sceneFrames[index]`); narrows `useFormat()` to the cutout so the scene lays out inside it. */
   frame?: FrameSpec;
+  /** A comparison's side-B host: same index and timing as the base host, its own doc/theme; the compositor gates the pair by side. */
+  side?: "b";
   children: ReactNode;
 }
 
@@ -37,6 +39,7 @@ export function SceneHost({
   doc,
   theme,
   frame,
+  side,
   children,
 }: SceneHostProps) {
   const key = useId();
@@ -54,12 +57,12 @@ export function SceneHost({
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    registerSceneHost(key, { index, id, startMs, durationMs, group });
+    registerSceneHost(key, { index, id, startMs, durationMs, group, side });
     return () => unregisterSceneHost(key);
-  }, [key, index, id, startMs, durationMs]);
+  }, [key, index, id, startMs, durationMs, side]);
 
   return (
-    <SceneContext.Provider value={{ index, startMs, durationMs }}>
+    <SceneContext.Provider value={{ index, startMs, durationMs, side }}>
       <SceneDocContext.Provider value={doc ?? null}>
         <SceneThemeContext.Provider value={theme ?? null}>
           <FormatContext.Provider value={cutoutFormat}>

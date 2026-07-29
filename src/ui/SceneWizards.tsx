@@ -59,6 +59,7 @@ export interface ScaffoldedScene {
 type SceneKind =
   | "device"
   | "deviceonly"
+  | "comparison"
   | "title"
   | "titleicon"
   | "appversion"
@@ -73,6 +74,7 @@ type SceneKind =
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + title", blurb: "A titled phone playing your media" },
   { id: "deviceonly", label: "Device only", blurb: "A centred phone with no title copy" },
+  { id: "comparison", label: "Before / after", blurb: "Two phones comparing old and new" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
   { id: "titleicon", label: "Title + icon", blurb: "A title with an icon above it" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
@@ -94,6 +96,7 @@ const NO_TEXT_KINDS: SceneKind[] = ["video", "deviceonly"];
 /** Kinds whose composition renders a subtitle on its own; blank/layeredscreenshot text rides TextFallback, which needs a title. */
 const SUBTITLE_KINDS: SceneKind[] = [
   "device",
+  "comparison",
   "title",
   "titleicon",
   "appversion",
@@ -125,12 +128,38 @@ function secondsLabel(ms: number): string {
   return `${(ms / 1000).toFixed(1).replace(/\.0$/, "")}s`;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="wizard-field">
       <span className="wizard-label">{label}</span>
       {children}
     </div>
+  );
+}
+
+/** Split-square glyph for the comparison media steps: the filled half is the screen being picked (before = left, after = right, the scene's own layout). */
+function SideChipGlyph({ side }: { side: "before" | "after" }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="1.5"
+        y="2.5"
+        width="13"
+        height="11"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <rect
+        x={side === "before" ? 3.2 : 8}
+        y="4.2"
+        width="4.8"
+        height="7.6"
+        rx="1"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
 
@@ -325,11 +354,17 @@ export function NewSceneWizard({
   onCancel: () => void;
 }) {
   const titleId = useId();
-  const [step, setStep] = useState<"type" | "device" | "media" | "details">("type");
+  const [step, setStep] = useState<"type" | "device" | "media" | "mediaB" | "details">("type");
   const [kind, setKind] = useState<SceneKind>("device");
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
   const [media, setMedia] = useState<{
+    rel: string;
+    kind: "video" | "image";
+    meta: MediaMeta | null;
+  } | null>(null);
+  // The comparison kind's second (after) screen; every other kind leaves it null.
+  const [mediaB, setMediaB] = useState<{
     rel: string;
     kind: "video" | "image";
     meta: MediaMeta | null;
@@ -350,8 +385,14 @@ export function NewSceneWizard({
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const pickWizardMedia = (rel: string, meta: MediaMeta | null) => {
     const fallback = kind === "layeredscreenshot" ? "image" : "video";
-    setMedia({ rel, kind: meta?.kind ?? fallback, meta });
-    setStep("details");
+    const picked = { rel, kind: meta?.kind ?? fallback, meta };
+    if (step === "mediaB") {
+      setMediaB(picked);
+      setStep("details");
+      return;
+    }
+    setMedia(picked);
+    setStep(kind === "comparison" ? "mediaB" : "details");
   };
 
   const position = useMemo(() => {
@@ -366,6 +407,7 @@ export function NewSceneWizard({
     {
       device: "Device",
       deviceonly: "Device",
+      comparison: "Comparison",
       title: "Title",
       titleicon: "Title",
       appversion: "App version",
@@ -386,15 +428,21 @@ export function NewSceneWizard({
         ? "e.g. Your App"
         : kind === "device"
           ? "Optional, sits above the device"
-          : kind.startsWith("overlay")
-            ? "The panel headline"
-            : "Optional";
+          : kind === "comparison"
+            ? "Optional, sits above the pair"
+            : kind.startsWith("overlay")
+              ? "The panel headline"
+              : "Optional";
   // The lockup's hero line is the version; its label is muted, the reverse of a title scene.
   const isLockup = kind === "appversion";
 
   const isDeviceKind = kind === "device" || kind === "deviceonly";
+  const isComparison = kind === "comparison";
   const takesMedia =
-    isDeviceKind || kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind);
+    isDeviceKind ||
+    isComparison ||
+    kind === "layeredscreenshot" ||
+    VIDEO_MEDIA_KINDS.includes(kind);
 
   async function submit() {
     setBusy(true);
@@ -415,6 +463,8 @@ export function NewSceneWizard({
           colour: isDeviceKind ? colour : null,
           mediaRel: takesMedia ? (media?.rel ?? null) : null,
           mediaKind: takesMedia ? (media?.kind ?? null) : null,
+          mediaRelB: isComparison ? (mediaB?.rel ?? null) : null,
+          mediaKindB: isComparison ? (mediaB?.kind ?? null) : null,
           headerIcon: kind === "titleicon" ? headerIcon.trim() || null : null,
           recording,
           position: position ?? null,
@@ -456,7 +506,7 @@ export function NewSceneWizard({
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div
-        className={`modal wizard-wide${step === "media" ? " wizard-media-wide" : ""}${
+        className={`modal wizard-wide${step === "media" || step === "mediaB" ? " wizard-media-wide" : ""}${
           step === "type" ? " wizard-kind-wide" : ""
         }${step === "details" ? " wizard-place-wide" : ""}`}
       >
@@ -495,7 +545,7 @@ export function NewSceneWizard({
                     setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video", meta: null });
                   }
                   setStep(
-                    isDeviceKind
+                    isDeviceKind || isComparison
                       ? "device"
                       : kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind)
                         ? "media"
@@ -532,17 +582,29 @@ export function NewSceneWizard({
           </>
         )}
 
-        {step === "media" && (
+        {(step === "media" || step === "mediaB") && (
           <>
             <Field
               label={
-                kind === "layeredscreenshot"
-                  ? "First screen (the builder grows the stack from here)"
-                  : kind === "video"
-                    ? "What fills the frame?"
-                    : kind === "videowindow"
-                      ? "What plays in the window?"
-                      : "What plays on the screen?"
+                isComparison ? (
+                  <span className="wizard-side-label">
+                    <span className={`wizard-side-chip${step === "mediaB" ? " after" : ""}`}>
+                      <SideChipGlyph side={step === "mediaB" ? "after" : "before"} />
+                      {step === "mediaB" ? "After" : "Before"}
+                    </span>
+                    {step === "mediaB"
+                      ? "What plays on the After screen?"
+                      : "What plays on the Before screen?"}
+                  </span>
+                ) : kind === "layeredscreenshot" ? (
+                  "First screen (the builder grows the stack from here)"
+                ) : kind === "video" ? (
+                  "What fills the frame?"
+                ) : kind === "videowindow" ? (
+                  "What plays in the window?"
+                ) : (
+                  "What plays on the screen?"
+                )
               }
             >
               <div className="wizard-media-host">
@@ -554,7 +616,15 @@ export function NewSceneWizard({
                   kindDefault={kind === "layeredscreenshot" ? "image" : undefined}
                   globalToggle
                   refreshKey={mediaRefresh}
-                  selectedRel={VIDEO_MEDIA_KINDS.includes(kind) ? (media?.rel ?? null) : undefined}
+                  selectedRel={
+                    isComparison
+                      ? step === "mediaB"
+                        ? (mediaB?.rel ?? null)
+                        : (media?.rel ?? null)
+                      : VIDEO_MEDIA_KINDS.includes(kind)
+                        ? (media?.rel ?? null)
+                        : undefined
+                  }
                   onPick={pickWizardMedia}
                   cardMenu={mediaCardMenu({
                     slug,
@@ -570,7 +640,11 @@ export function NewSceneWizard({
               <button
                 type="button"
                 className="btn"
-                onClick={() => setStep(isDeviceKind ? "device" : "type")}
+                onClick={() =>
+                  setStep(
+                    step === "mediaB" ? "media" : isDeviceKind || isComparison ? "device" : "type",
+                  )
+                }
               >
                 Back
               </button>
@@ -583,8 +657,13 @@ export function NewSceneWizard({
                   type="button"
                   className="btn"
                   onClick={() => {
+                    if (step === "mediaB") {
+                      setMediaB(null);
+                      setStep("details");
+                      return;
+                    }
                     setMedia(null);
-                    setStep("details");
+                    setStep(isComparison ? "mediaB" : "details");
                   }}
                 >
                   {kind === "layeredscreenshot" ? "Skip (empty stack)" : "Skip (Empty screen)"}
@@ -643,6 +722,14 @@ export function NewSceneWizard({
               <p className="modal-hint">
                 Screen media: {media.rel.replace(/^assets\//, "")} ({media.kind})
                 {media.kind === "video" && " — the scene will follow its length"}
+              </p>
+            )}
+            {isComparison && (media || mediaB) && (
+              <p className="modal-hint">
+                Before: {media ? media.rel.replace(/^assets\//, "") : "empty screen"}
+                {" · "}After: {mediaB ? mediaB.rel.replace(/^assets\//, "") : "empty screen"}
+                {(media?.kind === "video" || mediaB?.kind === "video") &&
+                  " — the scene will follow the longer video"}
               </p>
             )}
             {!NO_TEXT_KINDS.includes(kind) && (

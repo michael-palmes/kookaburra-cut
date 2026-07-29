@@ -30,6 +30,7 @@ import {
   subscribeClipExtraction,
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
+import { useCompareEditStore } from "./engine/compareEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
@@ -89,6 +90,7 @@ import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
+import { deriveCompareBDoc } from "./engine/sceneCompare";
 import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
   resyncFollowMediaDuration,
@@ -119,6 +121,7 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
+import { CompareChips } from "./toolkit/compare/CompareChips";
 import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
@@ -130,6 +133,7 @@ import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { CommandPalette } from "./ui/CommandPalette";
+import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
@@ -504,10 +508,22 @@ export default function App() {
         // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
         const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
         const resolvedFrame = merged?.enabled === false ? undefined : merged;
+        // Comparison side B derives from the doc, so the in-memory patch must re-derive it too (adding a comparison mounts the side-B host without a reload). A changed after-theme id resolves properly at the chained reload; until it lands the previous resolution (else the scene's own theme) stands in.
+        const bDoc = deriveCompareBDoc(doc) ?? undefined;
+        const prevBDoc = prev.compareBDocs[sceneIndex];
+        const bTheme = bDoc
+          ? bDoc.themeId
+            ? bDoc.themeId === prevBDoc?.themeId
+              ? prev.compareBThemes[sceneIndex]
+              : (prev.compareBThemes[sceneIndex] ?? prev.sceneThemes[sceneIndex])
+            : prev.sceneThemes[sceneIndex]
+          : undefined;
         return {
           ...prev,
           sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)),
           sceneFrames: prev.sceneFrames.map((f, i) => (i === sceneIndex ? resolvedFrame : f)),
+          compareBDocs: prev.compareBDocs.map((d, i) => (i === sceneIndex ? bDoc : d)),
+          compareBThemes: prev.compareBThemes.map((t, i) => (i === sceneIndex ? bTheme : t)),
         };
       });
       const id = loadedProjectRef.current?.id;
@@ -1216,6 +1232,9 @@ export default function App() {
   );
   // Which keyed track animates the active scene decides the lane/pill/overlay family mounted.
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
+  // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
+  const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
+  const compareLaneOpen = useCompareEditStore((s) => s.open);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
@@ -1534,6 +1553,8 @@ export default function App() {
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
+          compareBDocs: project.compareBDocs,
+          compareBThemes: project.compareBThemes,
           audio: project.audio,
           codec: "libx264",
           encode: sel.encode,
@@ -1587,6 +1608,8 @@ export default function App() {
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
+          compareBDocs: project.compareBDocs,
+          compareBThemes: project.compareBThemes,
           audio: project.audio,
           codec: "libx264",
         },
@@ -1776,6 +1799,8 @@ export default function App() {
                       sceneThemes={project.sceneThemes}
                       projectLighting={project.projectLighting}
                       sceneFrames={project.sceneFrames}
+                      compareBDocs={project.compareBDocs}
+                      compareBThemes={project.compareBThemes}
                       commitStamp={project}
                     />
                   )}
@@ -1807,6 +1832,37 @@ export default function App() {
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />
+                                <CompareChips />
+                              </AssetBoundary>
+                            </SceneHost>
+                          );
+                        })}
+                        {/* Comparison side-B hosts: the same scene component mounted again with side B's derived doc and theme, so per-side media/background/lighting scope through the normal host machinery; the compositor renders the pair to its A/B targets and masks them. */}
+                        {project?.scenes.map((scene, i) => {
+                          const bDoc = project.compareBDocs[i];
+                          if (!bDoc) return null;
+                          const slot = project.slots[i];
+                          const SceneComponent = scene.Scene;
+                          return (
+                            <SceneHost
+                              key={`${project.id}:${slot.id}:b`}
+                              index={i}
+                              side="b"
+                              id={slot.id}
+                              startMs={slot.startMs}
+                              durationMs={slot.durationMs}
+                              doc={bDoc}
+                              theme={project.compareBThemes[i]}
+                              frame={project.sceneFrames[i]}
+                            >
+                              <AssetBoundary label={`scene ${i + 1} after`}>
+                                <SceneBackground />
+                                <SceneComponent />
+                                <DevicesFallback />
+                                <LayeredScreenshotFallback />
+                                <VideoWindowFallback />
+                                <TextFallback />
+                                <CompareChips />
                               </AssetBoundary>
                             </SceneHost>
                           );
@@ -2011,25 +2067,40 @@ export default function App() {
 
             {/* The timeline dock: the animation lane self-collapses on cameraEditStore.open; the dock draws the lane-to-cell connector. */}
             <TimelineDock
-              connectorActive={lsActive ? lsLaneOpen : cameraEditOpen}
+              connectorActive={
+                (comparePresent && compareLaneOpen) || (lsActive ? lsLaneOpen : cameraEditOpen)
+              }
               activeIndex={camSceneIndex}
               lane={
                 project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-                  lsActive ? (
-                    <LayeredScreenshotAnimationLane
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      onDocChanged={handleDocChanged}
-                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    />
-                  ) : (
-                    <AnimationLane
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      onDocChanged={handleDocChanged}
-                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    />
-                  )
+                  <div className={comparePresent ? "anim-lane-stack" : undefined}>
+                    {comparePresent && (
+                      <CompareAnimationLane
+                        project={project}
+                        sceneIndex={camSceneIndex}
+                        onDocChanged={handleDocChanged}
+                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                      />
+                    )}
+                    {lsActive ? (
+                      <LayeredScreenshotAnimationLane
+                        project={project}
+                        sceneIndex={camSceneIndex}
+                        onDocChanged={handleDocChanged}
+                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                        label={comparePresent ? "Stack" : undefined}
+                      />
+                    ) : (
+                      <AnimationLane
+                        project={project}
+                        sceneIndex={camSceneIndex}
+                        onDocChanged={handleDocChanged}
+                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                        label={comparePresent ? "Camera" : undefined}
+                        alwaysOpen={comparePresent}
+                      />
+                    )}
+                  </div>
                 ) : null
               }
             >

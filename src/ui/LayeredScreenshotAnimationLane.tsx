@@ -59,10 +59,13 @@ export function LayeredScreenshotAnimationLane({
   sceneIndex,
   onDocChanged,
   onSceneDuration,
+  label,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
+  /** Set when lanes stack (a comparison scene), naming this track. */
+  label?: string;
   onSceneDuration: (sceneIndex: number, ms: number) => void;
 }) {
   const open = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -114,6 +117,7 @@ export function LayeredScreenshotAnimationLane({
       poseAt={appliedPoseAt}
       onSceneDuration={onDuration}
       addTitle="Insert a 1s stack animation at the playhead (it starts from the current pose)"
+      label={label}
       writeErrorPrefix="Save failed, this stack edit isn’t on disk:"
     />
   );

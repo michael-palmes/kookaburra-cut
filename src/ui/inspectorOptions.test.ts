@@ -80,6 +80,8 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.change",
       "device.rotation",
       "style.shadow",
+      "device.duplicate",
+      "device.add",
       "device.remove",
     ]);
   });
@@ -119,6 +121,8 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.change",
       "device.rotation",
       "style.shadow",
+      "device.duplicate",
+      "device.add",
       "device.remove",
     ]);
   });
@@ -156,6 +160,8 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.rotation",
       "device.lid",
       "style.shadow",
+      "device.duplicate",
+      "device.add",
       "device.remove",
     ]);
   });
@@ -168,6 +174,48 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const danger = rows.filter((r) => r.danger);
     expect(danger.map((r) => r.id)).toEqual(["device.remove"]);
     expect(danger[0].chevron).toBe(false);
+  });
+
+  it("selectedDeviceId scopes the device rows to that device", () => {
+    const doc = docWith({
+      devices: [
+        { id: "d1", model: "iphone-17-pro", media: { kind: "video", src: "assets/a.mp4" } },
+        { id: "d2", model: "macbook-pro-16" },
+      ] as SceneDoc["devices"],
+    });
+    const forD1 = sceneSections({ doc, slotsCount: 1, selectedDeviceId: "d1" })
+      .find((s) => s.id === "device")
+      ?.rows.map((r) => r.id);
+    expect(forD1).toContain("device.editVideo");
+    expect(forD1).not.toContain("device.lid");
+    const forD2 = sceneSections({ doc, slotsCount: 1, selectedDeviceId: "d2" })
+      .find((s) => s.id === "device")
+      ?.rows.map((r) => r.id);
+    expect(forD2).toContain("device.lid");
+    expect(forD2).not.toContain("device.editVideo");
+  });
+
+  it("a stale selectedDeviceId falls back to the first device", () => {
+    const doc = docWith({
+      devices: [
+        { id: "d1", model: "iphone-17-pro", media: { kind: "video", src: "assets/a.mp4" } },
+      ] as SceneDoc["devices"],
+    });
+    const rows = sceneSections({ doc, slotsCount: 1, selectedDeviceId: "gone" })
+      .find((s) => s.id === "device")
+      ?.rows.map((r) => r.id);
+    expect(rows).toContain("device.editVideo");
+  });
+
+  it("two devices retitle the section Devices; one keeps Device", () => {
+    const one = docWith({ devices: [{ id: "d1" }] as SceneDoc["devices"] });
+    const two = docWith({ devices: [{ id: "d1" }, { id: "d2" }] as SceneDoc["devices"] });
+    expect(sceneSections({ doc: one, slotsCount: 1 }).find((s) => s.id === "device")?.label).toBe(
+      "Device",
+    );
+    expect(sceneSections({ doc: two, slotsCount: 1 }).find((s) => s.id === "device")?.label).toBe(
+      "Devices",
+    );
   });
 });
 

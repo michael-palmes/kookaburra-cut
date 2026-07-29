@@ -23,7 +23,9 @@ export function TimelineDock({
       setPath(null);
       return;
     }
-    const track = dock.querySelector(".anim-track");
+    // With stacked lanes (a comparison scene) the bracket hugs the BOTTOM lane's track, nearest the scene strip, so it never crosses another lane.
+    const tracks = dock.querySelectorAll(".anim-track");
+    const track = tracks[tracks.length - 1];
     const cell = dock.querySelector(".pb-cell.active");
     if (!track || !cell) {
       setPath(null);

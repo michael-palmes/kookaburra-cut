@@ -11,6 +11,7 @@ import {
   type CameraKeyframe,
 } from "./cameraTrack";
 import { useClockStore } from "./clock";
+import { useCompareEditStore } from "./compareEditStore";
 import { renderComposited } from "./compositor";
 import {
   collectEnvironmentSources,
@@ -28,6 +29,7 @@ import {
   resolveFrameCameras,
   type SceneCameraTracks,
 } from "./sceneCamera";
+import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
 import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
@@ -44,6 +46,8 @@ export function CompositorDriver({
   sceneThemes,
   projectLighting,
   sceneFrames,
+  compareBDocs,
+  compareBThemes,
   commitStamp,
 }: {
   /** The loaded project's id, guards the camera-edit draft against a mid-switch mismatch. */
@@ -59,6 +63,9 @@ export function CompositorDriver({
   projectLighting?: LightingSpec;
   /** Per-scene resolved overlays; drive the cutout render seam. */
   sceneFrames?: (FrameSpec | undefined)[];
+  /** Comparison side-B docs/themes (`LoadedProject.compareBDocs`/`compareBThemes`); drive the compare plan. */
+  compareBDocs?: (SceneDoc | undefined)[];
+  compareBThemes?: (Theme | undefined)[];
   /** The LoadedProject identity, stamped on canvas commit (see exportBridge). */
   commitStamp?: unknown;
 }) {
@@ -93,15 +100,27 @@ export function CompositorDriver({
     [sceneFrames, sceneThemes],
   );
 
+  // Comparison plan inputs: normalised specs per scene (chrome colours resolved against each scene's own theme), plus side B's render states built over B-substituted themes/docs (non-compare entries reuse side A's inputs and are never read).
+  const compareSpecs = useMemo(
+    () => (sceneDocs ?? []).map((d, i) => compareSpecOf(d, sceneThemes?.[i])),
+    [sceneDocs, sceneThemes],
+  );
+  const sceneStatesB = useMemo(() => {
+    if (!theme || !sceneThemes || !compareBDocs?.some(Boolean)) return null;
+    const bThemes = sceneThemes.map((t, i) => compareBThemes?.[i] ?? t);
+    const bDocs = (sceneDocs ?? []).map((d, i) => compareBDocs[i] ?? d);
+    return buildSceneRenderStates(theme, bThemes, { projectId, projectLighting, sceneDocs: bDocs });
+  }, [theme, sceneThemes, compareBDocs, compareBThemes, sceneDocs, projectId, projectLighting]);
+
   // Resolves theme environments for the preview (fire-and-forget; the export preamble awaits its own call); frames rendered before a texture lands take the shared-env fallback, and invalidate repaints with reflections once loaded. A missing USER source rejects (it must fail exports loudly); the preview just logs it and renders without reflections.
   const gl = useThree((s) => s.gl);
   useEffect(() => {
     if (!theme || !sceneThemes || !sceneStates) return;
     const sources = collectEnvironmentSources(
       projectId,
-      [theme, ...sceneThemes],
+      [theme, ...sceneThemes, ...(compareBThemes ?? []).filter((t): t is Theme => !!t)],
       projectLighting,
-      sceneDocs,
+      [...(sceneDocs ?? []), ...(compareBDocs ?? []).filter(Boolean)],
     );
     void preloadEnvironments(gl, sources)
       .then(() =>
@@ -112,7 +131,18 @@ export function CompositorDriver({
       )
       .then(() => invalidate())
       .catch((e) => console.warn("[environments] preview preload failed:", e));
-  }, [gl, theme, sceneThemes, sceneStates, projectId, projectLighting, sceneDocs, invalidate]);
+  }, [
+    gl,
+    theme,
+    sceneThemes,
+    sceneStates,
+    projectId,
+    projectLighting,
+    sceneDocs,
+    compareBDocs,
+    compareBThemes,
+    invalidate,
+  ]);
 
   // Redraws when the project's timeline changes (e.g. project swap): the scrub position may not move, so PreviewClock wouldn't otherwise invalidate (slots.length keeps the dep real).
   useEffect(() => {
@@ -126,6 +156,8 @@ export function CompositorDriver({
 
   // Redraw on camera-edit draft changes (a drag moves the camera without moving the clock).
   useEffect(() => useCameraEditStore.subscribe(() => invalidate()), [invalidate]);
+  // Redraw on divider-lane draft changes, same rule.
+  useEffect(() => useCompareEditStore.subscribe(() => invalidate()), [invalidate]);
 
   // Stale-pose healing: the shared camera persists across project switches and a trackless project never writes it, so after previewing a camera-tracked project it would keep the displaced pose; one base-pose write on load is identical floats in the pristine case, so gated projects stay byte-identical (the exporter mirrors this once per run). See docs/determinism.md.
   const camera = useThree((s) => s.camera);
@@ -157,6 +189,25 @@ export function CompositorDriver({
     // Scene render state, same rules: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
     const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+    // The comparison plan, resolved at the same shared seam (mirrored in the export loop); an in-flight divider drag replaces its scene's spec for this render, the camera-draft rule (imperative read, unreachable during export).
+    let frameSpecs = compareSpecs;
+    const compareDraft = useCompareEditStore.getState().draft;
+    if (
+      compareDraft &&
+      compareDraft.projectId === projectId &&
+      compareDraft.sceneIndex < frameSpecs.length
+    ) {
+      const baseDoc = sceneDocs?.[compareDraft.sceneIndex];
+      if (baseDoc?.compare) {
+        const merged = frameSpecs.slice();
+        merged[compareDraft.sceneIndex] = compareSpecOf(
+          { ...baseDoc, compare: { ...baseDoc.compare, track: compareDraft.track } },
+          sceneThemes?.[compareDraft.sceneIndex],
+        );
+        frameSpecs = merged;
+      }
+    }
+    const compareFrame = resolveCompareFrame(frameSpecs, sceneStates, sceneStatesB, resolved);
     renderComposited(
       s.gl,
       s.scene,
@@ -167,6 +218,7 @@ export function CompositorDriver({
       statePlan,
       overlays ?? undefined,
       lightingPlan ?? undefined,
+      compareFrame,
     );
   }, 1);
 

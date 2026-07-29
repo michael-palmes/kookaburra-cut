@@ -1,0 +1,40 @@
+import { create } from "zustand";
+import type { KeyedTrack } from "./keyedTrack";
+
+/** Comparison divider-lane UI state: lane open/selection plus the live drag draft the preview renders while a pointer is down; UI-only, the export path never reads this store (exportProject samples only ExportOptions.sceneDocs). No armed tools: the divider is a one-channel value, the lane's diamonds are the whole gesture surface. */
+
+export type CompareTrackDoc = KeyedTrack<{ value: number }>;
+
+export interface CompareDraft {
+  projectId: string;
+  sceneIndex: number;
+  track: CompareTrackDoc;
+  /** True once written to the sidecar; cleared when the patched project lands. */
+  committed: boolean;
+}
+
+interface CompareEditState {
+  /** The divider lane is expanded (set while the lane is mounted; the compare drill can drive it later). */
+  open: boolean;
+  selectedKeyId: string | null;
+  /** Doc index of the selected segment (opens the easing popover). */
+  selectedSegment: number | null;
+  writeError: string | null;
+  draft: CompareDraft | null;
+  setOpen: (open: boolean) => void;
+  select: (keyId: string | null, segment: number | null) => void;
+  setDraft: (draft: CompareDraft | null) => void;
+  setWriteError: (err: string | null) => void;
+}
+
+export const useCompareEditStore = create<CompareEditState>((set) => ({
+  open: false,
+  selectedKeyId: null,
+  selectedSegment: null,
+  writeError: null,
+  draft: null,
+  setOpen: (open) => set({ open }),
+  select: (selectedKeyId, selectedSegment) => set({ selectedKeyId, selectedSegment }),
+  setDraft: (draft) => set({ draft }),
+  setWriteError: (writeError) => set({ writeError }),
+}));

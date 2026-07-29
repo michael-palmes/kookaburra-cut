@@ -497,6 +497,30 @@ body {
   justify-content: space-between;
 }
 
+/* The comparison wizard's media steps: a side chip makes Before vs After read at a glance (muted before, accent after, the scene labels' own colours). */
+.wizard-side-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.wizard-side-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.04);
+}
+.wizard-side-chip.after {
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+}
+
 .wizard-textarea {
   min-height: 64px;
   padding: var(--space-3) var(--space-4);
@@ -3642,6 +3666,9 @@ body {
   align-items: center;
   gap: 14px;
   padding: 10px 18px 11px;
+  /* Lane chrome (labels, buttons, readouts) is furniture, never copy. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* The 40px recessed well with a faint 13px-pitch vertical grid. */
@@ -3709,12 +3736,29 @@ body {
 
 /* Boundary-key trim diamonds (13px rotated squares); the one nearest the playhead
    grows + gains an outline — "the key you'd edit now". */
+/* Stacked-lane identity: --lane-accent recolours a lane's diamonds, segment fills and add button without touching the single-lane look; the shared min-width keeps the named add buttons equal so stacked tracks align. */
+.anim-lane-stack .anim-lane-row > .btn.primary {
+  min-width: 112px;
+  padding: 0 var(--space-3);
+}
+.anim-lane.lane-compare {
+  --lane-accent: var(--success);
+}
+.anim-lane.lane-compare .anim-seg {
+  border-color: rgba(95, 184, 122, 0.48);
+  background: rgba(95, 184, 122, 0.12);
+}
+.anim-lane.lane-compare .anim-lane-row > .btn.primary {
+  background: var(--success);
+  border-color: transparent;
+}
+
 .anim-key {
   position: absolute;
   top: 50%;
   width: 13px;
   height: 13px;
-  background: var(--accent);
+  background: var(--lane-accent, var(--accent));
   border-radius: 2px;
   transform: translate(-50%, -50%) rotate(45deg);
   /* Move, distinct from both the bars' grab and the track's ew-resize, so hover says which of the three you're on. */
@@ -3770,6 +3814,26 @@ body {
   border-radius: 2px;
 }
 
+/* Stacked lanes read as ONE panel: the seam tightens (no divider border on the upper lane), the lower lane drops its playhead knob, and both playheads stretch across the seam so the line runs continuously through the group. */
+.anim-lane-stack .anim-lane:first-child.open {
+  border-bottom-color: transparent;
+}
+.anim-lane-stack .anim-lane:first-child .anim-lane-row {
+  padding-bottom: 5px;
+}
+.anim-lane-stack .anim-lane + .anim-lane .anim-lane-row {
+  padding-top: 5px;
+}
+.anim-lane-stack .anim-lane:first-child .anim-playhead {
+  bottom: -30px;
+}
+.anim-lane-stack .anim-lane + .anim-lane .anim-playhead {
+  top: -30px;
+}
+.anim-lane-stack .anim-lane + .anim-lane .anim-playhead::before {
+  display: none;
+}
+
 /* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */
 .anim-duration {
   box-sizing: border-box;
@@ -3792,6 +3856,9 @@ body {
   box-sizing: border-box;
   width: 56px;
   padding: 0 4px;
+  /* The one editable island in a select-none row. */
+  user-select: text;
+  -webkit-user-select: text;
   font: inherit;
   text-align: left;
   color: var(--text-primary);
@@ -3807,6 +3874,10 @@ body {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   white-space: nowrap;
+}
+/* One readout for the group (the lower lane's); hidden not removed, so the stacked tracks stay width-aligned. */
+.anim-lane-stack .anim-lane:first-child .anim-readout {
+  visibility: hidden;
 }
 
 /* Sidecar-write failure: the pose on screen isn't on disk (v12 · M2 B1). */

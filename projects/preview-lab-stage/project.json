@@ -66,6 +66,10 @@
       "durationMs": 3000
     },
     {
+      "file": "scenes/kind-comparison.tsx",
+      "durationMs": 3000
+    },
+    {
       "file": "scenes/kind-titleicon.tsx",
       "durationMs": 3000
     },

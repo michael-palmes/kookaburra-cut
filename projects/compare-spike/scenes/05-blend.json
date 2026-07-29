@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "name": "Ghost blend",
+  "text": {
+    "title": "Ghost"
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/screen.png",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-0.85, -0.3, 0],
+        "rotationDeg": [0, 12, 0],
+        "scale": 0.85
+      },
+      "motion": {
+        "preset": "none"
+      }
+    },
+    {
+      "id": "d2",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/screen.png",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0.85, -0.3, 0],
+        "rotationDeg": [0, -12, 0],
+        "scale": 0.85
+      },
+      "motion": {
+        "preset": "none"
+      }
+    }
+  ],
+  "compare": {
+    "b": {
+      "themeId": "kookaburra-ember",
+      "media": {
+        "d2": {
+          "src": "assets/sample-screenshot-4.jpg",
+          "kind": "image"
+        }
+      }
+    },
+    "mask": {
+      "type": "blend"
+    },
+    "track": {
+      "keys": [
+        {
+          "id": "k1",
+          "tMs": 0,
+          "pose": {
+            "value": 0.1
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 1400,
+          "pose": {
+            "value": 0.85
+          }
+        }
+      ],
+      "segments": [
+        {
+          "from": "k1",
+          "to": "k2",
+          "ease": "inOutSine"
+        }
+      ]
+    }
+  }
+}

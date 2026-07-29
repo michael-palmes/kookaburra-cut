@@ -51,6 +51,7 @@ import {
 } from "./project";
 import { type RenderStateFingerprint, renderStateFingerprint } from "./renderFingerprint";
 import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } from "./sceneCamera";
+import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
 import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
@@ -83,6 +84,9 @@ export interface ExportOptions {
   projectLighting?: LightingSpec;
   /** Per-scene resolved overlays; absent (or all undefined) means no scene renders through a cutout, the byte-identical legacy path. */
   sceneFrames?: (FrameSpec | undefined)[];
+  /** Comparison side-B docs/themes (`LoadedProject.compareBDocs`/`compareBThemes`); absent (or all undefined) means the compare path never engages. */
+  compareBDocs?: (SceneDoc | undefined)[];
+  compareBThemes?: (Theme | undefined)[];
   /** Encoder; defaults to the deterministic libx264. */
   codec?: Codec;
   /** The resolved encode spec (presets/custom). Absent means the frozen legacy argv, byte-pinned in Rust; standing baselines and Verify never carry one. */
@@ -331,9 +335,13 @@ async function exportPreamble(
       gl,
       collectEnvironmentSources(
         opts.projectId,
-        [opts.theme, ...(opts.sceneThemes ?? [])],
+        [
+          opts.theme,
+          ...(opts.sceneThemes ?? []),
+          ...(opts.compareBThemes ?? []).filter((t): t is Theme => !!t),
+        ],
         opts.projectLighting,
-        opts.sceneDocs,
+        [...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? []).filter(Boolean)],
       ),
     );
     await preloadMirrorEnvironments(
@@ -455,6 +463,23 @@ export async function exportProject(
         })
       : null;
 
+  // Comparison plan inputs, built once (mirrored in CompositorDriver): specs per scene, plus side B's states over B-substituted themes/docs.
+  const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
+    compareSpecOf(d, opts.sceneThemes?.[i]),
+  );
+  const sceneStatesB =
+    opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
+      ? buildSceneRenderStates(
+          opts.theme,
+          opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
+          {
+            projectId: opts.projectId,
+            projectLighting: opts.projectLighting,
+            sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
+          },
+        )
+      : null;
+
   // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
   const overlays = opts.sceneThemes
     ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
@@ -497,6 +522,7 @@ export async function exportProject(
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
       const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+      const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
       // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
       renderComposited(
         gl,
@@ -508,6 +534,7 @@ export async function exportProject(
         statePlan,
         overlays ?? undefined,
         lightingPlan ?? undefined,
+        compareFrame,
       );
       if (frame === total - 1) onFingerprint?.(renderStateFingerprint(gl, scene));
       ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
@@ -577,6 +604,22 @@ export async function captureScreenshot(
   const overlays = opts.sceneThemes
     ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
     : null;
+  // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
+  const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
+    compareSpecOf(d, opts.sceneThemes?.[i]),
+  );
+  const sceneStatesB =
+    opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
+      ? buildSceneRenderStates(
+          opts.theme,
+          opts.sceneThemes.map((t, i) => opts.compareBThemes?.[i] ?? t),
+          {
+            projectId: opts.projectId,
+            projectLighting: opts.projectLighting,
+            sceneDocs: (opts.sceneDocs ?? []).map((d, i) => opts.compareBDocs?.[i] ?? d),
+          },
+        )
+      : null;
   if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
     applyCameraPose(cam, baseCameraPose());
   }
@@ -599,6 +642,7 @@ export async function captureScreenshot(
     if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
     const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+    const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
     renderComposited(
       gl,
       scene,
@@ -609,6 +653,7 @@ export async function captureScreenshot(
       statePlan,
       overlays ?? undefined,
       lightingPlan ?? undefined,
+      compareFrame,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
     await invoke("begin_screenshot", { width, height, name });

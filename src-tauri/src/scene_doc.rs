@@ -461,6 +461,7 @@ const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.t
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
 const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
 const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
+const TSX_COMPARISON: &str = include_str!("../templates/scenes/comparison.tsx.tmpl");
 
 /// The video kind's default background, shipped in every project (`ensure_sample_assets`).
 const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
@@ -468,7 +469,7 @@ const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "deviceonly" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
+    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -483,6 +484,11 @@ pub struct ScaffoldOptions {
     pub media_rel: Option<String>,
     /// "video" | "image".
     pub media_kind: Option<String>,
+    /// Comparison scenes: the second (after) device's media, same shapes as the first.
+    #[serde(default)]
+    pub media_rel_b: Option<String>,
+    #[serde(default)]
+    pub media_kind_b: Option<String>,
     #[serde(default)]
     pub motion_preset: Option<String>,
     #[serde(default)]
@@ -555,6 +561,7 @@ pub async fn scaffold_scene(
 
     let template = match options.kind.as_str() {
         "device" | "deviceonly" => TSX_DEVICE,
+        "comparison" => TSX_COMPARISON,
         // The overlay kinds ride the title base: the panel suppresses TitleBlock and shows the same text itself; the cutout pair's variant lifts the scene clear so the window reads against the flat panel.
         "title" | "titleicon" | "overlaypanel" => TSX_TITLE,
         "overlaystart" | "overlayend" => TSX_OVERLAY,
@@ -566,6 +573,7 @@ pub async fn scaffold_scene(
         other => return Err(format!("unknown scene kind {other:?}")),
     };
     let is_device_kind = matches!(options.kind.as_str(), "device" | "deviceonly");
+    let is_comparison = options.kind == "comparison";
 
     // A video or video-window scene without a pick starts on the bundled laptop sample.
     if matches!(options.kind.as_str(), "video" | "videowindow") && options.media_rel.is_none() {
@@ -600,12 +608,38 @@ pub async fn scaffold_scene(
             }
         }
     }
+    // Comparison: probe both sides and follow the longer clip so neither recording is cut short.
+    let mut comparison_source: Option<&str> = None;
+    if is_comparison {
+        let mut best: u64 = 0;
+        let sides = [
+            ("d1", &options.media_rel, &options.media_kind),
+            ("d2", &options.media_rel_b, &options.media_kind_b),
+        ];
+        for (id, rel, kind) in sides {
+            if kind.as_deref() != Some("video") {
+                continue;
+            }
+            if let Some(rel) = rel {
+                let probed = media::probe_media(&app, &project.join(rel)).await?;
+                if probed.duration_ms > best {
+                    best = probed.duration_ms;
+                    comparison_source = Some(id);
+                }
+            }
+        }
+        if best > 0 {
+            duration_ms = best;
+        }
+    }
 
     // The sidecar document (built here, not templated; Rust owns the schema).
     let mut doc = json!({
         "version": SCENE_DOC_VERSION,
         "name": options.name,
-        "duration": if is_video && is_device_kind {
+        "duration": if let Some(source) = comparison_source {
+            json!({ "mode": "follow-media", "sourceDeviceId": source })
+        } else if is_video && is_device_kind {
             json!({ "mode": "follow-media", "sourceDeviceId": "d1" })
         } else if is_video && options.kind == "videowindow" {
             json!({ "mode": "follow-media", "source": "videoWindow" })
@@ -626,6 +660,7 @@ pub async fn scaffold_scene(
             | "overlayend"
             | "overlaypanel"
             | "device"
+            | "comparison"
             | "videowindow"
     );
     if seeds_text_pair {
@@ -633,6 +668,11 @@ pub async fn scaffold_scene(
         doc["text"]["subtitle"] = json!(options.subtitle.as_deref().unwrap_or(""));
         if let Some(bullets) = options.bullets.as_deref().filter(|b| !b.trim().is_empty()) {
             doc["text"]["bullets"] = json!(bullets);
+        }
+        if is_comparison {
+            // The labels are the point of the kind, so they start with copy rather than empty.
+            doc["text"]["beforeLabel"] = json!("Before");
+            doc["text"]["afterLabel"] = json!("After");
         }
     } else if options.kind == "appversion" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
@@ -751,6 +791,44 @@ pub async fn scaffold_scene(
             device["media"] = json!({ "src": rel, "kind": kind });
         }
         doc["devices"] = json!([device]);
+    }
+    if is_comparison {
+        // A symmetric pair angled slightly inward; the template compresses x and scale in portrait.
+        let model = options.device_model.as_deref().unwrap_or("iphone-17-pro");
+        let colour = options.colour.as_deref().unwrap_or("silver");
+        let sides = [
+            ("d1", -0.85, 12.0, &options.media_rel, &options.media_kind),
+            (
+                "d2",
+                0.85,
+                -12.0,
+                &options.media_rel_b,
+                &options.media_kind_b,
+            ),
+        ];
+        let mut list = Vec::new();
+        for (id, x, yaw, rel, kind) in sides {
+            let mut device = json!({
+                "id": id,
+                "model": model,
+                "colour": colour,
+                "placement": {
+                    "position": [x, -0.3, 0],
+                    "rotationDeg": [0, yaw, 0],
+                    "scale": 0.85,
+                },
+                "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
+            });
+            // Omitted so Device auto-resolves (the device kinds' contract); an explicit option still wins.
+            if let Some(shadow) = options.shadow.as_deref() {
+                device["shadow"] = json!(shadow);
+            }
+            if let (Some(rel), Some(kind)) = (rel, kind) {
+                device["media"] = json!({ "src": rel, "kind": kind });
+            }
+            list.push(device);
+        }
+        doc["devices"] = json!(list);
     }
 
     // TSX from the template; placeholders are dumb string replaces, keep them in sync with .claude/commands/new-scene.md, which interpolates the same files.

@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
+import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
+import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useFormat } from "../../engine/format";
@@ -83,6 +85,10 @@ import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
+/** Sideways step between devices: a phone auto-fits 2.6 world units tall (~1.26 wide at scale 1), a laptop width-fits to 3.4, so these clear one footprint with margin. */
+const DEVICE_STEP_X = 1.4;
+const LAPTOP_STEP_X = 3.6;
+
 /** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
 const SCREEN_TITLES: Record<string, string> = {
   text: "Text",
@@ -94,7 +100,40 @@ const SCREEN_TITLES: Record<string, string> = {
   "text.edit": "Edit text",
   "style.background": "Background",
   "videoWindow.edit": "Video window",
+  "compare.edit": "Comparison",
 };
+
+/** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
+function DevicePillIcon({ model }: { model: string }) {
+  const laptop = isDeviceId(model) && DEVICE_CATALOG[model].lid !== undefined;
+  return laptop ? (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M5 13V6.5A1.5 1.5 0 016.5 5h7A1.5 1.5 0 0115 6.5V13" />
+      <path d="M3 15h14" />
+    </svg>
+  ) : (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <rect x="6.5" y="3" width="7" height="14" rx="1.8" />
+      <path d="M9 15.5h2" />
+    </svg>
+  );
+}
 
 /** Text-alignment glyphs: three lines pinned left, centre or right. */
 function AlignIcon({ id }: { id: SceneTextAlign }) {
@@ -283,6 +322,37 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <rect x="4" y="3" width="8" height="14" rx="1.8" />
           <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "compare.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4" width="14" height="12" rx="2" />
+          <path d="M10 4v12" />
+          <path d="M6 10h2M12 10h2" opacity="0.7" />
+        </svg>
+      );
+    case "device.duplicate":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="4" y="3" width="7" height="12" rx="1.6" />
+          <rect x="9.5" y="6" width="7" height="12" rx="1.6" opacity="0.7" />
         </svg>
       );
     case "layeredScreenshot.add":
@@ -1528,10 +1598,21 @@ export function SceneTab({
   }, [decoMediaRequestId, requestDecoMedia]);
 
   const [modal, setModal] = useState<"media" | null>(null);
-  // What a media pick targets: the scene device, or a decoration (append, or replace one by id).
+  // What a media pick targets: a scene device by id, or a decoration (append, or replace one by id).
   const [mediaTarget, setMediaTarget] = useState<
-    { kind: "device" } | { kind: "decoration"; replaceId?: string }
+    { kind: "device"; deviceId?: string } | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
+  // Which device the device rows act on; null (or a stale id) falls back to the first device.
+  const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // The comparison drill's side pill and its full-height media screen's target device.
+  const [compareSide, setCompareSide] = useState<"a" | "b">("a");
+  const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
+  const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
+  // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
+  const compareDragBaseline = useRef<SceneDoc | null>(null);
+  // Which document the background/lighting drills edit: the scene itself, or the comparison's after side (set at every drill entry point, reset on scene change).
+  const [bgTarget, setBgTarget] = useState<"scene" | "compareB">("scene");
+  const [lightingTarget, setLightingTarget] = useState<"scene" | "compareB">("scene");
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
@@ -1595,7 +1676,9 @@ export function SceneTab({
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
-  const device = doc?.devices?.[0];
+  const devices = doc?.devices ?? [];
+  const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
+  const deviceId = device?.id;
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -1659,6 +1742,12 @@ export function SceneTab({
   useEffect(() => {
     setModal(null);
     setConfirmRemove(false);
+    setPickedDeviceId(null);
+    setCompareSide("a");
+    setCompareMediaDeviceId(null);
+    setConfirmRemoveCompare(false);
+    setBgTarget("scene");
+    setLightingTarget("scene");
     resetDrill();
     setRenaming(false);
     setBgTabOverride(null);
@@ -1698,7 +1787,9 @@ export function SceneTab({
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
   useEffect(() => {
     void themesRefreshKey; // re-list on ThemeMode close
-    if (drillIn === "style.theme") void listThemeChoices().then(setThemeChoices);
+    if (drillIn === "style.theme" || drillIn === "compare.edit" || drillIn === "compare.theme") {
+      void listThemeChoices().then(setThemeChoices);
+    }
   }, [drillIn, themesRefreshKey]);
 
   // The theme-card right-click menu; Apply here means the scene override.
@@ -1723,23 +1814,77 @@ export function SceneTab({
     slotsCount: project.slots.length,
     deckFrame: project.deckFrame !== undefined,
     frame: sceneFrame,
+    selectedDeviceId: pickedDeviceId ?? undefined,
   });
 
-  const addDevice = () =>
+  /** Mutate the selected device in place; a no-op when the scene has none. */
+  const patchDevice = (fn: (d: NonNullable<SceneDoc["devices"]>[number]) => void) =>
     void patchDoc((next) => {
-      // The Rust scaffolder's device defaults, byte for byte.
+      const d = next.devices?.find((x) => x.id === deviceId);
+      if (d) fn(d);
+    });
+
+  const freshDeviceId = () => {
+    const used = new Set(devices.map((d) => d.id));
+    let n = 1;
+    while (used.has(`d${n}`)) n += 1;
+    return `d${n}`;
+  };
+  const addDevice = () => {
+    const id = freshDeviceId();
+    // Later devices step outward alternately so a new one never lands inside an existing device.
+    const k = devices.length;
+    const x = k === 0 ? 0 : DEVICE_STEP_X * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
+    void patchDoc((next) => {
+      // The Rust scaffolder's device defaults, byte for byte (the first device lands centred).
       next.devices = [
         ...(next.devices ?? []),
         {
-          id: "d1",
+          id,
           model: "iphone-17-pro",
           colour: "silver",
-          placement: { position: [0, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
+          placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
           motion: { preset: "none" },
           shadow: "soft",
         },
       ];
     });
+    setPickedDeviceId(id);
+  };
+  const duplicateDevice = () => {
+    if (!deviceId) return;
+    const id = freshDeviceId();
+    void patchDoc((next) => {
+      const src = next.devices?.find((x) => x.id === deviceId);
+      if (!src) return;
+      const copy = structuredClone(src);
+      copy.id = id;
+      // Mirror across centre: flip x (a centred device steps one footprint aside) and the y rotation.
+      const laptop = isDeviceId(src.model) && DEVICE_CATALOG[src.model].lid !== undefined;
+      const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (src.placement?.scale ?? 1);
+      const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
+      const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
+      copy.placement = {
+        ...copy.placement,
+        position: [px === 0 ? step : -px, py, pz],
+        rotationDeg: [rx, -ry, rz],
+      };
+      next.devices = [...(next.devices ?? []), copy];
+    });
+    setPickedDeviceId(id);
+  };
+  const addCompare = () => {
+    void patchDoc((next) => {
+      // A visible starting point: line + chips on; the halves stay identical until the after side changes something.
+      next.compare = {
+        b: {},
+        mask: { type: "linear", angleDeg: 90 },
+        value: 0.5,
+        chrome: { line: { width: 4, colour: "accent" }, chips: true },
+      };
+    });
+    openDrill("compare.edit");
+  };
   const addOverlay = () =>
     void patchDoc((next) => {
       // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger.
@@ -1776,11 +1921,56 @@ export function SceneTab({
     );
   };
 
+  /** Route a background-drill mutation at its target: the scene's own `background`, or the comparison's after side. For the after side, side B's value swaps in before the mutation and transplants out after, so the drill's reads and writes work unchanged and every OTHER field still mutates the real doc. */
+  const patchBgDoc = (mutate: (next: SceneDoc) => void, opts?: Parameters<typeof patchDoc>[1]) => {
+    if (bgTarget !== "compareB") return patchDoc(mutate, opts);
+    return patchDoc((next) => {
+      const own = next.background;
+      next.background = next.compare?.b?.background;
+      mutate(next);
+      const written = next.background;
+      next.background = own;
+      if (!next.compare) next.compare = {};
+      if (!next.compare.b) next.compare.b = {};
+      next.compare.b.background = written;
+    }, opts);
+  };
+  /** The lighting drill's target routing, same transplant rule over `lighting`. */
+  const patchLightingDoc = (
+    mutate: (next: SceneDoc) => void,
+    opts?: Parameters<typeof patchDoc>[1],
+  ) => {
+    if (lightingTarget !== "compareB") return patchDoc(mutate, opts);
+    return patchDoc((next) => {
+      const own = next.lighting;
+      next.lighting = next.compare?.b?.lighting;
+      mutate(next);
+      const written = next.lighting;
+      next.lighting = own;
+      if (!next.compare) next.compare = {};
+      if (!next.compare.b) next.compare.b = {};
+      next.compare.b.lighting = written;
+    }, opts);
+  };
+  const commitLightingFromBaseline = (baseline: SceneDoc, mutate: (next: SceneDoc) => void) => {
+    if (lightingTarget !== "compareB") return commitFromBaseline(baseline, mutate);
+    return commitFromBaseline(baseline, (next) => {
+      const own = next.lighting;
+      next.lighting = next.compare?.b?.lighting;
+      mutate(next);
+      const written = next.lighting;
+      next.lighting = own;
+      if (!next.compare) next.compare = {};
+      if (!next.compare.b) next.compare.b = {};
+      next.compare.b.lighting = written;
+    });
+  };
+
   /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. Follow-media scenes sourced from the background re-sync their length to the new video. */
   const selectVideoBackground = (rel: string, meta: MediaMeta | null) => {
     if (meta && meta.kind !== "video") return;
     setBgTabOverride(null);
-    void patchDoc(
+    void patchBgDoc(
       (next) => {
         const parallax =
           next.background && next.background.type !== "none" && next.background.type !== "scene3d"
@@ -1800,7 +1990,7 @@ export function SceneTab({
   const selectImageBackground = (rel: string, meta: MediaMeta | null) => {
     if (meta && meta.kind !== "image") return;
     setBgTabOverride(null);
-    void patchDoc((next) => {
+    void patchBgDoc((next) => {
       const parallax =
         next.background && next.background.type !== "none" && next.background.type !== "scene3d"
           ? next.background.parallax
@@ -1861,9 +2051,10 @@ export function SceneTab({
     setModal(null);
     if (mediaTarget.kind === "device") {
       const isVideo = meta?.kind !== "image";
+      const targetId = mediaTarget.deviceId ?? deviceId;
       void patchDoc(
         (next) => {
-          const d = next.devices?.[0];
+          const d = next.devices?.find((x) => x.id === targetId);
           if (d) {
             d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
             // A device video defaults the scene length to the clip, unless it was locked manually.
@@ -2391,9 +2582,8 @@ export function SceneTab({
                 image={optionPreviewStill(`shadow-${o.id}`)}
                 selected={(device.shadow ?? "soft") === o.id}
                 onSelect={() => {
-                  void patchDoc((next) => {
-                    const d = next.devices?.[0];
-                    if (d) d.shadow = o.id as DeviceShadowMode;
+                  patchDevice((d) => {
+                    d.shadow = o.id as DeviceShadowMode;
                   });
                 }}
               />
@@ -2875,13 +3065,14 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.background.media" && doc) {
+    const bgActive = bgTarget === "compareB" ? doc.compare?.b?.background : doc.background;
     const kind: "image" | "video" =
       bgTabOverride === "image" || bgTabOverride === "video"
         ? bgTabOverride
-        : doc.background?.type === "video"
+        : bgActive?.type === "video"
           ? "video"
           : "image";
-    const selectedSrc = doc.background?.type === kind ? doc.background.src : null;
+    const selectedSrc = bgActive?.type === kind ? bgActive.src : null;
     const selectBg = kind === "video" ? selectVideoBackground : selectImageBackground;
     return (
       <div className="inspector-drill">
@@ -2908,8 +3099,7 @@ export function SceneTab({
                 onEdit:
                   kind === "video"
                     ? (rel) => {
-                        if (doc?.background?.type !== "video" || doc.background.src !== rel)
-                          return false;
+                        if (bgActive?.type !== "video" || bgActive.src !== rel) return false;
                         onOpenEditVideo(sceneIndex, rel, "background");
                         return true;
                       }
@@ -2922,9 +3112,10 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.background" && doc) {
+    const bgActive = bgTarget === "compareB" ? doc.compare?.b?.background : doc.background;
     const bgOpts = backgroundOptions(sceneTheme);
     const colourOpt = bgOpts.find((o) => o.value?.type === "color")?.value;
-    const docTab = doc.background === undefined ? "default" : doc.background.type;
+    const docTab = bgActive === undefined ? "default" : bgActive.type;
     const bgTab = bgTabOverride ?? docTab;
     // Staging state from the registry: null = the scene mounts no SceneStage (hide the toggle, never warn).
     const stagingOn = stagedBackdrop !== null && stagedBackdrop !== "none";
@@ -2936,19 +3127,19 @@ export function SceneTab({
         : { type: "floor", color: hex };
     const commitBackground = (value: ThemeBackground | undefined) => {
       setBgTabOverride(null);
-      void patchDoc((next) => {
+      void patchBgDoc((next) => {
         next.background = value;
         // Theme resets both layers; a fresh colour writes through to the stage (one visual, one edit).
         if (value === undefined) next.backdrop = undefined;
         else if (value.type === "color" && stagingOn) next.backdrop = floorFor(value.color);
       });
     };
-    const shaderSpec = doc.background?.type === "shader" ? doc.background : null;
+    const shaderSpec = bgActive?.type === "shader" ? bgActive : null;
     const shaderDef = shaderSpec ? SHADER_BACKGROUNDS[shaderSpec.shader] : undefined;
-    const scene3dSpec = doc.background?.type === "scene3d" ? doc.background : null;
+    const scene3dSpec = bgActive?.type === "scene3d" ? bgActive : null;
     const scene3dDef = scene3dSpec ? SCENE3D_BACKGROUNDS[scene3dSpec.look] : undefined;
     const patchScene3d = (mutate: (spec: Extract<ThemeBackground, { type: "scene3d" }>) => void) =>
-      void patchDoc((next) => {
+      void patchBgDoc((next) => {
         if (next.background?.type !== "scene3d") return;
         const spec = structuredClone(next.background);
         mutate(spec);
@@ -2964,7 +3155,7 @@ export function SceneTab({
         spec.preset = preset.id;
       });
     const patchShader = (mutate: (spec: Extract<ThemeBackground, { type: "shader" }>) => void) =>
-      void patchDoc((next) => {
+      void patchBgDoc((next) => {
         if (next.background?.type !== "shader") return;
         const spec = structuredClone(next.background);
         mutate(spec);
@@ -3108,14 +3299,14 @@ export function SceneTab({
               </button>
             ))}
           </div>
-          {bgTab === "color" && doc.background?.type === "color" && (
+          {bgTab === "color" && bgActive?.type === "color" && (
             <div className="popover-row">
               <span className="popover-inline slider-row-label">Colour</span>
               <ColourPicker
-                value={doc.background.color}
+                value={bgActive.color}
                 label="Background colour"
                 onCommit={(hex) => {
-                  void patchDoc((next) => {
+                  void patchBgDoc((next) => {
                     if (next.background?.type === "color") {
                       next.background = { ...next.background, color: hex };
                     }
@@ -3128,12 +3319,12 @@ export function SceneTab({
           {bgTab === "gradient" && (
             <GradientPickerModal
               embedded
-              current={doc.background}
+              current={bgActive}
               theme={sceneTheme}
               onCancel={() => setBgTabOverride(null)}
               onApply={(value) => {
                 setBgTabOverride(null);
-                void patchDoc((next) => {
+                void patchBgDoc((next) => {
                   const parallax =
                     next.background &&
                     next.background.type !== "none" &&
@@ -3173,7 +3364,7 @@ export function SceneTab({
                       selected={shaderSpec?.shader === id}
                       onSelect={() => {
                         setBgTabOverride(null);
-                        void patchDoc((next) => {
+                        void patchBgDoc((next) => {
                           next.background = lightP1
                             ? {
                                 type: "shader",
@@ -3333,7 +3524,7 @@ export function SceneTab({
                       selected={scene3dSpec?.look === id}
                       onSelect={() => {
                         setBgTabOverride(null);
-                        void patchDoc((next) => {
+                        void patchBgDoc((next) => {
                           next.background = cardAnchor
                             ? {
                                 type: "scene3d",
@@ -3587,10 +3778,10 @@ export function SceneTab({
               </span>
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
-                label={doc.background?.type === "image" ? "Change image" : "Choose an image"}
+                label={bgActive?.type === "image" ? "Change image" : "Choose an image"}
                 value={
-                  doc.background?.type === "image"
-                    ? middleTruncate(doc.background.src.split("/").pop() ?? "")
+                  bgActive?.type === "image"
+                    ? middleTruncate(bgActive.src.split("/").pop() ?? "")
                     : undefined
                 }
                 onClick={() => openDrill("style.background.media")}
@@ -3602,21 +3793,21 @@ export function SceneTab({
               <span className="modal-hint">Video that fills the frame behind everything.</span>
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
-                label={doc.background?.type === "video" ? "Change video" : "Choose a video"}
+                label={bgActive?.type === "video" ? "Change video" : "Choose a video"}
                 value={
-                  doc.background?.type === "video"
-                    ? middleTruncate(doc.background.src.split("/").pop() ?? "")
+                  bgActive?.type === "video"
+                    ? middleTruncate(bgActive.src.split("/").pop() ?? "")
                     : undefined
                 }
                 onClick={() => openDrill("style.background.media")}
               />
-              {doc.background?.type === "video" && (
+              {bgActive?.type === "video" && (
                 <ToggleRow
                   label="Loop"
                   description="Plays again from the start when it ends; off holds the last frame."
-                  checked={doc.background.loop !== false}
+                  checked={bgActive.loop !== false}
                   onChange={(on) =>
-                    void patchDoc((next) => {
+                    void patchBgDoc((next) => {
                       if (next.background?.type === "video") {
                         const { loop: _drop, ...rest } = next.background;
                         next.background = on ? rest : { ...rest, loop: false };
@@ -3625,13 +3816,13 @@ export function SceneTab({
                   }
                 />
               )}
-              {doc.background?.type === "video" && (
+              {bgActive?.type === "video" && (
                 <ToggleRow
                   label="Fit inside frame"
                   description="Shows the whole video with letterbox bars; off crops it to fill the frame."
-                  checked={doc.background.fit === "fit"}
+                  checked={bgActive.fit === "fit"}
                   onChange={(on) =>
-                    void patchDoc((next) => {
+                    void patchBgDoc((next) => {
                       if (next.background?.type === "video") {
                         const { fit: _drop, ...rest } = next.background;
                         next.background = on ? { ...rest, fit: "fit" } : rest;
@@ -3645,17 +3836,15 @@ export function SceneTab({
           <ToggleRow
             label="Drift"
             description="Camera motion shifts the fill slightly for depth; pan the camera to see it."
-            disabled={
-              !doc.background || doc.background.type === "none" || doc.background.type === "scene3d"
-            }
+            disabled={!bgActive || bgActive.type === "none" || bgActive.type === "scene3d"}
             checked={
-              !!doc.background &&
-              doc.background.type !== "none" &&
-              doc.background.type !== "scene3d" &&
-              (doc.background.parallax ?? 0) > 0
+              !!bgActive &&
+              bgActive.type !== "none" &&
+              bgActive.type !== "scene3d" &&
+              (bgActive.parallax ?? 0) > 0
             }
             onChange={(on) =>
-              void patchDoc((next) => {
+              void patchBgDoc((next) => {
                 if (next.background && next.background.type !== "none") {
                   next.background = toggleDrift(next.background, on);
                 }
@@ -3669,7 +3858,7 @@ export function SceneTab({
                 description="A floor and backdrop that catch light and real shadows; colour and gradient picks write through to it."
                 checked={stagingOn}
                 onChange={(on) =>
-                  void patchDoc((next) => {
+                  void patchBgDoc((next) => {
                     if (!on) {
                       next.backdrop = { type: "none" };
                       return;
@@ -3679,8 +3868,8 @@ export function SceneTab({
                       next.backdrop = undefined;
                     } else {
                       next.backdrop = floorFor(
-                        doc.background?.type === "color"
-                          ? doc.background.color
+                        bgActive?.type === "color"
+                          ? bgActive.color
                           : (sceneTheme?.colors.background ?? "#ffffff"),
                       );
                     }
@@ -3694,11 +3883,10 @@ export function SceneTab({
                     const themeGradient = themeGradients.includes("backdrop")
                       ? "backdrop"
                       : themeGradients[0];
-                    const gradientSource =
-                      doc.background?.type === "gradient" ? doc.background : undefined;
+                    const gradientSource = bgActive?.type === "gradient" ? bgActive : undefined;
                     const currentColour =
-                      doc.background?.type === "color"
-                        ? doc.background.color
+                      bgActive?.type === "color"
+                        ? bgActive.color
                         : (sceneTheme?.colors.background ?? "#ffffff");
                     const form =
                       doc.backdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
@@ -3718,7 +3906,7 @@ export function SceneTab({
                         className={`chip${form === chip.id ? " selected" : ""}`}
                         disabled={chip.disabled}
                         onClick={() => {
-                          void patchDoc((next) => {
+                          void patchBgDoc((next) => {
                             if (chip.id === "theme") next.backdrop = undefined;
                             else if (chip.id === "floor") next.backdrop = floorFor(currentColour);
                             else if (gradientSource) {
@@ -3775,10 +3963,20 @@ export function SceneTab({
     );
   }
   if (drillIn === "motion.transition") {
+    // A comparison on either side of this boundary blends its Before side only during the window (the v1 interop rule); said here where the choice is made, not as a console warning.
+    const boundaryHasCompare =
+      project.sceneDocs[boundaryIndex]?.compare !== undefined ||
+      project.sceneDocs[boundaryIndex + 1]?.compare !== undefined;
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{`Transition out of scene ${boundaryIndex + 1}`}</div>
+        {boundaryHasCompare && (
+          <p className="inspector-stub-note">
+            A comparison sits on this boundary: during the transition window it blends its Before
+            side only. Use a hard cut (None) to keep the full comparison to the edge.
+          </p>
+        )}
         <TransitionModal
           embedded
           project={project}
@@ -4180,6 +4378,525 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "compare.media" && doc?.compare && compareMediaDeviceId) {
+    const targetId = compareMediaDeviceId;
+    const current = doc.compare.b?.media?.[targetId];
+    const pickAfterMedia = (rel: string, meta: MediaMeta | null) => {
+      const isVideo = meta?.kind !== "image";
+      void patchDoc(
+        (next) => {
+          if (!next.compare) return;
+          if (!next.compare.b) next.compare.b = {};
+          if (!next.compare.b.media) next.compare.b.media = {};
+          next.compare.b.media[targetId] = { src: rel, kind: isVideo ? "video" : "image" };
+        },
+        { resync: true },
+      );
+      closeDrill();
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Comparison" onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">After screen</div>
+        <div className="inspector-drill-body">
+          {current && (
+            <ActionRow
+              icon={<SceneRowIcon id="device.media" />}
+              label="Match the before side"
+              chevron={false}
+              onClick={() => {
+                void patchDoc(
+                  (next) => {
+                    if (next.compare?.b?.media) delete next.compare.b.media[targetId];
+                  },
+                  { resync: true },
+                );
+                closeDrill();
+              }}
+            />
+          )}
+          <div className="wizard-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kindToggle
+              globalToggle
+              refreshKey={mediaRefreshKey + mediaRefresh}
+              selectedRel={current?.src ?? null}
+              onPick={pickAfterMedia}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: pickAfterMedia,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "compare.theme" && doc?.compare) {
+    const applyAfterTheme = (id: string) =>
+      void patchDoc((next) => {
+        if (!next.compare) return;
+        if (!next.compare.b) next.compare.b = {};
+        next.compare.b.themeId = id || undefined;
+      }).then(onTimingChanged);
+    const bThemeId = doc.compare.b?.themeId ?? "";
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Comparison" onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">After theme</div>
+        <div className="inspector-drill-body">
+          <div className="font-slot-row">
+            <button
+              type="button"
+              className={`chip${bThemeId === "" ? " selected" : ""}`}
+              onClick={() => applyAfterTheme("")}
+            >
+              Match the before side
+            </button>
+          </div>
+          <ThemeGrid choices={themeChoices} value={bThemeId} onChange={applyAfterTheme} />
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "compare.edit" && doc?.compare) {
+    const cmp = doc.compare;
+    const patchCompare = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) =>
+      void patchDoc((next) => {
+        if (next.compare) mutate(next.compare);
+      });
+    const cmpLive = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) => {
+      if (!compareDragBaseline.current && doc) compareDragBaseline.current = structuredClone(doc);
+      void patchDoc(
+        (next) => {
+          if (next.compare) mutate(next.compare);
+        },
+        { history: false },
+      );
+    };
+    const cmpCommit = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) => {
+      const baseline = compareDragBaseline.current;
+      compareDragBaseline.current = null;
+      if (baseline)
+        void commitFromBaseline(baseline, (next) => {
+          if (next.compare) mutate(next.compare);
+        });
+      else patchCompare(mutate);
+    };
+    const maskType = cmp.mask?.type ?? "linear";
+    const maskEntry = COMPARE_MASK_CATALOG.find((e) => e.id === maskType);
+    const hasKeys = (cmp.track?.keys.length ?? 0) > 0;
+    const applyPreset = (preset: (typeof COMPARE_PRESETS)[number]) => {
+      const track = preset.build(scene.durationMs);
+      void patchDoc((next) => {
+        if (!next.compare) return;
+        next.compare.track = track;
+      });
+    };
+    const lineTokens = ["accent", "text", "muted", "background"] as const;
+    const bThemeName = cmp.b?.themeId
+      ? (themeChoices.find((c) => c.id === cmp.b?.themeId)?.name ?? cmp.b.themeId)
+      : "Same as before";
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Comparison</div>
+        <div className="inspector-drill-body">
+          <SegmentedRow
+            options={COMPARE_MASK_CATALOG.map((e) => ({
+              value: e.id,
+              label: e.label,
+              title: e.hint,
+            }))}
+            value={maskType}
+            onChange={(id) =>
+              patchCompare((c) => {
+                c.mask = { ...(c.mask ?? {}), type: id };
+              })
+            }
+          />
+          {maskEntry?.needsAngle && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Angle</span>
+              <NumberField
+                label="Divider angle"
+                value={cmp.mask?.angleDeg ?? 90}
+                decimals={0}
+                min={0}
+                max={360}
+                step={1}
+                onCommit={(v) =>
+                  patchCompare((c) => {
+                    c.mask = { ...(c.mask ?? { type: "linear" }), angleDeg: v };
+                  })
+                }
+              />
+            </div>
+          )}
+          {maskEntry?.needsCenter && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Centre</span>
+              <NumberField
+                label="Centre X"
+                value={cmp.mask?.center?.[0] ?? 0.5}
+                decimals={2}
+                min={0}
+                max={1}
+                step={0.01}
+                onCommit={(v) =>
+                  patchCompare((c) => {
+                    c.mask = {
+                      ...(c.mask ?? { type: maskType }),
+                      center: [v, c.mask?.center?.[1] ?? 0.5],
+                    };
+                  })
+                }
+              />
+              <NumberField
+                label="Centre Y"
+                value={cmp.mask?.center?.[1] ?? 0.5}
+                decimals={2}
+                min={0}
+                max={1}
+                step={0.01}
+                onCommit={(v) =>
+                  patchCompare((c) => {
+                    c.mask = {
+                      ...(c.mask ?? { type: maskType }),
+                      center: [c.mask?.center?.[0] ?? 0.5, v],
+                    };
+                  })
+                }
+              />
+            </div>
+          )}
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Edge softness</span>
+            <DebouncedRange
+              value={cmp.mask?.softness ?? 0}
+              min={0}
+              max={0.2}
+              step={0.005}
+              label="Edge softness"
+              onInput={(v) =>
+                cmpLive((c) => {
+                  c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
+                })
+              }
+              onCommit={(v) =>
+                cmpCommit((c) => {
+                  c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
+                })
+              }
+            />
+          </div>
+          {hasKeys ? (
+            <p className="inspector-stub-note">
+              Keys drive the divider; edit them in the timeline lane below the preview.
+            </p>
+          ) : (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Divider</span>
+              <DebouncedRange
+                value={cmp.value ?? 0.5}
+                min={0}
+                max={1}
+                step={0.01}
+                label="Divider position"
+                onInput={(v) =>
+                  cmpLive((c) => {
+                    c.value = v;
+                  })
+                }
+                onCommit={(v) =>
+                  cmpCommit((c) => {
+                    c.value = v;
+                  })
+                }
+              />
+            </div>
+          )}
+          <DrillGroup label="Motion presets" hint="Writes keys you can hand-tune in the lane.">
+            <div className="wizard-presets">
+              {COMPARE_PRESETS.map((p) => (
+                <button
+                  type="button"
+                  key={p.id}
+                  className="chip"
+                  title={p.hint}
+                  onClick={() => applyPreset(p)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </DrillGroup>
+          <DrillGroup label="Divider line">
+            <ToggleRow
+              label="Show line"
+              checked={!!cmp.chrome?.line}
+              onChange={(on) =>
+                patchCompare((c) => {
+                  c.chrome = {
+                    ...c.chrome,
+                    line: on ? { width: 4, colour: "accent" } : undefined,
+                  };
+                })
+              }
+            />
+            {cmp.chrome?.line && (
+              <>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Width</span>
+                  <DebouncedRange
+                    value={cmp.chrome.line.width ?? 4}
+                    min={1}
+                    max={12}
+                    step={0.5}
+                    label="Line width"
+                    onInput={(v) =>
+                      cmpLive((c) => {
+                        if (c.chrome?.line) c.chrome.line.width = v;
+                      })
+                    }
+                    onCommit={(v) =>
+                      cmpCommit((c) => {
+                        if (c.chrome?.line) c.chrome.line.width = v;
+                      })
+                    }
+                  />
+                </div>
+                <SegmentedRow
+                  className="subtabs-compact"
+                  options={lineTokens.map((t) => ({ value: t, label: t }))}
+                  value={(cmp.chrome.line.colour ?? "accent") as (typeof lineTokens)[number]}
+                  onChange={(t) =>
+                    patchCompare((c) => {
+                      if (c.chrome?.line) c.chrome.line.colour = t;
+                    })
+                  }
+                />
+              </>
+            )}
+            {maskEntry?.hasGrip && (
+              <ToggleRow
+                label="Grip handle"
+                description="The slider grip riding the divider."
+                checked={!!cmp.chrome?.grip}
+                onChange={(on) =>
+                  patchCompare((c) => {
+                    c.chrome = { ...c.chrome, grip: on ? true : undefined };
+                  })
+                }
+              />
+            )}
+          </DrillGroup>
+          <DrillGroup label="Labels">
+            <ToggleRow
+              label="Before / after chips"
+              description="Label chips pinned to each half (text keys beforeLabel and afterLabel)."
+              checked={cmp.chrome?.chips === true}
+              onChange={(on) =>
+                patchCompare((c) => {
+                  c.chrome = { ...c.chrome, chips: on ? true : undefined };
+                })
+              }
+            />
+          </DrillGroup>
+          <DrillGroup label="After tint">
+            <SegmentedRow
+              className="subtabs-compact"
+              options={[
+                { value: "none", label: "None" },
+                { value: "accent", label: "accent" },
+                { value: "text", label: "text" },
+                { value: "muted", label: "muted" },
+              ]}
+              value={(cmp.chrome?.tint?.b ?? "none") as "none" | "accent" | "text" | "muted"}
+              onChange={(t) =>
+                patchCompare((c) => {
+                  c.chrome = {
+                    ...c.chrome,
+                    tint:
+                      t === "none"
+                        ? undefined
+                        : { ...c.chrome?.tint, b: t, amount: c.chrome?.tint?.amount ?? 0.08 },
+                  };
+                })
+              }
+            />
+            {cmp.chrome?.tint?.b && (
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Amount</span>
+                <DebouncedRange
+                  value={cmp.chrome.tint.amount ?? 0.08}
+                  min={0}
+                  max={0.3}
+                  step={0.01}
+                  label="Tint amount"
+                  onInput={(v) =>
+                    cmpLive((c) => {
+                      if (c.chrome?.tint) c.chrome.tint.amount = v;
+                    })
+                  }
+                  onCommit={(v) =>
+                    cmpCommit((c) => {
+                      if (c.chrome?.tint) c.chrome.tint.amount = v;
+                    })
+                  }
+                />
+              </div>
+            )}
+          </DrillGroup>
+          <ToggleFieldset
+            control={
+              <SegmentedRow
+                options={[
+                  { value: "a" as const, label: "Before" },
+                  { value: "b" as const, label: "After" },
+                ]}
+                value={compareSide}
+                onChange={setCompareSide}
+              />
+            }
+          >
+            {compareSide === "a" ? (
+              <>
+                <p className="inspector-stub-note">
+                  The before side is this scene itself; these rows edit it in place.
+                </p>
+                {devices.map((d, i) => (
+                  <ActionRow
+                    key={d.id}
+                    icon={<SceneRowIcon id="device.media" />}
+                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
+                    value={middleTruncate(d.media?.src.split("/").pop() ?? "None")}
+                    chevron
+                    onClick={() => {
+                      setMediaTarget({ kind: "device", deviceId: d.id });
+                      setModal("media");
+                    }}
+                  />
+                ))}
+                <ActionRow
+                  icon={<SceneRowIcon id="style.theme" />}
+                  label="Theme"
+                  value={sceneTheme?.name}
+                  chevron
+                  onClick={() => {
+                    setThemeDraft(doc.themeId ?? "");
+                    openDrill("style.theme");
+                  }}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="style.background" />}
+                  label="Background"
+                  chevron
+                  onClick={() => {
+                    setBgTabOverride(null);
+                    setBgTarget("scene");
+                    openDrill("style.background");
+                  }}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="lighting" />}
+                  label="Lighting"
+                  chevron
+                  onClick={() => {
+                    setLightingTarget("scene");
+                    openDrill("lighting");
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                {devices.map((d, i) => (
+                  <ActionRow
+                    key={d.id}
+                    icon={<SceneRowIcon id="device.media" />}
+                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
+                    value={middleTruncate(
+                      cmp.b?.media?.[d.id]?.src.split("/").pop() ?? "Same as before",
+                    )}
+                    chevron
+                    onClick={() => {
+                      setCompareMediaDeviceId(d.id);
+                      openDrill("compare.media");
+                    }}
+                  />
+                ))}
+                <ActionRow
+                  icon={<SceneRowIcon id="style.theme" />}
+                  label="Theme"
+                  value={bThemeName}
+                  chevron
+                  onClick={() => openDrill("compare.theme")}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="style.background" />}
+                  label="Background"
+                  value={
+                    cmp.b?.background
+                      ? {
+                          none: "None",
+                          color: "Colour",
+                          gradient: "Gradient",
+                          shader: "Animated",
+                          scene3d: "3D",
+                          image: "Image",
+                          video: "Video",
+                        }[cmp.b.background.type]
+                      : "Same as before"
+                  }
+                  chevron
+                  onClick={() => {
+                    setBgTabOverride(null);
+                    setBgTarget("compareB");
+                    openDrill("style.background");
+                  }}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="lighting" />}
+                  label="Lighting"
+                  value={cmp.b?.lighting ? "Overridden" : "Same as before"}
+                  chevron
+                  onClick={() => {
+                    setLightingTarget("compareB");
+                    openDrill("lighting");
+                  }}
+                />
+              </>
+            )}
+          </ToggleFieldset>
+          <div className="inspector-section-divider" />
+          <ActionRow
+            icon={<SceneRowIcon id="device.remove" />}
+            label={confirmRemoveCompare ? "Really remove?" : "Remove comparison"}
+            chevron={false}
+            danger
+            onClick={() => {
+              if (!confirmRemoveCompare) {
+                setConfirmRemoveCompare(true);
+                return;
+              }
+              setConfirmRemoveCompare(false);
+              void patchDoc((next) => {
+                next.compare = undefined;
+                if (next.animatedTrack === "compare") next.animatedTrack = undefined;
+              });
+              closeDrill();
+            }}
+          />
+        </div>
+        {mediaModal}
+      </div>
+    );
+  }
   if (drillIn === "device.change" && device) {
     return (
       <DeviceDrillIn
@@ -4190,13 +4907,10 @@ export function SceneTab({
         backLabel={backLabel}
         onSave={(model, colour, motion) => {
           closeDrill();
-          void patchDoc((next) => {
-            const d = next.devices?.[0];
-            if (d) {
-              d.model = model;
-              d.colour = colour;
-              d.motion = { ...d.motion, preset: motion };
-            }
+          patchDevice((d) => {
+            d.model = model;
+            d.colour = colour;
+            d.motion = { ...d.motion, preset: motion };
           });
         }}
       />
@@ -4222,9 +4936,8 @@ export function SceneTab({
         onBack={() => closeDrill()}
         backLabel={backLabel}
         onCommit={(rotationDeg) => {
-          void patchDoc((next) => {
-            const d = next.devices?.[0];
-            if (d) d.placement = { ...d.placement, rotationDeg };
+          patchDevice((d) => {
+            d.placement = { ...d.placement, rotationDeg };
           });
         }}
       />
@@ -4252,9 +4965,8 @@ export function SceneTab({
             lidDeg={device.lidDeg ?? lid?.defaultDeg ?? 90}
             openDeg={lid?.openDeg ?? 110}
             onCommit={(deg) =>
-              void patchDoc((next) => {
-                const d = next.devices?.[0];
-                if (d) d.lidDeg = deg;
+              patchDevice((d) => {
+                d.lidDeg = deg;
               })
             }
           />
@@ -4286,12 +4998,13 @@ export function SceneTab({
       }
       const onClick = {
         "device.media": () => {
-          setMediaTarget({ kind: "device" });
+          setMediaTarget({ kind: "device", deviceId });
           setModal("media");
         },
         "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
+        "device.duplicate": duplicateDevice,
         "frame.add": addOverlay,
         "device.rotation": () => openDrill("device.rotation"),
         // Both paths drill into the builder; it seeds the first layer for scenes without a block.
@@ -4306,8 +5019,9 @@ export function SceneTab({
             return;
           }
           setConfirmRemove(false);
+          setPickedDeviceId(null);
           void patchDoc((next) => {
-            next.devices = (next.devices ?? []).slice(1);
+            next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
           });
         },
         "motion.transition": () => {
@@ -4321,6 +5035,7 @@ export function SceneTab({
         },
         "style.background": () => {
           setBgTabOverride(null);
+          setBgTarget("scene");
           openDrill("style.background");
         },
         "style.shadow": () => openDrill("style.shadow"),
@@ -4398,16 +5113,22 @@ export function SceneTab({
     );
   }
   if (drillIn === "lighting" && doc) {
+    // The after target hands the section a doc VIEW whose `lighting` is side B's, with write wrappers transplanting the field back; the section itself never learns about comparisons.
+    const forAfter = lightingTarget === "compareB" && !!doc.compare;
     return (
       <LightingSectionBody
-        doc={doc}
-        theme={sceneTheme ?? project.theme}
+        doc={forAfter ? { ...doc, lighting: doc.compare?.b?.lighting } : doc}
+        theme={
+          forAfter
+            ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
+            : (sceneTheme ?? project.theme)
+        }
         projectId={project.id}
         projectLighting={project.projectLighting}
         slot={scene}
         onBack={closeDrill}
-        patchDoc={patchDoc}
-        commitFromBaseline={commitFromBaseline}
+        patchDoc={forAfter ? patchLightingDoc : patchDoc}
+        commitFromBaseline={forAfter ? commitLightingFromBaseline : commitFromBaseline}
       />
     );
   }
@@ -4420,8 +5141,25 @@ export function SceneTab({
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={closeDrill} />
         <div className="inspector-drill-title">
-          {SCREEN_TITLES[groupSection.id] ?? groupSection.label}
+          {groupSection.id === "device"
+            ? groupSection.label
+            : (SCREEN_TITLES[groupSection.id] ?? groupSection.label)}
         </div>
+        {groupSection.id === "device" && devices.length > 1 && (
+          <SegmentedRow
+            className="subtabs-compact"
+            options={devices.map((d, i) => ({
+              value: d.id,
+              label: `${i + 1}`,
+              icon: <DevicePillIcon model={d.model} />,
+              title:
+                DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId]
+                  .name,
+            }))}
+            value={deviceId ?? devices[0].id}
+            onChange={(id) => setPickedDeviceId(id)}
+          />
+        )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
         {mediaModal}
       </div>
@@ -4473,9 +5211,9 @@ export function SceneTab({
   if (device)
     contentEntries.push({
       key: "device",
-      label: "Device",
+      label: devices.length > 1 ? "Devices" : "Device",
       icon: "device.change",
-      value: deviceName,
+      value: devices.length > 1 ? `${devices.length}` : deviceName,
       onClick: () => openDrill("device"),
     });
   else if (doc)
@@ -4514,6 +5252,20 @@ export function SceneTab({
       icon: "videoWindow.edit",
       onClick: () => openDrill("videoWindow.edit"),
     });
+  if (doc?.compare)
+    contentEntries.push({
+      key: "compare",
+      label: "Comparison",
+      icon: "compare.edit",
+      onClick: () => openDrill("compare.edit"),
+    });
+  else if (doc)
+    addEntries.push({
+      key: "compare.add",
+      label: "Add comparison",
+      icon: "compare.edit",
+      onClick: addCompare,
+    });
   // The video pair closes the content section, always adjacent: Change video first (the
   // device's picker wins when a scene has both surfaces), its edit right under.
   if (device || doc?.videoWindow)
@@ -4523,7 +5275,7 @@ export function SceneTab({
       icon: "device.media",
       onClick: device
         ? () => {
-            setMediaTarget({ kind: "device" });
+            setMediaTarget({ kind: "device", deviceId });
             setModal("media");
           }
         : () => openDrill("videoWindow.media"),
@@ -4586,6 +5338,7 @@ export function SceneTab({
       value: bgLabel,
       onClick: () => {
         setBgTabOverride(null);
+        setBgTarget("scene");
         openDrill("style.background");
       },
     });
@@ -4601,7 +5354,10 @@ export function SceneTab({
       key: "lighting",
       label: "Lighting",
       icon: "lighting",
-      onClick: () => openDrill("lighting"),
+      onClick: () => {
+        setLightingTarget("scene");
+        openDrill("lighting");
+      },
     });
   if (project.slots.length > 1) {
     settingEntries.push({

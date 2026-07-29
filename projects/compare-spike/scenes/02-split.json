@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "name": "Static split",
+  "text": {
+    "title": "The redesign",
+    "beforeLabel": "Before",
+    "afterLabel": "After"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "speed": 1
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/screen.png",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-0.85, -0.3, 0],
+        "rotationDeg": [0, 12, 0],
+        "scale": 0.85
+      },
+      "motion": {
+        "preset": "none"
+      }
+    },
+    {
+      "id": "d2",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/screen.png",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0.85, -0.3, 0],
+        "rotationDeg": [0, -12, 0],
+        "scale": 0.85
+      },
+      "motion": {
+        "preset": "none"
+      }
+    }
+  ],
+  "compare": {
+    "b": {
+      "themeId": "kookaburra-midnight",
+      "background": {
+        "type": "shader",
+        "shader": "mesh-gradient",
+        "speed": 1
+      },
+      "media": {
+        "d2": {
+          "src": "assets/sample-screenshot-4.jpg",
+          "kind": "image"
+        }
+      }
+    },
+    "mask": {
+      "type": "linear",
+      "angleDeg": 90,
+      "softness": 0
+    },
+    "value": 0.5
+  }
+}

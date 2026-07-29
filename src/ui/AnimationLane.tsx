@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
+import { useCompareEditStore } from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
 import {
@@ -32,21 +33,30 @@ const onEscape = () => {
   else s.select(null, null);
 };
 
-const select = (keyId: string | null, segment: number | null) =>
+const select = (keyId: string | null, segment: number | null) => {
   useCameraEditStore.getState().select(keyId, segment);
+  // Stacked lanes each bind window-level key handlers; only one selection may be live.
+  if (keyId !== null || segment !== null) useCompareEditStore.getState().select(null, null);
+};
 
 export function AnimationLane({
   project,
   sceneIndex,
   onDocChanged,
   onSceneDuration,
+  label,
+  alwaysOpen = false,
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onSceneDuration: (sceneIndex: number, ms: number) => void;
+  /** Set when lanes stack (a comparison scene), naming this track. */
+  label?: string;
+  /** Stacked lanes stay visible regardless of the Animate-scene toggle. */
+  alwaysOpen?: boolean;
 }) {
-  const open = useCameraEditStore((s) => s.open);
+  const open = useCameraEditStore((s) => s.open) || alwaysOpen;
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const selectedSegment = useCameraEditStore((s) => s.selectedSegment);
   const writeError = useCameraEditStore((s) => s.writeError);
@@ -97,6 +107,7 @@ export function AnimationLane({
   const nextSlot = project.slots[sceneIndex + 1];
   const shared = {
     open,
+    label,
     slotStartMs: slot.startMs,
     durationMs: slot.durationMs,
     windowStartMs: (slot.transitionIn?.durationMs ?? 0) / 2,

@@ -25,6 +25,7 @@ import {
 import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame/frameLayout";
 import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
+import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
 import { grainSeed } from "./effectParams";
 import {
   drawingBufferSize,
@@ -49,6 +50,7 @@ import {
 import { getPersistentLayers } from "./persistentLayerRegistry";
 import { previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
+import { COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
 import type { SceneHostHandle } from "./sceneHostRegistry";
 import type { FrameLightingPlan } from "./sceneLighting";
 import {
@@ -95,6 +97,9 @@ interface CompositorState {
   /** v14 pack (types 10-12, GLSL3), its own generation for the same reason. */
   materialExt2: ShaderMaterial;
   materialExt2Hdr: ShaderMaterial;
+  /** The comparison mask pair (before/after split), its own generation so it never recompiles the transition programs. */
+  compareMaterial: ShaderMaterial;
+  compareMaterialHdr: ShaderMaterial;
   /** The fullscreen quad, so the compositor can swap its material per frame. */
   mesh: Mesh;
   /** Overlay ("frame") compositing: the scene renders here at the cutout aspect, sized lazily to the cutout's pixel rect (null until the first framed scene). */
@@ -151,6 +156,34 @@ function makeCompositeMaterial(fragment: string, glsl3 = false): ShaderMaterial 
     vertexShader: glsl3 ? vertexShader300 : vertexShader,
     fragmentShader: fragment,
     glslVersion: glsl3 ? GLSL3 : null,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
+/** The comparison mask material: blends the side-A/side-B targets under the mask family with its SDF chrome (see compareShader.ts). Display-domain GLSL1 like the legacy composite pair. */
+function makeCompareMaterial(fragment: string): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: {
+      texA: { value: null },
+      texB: { value: null },
+      value: { value: 0.5 },
+      sweepRad: { value: 0 },
+      softness: { value: 0 },
+      aspect: { value: 1 },
+      maskType: { value: 0 },
+      center: { value: new Vector2(0.5, 0.5) },
+      lineWidth: { value: 0 },
+      lineColor: { value: new Vector3(1, 1, 1) },
+      lineSoftness: { value: 0 },
+      gripSize: { value: 0 },
+      tintA: { value: new Vector3(0, 0, 0) },
+      tintB: { value: new Vector3(0, 0, 0) },
+      tintAmountA: { value: 0 },
+      tintAmountB: { value: 0 },
+    },
+    vertexShader,
+    fragmentShader: fragment,
     depthTest: false,
     depthWrite: false,
   });
@@ -231,6 +264,8 @@ function ensureState(w: number, h: number): CompositorState {
   const materialExtHdr = makeCompositeMaterial(fragmentShaderExtHdr, true);
   const materialExt2 = makeCompositeMaterial(fragmentShaderExt2, true);
   const materialExt2Hdr = makeCompositeMaterial(fragmentShaderExt2Hdr, true);
+  const compareMaterial = makeCompareMaterial(compareFragmentShader);
+  const compareMaterialHdr = makeCompareMaterial(compareFragmentShaderHdr);
   const quadScene = new Scene();
   const mesh = new Mesh(new PlaneGeometry(2, 2), material);
   mesh.frustumCulled = false;
@@ -256,6 +291,8 @@ function ensureState(w: number, h: number): CompositorState {
     materialExtHdr,
     materialExt2,
     materialExt2Hdr,
+    compareMaterial,
+    compareMaterialHdr,
     mesh,
     sceneTarget: null,
     slideScene,
@@ -463,10 +500,12 @@ export function renderComposited(
   states?: FrameSceneStatePlan,
   overlays?: readonly (ResolvedOverlay | null)[],
   lighting?: FrameLightingPlan,
+  compare?: CompareFrame | null,
 ): void {
-  // Snapshots the root-scene values the state plan owns, restored at every exit so root-scene state never leaks into the next-loaded project; the environment snapshot doubles as the explicit fallback for scenes whose theme declares none (legacy drei mounts keep working through it).
-  const prevStateBackground = states ? scene.background : undefined;
-  const sharedEnv: SharedEnvironmentSnapshot | null = states
+  // Snapshots the root-scene values the state plan owns, restored at every exit so root-scene state never leaks into the next-loaded project; the environment snapshot doubles as the explicit fallback for scenes whose theme declares none (legacy drei mounts keep working through it). A compare frame carrying per-side states opts in too, since its project may otherwise be legacy.
+  const wantsStatePlan = !!states || !!(compare && (compare.stateA || compare.stateB));
+  const prevStateBackground = wantsStatePlan ? scene.background : undefined;
+  const sharedEnv: SharedEnvironmentSnapshot | null = wantsStatePlan
     ? {
         environment: scene.environment,
         intensity: scene.environmentIntensity,
@@ -495,8 +534,11 @@ export function renderComposited(
   const prevFramePanelVisible = framePanels.map((p) => p.group.visible);
   const panelFor = (index: number): Group | null =>
     framePanels.find((p) => p.index === index)?.group ?? null;
-  const showOnly = (idx: number) => {
-    for (const h of hosts) h.group.visible = h.index === idx;
+  // Visibility gating is side-aware: without `side`, the plain host shows (a comparison's side-B host stays hidden, so every legacy path renders side A only); `side: "b"` shows exactly the side-B host.
+  const showOnly = (idx: number, side?: "b") => {
+    for (const h of hosts) {
+      h.group.visible = h.index === idx && (side === "b" ? h.side === "b" : h.side !== "b");
+    }
   };
   const restoreVisible = () => {
     hosts.forEach((h, i) => {
@@ -516,6 +558,103 @@ export function renderComposited(
   // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer.
   const fx = resolveFrameEffects(resolved);
   const seed = fx ? grainSeed(useClockStore.getState().currentMs, FPS) : 0;
+
+  // Comparison path: the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep), overlays are not composed here (a framed comparison renders full-bleed, the v1 rule), and transition frames never reach this branch (resolveCompareFrame yields null, the transition below blends side A only).
+  if (compare && resolved.active.length === 1) {
+    const idx = compare.index;
+    const size = gl.getDrawingBufferSize(_size);
+    const st = ensureState(size.x, size.y);
+    const prevAutoClear = gl.autoClear;
+    gl.autoClear = true;
+    const prevToneMapping = gl.toneMapping;
+    if (fx) {
+      gl.toneMapping = NoToneMapping;
+      ensureHdrTargets(st);
+    } else {
+      ensureSdrTargets(st);
+    }
+    const tgtA = fx ? (st.targetAHdr as WebGLRenderTarget) : (st.targetA as WebGLRenderTarget);
+    const tgtB = fx ? (st.targetBHdr as WebGLRenderTarget) : (st.targetB as WebGLRenderTarget);
+
+    // Persistent layers draw exactly once over the composite, never into the side targets (the transition ghosting rule).
+    for (const g of persistent) g.visible = false;
+
+    if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
+    showOnly(idx);
+    if (compare.stateA) applyState(compare.stateA);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
+    applyFrameLighting(scene, lighting?.solo);
+    gl.setRenderTarget(tgtA);
+    gl.render(scene, camera);
+
+    showOnly(idx, "b");
+    if (compare.stateB) applyState(compare.stateB);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
+    applyFrameLighting(scene, lighting?.solo);
+    gl.setRenderTarget(tgtB);
+    gl.render(scene, camera);
+
+    // The dominant side's state backs the persistent-overlay draw (the transition dominance rule).
+    const domState = compare.value >= 0.5 ? compare.stateA : compare.stateB;
+    if (domState) applyState(domState);
+
+    gl.toneMapping = prevToneMapping;
+
+    const activeMaterial = fx ? st.compareMaterialHdr : st.compareMaterial;
+    st.mesh.material = activeMaterial;
+    const spec = compare.spec;
+    const u = activeMaterial.uniforms;
+    u.texA.value = tgtA.texture;
+    u.texB.value = tgtB.texture;
+    u.value.value = compare.value;
+    u.sweepRad.value = ((spec.angleDeg - 90) * Math.PI) / 180;
+    u.softness.value = spec.softness;
+    u.aspect.value = st.size.x / st.size.y;
+    u.maskType.value = COMPARE_MASK_ID[spec.maskType];
+    (u.center.value as Vector2).set(spec.center[0], spec.center[1]);
+    u.lineWidth.value = spec.chrome.lineWidth / 1080;
+    (u.lineColor.value as Vector3).set(...hexToSrgb(spec.chrome.lineColor));
+    u.lineSoftness.value = spec.chrome.lineSoftness / 1080;
+    u.gripSize.value = spec.chrome.gripSize;
+    (u.tintA.value as Vector3).set(...hexToSrgb(spec.chrome.tintA ?? "#000000"));
+    (u.tintB.value as Vector3).set(...hexToSrgb(spec.chrome.tintB ?? "#000000"));
+    u.tintAmountA.value = spec.chrome.tintA ? spec.chrome.tintAmount : 0;
+    u.tintAmountB.value = spec.chrome.tintB ? spec.chrome.tintAmount : 0;
+
+    const hasOverlay = persistent.length > 0;
+    if (hasOverlay) {
+      for (const h of hosts) h.group.visible = false;
+      for (const g of persistent) g.visible = true;
+    }
+    if (fx) {
+      renderThroughComposer(
+        gl,
+        ensureComposer(gl, size.x, size.y),
+        st.quadScene,
+        st.quadCamera,
+        fx,
+        seed,
+        hasOverlay ? { scene, camera } : undefined,
+      );
+    } else {
+      gl.setRenderTarget(null);
+      gl.render(st.quadScene, st.quadCamera);
+      if (hasOverlay) {
+        const prevBackground = scene.background;
+        scene.background = null;
+        gl.autoClear = false;
+        gl.clear(false, true, false);
+        gl.render(scene, camera);
+        scene.background = prevBackground;
+      }
+    }
+    gl.autoClear = prevAutoClear;
+    gl.setRenderTarget(prevTarget);
+    releaseIdlePools({ sdr: !fx, hdr: !!fx, composer: !!fx });
+    restoreSceneState();
+    restoreVisible();
+    return;
+  }
 
   // Fast path: single active scene (or nothing) → direct render, v0-identical (or composer-graded).
   if (resolved.active.length < 2 || !tr) {

@@ -1,0 +1,175 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// media_meta serves scripted lengths per rel; update_project_scene records what the resync wrote.
+const lengths = new Map<string, number>();
+const written: Array<{ index: number; durationMs: number }> = [];
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+    if (cmd === "media_meta") {
+      return { durationMs: lengths.get(args?.rel as string) ?? 0 };
+    }
+    if (cmd === "update_project_scene") {
+      written.push({ index: args?.index as number, durationMs: args?.durationMs as number });
+      return null;
+    }
+    throw new Error(`unexpected command ${cmd}`);
+  }),
+}));
+
+import { followMediaSources, resyncFollowMediaDuration } from "./sceneDoc";
+import type { SceneDoc } from "./sceneDocSchema";
+
+const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
+
+const videoDevice = (id: string, src: string) => ({
+  id,
+  model: "iphone-17-pro",
+  media: { src, kind: "video" },
+});
+const imageDevice = (id: string, src: string) => ({
+  id,
+  model: "iphone-17-pro",
+  media: { src, kind: "image" },
+});
+
+describe("followMediaSources (the follow-media source rule)", () => {
+  it("manual mode and doc-less scenes yield nothing", () => {
+    expect(followMediaSources(undefined)).toEqual([]);
+    expect(followMediaSources(docWith({ duration: { mode: "manual" } }))).toEqual([]);
+  });
+
+  it("a single device video is the source", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [videoDevice("d1", "assets/a.mp4")] as SceneDoc["devices"],
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/a.mp4"]);
+  });
+
+  it("unpinned multi-video docs return every device video (longest wins downstream)", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/a.mp4", "assets/b.mp4"]);
+  });
+
+  it("a matching sourceDeviceId pins one device; a stale pin falls back to all", () => {
+    const devices = [
+      videoDevice("d1", "assets/a.mp4"),
+      videoDevice("d2", "assets/b.mp4"),
+    ] as SceneDoc["devices"];
+    const pinned = docWith({
+      duration: { mode: "follow-media", sourceDeviceId: "d2" },
+      devices,
+    });
+    expect(followMediaSources(pinned)).toEqual(["assets/b.mp4"]);
+    const stale = docWith({
+      duration: { mode: "follow-media", sourceDeviceId: "gone" },
+      devices,
+    });
+    expect(followMediaSources(stale)).toEqual(["assets/a.mp4", "assets/b.mp4"]);
+  });
+
+  it("a pinned image device falls through to the videoWindow-then-background chain", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media", sourceDeviceId: "d1" },
+      devices: [
+        imageDevice("d1", "assets/still.png"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+      background: { type: "video", src: "assets/bg.mp4" } as SceneDoc["background"],
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/bg.mp4"]);
+  });
+
+  it("a comparison's after-side videos count beside each device's own", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+      compare: { b: { media: { d2: { src: "assets/after.mp4", kind: "video" } } } },
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/a.mp4", "assets/b.mp4", "assets/after.mp4"]);
+    const pinned = docWith({
+      duration: { mode: "follow-media", sourceDeviceId: "d2" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+      compare: { b: { media: { d2: { src: "assets/after.mp4", kind: "video" } } } },
+    });
+    expect(followMediaSources(pinned)).toEqual(["assets/b.mp4", "assets/after.mp4"]);
+  });
+
+  it("source videoWindow pins the window; device-less docs fall to the background video", () => {
+    const vw = docWith({
+      duration: { mode: "follow-media", source: "videoWindow" },
+      videoWindow: {
+        media: { src: "assets/win.mp4" },
+        stage: { type: "color", color: "#000" },
+        radius: "macos",
+      } as SceneDoc["videoWindow"],
+    });
+    expect(followMediaSources(vw)).toEqual(["assets/win.mp4"]);
+    const bg = docWith({
+      duration: { mode: "follow-media" },
+      background: { type: "video", src: "assets/bg.mp4" } as SceneDoc["background"],
+    });
+    expect(followMediaSources(bg)).toEqual(["assets/bg.mp4"]);
+  });
+});
+
+describe("resyncFollowMediaDuration follows the longest qualifying video", () => {
+  beforeEach(() => {
+    lengths.clear();
+    written.length = 0;
+  });
+
+  it("an unpinned comparison follows whichever recording runs longer", async () => {
+    lengths.set("assets/a.mp4", 3000);
+    lengths.set("assets/b.mp4", 5000);
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+    });
+    const result = await resyncFollowMediaDuration("proj", 0, doc, 3000);
+    expect(result.wrote).toBe(true);
+    expect(written).toEqual([{ index: 0, durationMs: 5000 }]);
+  });
+
+  it("a pinned device wins even when the other clip is longer", async () => {
+    lengths.set("assets/a.mp4", 3000);
+    lengths.set("assets/b.mp4", 5000);
+    const doc = docWith({
+      duration: { mode: "follow-media", sourceDeviceId: "d1" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+    });
+    const result = await resyncFollowMediaDuration("proj", 2, doc, 5000);
+    expect(result.wrote).toBe(true);
+    expect(written).toEqual([{ index: 2, durationMs: 3000 }]);
+  });
+
+  it("an already-synced duration writes nothing", async () => {
+    lengths.set("assets/a.mp4", 4200);
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [videoDevice("d1", "assets/a.mp4")] as SceneDoc["devices"],
+    });
+    const result = await resyncFollowMediaDuration("proj", 0, doc, 4200);
+    expect(result.wrote).toBe(false);
+    expect(written).toEqual([]);
+  });
+});
