@@ -50,7 +50,7 @@ import {
 import { getPersistentLayers } from "./persistentLayerRegistry";
 import { previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
-import type { CompareFrame } from "./sceneCompare";
+import { COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
 import type { SceneHostHandle } from "./sceneHostRegistry";
 import type { FrameLightingPlan } from "./sceneLighting";
 import {
@@ -161,7 +161,7 @@ function makeCompositeMaterial(fragment: string, glsl3 = false): ShaderMaterial 
   });
 }
 
-/** The comparison mask material: blends the side-A/side-B targets under a linear divider (see compareShader.ts). Display-domain GLSL1 like the legacy composite pair. */
+/** The comparison mask material: blends the side-A/side-B targets under the mask family with its SDF chrome (see compareShader.ts). Display-domain GLSL1 like the legacy composite pair. */
 function makeCompareMaterial(fragment: string): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
@@ -171,6 +171,16 @@ function makeCompareMaterial(fragment: string): ShaderMaterial {
       sweepRad: { value: 0 },
       softness: { value: 0 },
       aspect: { value: 1 },
+      maskType: { value: 0 },
+      center: { value: new Vector2(0.5, 0.5) },
+      lineWidth: { value: 0 },
+      lineColor: { value: new Vector3(1, 1, 1) },
+      lineSoftness: { value: 0 },
+      gripSize: { value: 0 },
+      tintA: { value: new Vector3(0, 0, 0) },
+      tintB: { value: new Vector3(0, 0, 0) },
+      tintAmountA: { value: 0 },
+      tintAmountB: { value: 0 },
     },
     vertexShader,
     fragmentShader: fragment,
@@ -592,13 +602,24 @@ export function renderComposited(
 
     const activeMaterial = fx ? st.compareMaterialHdr : st.compareMaterial;
     st.mesh.material = activeMaterial;
+    const spec = compare.spec;
     const u = activeMaterial.uniforms;
     u.texA.value = tgtA.texture;
     u.texB.value = tgtB.texture;
     u.value.value = compare.value;
-    u.sweepRad.value = ((compare.angleDeg - 90) * Math.PI) / 180;
-    u.softness.value = compare.softness;
+    u.sweepRad.value = ((spec.angleDeg - 90) * Math.PI) / 180;
+    u.softness.value = spec.softness;
     u.aspect.value = st.size.x / st.size.y;
+    u.maskType.value = COMPARE_MASK_ID[spec.maskType];
+    (u.center.value as Vector2).set(spec.center[0], spec.center[1]);
+    u.lineWidth.value = spec.chrome.lineWidth / 1080;
+    (u.lineColor.value as Vector3).set(...hexToSrgb(spec.chrome.lineColor));
+    u.lineSoftness.value = spec.chrome.lineSoftness / 1080;
+    u.gripSize.value = spec.chrome.gripSize;
+    (u.tintA.value as Vector3).set(...hexToSrgb(spec.chrome.tintA ?? "#000000"));
+    (u.tintB.value as Vector3).set(...hexToSrgb(spec.chrome.tintB ?? "#000000"));
+    u.tintAmountA.value = spec.chrome.tintA ? spec.chrome.tintAmount : 0;
+    u.tintAmountB.value = spec.chrome.tintB ? spec.chrome.tintAmount : 0;
 
     const hasOverlay = persistent.length > 0;
     if (hasOverlay) {

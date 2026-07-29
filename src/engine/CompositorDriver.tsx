@@ -99,8 +99,11 @@ export function CompositorDriver({
     [sceneFrames, sceneThemes],
   );
 
-  // Comparison plan inputs: normalised specs per scene, plus side B's render states built over B-substituted themes/docs (non-compare entries reuse side A's inputs and are never read).
-  const compareSpecs = useMemo(() => (sceneDocs ?? []).map((d) => compareSpecOf(d)), [sceneDocs]);
+  // Comparison plan inputs: normalised specs per scene (chrome colours resolved against each scene's own theme), plus side B's render states built over B-substituted themes/docs (non-compare entries reuse side A's inputs and are never read).
+  const compareSpecs = useMemo(
+    () => (sceneDocs ?? []).map((d, i) => compareSpecOf(d, sceneThemes?.[i])),
+    [sceneDocs, sceneThemes],
+  );
   const sceneStatesB = useMemo(() => {
     if (!theme || !sceneThemes || !compareBDocs?.some(Boolean)) return null;
     const bThemes = sceneThemes.map((t, i) => compareBThemes?.[i] ?? t);

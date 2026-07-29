@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
+import type { Theme } from "../theme/tokens";
+import { COMPARE_MASK_CATALOG } from "./compareCatalog";
 import {
+  COMPARE_MASK_ID,
+  type CompareSpec,
+  compareCoverageAt,
   compareSpecOf,
   compareValueAt,
   deriveCompareBDoc,
+  hexToSrgb,
   resolveCompareFrame,
 } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
 import type { Resolved } from "./sceneTimeline";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
+
+const fakeTheme = {
+  colors: { background: "#101010", text: "#eeeeee", accent: "#ff5a36", muted: "#808080" },
+} as Theme;
 
 const compareDoc = (compare: SceneDoc["compare"]): SceneDoc =>
   docWith({
@@ -20,15 +30,50 @@ const compareDoc = (compare: SceneDoc["compare"]): SceneDoc =>
     compare,
   });
 
+const specWith = (parts: Partial<CompareSpec>): CompareSpec => ({
+  maskType: "linear",
+  angleDeg: 90,
+  softness: 0,
+  center: [0.5, 0.5],
+  value: 0.5,
+  keys: [],
+  chrome: {
+    lineWidth: 0,
+    lineColor: "#ffffff",
+    lineSoftness: 0,
+    gripSize: 0,
+    chips: false,
+    tintA: null,
+    tintB: null,
+    tintAmount: 0,
+  },
+  ...parts,
+});
+
 describe("compareSpecOf", () => {
   it("null for docs without a compare block", () => {
     expect(compareSpecOf(undefined)).toBeNull();
     expect(compareSpecOf(docWith({}))).toBeNull();
   });
 
-  it("bakes defaults: vertical divider, hard edge, half-half", () => {
+  it("bakes defaults: a hard vertical linear divider at half, chrome off", () => {
     const spec = compareSpecOf(compareDoc({}));
-    expect(spec).toEqual({ angleDeg: 90, softness: 0, value: 0.5, keys: [] });
+    expect(spec?.maskType).toBe("linear");
+    expect(spec?.angleDeg).toBe(90);
+    expect(spec?.softness).toBe(0);
+    expect(spec?.center).toEqual([0.5, 0.5]);
+    expect(spec?.value).toBe(0.5);
+    expect(spec?.keys).toEqual([]);
+    expect(spec?.chrome).toEqual({
+      lineWidth: 0,
+      lineColor: "#6f93a8",
+      lineSoftness: 0,
+      gripSize: 0,
+      chips: false,
+      tintA: null,
+      tintB: null,
+      tintAmount: 0,
+    });
   });
 
   it("clamps values and sorts keys by time", () => {
@@ -49,18 +94,36 @@ describe("compareSpecOf", () => {
       { atMs: 900, value: 0 },
     ]);
   });
+
+  it("resolves chrome tokens against the theme, falling back to the accent", () => {
+    const spec = compareSpecOf(
+      compareDoc({
+        chrome: {
+          line: { colour: "muted" },
+          grip: true,
+          chips: true,
+          tint: { a: "accent", b: "nonsense" },
+        },
+      }),
+      fakeTheme,
+    );
+    expect(spec?.chrome.lineWidth).toBe(4);
+    expect(spec?.chrome.lineColor).toBe("#808080");
+    expect(spec?.chrome.gripSize).toBe(1);
+    expect(spec?.chrome.chips).toBe(true);
+    expect(spec?.chrome.tintA).toBe("#ff5a36");
+    expect(spec?.chrome.tintB).toBe("#ff5a36");
+    expect(spec?.chrome.tintAmount).toBeCloseTo(0.08, 10);
+  });
 });
 
 describe("compareValueAt", () => {
-  const spec = {
-    angleDeg: 90,
-    softness: 0,
-    value: 0.5,
+  const spec = specWith({
     keys: [
       { atMs: 200, value: 0.2 },
       { atMs: 1200, value: 0.7 },
     ],
-  };
+  });
 
   it("clamps before the first and after the last key", () => {
     expect(compareValueAt(spec, 0)).toBe(0.2);
@@ -72,16 +135,45 @@ describe("compareValueAt", () => {
   });
 
   it("keyless specs hold the static value", () => {
-    expect(compareValueAt({ ...spec, keys: [] }, 700)).toBe(0.5);
+    expect(compareValueAt(specWith({}), 700)).toBe(0.5);
+  });
+});
+
+describe("compareCoverageAt (the chips' fade)", () => {
+  it("a vertical divider at half: full A on the left, full B on the right", () => {
+    const spec = specWith({});
+    expect(compareCoverageAt(spec, 0.5, [0.2, 0.5], 16 / 9, "a")).toBe(1);
+    expect(compareCoverageAt(spec, 0.5, [0.2, 0.5], 16 / 9, "b")).toBe(0);
+    expect(compareCoverageAt(spec, 0.5, [0.8, 0.5], 16 / 9, "a")).toBe(0);
+    expect(compareCoverageAt(spec, 0.5, [0.8, 0.5], 16 / 9, "b")).toBe(1);
+  });
+
+  it("a circle window: B inside the centre, A far outside", () => {
+    const spec = specWith({ maskType: "circle" });
+    expect(compareCoverageAt(spec, 0.4, [0.5, 0.5], 16 / 9, "b")).toBe(1);
+    expect(compareCoverageAt(spec, 0.4, [0.02, 0.02], 16 / 9, "a")).toBe(1);
+  });
+
+  it("blend coverage is the divider value itself", () => {
+    const spec = specWith({ maskType: "blend" });
+    expect(compareCoverageAt(spec, 0.3, [0.5, 0.5], 16 / 9, "a")).toBeCloseTo(0.7, 10);
+    expect(compareCoverageAt(spec, 0.3, [0.5, 0.5], 16 / 9, "b")).toBeCloseTo(0.3, 10);
+  });
+});
+
+describe("hexToSrgb", () => {
+  it("parses hex to display components; malformed falls back to grey", () => {
+    expect(hexToSrgb("#ff0080")).toEqual([1, 0, 128 / 255]);
+    expect(hexToSrgb("nonsense")).toEqual([0.5, 0.5, 0.5]);
   });
 });
 
 describe("deriveCompareBDoc", () => {
-  it("null without a compare block; strips the block from side B", () => {
+  it("null without a compare block; side B keeps the block (host chrome reads it)", () => {
     expect(deriveCompareBDoc(docWith({}))).toBeNull();
     const b = deriveCompareBDoc(compareDoc({}));
     expect(b).not.toBeNull();
-    expect(b?.compare).toBeUndefined();
+    expect(b?.compare).toBeDefined();
   });
 
   it("applies side B's theme, background, lighting and per-device media", () => {
@@ -111,21 +203,14 @@ describe("deriveCompareBDoc", () => {
 });
 
 describe("resolveCompareFrame", () => {
-  const spec = { angleDeg: 60, softness: 0.02, value: 0.5, keys: [] };
+  const spec = specWith({ angleDeg: 60, softness: 0.02 });
   const stateA = { background: { isColor: true } } as never;
   const stateB = { background: { isColor: true } } as never;
 
   it("resolves the active scene's spec with its side states", () => {
     const resolved: Resolved = { active: [{ index: 1, localMs: 500 }] };
     const frame = resolveCompareFrame([null, spec], [stateA, stateA], [null, stateB], resolved);
-    expect(frame).toEqual({
-      index: 1,
-      value: 0.5,
-      angleDeg: 60,
-      softness: 0.02,
-      stateA,
-      stateB,
-    });
+    expect(frame).toEqual({ index: 1, value: 0.5, spec, stateA, stateB });
   });
 
   it("null for plain scenes and for transition frames (two active scenes)", () => {
@@ -138,5 +223,25 @@ describe("resolveCompareFrame", () => {
       ],
     };
     expect(resolveCompareFrame([null, spec], null, null, transition)).toBeNull();
+  });
+});
+
+describe("compare mask catalogue (structure pin)", () => {
+  it("one entry per mask type, ids matching the shader dispatch", () => {
+    expect(COMPARE_MASK_CATALOG.map((e) => e.id)).toEqual(Object.keys(COMPARE_MASK_ID));
+    for (const entry of COMPARE_MASK_CATALOG) {
+      expect(entry.label.length).toBeGreaterThan(0);
+      expect(entry.hint.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("only the slider takes an angle and a grip; windows take a centre", () => {
+    const byId = new Map(COMPARE_MASK_CATALOG.map((e) => [e.id, e]));
+    expect(byId.get("linear")?.needsAngle).toBe(true);
+    expect(byId.get("linear")?.hasGrip).toBe(true);
+    expect(byId.get("circle")?.needsCenter).toBe(true);
+    expect(byId.get("radial")?.needsCenter).toBe(true);
+    expect(byId.get("blend")?.needsAngle).toBe(false);
+    expect(byId.get("blend")?.hasLine).toBe(false);
   });
 });

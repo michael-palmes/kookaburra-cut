@@ -464,7 +464,9 @@ export async function exportProject(
       : null;
 
   // Comparison plan inputs, built once (mirrored in CompositorDriver): specs per scene, plus side B's states over B-substituted themes/docs.
-  const compareSpecs = (opts.sceneDocs ?? []).map((d) => compareSpecOf(d));
+  const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
+    compareSpecOf(d, opts.sceneThemes?.[i]),
+  );
   const sceneStatesB =
     opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
       ? buildSceneRenderStates(
@@ -603,7 +605,9 @@ export async function captureScreenshot(
     ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
     : null;
   // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
-  const compareSpecs = (opts.sceneDocs ?? []).map((d) => compareSpecOf(d));
+  const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
+    compareSpecOf(d, opts.sceneThemes?.[i]),
+  );
   const sceneStatesB =
     opts.theme && opts.sceneThemes && opts.compareBDocs?.some(Boolean)
       ? buildSceneRenderStates(

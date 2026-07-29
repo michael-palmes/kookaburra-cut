@@ -119,6 +119,7 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
+import { CompareChips } from "./toolkit/compare/CompareChips";
 import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
@@ -1813,6 +1814,7 @@ export default function App() {
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />
+                                <CompareChips />
                               </AssetBoundary>
                             </SceneHost>
                           );
@@ -1842,6 +1844,7 @@ export default function App() {
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />
+                                <CompareChips />
                               </AssetBoundary>
                             </SceneHost>
                           );

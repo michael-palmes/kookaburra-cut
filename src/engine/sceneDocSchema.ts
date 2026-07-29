@@ -309,12 +309,26 @@ export interface SceneDocCompareKey {
   value: number;
 }
 
-/** The comparison block. `mask` is the divider shape (linear only for now: `angleDeg` is the divider line's angle, 90 = vertical; `softness` feathers the edge in uv units). `value` is the static divider position when no track keys exist (default 0.5). */
+/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. Colours are THEME TOKEN NAMES (background | text | accent | muted), resolved against the scene's theme at plan build. Absent sub-blocks are off. */
+export interface SceneDocCompareChrome {
+  line?: { width?: number; colour?: string; softness?: number };
+  grip?: boolean | { size?: number };
+  chips?: boolean;
+  tint?: { a?: string; b?: string; amount?: number };
+}
+
+/** The comparison block. `mask.type`: `linear` (a straight divider, `angleDeg` is the LINE's angle, 90 = vertical), `circle` (the after inside a growing circle at `center`), `radial` (the after sweeps around `center`), `blend` (the after fades over the before). `softness` feathers the edge; `value` is the static divider position when no track keys exist (default 0.5). */
 export interface SceneDocCompare {
   b?: SceneDocCompareSide;
-  mask?: { type: "linear"; angleDeg?: number; softness?: number };
+  mask?: {
+    type: "linear" | "circle" | "radial" | "blend";
+    angleDeg?: number;
+    softness?: number;
+    center?: [number, number];
+  };
   value?: number;
   track?: { keys: SceneDocCompareKey[] };
+  chrome?: SceneDocCompareChrome;
 }
 
 export function validLayeredScreenshotPose(raw: unknown): raw is LayeredScreenshotPose {
@@ -402,22 +416,84 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
     out.value = Math.min(1, Math.max(0, c.value));
   }
   if (c.mask !== undefined) {
-    const mask = c.mask as { type?: unknown; angleDeg?: unknown; softness?: unknown } | null;
-    if (mask && typeof mask === "object" && mask.type === "linear") {
-      const m: NonNullable<SceneDocCompare["mask"]> = { type: "linear" };
-      if (typeof mask.angleDeg === "number" && Number.isFinite(mask.angleDeg)) {
+    const mask = c.mask as {
+      type?: unknown;
+      angleDeg?: unknown;
+      softness?: unknown;
+      center?: unknown;
+    } | null;
+    const type = mask && typeof mask === "object" ? mask.type : undefined;
+    if (type === "linear" || type === "circle" || type === "radial" || type === "blend") {
+      const m: NonNullable<SceneDocCompare["mask"]> = { type };
+      if (mask && typeof mask.angleDeg === "number" && Number.isFinite(mask.angleDeg)) {
         m.angleDeg = mask.angleDeg;
       }
       if (
+        mask &&
         typeof mask.softness === "number" &&
         Number.isFinite(mask.softness) &&
         mask.softness >= 0
       ) {
         m.softness = mask.softness;
       }
+      if (
+        mask &&
+        Array.isArray(mask.center) &&
+        mask.center.length === 2 &&
+        mask.center.every((n) => typeof n === "number" && Number.isFinite(n))
+      ) {
+        m.center = [
+          Math.min(1, Math.max(0, mask.center[0] as number)),
+          Math.min(1, Math.max(0, mask.center[1] as number)),
+        ];
+      }
       out.mask = m;
     } else {
-      console.warn(`[sceneDoc] ${source}: compare.mask isn't a linear mask, dropped`);
+      console.warn(`[sceneDoc] ${source}: compare.mask type isn't known, dropped`);
+    }
+  }
+  if (c.chrome !== undefined) {
+    const raw = c.chrome as Record<string, unknown> | null;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const chrome: SceneDocCompareChrome = {};
+      const line = raw.line as
+        | { width?: unknown; colour?: unknown; softness?: unknown }
+        | undefined;
+      if (line && typeof line === "object") {
+        const l: NonNullable<SceneDocCompareChrome["line"]> = {};
+        if (typeof line.width === "number" && Number.isFinite(line.width) && line.width >= 0) {
+          l.width = line.width;
+        }
+        if (typeof line.colour === "string") l.colour = line.colour;
+        if (
+          typeof line.softness === "number" &&
+          Number.isFinite(line.softness) &&
+          line.softness >= 0
+        ) {
+          l.softness = line.softness;
+        }
+        chrome.line = l;
+      }
+      if (typeof raw.grip === "boolean") chrome.grip = raw.grip;
+      else if (raw.grip && typeof raw.grip === "object") {
+        const size = (raw.grip as { size?: unknown }).size;
+        chrome.grip =
+          typeof size === "number" && Number.isFinite(size) && size > 0 ? { size } : true;
+      }
+      if (typeof raw.chips === "boolean") chrome.chips = raw.chips;
+      const tint = raw.tint as { a?: unknown; b?: unknown; amount?: unknown } | undefined;
+      if (tint && typeof tint === "object") {
+        const t: NonNullable<SceneDocCompareChrome["tint"]> = {};
+        if (typeof tint.a === "string") t.a = tint.a;
+        if (typeof tint.b === "string") t.b = tint.b;
+        if (typeof tint.amount === "number" && Number.isFinite(tint.amount)) {
+          t.amount = Math.min(1, Math.max(0, tint.amount));
+        }
+        chrome.tint = t;
+      }
+      out.chrome = chrome;
+    } else {
+      console.warn(`[sceneDoc] ${source}: compare.chrome isn't an object, dropped`);
     }
   }
   if (c.track !== undefined) {
