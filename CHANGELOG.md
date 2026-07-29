@@ -4,6 +4,40 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-29
+
+### Added
+
+- 3D backgrounds. A new background type built from real world-space
+  geometry, so it moves with the scene camera instead of sitting flat
+  behind everything. Ten looks: Grid plain, Grid shell, Grid hall,
+  Contour field, Drift slabs, Orb field, Halo rings, Skyline prisms,
+  Point swell and Dust drift, each with nine colour presets, its own
+  sliders, and any 2D background as the backing behind it.
+- Four animated grid backgrounds: Dot grid, Graph grid, Horizon grid
+  and Hex grid, with thirty-six presets between them.
+- A live Theme preset for animated backgrounds. Colours come from the
+  active theme's tokens as the scene renders, so the fill follows a
+  theme switch instead of going stale.
+
+### Changed
+
+- Background previews follow the project's theme: a light project sees
+  light clips, preset tiles lead with the theme's mode, and clicking a
+  card applies exactly what the card shows.
+- Dark presets across the shader packs are brighter, and every light
+  preset is softened so text still leads.
+- First run creates ~/Kookaburra Cut without asking. Settings is now the
+  one place that location changes, with a one-click reset to the default.
+
+### Fixed
+
+- Importing a pack that carries a font no longer fails on a workspace
+  that has never pinned one.
+- Pack imports name what actually went wrong. A write failure no longer
+  reads as an unreadable pack, one bad font no longer condemns the rest,
+  and a font written before a failure is indexed instead of orphaned.
+
 ## [0.7.0] - 2026-07-27
 
 ### Added
