@@ -1610,6 +1610,9 @@ export function SceneTab({
   const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
   const compareDragBaseline = useRef<SceneDoc | null>(null);
+  // Which document the background/lighting drills edit: the scene itself, or the comparison's after side (set at every drill entry point, reset on scene change).
+  const [bgTarget, setBgTarget] = useState<"scene" | "compareB">("scene");
+  const [lightingTarget, setLightingTarget] = useState<"scene" | "compareB">("scene");
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
@@ -1743,6 +1746,8 @@ export function SceneTab({
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
+    setBgTarget("scene");
+    setLightingTarget("scene");
     resetDrill();
     setRenaming(false);
     setBgTabOverride(null);
@@ -1916,11 +1921,56 @@ export function SceneTab({
     );
   };
 
+  /** Route a background-drill mutation at its target: the scene's own `background`, or the comparison's after side. For the after side, side B's value swaps in before the mutation and transplants out after, so the drill's reads and writes work unchanged and every OTHER field still mutates the real doc. */
+  const patchBgDoc = (mutate: (next: SceneDoc) => void, opts?: Parameters<typeof patchDoc>[1]) => {
+    if (bgTarget !== "compareB") return patchDoc(mutate, opts);
+    return patchDoc((next) => {
+      const own = next.background;
+      next.background = next.compare?.b?.background;
+      mutate(next);
+      const written = next.background;
+      next.background = own;
+      if (!next.compare) next.compare = {};
+      if (!next.compare.b) next.compare.b = {};
+      next.compare.b.background = written;
+    }, opts);
+  };
+  /** The lighting drill's target routing, same transplant rule over `lighting`. */
+  const patchLightingDoc = (
+    mutate: (next: SceneDoc) => void,
+    opts?: Parameters<typeof patchDoc>[1],
+  ) => {
+    if (lightingTarget !== "compareB") return patchDoc(mutate, opts);
+    return patchDoc((next) => {
+      const own = next.lighting;
+      next.lighting = next.compare?.b?.lighting;
+      mutate(next);
+      const written = next.lighting;
+      next.lighting = own;
+      if (!next.compare) next.compare = {};
+      if (!next.compare.b) next.compare.b = {};
+      next.compare.b.lighting = written;
+    }, opts);
+  };
+  const commitLightingFromBaseline = (baseline: SceneDoc, mutate: (next: SceneDoc) => void) => {
+    if (lightingTarget !== "compareB") return commitFromBaseline(baseline, mutate);
+    return commitFromBaseline(baseline, (next) => {
+      const own = next.lighting;
+      next.lighting = next.compare?.b?.lighting;
+      mutate(next);
+      const written = next.lighting;
+      next.lighting = own;
+      if (!next.compare) next.compare = {};
+      if (!next.compare.b) next.compare.b = {};
+      next.compare.b.lighting = written;
+    });
+  };
+
   /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. Follow-media scenes sourced from the background re-sync their length to the new video. */
   const selectVideoBackground = (rel: string, meta: MediaMeta | null) => {
     if (meta && meta.kind !== "video") return;
     setBgTabOverride(null);
-    void patchDoc(
+    void patchBgDoc(
       (next) => {
         const parallax =
           next.background && next.background.type !== "none" && next.background.type !== "scene3d"
@@ -1940,7 +1990,7 @@ export function SceneTab({
   const selectImageBackground = (rel: string, meta: MediaMeta | null) => {
     if (meta && meta.kind !== "image") return;
     setBgTabOverride(null);
-    void patchDoc((next) => {
+    void patchBgDoc((next) => {
       const parallax =
         next.background && next.background.type !== "none" && next.background.type !== "scene3d"
           ? next.background.parallax
@@ -3015,13 +3065,14 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.background.media" && doc) {
+    const bgActive = bgTarget === "compareB" ? doc.compare?.b?.background : doc.background;
     const kind: "image" | "video" =
       bgTabOverride === "image" || bgTabOverride === "video"
         ? bgTabOverride
-        : doc.background?.type === "video"
+        : bgActive?.type === "video"
           ? "video"
           : "image";
-    const selectedSrc = doc.background?.type === kind ? doc.background.src : null;
+    const selectedSrc = bgActive?.type === kind ? bgActive.src : null;
     const selectBg = kind === "video" ? selectVideoBackground : selectImageBackground;
     return (
       <div className="inspector-drill">
@@ -3048,8 +3099,7 @@ export function SceneTab({
                 onEdit:
                   kind === "video"
                     ? (rel) => {
-                        if (doc?.background?.type !== "video" || doc.background.src !== rel)
-                          return false;
+                        if (bgActive?.type !== "video" || bgActive.src !== rel) return false;
                         onOpenEditVideo(sceneIndex, rel, "background");
                         return true;
                       }
@@ -3062,9 +3112,10 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.background" && doc) {
+    const bgActive = bgTarget === "compareB" ? doc.compare?.b?.background : doc.background;
     const bgOpts = backgroundOptions(sceneTheme);
     const colourOpt = bgOpts.find((o) => o.value?.type === "color")?.value;
-    const docTab = doc.background === undefined ? "default" : doc.background.type;
+    const docTab = bgActive === undefined ? "default" : bgActive.type;
     const bgTab = bgTabOverride ?? docTab;
     // Staging state from the registry: null = the scene mounts no SceneStage (hide the toggle, never warn).
     const stagingOn = stagedBackdrop !== null && stagedBackdrop !== "none";
@@ -3076,19 +3127,19 @@ export function SceneTab({
         : { type: "floor", color: hex };
     const commitBackground = (value: ThemeBackground | undefined) => {
       setBgTabOverride(null);
-      void patchDoc((next) => {
+      void patchBgDoc((next) => {
         next.background = value;
         // Theme resets both layers; a fresh colour writes through to the stage (one visual, one edit).
         if (value === undefined) next.backdrop = undefined;
         else if (value.type === "color" && stagingOn) next.backdrop = floorFor(value.color);
       });
     };
-    const shaderSpec = doc.background?.type === "shader" ? doc.background : null;
+    const shaderSpec = bgActive?.type === "shader" ? bgActive : null;
     const shaderDef = shaderSpec ? SHADER_BACKGROUNDS[shaderSpec.shader] : undefined;
-    const scene3dSpec = doc.background?.type === "scene3d" ? doc.background : null;
+    const scene3dSpec = bgActive?.type === "scene3d" ? bgActive : null;
     const scene3dDef = scene3dSpec ? SCENE3D_BACKGROUNDS[scene3dSpec.look] : undefined;
     const patchScene3d = (mutate: (spec: Extract<ThemeBackground, { type: "scene3d" }>) => void) =>
-      void patchDoc((next) => {
+      void patchBgDoc((next) => {
         if (next.background?.type !== "scene3d") return;
         const spec = structuredClone(next.background);
         mutate(spec);
@@ -3104,7 +3155,7 @@ export function SceneTab({
         spec.preset = preset.id;
       });
     const patchShader = (mutate: (spec: Extract<ThemeBackground, { type: "shader" }>) => void) =>
-      void patchDoc((next) => {
+      void patchBgDoc((next) => {
         if (next.background?.type !== "shader") return;
         const spec = structuredClone(next.background);
         mutate(spec);
@@ -3248,14 +3299,14 @@ export function SceneTab({
               </button>
             ))}
           </div>
-          {bgTab === "color" && doc.background?.type === "color" && (
+          {bgTab === "color" && bgActive?.type === "color" && (
             <div className="popover-row">
               <span className="popover-inline slider-row-label">Colour</span>
               <ColourPicker
-                value={doc.background.color}
+                value={bgActive.color}
                 label="Background colour"
                 onCommit={(hex) => {
-                  void patchDoc((next) => {
+                  void patchBgDoc((next) => {
                     if (next.background?.type === "color") {
                       next.background = { ...next.background, color: hex };
                     }
@@ -3268,12 +3319,12 @@ export function SceneTab({
           {bgTab === "gradient" && (
             <GradientPickerModal
               embedded
-              current={doc.background}
+              current={bgActive}
               theme={sceneTheme}
               onCancel={() => setBgTabOverride(null)}
               onApply={(value) => {
                 setBgTabOverride(null);
-                void patchDoc((next) => {
+                void patchBgDoc((next) => {
                   const parallax =
                     next.background &&
                     next.background.type !== "none" &&
@@ -3313,7 +3364,7 @@ export function SceneTab({
                       selected={shaderSpec?.shader === id}
                       onSelect={() => {
                         setBgTabOverride(null);
-                        void patchDoc((next) => {
+                        void patchBgDoc((next) => {
                           next.background = lightP1
                             ? {
                                 type: "shader",
@@ -3473,7 +3524,7 @@ export function SceneTab({
                       selected={scene3dSpec?.look === id}
                       onSelect={() => {
                         setBgTabOverride(null);
-                        void patchDoc((next) => {
+                        void patchBgDoc((next) => {
                           next.background = cardAnchor
                             ? {
                                 type: "scene3d",
@@ -3727,10 +3778,10 @@ export function SceneTab({
               </span>
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
-                label={doc.background?.type === "image" ? "Change image" : "Choose an image"}
+                label={bgActive?.type === "image" ? "Change image" : "Choose an image"}
                 value={
-                  doc.background?.type === "image"
-                    ? middleTruncate(doc.background.src.split("/").pop() ?? "")
+                  bgActive?.type === "image"
+                    ? middleTruncate(bgActive.src.split("/").pop() ?? "")
                     : undefined
                 }
                 onClick={() => openDrill("style.background.media")}
@@ -3742,21 +3793,21 @@ export function SceneTab({
               <span className="modal-hint">Video that fills the frame behind everything.</span>
               <ActionRow
                 icon={<SceneRowIcon id="style.background" />}
-                label={doc.background?.type === "video" ? "Change video" : "Choose a video"}
+                label={bgActive?.type === "video" ? "Change video" : "Choose a video"}
                 value={
-                  doc.background?.type === "video"
-                    ? middleTruncate(doc.background.src.split("/").pop() ?? "")
+                  bgActive?.type === "video"
+                    ? middleTruncate(bgActive.src.split("/").pop() ?? "")
                     : undefined
                 }
                 onClick={() => openDrill("style.background.media")}
               />
-              {doc.background?.type === "video" && (
+              {bgActive?.type === "video" && (
                 <ToggleRow
                   label="Loop"
                   description="Plays again from the start when it ends; off holds the last frame."
-                  checked={doc.background.loop !== false}
+                  checked={bgActive.loop !== false}
                   onChange={(on) =>
-                    void patchDoc((next) => {
+                    void patchBgDoc((next) => {
                       if (next.background?.type === "video") {
                         const { loop: _drop, ...rest } = next.background;
                         next.background = on ? rest : { ...rest, loop: false };
@@ -3765,13 +3816,13 @@ export function SceneTab({
                   }
                 />
               )}
-              {doc.background?.type === "video" && (
+              {bgActive?.type === "video" && (
                 <ToggleRow
                   label="Fit inside frame"
                   description="Shows the whole video with letterbox bars; off crops it to fill the frame."
-                  checked={doc.background.fit === "fit"}
+                  checked={bgActive.fit === "fit"}
                   onChange={(on) =>
-                    void patchDoc((next) => {
+                    void patchBgDoc((next) => {
                       if (next.background?.type === "video") {
                         const { fit: _drop, ...rest } = next.background;
                         next.background = on ? { ...rest, fit: "fit" } : rest;
@@ -3785,17 +3836,15 @@ export function SceneTab({
           <ToggleRow
             label="Drift"
             description="Camera motion shifts the fill slightly for depth; pan the camera to see it."
-            disabled={
-              !doc.background || doc.background.type === "none" || doc.background.type === "scene3d"
-            }
+            disabled={!bgActive || bgActive.type === "none" || bgActive.type === "scene3d"}
             checked={
-              !!doc.background &&
-              doc.background.type !== "none" &&
-              doc.background.type !== "scene3d" &&
-              (doc.background.parallax ?? 0) > 0
+              !!bgActive &&
+              bgActive.type !== "none" &&
+              bgActive.type !== "scene3d" &&
+              (bgActive.parallax ?? 0) > 0
             }
             onChange={(on) =>
-              void patchDoc((next) => {
+              void patchBgDoc((next) => {
                 if (next.background && next.background.type !== "none") {
                   next.background = toggleDrift(next.background, on);
                 }
@@ -3809,7 +3858,7 @@ export function SceneTab({
                 description="A floor and backdrop that catch light and real shadows; colour and gradient picks write through to it."
                 checked={stagingOn}
                 onChange={(on) =>
-                  void patchDoc((next) => {
+                  void patchBgDoc((next) => {
                     if (!on) {
                       next.backdrop = { type: "none" };
                       return;
@@ -3819,8 +3868,8 @@ export function SceneTab({
                       next.backdrop = undefined;
                     } else {
                       next.backdrop = floorFor(
-                        doc.background?.type === "color"
-                          ? doc.background.color
+                        bgActive?.type === "color"
+                          ? bgActive.color
                           : (sceneTheme?.colors.background ?? "#ffffff"),
                       );
                     }
@@ -3834,11 +3883,10 @@ export function SceneTab({
                     const themeGradient = themeGradients.includes("backdrop")
                       ? "backdrop"
                       : themeGradients[0];
-                    const gradientSource =
-                      doc.background?.type === "gradient" ? doc.background : undefined;
+                    const gradientSource = bgActive?.type === "gradient" ? bgActive : undefined;
                     const currentColour =
-                      doc.background?.type === "color"
-                        ? doc.background.color
+                      bgActive?.type === "color"
+                        ? bgActive.color
                         : (sceneTheme?.colors.background ?? "#ffffff");
                     const form =
                       doc.backdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
@@ -3858,7 +3906,7 @@ export function SceneTab({
                         className={`chip${form === chip.id ? " selected" : ""}`}
                         disabled={chip.disabled}
                         onClick={() => {
-                          void patchDoc((next) => {
+                          void patchBgDoc((next) => {
                             if (chip.id === "theme") next.backdrop = undefined;
                             else if (chip.id === "floor") next.backdrop = floorFor(currentColour);
                             else if (gradientSource) {
@@ -4762,6 +4810,7 @@ export function SceneTab({
                   chevron
                   onClick={() => {
                     setBgTabOverride(null);
+                    setBgTarget("scene");
                     openDrill("style.background");
                   }}
                 />
@@ -4769,7 +4818,10 @@ export function SceneTab({
                   icon={<SceneRowIcon id="lighting" />}
                   label="Lighting"
                   chevron
-                  onClick={() => openDrill("lighting")}
+                  onClick={() => {
+                    setLightingTarget("scene");
+                    openDrill("lighting");
+                  }}
                 />
               </>
             ) : (
@@ -4796,9 +4848,39 @@ export function SceneTab({
                   chevron
                   onClick={() => openDrill("compare.theme")}
                 />
-                <p className="inspector-stub-note">
-                  The after side can also override background and lighting in the scene document.
-                </p>
+                <ActionRow
+                  icon={<SceneRowIcon id="style.background" />}
+                  label="Background"
+                  value={
+                    cmp.b?.background
+                      ? {
+                          none: "None",
+                          color: "Colour",
+                          gradient: "Gradient",
+                          shader: "Animated",
+                          scene3d: "3D",
+                          image: "Image",
+                          video: "Video",
+                        }[cmp.b.background.type]
+                      : "Same as before"
+                  }
+                  chevron
+                  onClick={() => {
+                    setBgTabOverride(null);
+                    setBgTarget("compareB");
+                    openDrill("style.background");
+                  }}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="lighting" />}
+                  label="Lighting"
+                  value={cmp.b?.lighting ? "Overridden" : "Same as before"}
+                  chevron
+                  onClick={() => {
+                    setLightingTarget("compareB");
+                    openDrill("lighting");
+                  }}
+                />
               </>
             )}
           </ToggleFieldset>
@@ -4964,6 +5046,7 @@ export function SceneTab({
         },
         "style.background": () => {
           setBgTabOverride(null);
+          setBgTarget("scene");
           openDrill("style.background");
         },
         "style.shadow": () => openDrill("style.shadow"),
@@ -5041,16 +5124,22 @@ export function SceneTab({
     );
   }
   if (drillIn === "lighting" && doc) {
+    // The after target hands the section a doc VIEW whose `lighting` is side B's, with write wrappers transplanting the field back; the section itself never learns about comparisons.
+    const forAfter = lightingTarget === "compareB" && !!doc.compare;
     return (
       <LightingSectionBody
-        doc={doc}
-        theme={sceneTheme ?? project.theme}
+        doc={forAfter ? { ...doc, lighting: doc.compare?.b?.lighting } : doc}
+        theme={
+          forAfter
+            ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
+            : (sceneTheme ?? project.theme)
+        }
         projectId={project.id}
         projectLighting={project.projectLighting}
         slot={scene}
         onBack={closeDrill}
-        patchDoc={patchDoc}
-        commitFromBaseline={commitFromBaseline}
+        patchDoc={forAfter ? patchLightingDoc : patchDoc}
+        commitFromBaseline={forAfter ? commitLightingFromBaseline : commitFromBaseline}
       />
     );
   }
@@ -5260,6 +5349,7 @@ export function SceneTab({
       value: bgLabel,
       onClick: () => {
         setBgTabOverride(null);
+        setBgTarget("scene");
         openDrill("style.background");
       },
     });
@@ -5275,7 +5365,10 @@ export function SceneTab({
       key: "lighting",
       label: "Lighting",
       icon: "lighting",
-      onClick: () => openDrill("lighting"),
+      onClick: () => {
+        setLightingTarget("scene");
+        openDrill("lighting");
+      },
     });
   if (project.slots.length > 1) {
     settingEntries.push({

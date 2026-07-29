@@ -108,9 +108,12 @@ The `comparison` scene kind scaffolds the two-device pair (labels
 `beforeLabel`/`afterLabel`, devices at x -0.85/0.85 with opposing 12-degree
 yaws, scale 0.85; the template compresses x and scale in portrait). For a
 masked split on any scene: add the block above, or use the inspector's Add
-comparison (Scene tab), which seeds a visible default (line + chips). Side
-B's background and lighting are sidecar-only for now; media and theme are
-app-editable through the drill's After pill.
+comparison (Scene tab), which seeds a visible default (line + chips). The
+drill's After pill edits side B's media, theme, background and lighting;
+the background and lighting drills are the scene's own screens routed at
+`compare.b` through a transplant wrapper (side B's value swaps in before
+the mutation and transplants out after), so the two surfaces can never
+drift.
 
 ## Gate fixture
 
