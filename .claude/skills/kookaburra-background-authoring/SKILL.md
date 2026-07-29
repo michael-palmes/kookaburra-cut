@@ -89,7 +89,9 @@ shipping flow applies, with these differences:
    whole-group transforms); seeded randomness via `createSeededRandom` with a fixed seed.
 2. Stay OUT of the content volume (x/y roughly +-4/+-2, z -6..9): keep-out clearances and
    distance fades, tag the root `userData.kookaburraBg3d` (the perf probe's `no-bg3d` pass).
-   Floors want a small stage-courtesy clearing (~4u), not a content-radius ring.
+   Floors want a small stage-courtesy clearing (~4u), not a content-radius ring. Never set
+   `renderOrder` in a look: the host (`Scene3dBackdrop`) stamps `SCENE3D_RENDER_ORDER` on
+   every renderable so backgrounds draw behind content at any camera angle.
 3. Unlit looks hold exact colours (`toneMapped: false`); `lit: true` looks use standard
    materials with an `ABSTRACT_EMISSIVE` floor so they read on unlit scenes.
 4. Presets carry geometry `colors` plus a flat `backing` hex; bands and AA apply to ALL of

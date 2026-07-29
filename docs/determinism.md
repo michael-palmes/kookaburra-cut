@@ -1172,6 +1172,19 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 
+> **2026-07-29 (scene3d draw order):** transparent scene3d look geometry (the
+> grid lines especially) spans huge bounds, so three's per-object distance sort
+> could flip it in front of the video window or cards at oblique angles (the
+> lines drew THROUGH the window). `Scene3dBackdrop` now stamps every look
+> renderable with `SCENE3D_RENDER_ORDER` (-50: after the fixed layer's -100,
+> before all content at 0), pinning backgrounds behind content at any angle.
+> Scenes without a scene3d background are byte-identical by construction
+> (`ws:video-window-spike` EQUAL `6dfe68a6…`, `pnpm gate` EQUAL `355f9429…`);
+> scene3d scenes can move pixels wherever the old sort was flipping, the fix
+> itself. `ws:bg3d-spike` verified identical ×2 at `8f6fc517…` with frames
+> eyeballed; note the background-rethink worktree's interim `632ee44d…` record
+> is superseded when that branch rebases onto this.
+
 > **2026-07-29 (video window: stage removal, placement, recording crop):**
 > the backing stage was removed outright (Michael's call: the scene's own
 > background/backdrop shows through instead; legacy `stage` blocks are silently

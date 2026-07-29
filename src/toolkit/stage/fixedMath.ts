@@ -2,8 +2,10 @@
 
 /** View-space distance of the background quad (must stay well inside camera far). */
 export const FIXED_BG_DISTANCE = 50;
-/** Drawn first; nothing else in the codebase sets a renderOrder. */
+/** Drawn first, under everything. */
 export const FIXED_BG_RENDER_ORDER = -100;
+/** Scene3d look geometry draws after the fixed layer but before all content (`Scene3dBackdrop` stamps it on every renderable): transparent look objects span huge bounds, so per-object distance sorting can flip them in front of the video window or cards at oblique angles. */
+export const SCENE3D_RENDER_ORDER = -50;
 /** Parallax anchor displacement is clamped to ±this many NDC units (a full frame = 2). */
 export const FIXED_BG_NDC_CLAMP = 2;
 
