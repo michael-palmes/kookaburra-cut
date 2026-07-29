@@ -8,6 +8,8 @@ export interface SceneTimeContext {
   index: number;
   startMs: number;
   durationMs: number;
+  /** Present only inside a comparison's side-B subtree; timing is identical to side A, so `useTimeline()` consumers never care. */
+  side?: "b";
 }
 
 /** Null outside any scene → `useTimeline()` falls back to project time (localMs === globalMs). */

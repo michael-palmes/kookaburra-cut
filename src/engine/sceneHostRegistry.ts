@@ -7,6 +7,8 @@ export interface SceneHostHandle {
   startMs: number;
   durationMs: number;
   group: Group;
+  /** Which comparison side this host renders; absent for every plain scene (and comparison side A rides the plain host). Only the compositor's visibility gating reads it. */
+  side?: "b";
 }
 
 // Keyed by a per-instance id (React useId) so a project swap's unmount/mount churn can't clobber entries by index.
@@ -20,7 +22,9 @@ export function unregisterSceneHost(key: string): void {
   hosts.delete(key);
 }
 
-/** Current scene hosts, ordered by timeline index. */
+/** Current scene hosts, ordered by timeline index (a comparison's side-B host follows its base host). */
 export function getSceneHosts(): SceneHostHandle[] {
-  return [...hosts.values()].sort((a, b) => a.index - b.index);
+  return [...hosts.values()].sort(
+    (a, b) => a.index - b.index || (a.side === "b" ? 1 : 0) - (b.side === "b" ? 1 : 0),
+  );
 }

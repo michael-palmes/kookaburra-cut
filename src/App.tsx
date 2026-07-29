@@ -1534,6 +1534,8 @@ export default function App() {
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
+          compareBDocs: project.compareBDocs,
+          compareBThemes: project.compareBThemes,
           audio: project.audio,
           codec: "libx264",
           encode: sel.encode,
@@ -1587,6 +1589,8 @@ export default function App() {
           sceneThemes: project.sceneThemes,
           projectLighting: project.projectLighting,
           sceneFrames: project.sceneFrames,
+          compareBDocs: project.compareBDocs,
+          compareBThemes: project.compareBThemes,
           audio: project.audio,
           codec: "libx264",
         },
@@ -1776,6 +1780,8 @@ export default function App() {
                       sceneThemes={project.sceneThemes}
                       projectLighting={project.projectLighting}
                       sceneFrames={project.sceneFrames}
+                      compareBDocs={project.compareBDocs}
+                      compareBThemes={project.compareBThemes}
                       commitStamp={project}
                     />
                   )}
@@ -1803,6 +1809,35 @@ export default function App() {
                                 <SceneBackground />
                                 <SceneComponent />
                                 {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
+                                <DevicesFallback />
+                                <LayeredScreenshotFallback />
+                                <VideoWindowFallback />
+                                <TextFallback />
+                              </AssetBoundary>
+                            </SceneHost>
+                          );
+                        })}
+                        {/* Comparison side-B hosts: the same scene component mounted again with side B's derived doc and theme, so per-side media/background/lighting scope through the normal host machinery; the compositor renders the pair to its A/B targets and masks them. */}
+                        {project?.scenes.map((scene, i) => {
+                          const bDoc = project.compareBDocs[i];
+                          if (!bDoc) return null;
+                          const slot = project.slots[i];
+                          const SceneComponent = scene.Scene;
+                          return (
+                            <SceneHost
+                              key={`${project.id}:${slot.id}:b`}
+                              index={i}
+                              side="b"
+                              id={slot.id}
+                              startMs={slot.startMs}
+                              durationMs={slot.durationMs}
+                              doc={bDoc}
+                              theme={project.compareBThemes[i]}
+                              frame={project.sceneFrames[i]}
+                            >
+                              <AssetBoundary label={`scene ${i + 1} after`}>
+                                <SceneBackground />
+                                <SceneComponent />
                                 <DevicesFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />

@@ -288,8 +288,33 @@ export interface SceneDoc {
   layeredScreenshot?: SceneDocLayeredScreenshot;
   /** The video-window composition (one per scene): a macOS screen recording as a floating window over a backing stage. Deep validation lives in `sceneVideoWindow.ts`. */
   videoWindow?: SceneDocVideoWindow;
+  /** The before/after comparison block: side B's overrides plus the shared mask and divider track; side A is this doc itself. Deep normalisation lives in `sceneCompare.ts`. */
+  compare?: SceneDocCompare;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other track's keys. */
   animatedTrack?: "camera" | "layeredScreenshot";
+}
+
+/** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
+export interface SceneDocCompareSide {
+  media?: Record<string, DeviceMediaSpec>;
+  themeId?: string;
+  background?: ThemeBackground;
+  lighting?: LightingSpec;
+}
+
+/** One divider key: the mask value (0..1) at a scene-local time; between keys the value interpolates linearly (segment easing arrives with the lane). */
+export interface SceneDocCompareKey {
+  id: string;
+  atMs: number;
+  value: number;
+}
+
+/** The comparison block. `mask` is the divider shape (linear only for now: `angleDeg` is the divider line's angle, 90 = vertical; `softness` feathers the edge in uv units). `value` is the static divider position when no track keys exist (default 0.5). */
+export interface SceneDocCompare {
+  b?: SceneDocCompareSide;
+  mask?: { type: "linear"; angleDeg?: number; softness?: number };
+  value?: number;
+  track?: { keys: SceneDocCompareKey[] };
 }
 
 export function validLayeredScreenshotPose(raw: unknown): raw is LayeredScreenshotPose {
@@ -331,6 +356,88 @@ function validVideoWindow(raw: unknown): raw is SceneDocVideoWindow {
   const vw = raw as SceneDocVideoWindow | null;
   if (!vw || typeof vw !== "object") return false;
   return !!vw.media && typeof vw.media.src === "string" && vw.media.src.length > 0;
+}
+
+/** Field-level parse for the compare block (the degrade-not-throw rule): a non-object drops the block whole, a malformed sub-field drops alone so one typo can't kill the comparison. Deep normalisation (mask defaults, key sort, value sampling) lives in `sceneCompare.ts`. */
+function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    console.warn(`[sceneDoc] ${source}: compare isn't an object, dropped`);
+    return undefined;
+  }
+  const c = raw as Record<string, unknown>;
+  const out: SceneDocCompare = {};
+  if (typeof c.b === "object" && c.b !== null && !Array.isArray(c.b)) {
+    const b = c.b as Record<string, unknown>;
+    const side: SceneDocCompareSide = {};
+    if (typeof b.themeId === "string") side.themeId = b.themeId;
+    if (b.background !== undefined) {
+      const background = parseBackgroundSpec(b.background, `${source} compare.b`, { video: true });
+      if (background) side.background = background;
+    }
+    if (b.lighting !== undefined) {
+      const lighting = normalizeLighting(b.lighting, `${source} compare.b`);
+      if (lighting) side.lighting = lighting;
+    }
+    if (typeof b.media === "object" && b.media !== null && !Array.isArray(b.media)) {
+      const media: Record<string, DeviceMediaSpec> = {};
+      for (const [id, m] of Object.entries(b.media as Record<string, unknown>)) {
+        const spec = m as DeviceMediaSpec | null;
+        if (
+          spec &&
+          typeof spec === "object" &&
+          typeof spec.src === "string" &&
+          spec.src.length > 0 &&
+          (spec.kind === "video" || spec.kind === "image")
+        ) {
+          media[id] = spec;
+        } else {
+          console.warn(`[sceneDoc] ${source}: compare.b.media["${id}"] is malformed, dropped`);
+        }
+      }
+      if (Object.keys(media).length > 0) side.media = media;
+    }
+    if (Object.keys(side).length > 0) out.b = side;
+  }
+  if (typeof c.value === "number" && Number.isFinite(c.value)) {
+    out.value = Math.min(1, Math.max(0, c.value));
+  }
+  if (c.mask !== undefined) {
+    const mask = c.mask as { type?: unknown; angleDeg?: unknown; softness?: unknown } | null;
+    if (mask && typeof mask === "object" && mask.type === "linear") {
+      const m: NonNullable<SceneDocCompare["mask"]> = { type: "linear" };
+      if (typeof mask.angleDeg === "number" && Number.isFinite(mask.angleDeg)) {
+        m.angleDeg = mask.angleDeg;
+      }
+      if (
+        typeof mask.softness === "number" &&
+        Number.isFinite(mask.softness) &&
+        mask.softness >= 0
+      ) {
+        m.softness = mask.softness;
+      }
+      out.mask = m;
+    } else {
+      console.warn(`[sceneDoc] ${source}: compare.mask isn't a linear mask, dropped`);
+    }
+  }
+  if (c.track !== undefined) {
+    const track = c.track as { keys?: unknown } | null;
+    const rawKeys =
+      track && typeof track === "object" && Array.isArray(track.keys) ? track.keys : [];
+    const keys = rawKeys.filter((k): k is SceneDocCompareKey => {
+      const key = k as SceneDocCompareKey | null;
+      const ok =
+        !!key &&
+        typeof key === "object" &&
+        typeof key.id === "string" &&
+        Number.isFinite(key.atMs) &&
+        Number.isFinite(key.value);
+      if (!ok) console.warn(`[sceneDoc] ${source}: compare.track key is malformed, dropped`);
+      return ok;
+    });
+    if (keys.length > 0) out.track = { keys };
+  }
+  return out;
 }
 
 function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
@@ -498,6 +605,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     } else {
       console.warn(`[sceneDoc] ${source}: videoWindow is malformed, dropped`);
     }
+  }
+  if (doc.compare !== undefined) {
+    const compare = parseCompare(doc.compare, source);
+    if (compare) out.compare = compare;
   }
   if (doc.animatedTrack === "camera" || doc.animatedTrack === "layeredScreenshot") {
     out.animatedTrack = doc.animatedTrack;

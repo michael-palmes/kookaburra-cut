@@ -18,6 +18,7 @@ import { fsUrl } from "./media";
 import { ensureProjectTrusted } from "./projectTrust";
 import { parseRenderSettings, type RenderSettings } from "./renderSettings";
 import { ensureSampleAssets } from "./sampleAssets";
+import { deriveCompareBDoc } from "./sceneCompare";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
@@ -132,6 +133,10 @@ export interface LoadedProject {
   projectLighting?: LightingSpec;
   /** The project's display transform (manifest `render`); ACES at 1.0 when absent. */
   renderSettings: RenderSettings;
+  /** Side B ("after") of each comparison scene, index-parallel to `scenes`: the base doc with `compare.b`'s overrides applied (see `deriveCompareBDoc`); undefined for every scene without a compare block, in which case no side-B host mounts and the compare path never engages. */
+  compareBDocs: (SceneDoc | undefined)[];
+  /** Side B's RESOLVED theme per comparison scene (its `compare.b.themeId`, else the scene's own theme), index-parallel; undefined exactly where `compareBDocs` is. */
+  compareBThemes: (Theme | undefined)[];
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
@@ -563,6 +568,23 @@ export async function loadProject(
     sceneDocs.map((doc) => (doc?.themeId ? resolveTheme(doc.themeId, theme) : theme)),
   );
 
+  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path. Transitions adjacent to a comparison blend side A only (the v1 interop rule), called out once here rather than silently every frame.
+  const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
+  const compareBThemes = await Promise.all(
+    compareBDocs.map((bDoc, i) =>
+      bDoc ? (bDoc.themeId ? resolveTheme(bDoc.themeId, theme) : sceneThemes[i]) : undefined,
+    ),
+  );
+  for (let i = 0; i < compareBDocs.length; i++) {
+    if (!compareBDocs[i]) continue;
+    const hasTransition = slots[i]?.transitionIn || slots[i + 1]?.transitionIn;
+    if (hasTransition) {
+      console.warn(
+        `[project] ${id}: scene ${i + 1} is a comparison with an adjacent transition; the transition blends the Before side only (use hard cuts for the full comparison).`,
+      );
+    }
+  }
+
   // Per-scene overlay resolution: the sidecar's frame merges over the manifest's deck frame; a scene that resolves to `enabled:false` drops out so it renders full-bleed. The manifest is raw JSON.parse, so its frame parses here (sidecar frames already parsed through `parseSceneDoc`).
   const deckFrame =
     manifest.frame === undefined ? undefined : parseFrameSpec(manifest.frame, `${id}/project.json`);
@@ -673,5 +695,7 @@ export async function loadProject(
     sceneEffectDefaults,
     projectLighting,
     renderSettings,
+    compareBDocs,
+    compareBThemes,
   };
 }
