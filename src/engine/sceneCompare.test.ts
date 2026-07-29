@@ -37,6 +37,7 @@ const specWith = (parts: Partial<CompareSpec>): CompareSpec => ({
   center: [0.5, 0.5],
   value: 0.5,
   keys: [],
+  segments: [],
   chrome: {
     lineWidth: 0,
     lineColor: "#ffffff",
@@ -64,6 +65,7 @@ describe("compareSpecOf", () => {
     expect(spec?.center).toEqual([0.5, 0.5]);
     expect(spec?.value).toBe(0.5);
     expect(spec?.keys).toEqual([]);
+    expect(spec?.segments).toEqual([]);
     expect(spec?.chrome).toEqual({
       lineWidth: 0,
       lineColor: "#6f93a8",
@@ -82,16 +84,20 @@ describe("compareSpecOf", () => {
         value: 1.7,
         track: {
           keys: [
-            { id: "k2", atMs: 900, value: -0.5 },
-            { id: "k1", atMs: 100, value: 0.25 },
+            { id: "k2", tMs: 900, pose: { value: -0.5 } },
+            { id: "k1", tMs: 100, pose: { value: 0.25 } },
           ],
+          segments: [{ from: "k1", to: "k2", ease: "linear" }],
         },
       }),
     );
     expect(spec?.value).toBe(1);
     expect(spec?.keys).toEqual([
-      { atMs: 100, value: 0.25 },
-      { atMs: 900, value: 0 },
+      { tMs: 100, value: 0.25 },
+      { tMs: 900, value: 0 },
+    ]);
+    expect(spec?.segments).toEqual([
+      { fromTMs: 100, fromValue: 0.25, toTMs: 900, toValue: 0, ease: "linear" },
     ]);
   });
 
@@ -120,18 +126,31 @@ describe("compareSpecOf", () => {
 describe("compareValueAt", () => {
   const spec = specWith({
     keys: [
-      { atMs: 200, value: 0.2 },
-      { atMs: 1200, value: 0.7 },
+      { tMs: 200, value: 0.2 },
+      { tMs: 1200, value: 0.7 },
     ],
+    segments: [{ fromTMs: 200, fromValue: 0.2, toTMs: 1200, toValue: 0.7, ease: "linear" }],
   });
 
-  it("clamps before the first and after the last key", () => {
+  it("holds the boundary keys outside the segment span", () => {
     expect(compareValueAt(spec, 0)).toBe(0.2);
     expect(compareValueAt(spec, 5000)).toBe(0.7);
   });
 
-  it("interpolates linearly between keys", () => {
+  it("interpolates through the segment's ease", () => {
     expect(compareValueAt(spec, 700)).toBeCloseTo(0.45, 10);
+    const eased = specWith({
+      keys: spec.keys,
+      segments: [{ ...spec.segments[0], ease: "inOutQuad" }],
+    });
+    expect(compareValueAt(eased, 700)).toBeCloseTo(0.45, 10);
+    expect(compareValueAt(eased, 450)).toBeCloseTo(0.2 + 0.5 * 2 * 0.25 * 0.25, 10);
+  });
+
+  it("keys without a segment HOLD the latest key (no interpolation)", () => {
+    const holdy = specWith({ keys: spec.keys });
+    expect(compareValueAt(holdy, 700)).toBe(0.2);
+    expect(compareValueAt(holdy, 1300)).toBe(0.7);
   });
 
   it("keyless specs hold the static value", () => {

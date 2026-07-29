@@ -218,7 +218,7 @@ export async function resyncFollowMediaDuration(
   return { wrote: false, clampedDoc: null };
 }
 
-/** Shrink-fit both keyed tracks (camera and the layered-screenshot animation) to a new duration; null when nothing overhangs, so callers can skip the write. */
+/** Shrink-fit every keyed track (camera, the layered-screenshot animation and the compare divider) to a new duration; null when nothing overhangs, so callers can skip the write. */
 export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): SceneDoc | null {
   const cam = doc.camera
     ? clampTrackToDuration(doc.camera as KeyedTrack<unknown>, durationMs)
@@ -226,16 +226,23 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   const anim = doc.layeredScreenshot?.animation
     ? clampTrackToDuration(doc.layeredScreenshot.animation as KeyedTrack<unknown>, durationMs)
     : null;
+  const cmp = doc.compare?.track
+    ? clampTrackToDuration(doc.compare.track as KeyedTrack<unknown>, durationMs)
+    : null;
   const camChanged = cam !== null && cam !== (doc.camera as KeyedTrack<unknown>);
   const animChanged =
     anim !== null && anim !== (doc.layeredScreenshot?.animation as KeyedTrack<unknown>);
-  if (!camChanged && !animChanged) return null;
+  const cmpChanged = cmp !== null && cmp !== (doc.compare?.track as KeyedTrack<unknown>);
+  if (!camChanged && !animChanged && !cmpChanged) return null;
   const next = structuredClone(doc);
   if (camChanged) next.camera = structuredClone(cam) as SceneDoc["camera"];
   if (animChanged && next.layeredScreenshot) {
     next.layeredScreenshot.animation = structuredClone(anim) as NonNullable<
       SceneDoc["layeredScreenshot"]
     >["animation"];
+  }
+  if (cmpChanged && next.compare) {
+    next.compare.track = structuredClone(cmp) as NonNullable<SceneDoc["compare"]>["track"];
   }
   return next;
 }

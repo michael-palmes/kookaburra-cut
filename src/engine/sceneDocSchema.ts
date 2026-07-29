@@ -290,8 +290,8 @@ export interface SceneDoc {
   videoWindow?: SceneDocVideoWindow;
   /** The before/after comparison block: side B's overrides plus the shared mask and divider track; side A is this doc itself. Deep normalisation lives in `sceneCompare.ts`. */
   compare?: SceneDocCompare;
-  /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other track's keys. */
-  animatedTrack?: "camera" | "layeredScreenshot";
+  /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
+  animatedTrack?: "camera" | "layeredScreenshot" | "compare";
 }
 
 /** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
@@ -302,11 +302,19 @@ export interface SceneDocCompareSide {
   lighting?: LightingSpec;
 }
 
-/** One divider key: the mask value (0..1) at a scene-local time; between keys the value interpolates linearly (segment easing arrives with the lane). */
+/** One divider key on the shared KeyedTrack model: the mask value (0..1) at a scene-local time. Eased interpolation happens inside segments; outside them the latest key holds (the camera-track semantics). */
 export interface SceneDocCompareKey {
   id: string;
-  atMs: number;
-  value: number;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: { value: number };
+}
+
+export interface SceneDocCompareSegment {
+  from: string;
+  to: string;
+  /** An `engine/ease.ts` name (unknown names degrade at sample time). */
+  ease: string;
 }
 
 /** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. Colours are THEME TOKEN NAMES (background | text | accent | muted), resolved against the scene's theme at plan build. Absent sub-blocks are off. */
@@ -327,7 +335,7 @@ export interface SceneDocCompare {
     center?: [number, number];
   };
   value?: number;
-  track?: { keys: SceneDocCompareKey[] };
+  track?: { keys: SceneDocCompareKey[]; segments: SceneDocCompareSegment[] };
   chrome?: SceneDocCompareChrome;
 }
 
@@ -497,7 +505,7 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
     }
   }
   if (c.track !== undefined) {
-    const track = c.track as { keys?: unknown } | null;
+    const track = c.track as { keys?: unknown; segments?: unknown } | null;
     const rawKeys =
       track && typeof track === "object" && Array.isArray(track.keys) ? track.keys : [];
     const keys = rawKeys.filter((k): k is SceneDocCompareKey => {
@@ -506,12 +514,27 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         !!key &&
         typeof key === "object" &&
         typeof key.id === "string" &&
-        Number.isFinite(key.atMs) &&
-        Number.isFinite(key.value);
+        Number.isFinite(key.tMs) &&
+        !!key.pose &&
+        typeof key.pose === "object" &&
+        Number.isFinite(key.pose.value);
       if (!ok) console.warn(`[sceneDoc] ${source}: compare.track key is malformed, dropped`);
       return ok;
     });
-    if (keys.length > 0) out.track = { keys };
+    const rawSegments =
+      track && typeof track === "object" && Array.isArray(track.segments) ? track.segments : [];
+    const segments = rawSegments.filter((s): s is SceneDocCompareSegment => {
+      const seg = s as SceneDocCompareSegment | null;
+      const ok =
+        !!seg &&
+        typeof seg === "object" &&
+        typeof seg.from === "string" &&
+        typeof seg.to === "string" &&
+        typeof seg.ease === "string";
+      if (!ok) console.warn(`[sceneDoc] ${source}: compare.track segment is malformed, dropped`);
+      return ok;
+    });
+    if (keys.length > 0) out.track = { keys, segments };
   }
   return out;
 }
@@ -686,10 +709,16 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const compare = parseCompare(doc.compare, source);
     if (compare) out.compare = compare;
   }
-  if (doc.animatedTrack === "camera" || doc.animatedTrack === "layeredScreenshot") {
+  if (
+    doc.animatedTrack === "camera" ||
+    doc.animatedTrack === "layeredScreenshot" ||
+    doc.animatedTrack === "compare"
+  ) {
     out.animatedTrack = doc.animatedTrack;
   } else if (doc.animatedTrack !== undefined) {
-    console.warn(`[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot, dropped`);
+    console.warn(
+      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare, dropped`,
+    );
   }
   return out;
 }

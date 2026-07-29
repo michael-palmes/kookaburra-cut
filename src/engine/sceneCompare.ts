@@ -1,4 +1,6 @@
 import type { Theme } from "../theme/tokens";
+import { ease } from "./ease";
+import { trackLayout } from "./keyedTrack";
 import type { SceneDoc } from "./sceneDocSchema";
 import type { SceneRenderState } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
@@ -38,8 +40,16 @@ export interface CompareSpec {
   center: [number, number];
   /** Static divider position, used when `keys` is empty. */
   value: number;
-  /** Sorted (atMs ascending) divider keys; linear interpolation between them. */
-  keys: readonly { atMs: number; value: number }[];
+  /** Sorted (tMs ascending) divider keys; the latest key HOLDS outside segments (the camera semantics). */
+  keys: readonly { tMs: number; value: number }[];
+  /** Resolved segments (bad references dropped, sorted); eased interpolation inside each. */
+  segments: readonly {
+    fromTMs: number;
+    fromValue: number;
+    toTMs: number;
+    toValue: number;
+    ease: string;
+  }[];
   chrome: CompareChrome;
 }
 
@@ -64,9 +74,19 @@ function tokenHex(token: string | undefined, theme: Theme | undefined, fallback:
 export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): CompareSpec | null {
   const c = doc?.compare;
   if (!c) return null;
-  const keys = [...(c.track?.keys ?? [])]
-    .map((k) => ({ atMs: k.atMs, value: clamp01(k.value) }))
-    .sort((a, b) => a.atMs - b.atMs);
+  const layout = trackLayout<{ value: number }>({
+    keys: c.track?.keys ?? [],
+    segments: c.track?.segments ?? [],
+  });
+  const keys = layout.keys.map((k) => ({ tMs: k.tMs, value: clamp01(k.pose.value) }));
+  const byId = new Map(layout.keys.map((k) => [k.id, k]));
+  const segments = layout.segments.map((seg) => ({
+    fromTMs: seg.fromTMs,
+    fromValue: clamp01(byId.get(seg.fromId)?.pose.value ?? 0),
+    toTMs: seg.toTMs,
+    toValue: clamp01(byId.get(seg.toId)?.pose.value ?? 0),
+    ease: seg.ease,
+  }));
   const chromeRaw = c.chrome;
   const line = chromeRaw?.line;
   const grip = chromeRaw?.grip;
@@ -88,26 +108,27 @@ export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): Compare
     center: c.mask?.center ?? [0.5, 0.5],
     value: clamp01(c.value ?? 0.5),
     keys,
+    segments,
     chrome,
   };
 }
 
-/** Sample the divider at a scene-local time: linear interpolation between keys, clamped to the end keys; the static value with no keys. */
+/** Sample the divider at a scene-local time: eased interpolation inside a segment, hold the latest key outside (the sceneCamera semantics, byte for byte); the static value with no keys. */
 export function compareValueAt(spec: CompareSpec, localMs: number): number {
-  const keys = spec.keys;
-  if (keys.length === 0) return spec.value;
-  if (localMs <= keys[0].atMs) return keys[0].value;
-  const last = keys[keys.length - 1];
-  if (localMs >= last.atMs) return last.value;
-  for (let i = 1; i < keys.length; i++) {
-    if (localMs <= keys[i].atMs) {
-      const a = keys[i - 1];
-      const b = keys[i];
-      const t = b.atMs === a.atMs ? 1 : (localMs - a.atMs) / (b.atMs - a.atMs);
-      return a.value + (b.value - a.value) * t;
+  for (const seg of spec.segments) {
+    if (localMs >= seg.fromTMs && localMs < seg.toTMs) {
+      const p = (localMs - seg.fromTMs) / (seg.toTMs - seg.fromTMs);
+      return seg.fromValue + (seg.toValue - seg.fromValue) * ease(seg.ease, p);
     }
   }
-  return last.value;
+  const keys = spec.keys;
+  if (keys.length === 0) return spec.value;
+  let held = keys[0];
+  for (const key of keys) {
+    if (key.tMs <= localMs) held = key;
+    else break;
+  }
+  return held.value;
 }
 
 /** The mask's scalar field at a uv point, in the same normalised units the shader uses (linear: position along the sweep axis; circle: distance from centre over the far corner; radial: angle around the centre; blend has no field). Exported so the chips' fade shares the exact shader maths. */
