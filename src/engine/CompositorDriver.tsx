@@ -11,6 +11,7 @@ import {
   type CameraKeyframe,
 } from "./cameraTrack";
 import { useClockStore } from "./clock";
+import { useCompareEditStore } from "./compareEditStore";
 import { renderComposited } from "./compositor";
 import {
   collectEnvironmentSources,
@@ -155,6 +156,8 @@ export function CompositorDriver({
 
   // Redraw on camera-edit draft changes (a drag moves the camera without moving the clock).
   useEffect(() => useCameraEditStore.subscribe(() => invalidate()), [invalidate]);
+  // Redraw on divider-lane draft changes, same rule.
+  useEffect(() => useCompareEditStore.subscribe(() => invalidate()), [invalidate]);
 
   // Stale-pose healing: the shared camera persists across project switches and a trackless project never writes it, so after previewing a camera-tracked project it would keep the displaced pose; one base-pose write on load is identical floats in the pristine case, so gated projects stay byte-identical (the exporter mirrors this once per run). See docs/determinism.md.
   const camera = useThree((s) => s.camera);
@@ -186,8 +189,25 @@ export function CompositorDriver({
     // Scene render state, same rules: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
     const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
-    // The comparison plan, resolved at the same shared seam (mirrored in the export loop).
-    const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
+    // The comparison plan, resolved at the same shared seam (mirrored in the export loop); an in-flight divider drag replaces its scene's spec for this render, the camera-draft rule (imperative read, unreachable during export).
+    let frameSpecs = compareSpecs;
+    const compareDraft = useCompareEditStore.getState().draft;
+    if (
+      compareDraft &&
+      compareDraft.projectId === projectId &&
+      compareDraft.sceneIndex < frameSpecs.length
+    ) {
+      const baseDoc = sceneDocs?.[compareDraft.sceneIndex];
+      if (baseDoc?.compare) {
+        const merged = frameSpecs.slice();
+        merged[compareDraft.sceneIndex] = compareSpecOf(
+          { ...baseDoc, compare: { ...baseDoc.compare, track: compareDraft.track } },
+          sceneThemes?.[compareDraft.sceneIndex],
+        );
+        frameSpecs = merged;
+      }
+    }
+    const compareFrame = resolveCompareFrame(frameSpecs, sceneStates, sceneStatesB, resolved);
     renderComposited(
       s.gl,
       s.scene,
