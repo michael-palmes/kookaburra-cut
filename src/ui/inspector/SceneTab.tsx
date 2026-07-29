@@ -83,6 +83,10 @@ import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
+/** Sideways step between devices: a phone auto-fits 2.6 world units tall (~1.26 wide at scale 1), a laptop width-fits to 3.4, so these clear one footprint with margin. */
+const DEVICE_STEP_X = 1.4;
+const LAPTOP_STEP_X = 3.6;
+
 /** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
 const SCREEN_TITLES: Record<string, string> = {
   text: "Text",
@@ -95,6 +99,38 @@ const SCREEN_TITLES: Record<string, string> = {
   "style.background": "Background",
   "videoWindow.edit": "Video window",
 };
+
+/** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
+function DevicePillIcon({ model }: { model: string }) {
+  const laptop = isDeviceId(model) && DEVICE_CATALOG[model].lid !== undefined;
+  return laptop ? (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M5 13V6.5A1.5 1.5 0 016.5 5h7A1.5 1.5 0 0115 6.5V13" />
+      <path d="M3 15h14" />
+    </svg>
+  ) : (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <rect x="6.5" y="3" width="7" height="14" rx="1.8" />
+      <path d="M9 15.5h2" />
+    </svg>
+  );
+}
 
 /** Text-alignment glyphs: three lines pinned left, centre or right. */
 function AlignIcon({ id }: { id: SceneTextAlign }) {
@@ -1763,7 +1799,7 @@ export function SceneTab({
     const id = freshDeviceId();
     // Later devices step outward alternately so a new one never lands inside an existing device.
     const k = devices.length;
-    const x = k === 0 ? 0 : 0.75 * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
+    const x = k === 0 ? 0 : DEVICE_STEP_X * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
     void patchDoc((next) => {
       // The Rust scaffolder's device defaults, byte for byte (the first device lands centred).
       next.devices = [
@@ -1788,12 +1824,14 @@ export function SceneTab({
       if (!src) return;
       const copy = structuredClone(src);
       copy.id = id;
-      // Mirror across centre: flip x (a centred device steps aside) and the y rotation.
+      // Mirror across centre: flip x (a centred device steps one footprint aside) and the y rotation.
+      const laptop = isDeviceId(src.model) && DEVICE_CATALOG[src.model].lid !== undefined;
+      const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (src.placement?.scale ?? 1);
       const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
       const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
       copy.placement = {
         ...copy.placement,
-        position: [px === 0 ? 0.75 : -px, py, pz],
+        position: [px === 0 ? step : -px, py, pz],
         rotationDeg: [rx, -ry, rz],
       };
       next.devices = [...(next.devices ?? []), copy];
@@ -4487,6 +4525,7 @@ export function SceneTab({
             options={devices.map((d, i) => ({
               value: d.id,
               label: `${i + 1}`,
+              icon: <DevicePillIcon model={d.model} />,
               title:
                 DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId]
                   .name,
