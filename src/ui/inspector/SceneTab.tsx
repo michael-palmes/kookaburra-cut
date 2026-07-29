@@ -4496,7 +4496,6 @@ export function SceneTab({
       void patchDoc((next) => {
         if (!next.compare) return;
         next.compare.track = track;
-        next.animatedTrack = "compare";
       });
     };
     const lineTokens = ["accent", "text", "muted", "background"] as const;
@@ -4622,16 +4621,6 @@ export function SceneTab({
               />
             </div>
           )}
-          <ToggleRow
-            label="Animate divider"
-            description="Shows the divider lane in the timeline dock."
-            checked={doc.animatedTrack === "compare"}
-            onChange={(on) =>
-              void patchDoc((next) => {
-                next.animatedTrack = on ? "compare" : undefined;
-              })
-            }
-          />
           <DrillGroup label="Motion presets" hint="Writes keys you can hand-tune in the lane.">
             <div className="wizard-presets">
               {COMPARE_PRESETS.map((p) => (

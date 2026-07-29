@@ -1232,7 +1232,8 @@ export default function App() {
   );
   // Which keyed track animates the active scene decides the lane/pill/overlay family mounted.
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
-  const compareActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "compare";
+  // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
+  const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
   const compareLaneOpen = useCompareEditStore((s) => s.open);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
@@ -2067,33 +2068,39 @@ export default function App() {
             {/* The timeline dock: the animation lane self-collapses on cameraEditStore.open; the dock draws the lane-to-cell connector. */}
             <TimelineDock
               connectorActive={
-                compareActive ? compareLaneOpen : lsActive ? lsLaneOpen : cameraEditOpen
+                (comparePresent && compareLaneOpen) || (lsActive ? lsLaneOpen : cameraEditOpen)
               }
               activeIndex={camSceneIndex}
               lane={
                 project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-                  compareActive ? (
-                    <CompareAnimationLane
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      onDocChanged={handleDocChanged}
-                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    />
-                  ) : lsActive ? (
-                    <LayeredScreenshotAnimationLane
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      onDocChanged={handleDocChanged}
-                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    />
-                  ) : (
-                    <AnimationLane
-                      project={project}
-                      sceneIndex={camSceneIndex}
-                      onDocChanged={handleDocChanged}
-                      onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    />
-                  )
+                  <>
+                    {comparePresent && (
+                      <CompareAnimationLane
+                        project={project}
+                        sceneIndex={camSceneIndex}
+                        onDocChanged={handleDocChanged}
+                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                      />
+                    )}
+                    {lsActive ? (
+                      <LayeredScreenshotAnimationLane
+                        project={project}
+                        sceneIndex={camSceneIndex}
+                        onDocChanged={handleDocChanged}
+                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                        label={comparePresent ? "Stack" : undefined}
+                      />
+                    ) : (
+                      <AnimationLane
+                        project={project}
+                        sceneIndex={camSceneIndex}
+                        onDocChanged={handleDocChanged}
+                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                        label={comparePresent ? "Camera" : undefined}
+                        alwaysOpen={comparePresent}
+                      />
+                    )}
+                  </>
                 ) : null
               }
             >

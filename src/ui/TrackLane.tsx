@@ -76,6 +76,10 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   addTitle: string;
   /** Copy ahead of the write-error detail, e.g. "Save failed — this camera edit isn't on disk:". */
   writeErrorPrefix: string;
+  /** Small fixed-width lane label (shown when lanes stack, so each track states what it animates); absent keeps the single-lane look byte for byte. */
+  label?: string;
+  /** Extra root class for per-lane theming (`lane-compare` recolours diamonds and segments via --lane-accent). */
+  laneClassName?: string;
   /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) renders the popover exactly as it always did; the lane NEVER branches on track type to decide this. */
   segmentExtras?: SegmentExtras;
 }
@@ -111,6 +115,8 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   onSceneDuration,
   addTitle,
   writeErrorPrefix,
+  label,
+  laneClassName,
   segmentExtras,
 }: TrackLaneProps<P, T>) {
   const currentMs = useClockStore((s) => s.currentMs);
@@ -385,8 +391,12 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   }
 
   return (
-    <div className={`anim-lane${open ? " open" : ""}`} aria-hidden={!open}>
+    <div
+      className={`anim-lane${open ? " open" : ""}${laneClassName ? ` ${laneClassName}` : ""}`}
+      aria-hidden={!open}
+    >
       <div className="anim-lane-row">
+        {label && <span className="anim-lane-label">{label}</span>}
         <button
           type="button"
           className="btn primary btn-small"

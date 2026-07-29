@@ -3733,12 +3733,30 @@ body {
 
 /* Boundary-key trim diamonds (13px rotated squares); the one nearest the playhead
    grows + gains an outline — "the key you'd edit now". */
+/* Stacked-lane identity: the fixed-width label keeps stacked tracks aligned; --lane-accent recolours a lane's diamonds and segment fills without touching the single-lane look. */
+.anim-lane-label {
+  flex: 0 0 46px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: right;
+  color: var(--lane-accent, var(--text-tertiary));
+}
+.anim-lane.lane-compare {
+  --lane-accent: var(--success);
+}
+.anim-lane.lane-compare .anim-seg {
+  border-color: rgba(95, 184, 122, 0.48);
+  background: rgba(95, 184, 122, 0.12);
+}
+
 .anim-key {
   position: absolute;
   top: 50%;
   width: 13px;
   height: 13px;
-  background: var(--accent);
+  background: var(--lane-accent, var(--accent));
   border-radius: 2px;
   transform: translate(-50%, -50%) rotate(45deg);
   /* Move, distinct from both the bars' grab and the track's ew-resize, so hover says which of the three you're on. */

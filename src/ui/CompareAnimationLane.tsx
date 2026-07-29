@@ -1,11 +1,12 @@
 import { useCallback, useEffect } from "react";
+import { useCameraEditStore } from "../engine/cameraEditStore";
 import { type CompareTrackDoc, useCompareEditStore } from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useCompareTrackDoc } from "./compareTrackDoc";
 import { TrackLane } from "./TrackLane";
 
-/** The comparison divider's timeline lane: a thin wrapper binding the generic `TrackLane` to the compare edit store and doc funnel (the AnimationLane pattern). No armed tools (the divider is one channel, the diamonds are the gesture surface), so bare keys pass through; the lane opens for as long as a compare-animated scene mounts it. */
+/** The comparison divider's timeline lane: a thin wrapper binding the generic `TrackLane` to the compare edit store and doc funnel (the AnimationLane pattern). No armed tools (the divider is one channel, the diamonds are the gesture surface), so bare keys pass through; the lane mounts (and opens) for every comparison scene, stacked above the camera or stack lane with its own label and colour. */
 
 const getSelection = () => {
   const s = useCompareEditStore.getState();
@@ -14,8 +15,11 @@ const getSelection = () => {
 
 const onEscape = () => useCompareEditStore.getState().select(null, null);
 
-const select = (keyId: string | null, segment: number | null) =>
+const select = (keyId: string | null, segment: number | null) => {
   useCompareEditStore.getState().select(keyId, segment);
+  // Stacked lanes each bind window-level key handlers; only one selection may be live.
+  if (keyId !== null || segment !== null) useCameraEditStore.getState().select(null, null);
+};
 
 const onToolKey = () => false;
 
@@ -70,6 +74,8 @@ export function CompareAnimationLane({
       poseAt={(localT) => ({ value: appliedValueAt(localT) })}
       onSceneDuration={onDuration}
       addTitle="Add divider animation"
+      label="Divider"
+      laneClassName="lane-compare"
       writeErrorPrefix="Save failed — this divider edit isn’t on disk:"
     />
   );

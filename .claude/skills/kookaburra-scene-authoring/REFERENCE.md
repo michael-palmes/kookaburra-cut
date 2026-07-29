@@ -84,7 +84,8 @@ normally and simply shows no editing affordances.
   "frame": { /* the scene overlay (panel + cutout) — see "Scene overlays (the frame block)" */ },
   "compare": { /* the before/after comparison (side-B overrides, mask, divider track, chrome) — full schema and value semantics in docs/comparisons.md */ },
   "animatedTrack": "camera"                  // which keyed track animates this scene:
-                                             // "camera" (the absent default), "layeredScreenshot" or "compare"
+                                             // "camera" (the absent default) or "layeredScreenshot";
+                                             // comparison scenes always stack the divider lane, no flag needed
 }
 ```
 

@@ -54,8 +54,11 @@ Rules:
   masks; a mirrored story is reciprocal keys or the angle plus 180.
 - The track rides the shared KeyedTrack model: eased interpolation inside a
   segment, the latest key HOLDS outside (the camera semantics), the static
-  `value` with no keys. `animatedTrack: "compare"` shows the divider lane
-  in the timeline dock.
+  `value` with no keys. The divider lane shows in the timeline dock on
+  every comparison scene, STACKED above the camera (or stack) lane: each
+  lane is labelled, the divider's diamonds and segments carry their own
+  colour, and each has its own Add-animation button. `animatedTrack:
+  "compare"` is accepted but vestigial (the block's presence decides).
 - Sampling and derivation live in `engine/sceneCompare.ts`; the mask
   catalogue in `engine/compareCatalog.ts`; presets in
   `engine/comparePresets.ts`.
