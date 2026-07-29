@@ -568,22 +568,13 @@ export async function loadProject(
     sceneDocs.map((doc) => (doc?.themeId ? resolveTheme(doc.themeId, theme) : theme)),
   );
 
-  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path. Transitions adjacent to a comparison blend side A only (the v1 interop rule), called out once here rather than silently every frame.
+  // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path. Transitions adjacent to a comparison blend side A only (the v1 interop rule, surfaced in the transition picker).
   const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
   const compareBThemes = await Promise.all(
     compareBDocs.map((bDoc, i) =>
       bDoc ? (bDoc.themeId ? resolveTheme(bDoc.themeId, theme) : sceneThemes[i]) : undefined,
     ),
   );
-  for (let i = 0; i < compareBDocs.length; i++) {
-    if (!compareBDocs[i]) continue;
-    const hasTransition = slots[i]?.transitionIn || slots[i + 1]?.transitionIn;
-    if (hasTransition) {
-      console.warn(
-        `[project] ${id}: scene ${i + 1} is a comparison with an adjacent transition; the transition blends the Before side only (use hard cuts for the full comparison).`,
-      );
-    }
-  }
 
   // Per-scene overlay resolution: the sidecar's frame merges over the manifest's deck frame; a scene that resolves to `enabled:false` drops out so it renders full-bleed. The manifest is raw JSON.parse, so its frame parses here (sidecar frames already parsed through `parseSceneDoc`).
   const deckFrame =
