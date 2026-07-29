@@ -1,6 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useClockStore } from "../../engine/clock";
+import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
+import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useFormat } from "../../engine/format";
@@ -98,6 +100,7 @@ const SCREEN_TITLES: Record<string, string> = {
   "text.edit": "Edit text",
   "style.background": "Background",
   "videoWindow.edit": "Video window",
+  "compare.edit": "Comparison",
 };
 
 /** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
@@ -319,6 +322,22 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <rect x="4" y="3" width="8" height="14" rx="1.8" />
           <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "compare.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4" width="14" height="12" rx="2" />
+          <path d="M10 4v12" />
+          <path d="M6 10h2M12 10h2" opacity="0.7" />
         </svg>
       );
     case "device.duplicate":
@@ -1585,6 +1604,12 @@ export function SceneTab({
   >({ kind: "device" });
   // Which device the device rows act on; null (or a stale id) falls back to the first device.
   const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // The comparison drill's side pill and its full-height media screen's target device.
+  const [compareSide, setCompareSide] = useState<"a" | "b">("a");
+  const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
+  const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
+  // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
+  const compareDragBaseline = useRef<SceneDoc | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
@@ -1715,6 +1740,9 @@ export function SceneTab({
     setModal(null);
     setConfirmRemove(false);
     setPickedDeviceId(null);
+    setCompareSide("a");
+    setCompareMediaDeviceId(null);
+    setConfirmRemoveCompare(false);
     resetDrill();
     setRenaming(false);
     setBgTabOverride(null);
@@ -1754,7 +1782,9 @@ export function SceneTab({
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
   useEffect(() => {
     void themesRefreshKey; // re-list on ThemeMode close
-    if (drillIn === "style.theme") void listThemeChoices().then(setThemeChoices);
+    if (drillIn === "style.theme" || drillIn === "compare.edit" || drillIn === "compare.theme") {
+      void listThemeChoices().then(setThemeChoices);
+    }
   }, [drillIn, themesRefreshKey]);
 
   // The theme-card right-click menu; Apply here means the scene override.
@@ -1837,6 +1867,18 @@ export function SceneTab({
       next.devices = [...(next.devices ?? []), copy];
     });
     setPickedDeviceId(id);
+  };
+  const addCompare = () => {
+    void patchDoc((next) => {
+      // A visible starting point: line + chips on; the halves stay identical until the after side changes something.
+      next.compare = {
+        b: {},
+        mask: { type: "linear", angleDeg: 90 },
+        value: 0.5,
+        chrome: { line: { width: 4, colour: "accent" }, chips: true },
+      };
+    });
+    openDrill("compare.edit");
   };
   const addOverlay = () =>
     void patchDoc((next) => {
@@ -4278,6 +4320,502 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "compare.media" && doc?.compare && compareMediaDeviceId) {
+    const targetId = compareMediaDeviceId;
+    const current = doc.compare.b?.media?.[targetId];
+    const pickAfterMedia = (rel: string, meta: MediaMeta | null) => {
+      const isVideo = meta?.kind !== "image";
+      void patchDoc(
+        (next) => {
+          if (!next.compare) return;
+          if (!next.compare.b) next.compare.b = {};
+          if (!next.compare.b.media) next.compare.b.media = {};
+          next.compare.b.media[targetId] = { src: rel, kind: isVideo ? "video" : "image" };
+        },
+        { resync: true },
+      );
+      closeDrill();
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Comparison" onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">After screen</div>
+        <div className="inspector-drill-body">
+          {current && (
+            <ActionRow
+              icon={<SceneRowIcon id="device.media" />}
+              label="Match the before side"
+              chevron={false}
+              onClick={() => {
+                void patchDoc(
+                  (next) => {
+                    if (next.compare?.b?.media) delete next.compare.b.media[targetId];
+                  },
+                  { resync: true },
+                );
+                closeDrill();
+              }}
+            />
+          )}
+          <div className="wizard-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kindToggle
+              globalToggle
+              refreshKey={mediaRefreshKey + mediaRefresh}
+              selectedRel={current?.src ?? null}
+              onPick={pickAfterMedia}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: pickAfterMedia,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "compare.theme" && doc?.compare) {
+    const applyAfterTheme = (id: string) =>
+      void patchDoc((next) => {
+        if (!next.compare) return;
+        if (!next.compare.b) next.compare.b = {};
+        next.compare.b.themeId = id || undefined;
+      }).then(onTimingChanged);
+    const bThemeId = doc.compare.b?.themeId ?? "";
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Comparison" onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">After theme</div>
+        <div className="inspector-drill-body">
+          <div className="font-slot-row">
+            <button
+              type="button"
+              className={`chip${bThemeId === "" ? " selected" : ""}`}
+              onClick={() => applyAfterTheme("")}
+            >
+              Match the before side
+            </button>
+          </div>
+          <ThemeGrid choices={themeChoices} value={bThemeId} onChange={applyAfterTheme} />
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "compare.edit" && doc?.compare) {
+    const cmp = doc.compare;
+    const patchCompare = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) =>
+      void patchDoc((next) => {
+        if (next.compare) mutate(next.compare);
+      });
+    const cmpLive = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) => {
+      if (!compareDragBaseline.current && doc) compareDragBaseline.current = structuredClone(doc);
+      void patchDoc(
+        (next) => {
+          if (next.compare) mutate(next.compare);
+        },
+        { history: false },
+      );
+    };
+    const cmpCommit = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) => {
+      const baseline = compareDragBaseline.current;
+      compareDragBaseline.current = null;
+      if (baseline)
+        void commitFromBaseline(baseline, (next) => {
+          if (next.compare) mutate(next.compare);
+        });
+      else patchCompare(mutate);
+    };
+    const maskType = cmp.mask?.type ?? "linear";
+    const maskEntry = COMPARE_MASK_CATALOG.find((e) => e.id === maskType);
+    const hasKeys = (cmp.track?.keys.length ?? 0) > 0;
+    const applyPreset = (preset: (typeof COMPARE_PRESETS)[number]) => {
+      const track = preset.build(scene.durationMs);
+      void patchDoc((next) => {
+        if (!next.compare) return;
+        next.compare.track = track;
+        next.animatedTrack = "compare";
+      });
+    };
+    const lineTokens = ["accent", "text", "muted", "background"] as const;
+    const bThemeName = cmp.b?.themeId
+      ? (themeChoices.find((c) => c.id === cmp.b?.themeId)?.name ?? cmp.b.themeId)
+      : "Same as before";
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Comparison</div>
+        <div className="inspector-drill-body">
+          <SegmentedRow
+            options={COMPARE_MASK_CATALOG.map((e) => ({
+              value: e.id,
+              label: e.label,
+              title: e.hint,
+            }))}
+            value={maskType}
+            onChange={(id) =>
+              patchCompare((c) => {
+                c.mask = { ...(c.mask ?? {}), type: id };
+              })
+            }
+          />
+          {maskEntry?.needsAngle && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Angle</span>
+              <NumberField
+                label="Divider angle"
+                value={cmp.mask?.angleDeg ?? 90}
+                decimals={0}
+                min={0}
+                max={360}
+                step={1}
+                onCommit={(v) =>
+                  patchCompare((c) => {
+                    c.mask = { ...(c.mask ?? { type: "linear" }), angleDeg: v };
+                  })
+                }
+              />
+            </div>
+          )}
+          {maskEntry?.needsCenter && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Centre</span>
+              <NumberField
+                label="Centre X"
+                value={cmp.mask?.center?.[0] ?? 0.5}
+                decimals={2}
+                min={0}
+                max={1}
+                step={0.01}
+                onCommit={(v) =>
+                  patchCompare((c) => {
+                    c.mask = {
+                      ...(c.mask ?? { type: maskType }),
+                      center: [v, c.mask?.center?.[1] ?? 0.5],
+                    };
+                  })
+                }
+              />
+              <NumberField
+                label="Centre Y"
+                value={cmp.mask?.center?.[1] ?? 0.5}
+                decimals={2}
+                min={0}
+                max={1}
+                step={0.01}
+                onCommit={(v) =>
+                  patchCompare((c) => {
+                    c.mask = {
+                      ...(c.mask ?? { type: maskType }),
+                      center: [c.mask?.center?.[0] ?? 0.5, v],
+                    };
+                  })
+                }
+              />
+            </div>
+          )}
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Edge softness</span>
+            <DebouncedRange
+              value={cmp.mask?.softness ?? 0}
+              min={0}
+              max={0.2}
+              step={0.005}
+              label="Edge softness"
+              onInput={(v) =>
+                cmpLive((c) => {
+                  c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
+                })
+              }
+              onCommit={(v) =>
+                cmpCommit((c) => {
+                  c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
+                })
+              }
+            />
+          </div>
+          {hasKeys ? (
+            <p className="inspector-stub-note">
+              Keys drive the divider; edit them in the timeline lane below the preview.
+            </p>
+          ) : (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Divider</span>
+              <DebouncedRange
+                value={cmp.value ?? 0.5}
+                min={0}
+                max={1}
+                step={0.01}
+                label="Divider position"
+                onInput={(v) =>
+                  cmpLive((c) => {
+                    c.value = v;
+                  })
+                }
+                onCommit={(v) =>
+                  cmpCommit((c) => {
+                    c.value = v;
+                  })
+                }
+              />
+            </div>
+          )}
+          <ToggleRow
+            label="Animate divider"
+            description="Shows the divider lane in the timeline dock."
+            checked={doc.animatedTrack === "compare"}
+            onChange={(on) =>
+              void patchDoc((next) => {
+                next.animatedTrack = on ? "compare" : undefined;
+              })
+            }
+          />
+          <DrillGroup label="Motion presets" hint="Writes keys you can hand-tune in the lane.">
+            <div className="wizard-presets">
+              {COMPARE_PRESETS.map((p) => (
+                <button
+                  type="button"
+                  key={p.id}
+                  className="chip"
+                  title={p.hint}
+                  onClick={() => applyPreset(p)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </DrillGroup>
+          <DrillGroup label="Divider line">
+            <ToggleRow
+              label="Show line"
+              checked={!!cmp.chrome?.line}
+              onChange={(on) =>
+                patchCompare((c) => {
+                  c.chrome = {
+                    ...c.chrome,
+                    line: on ? { width: 4, colour: "accent" } : undefined,
+                  };
+                })
+              }
+            />
+            {cmp.chrome?.line && (
+              <>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Width</span>
+                  <DebouncedRange
+                    value={cmp.chrome.line.width ?? 4}
+                    min={1}
+                    max={12}
+                    step={0.5}
+                    label="Line width"
+                    onInput={(v) =>
+                      cmpLive((c) => {
+                        if (c.chrome?.line) c.chrome.line.width = v;
+                      })
+                    }
+                    onCommit={(v) =>
+                      cmpCommit((c) => {
+                        if (c.chrome?.line) c.chrome.line.width = v;
+                      })
+                    }
+                  />
+                </div>
+                <SegmentedRow
+                  className="subtabs-compact"
+                  options={lineTokens.map((t) => ({ value: t, label: t }))}
+                  value={(cmp.chrome.line.colour ?? "accent") as (typeof lineTokens)[number]}
+                  onChange={(t) =>
+                    patchCompare((c) => {
+                      if (c.chrome?.line) c.chrome.line.colour = t;
+                    })
+                  }
+                />
+              </>
+            )}
+            {maskEntry?.hasGrip && (
+              <ToggleRow
+                label="Grip handle"
+                description="The slider grip riding the divider."
+                checked={!!cmp.chrome?.grip}
+                onChange={(on) =>
+                  patchCompare((c) => {
+                    c.chrome = { ...c.chrome, grip: on ? true : undefined };
+                  })
+                }
+              />
+            )}
+          </DrillGroup>
+          <DrillGroup label="Labels">
+            <ToggleRow
+              label="Before / after chips"
+              description="Label chips pinned to each half (text keys beforeLabel and afterLabel)."
+              checked={cmp.chrome?.chips === true}
+              onChange={(on) =>
+                patchCompare((c) => {
+                  c.chrome = { ...c.chrome, chips: on ? true : undefined };
+                })
+              }
+            />
+          </DrillGroup>
+          <DrillGroup label="After tint">
+            <SegmentedRow
+              className="subtabs-compact"
+              options={[
+                { value: "none", label: "None" },
+                { value: "accent", label: "accent" },
+                { value: "text", label: "text" },
+                { value: "muted", label: "muted" },
+              ]}
+              value={(cmp.chrome?.tint?.b ?? "none") as "none" | "accent" | "text" | "muted"}
+              onChange={(t) =>
+                patchCompare((c) => {
+                  c.chrome = {
+                    ...c.chrome,
+                    tint:
+                      t === "none"
+                        ? undefined
+                        : { ...c.chrome?.tint, b: t, amount: c.chrome?.tint?.amount ?? 0.08 },
+                  };
+                })
+              }
+            />
+            {cmp.chrome?.tint?.b && (
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Amount</span>
+                <DebouncedRange
+                  value={cmp.chrome.tint.amount ?? 0.08}
+                  min={0}
+                  max={0.3}
+                  step={0.01}
+                  label="Tint amount"
+                  onInput={(v) =>
+                    cmpLive((c) => {
+                      if (c.chrome?.tint) c.chrome.tint.amount = v;
+                    })
+                  }
+                  onCommit={(v) =>
+                    cmpCommit((c) => {
+                      if (c.chrome?.tint) c.chrome.tint.amount = v;
+                    })
+                  }
+                />
+              </div>
+            )}
+          </DrillGroup>
+          <ToggleFieldset
+            control={
+              <SegmentedRow
+                options={[
+                  { value: "a" as const, label: "Before" },
+                  { value: "b" as const, label: "After" },
+                ]}
+                value={compareSide}
+                onChange={setCompareSide}
+              />
+            }
+          >
+            {compareSide === "a" ? (
+              <>
+                <p className="inspector-stub-note">
+                  The before side is this scene itself; these rows edit it in place.
+                </p>
+                {devices.map((d, i) => (
+                  <ActionRow
+                    key={d.id}
+                    icon={<SceneRowIcon id="device.media" />}
+                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
+                    value={middleTruncate(d.media?.src.split("/").pop() ?? "None")}
+                    chevron
+                    onClick={() => {
+                      setMediaTarget({ kind: "device", deviceId: d.id });
+                      setModal("media");
+                    }}
+                  />
+                ))}
+                <ActionRow
+                  icon={<SceneRowIcon id="style.theme" />}
+                  label="Theme"
+                  value={sceneTheme?.name}
+                  chevron
+                  onClick={() => {
+                    setThemeDraft(doc.themeId ?? "");
+                    openDrill("style.theme");
+                  }}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="style.background" />}
+                  label="Background"
+                  chevron
+                  onClick={() => {
+                    setBgTabOverride(null);
+                    openDrill("style.background");
+                  }}
+                />
+                <ActionRow
+                  icon={<SceneRowIcon id="lighting" />}
+                  label="Lighting"
+                  chevron
+                  onClick={() => openDrill("lighting")}
+                />
+              </>
+            ) : (
+              <>
+                {devices.map((d, i) => (
+                  <ActionRow
+                    key={d.id}
+                    icon={<SceneRowIcon id="device.media" />}
+                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
+                    value={middleTruncate(
+                      cmp.b?.media?.[d.id]?.src.split("/").pop() ?? "Same as before",
+                    )}
+                    chevron
+                    onClick={() => {
+                      setCompareMediaDeviceId(d.id);
+                      openDrill("compare.media");
+                    }}
+                  />
+                ))}
+                <ActionRow
+                  icon={<SceneRowIcon id="style.theme" />}
+                  label="Theme"
+                  value={bThemeName}
+                  chevron
+                  onClick={() => openDrill("compare.theme")}
+                />
+                <p className="inspector-stub-note">
+                  The after side can also override background and lighting in the scene document.
+                </p>
+              </>
+            )}
+          </ToggleFieldset>
+          <div className="inspector-section-divider" />
+          <ActionRow
+            icon={<SceneRowIcon id="device.remove" />}
+            label={confirmRemoveCompare ? "Really remove?" : "Remove comparison"}
+            chevron={false}
+            danger
+            onClick={() => {
+              if (!confirmRemoveCompare) {
+                setConfirmRemoveCompare(true);
+                return;
+              }
+              setConfirmRemoveCompare(false);
+              void patchDoc((next) => {
+                next.compare = undefined;
+                if (next.animatedTrack === "compare") next.animatedTrack = undefined;
+              });
+              closeDrill();
+            }}
+          />
+        </div>
+        {mediaModal}
+      </div>
+    );
+  }
   if (drillIn === "device.change" && device) {
     return (
       <DeviceDrillIn
@@ -4625,6 +5163,20 @@ export function SceneTab({
       label: "Add video window",
       icon: "videoWindow.edit",
       onClick: () => openDrill("videoWindow.edit"),
+    });
+  if (doc?.compare)
+    contentEntries.push({
+      key: "compare",
+      label: "Comparison",
+      icon: "compare.edit",
+      onClick: () => openDrill("compare.edit"),
+    });
+  else if (doc)
+    addEntries.push({
+      key: "compare.add",
+      label: "Add comparison",
+      icon: "compare.edit",
+      onClick: addCompare,
     });
   // The video pair closes the content section, always adjacent: Change video first (the
   // device's picker wins when a scene has both surfaces), its edit right under.
