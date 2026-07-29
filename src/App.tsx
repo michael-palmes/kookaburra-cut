@@ -90,6 +90,7 @@ import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
+import { deriveCompareBDoc } from "./engine/sceneCompare";
 import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
   resyncFollowMediaDuration,
@@ -507,10 +508,22 @@ export default function App() {
         // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
         const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
         const resolvedFrame = merged?.enabled === false ? undefined : merged;
+        // Comparison side B derives from the doc, so the in-memory patch must re-derive it too (adding a comparison mounts the side-B host without a reload). A changed after-theme id resolves properly at the chained reload; until it lands the previous resolution (else the scene's own theme) stands in.
+        const bDoc = deriveCompareBDoc(doc) ?? undefined;
+        const prevBDoc = prev.compareBDocs[sceneIndex];
+        const bTheme = bDoc
+          ? bDoc.themeId
+            ? bDoc.themeId === prevBDoc?.themeId
+              ? prev.compareBThemes[sceneIndex]
+              : (prev.compareBThemes[sceneIndex] ?? prev.sceneThemes[sceneIndex])
+            : prev.sceneThemes[sceneIndex]
+          : undefined;
         return {
           ...prev,
           sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)),
           sceneFrames: prev.sceneFrames.map((f, i) => (i === sceneIndex ? resolvedFrame : f)),
+          compareBDocs: prev.compareBDocs.map((d, i) => (i === sceneIndex ? bDoc : d)),
+          compareBThemes: prev.compareBThemes.map((t, i) => (i === sceneIndex ? bTheme : t)),
         };
       });
       const id = loadedProjectRef.current?.id;
