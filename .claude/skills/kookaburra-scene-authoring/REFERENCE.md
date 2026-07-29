@@ -94,7 +94,8 @@ Rules for Claude:
   primitives, custom motion). Both hot-reload.
 - `duration.mode: "follow-media"` means the app keeps the scene's `project.json`
   `durationMs` synced to the source video's length. The source is the `sourceDeviceId`
-  device's video (falling back to the first device), else the sidecar's video
+  device's video; with no pin (or a stale one) every device video qualifies and the
+  LONGEST wins (the comparison kind's rule), else the sidecar's video
   `background` (the video scene kind: no devices, no `sourceDeviceId`). If YOU swap
   that video's `src`, update `durationMs` in `project.json` too (ffprobe the new file;
   seconds → ms).
@@ -773,7 +774,10 @@ factors — exact replacements, not tints. **Light rigs add up:** the first `Dev
 brings the lit set; pass `lit={false}` to every additional one. Scaffolded scenes get their
 device array from the sidecar via `useSceneDevices()` — prefer editing the sidecar over
 hard-coding `Device` props (skill rule 7). Unknown model/colour ids degrade with a console
-error, never a crash. Gate project: `ws:device-video-spike`.
+error, never a crash. Gate project: `ws:device-video-spike`. The `comparison` scene kind
+stages a labelled before/after PAIR (text keys `beforeLabel`/`afterLabel`, devices `d1`
+at x -0.85 yaw 12 and `d2` at x 0.85 yaw -12, scale 0.85, media per side; the template
+compresses x and scale in portrait, and follow-media tracks the longer clip).
 
 ```ts
 <VideoClip
