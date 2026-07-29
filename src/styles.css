@@ -3666,6 +3666,9 @@ body {
   align-items: center;
   gap: 14px;
   padding: 10px 18px 11px;
+  /* Lane chrome (labels, buttons, readouts) is furniture, never copy. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* The 40px recessed well with a faint 13px-pitch vertical grid. */
@@ -3735,7 +3738,7 @@ body {
    grows + gains an outline — "the key you'd edit now". */
 /* Stacked-lane identity: the fixed-width label keeps stacked tracks aligned; --lane-accent recolours a lane's diamonds and segment fills without touching the single-lane look. */
 .anim-lane-label {
-  flex: 0 0 46px;
+  flex: 0 0 74px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -3858,6 +3861,9 @@ body {
   box-sizing: border-box;
   width: 56px;
   padding: 0 4px;
+  /* The one editable island in a select-none row. */
+  user-select: text;
+  -webkit-user-select: text;
   font: inherit;
   text-align: left;
   color: var(--text-primary);
@@ -3873,6 +3879,10 @@ body {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   white-space: nowrap;
+}
+/* One readout for the group (the lower lane's); hidden not removed, so the stacked tracks stay width-aligned. */
+.anim-lane-stack .anim-lane:first-child .anim-readout {
+  visibility: hidden;
 }
 
 /* Sidecar-write failure: the pose on screen isn't on disk (v12 · M2 B1). */

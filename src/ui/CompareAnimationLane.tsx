@@ -73,8 +73,8 @@ export function CompareAnimationLane({
       commit={(t) => commit(t)}
       poseAt={(localT) => ({ value: appliedValueAt(localT) })}
       onSceneDuration={onDuration}
-      addTitle="Add divider animation"
-      label="Divider"
+      addTitle="Add comparison animation"
+      label="Comparison"
       laneClassName="lane-compare"
       writeErrorPrefix="Save failed — this divider edit isn’t on disk:"
     />
