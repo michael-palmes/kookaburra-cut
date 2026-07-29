@@ -2,7 +2,6 @@ import { parseFontString } from "../theme/fontRef";
 import { parseBackdropSpec, parseBackgroundSpec, parseTextAnimationSpec } from "../theme/schema";
 import type {
   FontRef,
-  GradientSpec,
   LightingSpec,
   TextAnimationSpec,
   ThemeBackdrop,
@@ -197,7 +196,7 @@ export interface SceneDocLayeredScreenshot {
   };
 }
 
-/** Corner radius for the video window: a named preset, or a custom short-edge fraction (clamped 0..0.5 at resolve). `macos` emulates a real macOS window's rounding. */
+/** Corner radius for the video window: a named preset, or a custom short-edge fraction (clamped 0..0.5 at resolve). `macos` emulates a real macOS window's rounding, and under `recording: true` it resolves to the capture's true pixel radius. */
 export type VideoWindowRadius = "sharp" | "subtle" | "macos" | "rounded" | { custom: number };
 
 /** The window's analytic drop shadow onto the backing stage. `blur` and `offset` are fractions of the window's short edge (offset x right, y up); `opacity` is 0..1. */
@@ -215,12 +214,6 @@ export interface VideoWindowBorder {
   opacity: number;
 }
 
-/** The flat backing "stage" the window sits in front of: a full-bleed wallpaper of a solid colour, a gradient, or a project image. */
-export type VideoWindowStage =
-  | { type: "color"; color: string }
-  | { type: "gradient"; spec: GradientSpec }
-  | { type: "image"; src: string; fit?: "cover" | "contain" };
-
 export type VideoWindowMotionPreset = "none" | "float" | "tilt-reveal" | "push-in" | "drift";
 
 /** Canned gentle motion for the window itself (pure functions of scene-local time); the per-scene camera track composes on top. */
@@ -234,17 +227,20 @@ export interface VideoWindowMotion {
   durationMs?: number;
 }
 
-/** A macOS screen recording presented as a floating window (rounded corners + hairline edge) with an analytic drop shadow, over a bundled full-bleed backing stage; one per scene, sidecar-only (references a project asset, like video fills). Deep validation lives in `sceneVideoWindow.ts`. */
+/** A macOS screen recording presented as a floating window (rounded corners + hairline edge) with an analytic drop shadow, floating over whatever the scene stages behind it; one per scene, sidecar-only (references a project asset, like video fills). Deep validation lives in `sceneVideoWindow.ts`. */
 export interface SceneDocVideoWindow {
   /** Project-relative video, e.g. `"assets/screencast.mp4"`; `aspect` (width/height, recorded at pick time) sizes the window before the clip's intrinsics arrive. */
   media: { src: string; startMs?: number; loop?: boolean; aspect?: number };
-  stage: VideoWindowStage;
   radius: VideoWindowRadius;
+  /** Raw macOS window recording: crop the capture margins (baked shadow and background) and, under the `macos` radius preset, round at the capture's true pixel radius. Auto-detected at pick time from the poster's black margins. */
+  recording?: boolean;
   border?: VideoWindowBorder;
   shadow?: VideoWindowShadow;
   motion?: VideoWindowMotion;
   /** Window size as a fraction of the frame's shorter axis (default 0.72, clamped 0.1..1). */
   scale?: number;
+  /** Window placement as fractions of the frame (x right, y up, clamped -1..1); [0, 0] is centred, the motion preset rides on top. */
+  offset?: [number, number];
 }
 
 export interface SceneDoc {

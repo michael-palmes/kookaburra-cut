@@ -490,9 +490,9 @@ pub struct ScaffoldOptions {
     /// Title-icon scenes: the sidecar `headerIcon` (emoji or asset path).
     #[serde(default)]
     pub header_icon: Option<String>,
-    /// Video-window scenes: the backing stage colour (the wizard resolves the theme background; Rust can't).
+    /// Video-window scenes: the picked clip looked like a raw macOS window recording (the wizard's poster detection; Rust can't see pixels).
     #[serde(default)]
-    pub stage_color: Option<String>,
+    pub recording: Option<bool>,
     /// Insertion index in `project.json`'s scenes array (0 = start; omitted/out-of-range = append).
     pub position: Option<usize>,
 }
@@ -676,12 +676,29 @@ pub async fn scaffold_scene(
             }
             doc["videoWindow"] = json!({
                 "media": media,
-                "stage": {
-                    "type": "color",
-                    "color": options.stage_color.as_deref().unwrap_or("#1b2330"),
-                },
                 "radius": "macos",
+                "border": { "enabled": false, "color": "#ffffff", "width": 0.0035, "opacity": 0.12 },
             });
+            if options.recording == Some(true) {
+                doc["videoWindow"]["recording"] = json!(true);
+            }
+            // Text sits above the window: one line steps the window down, two also shrink it.
+            let title_line = options
+                .title
+                .as_deref()
+                .is_some_and(|t| !t.trim().is_empty());
+            let subtitle_line = options
+                .subtitle
+                .as_deref()
+                .is_some_and(|t| !t.trim().is_empty());
+            if title_line && subtitle_line {
+                doc["videoWindow"]["scale"] = json!(0.65);
+                doc["videoWindow"]["offset"] = json!([0.0, -0.08]);
+            } else if title_line || subtitle_line {
+                doc["videoWindow"]["offset"] = json!([0.0, -0.05]);
+            }
+            // The window floats over the scene's own background; staged scenery would clip its shadow.
+            doc["backdrop"] = json!({ "type": "none" });
         }
     }
     if options.kind == "layeredscreenshot" {

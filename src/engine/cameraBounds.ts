@@ -15,9 +15,6 @@ import { viewBasis } from "./cameraProject";
 import type { CameraPose } from "./cameraTrack";
 import type { SceneDoc } from "./sceneDocSchema";
 
-/** The video window's backing stage is oversized by this factor (`toolkit/media/VideoWindow.tsx`), which is what buys it a limited orbit before the edge shows. */
-const VIDEO_WINDOW_OVERSCAN = 2;
-
 export interface BoundsVerdict {
   ok: boolean;
   /** One short sentence naming what would come into frame; absent when ok. */
@@ -135,7 +132,7 @@ export function stagedBackdrop(
   return backdrop && backdrop.type !== "none" ? backdrop : undefined;
 }
 
-/** Check one applied pose against whatever the scene stages. Rules, in order: a scene laid out in depth bands (nothing to check, it sizes itself), a video window's oversized stage plane, a cyclorama floor, then a vertical backdrop plane. Nothing staged is always ok. */
+/** Check one applied pose against whatever the scene stages. Rules, in order: a scene laid out in depth bands (nothing to check, it sizes itself), a cyclorama floor, then a vertical backdrop plane. Nothing staged is always ok; a video window floats over the scene's own staging, so it follows the same rules. */
 export function checkCameraBounds(
   pose: CameraPose,
   aspect: number,
@@ -146,19 +143,6 @@ export function checkCameraBounds(
   // A DepthStage scene sizes every band from the camera's own travel envelope, so its keys pass
   // by construction; warning about them would be noise.
   if (banded) return OK;
-  if (doc?.videoWindow) {
-    // The stage plane sits at the content plane, oversized by the overscan factor; the base frame at the base distance is the unit it is oversized against.
-    const baseHalf = frustumHalf({ ...pose, fov: 45 }, aspect, 5);
-    return checkPlane(
-      pose,
-      aspect,
-      0,
-      baseHalf.w * VIDEO_WINDOW_OVERSCAN,
-      -baseHalf.h * VIDEO_WINDOW_OVERSCAN,
-      baseHalf.h * VIDEO_WINDOW_OVERSCAN,
-      "video window's backing stage",
-    );
-  }
   const backdrop = stagedBackdrop(doc, themeBackdrop);
   if (!backdrop) return OK;
   if (backdrop.type === "floor") {

@@ -64,23 +64,24 @@ describe("checkCameraBounds", () => {
     expect(checkCameraBounds(tilted, ASPECT, doc).ok).toBe(false);
   });
 
-  it("a video window is checked against its oversized stage, not the backdrop", () => {
+  it("a video window follows the scene's own staging rules, not special ones", () => {
     const doc: SceneDoc = {
       version: 1,
-      videoWindow: {
-        media: { src: "assets/a.mp4" },
-        stage: { type: "color", color: "#000" },
-        radius: "macos",
-      },
+      videoWindow: { media: { src: "assets/a.mp4" }, radius: "macos" },
     };
-    expect(checkCameraBounds(base, ASPECT, doc).ok).toBe(true);
-    // Trucking far enough sideways brings the oversized plane's edge in.
+    // Nothing staged: always ok, even from far away.
     const far = {
       ...base,
       position: [7, 0, 5] as [number, number, number],
       lookAt: [7, 0, 0] as [number, number, number],
     };
-    expect(checkCameraBounds(far, ASPECT, doc).ok).toBe(false);
+    expect(checkCameraBounds(base, ASPECT, doc).ok).toBe(true);
+    expect(checkCameraBounds(far, ASPECT, doc).ok).toBe(true);
+    // A staged backdrop behind the window is checked exactly like any other scene's.
+    const staged: SceneDoc = { ...doc, backdrop: { type: "gradient", gradient: "dusk" } };
+    expect(checkCameraBounds(base, ASPECT, staged).ok).toBe(true);
+    const tilted = { ...base, lookAt: [0, 14, -6] as [number, number, number] };
+    expect(checkCameraBounds(tilted, ASPECT, staged).ok).toBe(false);
   });
 
   it("the scene's own backdrop beats the theme's, and none cancels it", () => {

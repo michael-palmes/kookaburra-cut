@@ -80,6 +80,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
 /** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
@@ -1452,13 +1453,19 @@ function BgTypeIcon({ id }: { id: string }) {
   }
 }
 
-/** Applies a picked recording to the doc's video window and defaults the scene length to follow it (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so the window keeps its size before frames arrive. */
-function applyVideoWindowMedia(next: SceneDoc, src: string, meta: MediaMeta | null) {
+/** Applies a picked recording to the doc's video window and defaults the scene length to follow it (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so the window keeps its size before frames arrive, and `recording` (when detection ran) sets the window-recording crop to match the new clip. */
+function applyVideoWindowMedia(
+  next: SceneDoc,
+  src: string,
+  meta: MediaMeta | null,
+  recording?: boolean,
+) {
   if (!next.videoWindow) return;
   const media = { ...next.videoWindow.media, src };
   if (meta && meta.width > 0 && meta.height > 0) media.aspect = meta.width / meta.height;
   else delete media.aspect;
   next.videoWindow.media = media;
+  if (recording !== undefined) next.videoWindow.recording = recording;
   if (next.duration?.mode !== "manual") {
     next.duration = { mode: "follow-media", source: "videoWindow" };
   }
@@ -2398,24 +2405,30 @@ export function SceneTab({
   }
   if (drillIn === "videoWindow.media" && doc) {
     const vw = doc.videoWindow;
+    // Detection runs on the cached poster before the patch, so the recording crop lands in the same undoable entry as the pick.
     const createFrom = (src: string, meta: MediaMeta | null) =>
-      void patchDoc(
-        (next) => {
-          next.videoWindow = {
-            media: { src },
-            stage: { type: "color", color: sceneTheme?.colors.background ?? "#1b2330" },
-            radius: "macos",
-          };
-          applyVideoWindowMedia(next, src, meta);
-          // A staged backdrop would sit in front of the window: clear it in the same undoable entry.
-          if (stagedBackdrop !== null && stagedBackdrop !== "none")
-            next.backdrop = { type: "none" };
-        },
-        { resync: true },
+      void detectWindowRecording(meta).then((recording) =>
+        patchDoc(
+          (next) => {
+            next.videoWindow = {
+              media: { src },
+              radius: "macos",
+              border: { enabled: false, color: "#ffffff", width: 0.0035, opacity: 0.12 },
+            };
+            applyVideoWindowMedia(next, src, meta, recording);
+            // Staged scenery sits in front of the shadow plane and clips it: stand staging down in the same undoable entry.
+            if (stagedBackdrop !== null && stagedBackdrop !== "none")
+              next.backdrop = { type: "none" };
+          },
+          { resync: true },
+        ),
       );
     const pickVideoWindowMedia = (rel: string, meta: MediaMeta | null) => {
       if (meta && meta.kind !== "video") return;
-      if (vw) void patchDoc((next) => applyVideoWindowMedia(next, rel, meta), { resync: true });
+      if (vw)
+        void detectWindowRecording(meta).then((recording) =>
+          patchDoc((next) => applyVideoWindowMedia(next, rel, meta, recording), { resync: true }),
+        );
       else createFrom(rel, meta);
     };
     return (
@@ -2452,123 +2465,6 @@ export function SceneTab({
       </div>
     );
   }
-  if (drillIn === "videoWindow.stage" && doc?.videoWindow) {
-    const vw = doc.videoWindow;
-    const patchVW = (mutate: (v: SceneDocVideoWindow) => void) =>
-      void patchDoc((next) => {
-        if (next.videoWindow) mutate(next.videoWindow);
-      });
-    return (
-      <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          <span>Backing stage</span>
-        </div>
-        <div className="inspector-drill-body">
-          <div className="bg-type-grid" role="tablist" aria-label="Stage fill type">
-            {(["color", "gradient", "image"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="tab"
-                aria-selected={vw.stage.type === t}
-                className={`bg-type-tile${vw.stage.type === t ? " selected" : ""}`}
-                onClick={() =>
-                  patchVW((v) => {
-                    if (t === "color" && v.stage.type !== "color")
-                      v.stage = {
-                        type: "color",
-                        color: sceneTheme?.colors.background ?? "#1b2330",
-                      };
-                    else if (t === "gradient" && v.stage.type !== "gradient")
-                      v.stage = {
-                        type: "gradient",
-                        spec: {
-                          type: "linear",
-                          angleDeg: 20,
-                          stops: [
-                            ["#2b1055", 0],
-                            ["#7597de", 1],
-                          ],
-                        },
-                      };
-                    else if (t === "image" && v.stage.type !== "image")
-                      v.stage = { type: "image", src: "" };
-                  })
-                }
-              >
-                <BgTypeIcon id={t} />
-                {t === "color" ? "Colour" : t === "gradient" ? "Gradient" : "Image"}
-              </button>
-            ))}
-          </div>
-          {vw.stage.type === "color" && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label">Colour</span>
-              <ColourPicker
-                value={vw.stage.color}
-                label="Stage colour"
-                onCommit={(hex) =>
-                  patchVW((v) => {
-                    if (v.stage.type === "color") v.stage = { type: "color", color: hex };
-                  })
-                }
-              />
-            </div>
-          )}
-          {vw.stage.type === "gradient" && (
-            <GradientPickerModal
-              embedded
-              current={{ type: "gradient", spec: vw.stage.spec }}
-              theme={sceneTheme}
-              onCancel={() => {}}
-              onApply={(value) => {
-                if (value.type !== "gradient") return;
-                // A theme gradient resolves to its spec so the stage stays self-contained (scene-doc only).
-                const spec =
-                  value.spec ??
-                  (value.gradient ? sceneTheme?.gradients?.[value.gradient] : undefined);
-                if (!spec) return;
-                patchVW((v) => {
-                  v.stage = { type: "gradient", spec };
-                });
-              }}
-            />
-          )}
-          {vw.stage.type === "image" && (
-            <div className="inspector-media-host">
-              <MediaBrowser
-                slug={slug}
-                projectPath={workspaceProjectPath(slug) ?? ""}
-                kinds={["image"]}
-                globalToggle
-                refreshKey={mediaRefreshKey + mediaRefresh}
-                selectedRel={vw.stage.type === "image" ? vw.stage.src : null}
-                onPick={(rel, meta) => {
-                  if (meta && meta.kind !== "image") return;
-                  patchVW((v) => {
-                    v.stage = { type: "image", src: rel };
-                  });
-                }}
-                cardMenu={mediaCardMenu({
-                  slug,
-                  primaryLabel: "Select",
-                  onPrimary: (rel, meta) => {
-                    if (meta && meta.kind !== "image") return;
-                    patchVW((v) => {
-                      v.stage = { type: "image", src: rel };
-                    });
-                  },
-                  onChanged: () => setMediaRefresh((n) => n + 1),
-                  onError: setError,
-                })}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
   if (drillIn === "videoWindow.edit" && doc) {
     const vw = doc.videoWindow;
     const patchVW = (mutate: (v: SceneDocVideoWindow) => void, opts?: { resync?: boolean }) =>
@@ -2595,19 +2491,21 @@ export function SceneTab({
       else patchVW(mutate);
     };
     const createFrom = (src: string, meta: MediaMeta | null) =>
-      void patchDoc(
-        (next) => {
-          next.videoWindow = {
-            media: { src },
-            stage: { type: "color", color: sceneTheme?.colors.background ?? "#1b2330" },
-            radius: "macos",
-          };
-          applyVideoWindowMedia(next, src, meta);
-          // A staged backdrop would sit in front of the window: clear it in the same undoable entry.
-          if (stagedBackdrop !== null && stagedBackdrop !== "none")
-            next.backdrop = { type: "none" };
-        },
-        { resync: true },
+      void detectWindowRecording(meta).then((recording) =>
+        patchDoc(
+          (next) => {
+            next.videoWindow = {
+              media: { src },
+              radius: "macos",
+              border: { enabled: false, color: "#ffffff", width: 0.0035, opacity: 0.12 },
+            };
+            applyVideoWindowMedia(next, src, meta, recording);
+            // Staged scenery sits in front of the shadow plane and clips it: stand staging down in the same undoable entry.
+            if (stagedBackdrop !== null && stagedBackdrop !== "none")
+              next.backdrop = { type: "none" };
+          },
+          { resync: true },
+        ),
       );
     const RADII: { id: "sharp" | "subtle" | "macos" | "rounded"; label: string; title: string }[] =
       [
@@ -2688,14 +2586,18 @@ export function SceneTab({
                 chevron
                 onClick={() => onOpenEditVideo(sceneIndex, vw.media.src, "videoWindow")}
               />
-              <ActionRow
-                icon={<SceneRowIcon id="style.background" />}
-                label="Backing stage"
-                value={{ color: "Colour", gradient: "Gradient", image: "Image" }[vw.stage.type]}
-                chevron
-                onClick={() => openDrill("videoWindow.stage")}
+              <ToggleRow
+                label="Window recording"
+                description="Crops the margins and shadow baked into a macOS window recording."
+                checked={vw.recording === true || (vw.radius as unknown) === "recording"}
+                onChange={(on) =>
+                  patchVW((v) => {
+                    v.recording = on;
+                    // An early branch-only build stored the mode on the radius; normalise it away on first touch.
+                    if ((v.radius as unknown) === "recording") v.radius = "macos";
+                  })
+                }
               />
-
               <DrillGroup label="Corners">
                 <SegmentedRow
                   className="subtabs-compact"
@@ -2867,22 +2769,7 @@ export function SceneTab({
                 </div>
               </DrillGroup>
 
-              <DrillGroup label="Motion">
-                <SegmentedRow
-                  className="subtabs-compact"
-                  options={MOTIONS.map((m) => ({
-                    value: m.id,
-                    label: m.label,
-                    icon: <VwMotionIcon id={m.id} />,
-                    title: m.title,
-                  }))}
-                  value={motionPreset}
-                  onChange={(id) =>
-                    patchVW((v) => {
-                      v.motion = { preset: id };
-                    })
-                  }
-                />
+              <DrillGroup label="Placement">
                 <div className="popover-row">
                   <span className="popover-inline slider-row-label">Window size</span>
                   <DebouncedRange
@@ -2903,6 +2790,64 @@ export function SceneTab({
                     }
                   />
                 </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Left/right (X)</span>
+                  <DebouncedRange
+                    value={vw.offset?.[0] ?? 0}
+                    min={-0.5}
+                    max={0.5}
+                    step={0.01}
+                    label="Left/right (X)"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.offset = [val, v.offset?.[1] ?? 0];
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.offset = [val, v.offset?.[1] ?? 0];
+                      })
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Up/down (Y)</span>
+                  <DebouncedRange
+                    value={vw.offset?.[1] ?? 0}
+                    min={-0.5}
+                    max={0.5}
+                    step={0.01}
+                    label="Up/down (Y)"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.offset = [v.offset?.[0] ?? 0, val];
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.offset = [v.offset?.[0] ?? 0, val];
+                      })
+                    }
+                  />
+                </div>
+              </DrillGroup>
+
+              <DrillGroup label="Motion">
+                <SegmentedRow
+                  className="subtabs-compact"
+                  options={MOTIONS.map((m) => ({
+                    value: m.id,
+                    label: m.label,
+                    icon: <VwMotionIcon id={m.id} />,
+                    title: m.title,
+                  }))}
+                  value={motionPreset}
+                  onChange={(id) =>
+                    patchVW((v) => {
+                      v.motion = { preset: id };
+                    })
+                  }
+                />
               </DrillGroup>
 
               <div className="inspector-section-divider" />

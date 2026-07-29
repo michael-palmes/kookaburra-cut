@@ -113,7 +113,7 @@ apply. The export cannot see any of it by construction.
 
 Dots turn amber, and the drill-in shows a line, when a key's frame would run off
 whatever the scene stages: the cyclorama's edges for a floor backdrop, the plane
-for a vertical one, the oversized backing stage for a video window. It is
+for a vertical one. It is
 ADVISORY, always: it never blocks an edit, never clamps a pose, and never stops
 an export. A scene that stages nothing has nothing to warn about, and a scene
 laid out in depth bands sizes itself, so it passes by construction.

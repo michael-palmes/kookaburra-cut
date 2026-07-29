@@ -541,11 +541,11 @@ camera stops being full-bleed once one travels. Both come from one summary:
   the camera crosses goes edge-on and would otherwise ask for an infinite
   rect). A rig can therefore only ever ask for more; a rig-less scene resolves
   the constant unchanged, which is what keeps every existing project
-  byte-identical. `VideoWindow`'s `STAGE_OVERSCAN` is the one existing layer
-  that reads it: its backing stage is a real world-space plane, so travel can
-  bring its edge into frame. The fixed background does NOT read it and needs
-  nothing, because its quad is rewritten from the live camera every draw and so
-  cannot show an edge at any pose.
+  byte-identical. No layer currently reads it (`VideoWindow`'s backing stage
+  did, until the stage was removed in favour of the scene's own background).
+  The fixed background does NOT read it and needs nothing, because its quad is
+  rewritten from the live camera every draw and so cannot show an edge at any
+  pose.
 - **DepthStage band depths are pinned.** `foreground` 1.8, `content` 0,
   `midground` −2.4, `backdrop` −5.5 (`toolkit/stage/DepthStage.tsx`), chosen to
   read as parallax while staying inside the cyclorama's back wall at z −6. Each
@@ -596,34 +596,42 @@ stack pose, animates that scene. The invariants:
 ## Video window
 
 A scene's sidecar may declare a `videoWindow` block: a macOS screen recording as a
-floating rounded window with an analytic drop shadow, over a full-bleed backing
-stage (colour / gradient / image). The invariants:
+floating rounded window with an analytic drop shadow, floating over whatever the
+scene stages behind it (theme backdrop, fixed background, or nothing). The
+invariants:
 
 - **The null path is the old path, exactly.** The host-side `VideoWindowFallback`
   renders nothing when the sidecar has no block (and stands down entirely when the
   scene's TSX consumes it via `useSceneVideoWindow`), so every existing project
   mounts zero new nodes and renders byte-identically (`ws:launch-2026` stays EQUAL).
-- **Genuine world-space layers, not an overlay.** The backing stage, shadow and
-  window are meshes at distinct depths inside one group; the per-scene camera track
-  moves through them with real parallax. The stage plane is oversized
-  (`STAGE_OVERSCAN`) so it stays full-bleed within a limited orbit; past that the
-  stage edge can enter frame (the documented ceiling).
-- **Everything samples pure.** Validation, radius resolution and motion sampling
-  (`engine/sceneVideoWindow.ts`) are pure functions with no clock or three.js;
-  the window's motion presets are `f(localMs)` like `DeviceMotionSpec`.
+- **Genuine world-space layers, not an overlay.** The shadow and window are meshes
+  at distinct depths inside one group; the per-scene camera track moves through
+  them with real parallax. The scene's own background shows behind them (the
+  original full-bleed backing stage was removed 2026-07-29, a deliberate visual
+  change re-baselining `ws:video-window-spike`).
+- **Everything samples pure.** Validation, radius resolution, the recording crop
+  and motion sampling (`engine/sceneVideoWindow.ts`) are pure functions with no
+  clock or three.js; the window's motion presets are `f(localMs)` like
+  `DeviceMotionSpec`, and the `offset` placement is a static frame-fraction
+  translation composed with them.
 - **Media rides the existing pipeline.** The window binds the pre-extracted CFR
   clip frames via `useClipTexture` and publishes the standard readiness flag, so
   the export preamble's `awaitVideoFramesReady` barrier gates capture; intrinsics
   land behind the extract barrier before frame 0, so window layout is settled at
-  capture. No new decode/preload path.
-- **Radius, rim and shadow are analytic.** A rounded-box SDF alpha mask + hairline
-  stroke (shared with `LayeredScreenshot`, `applyCardMask`) and a blurred round-box
-  shadow quad (`SHADOW_VERT`/`SHADOW_FRAG`): fixed-function per-pixel math on fixed
-  geometry, the class MSAA 4× already covers; no shadow map. The stage is an unlit
-  exact-colour material (`useExactMaterial`) / deterministic `gradientTexture`
-  raster / cover-cropped image. New tuned constants (radius fractions, shadow
-  defaults, `STAGE_GAP`/`SHADOW_BEHIND`/`STAGE_OVERSCAN`, default `scale`) add a
-  baseline rather than rebasing existing ones.
+  capture (the `recording` crop resolves from those intrinsics, so it is settled
+  too). No new decode/preload path.
+- **Radius, rim, crop and shadow are analytic.** A rounded-box SDF alpha mask +
+  hairline stroke (shared with `LayeredScreenshot`, `applyCardMask`) and a blurred
+  round-box shadow quad (`SHADOW_VERT`/`SHADOW_FRAG`): fixed-function per-pixel
+  math on fixed geometry, the class MSAA 4× already covers; no shadow map. The
+  `recording` corners mode crops the capture margins as a UV affine in the same
+  program (`applyWindowMask`, key `kookaburra-vw-card-v1`); its identity transform
+  (scale 1, offset 0) is IEEE-exact, so non-recording windows sample identically to
+  the old chunk. Its constants (`RECORDING_INSETS` 112/76/112/148,
+  `RECORDING_RADIUS_PX` 52) were measured off a Retina 2x capture (hard edges,
+  radius fitted to ±0.7px on both top corners; 26pt at 2x). Tuned constants (radius
+  fractions, shadow defaults, `SHADOW_BEHIND`, default `scale`) add a baseline
+  rather than rebasing existing ones.
 
 ## Themes & per-scene render state
 
@@ -1160,9 +1168,43 @@ rolling-gate project (`showcase-tour`):
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `d67eb1d4…` | — | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
+
+> **2026-07-29 (scene3d draw order):** transparent scene3d look geometry (the
+> grid lines especially) spans huge bounds, so three's per-object distance sort
+> could flip it in front of the video window or cards at oblique angles (the
+> lines drew THROUGH the window). `Scene3dBackdrop` now stamps every look
+> renderable with `SCENE3D_RENDER_ORDER` (-50: after the fixed layer's -100,
+> before all content at 0), pinning backgrounds behind content at any angle.
+> Scenes without a scene3d background are byte-identical by construction
+> (`ws:video-window-spike` EQUAL `6dfe68a6…`, `pnpm gate` EQUAL `355f9429…`);
+> scene3d scenes can move pixels wherever the old sort was flipping, the fix
+> itself. `ws:bg3d-spike` verified identical ×2 at `8f6fc517…` with frames
+> eyeballed; note the background-rethink worktree's interim `632ee44d…` record
+> is superseded when that branch rebases onto this.
+
+> **2026-07-29 (video window: stage removal, placement, recording crop):**
+> the backing stage was removed outright (Michael's call: the scene's own
+> background/backdrop shows through instead; legacy `stage` blocks are silently
+> inert), the window gained a frame-fraction `offset` placement, and the new
+> `recording: true` flag crops a raw macOS window capture's margins
+> (`RECORDING_INSETS` 112/76/112/148 + a 2px edge trim so bilinear sampling and
+> the baked corner AA never bleed in) and, under the `macos` radius preset,
+> masks at the true 26pt-at-2x radius (`RECORDING_RADIUS_PX` 52); other presets
+> and custom fractions stay as authored. Constants measured off a real Tahoe
+> capture (hard edges; radius fitted ±0.7px on both top corners). The crop is a
+> UV affine in a VideoWindow-only program (`kookaburra-vw-card-v1`) whose
+> identity transform is IEEE-exact, and the LS shaders are untouched: `pnpm
+> gate` EQUAL (`355f9429…`). The flag is auto-detected at pick time from the
+> cached poster's black margins (editor-only, decides a doc value, never runs
+> in the render path). The stage removal is a deliberate visual change to
+> video-window scenes only: `ws:video-window-spike` (plus a new recording-mode
+> scene) re-recorded `d67eb1d4…` → `6dfe68a6…` Verify ×2 EQUAL after
+> corner-crop eyeballs via `--action screenshot`; the same hash re-verified
+> EQUAL after the flag moved from an interim `radius: "recording"` value to
+> the boolean (the value still degrades), proving the rework pixel-null.
 
 > **2026-07-26 (camera rigging, the full batch):** free-flight camera rigs
 > (`cameraMode` + `cameraRig`, the canonical sampler, centripetal smoothing,

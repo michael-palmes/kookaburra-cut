@@ -1259,6 +1259,7 @@ pub fn run() {
             claude_update::dismiss_claude_update,
             media::import_media,
             media::media_meta,
+            media::read_media_thumb,
             global_screenshots::list_global_screenshots,
             global_screenshots::import_global_screenshots,
             global_screenshots::global_screenshot_meta,

@@ -703,6 +703,36 @@ pub(crate) async fn ensure_media_cache(
     Ok(hydrate(cached, &cache, rel, &sha))
 }
 
+/// Reads a cached media thumbnail's bytes for the webview to inspect pixel data (the video window's recording detection): the asset-protocol URL taints a canvas, a same-origin blob does not. Confined to the media cache exactly like `read_clip_frame` is to the clip cache.
+#[tauri::command]
+pub fn read_media_thumb(app: AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
+    let cache_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cache")
+        .join("media");
+    let requested = PathBuf::from(&path);
+    let has_traversal = requested
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir));
+    if has_traversal || !requested.starts_with(&cache_root) {
+        return Err(format!("refusing to read outside the media cache: {path}"));
+    }
+    // Canonicalise both sides so a symlink planted inside the cache can't resolve outside it (the read_clip_frame rule).
+    let canon_requested = requested
+        .canonicalize()
+        .map_err(|e| format!("read_media_thumb: {e}"))?;
+    let canon_root = cache_root
+        .canonicalize()
+        .map_err(|e| format!("read_media_thumb: {e}"))?;
+    if !canon_requested.starts_with(&canon_root) {
+        return Err(format!("refusing to read outside the media cache: {path}"));
+    }
+    let bytes = std::fs::read(&canon_requested).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Images keep alpha in a PNG poster (the picker draws a checkerboard behind them); videos stay JPG.
 fn poster_name(kind: &str) -> &'static str {
     if kind == "image" {

@@ -205,11 +205,7 @@ describe("normalizeSceneRig", () => {
   it("resolves the two singleton bindables", () => {
     const doc: SceneDoc = {
       version: 1,
-      videoWindow: {
-        media: { src: "assets/a.mp4" },
-        stage: { type: "color", color: "#000" },
-        radius: "macos",
-      },
+      videoWindow: { media: { src: "assets/a.mp4" }, radius: "macos" },
       layeredScreenshot: {
         layers: [],
         pose: { spread: 0.5, azimuthDeg: 0, elevationDeg: 0, zoom: 1, pan: [0.5, -0.25] },

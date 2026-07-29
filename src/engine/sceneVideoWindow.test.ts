@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { SceneDocVideoWindow } from "./sceneDocSchema";
 import {
   normalizeVideoWindow,
+  RECORDING_INSETS,
+  RECORDING_RADIUS_PX,
+  recordingCrop,
   resolveVideoWindowRadius,
   sampleVideoWindowMotion,
 } from "./sceneVideoWindow";
@@ -10,7 +13,6 @@ const DEG2RAD = Math.PI / 180;
 
 const minimal = (over: Partial<SceneDocVideoWindow> = {}): SceneDocVideoWindow => ({
   media: { src: "assets/screencast.mp4" },
-  stage: { type: "color", color: "#101418" },
   radius: "macos",
   ...over,
 });
@@ -72,25 +74,35 @@ describe("normalizeVideoWindow — degrade + defaults", () => {
     expect(normalizeVideoWindow(minimal({ scale: 0.5 }), "s")?.scale).toBe(0.5);
   });
 
-  it("defaults a malformed stage to a flat colour", () => {
+  it("defaults the placement offset to centred and clamps it", () => {
+    expect(normalizeVideoWindow(minimal(), "s")?.offset).toEqual([0, 0]);
+    expect(normalizeVideoWindow(minimal({ offset: [0.25, -0.1] }), "s")?.offset).toEqual([
+      0.25, -0.1,
+    ]);
+    expect(normalizeVideoWindow(minimal({ offset: [4, -4] }), "s")?.offset).toEqual([1, -1]);
     // biome-ignore lint/suspicious/noExplicitAny: exercising the degrade path
-    const n = normalizeVideoWindow(minimal({ stage: { type: "gradient" } as any }), "s");
-    expect(n?.stage).toEqual({ type: "color", color: "#111111" });
+    expect(normalizeVideoWindow(minimal({ offset: [Number.NaN, 0] as any }), "s")?.offset).toEqual([
+      0, 0,
+    ]);
   });
 
-  it("keeps a valid gradient and image stage", () => {
-    const grad = normalizeVideoWindow(
-      minimal({
-        stage: { type: "gradient", spec: { type: "linear", angleDeg: 0, stops: [["#000", 0]] } },
-      }),
-      "s",
-    );
-    expect(grad?.stage.type).toBe("gradient");
-    const img = normalizeVideoWindow(
-      minimal({ stage: { type: "image", src: "assets/wall.jpg", fit: "contain" } }),
-      "s",
-    );
-    expect(img?.stage).toEqual({ type: "image", src: "assets/wall.jpg", fit: "contain" });
+  it("carries the recording flag and whether the radius tracks the capture", () => {
+    expect(normalizeVideoWindow(minimal(), "s")?.recording).toBe(false);
+    const n = normalizeVideoWindow(minimal({ recording: true }), "s");
+    expect(n?.recording).toBe(true);
+    expect(n?.radiusTracksRecording).toBe(true);
+    const custom = normalizeVideoWindow(minimal({ recording: true, radius: { custom: 0.1 } }), "s");
+    expect(custom?.recording).toBe(true);
+    expect(custom?.radiusTracksRecording).toBe(false);
+    expect(custom?.radiusFraction).toBeCloseTo(0.1);
+  });
+
+  it('degrades the early radius:"recording" value to the boolean + macOS look', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the degrade path
+    const n = normalizeVideoWindow(minimal({ radius: "recording" as any }), "s");
+    expect(n?.recording).toBe(true);
+    expect(n?.radiusTracksRecording).toBe(true);
+    expect(n?.radiusFraction).toBeCloseTo(0.035);
   });
 
   it("drops an invalid shadow offset back to the default", () => {
@@ -121,6 +133,32 @@ describe("normalizeVideoWindow — degrade + defaults", () => {
       "s",
     );
     expect(n?.border).toEqual({ enabled: false, color: "#ff0000", width: 0.01, opacity: 0.8 });
+  });
+});
+
+describe("recordingCrop: the raw window recording's margins", () => {
+  it("crops the measured capture margins (plus the edge trim) off a 2x recording", () => {
+    // The measured example: an 1800x1122 capture holding a 1576x898 window, trimmed 2px a side.
+    const crop = recordingCrop(1800, 1122);
+    expect(crop).toEqual({
+      x: RECORDING_INSETS.left + 2,
+      y: RECORDING_INSETS.top + 2,
+      width: 1572,
+      height: 894,
+      radiusFraction: RECORDING_RADIUS_PX / 894,
+    });
+  });
+
+  it("is null when the clip cannot carry the margins", () => {
+    expect(recordingCrop(200, 200)).toBeNull();
+    expect(recordingCrop(1800, 220)).toBeNull();
+  });
+
+  it("takes the radius fraction off the cropped short edge", () => {
+    const wide = recordingCrop(4000, 1122);
+    expect(wide?.radiusFraction).toBeCloseTo(RECORDING_RADIUS_PX / 894);
+    const tall = recordingCrop(1000, 4000);
+    expect(tall?.radiusFraction).toBeCloseTo(RECORDING_RADIUS_PX / (1000 - 228));
   });
 });
 

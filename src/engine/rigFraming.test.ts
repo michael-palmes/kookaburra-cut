@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type ContentBounds, frameContentDistance, frameContentPose } from "./rigFraming";
+import {
+  type ContentBounds,
+  frameContentDistance,
+  frameContentPose,
+  stagedContentBounds,
+} from "./rigFraming";
 import type { SceneDocRigPose } from "./sceneDocSchema";
 
 const box = (w: number, h: number, d = 0): ContentBounds => ({
@@ -42,6 +47,27 @@ describe("frameContentDistance", () => {
 
   it("has no answer for an empty box", () => {
     expect(frameContentDistance(box(0, 0), 45, 16 / 9)).toBeNull();
+  });
+});
+
+describe("stagedContentBounds", () => {
+  const frame = { width: 10, height: 5 };
+
+  it("follows a video window's placement offset, resolved from frame fractions", () => {
+    const centred = stagedContentBounds({ videoWindow: {} }, frame);
+    const moved = stagedContentBounds({ videoWindow: { offset: [0.25, -0.2] } }, frame);
+    expect((moved.min[0] + moved.max[0]) / 2 - (centred.min[0] + centred.max[0]) / 2).toBeCloseTo(
+      2.5,
+    );
+    expect((moved.min[1] + moved.max[1]) / 2 - (centred.min[1] + centred.max[1]) / 2).toBeCloseTo(
+      -1,
+    );
+  });
+
+  it("treats a malformed offset as centred", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the degrade path
+    const bad = stagedContentBounds({ videoWindow: { offset: [Number.NaN, 0] as any } }, frame);
+    expect(bad).toEqual(stagedContentBounds({ videoWindow: {} }, frame));
   });
 });
 
