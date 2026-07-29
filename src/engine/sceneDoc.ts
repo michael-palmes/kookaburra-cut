@@ -173,7 +173,25 @@ interface MediaMetaLike {
   durationMs: number;
 }
 
-/** Re-syncs one follow-media scene's `project.json` duration from its source video's probed length (no-op for manual mode, image, or missing media); the source is the sidecar's device video when it has one, else its video background (the video scene kind). `wrote` says `project.json` was rewritten so UI callers know a timing refresh is needed (sidecar-only edits patch in memory and never reload); when a shrink leaves keyframe tracks overhanging and `sceneFile` is given, the sidecar is rewritten with clamped tracks and handed back as `clampedDoc` for the caller's in-memory patch. */
+/** The video sources a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). An explicit `source: "videoWindow"` or a matching `sourceDeviceId` pins one; unpinned (or stale-pinned) docs return every device video, so a multi-device comparison follows whichever recording runs longer; device-less docs keep the videoWindow-then-background chain. */
+export function followMediaSources(doc: SceneDoc | undefined): string[] {
+  const duration = doc?.duration;
+  if (duration?.mode !== "follow-media") return [];
+  if (duration.source === "videoWindow") {
+    return doc?.videoWindow?.media?.src ? [doc.videoWindow.media.src] : [];
+  }
+  const devices = doc?.devices ?? [];
+  const pinned = devices.find((d) => d.id === duration.sourceDeviceId);
+  const deviceVideos = (pinned ? [pinned] : devices).flatMap((d) =>
+    d.media?.kind === "video" ? [d.media.src] : [],
+  );
+  if (deviceVideos.length > 0) return deviceVideos;
+  if (doc?.videoWindow?.media?.src) return [doc.videoWindow.media.src];
+  if (doc?.background?.type === "video") return [doc.background.src];
+  return [];
+}
+
+/** Re-syncs one follow-media scene's `project.json` duration from its source videos' probed lengths (no-op for manual mode, image, or missing media); sources come from `followMediaSources`, the longest winning when more than one device video qualifies. `wrote` says `project.json` was rewritten so UI callers know a timing refresh is needed (sidecar-only edits patch in memory and never reload); when a shrink leaves keyframe tracks overhanging and `sceneFile` is given, the sidecar is rewritten with clamped tracks and handed back as `clampedDoc` for the caller's in-memory patch. */
 export async function resyncFollowMediaDuration(
   slug: string,
   index: number,
@@ -181,23 +199,13 @@ export async function resyncFollowMediaDuration(
   currentDurationMs: number,
   sceneFile?: string,
 ): Promise<{ wrote: boolean; clampedDoc: SceneDoc | null }> {
-  const duration = doc?.duration;
-  if (duration?.mode !== "follow-media") return { wrote: false, clampedDoc: null };
-  const devices = doc?.devices ?? [];
-  const device = devices.find((d) => d.id === duration.sourceDeviceId) ?? devices[0];
-  // An explicit source pins the follow to the block the user picked; legacy docs keep the device-first chain.
-  const src =
-    duration.source === "videoWindow"
-      ? (doc?.videoWindow?.media?.src ?? null)
-      : device?.media?.kind === "video"
-        ? device.media.src
-        : doc?.videoWindow?.media?.src
-          ? doc.videoWindow.media.src
-          : doc?.background?.type === "video"
-            ? doc.background.src
-            : null;
-  if (!src) return { wrote: false, clampedDoc: null };
-  const meta = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
+  const srcs = followMediaSources(doc);
+  if (srcs.length === 0) return { wrote: false, clampedDoc: null };
+  const meta = { durationMs: 0 };
+  for (const src of srcs) {
+    const probed = await invoke<MediaMetaLike>("media_meta", { slug, rel: src });
+    if (probed.durationMs > meta.durationMs) meta.durationMs = probed.durationMs;
+  }
   if (meta.durationMs > 0 && meta.durationMs !== currentDurationMs) {
     await invoke("update_project_scene", { slug, index, durationMs: meta.durationMs });
     let clampedDoc: SceneDoc | null = null;
