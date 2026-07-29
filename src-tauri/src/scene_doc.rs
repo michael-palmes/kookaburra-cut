@@ -682,6 +682,21 @@ pub async fn scaffold_scene(
             if options.recording == Some(true) {
                 doc["videoWindow"]["recording"] = json!(true);
             }
+            // Text sits above the window: one line steps the window down, two also shrink it.
+            let title_line = options
+                .title
+                .as_deref()
+                .is_some_and(|t| !t.trim().is_empty());
+            let subtitle_line = options
+                .subtitle
+                .as_deref()
+                .is_some_and(|t| !t.trim().is_empty());
+            if title_line && subtitle_line {
+                doc["videoWindow"]["scale"] = json!(0.65);
+                doc["videoWindow"]["offset"] = json!([0.0, -0.08]);
+            } else if title_line || subtitle_line {
+                doc["videoWindow"]["offset"] = json!([0.0, -0.05]);
+            }
             // The window floats over the scene's own background; staged scenery would clip its shadow.
             doc["backdrop"] = json!({ "type": "none" });
         }
