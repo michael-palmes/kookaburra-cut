@@ -497,6 +497,30 @@ body {
   justify-content: space-between;
 }
 
+/* The comparison wizard's media steps: a side chip makes Before vs After read at a glance (muted before, accent after, the scene labels' own colours). */
+.wizard-side-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.wizard-side-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.04);
+}
+.wizard-side-chip.after {
+  color: var(--accent-text);
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+}
+
 .wizard-textarea {
   min-height: 64px;
   padding: var(--space-3) var(--space-4);

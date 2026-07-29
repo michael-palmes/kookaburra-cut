@@ -128,12 +128,38 @@ function secondsLabel(ms: number): string {
   return `${(ms / 1000).toFixed(1).replace(/\.0$/, "")}s`;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="wizard-field">
       <span className="wizard-label">{label}</span>
       {children}
     </div>
+  );
+}
+
+/** Split-square glyph for the comparison media steps: the filled half is the screen being picked (before = left, after = right, the scene's own layout). */
+function SideChipGlyph({ side }: { side: "before" | "after" }) {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+      <rect
+        x="1.5"
+        y="2.5"
+        width="13"
+        height="11"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <rect
+        x={side === "before" ? 3.2 : 8}
+        y="4.2"
+        width="4.8"
+        height="7.6"
+        rx="1"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
 
@@ -480,7 +506,7 @@ export function NewSceneWizard({
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div
-        className={`modal wizard-wide${step === "media" ? " wizard-media-wide" : ""}${
+        className={`modal wizard-wide${step === "media" || step === "mediaB" ? " wizard-media-wide" : ""}${
           step === "type" ? " wizard-kind-wide" : ""
         }${step === "details" ? " wizard-place-wide" : ""}`}
       >
@@ -560,17 +586,25 @@ export function NewSceneWizard({
           <>
             <Field
               label={
-                isComparison
-                  ? step === "mediaB"
-                    ? "What plays on the After screen?"
-                    : "What plays on the Before screen?"
-                  : kind === "layeredscreenshot"
-                    ? "First screen (the builder grows the stack from here)"
-                    : kind === "video"
-                      ? "What fills the frame?"
-                      : kind === "videowindow"
-                        ? "What plays in the window?"
-                        : "What plays on the screen?"
+                isComparison ? (
+                  <span className="wizard-side-label">
+                    <span className={`wizard-side-chip${step === "mediaB" ? " after" : ""}`}>
+                      <SideChipGlyph side={step === "mediaB" ? "after" : "before"} />
+                      {step === "mediaB" ? "After" : "Before"}
+                    </span>
+                    {step === "mediaB"
+                      ? "What plays on the After screen?"
+                      : "What plays on the Before screen?"}
+                  </span>
+                ) : kind === "layeredscreenshot" ? (
+                  "First screen (the builder grows the stack from here)"
+                ) : kind === "video" ? (
+                  "What fills the frame?"
+                ) : kind === "videowindow" ? (
+                  "What plays in the window?"
+                ) : (
+                  "What plays on the screen?"
+                )
               }
             >
               <div className="wizard-media-host">
