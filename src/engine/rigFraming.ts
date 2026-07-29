@@ -35,7 +35,7 @@ export function stagedContentBounds(
   doc:
     | {
         devices?: { placement?: { position?: [number, number, number] } }[];
-        videoWindow?: unknown;
+        videoWindow?: { offset?: [number, number] };
         layeredScreenshot?: { pose: { pan: [number, number] } };
       }
     | undefined,
@@ -45,7 +45,12 @@ export function stagedContentBounds(
   for (const device of doc?.devices ?? []) {
     if (device.placement?.position) points.push(device.placement.position);
   }
-  if (doc?.videoWindow) points.push([0, 0, 0]);
+  if (doc?.videoWindow) {
+    // The window's placement offset is a frame fraction; resolve it here so the fit follows a moved window.
+    const offset = doc.videoWindow.offset;
+    const valid = Array.isArray(offset) && offset.length === 2 && offset.every(Number.isFinite);
+    points.push(valid ? [offset[0] * frame.width, offset[1] * frame.height, 0] : [0, 0, 0]);
+  }
   if (doc?.layeredScreenshot) {
     const pan = doc.layeredScreenshot.pose.pan;
     points.push([pan[0], pan[1], 0]);

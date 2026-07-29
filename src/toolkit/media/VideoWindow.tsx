@@ -1,41 +1,30 @@
-import { useTexture } from "@react-three/drei";
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
-import {
-  type Group,
-  MeshBasicMaterial,
-  ShaderMaterial,
-  SRGBColorSpace,
-  type Texture,
-  Vector2,
-} from "three";
+import { type Group, MeshBasicMaterial, ShaderMaterial, Vector2 } from "three";
 import { clipPlaneSize } from "../../engine/clipFrame";
 import { useClipTexture } from "../../engine/clipTexture";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
-import { resolveAssetUrl } from "../../engine/project";
-import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneVideoWindow } from "../../engine/sceneDoc";
-import type { VideoWindowBorder, VideoWindowStage } from "../../engine/sceneDocSchema";
-import { rigOverscan } from "../../engine/sceneRig";
+import type { VideoWindowBorder } from "../../engine/sceneDocSchema";
 import {
   type NormalizedVideoWindow,
   type NormalizedVideoWindowShadow,
   normalizeVideoWindow,
+  recordingCrop,
   sampleVideoWindowMotion,
 } from "../../engine/sceneVideoWindow";
 import { useTimeline } from "../../engine/timeline";
 import { useSceneConsumesVideoWindow } from "../../engine/videoWindowRegistry";
-import { useEditorStore } from "../../store/editorStore";
-import { gradientTexture, useExactMaterial } from "../stage/backdrops";
-import { useRigTrack } from "../stage/DepthStage";
-import { AssetBoundary } from "./AssetBoundary";
-import { applyCardMask, cardUniforms, SHADOW_FRAG, SHADOW_VERT } from "./LayeredScreenshot";
+import {
+  applyCardMask,
+  type CardUniforms,
+  cardUniforms,
+  SHADOW_FRAG,
+  SHADOW_VERT,
+} from "./LayeredScreenshot";
 import { preparingVideoTexture } from "./preparingTexture";
 
-/** Depth (world units) of the backing stage behind the window group; the "set back a bit" gap that gives parallax under the scene camera. */
-const STAGE_GAP = 0.6;
-/** The stage plane is sized this multiple of the frame so it stays full-bleed while the camera rotates within a limited range (roughly ±15°). */
-const STAGE_OVERSCAN = 2;
 /** The shadow quad sits just behind the window inside the moving group, so it tracks the window's motion. */
 const SHADOW_BEHIND = 0.12;
 /** Last-resort aspect before the clip's intrinsics arrive; the doc's recorded `media.aspect` seeds first, so the window keeps its size across remounts and media swaps (exports have intrinsics by frame 0 behind the extract barrier). */
@@ -46,106 +35,10 @@ interface Rect {
   height: number;
 }
 
-function useResolvedProjectId(): string {
-  const contextProjectId = useContext(ProjectIdContext);
-  const storeProjectId = useEditorStore((s) => s.projectId);
-  return contextProjectId ?? storeProjectId;
-}
-
-// ── Backing stage (full-bleed wallpaper) ──────────────────────────────────────
-
-function ColorStage({ color, w, h }: { color: string; w: number; h: number }) {
-  const material = useExactMaterial((m) => m.color.set(color), [color]);
-  return (
-    <mesh material={material} position={[0, 0, -STAGE_GAP]}>
-      <planeGeometry args={[w, h]} />
-    </mesh>
-  );
-}
-
-function GradientStage({
-  spec,
-  w,
-  h,
-}: {
-  spec: Extract<VideoWindowStage, { type: "gradient" }>["spec"];
-  w: number;
-  h: number;
-}) {
-  const texture = useMemo(() => gradientTexture(spec), [spec]);
-  useLayoutEffect(() => () => texture.dispose(), [texture]);
-  const material = useExactMaterial(
-    (m) => {
-      m.map = texture;
-    },
-    [texture],
-  );
-  return (
-    <mesh material={material} position={[0, 0, -STAGE_GAP]}>
-      <planeGeometry args={[w, h]} />
-    </mesh>
-  );
-}
-
-function ImageStageLoaded({
-  url,
-  fit,
-  w,
-  h,
-}: {
-  url: string;
-  fit: "cover" | "contain";
-  w: number;
-  h: number;
-}) {
-  const texture = useTexture(url) as Texture;
-  useLayoutEffect(() => {
-    texture.colorSpace = SRGBColorSpace;
-    // Cover-fit: crop via repeat/offset so the wallpaper fills the plane without stretching.
-    const img = texture.image as { width: number; height: number } | undefined;
-    if (img && fit !== "contain") {
-      const planeAspect = w / h;
-      const imageAspect = img.width / img.height;
-      if (imageAspect > planeAspect) {
-        texture.repeat.set(planeAspect / imageAspect, 1);
-        texture.offset.set((1 - texture.repeat.x) / 2, 0);
-      } else {
-        texture.repeat.set(1, imageAspect / planeAspect);
-        texture.offset.set(0, (1 - texture.repeat.y) / 2);
-      }
-    }
-    texture.needsUpdate = true;
-  }, [texture, fit, w, h]);
-  const material = useExactMaterial(
-    (m) => {
-      m.map = texture;
-    },
-    [texture],
-  );
-  return (
-    <mesh material={material} position={[0, 0, -STAGE_GAP]}>
-      <planeGeometry args={[w, h]} />
-    </mesh>
-  );
-}
-
-function BackingStage({ stage, w, h }: { stage: VideoWindowStage; w: number; h: number }) {
-  const projectId = useResolvedProjectId();
-  if (stage.type === "color") return <ColorStage color={stage.color} w={w} h={h} />;
-  if (stage.type === "gradient") return <GradientStage spec={stage.spec} w={w} h={h} />;
-  // Missing assets degrade to no stage, never tear down the canvas tree (the backdrop lesson); the suspense load is covered by the scene-host commit barrier.
-  let url: string | null = null;
-  try {
-    url = resolveAssetUrl(projectId, stage.src);
-  } catch (e) {
-    console.warn(`[videoWindow] stage image "${stage.src}" unresolved:`, e);
-  }
-  if (!url) return null;
-  return (
-    <AssetBoundary key={url} label={stage.src}>
-      <ImageStageLoaded url={url} fit={stage.fit ?? "cover"} w={w} h={h} />
-    </AssetBoundary>
-  );
+/** The recording-mode source crop as a UV transform (v = 0 is the frame's bottom, the clip pipeline's pre-flipped upload). */
+interface WindowUv {
+  scale: [number, number];
+  offset: [number, number];
 }
 
 // ── The window's drop shadow (analytic, reuses the LayeredScreenshot shaders) ──
@@ -194,6 +87,44 @@ function WindowShadow({
 
 // ── The video window plane (rounded-rect masked, ready-gated video) ────────────
 
+interface WindowUvUniforms {
+  uVwUvScale: { value: Vector2 };
+  uVwUvOffset: { value: Vector2 };
+}
+
+const windowUvUniforms = (): WindowUvUniforms => ({
+  uVwUvScale: { value: new Vector2(1, 1) },
+  uVwUvOffset: { value: new Vector2(0, 0) },
+});
+
+const WINDOW_UV_DEFS = /* glsl */ `
+uniform vec2 uVwUvScale;
+uniform vec2 uVwUvOffset;
+`;
+
+// Crop-aware map sampling; the identity transform samples exactly like the stock chunk, keeping non-recording windows byte-identical.
+const WINDOW_MAP_FRAGMENT = /* glsl */ `#ifdef USE_MAP
+	diffuseColor *= texture2D( map, vMapUv * uVwUvScale + uVwUvOffset );
+#endif`;
+
+/** The card mask plus the recording crop's UV remap, under a VideoWindow-only program key. */
+function applyWindowMask(
+  material: MeshBasicMaterial,
+  card: CardUniforms,
+  uv: WindowUvUniforms,
+): void {
+  applyCardMask(material, card);
+  const base = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    base(shader, renderer);
+    Object.assign(shader.uniforms, uv);
+    shader.fragmentShader =
+      WINDOW_UV_DEFS +
+      shader.fragmentShader.replace("#include <map_fragment>", WINDOW_MAP_FRAGMENT);
+  };
+  material.customProgramCacheKey = () => "kookaburra-vw-card-v1";
+}
+
 function WindowVideo({
   src,
   startMs,
@@ -201,7 +132,8 @@ function WindowVideo({
   rect,
   radiusFraction,
   border,
-  onAspect,
+  uv,
+  onIntrinsics,
 }: {
   src: string;
   startMs: number;
@@ -209,18 +141,20 @@ function WindowVideo({
   rect: Rect;
   radiusFraction: number;
   border: VideoWindowBorder;
-  onAspect: (aspect: number) => void;
+  uv: WindowUv | null;
+  onIntrinsics: (width: number, height: number) => void;
 }) {
   // The readiness node lives in this component's own subtree (the useClipTexture contract); content hides until the first frame binds so no untextured plane paints.
   const readyRef = useRef<Group>(null);
   const contentRef = useRef<Group>(null);
   const uniforms = useMemo(() => cardUniforms(), []);
+  const uvUniforms = useMemo(() => windowUvUniforms(), []);
   const material = useMemo(() => {
     const m = new MeshBasicMaterial({ transparent: true, depthWrite: false });
     m.toneMapped = false;
-    applyCardMask(m, uniforms);
+    applyWindowMask(m, uniforms, uvUniforms);
     return m;
-  }, [uniforms]);
+  }, [uniforms, uvUniforms]);
   useLayoutEffect(() => () => material.dispose(), [material]);
   const onPending = useCallback(() => {
     if (contentRef.current) contentRef.current.visible = false;
@@ -238,8 +172,8 @@ function WindowVideo({
     onBound,
   });
   useLayoutEffect(() => {
-    if (info && info.height > 0) onAspect(info.width / info.height);
-  }, [info, onAspect]);
+    if (info && info.height > 0) onIntrinsics(info.width, info.height);
+  }, [info, onIntrinsics]);
 
   const short = Math.min(rect.width, rect.height);
   uniforms.uCardSize.value.set(rect.width, rect.height);
@@ -247,6 +181,8 @@ function WindowVideo({
   uniforms.uCardStrokeColor.value.set(border.color);
   uniforms.uCardStrokeWidth.value = border.width * short;
   uniforms.uCardStrokeAlpha.value = border.enabled ? border.opacity : 0;
+  uvUniforms.uVwUvScale.value.set(uv?.scale[0] ?? 1, uv?.scale[1] ?? 1);
+  uvUniforms.uVwUvOffset.value.set(uv?.offset[0] ?? 0, uv?.offset[1] ?? 0);
 
   return (
     <group ref={readyRef}>
@@ -274,41 +210,59 @@ function WindowVideo({
 function VideoWindowRenderer({ w }: { w: NormalizedVideoWindow }) {
   const { localMs } = useTimeline();
   const format = useFormat();
-  const [clipAspect, setClipAspect] = useState<number | null>(null);
-  const onAspect = useCallback((a: number) => setClipAspect((prev) => (prev === a ? prev : a)), []);
-  const aspect = clipAspect ?? w.media.aspect ?? DEFAULT_CLIP_ASPECT;
+  const [intrinsics, setIntrinsics] = useState<{ width: number; height: number } | null>(null);
+  const onIntrinsics = useCallback(
+    (width: number, height: number) =>
+      setIntrinsics((prev) =>
+        prev && prev.width === width && prev.height === height ? prev : { width, height },
+      ),
+    [],
+  );
+  const crop =
+    w.recording && intrinsics ? recordingCrop(intrinsics.width, intrinsics.height) : null;
+  const aspect = crop
+    ? crop.width / crop.height
+    : intrinsics
+      ? intrinsics.width / intrinsics.height
+      : (w.media.aspect ?? DEFAULT_CLIP_ASPECT);
+  const radiusFraction = crop ? crop.radiusFraction : w.radiusFraction;
+  const uv: WindowUv | null =
+    crop && intrinsics
+      ? {
+          scale: [crop.width / intrinsics.width, crop.height / intrinsics.height],
+          offset: [
+            crop.x / intrinsics.width,
+            (intrinsics.height - crop.y - crop.height) / intrinsics.height,
+          ],
+        }
+      : null;
   const rect = clipPlaneSize(
     "contain",
     { width: format.frame.width * w.scale, height: format.frame.height * w.scale },
     { width: aspect, height: 1 },
   );
   const motion = sampleVideoWindowMotion(w.motion, localMs);
-  // A camera rig can travel further than the constant's limited-orbit assumption, so the stage
-  // sizes itself from the scene's travel envelope; STAGE_OVERSCAN stays the floor, which is what
-  // keeps every rig-less scene byte-identical.
-  const track = useRigTrack();
-  const overscan = track ? rigOverscan(track, format.frame, 0, STAGE_OVERSCAN) : STAGE_OVERSCAN;
-  const stageW = format.frame.width * overscan;
-  const stageH = format.frame.height * overscan;
   return (
-    <group>
-      <BackingStage stage={w.stage} w={stageW} h={stageH} />
-      <group
-        position={[motion.posX, motion.posY, motion.posZ]}
-        rotation={[motion.rotX, motion.rotY, 0]}
-        scale={motion.scale}
-      >
-        <WindowShadow rect={rect} shadow={w.shadow} radiusFraction={w.radiusFraction} />
-        <WindowVideo
-          src={w.media.src}
-          startMs={w.media.startMs}
-          loop={w.media.loop}
-          rect={rect}
-          radiusFraction={w.radiusFraction}
-          border={w.border}
-          onAspect={onAspect}
-        />
-      </group>
+    <group
+      position={[
+        motion.posX + w.offset[0] * format.frame.width,
+        motion.posY + w.offset[1] * format.frame.height,
+        motion.posZ,
+      ]}
+      rotation={[motion.rotX, motion.rotY, 0]}
+      scale={motion.scale}
+    >
+      <WindowShadow rect={rect} shadow={w.shadow} radiusFraction={radiusFraction} />
+      <WindowVideo
+        src={w.media.src}
+        startMs={w.media.startMs}
+        loop={w.media.loop}
+        rect={rect}
+        radiusFraction={radiusFraction}
+        border={w.border}
+        uv={uv}
+        onIntrinsics={onIntrinsics}
+      />
     </group>
   );
 }
@@ -318,7 +272,7 @@ export interface VideoWindowProps {
   _reserved?: never;
 }
 
-/** The scene document's video window: a macOS screen recording as a floating rounded window with a drop shadow, over a full-bleed backing stage; sits in world space so the per-scene camera orbits it with real parallax. Registers the scene as a consumer so the host-side fallback stands down. */
+/** The scene document's video window: a macOS screen recording as a floating rounded window with a drop shadow, floating over whatever the scene stages behind it; sits in world space so the per-scene camera orbits it with real parallax. Registers the scene as a consumer so the host-side fallback stands down. */
 export function VideoWindow(_props: VideoWindowProps = {}) {
   const normalized = useSceneVideoWindow();
   if (!normalized) return null;

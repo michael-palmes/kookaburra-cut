@@ -7,21 +7,46 @@ import type {
   VideoWindowMotion,
   VideoWindowMotionPreset,
   VideoWindowRadius,
-  VideoWindowStage,
 } from "./sceneDocSchema";
 
 const DEG2RAD = Math.PI / 180;
 const TWO_PI = Math.PI * 2;
-/** tilt-reveal starts the window this far toward the camera and eases it back to 0, so the tilt never swings an edge behind the backing stage. */
+/** tilt-reveal starts the window this far toward the camera and eases it back to 0, so the tilt never swings an edge behind staged scenery. */
 const TILT_FORWARD = 1.4;
 
-/** Corner radius per preset, as a fraction of the window's SHORT edge (the ThemeCard convention); `macos` is tuned to a real window shown large in frame. */
+/** Corner radius per preset, as a fraction of the window's SHORT edge (the ThemeCard convention); `macos` is tuned to a real window shown large in frame. `recording` resolves per-clip from the true pixel radius instead (see `recordingCrop`), so it falls back to the macOS look here. */
 const RADIUS_PRESETS: Record<Exclude<VideoWindowRadius, { custom: number }>, number> = {
   sharp: 0,
   subtle: 0.02,
   macos: 0.035,
   rounded: 0.08,
+  recording: 0.035,
 };
+
+/** A raw macOS window recording's capture margins in source pixels (measured off a Retina 2x capture, hard edges): the window content sits inside these, the baked drop shadow outside. */
+export const RECORDING_INSETS = { left: 112, right: 112, top: 76, bottom: 148 };
+/** Extra pixels trimmed off every crop edge so bilinear sampling at the border never blends the black margin in, and the mask arc sits clear of the baked corner rounding's antialiased band (1px still showed specks at the arc tangents). */
+export const RECORDING_EDGE_TRIM = 2;
+/** The macOS window corner radius in the same source pixels (26pt at 2x), so the mask lands exactly on the rounding baked into the capture. */
+export const RECORDING_RADIUS_PX = 52;
+
+/** The `recording` mode's crop of a clip's intrinsic size: the source-pixel rect holding the window itself, plus the mask radius as a fraction of the CROPPED short edge. Null when the clip is too small to carry the margins (not a window recording), degrading to the uncropped macOS look. */
+export function recordingCrop(
+  srcWidth: number,
+  srcHeight: number,
+): { x: number; y: number; width: number; height: number; radiusFraction: number } | null {
+  const width = srcWidth - RECORDING_INSETS.left - RECORDING_INSETS.right - RECORDING_EDGE_TRIM * 2;
+  const height =
+    srcHeight - RECORDING_INSETS.top - RECORDING_INSETS.bottom - RECORDING_EDGE_TRIM * 2;
+  if (width <= 0 || height <= 0) return null;
+  return {
+    x: RECORDING_INSETS.left + RECORDING_EDGE_TRIM,
+    y: RECORDING_INSETS.top + RECORDING_EDGE_TRIM,
+    width,
+    height,
+    radiusFraction: Math.min(0.5, RECORDING_RADIUS_PX / Math.min(width, height)),
+  };
+}
 
 const DEFAULT_RADIUS = RADIUS_PRESETS.macos;
 /** Window occupies this fraction of the frame's shorter axis by default, leaving a wallpaper margin. */
@@ -45,12 +70,15 @@ export interface NormalizedVideoWindowShadow {
 /** A validated, defaults-filled videoWindow ready to render. */
 export interface NormalizedVideoWindow {
   media: { src: string; startMs: number; loop: boolean; aspect: number | null };
-  stage: VideoWindowStage;
   radiusFraction: number;
+  /** The `recording` radius preset: crop the capture margins and mask at the true pixel radius once the clip's intrinsics arrive. */
+  recording: boolean;
   border: VideoWindowBorder;
   shadow: NormalizedVideoWindowShadow;
   motion: VideoWindowMotion;
   scale: number;
+  /** Placement as fractions of the frame (x right, y up). */
+  offset: [number, number];
 }
 
 const MOTION_PRESETS: VideoWindowMotionPreset[] = [
@@ -68,27 +96,6 @@ export function resolveVideoWindowRadius(radius: VideoWindowRadius | undefined):
   if (typeof radius === "string") return RADIUS_PRESETS[radius] ?? DEFAULT_RADIUS;
   const custom = radius?.custom;
   return Number.isFinite(custom) ? clamp(custom as number, 0, 0.5) : DEFAULT_RADIUS;
-}
-
-function normalizeStage(raw: unknown, source: string): VideoWindowStage {
-  const fallback: VideoWindowStage = { type: "color", color: "#111111" };
-  const stage = raw as VideoWindowStage | null;
-  if (!stage || typeof stage !== "object") return fallback;
-  if (stage.type === "color" && typeof stage.color === "string" && stage.color.length > 0) {
-    return { type: "color", color: stage.color };
-  }
-  if (stage.type === "gradient" && stage.spec && Array.isArray(stage.spec.stops)) {
-    return { type: "gradient", spec: stage.spec };
-  }
-  if (stage.type === "image" && typeof stage.src === "string" && stage.src.length > 0) {
-    return {
-      type: "image",
-      src: stage.src,
-      ...(stage.fit === "contain" ? { fit: "contain" } : {}),
-    };
-  }
-  console.warn(`[videoWindow] ${source}: invalid stage, defaulting to a flat colour`);
-  return fallback;
 }
 
 function normalizeShadow(raw: unknown): NormalizedVideoWindowShadow {
@@ -126,6 +133,12 @@ function normalizeMotion(raw: unknown): VideoWindowMotion {
   return m;
 }
 
+function normalizeOffset(raw: unknown): [number, number] {
+  const o = raw as [number, number] | null;
+  if (!Array.isArray(o) || o.length !== 2 || !o.every((n) => Number.isFinite(n))) return [0, 0];
+  return [clamp(o[0], -1, 1), clamp(o[1], -1, 1)];
+}
+
 /** Validate + normalize a sidecar videoWindow value. Null when absent or missing a media source; a present block otherwise always normalizes with defaults filled. */
 export function normalizeVideoWindow(
   raw: SceneDocVideoWindow | undefined,
@@ -147,12 +160,13 @@ export function normalizeVideoWindow(
           ? (raw.media.aspect as number)
           : null,
     },
-    stage: normalizeStage(raw.stage, source),
     radiusFraction: resolveVideoWindowRadius(raw.radius),
+    recording: raw.radius === "recording",
     border: normalizeBorder(raw.border),
     shadow: normalizeShadow(raw.shadow),
     motion: normalizeMotion(raw.motion),
     scale: Number.isFinite(raw.scale) ? clamp(raw.scale as number, 0.1, 1) : DEFAULT_SCALE,
+    offset: normalizeOffset(raw.offset),
   };
 }
 

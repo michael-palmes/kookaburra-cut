@@ -801,26 +801,26 @@ error, never a crash. Gate project: `ws:device-video-spike`.
 // scene sidecar (scenes/<stem>.json):
 "videoWindow": {
   "media":  { "src": "assets/screencast.mp4", "startMs"?: 0, "loop"?: false },
-  "stage":  { "type": "color",    "color": "#1b2330" }        // OR
-            // { "type": "gradient", "spec": { GradientSpec } } OR
-            // { "type": "image",    "src": "assets/wall.jpg", "fit"?: "cover" }
-  "radius": "macos",              // "sharp" | "subtle" | "macos" | "rounded" | { "custom": 0..0.5 }
+  "radius": "macos",              // "sharp" | "subtle" | "macos" | "rounded" | "recording" | { "custom": 0..0.5 }
   "shadow"?: { "opacity": 0.34, "blur": 0.16, "offset": [0, -0.06] },  // blur/offset are short-edge fractions
   "motion"?: { "preset": "float", "amplitude"?, "hz"?, "durationMs"? }, // none|float|tilt-reveal|push-in|drift
-  "scale"?:  0.72                 // window size as a fraction of the frame's shorter axis
+  "scale"?:  0.72,                // window size as a fraction of the frame's shorter axis
+  "offset"?: [0, 0]               // placement as frame fractions (x right, y up), clamped -1..1
 }
 ```
 
 `VideoWindow` presents a macOS screen recording (any aspect) as a floating window: a
-rounded-rect card with a hairline rim, an analytic drop shadow, over a bundled full-bleed
-backing "stage" (colour / gradient / image). The three layers sit in real world space at
-different depths, so the per-scene `camera` track orbits them with genuine parallax (not a
-camera-locked overlay); the stage is oversized so it stays full-bleed within a limited orbit.
-Video rides the SAME deterministic clip pipeline as `VideoClip` (`useClipTexture`); the window
-matches the recording's intrinsic aspect (contain, no crop). One window per scene, sidecar-driven
-(the `useSceneVideoWindow` consumer stands the host fallback down, the LayeredScreenshot pattern).
-Radius/shadow/stage are analytic per-pixel SDF + exact-colour materials, deterministic by
-construction. Gate project: `ws:video-window-spike`.
+rounded-rect card with a hairline rim and an analytic drop shadow, floating over whatever the
+scene stages behind it (theme backdrop, fixed background, or nothing). The window and shadow
+sit in real world space at different depths, so the per-scene `camera` track orbits them with
+genuine parallax (not a camera-locked overlay). Video rides the SAME deterministic clip
+pipeline as `VideoClip` (`useClipTexture`); the window matches the recording's intrinsic aspect
+(contain, no crop), except `radius: "recording"`: the raw-window-recording mode, which crops the
+capture margins (baked shadow and margin) off a Retina 2x macOS window recording and masks at
+the true macOS corner radius. One window per scene, sidecar-driven (the `useSceneVideoWindow`
+consumer stands the host fallback down, the LayeredScreenshot pattern). Radius/crop/shadow are
+analytic per-pixel SDF + UV maths, deterministic by construction. Gate project:
+`ws:video-window-spike`.
 
 ## 3D primitives (v3 · M4)
 
@@ -1051,6 +1051,6 @@ Add new tokens here; never hard-code values in scenes.
 | Per-scene camera track (orbit keys/segments, mini-timeline UI) | v7 · M5 | implemented |
 | `LayeredScreenshot` (sidecar stack, cards, global screenshots, wizard) | slides · PR 2 | implemented + gated — builder, animation lane, present-mode holds |
 | Scene overlays (`frame` block: panel + cutout + chip + decorations) | v0.5.0 | implemented + gated — deck default + per-scene sidecar, standalone cutouts |
-| Video window (`videoWindow` block: recording over a backing stage) | v0.5.0 | implemented + gated — `ws:video-window-spike` fixture |
+| Video window (`videoWindow` block: floating recording window) | v0.5.0 | implemented + gated — `ws:video-window-spike` fixture |
 | Scene lighting v9 (sun, free lights, fixtures, HDRIs, keyframes) | v0.7.0 | implemented + gated — sidecar `lighting`, see the lighting skill |
 | Camera rigs (free flight, depth bands, presets) | v0.7.0 | implemented + gated — sidecar `cameraRig`, see "Camera rigs" |
