@@ -285,6 +285,21 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M15 12v5M12.5 14.5h5" />
         </svg>
       );
+    case "device.duplicate":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="4" y="3" width="7" height="12" rx="1.6" />
+          <rect x="9.5" y="6" width="7" height="12" rx="1.6" opacity="0.7" />
+        </svg>
+      );
     case "layeredScreenshot.add":
       return (
         <svg
@@ -1528,10 +1543,12 @@ export function SceneTab({
   }, [decoMediaRequestId, requestDecoMedia]);
 
   const [modal, setModal] = useState<"media" | null>(null);
-  // What a media pick targets: the scene device, or a decoration (append, or replace one by id).
+  // What a media pick targets: a scene device by id, or a decoration (append, or replace one by id).
   const [mediaTarget, setMediaTarget] = useState<
-    { kind: "device" } | { kind: "decoration"; replaceId?: string }
+    { kind: "device"; deviceId?: string } | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
+  // Which device the device rows act on; null (or a stale id) falls back to the first device.
+  const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
@@ -1595,7 +1612,9 @@ export function SceneTab({
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
-  const device = doc?.devices?.[0];
+  const devices = doc?.devices ?? [];
+  const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
+  const deviceId = device?.id;
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -1659,6 +1678,7 @@ export function SceneTab({
   useEffect(() => {
     setModal(null);
     setConfirmRemove(false);
+    setPickedDeviceId(null);
     resetDrill();
     setRenaming(false);
     setBgTabOverride(null);
@@ -1723,23 +1743,63 @@ export function SceneTab({
     slotsCount: project.slots.length,
     deckFrame: project.deckFrame !== undefined,
     frame: sceneFrame,
+    selectedDeviceId: pickedDeviceId ?? undefined,
   });
 
-  const addDevice = () =>
+  /** Mutate the selected device in place; a no-op when the scene has none. */
+  const patchDevice = (fn: (d: NonNullable<SceneDoc["devices"]>[number]) => void) =>
     void patchDoc((next) => {
-      // The Rust scaffolder's device defaults, byte for byte.
+      const d = next.devices?.find((x) => x.id === deviceId);
+      if (d) fn(d);
+    });
+
+  const freshDeviceId = () => {
+    const used = new Set(devices.map((d) => d.id));
+    let n = 1;
+    while (used.has(`d${n}`)) n += 1;
+    return `d${n}`;
+  };
+  const addDevice = () => {
+    const id = freshDeviceId();
+    // Later devices step outward alternately so a new one never lands inside an existing device.
+    const k = devices.length;
+    const x = k === 0 ? 0 : 0.75 * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
+    void patchDoc((next) => {
+      // The Rust scaffolder's device defaults, byte for byte (the first device lands centred).
       next.devices = [
         ...(next.devices ?? []),
         {
-          id: "d1",
+          id,
           model: "iphone-17-pro",
           colour: "silver",
-          placement: { position: [0, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
+          placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
           motion: { preset: "none" },
           shadow: "soft",
         },
       ];
     });
+    setPickedDeviceId(id);
+  };
+  const duplicateDevice = () => {
+    if (!deviceId) return;
+    const id = freshDeviceId();
+    void patchDoc((next) => {
+      const src = next.devices?.find((x) => x.id === deviceId);
+      if (!src) return;
+      const copy = structuredClone(src);
+      copy.id = id;
+      // Mirror across centre: flip x (a centred device steps aside) and the y rotation.
+      const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
+      const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
+      copy.placement = {
+        ...copy.placement,
+        position: [px === 0 ? 0.75 : -px, py, pz],
+        rotationDeg: [rx, -ry, rz],
+      };
+      next.devices = [...(next.devices ?? []), copy];
+    });
+    setPickedDeviceId(id);
+  };
   const addOverlay = () =>
     void patchDoc((next) => {
       // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger.
@@ -1861,9 +1921,10 @@ export function SceneTab({
     setModal(null);
     if (mediaTarget.kind === "device") {
       const isVideo = meta?.kind !== "image";
+      const targetId = mediaTarget.deviceId ?? deviceId;
       void patchDoc(
         (next) => {
-          const d = next.devices?.[0];
+          const d = next.devices?.find((x) => x.id === targetId);
           if (d) {
             d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
             // A device video defaults the scene length to the clip, unless it was locked manually.
@@ -2391,9 +2452,8 @@ export function SceneTab({
                 image={optionPreviewStill(`shadow-${o.id}`)}
                 selected={(device.shadow ?? "soft") === o.id}
                 onSelect={() => {
-                  void patchDoc((next) => {
-                    const d = next.devices?.[0];
-                    if (d) d.shadow = o.id as DeviceShadowMode;
+                  patchDevice((d) => {
+                    d.shadow = o.id as DeviceShadowMode;
                   });
                 }}
               />
@@ -4190,13 +4250,10 @@ export function SceneTab({
         backLabel={backLabel}
         onSave={(model, colour, motion) => {
           closeDrill();
-          void patchDoc((next) => {
-            const d = next.devices?.[0];
-            if (d) {
-              d.model = model;
-              d.colour = colour;
-              d.motion = { ...d.motion, preset: motion };
-            }
+          patchDevice((d) => {
+            d.model = model;
+            d.colour = colour;
+            d.motion = { ...d.motion, preset: motion };
           });
         }}
       />
@@ -4222,9 +4279,8 @@ export function SceneTab({
         onBack={() => closeDrill()}
         backLabel={backLabel}
         onCommit={(rotationDeg) => {
-          void patchDoc((next) => {
-            const d = next.devices?.[0];
-            if (d) d.placement = { ...d.placement, rotationDeg };
+          patchDevice((d) => {
+            d.placement = { ...d.placement, rotationDeg };
           });
         }}
       />
@@ -4252,9 +4308,8 @@ export function SceneTab({
             lidDeg={device.lidDeg ?? lid?.defaultDeg ?? 90}
             openDeg={lid?.openDeg ?? 110}
             onCommit={(deg) =>
-              void patchDoc((next) => {
-                const d = next.devices?.[0];
-                if (d) d.lidDeg = deg;
+              patchDevice((d) => {
+                d.lidDeg = deg;
               })
             }
           />
@@ -4286,12 +4341,13 @@ export function SceneTab({
       }
       const onClick = {
         "device.media": () => {
-          setMediaTarget({ kind: "device" });
+          setMediaTarget({ kind: "device", deviceId });
           setModal("media");
         },
         "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
+        "device.duplicate": duplicateDevice,
         "frame.add": addOverlay,
         "device.rotation": () => openDrill("device.rotation"),
         // Both paths drill into the builder; it seeds the first layer for scenes without a block.
@@ -4306,8 +4362,9 @@ export function SceneTab({
             return;
           }
           setConfirmRemove(false);
+          setPickedDeviceId(null);
           void patchDoc((next) => {
-            next.devices = (next.devices ?? []).slice(1);
+            next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
           });
         },
         "motion.transition": () => {
@@ -4420,8 +4477,24 @@ export function SceneTab({
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={closeDrill} />
         <div className="inspector-drill-title">
-          {SCREEN_TITLES[groupSection.id] ?? groupSection.label}
+          {groupSection.id === "device"
+            ? groupSection.label
+            : (SCREEN_TITLES[groupSection.id] ?? groupSection.label)}
         </div>
+        {groupSection.id === "device" && devices.length > 1 && (
+          <SegmentedRow
+            className="subtabs-compact"
+            options={devices.map((d, i) => ({
+              value: d.id,
+              label: `${i + 1}`,
+              title:
+                DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId]
+                  .name,
+            }))}
+            value={deviceId ?? devices[0].id}
+            onChange={(id) => setPickedDeviceId(id)}
+          />
+        )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
         {mediaModal}
       </div>
@@ -4473,9 +4546,9 @@ export function SceneTab({
   if (device)
     contentEntries.push({
       key: "device",
-      label: "Device",
+      label: devices.length > 1 ? "Devices" : "Device",
       icon: "device.change",
-      value: deviceName,
+      value: devices.length > 1 ? `${devices.length}` : deviceName,
       onClick: () => openDrill("device"),
     });
   else if (doc)
@@ -4523,7 +4596,7 @@ export function SceneTab({
       icon: "device.media",
       onClick: device
         ? () => {
-            setMediaTarget({ kind: "device" });
+            setMediaTarget({ kind: "device", deviceId });
             setModal("media");
           }
         : () => openDrill("videoWindow.media"),

@@ -66,7 +66,7 @@ export interface SceneSectionModel {
   rows: SceneRowModel[];
 }
 
-/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows need `doc.devices[0]` (Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
+/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
 export function sceneSections(input: {
   doc: SceneDoc | undefined;
   slotsCount: number;
@@ -74,9 +74,12 @@ export function sceneSections(input: {
   deckFrame?: boolean;
   /** This scene's RESOLVED overlay (deck merged with the sidecar override), `undefined` when it renders full-bleed (opted out); drives the enabled state and the row set. */
   frame?: FrameSpec | undefined;
+  /** Which device the device rows target; absent or stale falls back to the first device. */
+  selectedDeviceId?: string;
 }): SceneSectionModel[] {
-  const { doc, slotsCount, deckFrame = false, frame } = input;
-  const device = doc?.devices?.[0];
+  const { doc, slotsCount, deckFrame = false, frame, selectedDeviceId } = input;
+  const devices = doc?.devices ?? [];
+  const device = devices.find((d) => d.id === selectedDeviceId) ?? devices[0];
   const hasText = Object.keys(doc?.text ?? {}).length > 0;
 
   const sections: SceneSectionModel[] = [];
@@ -113,8 +116,10 @@ export function sceneSections(input: {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });
     }
     rows.push({ id: "style.shadow", label: "Shadow", chevron: true });
+    rows.push({ id: "device.duplicate", label: "Duplicate device", chevron: false });
+    rows.push({ id: "device.add", label: "Add another device", chevron: false });
     rows.push({ id: "device.remove", label: "Remove device", danger: true, chevron: false });
-    sections.push({ id: "device", label: "Device", rows });
+    sections.push({ id: "device", label: devices.length > 1 ? "Devices" : "Device", rows });
   } else if (doc) {
     sections.push({
       id: "device",
