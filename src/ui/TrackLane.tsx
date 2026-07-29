@@ -76,7 +76,7 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   addTitle: string;
   /** Copy ahead of the write-error detail, e.g. "Save failed — this camera edit isn't on disk:". */
   writeErrorPrefix: string;
-  /** Small fixed-width lane label (shown when lanes stack, so each track states what it animates); absent keeps the single-lane look byte for byte. */
+  /** Names the add button when lanes stack ("＋ Camera" / "＋ Comparison"), so each track states what it animates without a label column; absent keeps "＋ Animation", the single-lane look byte for byte. */
   label?: string;
   /** Extra root class for per-lane theming (`lane-compare` recolours diamonds and segments via --lane-accent). */
   laneClassName?: string;
@@ -396,14 +396,13 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
       aria-hidden={!open}
     >
       <div className="anim-lane-row">
-        {label && <span className="anim-lane-label">{label}</span>}
         <button
           type="button"
           className="btn primary btn-small"
           title={addTitle}
           onClick={onAddAnimation}
         >
-          ＋ Animation
+          ＋ {label ?? "Animation"}
         </button>
 
         <div

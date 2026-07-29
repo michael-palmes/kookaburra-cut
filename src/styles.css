@@ -3736,15 +3736,9 @@ body {
 
 /* Boundary-key trim diamonds (13px rotated squares); the one nearest the playhead
    grows + gains an outline — "the key you'd edit now". */
-/* Stacked-lane identity: the fixed-width label keeps stacked tracks aligned; --lane-accent recolours a lane's diamonds and segment fills without touching the single-lane look. */
-.anim-lane-label {
-  flex: 0 0 74px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: right;
-  color: var(--lane-accent, var(--text-tertiary));
+/* Stacked-lane identity: --lane-accent recolours a lane's diamonds, segment fills and add button without touching the single-lane look; the shared min-width keeps the named add buttons equal so stacked tracks align. */
+.anim-lane-stack .anim-lane-row > .btn.primary {
+  min-width: 126px;
 }
 .anim-lane.lane-compare {
   --lane-accent: var(--success);
