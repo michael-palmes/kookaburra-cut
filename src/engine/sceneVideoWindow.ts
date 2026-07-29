@@ -14,13 +14,12 @@ const TWO_PI = Math.PI * 2;
 /** tilt-reveal starts the window this far toward the camera and eases it back to 0, so the tilt never swings an edge behind staged scenery. */
 const TILT_FORWARD = 1.4;
 
-/** Corner radius per preset, as a fraction of the window's SHORT edge (the ThemeCard convention); `macos` is tuned to a real window shown large in frame. `recording` resolves per-clip from the true pixel radius instead (see `recordingCrop`), so it falls back to the macOS look here. */
+/** Corner radius per preset, as a fraction of the window's SHORT edge (the ThemeCard convention); `macos` is tuned to a real window shown large in frame. */
 const RADIUS_PRESETS: Record<Exclude<VideoWindowRadius, { custom: number }>, number> = {
   sharp: 0,
   subtle: 0.02,
   macos: 0.035,
   rounded: 0.08,
-  recording: 0.035,
 };
 
 /** A raw macOS window recording's capture margins in source pixels (measured off a Retina 2x capture, hard edges): the window content sits inside these, the baked drop shadow outside. */
@@ -71,8 +70,10 @@ export interface NormalizedVideoWindowShadow {
 export interface NormalizedVideoWindow {
   media: { src: string; startMs: number; loop: boolean; aspect: number | null };
   radiusFraction: number;
-  /** The `recording` radius preset: crop the capture margins and mask at the true pixel radius once the clip's intrinsics arrive. */
+  /** Raw window recording: crop the capture margins once the clip's intrinsics arrive. */
   recording: boolean;
+  /** The radius is the `macos` preset, which under `recording` follows the capture's true pixel radius; any other preset or a custom fraction stays as authored. */
+  radiusTracksRecording: boolean;
   border: VideoWindowBorder;
   shadow: NormalizedVideoWindowShadow;
   motion: VideoWindowMotion;
@@ -150,6 +151,9 @@ export function normalizeVideoWindow(
     console.warn(`[videoWindow] ${source}: missing media.src, no window`);
     return null;
   }
+  // An early branch-only build wrote `radius: "recording"`; it degrades to the boolean + macOS look.
+  const legacyRecordingRadius = (raw.radius as unknown) === "recording";
+  const radius = legacyRecordingRadius ? "macos" : raw.radius;
   return {
     media: {
       src,
@@ -160,8 +164,9 @@ export function normalizeVideoWindow(
           ? (raw.media.aspect as number)
           : null,
     },
-    radiusFraction: resolveVideoWindowRadius(raw.radius),
-    recording: raw.radius === "recording",
+    radiusFraction: resolveVideoWindowRadius(radius),
+    recording: raw.recording === true || legacyRecordingRadius,
+    radiusTracksRecording: radius === "macos" || radius === undefined,
     border: normalizeBorder(raw.border),
     shadow: normalizeShadow(raw.shadow),
     motion: normalizeMotion(raw.motion),

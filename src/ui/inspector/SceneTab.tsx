@@ -80,6 +80,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
 /** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
@@ -736,24 +737,7 @@ function FrameShapeIcon({ id }: { id: FrameShape }) {
 }
 
 /** Corner-preset glyphs: one magnified top-left corner drawn at the preset's real rounding. */
-function VwCornerIcon({ id }: { id: "sharp" | "subtle" | "macos" | "rounded" | "recording" }) {
-  // Recording: the macOS corner inside a dashed margin, the cropped capture border.
-  if (id === "recording") {
-    return (
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 20 20"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        aria-hidden="true"
-      >
-        <path d="M17 3H3V17" strokeDasharray="2.4 2.4" opacity="0.5" />
-        <path d="M16.5 7.5H11A3.5 3.5 0 0 0 7.5 11V16.5" />
-      </svg>
-    );
-  }
+function VwCornerIcon({ id }: { id: "sharp" | "subtle" | "macos" | "rounded" }) {
   const r = { sharp: 0, subtle: 1.5, macos: 3.5, rounded: 7 }[id];
   return (
     <svg
@@ -1469,13 +1453,19 @@ function BgTypeIcon({ id }: { id: string }) {
   }
 }
 
-/** Applies a picked recording to the doc's video window and defaults the scene length to follow it (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so the window keeps its size before frames arrive. */
-function applyVideoWindowMedia(next: SceneDoc, src: string, meta: MediaMeta | null) {
+/** Applies a picked recording to the doc's video window and defaults the scene length to follow it (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so the window keeps its size before frames arrive, and `recording` (when detection ran) sets the window-recording crop to match the new clip. */
+function applyVideoWindowMedia(
+  next: SceneDoc,
+  src: string,
+  meta: MediaMeta | null,
+  recording?: boolean,
+) {
   if (!next.videoWindow) return;
   const media = { ...next.videoWindow.media, src };
   if (meta && meta.width > 0 && meta.height > 0) media.aspect = meta.width / meta.height;
   else delete media.aspect;
   next.videoWindow.media = media;
+  if (recording !== undefined) next.videoWindow.recording = recording;
   if (next.duration?.mode !== "manual") {
     next.duration = { mode: "follow-media", source: "videoWindow" };
   }
@@ -2415,17 +2405,23 @@ export function SceneTab({
   }
   if (drillIn === "videoWindow.media" && doc) {
     const vw = doc.videoWindow;
+    // Detection runs on the cached poster before the patch, so the recording crop lands in the same undoable entry as the pick.
     const createFrom = (src: string, meta: MediaMeta | null) =>
-      void patchDoc(
-        (next) => {
-          next.videoWindow = { media: { src }, radius: "macos" };
-          applyVideoWindowMedia(next, src, meta);
-        },
-        { resync: true },
+      void detectWindowRecording(meta).then((recording) =>
+        patchDoc(
+          (next) => {
+            next.videoWindow = { media: { src }, radius: "macos" };
+            applyVideoWindowMedia(next, src, meta, recording);
+          },
+          { resync: true },
+        ),
       );
     const pickVideoWindowMedia = (rel: string, meta: MediaMeta | null) => {
       if (meta && meta.kind !== "video") return;
-      if (vw) void patchDoc((next) => applyVideoWindowMedia(next, rel, meta), { resync: true });
+      if (vw)
+        void detectWindowRecording(meta).then((recording) =>
+          patchDoc((next) => applyVideoWindowMedia(next, rel, meta, recording), { resync: true }),
+        );
       else createFrom(rel, meta);
     };
     return (
@@ -2488,29 +2484,22 @@ export function SceneTab({
       else patchVW(mutate);
     };
     const createFrom = (src: string, meta: MediaMeta | null) =>
-      void patchDoc(
-        (next) => {
-          next.videoWindow = { media: { src }, radius: "macos" };
-          applyVideoWindowMedia(next, src, meta);
-        },
-        { resync: true },
+      void detectWindowRecording(meta).then((recording) =>
+        patchDoc(
+          (next) => {
+            next.videoWindow = { media: { src }, radius: "macos" };
+            applyVideoWindowMedia(next, src, meta, recording);
+          },
+          { resync: true },
+        ),
       );
-    const RADII: {
-      id: "sharp" | "subtle" | "macos" | "rounded" | "recording";
-      label: string;
-      title: string;
-    }[] = [
-      { id: "sharp", label: "Sharp", title: "Square corners" },
-      { id: "subtle", label: "Subtle", title: "A whisper of rounding" },
-      { id: "macos", label: "macOS", title: "The macOS window look" },
-      { id: "rounded", label: "Rounded", title: "Boldly rounded corners" },
-      {
-        id: "recording",
-        label: "Recording",
-        title:
-          "A raw macOS window recording: crops the capture margins and rounds at the true radius",
-      },
-    ];
+    const RADII: { id: "sharp" | "subtle" | "macos" | "rounded"; label: string; title: string }[] =
+      [
+        { id: "sharp", label: "Sharp", title: "Square corners" },
+        { id: "subtle", label: "Subtle", title: "A whisper of rounding" },
+        { id: "macos", label: "macOS", title: "The macOS window look" },
+        { id: "rounded", label: "Rounded", title: "Boldly rounded corners" },
+      ];
     const MOTIONS: { id: VideoWindowMotionPreset; label: string; title: string }[] = [
       { id: "none", label: "None", title: "No motion" },
       { id: "float", label: "Float", title: "A gentle vertical bob" },
@@ -2583,6 +2572,18 @@ export function SceneTab({
                 chevron
                 onClick={() => onOpenEditVideo(sceneIndex, vw.media.src, "videoWindow")}
               />
+              <ToggleRow
+                label="Window recording"
+                description="Crops the margins and shadow baked into a macOS window recording."
+                checked={vw.recording === true || (vw.radius as unknown) === "recording"}
+                onChange={(on) =>
+                  patchVW((v) => {
+                    v.recording = on;
+                    // An early branch-only build stored the mode on the radius; normalise it away on first touch.
+                    if ((v.radius as unknown) === "recording") v.radius = "macos";
+                  })
+                }
+              />
               <DrillGroup label="Corners">
                 <SegmentedRow
                   className="subtabs-compact"
@@ -2600,28 +2601,26 @@ export function SceneTab({
                     })
                   }
                 />
-                {radiusPreset !== "recording" && (
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Corner radius</span>
-                    <DebouncedRange
-                      value={resolveVideoWindowRadius(vw.radius)}
-                      min={0}
-                      max={0.2}
-                      step={0.005}
-                      label="Corner radius"
-                      onInput={(val) =>
-                        vwLive((v) => {
-                          v.radius = { custom: val };
-                        })
-                      }
-                      onCommit={(val) =>
-                        vwCommit((v) => {
-                          v.radius = { custom: val };
-                        })
-                      }
-                    />
-                  </div>
-                )}
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Corner radius</span>
+                  <DebouncedRange
+                    value={resolveVideoWindowRadius(vw.radius)}
+                    min={0}
+                    max={0.2}
+                    step={0.005}
+                    label="Corner radius"
+                    onInput={(val) =>
+                      vwLive((v) => {
+                        v.radius = { custom: val };
+                      })
+                    }
+                    onCommit={(val) =>
+                      vwCommit((v) => {
+                        v.radius = { custom: val };
+                      })
+                    }
+                  />
+                </div>
               </DrillGroup>
 
               <DrillGroup label="Border">
@@ -2778,13 +2777,13 @@ export function SceneTab({
                   />
                 </div>
                 <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Position X</span>
+                  <span className="popover-inline slider-row-label">Left/right (X)</span>
                   <DebouncedRange
                     value={vw.offset?.[0] ?? 0}
                     min={-0.5}
                     max={0.5}
                     step={0.01}
-                    label="Position X"
+                    label="Left/right (X)"
                     onInput={(val) =>
                       vwLive((v) => {
                         v.offset = [val, v.offset?.[1] ?? 0];
@@ -2798,13 +2797,13 @@ export function SceneTab({
                   />
                 </div>
                 <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Position Y</span>
+                  <span className="popover-inline slider-row-label">Up/down (Y)</span>
                   <DebouncedRange
                     value={vw.offset?.[1] ?? 0}
                     min={-0.5}
                     max={0.5}
                     step={0.01}
-                    label="Position Y"
+                    label="Up/down (Y)"
                     onInput={(val) =>
                       vwLive((v) => {
                         v.offset = [v.offset?.[0] ?? 0, val];

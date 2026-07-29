@@ -801,7 +801,8 @@ error, never a crash. Gate project: `ws:device-video-spike`.
 // scene sidecar (scenes/<stem>.json):
 "videoWindow": {
   "media":  { "src": "assets/screencast.mp4", "startMs"?: 0, "loop"?: false },
-  "radius": "macos",              // "sharp" | "subtle" | "macos" | "rounded" | "recording" | { "custom": 0..0.5 }
+  "radius": "macos",              // "sharp" | "subtle" | "macos" | "rounded" | { "custom": 0..0.5 }
+  "recording"?: true,             // raw macOS window recording: crop the capture margins
   "shadow"?: { "opacity": 0.34, "blur": 0.16, "offset": [0, -0.06] },  // blur/offset are short-edge fractions
   "motion"?: { "preset": "float", "amplitude"?, "hz"?, "durationMs"? }, // none|float|tilt-reveal|push-in|drift
   "scale"?:  0.72,                // window size as a fraction of the frame's shorter axis
@@ -815,12 +816,13 @@ scene stages behind it (theme backdrop, fixed background, or nothing). The windo
 sit in real world space at different depths, so the per-scene `camera` track orbits them with
 genuine parallax (not a camera-locked overlay). Video rides the SAME deterministic clip
 pipeline as `VideoClip` (`useClipTexture`); the window matches the recording's intrinsic aspect
-(contain, no crop), except `radius: "recording"`: the raw-window-recording mode, which crops the
-capture margins (baked shadow and margin) off a Retina 2x macOS window recording and masks at
-the true macOS corner radius. One window per scene, sidecar-driven (the `useSceneVideoWindow`
-consumer stands the host fallback down, the LayeredScreenshot pattern). Radius/crop/shadow are
-analytic per-pixel SDF + UV maths, deterministic by construction. Gate project:
-`ws:video-window-spike`.
+(contain, no crop), except under `recording: true`: the raw-window-recording mode, which crops
+the capture margins (baked shadow and margin) off a Retina 2x macOS window recording, and under
+the `macos` radius preset masks at the true macOS corner radius (other presets and custom
+fractions stay as authored). The flag is auto-detected at pick time from the poster's black
+margins. One window per scene, sidecar-driven (the `useSceneVideoWindow` consumer stands the
+host fallback down, the LayeredScreenshot pattern). Radius/crop/shadow are analytic per-pixel
+SDF + UV maths, deterministic by construction. Gate project: `ws:video-window-spike`.
 
 ## 3D primitives (v3 · M4)
 

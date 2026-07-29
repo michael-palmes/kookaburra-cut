@@ -1172,21 +1172,26 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 
-> **2026-07-29 (video window: stage removal, placement, recording corners):**
+> **2026-07-29 (video window: stage removal, placement, recording crop):**
 > the backing stage was removed outright (Michael's call: the scene's own
 > background/backdrop shows through instead; legacy `stage` blocks are silently
 > inert), the window gained a frame-fraction `offset` placement, and the new
-> `recording` corners mode crops a raw macOS window capture's margins
+> `recording: true` flag crops a raw macOS window capture's margins
 > (`RECORDING_INSETS` 112/76/112/148 + a 2px edge trim so bilinear sampling and
-> the baked corner AA never bleed in) and masks at the true 26pt-at-2x radius
-> (`RECORDING_RADIUS_PX` 52), all measured off a real Tahoe capture (hard
-> edges; radius fitted ±0.7px on both top corners). The crop is a UV affine in
-> a VideoWindow-only program (`kookaburra-vw-card-v1`) whose identity transform
-> is IEEE-exact, and the LS shaders are untouched: `pnpm gate` EQUAL
-> (`355f9429…`). The stage removal is a deliberate visual change to
-> video-window scenes only: `ws:video-window-spike` (plus a new
-> recording-mode scene) re-recorded `d67eb1d4…` → `6dfe68a6…` Verify ×2 EQUAL
-> after corner-crop eyeballs via `--action screenshot`.
+> the baked corner AA never bleed in) and, under the `macos` radius preset,
+> masks at the true 26pt-at-2x radius (`RECORDING_RADIUS_PX` 52); other presets
+> and custom fractions stay as authored. Constants measured off a real Tahoe
+> capture (hard edges; radius fitted ±0.7px on both top corners). The crop is a
+> UV affine in a VideoWindow-only program (`kookaburra-vw-card-v1`) whose
+> identity transform is IEEE-exact, and the LS shaders are untouched: `pnpm
+> gate` EQUAL (`355f9429…`). The flag is auto-detected at pick time from the
+> cached poster's black margins (editor-only, decides a doc value, never runs
+> in the render path). The stage removal is a deliberate visual change to
+> video-window scenes only: `ws:video-window-spike` (plus a new recording-mode
+> scene) re-recorded `d67eb1d4…` → `6dfe68a6…` Verify ×2 EQUAL after
+> corner-crop eyeballs via `--action screenshot`; the same hash re-verified
+> EQUAL after the flag moved from an interim `radius: "recording"` value to
+> the boolean (the value still degrades), proving the rework pixel-null.
 
 > **2026-07-26 (camera rigging, the full batch):** free-flight camera rigs
 > (`cameraMode` + `cameraRig`, the canonical sampler, centripetal smoothing,

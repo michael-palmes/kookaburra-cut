@@ -86,11 +86,23 @@ describe("normalizeVideoWindow — degrade + defaults", () => {
     ]);
   });
 
-  it("flags the recording radius preset and falls back to the macOS fraction", () => {
-    const n = normalizeVideoWindow(minimal({ radius: "recording" }), "s");
-    expect(n?.recording).toBe(true);
-    expect(n?.radiusFraction).toBeCloseTo(0.035);
+  it("carries the recording flag and whether the radius tracks the capture", () => {
     expect(normalizeVideoWindow(minimal(), "s")?.recording).toBe(false);
+    const n = normalizeVideoWindow(minimal({ recording: true }), "s");
+    expect(n?.recording).toBe(true);
+    expect(n?.radiusTracksRecording).toBe(true);
+    const custom = normalizeVideoWindow(minimal({ recording: true, radius: { custom: 0.1 } }), "s");
+    expect(custom?.recording).toBe(true);
+    expect(custom?.radiusTracksRecording).toBe(false);
+    expect(custom?.radiusFraction).toBeCloseTo(0.1);
+  });
+
+  it('degrades the early radius:"recording" value to the boolean + macOS look', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the degrade path
+    const n = normalizeVideoWindow(minimal({ radius: "recording" as any }), "s");
+    expect(n?.recording).toBe(true);
+    expect(n?.radiusTracksRecording).toBe(true);
+    expect(n?.radiusFraction).toBeCloseTo(0.035);
   });
 
   it("drops an invalid shadow offset back to the default", () => {

@@ -196,14 +196,8 @@ export interface SceneDocLayeredScreenshot {
   };
 }
 
-/** Corner radius for the video window: a named preset, or a custom short-edge fraction (clamped 0..0.5 at resolve). `macos` emulates a real macOS window's rounding; `recording` is the raw-window-recording mode, which also crops the capture margins (see `sceneVideoWindow.ts`). */
-export type VideoWindowRadius =
-  | "sharp"
-  | "subtle"
-  | "macos"
-  | "rounded"
-  | "recording"
-  | { custom: number };
+/** Corner radius for the video window: a named preset, or a custom short-edge fraction (clamped 0..0.5 at resolve). `macos` emulates a real macOS window's rounding, and under `recording: true` it resolves to the capture's true pixel radius. */
+export type VideoWindowRadius = "sharp" | "subtle" | "macos" | "rounded" | { custom: number };
 
 /** The window's analytic drop shadow onto the backing stage. `blur` and `offset` are fractions of the window's short edge (offset x right, y up); `opacity` is 0..1. */
 export interface VideoWindowShadow {
@@ -238,6 +232,8 @@ export interface SceneDocVideoWindow {
   /** Project-relative video, e.g. `"assets/screencast.mp4"`; `aspect` (width/height, recorded at pick time) sizes the window before the clip's intrinsics arrive. */
   media: { src: string; startMs?: number; loop?: boolean; aspect?: number };
   radius: VideoWindowRadius;
+  /** Raw macOS window recording: crop the capture margins (baked shadow and background) and, under the `macos` radius preset, round at the capture's true pixel radius. Auto-detected at pick time from the poster's black margins. */
+  recording?: boolean;
   border?: VideoWindowBorder;
   shadow?: VideoWindowShadow;
   motion?: VideoWindowMotion;

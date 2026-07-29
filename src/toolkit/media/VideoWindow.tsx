@@ -225,7 +225,7 @@ function VideoWindowRenderer({ w }: { w: NormalizedVideoWindow }) {
     : intrinsics
       ? intrinsics.width / intrinsics.height
       : (w.media.aspect ?? DEFAULT_CLIP_ASPECT);
-  const radiusFraction = crop ? crop.radiusFraction : w.radiusFraction;
+  const radiusFraction = crop && w.radiusTracksRecording ? crop.radiusFraction : w.radiusFraction;
   const uv: WindowUv | null =
     crop && intrinsics
       ? {
