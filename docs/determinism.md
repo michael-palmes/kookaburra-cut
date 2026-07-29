@@ -1167,6 +1167,7 @@ rolling-gate project (`showcase-tour`):
 | `showcase-tour` (rolling gate) | `355f9429…` | stale | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | `8d293536…` | `ed66045e…` | `63dfb18b…` | `aa3cb9b1…` | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
@@ -1205,6 +1206,21 @@ rolling-gate project (`showcase-tour`):
 > corner-crop eyeballs via `--action screenshot`; the same hash re-verified
 > EQUAL after the flag moved from an interim `radius: "recording"` value to
 > the boolean (the value still degrades), proving the rework pixel-null.
+
+> **2026-07-29 (before/after comparisons):** the compare path (one scene as
+> two side hosts composited under a mask on the transition A/B pools, see
+> docs/comparisons.md). Its failure modes are the transition path's: every
+> mask-shader sample re-encodes via `sampleDisplay` (SDR) or round-trips
+> ACES (HDR), persistent layers hide during the side renders and draw once
+> over the composite, per-side root-scene state applies before each side's
+> render and restores on exit, and the divider is a CPU-computed uniform.
+> Two lessons of its own: a comparison holds an MSAA A/B pair for its whole
+> scene (not a transition's brief window; `releaseIdlePools` carries the
+> compare flags, and the all-aspect fixture legs measured a 1460 MB peak,
+> well under the 4 GB WebContent ceiling), and everything derived from
+> scene docs at LOAD (`compareBDocs`/`compareBThemes`) must re-derive in
+> `handleDocChanged`'s in-memory patch or the after side renders empty.
+> The `01-null` control scene pins the solo fast path byte-identically.
 
 > **2026-07-26 (camera rigging, the full batch):** free-flight camera rigs
 > (`cameraMode` + `cameraRig`, the canonical sampler, centripetal smoothing,

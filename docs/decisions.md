@@ -193,6 +193,11 @@ The full contract and its failure catalogue are in
 | Aspects | 16:9 / 9:16 / 1:1 standing; 4:5 / 5:4 / 3:2 / 2:3 first-class but feature-scoped in gates (whether any joins the standing matrix stays an open question) | Gate economy |
 | Output naming | Preset/custom exports carry a preset suffix; the frozen path keeps the exact legacy filename | Preset output can never overwrite the files baselines hash |
 | Size caps | Estimate vs platform cap with a one-click fit; informative, never blocking | Informative, not paternal |
+| Comparison model | A before/after comparison is ONE scene: side A is the doc itself, `compare.b` overrides derive side B, composited under a mask on the transition A/B pools (docs/comparisons.md) | Self-contained scenes round-trip through packs, verify and the timeline like any other |
+| Comparison blending | Each side renders fully in its own theme/lighting/background and only finished pixels mix under the mask, in the display domain (the cross-theme transition rule); chrome colours are theme tokens | Perceptual masking, and per-side looks stay self-consistent |
+| Divider semantics | `value` is the mask line's position along the sweep axis with the before on the origin side; the divider track rides the shared KeyedTrack model (eased segments, hold outside) | The slider's spatial mapping, and one keyed-track vocabulary everywhere |
+| Comparison display transform | Both sides share the project's tone mapping/exposure (v1) | The one renderer-level knob; per-side curves are deliberate-rebase territory |
+| Comparison transitions | A transition adjacent to a comparison blends its BEFORE side only during the window, said in the picker; hard cuts show the full comparison | A nested composite costs another pooled target; measured need first |
 
 ## Chrome, identity & voice
 

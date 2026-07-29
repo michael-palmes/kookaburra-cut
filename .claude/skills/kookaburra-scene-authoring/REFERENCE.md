@@ -82,8 +82,9 @@ normally and simply shows no editing affordances.
   },
   "layeredScreenshot": { /* the 3D screen stack — see "Layered screenshot" */ },
   "frame": { /* the scene overlay (panel + cutout) — see "Scene overlays (the frame block)" */ },
+  "compare": { /* the before/after comparison (side-B overrides, mask, divider track, chrome) — full schema and value semantics in docs/comparisons.md */ },
   "animatedTrack": "camera"                  // which keyed track animates this scene:
-                                             // "camera" (also the absent default) or "layeredScreenshot"
+                                             // "camera" (the absent default), "layeredScreenshot" or "compare"
 }
 ```
 
