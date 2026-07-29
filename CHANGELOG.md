@@ -19,9 +19,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A live Theme preset for animated backgrounds. Colours come from the
   active theme's tokens as the scene renders, so the fill follows a
   theme switch instead of going stale.
+- Any scene can take an overlay. Add overlay sits in the inspector until
+  one exists, then opens the full drill, and Show on this scene hides an
+  overlay while keeping its styling.
+- Overlay panels lay their title and subtitle out from measured text, so
+  the space reserved and the space drawn always agree: no phantom gaps,
+  no overlap. Cutout presets scaffold a flat panel over a lifted scene
+  clear, and bullets can be typed in the create wizard.
+- Device-only scenes scaffold centred and dominant, resting on a staged
+  floor with real map shadows, or floating with a soft blob shadow.
+- The terminal panel flags a new version of Claude Code and updates it
+  in place, with a Run diagnostics button on failed sessions.
 
 ### Changed
 
+- Exports read General, then Studio, then the platform groups, and the
+  General and Studio presets cover every aspect the engine supports.
+  App-triggered exports now land in ~/Downloads by default.
+- The Scene tab reads in divided sections: what the scene has, what can
+  be added, then its settings. Change video and Edit video sit together,
+  and Clear text is one click.
+- Picking a theme card applies it straight away in both pickers.
+- Picking an Animated, Gradient, Image or Video background clears the
+  scene's stage backdrop in the same undoable step.
+- Adding or duplicating a scene lands the playhead inside the new scene
+  rather than on its entry transition, and right-clicking anywhere in
+  the playback bar opens the menu for the scene under the pointer.
 - Background previews follow the project's theme: a light project sees
   light clips, preset tiles lead with the theme's mode, and clicking a
   card applies exactly what the card shows.
