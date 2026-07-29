@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "Circle window",
+  "text": {
+    "title": "Spotlight"
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/screen.png",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-0.85, -0.3, 0],
+        "rotationDeg": [0, 12, 0],
+        "scale": 0.85
+      },
+      "motion": {
+        "preset": "none"
+      }
+    },
+    {
+      "id": "d2",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/screen.png",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0.85, -0.3, 0],
+        "rotationDeg": [0, -12, 0],
+        "scale": 0.85
+      },
+      "motion": {
+        "preset": "none"
+      }
+    }
+  ],
+  "compare": {
+    "b": {
+      "themeId": "kookaburra-midnight",
+      "media": {
+        "d2": {
+          "src": "assets/sample-screenshot-4.jpg",
+          "kind": "image"
+        }
+      }
+    },
+    "mask": {
+      "type": "circle",
+      "center": [0.62, 0.45],
+      "softness": 0.01
+    },
+    "value": 0.42,
+    "chrome": {
+      "line": { "width": 3, "colour": "accent" },
+      "tint": { "b": "accent", "amount": 0.1 }
+    }
+  }
+}

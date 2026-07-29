@@ -16,6 +16,18 @@
     {
       "file": "scenes/03-sweep.tsx",
       "durationMs": 2000
+    },
+    {
+      "file": "scenes/04-circle.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/05-blend.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/06-chrome.tsx",
+      "durationMs": 1600
     }
   ]
 }
