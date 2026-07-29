@@ -54,7 +54,29 @@
       "type": "blend"
     },
     "track": {
-      "keys": [{ "id": "k1", "atMs": 0, "value": 0.1 }, { "id": "k2", "atMs": 1400, "value": 0.85 }]
+      "keys": [
+        {
+          "id": "k1",
+          "tMs": 0,
+          "pose": {
+            "value": 0.1
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 1400,
+          "pose": {
+            "value": 0.85
+          }
+        }
+      ],
+      "segments": [
+        {
+          "from": "k1",
+          "to": "k2",
+          "ease": "inOutSine"
+        }
+      ]
     }
   }
 }

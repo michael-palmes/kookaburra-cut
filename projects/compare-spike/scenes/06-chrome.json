@@ -50,13 +50,42 @@
       "softness": 0
     },
     "track": {
-      "keys": [{ "id": "k1", "atMs": 0, "value": 0.3 }, { "id": "k2", "atMs": 1400, "value": 0.7 }]
+      "keys": [
+        {
+          "id": "k1",
+          "tMs": 0,
+          "pose": {
+            "value": 0.3
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 1400,
+          "pose": {
+            "value": 0.7
+          }
+        }
+      ],
+      "segments": [
+        {
+          "from": "k1",
+          "to": "k2",
+          "ease": "inOutCubic"
+        }
+      ]
     },
     "chrome": {
-      "line": { "width": 4, "colour": "accent" },
+      "line": {
+        "width": 4,
+        "colour": "accent"
+      },
       "grip": true,
       "chips": true,
-      "tint": { "b": "accent", "amount": 0.06 }
+      "tint": {
+        "b": "accent",
+        "amount": 0.06
+      }
     }
-  }
+  },
+  "animatedTrack": "compare"
 }

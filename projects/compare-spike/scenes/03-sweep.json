@@ -59,9 +59,29 @@
     },
     "track": {
       "keys": [
-        { "id": "k1", "atMs": 0, "value": 0.15 },
-        { "id": "k2", "atMs": 1600, "value": 0.85 }
+        {
+          "id": "k1",
+          "tMs": 0,
+          "pose": {
+            "value": 0.15
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 1600,
+          "pose": {
+            "value": 0.85
+          }
+        }
+      ],
+      "segments": [
+        {
+          "from": "k1",
+          "to": "k2",
+          "ease": "inOutQuad"
+        }
       ]
     }
-  }
+  },
+  "animatedTrack": "compare"
 }
