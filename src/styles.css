@@ -3750,6 +3750,10 @@ body {
   border-color: rgba(95, 184, 122, 0.48);
   background: rgba(95, 184, 122, 0.12);
 }
+.anim-lane.lane-compare .anim-lane-row > .btn.primary {
+  background: var(--success);
+  border-color: transparent;
+}
 
 .anim-key {
   position: absolute;
@@ -3810,6 +3814,26 @@ body {
   transform: translateX(-50%);
   background: var(--text-primary);
   border-radius: 2px;
+}
+
+/* Stacked lanes read as ONE panel: the seam tightens (no divider border on the upper lane), the lower lane drops its playhead knob, and both playheads stretch across the seam so the line runs continuously through the group. */
+.anim-lane-stack .anim-lane:first-child.open {
+  border-bottom-color: transparent;
+}
+.anim-lane-stack .anim-lane:first-child .anim-lane-row {
+  padding-bottom: 5px;
+}
+.anim-lane-stack .anim-lane + .anim-lane .anim-lane-row {
+  padding-top: 5px;
+}
+.anim-lane-stack .anim-lane:first-child .anim-playhead {
+  bottom: -30px;
+}
+.anim-lane-stack .anim-lane + .anim-lane .anim-playhead {
+  top: -30px;
+}
+.anim-lane-stack .anim-lane + .anim-lane .anim-playhead::before {
+  display: none;
 }
 
 /* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */

@@ -2073,7 +2073,7 @@ export default function App() {
               activeIndex={camSceneIndex}
               lane={
                 project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-                  <>
+                  <div className={comparePresent ? "anim-lane-stack" : undefined}>
                     {comparePresent && (
                       <CompareAnimationLane
                         project={project}
@@ -2100,7 +2100,7 @@ export default function App() {
                         alwaysOpen={comparePresent}
                       />
                     )}
-                  </>
+                  </div>
                 ) : null
               }
             >
