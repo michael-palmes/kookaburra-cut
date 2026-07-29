@@ -3738,7 +3738,8 @@ body {
    grows + gains an outline — "the key you'd edit now". */
 /* Stacked-lane identity: --lane-accent recolours a lane's diamonds, segment fills and add button without touching the single-lane look; the shared min-width keeps the named add buttons equal so stacked tracks align. */
 .anim-lane-stack .anim-lane-row > .btn.primary {
-  min-width: 126px;
+  min-width: 112px;
+  padding: 0 var(--space-3);
 }
 .anim-lane.lane-compare {
   --lane-accent: var(--success);
