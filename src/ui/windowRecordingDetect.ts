@@ -1,5 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
 import type { MediaMeta } from "../engine/media";
-import { fsUrl } from "../engine/media";
 import { RECORDING_INSETS } from "../engine/sceneVideoWindow";
 
 /** Editor-side heuristic for the video window's pick flow: does this clip look like a raw macOS window recording (pure-black capture margins in exactly the known widths)? Runs on the cached 640px poster, only ever decides the initial state of the doc's `recording` flag, and fails to `false` so a pick can never block on it. */
@@ -102,20 +102,19 @@ export function detectWindowRecordingPixels(
   return marginsBlack(data, posterW, posterH, measured);
 }
 
-/** Load the poster and run the pixel core; any failure (no poster, decode error) is a quiet `false`. */
+/** Load the poster and run the pixel core; any failure (no poster, decode error) is a quiet `false`. The bytes come through the Rust `read_media_thumb` command and decode via a same-origin blob, because an asset-protocol image taints the canvas and `getImageData` throws. */
 export async function detectWindowRecording(meta: MediaMeta | null): Promise<boolean> {
   if (meta?.kind !== "video" || !meta.posterPath) return false;
   try {
-    const image = new Image();
-    image.decoding = "async";
-    image.src = fsUrl(meta.posterPath);
-    await image.decode();
+    const buffer = await invoke<ArrayBuffer>("read_media_thumb", { path: meta.posterPath });
+    const bitmap = await createImageBitmap(new Blob([buffer]));
     const canvas = document.createElement("canvas");
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return false;
-    ctx.drawImage(image, 0, 0);
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
     const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
     return detectWindowRecordingPixels(data, canvas.width, canvas.height, meta.width, meta.height);
   } catch (e) {

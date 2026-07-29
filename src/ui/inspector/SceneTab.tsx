@@ -2410,8 +2410,15 @@ export function SceneTab({
       void detectWindowRecording(meta).then((recording) =>
         patchDoc(
           (next) => {
-            next.videoWindow = { media: { src }, radius: "macos" };
+            next.videoWindow = {
+              media: { src },
+              radius: "macos",
+              border: { enabled: false, color: "#ffffff", width: 0.0035, opacity: 0.12 },
+            };
             applyVideoWindowMedia(next, src, meta, recording);
+            // Staged scenery sits in front of the shadow plane and clips it: stand staging down in the same undoable entry.
+            if (stagedBackdrop !== null && stagedBackdrop !== "none")
+              next.backdrop = { type: "none" };
           },
           { resync: true },
         ),
@@ -2487,8 +2494,15 @@ export function SceneTab({
       void detectWindowRecording(meta).then((recording) =>
         patchDoc(
           (next) => {
-            next.videoWindow = { media: { src }, radius: "macos" };
+            next.videoWindow = {
+              media: { src },
+              radius: "macos",
+              border: { enabled: false, color: "#ffffff", width: 0.0035, opacity: 0.12 },
+            };
             applyVideoWindowMedia(next, src, meta, recording);
+            // Staged scenery sits in front of the shadow plane and clips it: stand staging down in the same undoable entry.
+            if (stagedBackdrop !== null && stagedBackdrop !== "none")
+              next.backdrop = { type: "none" };
           },
           { resync: true },
         ),

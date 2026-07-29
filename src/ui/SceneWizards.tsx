@@ -30,6 +30,7 @@ import { HeaderIconField, TextFieldRow } from "./SceneTextFields";
 import { backgroundOptions } from "./stageOptions";
 import { defaultDraft, draftToSpec, TEXT_PRESET_CATALOG } from "./textAnimationOptions";
 import { useEscapeClose } from "./useEscapeClose";
+import { detectWindowRecording } from "./windowRecordingDetect";
 
 /** New/Edit-scene wizards + shared scene picker: scaffold/edit paths are fully native (no Claude session needed); only the optional polish-description paste needs one, and the host (TerminalPanel) owns pasting and the post-write reload. */
 
@@ -77,7 +78,7 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
   { id: "video", label: "Video", blurb: "A video filling the whole frame" },
-  { id: "videowindow", label: "Video window", blurb: "A floating screen recording on a stage" },
+  { id: "videowindow", label: "Video window", blurb: "A floating screen recording" },
   { id: "overlaystart", label: "Cutout start", blurb: "Panel text beside a scene window" },
   { id: "overlayend", label: "Cutout end", blurb: "A scene window beside panel text" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
@@ -318,7 +319,7 @@ export function NewSceneWizard({
   scenes: WizardSceneInfo[];
   /** Scene-thumb paths by stem (host loads them lazily on open). */
   thumbs: Record<string, string>;
-  /** The project's theme, for the text-colour swatch defaults and the video window's stage. */
+  /** The project's theme, for the text-colour swatch defaults. */
   theme: Theme;
   onDone: (result: ScaffoldedScene) => void;
   onCancel: () => void;
@@ -328,7 +329,11 @@ export function NewSceneWizard({
   const [kind, setKind] = useState<SceneKind>("device");
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
-  const [media, setMedia] = useState<{ rel: string; kind: "video" | "image" } | null>(null);
+  const [media, setMedia] = useState<{
+    rel: string;
+    kind: "video" | "image";
+    meta: MediaMeta | null;
+  } | null>(null);
   const [nameOverride, setNameOverride] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [title, setTitle] = useState("");
@@ -345,7 +350,7 @@ export function NewSceneWizard({
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const pickWizardMedia = (rel: string, meta: MediaMeta | null) => {
     const fallback = kind === "layeredscreenshot" ? "image" : "video";
-    setMedia({ rel, kind: meta?.kind ?? fallback });
+    setMedia({ rel, kind: meta?.kind ?? fallback, meta });
     setStep("details");
   };
 
@@ -396,6 +401,8 @@ export function NewSceneWizard({
     setError(null);
     try {
       const finalName = sceneName.trim() || generatedName;
+      const recording =
+        kind === "videowindow" ? await detectWindowRecording(media?.meta ?? null) : null;
       const result = await invoke<ScaffoldedScene>("scaffold_scene", {
         slug,
         options: {
@@ -409,7 +416,7 @@ export function NewSceneWizard({
           mediaRel: takesMedia ? (media?.rel ?? null) : null,
           mediaKind: takesMedia ? (media?.kind ?? null) : null,
           headerIcon: kind === "titleicon" ? headerIcon.trim() || null : null,
-          stageColor: kind === "videowindow" ? theme.colors.background : null,
+          recording,
           position: position ?? null,
         },
       });
@@ -485,7 +492,7 @@ export function NewSceneWizard({
                 onClick={() => {
                   // The video kinds' media step starts on the sample so "Use the sample video" is a one-click accept.
                   if (VIDEO_MEDIA_KINDS.includes(kind) && media?.kind !== "video") {
-                    setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video" });
+                    setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video", meta: null });
                   }
                   setStep(
                     isDeviceKind
@@ -753,7 +760,11 @@ export function EditSceneWizard({
   const [title, setTitle] = useState("");
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
-  const [media, setMedia] = useState<{ rel: string; kind: "video" | "image" } | null>(null);
+  const [media, setMedia] = useState<{
+    rel: string;
+    kind: "video" | "image";
+    meta: MediaMeta | null;
+  } | null>(null);
   const [motion, setMotion] = useState("none");
   const [shadow, setShadow] = useState("soft");
   const [background, setBackground] = useState("default");
@@ -765,7 +776,7 @@ export function EditSceneWizard({
   const [error, setError] = useState<string | null>(null);
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const pickEditMedia = (rel: string, meta: MediaMeta | null) => {
-    setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video" });
+    setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video", meta });
     setStep("form");
   };
   const backgroundChips = useBackgroundChips();
@@ -824,7 +835,7 @@ export function EditSceneWizard({
       const validModel = (d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId;
       setModel(validModel);
       setColour(d.colour ?? DEVICE_CATALOG[validModel].defaultColour);
-      setMedia(d.media ? { rel: d.media.src, kind: d.media.kind } : null);
+      setMedia(d.media ? { rel: d.media.src, kind: d.media.kind, meta: null } : null);
       setMotion(d.motion?.preset ?? "none");
       setShadow(d.shadow ?? "soft");
     }
