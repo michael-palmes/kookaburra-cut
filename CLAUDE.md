@@ -91,6 +91,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 - Skill `kookaburra-release`: sign, notarise, DMG, packaged-parity gate, release flow.
 - Skill `kookaburra-skill-creator`: create new project skills/commands/primitives.
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
+- Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
@@ -102,7 +103,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 
 - **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
 - **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.
-- PR descriptions follow the same rules: short and concise, Australian English, no em dashes.
+- PR descriptions ALWAYS follow the `kookaburra-pr-descriptions` skill: one fixed shape (summary, What changed, a Verification line when gated), under ~120 words, nothing that lives outside the repo.
 
 ## Current state
 
