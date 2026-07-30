@@ -1562,6 +1562,7 @@ export function SceneTab({
     sceneIndex: number,
     mediaRel: string,
     slot?: "device" | "background" | "videoWindow",
+    deviceId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
@@ -5001,7 +5002,8 @@ export function SceneTab({
           setMediaTarget({ kind: "device", deviceId });
           setModal("media");
         },
-        "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
+        "device.editVideo": () =>
+          device?.media && onOpenEditVideo(sceneIndex, device.media.src, "device", device.id),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
         "device.duplicate": duplicateDevice,
@@ -5286,7 +5288,7 @@ export function SceneTab({
       label: windowVideo ? "Edit device video" : "Edit video",
       icon: "device.editVideo",
       chevron: false,
-      onClick: () => onOpenEditVideo(sceneIndex, deviceVideo),
+      onClick: () => onOpenEditVideo(sceneIndex, deviceVideo, "device", device?.id),
     });
   else if (windowVideo)
     contentEntries.push({

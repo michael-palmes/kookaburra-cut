@@ -167,6 +167,33 @@ export async function applyBackgroundToAllScenes(
   return { applied: changes.length, failed };
 }
 
+/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
+export function applyEditRepoint(
+  doc: SceneDoc,
+  slot: "device" | "background" | "videoWindow",
+  rel: string,
+  deviceId?: string,
+): SceneDoc | null {
+  const next = structuredClone(doc);
+  if (slot === "background") {
+    if (next.background?.type !== "video") return null;
+    next.background = { ...next.background, src: rel };
+    return next;
+  }
+  if (slot === "videoWindow") {
+    if (!next.videoWindow) return null;
+    next.videoWindow = {
+      ...next.videoWindow,
+      media: { ...next.videoWindow.media, src: rel },
+    };
+    return next;
+  }
+  const device = deviceId ? next.devices?.find((d) => d.id === deviceId) : next.devices?.[0];
+  if (!device?.media) return null;
+  device.media = { ...device.media, src: rel };
+  return next;
+}
+
 // ── Duration-follow (engine-side; reads LoadedProject directly, never React context) ──
 
 interface MediaMetaLike {

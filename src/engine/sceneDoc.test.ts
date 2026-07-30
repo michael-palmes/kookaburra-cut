@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   }),
 }));
 
-import { followMediaSources, resyncFollowMediaDuration } from "./sceneDoc";
+import { applyEditRepoint, followMediaSources, resyncFollowMediaDuration } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
@@ -31,6 +31,68 @@ const imageDevice = (id: string, src: string) => ({
   id,
   model: "iphone-17-pro",
   media: { src, kind: "image" },
+});
+
+describe("applyEditRepoint (edit-render re-point targeting)", () => {
+  const rel = "assets/clip-edited.mp4";
+
+  it("a deviceId re-points that device and no other", () => {
+    const doc = docWith({
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+    });
+    const next = applyEditRepoint(doc, "device", rel, "d2");
+    expect(next?.devices?.[0]?.media?.src).toBe("assets/a.mp4");
+    expect(next?.devices?.[1]?.media?.src).toBe(rel);
+  });
+
+  it("no deviceId keeps the legacy first-device behaviour", () => {
+    const doc = docWith({
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+      ] as SceneDoc["devices"],
+    });
+    const next = applyEditRepoint(doc, "device", rel);
+    expect(next?.devices?.[0]?.media?.src).toBe(rel);
+    expect(next?.devices?.[1]?.media?.src).toBe("assets/b.mp4");
+  });
+
+  it("a stale deviceId re-points nothing, never a neighbour", () => {
+    const doc = docWith({
+      devices: [videoDevice("d1", "assets/a.mp4")] as SceneDoc["devices"],
+    });
+    expect(applyEditRepoint(doc, "device", rel, "gone")).toBeNull();
+  });
+
+  it("a media-less device and a device-less doc re-point nothing", () => {
+    const bare = docWith({
+      devices: [{ id: "d1", model: "iphone-17-pro" }] as SceneDoc["devices"],
+    });
+    expect(applyEditRepoint(bare, "device", rel, "d1")).toBeNull();
+    expect(applyEditRepoint(docWith({}), "device", rel)).toBeNull();
+  });
+
+  it("background re-points only a video background", () => {
+    const video = docWith({
+      background: { type: "video", src: "assets/bg.mp4" } as SceneDoc["background"],
+    });
+    expect(applyEditRepoint(video, "background", rel)?.background).toMatchObject({ src: rel });
+    expect(applyEditRepoint(docWith({}), "background", rel)).toBeNull();
+  });
+
+  it("videoWindow re-points its media and leaves the doc otherwise untouched", () => {
+    const doc = docWith({
+      devices: [videoDevice("d1", "assets/a.mp4")] as SceneDoc["devices"],
+      videoWindow: { media: { src: "assets/win.mp4" } } as SceneDoc["videoWindow"],
+    });
+    const next = applyEditRepoint(doc, "videoWindow", rel);
+    expect(next?.videoWindow?.media?.src).toBe(rel);
+    expect(next?.devices?.[0]?.media?.src).toBe("assets/a.mp4");
+    expect(doc.videoWindow?.media?.src).toBe("assets/win.mp4");
+  });
 });
 
 describe("followMediaSources (the follow-media source rule)", () => {
