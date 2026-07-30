@@ -1,11 +1,11 @@
-import { AnimatedHeadline, Device, defineScene, SceneStage, useFormat, useSceneDevices, useSceneText, useTheme } from "@kookaburra/toolkit";
+import { AnimatedHeadline, Device, defineScene, resolveDeviceLayout, SceneStage, useFormat, useSceneDevices, useSceneDoc, useSceneText, useTheme } from "@kookaburra/toolkit";
 
 /**
- * __NAME__ — scaffolded before/after comparison. The COMPOSITION lives here (layout, extra
- * elements, anything creative); everything machine-editable lives in the sidecar
- * `scenes/__STEM__.json` (name, text map incl. beforeLabel/afterLabel, devices, camera,
- * duration mode) — edit that, in the app or by hand, rather than hard-coding values here.
- * See the kookaburra-scene-authoring skill ("Scene documents").
+ * __NAME__: scaffolded comparison. The COMPOSITION lives here (layout, extra elements,
+ * anything creative); everything machine-editable lives in the sidecar
+ * `scenes/__STEM__.json` (name, text map incl. beforeLabel/afterLabel, devices, the
+ * deviceLayout block, camera, duration mode): edit that, in the app or by hand, rather
+ * than hard-coding values here. See the kookaburra-scene-authoring skill ("Scene documents").
  */
 export default defineScene({
   id: "__SCENE_ID__",
@@ -19,9 +19,11 @@ export default defineScene({
     const labels = [useSceneText("beforeLabel"), useSceneText("afterLabel")];
     const labelKeys = ["beforeLabel", "afterLabel"];
     const devices = useSceneDevices();
-    // Portrait pulls the pair toward centre and shrinks it harder than a single device would.
-    const spread = portrait ? 0.62 : 1;
-    const scaleMult = portrait ? 0.62 : 0.92;
+    const doc = useSceneDoc();
+    // The deviceLayout block resolves per aspect (preset + gap + per-device deltas); block-less docs fall back to raw placements.
+    const placements = doc?.deviceLayout
+      ? resolveDeviceLayout(devices, doc.deviceLayout, format)
+      : devices.map((d) => d.placement ?? {});
     return (
       <SceneStage>
         <color attach="background" args={[theme.colors.background]} />
@@ -48,7 +50,8 @@ export default defineScene({
           />
         ) : null}
         {devices.map((d, i) => {
-          const x = (d.placement?.position?.[0] ?? 0) * spread;
+          const placement = placements[i] ?? {};
+          const x = placement.position?.[0] ?? 0;
           const label = i < 2 ? labels[i] : null;
           return (
             <group key={d.id}>
@@ -64,18 +67,7 @@ export default defineScene({
                   fontSize={portrait ? 0.13 : 0.18}
                 />
               ) : null}
-              <Device
-                {...d}
-                placement={{
-                  ...d.placement,
-                  position: [
-                    x,
-                    d.placement?.position?.[1] ?? -0.3,
-                    d.placement?.position?.[2] ?? 0,
-                  ],
-                  scale: (d.placement?.scale ?? 1) * scaleMult,
-                }}
-              />
+              <Device {...d} placement={placement} />
             </group>
           );
         })}

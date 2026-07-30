@@ -4929,14 +4929,24 @@ export function SceneTab({
         model={(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId}
         colour={device.colour ?? DEVICE_CATALOG["iphone-15-pro"].defaultColour}
         motion={device.motion?.preset ?? "none"}
+        deviceCount={devices.length}
+        deviceLabel={`Device ${
+          Math.max(
+            0,
+            devices.findIndex((d) => d.id === deviceId),
+          ) + 1
+        }`}
         onBack={() => closeDrill()}
         backLabel={backLabel}
-        onSave={(model, colour, motion) => {
+        onSave={(model, colour, motion, applyAll) => {
           closeDrill();
-          patchDevice((d) => {
-            d.model = model;
-            d.colour = colour;
-            d.motion = { ...d.motion, preset: motion };
+          void patchDoc((next) => {
+            for (const d of next.devices ?? []) {
+              if (!applyAll && d.id !== deviceId) continue;
+              d.model = model;
+              d.colour = colour;
+              d.motion = { ...d.motion, preset: motion };
+            }
           });
         }}
       />

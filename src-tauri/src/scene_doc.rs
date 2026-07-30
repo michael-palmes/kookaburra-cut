@@ -489,6 +489,12 @@ pub struct ScaffoldOptions {
     pub media_rel_b: Option<String>,
     #[serde(default)]
     pub media_kind_b: Option<String>,
+    /// Comparison scenes: total device count (2-4, default 2).
+    #[serde(default)]
+    pub device_count: Option<usize>,
+    /// Comparison scenes: per-device media aligned to d1..dn; supersedes the rel/relB pair when present.
+    #[serde(default)]
+    pub media_slots: Option<Vec<ScaffoldMediaSlot>>,
     #[serde(default)]
     pub motion_preset: Option<String>,
     #[serde(default)]
@@ -501,6 +507,14 @@ pub struct ScaffoldOptions {
     pub recording: Option<bool>,
     /// Insertion index in `project.json`'s scenes array (0 = start; omitted/out-of-range = append).
     pub position: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldMediaSlot {
+    pub rel: Option<String>,
+    /// "video" | "image".
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -608,23 +622,41 @@ pub async fn scaffold_scene(
             }
         }
     }
-    // Comparison: probe both sides and follow the longer clip so neither recording is cut short.
-    let mut comparison_source: Option<&str> = None;
+    // Comparison: d1..dn from the slots array (falling back to the legacy rel/relB pair), count clamped 2-4.
+    let comparison_slots: Vec<(Option<String>, Option<String>)> = if is_comparison {
+        let mut slots: Vec<(Option<String>, Option<String>)> = match &options.media_slots {
+            Some(list) => list
+                .iter()
+                .map(|s| (s.rel.clone(), s.kind.clone()))
+                .collect(),
+            None => vec![
+                (options.media_rel.clone(), options.media_kind.clone()),
+                (options.media_rel_b.clone(), options.media_kind_b.clone()),
+            ],
+        };
+        let count = options
+            .device_count
+            .unwrap_or(slots.len().max(2))
+            .clamp(2, 4);
+        slots.resize(count, (None, None));
+        slots.truncate(count);
+        slots
+    } else {
+        Vec::new()
+    };
+    // Probe every video slot and follow the longest clip so no recording is cut short; the sidecar stays unpinned (the engine's follow-media rule is longest-wins).
+    let mut comparison_has_video = false;
     if is_comparison {
         let mut best: u64 = 0;
-        let sides = [
-            ("d1", &options.media_rel, &options.media_kind),
-            ("d2", &options.media_rel_b, &options.media_kind_b),
-        ];
-        for (id, rel, kind) in sides {
+        for (rel, kind) in &comparison_slots {
             if kind.as_deref() != Some("video") {
                 continue;
             }
             if let Some(rel) = rel {
+                comparison_has_video = true;
                 let probed = media::probe_media(&app, &project.join(rel)).await?;
                 if probed.duration_ms > best {
                     best = probed.duration_ms;
-                    comparison_source = Some(id);
                 }
             }
         }
@@ -637,8 +669,8 @@ pub async fn scaffold_scene(
     let mut doc = json!({
         "version": SCENE_DOC_VERSION,
         "name": options.name,
-        "duration": if let Some(source) = comparison_source {
-            json!({ "mode": "follow-media", "sourceDeviceId": source })
+        "duration": if comparison_has_video {
+            json!({ "mode": "follow-media" })
         } else if is_video && is_device_kind {
             json!({ "mode": "follow-media", "sourceDeviceId": "d1" })
         } else if is_video && options.kind == "videowindow" {
@@ -670,9 +702,9 @@ pub async fn scaffold_scene(
             doc["text"]["bullets"] = json!(bullets);
         }
         if is_comparison {
-            // The labels are the point of the kind, so they start with copy rather than empty.
-            doc["text"]["beforeLabel"] = json!("Before");
-            doc["text"]["afterLabel"] = json!("After");
+            // Neutral scaffold (batch 10): the label chips appear only when copy is typed.
+            doc["text"]["beforeLabel"] = json!("");
+            doc["text"]["afterLabel"] = json!("");
         }
     } else if options.kind == "appversion" {
         doc["text"]["title"] = json!(options.title.as_deref().unwrap_or("Your App"));
@@ -793,30 +825,15 @@ pub async fn scaffold_scene(
         doc["devices"] = json!([device]);
     }
     if is_comparison {
-        // A symmetric pair angled slightly inward; the template compresses x and scale in portrait.
+        // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
         let model = options.device_model.as_deref().unwrap_or("iphone-17-pro");
         let colour = options.colour.as_deref().unwrap_or("silver");
-        let sides = [
-            ("d1", -0.85, 12.0, &options.media_rel, &options.media_kind),
-            (
-                "d2",
-                0.85,
-                -12.0,
-                &options.media_rel_b,
-                &options.media_kind_b,
-            ),
-        ];
         let mut list = Vec::new();
-        for (id, x, yaw, rel, kind) in sides {
+        for (i, (rel, kind)) in comparison_slots.iter().enumerate() {
             let mut device = json!({
-                "id": id,
+                "id": format!("d{}", i + 1),
                 "model": model,
                 "colour": colour,
-                "placement": {
-                    "position": [x, -0.3, 0],
-                    "rotationDeg": [0, yaw, 0],
-                    "scale": 0.85,
-                },
                 "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
             });
             // Omitted so Device auto-resolves (the device kinds' contract); an explicit option still wins.
@@ -829,6 +846,7 @@ pub async fn scaffold_scene(
             list.push(device);
         }
         doc["devices"] = json!(list);
+        doc["deviceLayout"] = json!({ "preset": "toe-in", "gap": 0.35 });
     }
 
     // TSX from the template; placeholders are dumb string replaces, keep them in sync with .claude/commands/new-scene.md, which interpolates the same files.

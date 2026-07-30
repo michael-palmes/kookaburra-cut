@@ -224,6 +224,23 @@ describe("resyncFollowMediaDuration follows the longest qualifying video", () =>
     expect(written).toEqual([{ index: 2, durationMs: 3000 }]);
   });
 
+  it("three unpinned device videos still follow the longest", async () => {
+    lengths.set("assets/a.mp4", 3000);
+    lengths.set("assets/b.mp4", 7000);
+    lengths.set("assets/c.mp4", 5000);
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      devices: [
+        videoDevice("d1", "assets/a.mp4"),
+        videoDevice("d2", "assets/b.mp4"),
+        videoDevice("d3", "assets/c.mp4"),
+      ] as SceneDoc["devices"],
+    });
+    const result = await resyncFollowMediaDuration("proj", 1, doc, 3000);
+    expect(result.wrote).toBe(true);
+    expect(written).toEqual([{ index: 1, durationMs: 7000 }]);
+  });
+
   it("an already-synced duration writes nothing", async () => {
     lengths.set("assets/a.mp4", 4200);
     const doc = docWith({
