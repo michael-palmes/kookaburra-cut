@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { useFormat } from "../engine/format";
@@ -157,6 +158,13 @@ export function LayeredScreenshotBuilder({
   // One mediaMeta per screen item: width/height give the schematic (and the preset fit) each screen's true aspect, and video posters double as thumbnails.
   const [metas, setMetas] = useState<Record<string, MediaMeta>>({});
   const [mediaRefresh, setMediaRefresh] = useState(0);
+  // A file dropped on the window imports in the background; follow the app-wide broadcast so the open media grid shows it.
+  useEffect(() => {
+    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const screenSrcs = useMemo(
     () =>

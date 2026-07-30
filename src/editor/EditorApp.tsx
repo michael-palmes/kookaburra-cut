@@ -34,7 +34,7 @@ import {
   tapWindows,
   timelineDurationMs,
 } from "../engine/editMath";
-import { formatMediaDuration, type MediaMeta, mediaMeta } from "../engine/media";
+import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from "../engine/media";
 import { revealApp } from "../engine/reveal";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
@@ -329,6 +329,36 @@ export function EditorApp() {
       void unlisten.then((fn) => fn());
     };
   }, []);
+
+  // Finder drops: this window disables Tauri's native drag-drop handler (the timeline's HTML5 drag needs the events), so OS drops arrive as HTML5 File objects, bytes without paths. Import SEQUENTIALLY: the free-name collision check reads the disk, so parallel same-stem imports would race. The media-changed broadcast refreshes the panel here and every main-window picker.
+  const [dropError, setDropError] = useState<string | null>(null);
+  useEffect(() => {
+    const slug = target?.slug;
+    if (!slug) return;
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      e.preventDefault();
+      void (async () => {
+        try {
+          for (const file of Array.from(files)) {
+            await importMediaBytes(slug, file.name, new Uint8Array(await file.arrayBuffer()));
+          }
+        } catch (err) {
+          setDropError(`Import failed: ${String(err)}`);
+        }
+      })();
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [target?.slug]);
 
   /** Commit a document mutation: update state, mark the render stale, schedule autosave. */
   const commitDoc = useCallback((next: EditDoc) => {
@@ -1004,6 +1034,21 @@ export function EditorApp() {
             className="toast-close"
             aria-label="Dismiss"
             onClick={() => setSaveError(null)}
+          >
+            ×
+          </button>
+        </footer>
+      )}
+      {dropError && (
+        <footer className="toast toast-error" role="status">
+          <span className="toast-msg" title={dropError}>
+            {dropError}
+          </span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label="Dismiss"
+            onClick={() => setDropError(null)}
           >
             ×
           </button>

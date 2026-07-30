@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { type HistoryChange, pushHistory } from "../engine/history";
@@ -383,6 +384,13 @@ export function NewSceneWizard({
   useEscapeClose(onCancel, !busy);
   const [error, setError] = useState<string | null>(null);
   const [mediaRefresh, setMediaRefresh] = useState(0);
+  // A file dropped on the window imports in the background; follow the app-wide broadcast so the open media grid shows it.
+  useEffect(() => {
+    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
   const pickWizardMedia = (rel: string, meta: MediaMeta | null) => {
     const fallback = kind === "layeredscreenshot" ? "image" : "video";
     const picked = { rel, kind: meta?.kind ?? fallback, meta };
@@ -862,6 +870,12 @@ export function EditSceneWizard({
   useEscapeClose(onCancel, !busy);
   const [error, setError] = useState<string | null>(null);
   const [mediaRefresh, setMediaRefresh] = useState(0);
+  useEffect(() => {
+    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
   const pickEditMedia = (rel: string, meta: MediaMeta | null) => {
     setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video", meta });
     setStep("form");

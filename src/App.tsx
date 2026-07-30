@@ -377,12 +377,12 @@ export default function App() {
       if (!isWorkspaceProjectId(currentId) || paths.length === 0) return;
       importMedia(workspaceSlug(currentId), paths)
         .then((imported) => {
+          // importMedia's media-changed broadcast handles the picker refreshes.
           if (imported.length === 0) return;
           setToast({
             kind: "success",
             message: `Added ${imported.length} file${imported.length === 1 ? "" : "s"} to assets`,
           });
-          setMediaRefresh((n) => n + 1);
         })
         .catch((e) => setToast({ kind: "error", message: `Import failed: ${String(e)}` }));
     });

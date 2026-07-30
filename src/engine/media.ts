@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { refreshWorkspaceAssets } from "./assetInventory";
 
 /** Media library frontend over the native module (src-tauri/src/media.rs): per-project asset listing/import and the sha-keyed poster/scrub-frame cache. */
@@ -19,11 +20,28 @@ export function listProjectMedia(slug: string): Promise<string[]> {
   return invoke<string[]>("list_project_media", { slug });
 }
 
-/** Copy files into the project's assets/; returns the imported relative paths. New files join the workspace asset inventory so `resolveAssetUrl` accepts them immediately. */
+/** Copy files into the project's assets/; returns the imported relative paths. New files join the workspace asset inventory so `resolveAssetUrl` accepts them immediately, and the app-wide media-changed event refreshes every open picker in every window. */
 export async function importMedia(slug: string, paths: string[]): Promise<string[]> {
   const rels = await invoke<string[]>("import_media", { slug, paths });
   await refreshWorkspaceAssets(`ws:${slug}`);
+  if (rels.length > 0) await emit("kookaburra://media-changed", null);
   return rels;
+}
+
+/** Import one file delivered as bytes (an HTML5 drop in the editor window, where WKWebView never exposes real paths); same destination, inventory refresh and media-changed broadcast as `importMedia`. */
+export async function importMediaBytes(
+  slug: string,
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<string | null> {
+  const rel = await invoke<string | null>("import_media_bytes", bytes, {
+    headers: { "x-kookaburra-slug": slug, "x-kookaburra-name": fileName },
+  });
+  if (rel !== null) {
+    await refreshWorkspaceAssets(`ws:${slug}`);
+    await emit("kookaburra://media-changed", null);
+  }
+  return rel;
 }
 
 /** Probe + thumbnail one asset (cached by content hash; first call generates). */
