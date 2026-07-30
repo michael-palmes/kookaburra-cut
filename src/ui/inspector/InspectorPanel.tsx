@@ -547,7 +547,8 @@ export function InspectorPanel({
                       setOpenRow(null);
                     }}
                   />
-                  <div className="inspector-popover-slider">
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Exposure</span>
                     <DebouncedRange
                       label="Exposure"
                       value={project.renderSettings.exposure}

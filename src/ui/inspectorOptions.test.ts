@@ -20,9 +20,9 @@ describe("projectRows (the Project-tab pin)", () => {
       "media",
       "appIcon",
       "playback",
+      "render",
       "aspect",
       "music",
-      "render",
     ]);
     expect(rows.every((r) => r.chevron)).toBe(true);
     expect(rows.find((r) => r.id === "scenes")?.value).toBe("3 scenes");
