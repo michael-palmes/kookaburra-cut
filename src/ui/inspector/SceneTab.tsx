@@ -5405,6 +5405,9 @@ export function SceneTab({
         )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
         {mediaModal}
+        {objectPickerOpen && (
+          <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
+        )}
       </div>
     );
   }
@@ -5508,6 +5511,21 @@ export function SceneTab({
       label: "Add comparison",
       icon: "compare.edit",
       onClick: addCompare,
+    });
+  if (objects.length > 0)
+    contentEntries.push({
+      key: "objects",
+      label: objects.length > 1 ? "Objects" : "Object",
+      icon: "objects.edit",
+      value: objects.length > 1 ? `${objects.length}` : objectRowLabel(objects[0].objectId),
+      onClick: () => openDrill("objects"),
+    });
+  else if (doc)
+    addEntries.push({
+      key: "objects.add",
+      label: "Add object",
+      icon: "objects.add",
+      onClick: () => setObjectPickerOpen(true),
     });
   // The video pair closes the content section, always adjacent: Change video first (the
   // device's picker wins when a scene has both surfaces), its edit right under.
