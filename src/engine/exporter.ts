@@ -826,6 +826,11 @@ export async function revealInFinder(path: string): Promise<void> {
   await invoke("reveal_in_finder", { path });
 }
 
+/** Reveal the most recent finished export. No path crosses the IPC boundary: exports default to ~/Downloads, outside `reveal_in_finder`'s confinement, so Rust reveals the destination it wrote itself. */
+export async function revealLastExport(): Promise<void> {
+  await invoke("reveal_last_export");
+}
+
 /** Verify diagnostic: the clip-frame index stamped on the texture that is actually bound on the scene's VideoClip material right now (-1 when no clip/map); read immediately after render so it reflects what the capture saw. */
 function sampleBoundClipFrame(scene: Scene): number {
   let bound = -1;

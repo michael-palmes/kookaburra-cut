@@ -119,6 +119,10 @@ impl ExportState {
     }
 }
 
+/// The output path of the most recent finished export, for `reveal_last_export`; exports default to ~/Downloads, which `reveal_in_finder`'s confinement rightly refuses, so the only safe reveal is the destination this app computed and wrote itself (the `reveal_pack` pattern).
+#[derive(Default)]
+struct LastExport(Mutex<Option<std::path::PathBuf>>);
+
 /// Spawns the ffmpeg sidecar with a piped stdin and begins an export, returning the destination path; frames are then streamed via `push_frame` and finalised with `finish_export`.
 /// One informational user-attention request (macOS: a single dock bounce) when a long-running export/verify finishes while the app is in the background; a no-op when the window is focused.
 #[tauri::command]
@@ -337,7 +341,11 @@ fn push_frame(state: State<'_, ExportState>, request: tauri::ipc::Request) -> Re
 
 /// Closes ffmpeg's stdin (EOF → finalise the file), awaits the process exit, and returns the output path.
 #[tauri::command]
-async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<String, String> {
+async fn finish_export(
+    app: AppHandle,
+    state: State<'_, ExportState>,
+    last: State<'_, LastExport>,
+) -> Result<String, String> {
     let active = {
         let mut guard = state.0.lock().map_err(|_| "export state poisoned")?;
         guard.take()
@@ -395,6 +403,9 @@ async fn finish_export(app: AppHandle, state: State<'_, ExportState>) -> Result<
         if let Some(dir) = plan.mezz.parent() {
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+    if let Ok(mut guard) = last.0.lock() {
+        *guard = Some(output.clone());
     }
     Ok(output.to_string_lossy().into_owned())
 }
@@ -490,6 +501,26 @@ fn reveal_in_finder(
     path: String,
 ) -> Result<(), String> {
     let path = workspace::confine_readable(&app, &settings, &path)?;
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Reveal the most recent finished export. Takes no path (see `LastExport`).
+#[tauri::command]
+fn reveal_last_export(state: State<'_, LastExport>) -> Result<(), String> {
+    let path = state
+        .0
+        .lock()
+        .ok()
+        .and_then(|p| p.clone())
+        .ok_or("There is no export to show yet.")?;
+    if !path.is_file() {
+        return Err("The exported file is no longer where it was written.".into());
+    }
     std::process::Command::new("open")
         .arg("-R")
         .arg(&path)
@@ -972,6 +1003,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
+        .manage(LastExport::default())
         .manage(ScreenshotState(Mutex::new(None)))
         .manage(concurrency::BackgroundLimiter::default())
         .manage(workspace::SettingsState::default())
@@ -1190,6 +1222,7 @@ pub fn run() {
             ensure_clip_previews,
             hash_file,
             reveal_in_finder,
+            reveal_last_export,
             get_autorun_config,
             finish_autorun,
             begin_screenshot,

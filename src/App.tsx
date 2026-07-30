@@ -38,7 +38,7 @@ import {
   EXPORT_PREAMBLE_STEPS,
   type ExportProgress,
   exportProject,
-  revealInFinder,
+  revealLastExport,
   verifyAllFormats,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
@@ -2063,10 +2063,8 @@ export default function App() {
                       type="button"
                       className="toast-action"
                       onClick={() => {
-                        const path = toast.path;
-                        if (!path) return;
                         setToast(null);
-                        revealInFinder(path).catch((e) =>
+                        revealLastExport().catch((e) =>
                           setToast({
                             kind: "error",
                             message: `Couldn't reveal file: ${String(e)}`,
