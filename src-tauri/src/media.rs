@@ -555,6 +555,7 @@ pub fn import_media(
         let candidate = free_asset_name(&assets, &base, &ext);
         let dest = assets.join(&candidate);
         std::fs::copy(&source, &dest).map_err(|e| format!("copying {}: {e}", source.display()))?;
+        workspace::touch_now(&dest);
         imported.push(format!("assets/{candidate}"));
     }
     Ok(imported)

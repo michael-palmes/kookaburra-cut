@@ -24,7 +24,10 @@ export function listProjectMedia(slug: string): Promise<string[]> {
 export async function importMedia(slug: string, paths: string[]): Promise<string[]> {
   const rels = await invoke<string[]>("import_media", { slug, paths });
   await refreshWorkspaceAssets(`ws:${slug}`);
-  if (rels.length > 0) await emit("kookaburra://media-changed", null);
+  if (rels.length > 0) {
+    await emit("kookaburra://media-imported", { rels });
+    await emit("kookaburra://media-changed", null);
+  }
   return rels;
 }
 
@@ -39,6 +42,7 @@ export async function importMediaBytes(
   });
   if (rel !== null) {
     await refreshWorkspaceAssets(`ws:${slug}`);
+    await emit("kookaburra://media-imported", { rels: [rel] });
     await emit("kookaburra://media-changed", null);
   }
   return rel;

@@ -227,6 +227,13 @@ fn ensure_layout(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Stamp a fresh mtime on an imported copy. macOS `fs::copy` clones on APFS, which keeps the SOURCE's mtime, so an imported old file would sink down every newest-first listing instead of surfacing on top. Best effort: a failed stamp only costs sort position.
+pub fn touch_now(path: &Path) {
+    if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
+        let _ = file.set_modified(std::time::SystemTime::now());
+    }
+}
+
 /// Move `path` to the Trash. Always route deletes through here: `trash`'s default macOS backend drives Finder via osascript, and TCC blames the Apple Event on us, so a hardened-runtime build silently fails every delete; `NsFileManager` trashes in-process (and still records Put Back).
 pub fn trash_path(path: &Path) -> Result<(), trash::Error> {
     use trash::macos::{DeleteMethod, TrashContextExtMacos};

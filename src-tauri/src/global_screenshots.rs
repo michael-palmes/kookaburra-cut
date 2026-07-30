@@ -56,8 +56,9 @@ fn copy_with_free_name(source: &Path, dir: &Path) -> Result<String, String> {
         n += 1;
         candidate = format!("{base}-{n}.{ext}");
     }
-    std::fs::copy(source, dir.join(&candidate))
-        .map_err(|e| format!("copying {}: {e}", source.display()))?;
+    let dest = dir.join(&candidate);
+    std::fs::copy(source, &dest).map_err(|e| format!("copying {}: {e}", source.display()))?;
+    workspace::touch_now(&dest);
     Ok(candidate)
 }
 
