@@ -729,11 +729,10 @@ body {
      NOT 0: a zero basis collapses the grid inside auto-height hosts (the wizard boxes). */
   flex: 1 1 auto;
   min-height: 0;
-  /* The grid now fills its host, so rows must pack at the top at natural height; the
-     stretch default would inflate a few cards to fill the whole drill. Deliberately NOT
-     `grid-auto-rows: max-content` here: WKWebView then collapses the auto-fill columns
-     to one and balloons 1:1 thumbs to their image's natural width. */
-  align-content: start;
+  /* No row/align tuning here: WKWebView only keeps this box height-bounded with the
+     default stretch OR with max-content rows; `align-content: start` alone un-bounds it.
+     The drill override below carries the full compact-panel recipe; the modal/wizard
+     hosts are height-capped, so the stretch default never visibly inflates rows there. */
   display: grid;
   /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
      floor, then a column drops (the inspector rail and narrow editor panels sit at 2). */
@@ -6546,10 +6545,15 @@ img.inspector-scene-thumb {
   min-height: 0;
 }
 
+/* The compact editor panel's proven WKWebView recipe (max-content rows + start packs
+   naturally AND keeps the box bounded so it scrolls), safe here because the flat track
+   list below is immune to the column collapse that pairing causes with the auto-fill
+   formula. The rail is a fixed 342px: three across beats the formula's two. */
 .inspector-media-host .media-grid {
   padding-right: 0;
-  /* The rail is a fixed 342px: a flat three-across beats the auto-fill formula's two, and a percentage-free track list keeps WKWebView honest. */
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
 }
 
 /* ── Colour picker (the app-wide swatch + anchored popover) ───────────────── */
