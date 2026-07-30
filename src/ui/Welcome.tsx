@@ -227,6 +227,7 @@ export function Welcome({
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
   const [showDevProjects, setShowDevProjects] = useState(false);
   const [query, setQuery] = useState("");
+  const [scrolled, setScrolled] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (focusSearchNonce === 0) return;
@@ -281,7 +282,26 @@ export function Welcome({
     : (projects ?? []);
 
   return (
-    <div className="welcome">
+    <div className="welcome" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
+      {projects !== null && projects.length > 0 && (
+        <div className={`welcome-search${scrolled ? " scrolled" : ""}`}>
+          <input
+            ref={searchRef}
+            className="modal-input welcome-search-input"
+            type="search"
+            placeholder="Search projects…"
+            aria-label="Search projects"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setQuery("");
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+      )}
       <header className="welcome-header">
         <h1 aria-label="Kookaburra Cut">
           <span className="wordmark-name">Kookaburra</span>
@@ -303,26 +323,6 @@ export function Welcome({
           <button type="button" className="btn" onClick={() => setRetryNonce((n) => n + 1)}>
             Retry
           </button>
-        </div>
-      )}
-
-      {projects !== null && projects.length > 0 && (
-        <div className="welcome-search">
-          <input
-            ref={searchRef}
-            className="modal-input welcome-search-input"
-            type="search"
-            placeholder="Search projects…"
-            aria-label="Search projects"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setQuery("");
-                e.currentTarget.blur();
-              }
-            }}
-          />
         </div>
       )}
 

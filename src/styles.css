@@ -1859,24 +1859,36 @@ body {
 
 /* ── Welcome screen (§7.10) ────────────────────────────────────────────────── */
 
+/* No top padding: a padded scroll container makes WKWebView pin sticky children below the padding, which let cards scroll past above the search band. The header margin carries the offset instead. */
 .welcome {
   grid-row: 2 / 4;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-8) clamp(24px, 6vw, 64px);
+  padding: 0 clamp(24px, 6vw, 64px) var(--space-8);
 }
 
 .welcome-header {
-  margin: var(--space-7) 0 var(--space-8);
+  margin: calc(var(--space-8) + var(--space-7)) 0 var(--space-8);
 }
 
-/* Sticky so the field stays reachable however long the grid gets (⌘F focuses it). */
+/* Docked beside the wordmark (the negative bottom margin lets the header flow underneath), sticky so ⌘F always has somewhere to land; the band paints only once content could slide under it. */
 .welcome-search {
   position: sticky;
   top: 0;
   z-index: 5;
-  margin-bottom: var(--space-6);
-  padding: var(--space-4) 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: calc(var(--control-h-lg) + var(--space-4) * 2);
+  margin-top: calc(var(--space-8) + var(--space-6));
+  margin-bottom: calc(
+    -1 *
+    (var(--space-8) + var(--space-6) + var(--control-h-lg) + var(--space-4) * 2)
+  );
+  transition: background-color 120ms ease;
+}
+
+.welcome-search.scrolled {
   background: var(--surface-window);
 }
 
