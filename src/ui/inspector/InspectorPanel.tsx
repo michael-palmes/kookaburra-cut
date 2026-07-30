@@ -11,6 +11,7 @@ import { EXPOSURE_MAX, EXPOSURE_MIN, type RenderSettings } from "../../engine/re
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
+import { CopySceneModal } from "../CopySceneModal";
 import { AspectIcon } from "../exportIcons";
 import { projectRows } from "../inspectorOptions";
 import { MediaBrowser } from "../MediaBrowser";
@@ -238,6 +239,7 @@ export function InspectorPanel({
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
+  const [copyingScenes, setCopyingScenes] = useState<number[] | null>(null);
   // The media drill-in: the modal's library, re-homed as a Project-tab sub-panel like Background ▸ Video.
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -427,6 +429,7 @@ export function InspectorPanel({
             }}
             onPasteBackground={onPasteBackground}
             onDelete={onDeleteScene}
+            onCopyToProject={setCopyingScenes}
           />
           {duplicating !== null && (
             <DuplicateSceneDialog
@@ -435,6 +438,23 @@ export function InspectorPanel({
               sourceName={project.sceneDocs[duplicating]?.name ?? project.slots[duplicating]?.id}
               onClose={() => setDuplicating(null)}
               onDuplicate={onDuplicateSceneAt}
+            />
+          )}
+          {copyingScenes !== null && (
+            <CopySceneModal
+              slug={workspaceSlug(project.id)}
+              indices={copyingScenes}
+              sceneLabel={
+                copyingScenes.length > 1
+                  ? `${copyingScenes.length} scenes`
+                  : `“${
+                      project.sceneDocs[copyingScenes[0]]?.name ??
+                      project.slots[copyingScenes[0]]?.id ??
+                      "scene"
+                    }”`
+              }
+              onDone={() => setCopyingScenes(null)}
+              onCancel={() => setCopyingScenes(null)}
             />
           )}
         </>

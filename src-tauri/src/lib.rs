@@ -1268,6 +1268,7 @@ pub fn run() {
             scene_doc::set_project_audio,
             scene_doc::scaffold_scene,
             scene_doc::duplicate_scene,
+            scene_doc::copy_scene_to_project,
             objects::list_objects,
             objects::read_object,
             theme::list_themes,

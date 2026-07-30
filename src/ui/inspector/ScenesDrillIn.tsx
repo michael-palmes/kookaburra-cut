@@ -36,6 +36,7 @@ export function ScenesDrillIn({
   onCopyBackground,
   onPasteBackground,
   onDelete,
+  onCopyToProject,
 }: {
   scenes: SceneManagerRow[];
   /** An op is in flight; interactions disable rather than queue. */
@@ -54,6 +55,8 @@ export function ScenesDrillIn({
   onPasteBackground: (index: number) => void;
   /** Trash-recoverable scene removal (the host reloads; Rust guards the last scene). */
   onDelete: (index: number) => void;
+  /** Open the copy-to-project picker for the given selection (the host mounts CopySceneModal). */
+  onCopyToProject: (indices: number[]) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -184,6 +187,7 @@ export function ScenesDrillIn({
         onCopyBackground: () => onCopyBackground(scene.index),
         onPasteBackground: () => onPasteBackground(scene.index),
         onDelete: () => onDelete(scene.index),
+        onCopyToProject: () => onCopyToProject(bulk ?? [scene.index]),
       }),
     });
   };
