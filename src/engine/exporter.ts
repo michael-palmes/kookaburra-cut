@@ -570,6 +570,10 @@ export async function captureScreenshot(
   opts: ExportOptions,
   tMs: number,
   name: string,
+  commands: { begin: string; save: string } = {
+    begin: "begin_screenshot",
+    save: "save_screenshot",
+  },
 ): Promise<string> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
@@ -662,8 +666,8 @@ export async function captureScreenshot(
       compareFrame,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
-    await invoke("begin_screenshot", { width, height, name });
-    return await invoke<string>("save_screenshot", rgba);
+    await invoke(commands.begin, { width, height, name });
+    return await invoke<string>(commands.save, rgba);
   } finally {
     setExporting(false);
     setClipLane(everydayClipLane());

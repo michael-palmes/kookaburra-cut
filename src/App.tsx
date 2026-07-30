@@ -21,6 +21,7 @@ import {
 } from "./engine/autorun";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
+import { pollCaptureBridge } from "./engine/captureBridge";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -1265,6 +1266,24 @@ export default function App() {
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
   const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
   const compareLaneOpen = useCompareEditStore((s) => s.open);
+
+  // The capture bridge: answer the embedded terminal's frame requests from the running app (engine/captureBridge.ts); mounts on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
+  const bridgeBusyRef = useRef(false);
+  useEffect(() => {
+    if (isAutoRun) return;
+    const timer = window.setInterval(() => {
+      if (bridgeBusyRef.current) return;
+      bridgeBusyRef.current = true;
+      void pollCaptureBridge({
+        project: loadedProjectRef.current,
+        exporting,
+        setExporting,
+      }).finally(() => {
+        bridgeBusyRef.current = false;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isAutoRun, exporting]);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {

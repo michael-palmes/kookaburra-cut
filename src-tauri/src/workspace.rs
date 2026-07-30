@@ -1305,7 +1305,7 @@ pub fn create_project(
 }
 
 /// Claude Code provisioning for a project folder: the skill copy is MANAGED, re-stamped wholesale so app updates propagate, while `CLAUDE.md` and `.claude/settings.json` are only written when missing since the user (or Claude itself) may legitimately customise them, so a re-stamp heals deletion without clobbering edits; skill source is best-effort since it may be absent in packaged builds.
-pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<(), String> {
+pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<bool, String> {
     let claude_md = dir.join("CLAUDE.md");
     if !claude_md.is_file() {
         std::fs::write(&claude_md, PROJECT_CLAUDE_MD).map_err(|e| e.to_string())?;
@@ -1322,10 +1322,12 @@ pub(crate) fn stamp_claude_provisioning(app: &AppHandle, dir: &Path) -> Result<(
             &skill_src,
             &claude_dir.join("skills/kookaburra-scene-authoring"),
         )?;
+        Ok(true)
     } else {
+        // A packaging defect, reported honestly: the terminal warns before Claude starts (a silent no-op left projects with no skill at all).
         log::warn!("scene-authoring skill not found at {}", skill_src.display());
+        Ok(false)
     }
-    Ok(())
 }
 
 /// Re-stamp a project's Claude Code provisioning (called when a session opens, so a project created by an older app version, or a user deletion, heals in place).
@@ -1334,7 +1336,7 @@ pub fn provision_project(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let root = require_root(&app, &state)?;
     validate_slug(&slug)?;
     let dir = root.join(&slug);
