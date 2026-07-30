@@ -43,6 +43,7 @@ import { applyRelativeLights } from "./lightingState";
 import type { ResolvedOverlay } from "./overlayPlan";
 import {
   CUTOUT_MODE_BOX,
+  CUTOUT_MODE_NONE,
   CUTOUT_MODE_SUPERELLIPSE,
   overlayFragmentShader,
   overlayVertexShader,
@@ -412,7 +413,11 @@ function setSlideUniforms(
   u.cutoutRadius.value = layout.radius;
   u.cutoutExponent.value = layout.exponent;
   u.cutoutMode.value =
-    overlay.frame.cutout.shape === "squircle" ? CUTOUT_MODE_SUPERELLIPSE : CUTOUT_MODE_BOX;
+    overlay.frame.cutout.shape === "none"
+      ? CUTOUT_MODE_NONE
+      : overlay.frame.cutout.shape === "squircle"
+        ? CUTOUT_MODE_SUPERELLIPSE
+        : CUTOUT_MODE_BOX;
   u.aspect.value = aspect;
   u.softness.value = 1 / bufferH;
 }
@@ -430,6 +435,23 @@ function renderFramedScene(
 ): void {
   const aspect = bufferW / bufferH;
   const layout = frameLayout(aspect, overlay.frame.cutout);
+
+  // Shape "none": panel only. No scene pass, no cutout target; the slide shader fills flat.
+  if (overlay.frame.cutout.shape === "none") {
+    setSlideUniforms(
+      st,
+      overlay,
+      layout,
+      { x: 0, y: 0, width: bufferW, height: bufferH },
+      bufferW,
+      bufferH,
+    );
+    st.slideMaterial.uniforms.encodeToLinear.value = dest ? 1 : 0;
+    gl.setRenderTarget(dest);
+    gl.render(st.slideScene, st.quadCamera);
+    return;
+  }
+
   const px = cutoutPixelRect(layout.cutout, bufferW, bufferH);
 
   const target = ensureSceneTarget(st, px.width, px.height);
@@ -683,7 +705,10 @@ export function renderComposited(
       gl.render(scene, camera);
     }
     gl.setRenderTarget(prevTarget);
-    releaseIdlePools({ sceneTarget: !!overlay, composer: !!fx });
+    releaseIdlePools({
+      sceneTarget: !!overlay && overlay.frame.cutout.shape !== "none",
+      composer: !!fx,
+    });
     restoreSceneState();
     restoreVisible();
     return;
@@ -811,7 +836,9 @@ export function renderComposited(
   releaseIdlePools({
     sdr: !fx,
     hdr: !!fx,
-    sceneTarget: !!(overlayA || overlayB),
+    sceneTarget:
+      (!!overlayA && overlayA.frame.cutout.shape !== "none") ||
+      (!!overlayB && overlayB.frame.cutout.shape !== "none"),
     composer: !!fx,
   });
   restoreSceneState();

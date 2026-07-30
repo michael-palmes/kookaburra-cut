@@ -4,6 +4,8 @@
 export const CUTOUT_MODE_BOX = 0;
 /** Superellipse (squircle) via `cutoutExponent`. */
 export const CUTOUT_MODE_SUPERELLIPSE = 1;
+/** No cutout: the panel colour fills the whole frame, `sceneTex` is never sampled. */
+export const CUTOUT_MODE_NONE = 2;
 
 export const overlayVertexShader = /* glsl */ `
   varying vec2 vUv;
@@ -41,6 +43,11 @@ export const overlayFragmentShader = /* glsl */ `
   }
 
   void main() {
+    if (cutoutMode == 2) {
+      vec3 panelOnly = linearToSrgb(panelColor);
+      gl_FragColor = vec4(encodeToLinear > 0.5 ? srgbToLinear(panelOnly) : panelOnly, 1.0);
+      return;
+    }
     vec2 p = vec2(vUv.x * aspect, vUv.y);
     vec2 d = p - cutoutCenter;
     float dist;

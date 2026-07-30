@@ -48,7 +48,8 @@ export function SceneHost({
   // The cutout as its own frame: null (no override, store fallback) unless the scene has an overlay. Recomputed only when the export format or this scene's frame changes, so a framed scene lays out stably, never per render.
   const format = useEditorStore((s) => s.format);
   const cutoutFormat = useMemo(
-    () => (frame ? resolveCutoutRender(format, frame).format : null),
+    () =>
+      frame && frame.cutout.shape !== "none" ? resolveCutoutRender(format, frame).format : null,
     [frame, format],
   );
   // The overlay claims the scene's headline unless it opted out; `TitleBlock` reads this and renders null so the title lives only in the panel.

@@ -82,6 +82,16 @@ function resolveRadius(shape: FrameShape, rect: FrameRect, aspect: number, radiu
 
 export function frameLayout(aspect: number, spec: FrameCutoutSpec): FrameLayout {
   const axis = frameAxis(aspect);
+  // Shape "none": no cutout at all, the panel owns the whole frame (framePanelLayout's pad supplies the margin); side/size/inset are no-ops and the renderer never reads the zero cutout.
+  if (spec.shape === "none") {
+    return {
+      axis,
+      cutout: { x: 0, y: 0, width: 0, height: 0 },
+      content: { x: 0, y: 0, width: 1, height: 1 },
+      radius: 0,
+      exponent: SQUIRCLE_EXPONENT,
+    };
+  }
   const size = clamp(spec.size ?? DEFAULT_CUTOUT_SIZE, MIN_SIZE, MAX_SIZE);
   const inset = clamp(spec.inset ?? DEFAULT_CUTOUT_INSET, 0, MAX_INSET);
   const side: FrameSide = spec.side ?? "start";

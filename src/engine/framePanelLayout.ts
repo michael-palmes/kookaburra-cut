@@ -7,6 +7,11 @@ import type { FormatInfo } from "../toolkit/types";
 /** Inner margin of the text column, as a fraction of the column's shorter world edge. */
 export const PANEL_PAD_FRACTION = 0.08;
 
+/** The panel's resolved text alignment: the author's pick, else centred for the full-panel `"none"` shape and left elsewhere. One helper so the measure solver and the renderer can never disagree. */
+export function frameTextAlign(frame: FrameSpec): "left" | "center" | "right" {
+  return frame.textAlign ?? (frame.cutout.shape === "none" ? "center" : "left");
+}
+
 export interface FramePanelLayout {
   /** Left edge of the padded column, world X (anchorX="left" origin). */
   left: number;

@@ -2,7 +2,8 @@
 
 import type { SceneTextAlign } from "../../engine/sceneDocSchema";
 
-export type FrameShape = "rect" | "rounded-rect" | "squircle" | "circle" | "capsule";
+/** `"none"` removes the cutout entirely: the panel owns the whole frame and `side`/`size`/`inset`/`radius` are no-ops. */
+export type FrameShape = "rect" | "rounded-rect" | "squircle" | "circle" | "capsule" | "none";
 
 /** Which end of the split axis the cutout sits on; the axis itself follows the aspect, so one config serves every format. */
 export type FrameSide = "start" | "end";

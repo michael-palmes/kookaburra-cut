@@ -190,13 +190,21 @@ import {
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
-const FRAME_SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule"];
+const FRAME_SHAPES: FrameShape[] = [
+  "rect",
+  "rounded-rect",
+  "squircle",
+  "circle",
+  "capsule",
+  "none",
+];
 const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
   rect: "Rectangle",
   "rounded-rect": "Rounded",
   squircle: "Squircle",
   circle: "Circle",
   capsule: "Capsule",
+  none: "Full panel",
 };
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
@@ -790,6 +798,7 @@ function FrameShapeIcon({ id }: { id: FrameShape }) {
     squircle: <path d="M10 4c4.5 0 6 1.5 6 6s-1.5 6-6 6-6-1.5-6-6 1.5-6 6-6z" />,
     circle: <circle cx="10" cy="10" r="6.5" />,
     capsule: <rect x="3" y="6" width="14" height="8" rx="4" />,
+    none: <rect x="4" y="4" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" />,
   }[id];
   return (
     <svg
@@ -2196,67 +2205,71 @@ export function SceneTab({
               </button>
             ))}
           </div>
-          <div className="popover-row">
-            <span className="popover-inline">
-              Side
-              <div className="wizard-presets">
-                {sides.map((sd) => (
-                  <button
-                    key={sd.id}
-                    type="button"
-                    className={`chip${(cutout.side ?? "start") === sd.id ? " selected" : ""}`}
-                    onClick={() => patchCutout({ side: sd.id })}
-                  >
-                    {sd.label}
-                  </button>
-                ))}
+          {cutout.shape !== "none" && (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline">
+                  Side
+                  <div className="wizard-presets">
+                    {sides.map((sd) => (
+                      <button
+                        key={sd.id}
+                        type="button"
+                        className={`chip${(cutout.side ?? "start") === sd.id ? " selected" : ""}`}
+                        onClick={() => patchCutout({ side: sd.id })}
+                      >
+                        {sd.label}
+                      </button>
+                    ))}
+                  </div>
+                </span>
               </div>
-            </span>
-          </div>
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">
-              <CutoutSliderIcon id="size" />
-              Size
-            </span>
-            <DebouncedRange
-              value={cutout.size ?? 0.56}
-              min={0.3}
-              max={0.85}
-              step={0.01}
-              label="Cutout size"
-              onCommit={(v) => patchCutout({ size: v })}
-            />
-          </div>
-          {cutout.shape === "rounded-rect" && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label">
-                <CutoutSliderIcon id="radius" />
-                Corner radius
-              </span>
-              <DebouncedRange
-                value={cutout.radius ?? 0.12}
-                min={0}
-                max={0.5}
-                step={0.01}
-                label="Corner radius"
-                onCommit={(v) => patchCutout({ radius: v })}
-              />
-            </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">
+                  <CutoutSliderIcon id="size" />
+                  Size
+                </span>
+                <DebouncedRange
+                  value={cutout.size ?? 0.56}
+                  min={0.3}
+                  max={0.85}
+                  step={0.01}
+                  label="Cutout size"
+                  onCommit={(v) => patchCutout({ size: v })}
+                />
+              </div>
+              {cutout.shape === "rounded-rect" && (
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">
+                    <CutoutSliderIcon id="radius" />
+                    Corner radius
+                  </span>
+                  <DebouncedRange
+                    value={cutout.radius ?? 0.12}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    label="Corner radius"
+                    onCommit={(v) => patchCutout({ radius: v })}
+                  />
+                </div>
+              )}
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">
+                  <CutoutSliderIcon id="inset" />
+                  Inset
+                </span>
+                <DebouncedRange
+                  value={cutout.inset ?? 0}
+                  min={0}
+                  max={0.2}
+                  step={0.01}
+                  label="Inset"
+                  onCommit={(v) => patchCutout({ inset: v })}
+                />
+              </div>
+            </>
           )}
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">
-              <CutoutSliderIcon id="inset" />
-              Inset
-            </span>
-            <DebouncedRange
-              value={cutout.inset ?? 0}
-              min={0}
-              max={0.2}
-              step={0.01}
-              label="Inset"
-              onCommit={(v) => patchCutout({ inset: v })}
-            />
-          </div>
         </div>
       </div>
     );

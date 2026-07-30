@@ -13,7 +13,7 @@ import type {
 } from "../toolkit/frame/types";
 import type { SceneTextAlign } from "./sceneDocSchema";
 
-const SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule"];
+const SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule", "none"];
 const SIDES: FrameSide[] = ["start", "end"];
 const DECORATION_SHAPES: FrameDecorationShape[] = ["none", "circle"];
 const DECORATION_LAYERS: FrameDecorationLayer[] = ["above", "below"];
