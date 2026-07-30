@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "name": "Soft studio",
+  "backdrop": {
+    "type": "floor",
+    "color": "#5a6270",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "environment": { "source": "kookaburra:ferndale-studio", "intensity": 1, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": 35,
+      "elevationDeg": 40,
+      "intensity": 1.8,
+      "kelvin": 5600,
+      "angularDeg": 6
+    },
+    "ambient": 0.4,
+    "lights": [
+      {
+        "id": "fill",
+        "type": "area",
+        "intensity": 3,
+        "kelvin": 5600,
+        "width": 2.5,
+        "height": 2.5,
+        "placement": { "mode": "orbit", "azimuthDeg": -145, "elevationDeg": 20, "distance": 6 }
+      }
+    ],
+    "preset": "soft-studio"
+  }
+}

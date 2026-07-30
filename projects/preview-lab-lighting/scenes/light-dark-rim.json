@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "Dark rim",
+  "backdrop": {
+    "type": "floor",
+    "color": "#5a6270",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "environment": { "source": "kookaburra:night-city", "intensity": 0.25, "rotationDeg": 0 },
+    "sun": { "azimuthDeg": 0, "elevationDeg": 45, "intensity": 1, "enabled": false },
+    "ambient": 0.02,
+    "lights": [
+      {
+        "id": "rim-left",
+        "type": "area",
+        "intensity": 8,
+        "colorToken": "accent",
+        "width": 1.2,
+        "height": 2.6,
+        "space": "camera",
+        "placement": { "mode": "point", "position": [-2.4, 0.4, -2.5] },
+        "target": [0, 0, -4]
+      },
+      {
+        "id": "rim-right",
+        "type": "area",
+        "intensity": 8,
+        "colorToken": "accent",
+        "width": 1.2,
+        "height": 2.6,
+        "space": "camera",
+        "placement": { "mode": "point", "position": [2.4, 0.4, -2.5] },
+        "target": [0, 0, -4]
+      }
+    ],
+    "preset": "dark-rim"
+  }
+}

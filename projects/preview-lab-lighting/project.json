@@ -1,0 +1,55 @@
+{
+  "id": "preview-lab-lighting",
+  "name": "Preview Lab: lighting thumbs (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-midnight",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/light-soft-studio.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "bloom": { "intensity": 0.8, "luminanceThreshold": 1, "luminanceSmoothing": 0.3 }
+      }
+    },
+    {
+      "file": "scenes/light-hard-keynote.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "bloom": { "intensity": 0.8, "luminanceThreshold": 1, "luminanceSmoothing": 0.3 }
+      }
+    },
+    {
+      "file": "scenes/light-neon-corridor.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "bloom": { "intensity": 0.8, "luminanceThreshold": 1, "luminanceSmoothing": 0.3 }
+      }
+    },
+    {
+      "file": "scenes/light-golden-hour.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "bloom": { "intensity": 0.8, "luminanceThreshold": 1, "luminanceSmoothing": 0.3 }
+      }
+    },
+    {
+      "file": "scenes/light-dark-rim.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "bloom": { "intensity": 0.8, "luminanceThreshold": 1, "luminanceSmoothing": 0.3 }
+      }
+    },
+    {
+      "file": "scenes/light-clinical-white.tsx",
+      "durationMs": 1000,
+      "effects": {
+        "bloom": { "intensity": 0.8, "luminanceThreshold": 1, "luminanceSmoothing": 0.3 }
+      }
+    },
+    {
+      "file": "scenes/light-softbox.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

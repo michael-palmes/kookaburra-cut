@@ -46,6 +46,16 @@ const HDRI_THUMBS = import.meta.glob<string>("../../assets/hdri-thumbs/*.jpg", {
 const thumbFor = (id: string): string | null =>
   HDRI_THUMBS[`../../assets/hdri-thumbs/${id.replace(/^kookaburra:/, "")}.jpg`] ?? null;
 
+/** One-off app-screenshot bakes (scripts/lighting-thumb-bake.sh): the lighting presets plus the procedural softbox. Missing files degrade to the text swatch. */
+const LIGHTING_THUMBS = import.meta.glob<string>("../../assets/lighting-thumbs/*.jpg", {
+  eager: true,
+  query: "?url",
+  import: "default",
+});
+
+const lightingThumbFor = (id: string): string | null =>
+  LIGHTING_THUMBS[`../../assets/lighting-thumbs/${id}.jpg`] ?? null;
+
 const environmentLabel = (source: string): string => {
   if (source === NONE_SOURCE) return "None";
   if (source === SOFTBOX_SOURCE) return "Softbox";
@@ -625,7 +635,7 @@ export function LightingSectionBody({
                     key={preset.id}
                     label={preset.label}
                     title={preset.description}
-                    image={null}
+                    image={lightingThumbFor(preset.id)}
                     selected={doc.lighting?.preset === preset.id}
                     onSelect={() =>
                       commit((next) => {
@@ -657,7 +667,7 @@ export function LightingSectionBody({
                 <OptionCard
                   label="Softbox"
                   title="The procedural three-panel studio rig"
-                  image={null}
+                  image={lightingThumbFor("softbox")}
                   selected={environment?.source === SOFTBOX_SOURCE}
                   onSelect={() =>
                     commit(writeEnvironment((e) => Object.assign(e, { source: SOFTBOX_SOURCE })))

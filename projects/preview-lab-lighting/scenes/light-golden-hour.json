@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Golden hour",
+  "backdrop": {
+    "type": "floor",
+    "color": "#5a6270",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "environment": { "source": "kookaburra:sunset", "intensity": 0.9, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": -60,
+      "elevationDeg": 12,
+      "intensity": 2.6,
+      "kelvin": 2900,
+      "angularDeg": 0.6
+    },
+    "ambient": 0.3,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.35,
+      "opacity": 0.4,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#3a2a18"
+    },
+    "preset": "golden-hour"
+  }
+}
