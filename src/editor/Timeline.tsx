@@ -35,6 +35,10 @@ export interface TimelineProps {
   onClipMenu?: (id: string, x: number, y: number) => void;
   /** Tap highlights' output windows; each gets a ruler dot that seeks to it. */
   tapWindowList?: { tap: EditTap; startMs: number; endMs: number }[];
+  /** The reference edit's clips (relaid), drawn as a slim read-only lane under the track at the same scale so cuts can be matched by sight. */
+  referenceClips?: EditClip[];
+  /** The reference pane's provisional offset in output ms; shifts the lane with the nudge. */
+  referenceOffsetMs?: number;
 }
 
 const PAD_L = 16; // content inset before t=0
@@ -106,6 +110,8 @@ export function Timeline({
   onDropClipAt,
   onClipMenu,
   tapWindowList,
+  referenceClips,
+  referenceOffsetMs = 0,
 }: TimelineProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -554,6 +560,24 @@ export function Timeline({
               );
             })}
           </div>
+          {referenceClips && referenceClips.length > 0 && (
+            <div className="timeline-ref-lane" title="Reference clips, read-only">
+              {referenceClips.map((clip) => (
+                <div
+                  key={clip.id}
+                  className="timeline-ref-clip"
+                  style={{
+                    left: PAD_L + (clip.startMs - referenceOffsetMs) * pxPerMs,
+                    width: Math.max(
+                      2,
+                      (clip.holdMs ?? (clip.outMs - clip.inMs) / effectiveSpeed(clip.speed)) *
+                        pxPerMs,
+                    ),
+                  }}
+                />
+              ))}
+            </div>
+          )}
           {dropMs !== null && (
             <div
               className="timeline-drop-indicator"

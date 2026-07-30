@@ -1515,8 +1515,8 @@ export default function App() {
         const m = /^assets\/(.+)-edited\.mp4$/.exec(mediaRel);
         const editedOf = m && (await listEdits(slug)).includes(m[1]) ? m[1] : null;
         const editName = editedOf
-          ? await openEditNamed(slug, editedOf)
-          : await openEdit(slug, mediaRel);
+          ? await openEditNamed(slug, editedOf, sceneIndex)
+          : await openEdit(slug, mediaRel, sceneIndex);
         pendingRepointRef.current = { slug, index: sceneIndex, editName, slot, deviceId };
       } catch (e) {
         console.warn("[edit-video] open failed:", e);

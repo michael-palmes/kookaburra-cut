@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask } from "@tauri-apps/plugin-dialog";
@@ -5,10 +6,14 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import {
   type EditClip,
   type EditDoc,
+  type EditSource,
   type EditTap,
   type EditTarget,
   getEditorTarget,
+  listEdits,
   loadEdit,
+  openEdit,
+  openEditNamed,
   type RenderProgress,
   renderEdit,
   resetEdit,
@@ -35,12 +40,16 @@ import {
   timelineDurationMs,
 } from "../engine/editMath";
 import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from "../engine/media";
+import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
+import { parseSceneDoc } from "../engine/sceneDocSchema";
+import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
 import { mediaCardMenu } from "../ui/mediaCardMenu";
 import { useEscapeClose } from "../ui/useEscapeClose";
 import { Preview, type TrimScrub } from "./Preview";
+import { ReferencePane } from "./ReferencePane";
 import { Timeline } from "./Timeline";
 import { TAP_ANIMATION_DURATION_MS, tapGradient } from "./tapAnimation";
 import {
@@ -252,6 +261,12 @@ export function EditorApp() {
   const [clipMenu, setClipMenu] = useState<ContextMenuState | null>(null);
   const [tapMarkerScope, setTapMarkerScope] = useState<"near" | "all">("near");
 
+  // ── The reference pane (scene matching): another scene video in output-time lockstep ──
+  const [sceneMedia, setSceneMedia] = useState<{ rel: string; label: string }[]>([]);
+  const [refView, setRefView] = useState<{ clips: EditClip[]; sources: EditSource[] } | null>(null);
+  // A swap in flight: once the new target's doc loads, the old active becomes ITS reference.
+  const pendingSwapRef = useRef<{ forName: string; rel: string; offsetMs: number } | null>(null);
+
   // Debounced autosave: rapid mutations coalesce into one save; flushSave() runs any pending write before renders (render_edit reads edit.json from disk) and on close. renderStaleRef backs the warn-on-close (changes not yet in a render).
   const saveTimer = useRef<number | null>(null);
   const pendingDoc = useRef<EditDoc | null>(null);
@@ -291,7 +306,21 @@ export function EditorApp() {
     loadEdit(t.slug, t.name)
       .then((d) => {
         // Normalise on load: the timeline is magnetic, startMs is derived state.
-        setDoc({ ...d, clips: relayout(d.clips) });
+        const next = { ...d, clips: relayout(d.clips) };
+        // A completed swap: the previous active becomes this doc's reference, offset negated, saved on the normal debounce.
+        const swap = pendingSwapRef.current;
+        if (swap && swap.forName === t.name) {
+          pendingSwapRef.current = null;
+          next.reference = { rel: swap.rel, offsetMs: swap.offsetMs };
+          renderStaleRef.current = true;
+          pendingDoc.current = next;
+          if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+          saveTimer.current = window.setTimeout(
+            () => void flushSaveRef.current(),
+            AUTOSAVE_DEBOUNCE_MS,
+          );
+        }
+        setDoc(next);
         // Filmstrips ride the scrub cache (warm for anything the library has shown).
         Promise.all(
           d.sources.map((s) =>
@@ -377,6 +406,144 @@ export function EditorApp() {
     },
     [doc, target, commitDoc],
   );
+
+  // The scene's other videos, labelled for the Compare dropdown; scene-scoped by design, read from the sidecar so it can't go stale against a passed-in list.
+  useEffect(() => {
+    void mediaRefresh; // re-read after imports and cache clears
+    const t = target;
+    if (!t || t.sceneIndex === undefined) {
+      setSceneMedia([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const manifest = JSON.parse(await readProjectManifestSnapshot(t.slug)) as {
+          scenes?: { file?: string }[];
+        };
+        const file = manifest.scenes?.[t.sceneIndex ?? -1]?.file;
+        if (!file) return;
+        const text = await invoke<string | null>("read_scene_doc", {
+          slug: t.slug,
+          file: file.replace(/\.tsx$/, ".json"),
+        });
+        const sceneDoc = text ? parseSceneDoc(JSON.parse(text), `${t.slug}/${file}`) : undefined;
+        if (!sceneDoc || cancelled) return;
+        const entries: { rel: string; label: string }[] = [];
+        const devices = sceneDoc.devices ?? [];
+        devices.forEach((d, i) => {
+          if (d.media?.kind === "video") {
+            const model = isDeviceId(d.model) ? DEVICE_CATALOG[d.model].name : d.model;
+            entries.push({ rel: d.media.src, label: `Device ${i + 1} · ${model}` });
+          }
+        });
+        for (const [id, m] of Object.entries(sceneDoc.compare?.b?.media ?? {})) {
+          if (m.kind !== "video") continue;
+          const i = devices.findIndex((d) => d.id === id);
+          entries.push({ rel: m.src, label: `After side · Device ${i >= 0 ? i + 1 : id}` });
+        }
+        if (sceneDoc.videoWindow?.media?.src) {
+          entries.push({ rel: sceneDoc.videoWindow.media.src, label: "Video window" });
+        }
+        if (sceneDoc.background?.type === "video") {
+          entries.push({ rel: sceneDoc.background.src, label: "Background" });
+        }
+        const own = new Set([t.sourceRel, `assets/${t.name}-edited.mp4`]);
+        const seen = new Set<string>();
+        const list = entries.filter((e) => {
+          if (own.has(e.rel) || seen.has(e.rel)) return false;
+          seen.add(e.rel);
+          return true;
+        });
+        if (!cancelled) setSceneMedia(list);
+      } catch (e) {
+        console.warn("[editor] scene media inventory failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target, mediaRefresh]);
+
+  // Resolve the reference to playable clips: its edit doc when one exists (matched by rendered-output rel or source rel, Michael's output-time-lockstep call), else the raw file as one full-length clip. A missing file drops the pane, never the stored pairing.
+  const refRel = doc?.reference?.rel ?? null;
+  useEffect(() => {
+    void mediaRefresh; // a re-render of the reference's own edit re-resolves it
+    const slug = target?.slug;
+    if (!slug || !refRel) {
+      setRefView(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const names = await listEdits(slug);
+        const m = /^assets\/(.+)-edited\.mp4$/.exec(refRel);
+        let matched: EditDoc | null = null;
+        if (m && names.includes(m[1])) {
+          matched = await loadEdit(slug, m[1]);
+        } else {
+          for (const name of names) {
+            const candidate = await loadEdit(slug, name).catch(() => null);
+            if (candidate?.sources[0]?.rel === refRel) {
+              matched = candidate;
+              break;
+            }
+          }
+        }
+        if (cancelled) return;
+        if (matched) {
+          setRefView({ clips: relayout(matched.clips), sources: matched.sources });
+          return;
+        }
+        const meta = await mediaMeta(slug, refRel);
+        if (cancelled) return;
+        if (meta.kind !== "video") {
+          setRefView(null);
+          return;
+        }
+        setRefView({
+          sources: [
+            {
+              id: "r1",
+              rel: refRel,
+              width: meta.width,
+              height: meta.height,
+              fps: meta.fps,
+              durationMs: meta.durationMs,
+            },
+          ],
+          clips: [
+            { id: "rc1", sourceId: "r1", inMs: 0, outMs: meta.durationMs, speed: 1, startMs: 0 },
+          ],
+        });
+      } catch (e) {
+        console.warn("[editor] reference resolve failed:", e);
+        if (!cancelled) setRefView(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target?.slug, refRel, mediaRefresh]);
+
+  /** Swap: open the reference's edit as the active document; the current one becomes ITS reference with the offset negated (applied when the new doc loads). */
+  const swapReference = useCallback(async () => {
+    if (!doc?.reference || !target) return;
+    const { rel, offsetMs } = doc.reference;
+    await flushSaveRef.current();
+    try {
+      const names = await listEdits(target.slug);
+      const m = /^assets\/(.+)-edited\.mp4$/.exec(rel);
+      const name =
+        m && names.includes(m[1])
+          ? await openEditNamed(target.slug, m[1], target.sceneIndex)
+          : await openEdit(target.slug, rel, target.sceneIndex);
+      pendingSwapRef.current = { forName: name, rel: target.sourceRel, offsetMs: -offsetMs };
+    } catch (e) {
+      setSaveError(`Couldn't swap to the reference: ${String(e)}`);
+    }
+  }, [doc, target]);
 
   // Warn on close if there are unrendered changes; the pending autosave always flushes first, so only the render (not the document) is ever at risk.
   useEffect(() => {
@@ -855,27 +1022,38 @@ export function EditorApp() {
               ) : !doc || !firstSource ? (
                 <p className="muted">Loading edit…</p>
               ) : (
-                <Preview
-                  clips={doc.clips}
-                  sources={doc.sources}
-                  basePath={target?.path ?? ""}
-                  playheadMs={playheadMs}
-                  playing={playing}
-                  trimScrub={trimScrub}
-                  onPlayhead={setPlayheadMs}
-                  onStop={stopPlaying}
-                  armedTap={armedTap}
-                  canPlaceTap={canTap}
-                  taps={doc.taps ?? []}
-                  tapWindowList={tapWindowList}
-                  onPlaceTap={handlePlaceTap}
-                  onCommitTap={handleCommitTap}
-                  onTapContextMenu={handleTapContextMenu}
-                  tapMarkerScope={tapMarkerScope}
-                  tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
-                  tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
-                  tapSize={doc.tapSize ?? 1.25}
-                />
+                <div className={`editor-preview-row${refView ? " with-reference" : ""}`}>
+                  <Preview
+                    clips={doc.clips}
+                    sources={doc.sources}
+                    basePath={target?.path ?? ""}
+                    playheadMs={playheadMs}
+                    playing={playing}
+                    trimScrub={trimScrub}
+                    onPlayhead={setPlayheadMs}
+                    onStop={stopPlaying}
+                    armedTap={armedTap}
+                    canPlaceTap={canTap}
+                    taps={doc.taps ?? []}
+                    tapWindowList={tapWindowList}
+                    onPlaceTap={handlePlaceTap}
+                    onCommitTap={handleCommitTap}
+                    onTapContextMenu={handleTapContextMenu}
+                    tapMarkerScope={tapMarkerScope}
+                    tapStyle={doc.tapStyle ?? DEFAULT_TAP_STYLE_ID}
+                    tapColor={doc.tapColor ?? DEFAULT_TAP_COLOR_ID}
+                    tapSize={doc.tapSize ?? 1.25}
+                  />
+                  {refView && (
+                    <ReferencePane
+                      clips={refView.clips}
+                      sources={refView.sources}
+                      basePath={target?.path ?? ""}
+                      timeMs={playheadMs + (doc.reference?.offsetMs ?? 0)}
+                      playing={playing}
+                    />
+                  )}
+                </div>
               )}
             </div>
           </main>
@@ -972,6 +1150,50 @@ export function EditorApp() {
                 {playing ? "⏸" : "▶"}
               </button>
               <span className="spacer" />
+              {(sceneMedia.length > 0 || doc.reference) && (
+                <div className="editor-ref-controls">
+                  <label
+                    className="editor-ref-label muted"
+                    title="Show another scene video beside this one, scrub-locked, to match the edit against"
+                  >
+                    Compare
+                    <select
+                      className="select editor-ref-select"
+                      value={doc.reference?.rel ?? ""}
+                      onChange={(e) => {
+                        const rel = e.currentTarget.value;
+                        commitDoc(
+                          rel
+                            ? { ...doc, reference: { rel, offsetMs: 0 } }
+                            : { ...doc, reference: undefined },
+                        );
+                      }}
+                    >
+                      <option value="">None</option>
+                      {sceneMedia.map((m) => (
+                        <option key={m.rel} value={m.rel}>
+                          {m.label}
+                        </option>
+                      ))}
+                      {doc.reference && !sceneMedia.some((m) => m.rel === doc.reference?.rel) && (
+                        <option value={doc.reference.rel}>
+                          {doc.reference.rel.split("/").pop()}
+                        </option>
+                      )}
+                    </select>
+                  </label>
+                  {doc.reference && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void swapReference()}
+                      title="Edit the reference instead; this video becomes the reference"
+                    >
+                      Swap
+                    </button>
+                  )}
+                </div>
+              )}
               <span className="muted editor-timecode">
                 {(playheadMs / 1000).toFixed(2)}s / {(totalMs / 1000).toFixed(2)}s
               </span>
@@ -994,6 +1216,8 @@ export function EditorApp() {
           onScrubWheel={scrubWheel}
           onDropClipAt={handleInsertClipAt}
           onClipMenu={handleClipContextMenu}
+          referenceClips={refView?.clips}
+          referenceOffsetMs={doc.reference?.offsetMs ?? 0}
           tapWindowList={tapWindowList}
         />
       )}
