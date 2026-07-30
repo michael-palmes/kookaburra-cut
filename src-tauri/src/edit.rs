@@ -819,6 +819,8 @@ pub async fn render_edit(
     if !rendered {
         return Err(render_err);
     }
+    // A render is a user action; a re-render truncates in place (same inode, old creation date), so stamp it or the output never resurfaces in the listings.
+    workspace::touch_now(&output);
     // Warm the media-preview cache for the output now: by the time the editor closes and the library refreshes, poster/scrub frames already exist, no stale card, no pop-in; failure is non-fatal (the library regenerates on view).
     if let Err(e) = media::ensure_media_cache(&app, &output, &rel).await {
         eprintln!("[edit] preview warm-up failed for {rel}: {e}");

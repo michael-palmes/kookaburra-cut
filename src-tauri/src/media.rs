@@ -267,6 +267,8 @@ pub async fn import_app_icon(
         let _ = workspace::trash_path(&dest);
     }
     std::fs::rename(&tmp, &dest).map_err(|e| format!("replacing icon: {e}"))?;
+    // A replaced icon is a user action, so it surfaces like any fresh import.
+    workspace::touch_now(&dest);
     Ok("assets/app-icon.png".into())
 }
 
