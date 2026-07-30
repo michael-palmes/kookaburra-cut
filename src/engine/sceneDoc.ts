@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useContext, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { useDeviceRegistry } from "./deviceRegistry";
+import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
@@ -70,17 +72,22 @@ export interface SceneDeviceProps extends Omit<DeviceProps, "model"> {
   model: DeviceId;
 }
 
-/** The scene document's devices array as `Device`-ready props; unknown models pass through since `Device` itself degrades (console error + fallback geometry) rather than crashing the tree. */
+/** The scene document's devices array as `Device`-ready props; unknown models pass through since `Device` itself degrades (console error + fallback geometry) rather than crashing the tree. A `deviceLayout` block resolves to per-aspect placements HERE, so every consuming scene (any kind, any scaffold vintage) honours it without template changes; templates that resolve the block themselves recompute the identical values (the resolver is pure and ignores input placements beyond `ground`). */
 export function useSceneDevices(): SceneDeviceProps[] {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
+  const format = useFormat();
   // Layout effect so DevicesFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
     useDeviceRegistry.getState().register(sceneIndex);
     return () => useDeviceRegistry.getState().unregister(sceneIndex);
   }, [sceneIndex]);
-  return (doc?.devices ?? []).map((d) => d as SceneDeviceProps);
+  const devices = (doc?.devices ?? []).map((d) => d as SceneDeviceProps);
+  const layout = doc?.deviceLayout;
+  if (!layout) return devices;
+  const placements = resolveDeviceLayout(devices, layout, format);
+  return devices.map((d, i) => ({ ...d, placement: placements[i] }));
 }
 
 /** The scene document's layeredScreenshot block, deep-validated, or null when absent; registers the scene as a consumer so `LayeredScreenshotFallback` stands down (the useSceneDevices pattern). */
