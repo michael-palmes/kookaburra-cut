@@ -729,6 +729,10 @@ body {
      NOT 0: a zero basis collapses the grid inside auto-height hosts (the wizard boxes). */
   flex: 1 1 auto;
   min-height: 0;
+  /* The grid now fills its host, so rows must pack at the top at natural height; the
+     stretch default would inflate a few cards to fill the whole drill. */
+  grid-auto-rows: max-content;
+  align-content: start;
   display: grid;
   /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
      floor, then a column drops (the inspector rail and narrow editor panels sit at 2). */
