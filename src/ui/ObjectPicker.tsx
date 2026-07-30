@@ -1,6 +1,13 @@
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
-import { importObject, listObjects, type ResolvedObjectAsset } from "../toolkit/objects/registry";
+import { renderObjectThumbnail } from "../engine/objectThumbnail";
+import { optionPreviewStill } from "../engine/optionPreviews";
+import {
+  importObject,
+  listObjects,
+  type ResolvedObjectAsset,
+  writeObjectThumbnail,
+} from "../toolkit/objects/registry";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** The object library picker: bundled + workspace objects as thumbnail cards (a missing thumbnail degrades to a name card), plus the Import GLB flow (native-side copy into ~/Kookaburra Cut/objects). Picking hands the manifest id to the host, which writes the sidecar entry. */
@@ -49,6 +56,12 @@ export function ObjectPicker({
           .pop()
           ?.replace(/\.glb$/i, "") ?? "object";
       const id = await importObject(stem.replace(/[-_]+/g, " "), picked);
+      // Best effort: a failed render just leaves the glyph card.
+      const asset = (await listObjects()).find((o) => o.manifest.id === id);
+      if (asset) {
+        const png = await renderObjectThumbnail(asset.glbUrl);
+        if (png) await writeObjectThumbnail(id, png);
+      }
       onPick(id);
     } catch (e) {
       console.warn("[objects] import failed:", e);
@@ -74,7 +87,11 @@ export function ObjectPicker({
                 onClick={() => onPick(o.manifest.id)}
               >
                 <span className="object-card-thumb">
-                  {o.thumbnailUrl ? <img src={o.thumbnailUrl} alt="" /> : <ObjectGlyph />}
+                  {(() => {
+                    const still =
+                      o.thumbnailUrl ?? optionPreviewStill(`object-${o.manifest.id}`) ?? undefined;
+                    return still ? <img src={still} alt="" /> : <ObjectGlyph />;
+                  })()}
                 </span>
                 <span className="object-card-name">{o.manifest.name}</span>
               </button>

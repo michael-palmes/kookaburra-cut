@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { preloadSceneObjects } from "../toolkit/objects/preload";
 import { type LoadedProject, sceneFileStem } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
@@ -36,7 +37,7 @@ export interface OptionPreviewJob {
   kind: "still" | "clip";
 }
 
-/** Map preview-lab's scene stems to capture jobs (pure; the autorun action and its tests share it): `tm-<preset>` scenes render text-motion CLIPS (except `tm-none`, which is motionless, so one still is honest); `bg-<shader>` scenes render animated-background CLIPS; `bgp-<shader>-<preset>` scenes render shader-preset STILLS (small tiles, motion already shown by the type card); `shadow-*` / `stage-*` / `kind-*` (New-scene kind cards) scenes are stills. Unknown stems are skipped, so lab experiments never break the batch. */
+/** Map preview-lab's scene stems to capture jobs (pure; the autorun action and its tests share it): `tm-<preset>` scenes render text-motion CLIPS (except `tm-none`, which is motionless, so one still is honest); `bg-<shader>` scenes render animated-background CLIPS; `bgp-<shader>-<preset>` scenes render shader-preset STILLS (small tiles, motion already shown by the type card); `shadow-*` / `stage-*` / `kind-*` (New-scene kind cards) / `object-*` (object-picker cards) scenes are stills. Unknown stems are skipped, so lab experiments never break the batch. */
 export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
   const jobs: OptionPreviewJob[] = [];
   for (const stem of stems) {
@@ -54,7 +55,8 @@ export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
     } else if (
       stem.startsWith("shadow-") ||
       stem.startsWith("stage-") ||
-      stem.startsWith("kind-")
+      stem.startsWith("kind-") ||
+      stem.startsWith("object-")
     ) {
       jobs.push({ stem, set: stem, kind: "still" });
     }
@@ -74,6 +76,8 @@ export async function captureOptionPreviews(
 ): Promise<number | null> {
   const stems = project.sceneFiles.map(sceneFileStem);
   const jobs = optionPreviewJobs(stems).filter((j) => !only || only.has(j.set));
+  // Staged objects load async and this path skips the export preamble; without the barrier a card can capture the PREVIOUS frame's content (the lantern-mash bug).
+  await preloadSceneObjects(project.sceneDocs);
   return withBorrowedClock(async () => {
     for (const job of jobs) {
       const slot = project.slots[stems.indexOf(job.stem)];

@@ -1,0 +1,25 @@
+{
+  "id": "preview-lab-objects",
+  "name": "Preview Lab \u2014 objects (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/object-lantern.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-water-bottle.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-avocado.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-boombox.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

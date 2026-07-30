@@ -129,6 +129,16 @@ export async function importObject(name: string, sourcePath: string): Promise<st
   return `${WORKSPACE_OBJECT_PREFIX}${slug}`;
 }
 
+/** Persist an imported object's picker thumbnail (raw PNG body, the write_theme_preview shape). */
+export async function writeObjectThumbnail(id: string, png: Blob): Promise<void> {
+  const slug = id.startsWith(WORKSPACE_OBJECT_PREFIX)
+    ? id.slice(WORKSPACE_OBJECT_PREFIX.length)
+    : id;
+  await invoke("write_object_thumbnail", new Uint8Array(await png.arrayBuffer()), {
+    headers: { "x-kookaburra-slug": slug },
+  });
+}
+
 const assetCache = new Map<string, ResolvedObjectAsset | undefined>();
 const assetInflight = new Map<string, Promise<ResolvedObjectAsset | undefined>>();
 

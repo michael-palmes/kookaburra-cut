@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Object: water-bottle",
+  "duration": {
+    "mode": "manual"
+  },
+  "text": {},
+  "objects": [
+    {
+      "id": "o1",
+      "objectId": "water-bottle",
+      "placement": {
+        "position": [0, -0.3, 1.2],
+        "rotationDeg": [0, 18, 0],
+        "scale": 2.0
+      }
+    }
+  ]
+}

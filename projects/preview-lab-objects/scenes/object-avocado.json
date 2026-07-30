@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Object: avocado",
+  "duration": {
+    "mode": "manual"
+  },
+  "text": {},
+  "objects": [
+    {
+      "id": "o1",
+      "objectId": "avocado",
+      "placement": {
+        "position": [0, -0.25, 1.2],
+        "rotationDeg": [0, 18, 0],
+        "scale": 3.4
+      }
+    }
+  ]
+}
