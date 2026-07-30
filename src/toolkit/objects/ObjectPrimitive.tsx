@@ -28,7 +28,7 @@ export function StagedObject({ spec }: { spec: SceneDocObjectSpec }) {
   return <LoadedObject spec={spec} asset={asset} />;
 }
 
-/** The HeroObject treatment: clone, recentre, auto-fit to the manifest's height, apply the sidecar placement on ONE group so the gizmo can attach to it. The gizmo is a TransformControls ATTACHED to that group (never wrapping it): it stays centred on the object and follows every drag, mounts only for the inspector-selected object, and `exportPreamble` clears that selection, so exports render the bare transform. Scale mode hides the per-axis handles, leaving the centre cube's uniform scale (no stretching); rotate mode's screen-space ring and free sphere stay usable when the camera is front on and the per-axis rings go edge on. */
+/** The HeroObject treatment: clone, recentre, auto-fit to the manifest's height, apply the sidecar placement on ONE group so the gizmo can attach to it. The gizmo is a TransformControls ATTACHED to that group (never wrapping it): it stays centred on the object and follows every drag, mounts only for the inspector-selected object, and `exportPreamble` clears that selection, so exports render the bare transform. Scale mode keeps every handle but snaps all three axes to the furthest-moved one live, so resizing is always even (no stretching); rotate mode's screen-space ring and free sphere stay usable when the camera is front on and the per-axis rings go edge on. */
 function LoadedObject({
   spec,
   asset,
@@ -94,6 +94,22 @@ function LoadedObject({
     });
   };
 
+  // Uniform scale only: an axis-cube drag stretches one axis, so snap all three to the furthest-moved axis every change (the centre cube is uniform already). Hiding the axis cubes instead hides the WHOLE scale gizmo: three names its centre handle "XYZ", so showX/Y/Z false blanks it too.
+  const uniformiseScale = () => {
+    const group = groupRef.current;
+    if (gizmoMode !== "scale" || !group) return;
+    const base = scale * fit;
+    if (base <= 1e-6) return;
+    let u = 1;
+    for (const ratio of [group.scale.x / base, group.scale.y / base, group.scale.z / base]) {
+      if (Math.abs(Math.log(Math.max(1e-3, Math.abs(ratio)))) > Math.abs(Math.log(Math.abs(u)))) {
+        u = ratio;
+      }
+    }
+    const next = Math.max(0.01 * base, Math.abs(u) * base);
+    group.scale.set(next, next, next);
+  };
+
   return (
     <>
       <group ref={groupRef} position={groupPosition} rotation={rotation} scale={scale * fit}>
@@ -103,10 +119,8 @@ function LoadedObject({
         <TransformControls
           object={groupRef as React.RefObject<Group>}
           mode={gizmoMode}
-          size={1.3}
-          showX={gizmoMode !== "scale"}
-          showY={gizmoMode !== "scale"}
-          showZ={gizmoMode !== "scale"}
+          size={1.8}
+          onObjectChange={uniformiseScale}
           onMouseUp={commitDrag}
         />
       )}
