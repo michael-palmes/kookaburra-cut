@@ -73,6 +73,8 @@ export interface DevicePlacement {
   scale?: number;
   /** Rest the fitted base on the staged floor (its y replaces `position[1]`); inert when the scene stages no floor backdrop, so the authored position stands. */
   ground?: boolean;
+  /** Stamped by `resolveDeviceLayout`, never authored or persisted: the block's authoritative pose. `Device` prefers it over the scalar fields, so scene TSX that post-processes placements (the templates' portrait scale multipliers, frozen at scaffold time) cannot drift a laid-out scene. Post-process only block-less scenes, or delete this field first. */
+  resolvedLayout?: { position: V3; rotationDeg: V3; scale: number };
 }
 
 export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
@@ -460,7 +462,11 @@ export function Device(props: DeviceProps) {
     lit,
     lidDeg,
   } = props;
-  const { position = [0, 0, 0], rotationDeg = [0, 0, 0], scale = 1, ground = false } = placement;
+  // The layout stamp wins over the scalar fields (see DevicePlacement.resolvedLayout).
+  const position = placement.resolvedLayout?.position ?? placement.position ?? [0, 0, 0];
+  const rotationDeg = placement.resolvedLayout?.rotationDeg ?? placement.rotationDeg ?? [0, 0, 0];
+  const scale = placement.resolvedLayout?.scale ?? placement.scale ?? 1;
+  const ground = placement.ground ?? false;
 
   const { localMs } = useTimeline();
   const contextProjectId = useContext(ProjectIdContext);

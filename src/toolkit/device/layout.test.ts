@@ -98,6 +98,18 @@ describe("resolveDeviceLayout", () => {
     expect(centreGap).toBeCloseTo(((1.25 + 3.4) / 2) * 0.92 + 0.3);
   });
 
+  it("stamps the resolved pose so consumer spreads cannot drift it", () => {
+    const [a] = resolveDeviceLayout(phones(2), layout({ preset: "toe-in" }), wide);
+    expect(a.resolvedLayout).toEqual({
+      position: a.position,
+      rotationDeg: a.rotationDeg,
+      scale: a.scale,
+    });
+    // A frozen template's post-processing spread keeps the stamp intact.
+    const tampered = { ...a, scale: (a.scale ?? 1) * 0.92 };
+    expect(tampered.resolvedLayout?.scale).toBe(a.scale);
+  });
+
   it("an unknown model uses the fallback width; ground passes through; one device centres", () => {
     const [only] = resolveDeviceLayout(
       [{ id: "d1", model: "mystery", placement: { ground: true } }],

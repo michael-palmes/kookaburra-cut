@@ -1,4 +1,4 @@
-import { AnimatedHeadline, Device, defineScene, SceneStage, useFormat, useSceneDevices, useSceneText, useTheme } from "@kookaburra/toolkit";
+import { AnimatedHeadline, Device, defineScene, SceneStage, useFormat, useSceneDevices, useSceneDoc, useSceneText, useTheme } from "@kookaburra/toolkit";
 
 /**
  * __NAME__ — scaffolded device scene. The COMPOSITION lives here (layout, extra elements,
@@ -17,6 +17,9 @@ export default defineScene({
     const title = useSceneText("title");
     const subtitle = useSceneText("subtitle");
     const devices = useSceneDevices();
+    const doc = useSceneDoc();
+    // A deviceLayout block arrives fully resolved (aspect-aware, breathing room included); only block-less scenes take the house portrait multiplier.
+    const laidOut = doc?.deviceLayout !== undefined;
     return (
       <SceneStage>
         <color attach="background" args={[theme.colors.background]} />
@@ -46,10 +49,14 @@ export default defineScene({
           <Device
             key={d.id}
             {...d}
-            placement={{
-              ...d.placement,
-              scale: (d.placement?.scale ?? 1) * (portrait ? 0.8 : 0.92),
-            }}
+            placement={
+              laidOut
+                ? d.placement
+                : {
+                    ...d.placement,
+                    scale: (d.placement?.scale ?? 1) * (portrait ? 0.8 : 0.92),
+                  }
+            }
           />
         ))}
       </SceneStage>

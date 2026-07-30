@@ -151,11 +151,16 @@ export function resolveDeviceLayout(
     const delta: SceneDocDeviceLayoutDelta = layout.devices?.[d.id] ?? {};
     const [dx, dy, dz] = delta.offset ?? [0, 0, 0];
     const [rx, ry, rz] = delta.rotationDeg ?? [0, 0, 0];
+    const position: [number, number, number] = [base.x * f + dx, BASE_Y + dy, base.z * f + dz];
+    const rotationDeg: [number, number, number] = [rx, base.yawDeg + ry, rz];
+    const scale = base.scale * BASE_SCALE * f * (delta.scale ?? 1);
     return {
-      position: [base.x * f + dx, BASE_Y + dy, base.z * f + dz],
-      rotationDeg: [rx, base.yawDeg + ry, rz],
-      scale: base.scale * BASE_SCALE * f * (delta.scale ?? 1),
+      position,
+      rotationDeg,
+      scale,
       ground: d.placement?.ground,
+      // The stamp survives consumer spreads, so frozen template post-processing can't drift the layout.
+      resolvedLayout: { position, rotationDeg, scale },
     };
   });
 }

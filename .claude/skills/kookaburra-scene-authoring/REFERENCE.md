@@ -797,7 +797,11 @@ preset base at natural size, uniform compression against the aspect's safe width
 multiplies). Presets: `row`, `toe-in`, `arc`, `cascade`, `hero` (device 1 forward),
 `depth-pair` (exactly 2, else falls back to toe-in). Widths come from catalog
 `layoutWidth` constants, never runtime bboxes, so placeholder and licensed builds lay
-out identically. Gate fixture: `ws:multi-device-spike`.
+out identically. Resolved placements carry a `resolvedLayout` stamp that `Device`
+prefers over the scalar fields, so scene TSX that post-processes placements (the
+templates' frozen portrait multipliers) cannot drift a laid-out scene: post-process
+only block-less scenes, or delete the field first. Gate fixture:
+`ws:multi-device-spike`.
 
 ```ts
 <VideoClip
