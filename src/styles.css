@@ -1870,6 +1870,25 @@ body {
   margin: var(--space-7) 0 var(--space-8);
 }
 
+/* Sticky so the field stays reachable however long the grid gets (⌘F focuses it). */
+.welcome-search {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) 0;
+  background: var(--surface-window);
+}
+
+.welcome-search-input {
+  inline-size: min(420px, 100%);
+}
+
+.welcome-no-matches {
+  margin: 0 0 var(--space-6);
+  color: var(--text-tertiary);
+}
+
 /* The one display-type moment outside About (§5.2): the wordmark (v14 · M6). */
 .welcome-header h1 {
   margin: 0;

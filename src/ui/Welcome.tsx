@@ -215,14 +215,24 @@ export function Welcome({
   onOpenProject,
   onNewProject,
   refreshKey,
+  focusSearchNonce,
 }: {
   onOpenProject: (projectId: string) => void;
   onNewProject: () => void;
   /** Bump to re-scan the workspace (e.g. after a create). */
   refreshKey: number;
+  /** Bump to focus and select the search field (⌘F). */
+  focusSearchNonce: number;
 }) {
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
   const [showDevProjects, setShowDevProjects] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (focusSearchNonce === 0) return;
+    searchRef.current?.focus();
+    searchRef.current?.select();
+  }, [focusSearchNonce]);
   // From tauri.conf.json at runtime, the same source Settings shows; never hardcoded.
   const [appVersion, setAppVersion] = useState("");
   useEffect(() => {
@@ -261,6 +271,14 @@ export function Welcome({
   }, [refreshKey, retryNonce]);
 
   const empty = projects !== null && projects.length === 0 && !loadError;
+  const trimmedQuery = query.trim().toLowerCase();
+  const visibleProjects = trimmedQuery
+    ? (projects ?? []).filter(
+        (p) =>
+          p.name.toLowerCase().includes(trimmedQuery) ||
+          p.slug.toLowerCase().includes(trimmedQuery),
+      )
+    : (projects ?? []);
 
   return (
     <div className="welcome">
@@ -288,8 +306,32 @@ export function Welcome({
         </div>
       )}
 
+      {projects !== null && projects.length > 0 && (
+        <div className="welcome-search">
+          <input
+            ref={searchRef}
+            className="modal-input welcome-search-input"
+            type="search"
+            placeholder="Search projects…"
+            aria-label="Search projects"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setQuery("");
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {trimmedQuery && visibleProjects.length === 0 && (
+        <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
+      )}
+
       <div className="project-grid">
-        {(projects ?? []).map((p) => (
+        {visibleProjects.map((p) => (
           <ProjectCard
             key={p.slug}
             project={p}

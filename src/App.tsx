@@ -279,6 +279,7 @@ export default function App() {
     isAutoRun ? "editor" : "loading",
   );
   const [welcomeRefresh, setWelcomeRefresh] = useState(0);
+  const [welcomeSearchNonce, setWelcomeSearchNonce] = useState(0);
 
   // False from a real project switch until the settle sequence paints the opening frame (the stage loading overlay renders while false); doc/timing/SWR reloads never reset it. Autorun never uses it.
   const [projectReady, setProjectReady] = useState(false);
@@ -1307,6 +1308,28 @@ export default function App() {
     if (view !== "editor") useUiStore.getState().setPaletteOpen(false);
   }, [view]);
 
+  // ⌘F rides the same menu-accelerator + capture-phase fallback pair as ⌘K; welcome view only, where it focuses the project search.
+  useEffect(() => {
+    if (isAutoRun) return;
+    const focusSearch = () => {
+      if (view === "welcome") setWelcomeSearchNonce((n) => n + 1);
+    };
+    const unlisten = listen("kookaburra://find-project", focusSearch);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "f") {
+        if (view !== "welcome") return;
+        e.preventDefault();
+        e.stopPropagation();
+        focusSearch();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      void unlisten.then((fn) => fn());
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [isAutoRun, view]);
+
   // Welcome-card snapshot: capture shortly after a workspace project renders, debounced so rapid switches don't thrash; never in auto-run mode. Keyed on the project ID, not the object, since every sidecar patch mints a new LoadedProject identity and a recapture borrows the clock (visible playhead blip otherwise).
   const projectIdForSnapshot = project?.id;
   useEffect(() => {
@@ -1708,6 +1731,7 @@ export default function App() {
           onOpenProject={openProject}
           onNewProject={() => setShowNewProject(true)}
           refreshKey={welcomeRefresh}
+          focusSearchNonce={welcomeSearchNonce}
         />
       )}
 

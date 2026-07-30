@@ -1014,11 +1014,15 @@ pub fn run() {
                 let find_action = MenuItemBuilder::with_id("find-action", "Find an Action…")
                     .accelerator("CmdOrCtrl+K")
                     .build(app)?;
+                let find_project = MenuItemBuilder::with_id("find-project", "Find a Project…")
+                    .accelerator("CmdOrCtrl+F")
+                    .build(app)?;
                 let shortcuts = MenuItemBuilder::with_id("show-shortcuts", "Keyboard Shortcuts…")
                     .accelerator("CmdOrCtrl+/")
                     .build(app)?;
                 let project = SubmenuBuilder::new(app, "Project")
                     .item(&find_action)
+                    .item(&find_project)
                     .item(&edit_in_claude)
                     .item(&shortcuts)
                     .build()?;
@@ -1129,6 +1133,8 @@ pub fn run() {
                         let _ = app.emit("kookaburra://edit-in-claude", ());
                     } else if event.id() == "find-action" {
                         let _ = app.emit("kookaburra://find-action", ());
+                    } else if event.id() == "find-project" {
+                        let _ = app.emit("kookaburra://find-project", ());
                     } else if event.id() == "kookaburra-undo" {
                         let _ = app.emit("kookaburra://undo", ());
                     } else if event.id() == "kookaburra-redo" {
