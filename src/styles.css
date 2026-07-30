@@ -3053,7 +3053,7 @@ body {
   gap: var(--space-4);
 }
 
-/* The type step: twelve presets sit four across by three high. */
+/* The type step: fourteen presets sit four across (the last row runs short). */
 .wizard-kind-wide {
   width: min(68rem, calc(100% - 2rem));
 }

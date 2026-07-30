@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Kind: image",
+  "background": {
+    "type": "image",
+    "src": "assets/sample-screenshot-1.jpg"
+  }
+}

@@ -660,6 +660,7 @@ const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
 const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
+const TSX_IMAGE: &str = include_str!("../templates/scenes/image.tsx.tmpl");
 const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
 const TSX_COMPARISON: &str = include_str!("../templates/scenes/comparison.tsx.tmpl");
 
@@ -669,7 +670,7 @@ const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
+    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -769,6 +770,7 @@ pub async fn scaffold_scene(
         "appversion" => TSX_APP_VERSION,
         "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
         "video" => TSX_VIDEO,
+        "image" => TSX_IMAGE,
         "videowindow" => TSX_VIDEO_WINDOW,
         other => return Err(format!("unknown scene kind {other:?}")),
     };
@@ -888,7 +890,7 @@ pub async fn scaffold_scene(
     if options.kind == "titleicon" {
         doc["headerIcon"] = json!(options.header_icon.as_deref().unwrap_or("🚀"));
     }
-    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant collapses its cutout to a sliver (min size, max inset) so the panel reads full-frame at every aspect. The cutout pair pins the panel to the flat background token, paired with the template's lifted scene clear.
+    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant uses the real full-panel shape ("none": no cutout, content centred). The cutout pair pins the panel to the flat background token, paired with the template's lifted scene clear.
     let overlay_frame = match options.kind.as_str() {
         "overlaystart" => Some(json!({
             "cutout": { "shape": "rounded-rect", "side": "start" },
@@ -899,7 +901,7 @@ pub async fn scaffold_scene(
             "background": "background",
         })),
         "overlaypanel" => Some(json!({
-            "cutout": { "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 },
+            "cutout": { "shape": "none" },
         })),
         _ => None,
     };
@@ -958,6 +960,12 @@ pub async fn scaffold_scene(
     if options.kind == "video" {
         if let Some(rel) = &options.media_rel {
             doc["background"] = json!({ "type": "video", "src": rel });
+        }
+    }
+    // An image scene without a pick keeps the theme background (no bundled sample image).
+    if options.kind == "image" {
+        if let Some(rel) = &options.media_rel {
+            doc["background"] = json!({ "type": "image", "src": rel });
         }
     }
     if is_device_kind {

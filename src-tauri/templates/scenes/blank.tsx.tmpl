@@ -1,19 +1,23 @@
-import { defineScene, SceneStage, useTheme } from "@kookaburra/toolkit";
+import { defineScene, SceneStage, TitleBlock, useSceneText, useTheme } from "@kookaburra/toolkit";
 
 /**
- * __NAME__ — scaffolded blank scene. Compose freely (toolkit primitives only — see the
- * kookaburra-scene-authoring skill); machine-editable values belong in the sidecar
- * `scenes/__STEM__.json`. `<SceneStage>` mounts the theme's staging (lights, backdrop,
- * shadows) and honours the sidecar's stage overrides.
+ * __NAME__: scaffolded blank scene. An empty canvas that still wires the sidecar text
+ * map (`scenes/__STEM__.json`): nothing renders until text is typed, but Edit text
+ * (font, colour, size, align) works immediately. Compose freely with toolkit primitives
+ * (see the kookaburra-scene-authoring skill); `<SceneStage>` mounts the theme's staging
+ * and honours the sidecar's stage overrides.
  */
 export default defineScene({
   id: "__SCENE_ID__",
   durationMs: __DURATION_MS__,
   Scene() {
     const theme = useTheme();
+    const title = useSceneText("title");
+    const subtitle = useSceneText("subtitle");
     return (
       <SceneStage>
         <color attach="background" args={[theme.colors.background]} />
+        <TitleBlock title={title} subtitle={subtitle} />
       </SceneStage>
     );
   },

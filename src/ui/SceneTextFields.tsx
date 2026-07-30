@@ -1,5 +1,7 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ColourPicker } from "./colour/ColourPicker";
+import { MediaBrowser } from "./MediaBrowser";
+import { useEscapeClose } from "./useEscapeClose";
 
 /** Single-line textarea that grows with its content; no manual resize handle. */
 export function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
@@ -44,11 +46,13 @@ export const HEADER_EMOJIS = [
   "📈",
 ];
 
-/** Header-icon field with the emoji quick-pick grid, shared by the New-scene wizard and the Edit-text drill-in; the host owns the value/commit plumbing. */
+/** Header-icon field with the emoji quick-pick grid and an image picker, shared by the New-scene wizard and the Edit-text drill-in; the host owns the value/commit plumbing, the field owns its own picker modal (the ColourPicker pattern). */
 export function HeaderIconField({
   value,
   selected,
   hint,
+  slug,
+  projectPath,
   onChange,
   onBlur,
   onPick,
@@ -57,11 +61,16 @@ export function HeaderIconField({
   /** The committed icon, marking the active tile. */
   selected: string;
   hint: string;
+  slug: string;
+  /** Absolute project folder, for the image picker's previews. */
+  projectPath: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
-  /** An emoji tile pick (commits instantly at the host). */
+  /** An emoji tile or image pick (commits instantly at the host). */
   onPick: (value: string) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  useEscapeClose(() => setPickerOpen(false), pickerOpen);
   return (
     <div className="wizard-field">
       <TextFieldRow
@@ -84,7 +93,39 @@ export function HeaderIconField({
           </button>
         ))}
       </div>
+      <button type="button" className="btn btn-left" onClick={() => setPickerOpen(true)}>
+        Choose image…
+      </button>
       <p className="modal-hint">{hint}</p>
+      {pickerOpen && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose an icon image"
+        >
+          <div className="modal wizard-wide media-modal-wide">
+            <h2>Choose an icon image</h2>
+            <div className="wizard-media-host">
+              <MediaBrowser
+                slug={slug}
+                projectPath={projectPath}
+                kinds={["image"]}
+                globalToggle
+                onPick={(rel) => {
+                  setPickerOpen(false);
+                  onPick(rel);
+                }}
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => setPickerOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

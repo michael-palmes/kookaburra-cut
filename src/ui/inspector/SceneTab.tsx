@@ -4359,6 +4359,8 @@ export function SceneTab({
                 ? "Drawn above the panel title. An emoji, or a project image path."
                 : "Drawn above the headline. An emoji, or a project image path."
             }
+            slug={slug}
+            projectPath={workspaceProjectPath(slug) ?? ""}
             onChange={liveHeaderIcon}
             onBlur={flushHeaderIcon}
             onPick={setHeaderIcon}
