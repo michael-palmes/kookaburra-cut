@@ -724,6 +724,11 @@ body {
      floors it at content min-size, so the grid overflows the modal to the editor width
      and the thumbnails' contained images end up centred off-screen (all-black cards). */
   min-width: 0;
+  /* Same trap vertically: `min-height: auto` refused to shrink below the full card stack,
+     so overflow-y above never engaged and the host (or rail) scrolled instead. Basis auto,
+     NOT 0: a zero basis collapses the grid inside auto-height hosts (the wizard boxes). */
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
      floor, then a column drops (the inspector rail and narrow editor panels sit at 2). */
