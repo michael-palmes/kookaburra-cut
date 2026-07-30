@@ -936,9 +936,10 @@ The generative toolkit primitives (`ExtrudedText`, `ParticleField`, `WireGrid`,
   DYNAMIC id set: `preloadSceneObjects()` resolves every referenced object id
   (bundled or `ws:`) into a warm asset cache, then fetches + parses each glb
   before frame 0; unknown ids resolve to nothing, deterministically. The
-  preview's PivotControls gizmo is UI-only: mount-gated on the inspector's
-  placement drill AND cleared by `exportPreamble` (`useObjectEditStore`), so it
-  can never reach an exported frame.
+  preview's TransformControls gizmo is UI-only: it ATTACHES to the object's
+  group (never wraps it), mounts only for the inspector-selected object AND is
+  cleared by `exportPreamble` (`useObjectEditStore`), so it can never reach an
+  exported frame.
 
 **Framing is invisible to the gate.** `useFormat().frame`/`safe` are measured at
 the content plane `z=0`; content offset toward the camera projects larger and can

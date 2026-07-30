@@ -1,6 +1,6 @@
-import { PivotControls, useGLTF } from "@react-three/drei";
+import { TransformControls, useGLTF } from "@react-three/drei";
 import { useContext, useMemo, useRef } from "react";
-import { Box3, Euler, Matrix4, type Object3D, Quaternion, Vector3 } from "three";
+import { Box3, type Group, type Object3D, Vector3 } from "three";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { useSceneConsumesObjects } from "../../engine/objectRegistry";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -28,7 +28,7 @@ export function StagedObject({ spec }: { spec: SceneDocObjectSpec }) {
   return <LoadedObject spec={spec} asset={asset} />;
 }
 
-/** The HeroObject treatment: clone, recentre, auto-fit to the manifest's height, apply the sidecar placement. The wrapping PivotControls is UI-only: enabled and visible only for the inspector-selected object, and `exportPreamble` clears that selection, so exports render the bare transform. */
+/** The HeroObject treatment: clone, recentre, auto-fit to the manifest's height, apply the sidecar placement on ONE group so the gizmo can attach to it. The gizmo is a TransformControls ATTACHED to that group (never wrapping it): it stays centred on the object and follows every drag, mounts only for the inspector-selected object, and `exportPreamble` clears that selection, so exports render the bare transform. Scale mode hides the per-axis handles, leaving the centre cube's uniform scale (no stretching); rotate mode's screen-space ring and free sphere stay usable when the camera is front on and the per-axis rings go edge on. */
 function LoadedObject({
   spec,
   asset,
@@ -39,7 +39,8 @@ function LoadedObject({
   const sceneIndex = useSceneContext()?.index;
   const stageFloorY = useStageFloorY();
   const selected = useObjectEditStore((s) => s.selected);
-  const pivotMatrix = useRef(new Matrix4());
+  const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
+  const groupRef = useRef<Group>(null);
   const { scene } = useGLTF(asset.glbUrl);
 
   // Clone once per model (drei's cache is shared, never mutate it), recentre on the origin and auto-fit to the manifest height (the HeroObject treatment).
@@ -70,53 +71,46 @@ function LoadedObject({
   const isSelected =
     selected !== null && selected.sceneIndex === sceneIndex && selected.objectId === spec.id;
 
+  // The control mutates the group live; the commit reads the group back, so the doc lands exactly what is on screen and nothing snaps. A drag pins an explicit transform, so `ground` drops (the y just chosen wins).
   const commitDrag = () => {
-    if (sceneIndex === undefined) return;
-    // Bake the pivot's offset into the placement: decompose pivot * child so the doc carries the final transform and the pivot resets to identity.
-    const child = new Matrix4().compose(
-      new Vector3(...groupPosition),
-      new Quaternion().setFromEuler(new Euler(rotation[0], rotation[1], rotation[2], "XYZ")),
-      new Vector3(scale * fit, scale * fit, scale * fit),
-    );
-    const combined = new Matrix4().multiplyMatrices(pivotMatrix.current, child);
-    const pos = new Vector3();
-    const quat = new Quaternion();
-    const scl = new Vector3();
-    combined.decompose(pos, quat, scl);
-    const euler = new Euler().setFromQuaternion(quat, "XYZ");
-    pivotMatrix.current.identity();
+    const group = groupRef.current;
+    if (!group || sceneIndex === undefined) return;
     useObjectEditStore.getState().requestCommit({
       sceneIndex,
       objectId: spec.id,
-      // A drag pins an explicit transform, so `ground` drops (the y just chosen wins).
       placement: {
-        position: [round(pos.x, 3), round(pos.y, 3), round(pos.z, 3)],
-        rotationDeg: [
-          round(euler.x * RAD2DEG, 1),
-          round(euler.y * RAD2DEG, 1),
-          round(euler.z * RAD2DEG, 1),
+        position: [
+          round(group.position.x, 3),
+          round(group.position.y, 3),
+          round(group.position.z, 3),
         ],
-        scale: round(scl.x / fit, 3),
+        rotationDeg: [
+          round(group.rotation.x * RAD2DEG, 1),
+          round(group.rotation.y * RAD2DEG, 1),
+          round(group.rotation.z * RAD2DEG, 1),
+        ],
+        scale: round(group.scale.x / fit, 3),
       },
     });
   };
 
   return (
-    <PivotControls
-      enabled={isSelected}
-      visible={isSelected}
-      matrix={pivotMatrix.current}
-      depthTest={false}
-      annotations={false}
-      scale={0.8}
-      onDragEnd={commitDrag}
-    >
-      <group position={groupPosition} rotation={rotation}>
-        <group scale={scale * fit}>
-          <primitive object={root} />
-        </group>
+    <>
+      <group ref={groupRef} position={groupPosition} rotation={rotation} scale={scale * fit}>
+        <primitive object={root} />
       </group>
-    </PivotControls>
+      {isSelected && (
+        <TransformControls
+          object={groupRef as React.RefObject<Group>}
+          mode={gizmoMode}
+          size={0.8}
+          showX={gizmoMode !== "scale"}
+          showY={gizmoMode !== "scale"}
+          showZ={gizmoMode !== "scale"}
+          onMouseUp={commitDrag}
+        />
+      )}
+    </>
   );
 }
 

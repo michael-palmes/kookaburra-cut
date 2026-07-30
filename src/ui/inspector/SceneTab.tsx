@@ -1639,6 +1639,7 @@ export function SceneTab({
   // Which staged object the placement drill targets, plus the library picker modal.
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
   const [objectPickerOpen, setObjectPickerOpen] = useState(false);
+  const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
   // The comparison drill's side pill and its full-height media screen's target device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
@@ -5037,8 +5038,17 @@ export function SceneTab({
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{objectRowLabel(stagedObject.objectId)}</div>
         <div className="inspector-section-body">
+          <SegmentedRow
+            options={[
+              { value: "translate", label: "Move" },
+              { value: "rotate", label: "Rotate" },
+              { value: "scale", label: "Scale" },
+            ]}
+            value={gizmoMode}
+            onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
+          />
           <span className="modal-hint">
-            Drag the gizmo in the preview to move it, or set the pose here.
+            Drag the gizmo in the preview (Scale resizes evenly), or set the pose here.
           </span>
           <div className="wizard-presets">
             {device && (
