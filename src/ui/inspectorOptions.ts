@@ -6,7 +6,16 @@ import type { FrameSpec } from "../toolkit/frame/types";
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
 
 export interface ProjectRowModel {
-  id: "media" | "scenes" | "theme" | "appIcon" | "aspect" | "music" | "render" | "playback";
+  id:
+    | "media"
+    | "scenes"
+    | "theme"
+    | "typography"
+    | "appIcon"
+    | "aspect"
+    | "music"
+    | "render"
+    | "playback";
   label: string;
   /** Right-aligned value text (11px tertiary). */
   value?: string;
@@ -18,6 +27,8 @@ export interface ProjectRowModel {
 export function projectRows(input: {
   isWorkspace: boolean;
   themeName: string;
+  /** "Theme fonts" when no override; else the override summary. */
+  typographyLabel: string;
   aspect: AspectName;
   soundtrackName: string | null;
   playbackLabel: string;
@@ -39,6 +50,7 @@ export function projectRows(input: {
       chevron: true,
     },
     { id: "theme", label: "Theme", value: input.themeName, chevron: true },
+    { id: "typography", label: "Typography", value: input.typographyLabel, chevron: true },
     { id: "media", label: "Media library", chevron: true },
     { id: "appIcon", label: "App icon", chevron: true },
     { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },

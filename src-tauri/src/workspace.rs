@@ -857,6 +857,43 @@ pub fn set_project_group(
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// Set or clear the project's typography override ("Family" or "Family@weight" per slot); both slots empty clears the whole block.
+#[tauri::command]
+pub fn set_project_typography(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    headline: Option<String>,
+    body: Option<String>,
+) -> Result<(), String> {
+    validate_slug(&slug)?;
+    let headline = headline.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let root = require_root(&app, &state)?;
+    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    if headline.is_none() && body.is_none() {
+        if let Some(obj) = manifest.as_object_mut() {
+            obj.remove("typography");
+        }
+    } else {
+        let mut block = serde_json::Map::new();
+        if let Some(h) = headline {
+            block.insert("headline".into(), serde_json::Value::String(h));
+        }
+        if let Some(b) = body {
+            block.insert("body".into(), serde_json::Value::String(b));
+        }
+        manifest["typography"] = serde_json::Value::Object(block);
+    }
+    let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
 /// Duplicate a project into a fresh slug; copies everything except `exports/` (outputs) and `.kookaburra/` (per-project caches, since snapshots/thumbs regenerate), `.git` rides along so Claude Code's workspace trust and history survive, and the manifest id/name are rewritten to the new identity.
 #[tauri::command]
 pub fn duplicate_project(

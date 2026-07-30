@@ -4,9 +4,10 @@ import { join, resourceDir } from "@tauri-apps/api/path";
 import type { ComponentType } from "react";
 import { TextureLoader } from "three";
 import { assetVersionSuffix } from "../store/assetVersionStore";
+import { parseFontString } from "../theme/fontRef";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
-import type { EffectsConfig, EffectsOverride, LightingSpec, Theme } from "../theme/tokens";
+import type { EffectsConfig, EffectsOverride, FontRef, LightingSpec, Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
@@ -41,6 +42,8 @@ export interface ProjectManifest {
   audio?: ProjectAudioSpec;
   /** Theme to apply, matched against `Theme.id` (`kookaburra-*` bundled, `ws:<slug>` user). */
   themeId: string;
+  /** Project-wide font override ("Family" or "Family@weight" per slot); outranks every resolved theme, per-field sidecar overrides still win. */
+  typography?: { headline?: string; body?: string };
   /** Aspect ratios this project targets. */
   formats: string[];
   /** Manifest schema version; absent = 1. v2 flips transition ownership to the outgoing scene. */
@@ -123,6 +126,8 @@ export interface LoadedProject {
   sceneFiles: string[];
   /** Each scene's RESOLVED theme, index-parallel to `scenes`: the project theme unless the scene's sidecar overrides `themeId`. `SceneHost` provides it to the scene's tree; render seams read it for per-scene state (background/environment). */
   sceneThemes: Theme[];
+  /** The manifest's raw typography override strings, for the inspector's Typography drill. */
+  projectTypography?: { headline?: string; body?: string };
   /** The manifest's deck-wide overlay default (`project.json` `frame`), if declared; `undefined` means no overlay anywhere. The inspector reads this to know whether to offer the Overlay section (an override alone can't create a frame). */
   deckFrame?: FrameSpec;
   /** Each scene's RESOLVED overlay, index-parallel to `scenes`: the manifest's deck frame merged with the sidecar's override, `undefined` where the scene has no frame or opted out. Every entry undefined means the project never enters the overlay render path. */
@@ -517,6 +522,29 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
   return manifest;
 }
 
+/** The manifest's `typography` block as FontRefs; malformed slots degrade with a warning. */
+function parseProjectTypography(
+  raw: ProjectManifest["typography"],
+  source: string,
+): { headline?: FontRef; body?: FontRef } | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object") {
+    console.warn(`[project] ${source}: typography must be an object`);
+    return null;
+  }
+  const out: { headline?: FontRef; body?: FontRef } = {};
+  for (const slot of ["headline", "body"] as const) {
+    const value = raw[slot];
+    if (value === undefined) continue;
+    if (typeof value === "string" && value.trim()) {
+      out[slot] = parseFontString(value.trim());
+    } else {
+      console.warn(`[project] ${source}: typography.${slot} isn't "Family" or "Family@weight"`);
+    }
+  }
+  return out.headline || out.body ? out : null;
+}
+
 /** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `theme-starter` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */
 export async function loadProject(
   id: string,
@@ -563,18 +591,29 @@ export async function loadProject(
     })),
   );
   const totalMs = timelineTotalMs(slots);
-  const theme = await resolveTheme(options?.themeId ?? manifest.themeId);
+
+  // Project-wide font override: outranks every resolved theme (project, per-scene and compare B alike); per-field sidecar `<key>Font` overrides still win downstream.
+  const typographyOverride = parseProjectTypography(manifest.typography, `${id}/project.json`);
+  const applyTypography = (t: Theme): Theme =>
+    typographyOverride ? { ...t, typography: { ...t.typography, ...typographyOverride } } : t;
+  const theme = applyTypography(await resolveTheme(options?.themeId ?? manifest.themeId));
 
   // Per-scene theme resolution: a sidecar `themeId` swaps the WHOLE theme for that scene; unknown ids fall back to the project's theme, scenes without an override share the project theme object.
   const sceneThemes = await Promise.all(
-    sceneDocs.map((doc) => (doc?.themeId ? resolveTheme(doc.themeId, theme) : theme)),
+    sceneDocs.map((doc) =>
+      doc?.themeId ? resolveTheme(doc.themeId, theme).then(applyTypography) : theme,
+    ),
   );
 
   // Comparison scenes: derive side B's doc and resolve its theme; undefined everywhere else so projects without a compare block never touch the compare path. Transitions adjacent to a comparison blend side A only (the v1 interop rule, surfaced in the transition picker).
   const compareBDocs = sceneDocs.map((doc) => deriveCompareBDoc(doc) ?? undefined);
   const compareBThemes = await Promise.all(
     compareBDocs.map((bDoc, i) =>
-      bDoc ? (bDoc.themeId ? resolveTheme(bDoc.themeId, theme) : sceneThemes[i]) : undefined,
+      bDoc
+        ? bDoc.themeId
+          ? resolveTheme(bDoc.themeId, theme).then(applyTypography)
+          : sceneThemes[i]
+        : undefined,
     ),
   );
 
@@ -683,6 +722,7 @@ export async function loadProject(
     sceneDocs,
     sceneFiles: manifest.scenes.map((entry) => entry.file),
     sceneThemes,
+    projectTypography: manifest.typography,
     deckFrame,
     sceneFrames,
     sceneEffectDefaults,

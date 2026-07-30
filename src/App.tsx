@@ -114,6 +114,7 @@ import {
   projectFingerprint,
   setLastExportPreset,
   setLastProject,
+  setProjectTypography,
   slugifyName,
 } from "./engine/workspace";
 import { useAssetVersionStore } from "./store/assetVersionStore";
@@ -616,6 +617,31 @@ export default function App() {
       handleTimingChanged();
     } catch (e) {
       setToast({ kind: "error", message: `Render settings failed: ${String(e)}` });
+    }
+  }
+
+  async function handleSetTypography(headline: string | null, body: string | null) {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    try {
+      const slug = workspaceSlug(current.id);
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      await setProjectTypography(slug, headline, body);
+      pushHistory({
+        label: "project fonts",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+      handleTimingChanged();
+    } catch (e) {
+      setToast({ kind: "error", message: `Project fonts failed: ${String(e)}` });
     }
   }
 
@@ -2192,6 +2218,7 @@ export default function App() {
               onPasteBackground={(i) => void handlePasteBackground(i)}
               onDuplicateSceneAt={handleDuplicateScene}
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
+              onSetTypography={(headline, body) => void handleSetTypography(headline, body)}
             />
           )}
         </div>

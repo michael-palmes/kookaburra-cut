@@ -8,6 +8,7 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       isWorkspace: true,
       themeName: "Editorial",
+      typographyLabel: "Theme fonts",
       aspect: "16:9",
       soundtrackName: null,
       playbackLabel: "Full quality",
@@ -17,6 +18,7 @@ describe("projectRows (the Project-tab pin)", () => {
     expect(rows.map((r) => r.id)).toEqual([
       "scenes",
       "theme",
+      "typography",
       "media",
       "appIcon",
       "playback",
@@ -28,6 +30,7 @@ describe("projectRows (the Project-tab pin)", () => {
     expect(rows.find((r) => r.id === "scenes")?.value).toBe("3 scenes");
     expect(rows.find((r) => r.id === "music")?.value).toBe("None");
     expect(rows.find((r) => r.id === "theme")?.value).toBe("Editorial");
+    expect(rows.find((r) => r.id === "typography")?.value).toBe("Theme fonts");
     expect(rows.find((r) => r.id === "aspect")?.value).toBe("16:9");
     expect(rows.find((r) => r.id === "playback")?.value).toBe("Full quality");
   });
@@ -36,6 +39,7 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       isWorkspace: true,
       themeName: "Pacific",
+      typographyLabel: "Inter",
       aspect: "9:16",
       soundtrackName: "sunrise.mp3",
       playbackLabel: "Performance",
@@ -50,6 +54,7 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       isWorkspace: false,
       themeName: "Default",
+      typographyLabel: "Theme fonts",
       aspect: "1:1",
       soundtrackName: null,
       playbackLabel: "Full quality",

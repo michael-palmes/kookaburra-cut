@@ -100,6 +100,15 @@ export function setProjectGroup(slug: string, group: string | null): Promise<voi
   return invoke("set_project_group", { slug, group });
 }
 
+/** Set or clear the project's typography override ("Family@weight" strings; both null clears). */
+export function setProjectTypography(
+  slug: string,
+  headline: string | null,
+  body: string | null,
+): Promise<void> {
+  return invoke("set_project_typography", { slug, headline, body });
+}
+
 export function listProjects(): Promise<WorkspaceProjectInfo[]> {
   return invoke<WorkspaceProjectInfo[]>("list_projects");
 }

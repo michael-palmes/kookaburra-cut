@@ -11,8 +11,10 @@ import { EXPOSURE_MAX, EXPOSURE_MIN, type RenderSettings } from "../../engine/re
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
+import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { CopySceneModal } from "../CopySceneModal";
 import { AspectIcon } from "../exportIcons";
+import { FontPicker } from "../FontPicker";
 import { projectRows } from "../inspectorOptions";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
@@ -107,6 +109,7 @@ export function InspectorPanel({
   onPasteBackground,
   onDuplicateSceneAt,
   onSetRenderSettings,
+  onSetTypography,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -153,6 +156,8 @@ export function InspectorPanel({
   onDuplicateSceneAt: (index: number, position?: number) => Promise<void>;
   /** Write the project display transform (manifest `render`); App owns the write + history. */
   onSetRenderSettings: (settings: RenderSettings) => void;
+  /** Write the project font override (manifest `typography`; both null clears); App owns the write + history. */
+  onSetTypography: (headline: string | null, body: string | null) => void;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
@@ -204,6 +209,14 @@ export function InspectorPanel({
   const rows = projectRows({
     isWorkspace,
     themeName: project.theme.name,
+    typographyLabel:
+      project.projectTypography?.headline || project.projectTypography?.body
+        ? [project.projectTypography?.headline, project.projectTypography?.body]
+            .filter((s): s is string => Boolean(s))
+            .map((s) => parseFontString(s).family)
+            .filter((family, i, all) => all.indexOf(family) === i)
+            .join(" · ")
+        : "Theme fonts",
     aspect,
     soundtrackName,
     playbackLabel:
@@ -240,12 +253,21 @@ export function InspectorPanel({
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
   const [copyingScenes, setCopyingScenes] = useState<number[] | null>(null);
+  const [fontSlot, setFontSlot] = useState<"headline" | "body">("headline");
+  /** The slot's effective font: the manifest override when set, else the (already-overridden) resolved theme's face. */
+  const typographyRef = (slot: "headline" | "body") => {
+    const raw = project.projectTypography?.[slot];
+    return raw ? parseFontString(raw) : project.theme.typography[slot];
+  };
   // The media drill-in: the modal's library, re-homed as a Project-tab sub-panel like Background ▸ Video.
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [mediaError, setMediaError] = useState<string | null>(null);
   useEscapeClose(
     () => setDrillIn(null),
-    drillIn === "project.theme" || drillIn === "project.media" || drillIn === "project.scenes",
+    drillIn === "project.theme" ||
+      drillIn === "project.typography" ||
+      drillIn === "project.media" ||
+      drillIn === "project.scenes",
   );
   const [scenesBusy, setScenesBusy] = useState(false);
 
@@ -279,6 +301,7 @@ export function InspectorPanel({
           setDrillIn("project.theme");
         }
       : undefined,
+    typography: () => setDrillIn("project.typography"),
     appIcon: () => {
       setMediaError(null);
       setDrillIn("project.appIcon");
@@ -397,6 +420,53 @@ export function InspectorPanel({
             </button>
           </div>
           {themeMenu.menuElement}
+        </div>
+      ) : (tab === "project" || !isWorkspace) && drillIn === "project.typography" && isWorkspace ? (
+        <div className="inspector-drill">
+          <DrillBack label="Project" onClick={() => setDrillIn(null)} />
+          <div className="inspector-drill-title">Typography</div>
+          <div className="inspector-drill-body">
+            <div className="font-slot-row">
+              {(["headline", "body"] as const).map((slot) => {
+                const ref = typographyRef(slot);
+                return (
+                  <button
+                    type="button"
+                    key={slot}
+                    className={`chip${fontSlot === slot ? " selected" : ""}`}
+                    onClick={() => setFontSlot(slot)}
+                  >
+                    {slot === "headline" ? "Headline" : "Body"} — {ref.family} · {ref.weight}
+                  </button>
+                );
+              })}
+            </div>
+            <FontPicker
+              value={typographyRef(fontSlot)}
+              onPick={(ref) => {
+                const current = project.projectTypography;
+                const next: { headline: string | null; body: string | null } = {
+                  headline: current?.headline ?? null,
+                  body: current?.body ?? null,
+                };
+                next[fontSlot] = formatFontString(ref);
+                onSetTypography(next.headline, next.body);
+              }}
+            />
+            <span className="modal-hint">
+              Project fonts override the theme for every scene; a text field's own font still wins.
+            </span>
+          </div>
+          <div className="inspector-drill-actions">
+            <button
+              type="button"
+              className="btn btn-left"
+              onClick={() => onSetTypography(null, null)}
+              disabled={!project.projectTypography?.headline && !project.projectTypography?.body}
+            >
+              Use theme fonts
+            </button>
+          </div>
         </div>
       ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
         <>
