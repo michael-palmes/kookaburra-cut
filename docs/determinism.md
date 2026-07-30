@@ -1172,6 +1172,19 @@ rolling-gate project (`showcase-tour`):
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
+
+> **2026-07-30 (deviceLayout):** multi-device scenes gained a sidecar
+> `deviceLayout` block resolved to per-aspect placements by a pure toolkit
+> function (`resolveDeviceLayout`: preset base at natural size, uniform
+> compression against the safe width, per-device deltas on top). Widths are
+> catalog `layoutWidth` CONSTANTS, never runtime bboxes, so licensed and
+> placeholder builds lay out identically. Scenes without the block render
+> through the untouched raw-placement path, byte-identical by construction
+> (`pnpm gate` EQUAL `355f9429…` with the resolver in the render path). New
+> gate fixture `ws:multi-device-spike` (arc, hero + laptop, depth pair with
+> deltas, cascade, block-less null neighbour), 16:9 `fb2d4f84…` / 9:16
+> `c940b3b2…` / 1:1 `ceb8e74c…` Verify ×2 with the scenes eyeballed.
 
 > **2026-07-29 (scene3d draw order):** transparent scene3d look geometry (the
 > grid lines especially) spans huge bounds, so three's per-object distance sort
