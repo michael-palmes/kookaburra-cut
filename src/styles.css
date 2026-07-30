@@ -5984,6 +5984,13 @@ img.inspector-scene-thumb {
   padding: 0 8px 6px;
 }
 
+/* Chips that lead with a small glyph (the lighting add/type rows). */
+.camera-loop-modes .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* Lighting: the Kelvin slider with its live colour swatch alongside. */
 .lighting-kelvin-row {
   display: flex;
@@ -6352,6 +6359,21 @@ img.inspector-scene-thumb {
   font-size: var(--text-sm);
   color: var(--text-tertiary);
   background: var(--surface-recessed);
+}
+
+.option-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-tertiary);
+  background: var(--surface-recessed);
+}
+
+.option-card-icon svg {
+  width: 28px;
+  height: 28px;
 }
 
 .theme-card-thumb video {

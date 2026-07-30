@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useClockStore } from "../../engine/clock";
 import {
   BUNDLED_ENVIRONMENT_IDS,
@@ -162,6 +162,117 @@ const SIZE_LABELS: Record<FixtureSpec["form"], [string, string]> = {
   "ring-light": ["outer", "thickness"],
   "led-strip": ["length", "width"],
 };
+
+/** Per-type glyphs for the light chips and rows (the RowIcon convention: 20-viewBox stroke SVGs). */
+function LightTypeIcon({ type, size = 13 }: { type: LightSpec["type"]; size?: number }) {
+  const paths: Record<LightSpec["type"], ReactNode> = {
+    directional: (
+      <>
+        <circle cx="7" cy="7" r="2.6" />
+        <path d="M11.5 11.5L16 16M16 16v-3.2M16 16h-3.2" />
+      </>
+    ),
+    point: (
+      <>
+        <circle cx="10" cy="10" r="1.7" />
+        <path d="M10 4v2.4M10 13.6V16M4 10h2.4M13.6 10H16M5.8 5.8l1.7 1.7M12.5 12.5l1.7 1.7M14.2 5.8l-1.7 1.7M7.5 12.5l-1.7 1.7" />
+      </>
+    ),
+    spot: (
+      <>
+        <path d="M10 3.5L5.5 14M10 3.5L14.5 14" />
+        <ellipse cx="10" cy="14.5" rx="4.5" ry="2" />
+      </>
+    ),
+    area: (
+      <>
+        <rect x="3.5" y="4.5" width="6.5" height="11" rx="1" />
+        <path d="M13 7h3.5M13 10h3.5M13 13h3.5" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      {paths[type]}
+    </svg>
+  );
+}
+
+/** Per-form glyphs for the fixture chips and rows. */
+function FixtureFormIcon({ form, size = 13 }: { form: FixtureSpec["form"]; size?: number }) {
+  const paths: Record<FixtureSpec["form"], ReactNode> = {
+    tube: <rect x="3" y="8.2" width="14" height="3.6" rx="1.8" />,
+    panel: <rect x="4" y="5" width="12" height="10" rx="1.2" />,
+    ring: <circle cx="10" cy="10" r="5.5" />,
+    strip: <rect x="3" y="9" width="14" height="2" rx="1" />,
+    bulb: (
+      <>
+        <circle cx="10" cy="8.5" r="4" />
+        <path d="M8.6 12.4h2.8M9 14.6h2" />
+      </>
+    ),
+    "neon-sign": <path d="M4 12c2-5 4-5 6 0s4 5 6 0" />,
+    "tube-stand": (
+      <>
+        <rect x="8.4" y="3" width="3.2" height="9.5" rx="1.6" />
+        <path d="M10 12.5v2.7M10 15.2l-2.8 2.3M10 15.2l2.8 2.3" />
+      </>
+    ),
+    "ring-light": (
+      <>
+        <circle cx="10" cy="7.5" r="4.5" />
+        <path d="M10 12v3M10 15l-2.5 2.5M10 15l2.5 2.5" />
+      </>
+    ),
+    "led-strip": (
+      <>
+        <rect x="3" y="8.8" width="14" height="2.4" rx="1.2" />
+        <path d="M5.5 14.2h.01M10 14.2h.01M14.5 14.2h.01" />
+      </>
+    ),
+  };
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      {paths[form]}
+    </svg>
+  );
+}
+
+/** The None environment card's glyph: a highlight-free ball, struck through. */
+function NoReflectionsIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M6.3 17.7L17.7 6.3" />
+    </svg>
+  );
+}
 
 /** Defaults on add, tuned so a new fixture looks right immediately. */
 const FIXTURE_DEFAULTS: Record<FixtureSpec["form"], (id: string) => FixtureSpec> = {
@@ -537,6 +648,7 @@ export function LightingSectionBody({
                   label="None"
                   title="Explicitly no reflections"
                   image={null}
+                  icon={<NoReflectionsIcon />}
                   selected={environment?.source === NONE_SOURCE}
                   onSelect={() =>
                     commit(writeEnvironment((e) => Object.assign(e, { source: NONE_SOURCE })))
@@ -577,24 +689,30 @@ export function LightingSectionBody({
               </div>
               {environment && environment.source !== NONE_SOURCE && (
                 <>
-                  <DebouncedRange
-                    label="Intensity"
-                    value={environment.intensity}
-                    min={0}
-                    max={3}
-                    step={0.05}
-                    onInput={(n) => live(writeEnvironment((e) => (e.intensity = n)))}
-                    onCommit={(n) => commit(writeEnvironment((e) => (e.intensity = n)))}
-                  />
-                  <DebouncedRange
-                    label="Rotation °"
-                    value={environment.rotationDeg}
-                    min={0}
-                    max={360}
-                    step={1}
-                    onInput={(n) => live(writeEnvironment((e) => (e.rotationDeg = n)))}
-                    onCommit={(n) => commit(writeEnvironment((e) => (e.rotationDeg = n)))}
-                  />
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Intensity</span>
+                    <DebouncedRange
+                      label="Intensity"
+                      value={environment.intensity}
+                      min={0}
+                      max={3}
+                      step={0.05}
+                      onInput={(n) => live(writeEnvironment((e) => (e.intensity = n)))}
+                      onCommit={(n) => commit(writeEnvironment((e) => (e.intensity = n)))}
+                    />
+                  </div>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Rotation</span>
+                    <DebouncedRange
+                      label="Rotation °"
+                      value={environment.rotationDeg}
+                      min={0}
+                      max={360}
+                      step={1}
+                      onInput={(n) => live(writeEnvironment((e) => (e.rotationDeg = n)))}
+                      onCommit={(n) => commit(writeEnvironment((e) => (e.rotationDeg = n)))}
+                    />
+                  </div>
                 </>
               )}
               {doc.lighting?.environment && (
@@ -613,43 +731,56 @@ export function LightingSectionBody({
             <DrillGroup label="Sun" hint={fieldSource("sun", doc.lighting, projectLighting)}>
               {sun ? (
                 <>
-                  <DebouncedRange
-                    label="Azimuth"
-                    value={sun.azimuthDeg}
-                    min={-180}
-                    max={180}
-                    step={1}
-                    onInput={(n) => live(writeSun((s) => (s.azimuthDeg = n)))}
-                    onCommit={(n) => commit(writeSun((s) => (s.azimuthDeg = n)))}
-                  />
-                  <DebouncedRange
-                    label="Elevation"
-                    value={sun.elevationDeg}
-                    min={-90}
-                    max={90}
-                    step={1}
-                    onInput={(n) => live(writeSun((s) => (s.elevationDeg = n)))}
-                    onCommit={(n) => commit(writeSun((s) => (s.elevationDeg = n)))}
-                  />
-                  <DebouncedRange
-                    label="Intensity"
-                    value={sun.intensity}
-                    min={0}
-                    max={6}
-                    step={0.05}
-                    onInput={(n) => live(writeSun((s) => (s.intensity = n)))}
-                    onCommit={(n) => commit(writeSun((s) => (s.intensity = n)))}
-                  />
-                  <DebouncedRange
-                    label="Angular size °"
-                    value={angularDisplay}
-                    min={0}
-                    max={16}
-                    step={0.1}
-                    onInput={(n) => live(writeSun((s) => (s.angularDeg = n)))}
-                    onCommit={(n) => commit(writeSun((s) => (s.angularDeg = n)))}
-                  />
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Azimuth</span>
+                    <DebouncedRange
+                      label="Azimuth"
+                      value={sun.azimuthDeg}
+                      min={-180}
+                      max={180}
+                      step={1}
+                      onInput={(n) => live(writeSun((s) => (s.azimuthDeg = n)))}
+                      onCommit={(n) => commit(writeSun((s) => (s.azimuthDeg = n)))}
+                    />
+                  </div>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Elevation</span>
+                    <DebouncedRange
+                      label="Elevation"
+                      value={sun.elevationDeg}
+                      min={-90}
+                      max={90}
+                      step={1}
+                      onInput={(n) => live(writeSun((s) => (s.elevationDeg = n)))}
+                      onCommit={(n) => commit(writeSun((s) => (s.elevationDeg = n)))}
+                    />
+                  </div>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Intensity</span>
+                    <DebouncedRange
+                      label="Intensity"
+                      value={sun.intensity}
+                      min={0}
+                      max={6}
+                      step={0.05}
+                      onInput={(n) => live(writeSun((s) => (s.intensity = n)))}
+                      onCommit={(n) => commit(writeSun((s) => (s.intensity = n)))}
+                    />
+                  </div>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Angular size</span>
+                    <DebouncedRange
+                      label="Angular size °"
+                      value={angularDisplay}
+                      min={0}
+                      max={16}
+                      step={0.1}
+                      onInput={(n) => live(writeSun((s) => (s.angularDeg = n)))}
+                      onCommit={(n) => commit(writeSun((s) => (s.angularDeg = n)))}
+                    />
+                  </div>
                   <div className="lighting-kelvin-row">
+                    <span className="popover-inline slider-row-label">Temperature</span>
                     <span
                       className="lighting-kelvin-swatch"
                       style={{ background: sunSwatch }}
@@ -722,32 +853,37 @@ export function LightingSectionBody({
               label="Ambient"
               hint={fieldSource("ambient", doc.lighting, projectLighting)}
             >
-              <DebouncedRange
-                label="Intensity"
-                value={resolved.ambient ?? 0}
-                min={0}
-                max={2}
-                step={0.01}
-                onInput={(n) => live(writeAmbient(n))}
-                onCommit={(n) => commit(writeAmbient(n))}
-              />
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Intensity</span>
+                <DebouncedRange
+                  label="Intensity"
+                  value={resolved.ambient ?? 0}
+                  min={0}
+                  max={2}
+                  step={0.01}
+                  onInput={(n) => live(writeAmbient(n))}
+                  onCommit={(n) => commit(writeAmbient(n))}
+                />
+              </div>
             </DrillGroup>
 
             {(resolved.fills?.length ?? 0) > 0 && (
               <DrillGroup label="Fills" hint={fieldSource("fills", doc.lighting, projectLighting)}>
                 {(resolved.fills ?? []).map((fill, i) => (
-                  <DebouncedRange
-                    // Fills are a static ordered list; index identity is stable.
-                    // biome-ignore lint/suspicious/noArrayIndexKey: static ordered list
-                    key={i}
-                    label={`Fill ${i + 1}`}
-                    value={fill.intensity}
-                    min={0}
-                    max={4}
-                    step={0.05}
-                    onInput={(n) => live(writeFills((fills) => (fills[i].intensity = n)))}
-                    onCommit={(n) => commit(writeFills((fills) => (fills[i].intensity = n)))}
-                  />
+                  // Fills are a static ordered list; index identity is stable.
+                  // biome-ignore lint/suspicious/noArrayIndexKey: static ordered list
+                  <div className="popover-row" key={i}>
+                    <span className="popover-inline slider-row-label">{`Fill ${i + 1}`}</span>
+                    <DebouncedRange
+                      label={`Fill ${i + 1}`}
+                      value={fill.intensity}
+                      min={0}
+                      max={4}
+                      step={0.05}
+                      onInput={(n) => live(writeFills((fills) => (fills[i].intensity = n)))}
+                      onCommit={(n) => commit(writeFills((fills) => (fills[i].intensity = n)))}
+                    />
+                  </div>
                 ))}
               </DrillGroup>
             )}
@@ -756,6 +892,7 @@ export function LightingSectionBody({
               {(resolved.lights ?? []).map((light) => (
                 <ActionRow
                   key={light.id}
+                  icon={<LightTypeIcon type={light.type} size={17} />}
                   label={light.name ?? TYPE_LABEL[light.type]}
                   value={`${TYPE_LABEL[light.type]} · ${light.intensity}`}
                   onClick={() => {
@@ -774,6 +911,7 @@ export function LightingSectionBody({
                     title={`Add a ${TYPE_LABEL[type].toLowerCase()} light`}
                     onClick={() => addLight(type)}
                   >
+                    <LightTypeIcon type={type} />
                     {TYPE_LABEL[type]}
                   </button>
                 ))}
@@ -790,6 +928,7 @@ export function LightingSectionBody({
               {(resolved.fixtures ?? []).map((fixture) => (
                 <ActionRow
                   key={fixture.id}
+                  icon={<FixtureFormIcon form={fixture.form} size={17} />}
                   label={fixture.name ?? FORM_LABEL[fixture.form]}
                   value={`${FORM_LABEL[fixture.form]}${fixture.repeat && fixture.repeat.count > 1 ? ` ×${fixture.repeat.count}${fixture.repeat.mirrorAxis ? "×2" : ""}` : ""}`}
                   onClick={() => {
@@ -808,6 +947,7 @@ export function LightingSectionBody({
                     title={`Add a ${FORM_LABEL[form].toLowerCase()} fixture`}
                     onClick={() => addFixture(form)}
                   >
+                    <FixtureFormIcon form={form} />
                     {FORM_LABEL[form]}
                   </button>
                 ))}
@@ -823,15 +963,18 @@ export function LightingSectionBody({
               />
               {(shadow?.technique ?? "map") === "map" && (
                 <>
-                  <DebouncedRange
-                    label="Opacity"
-                    value={shadow?.opacity ?? DEFAULT_SHADOW.opacity}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    onInput={(n) => live(writeShadow((s) => (s.opacity = n)))}
-                    onCommit={(n) => commit(writeShadow((s) => (s.opacity = n)))}
-                  />
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Opacity</span>
+                    <DebouncedRange
+                      label="Opacity"
+                      value={shadow?.opacity ?? DEFAULT_SHADOW.opacity}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      onInput={(n) => live(writeShadow((s) => (s.opacity = n)))}
+                      onCommit={(n) => commit(writeShadow((s) => (s.opacity = n)))}
+                    />
+                  </div>
                   <div className="camera-loop-modes">
                     {MAP_SIZES.map((size) => (
                       <button
@@ -1035,40 +1178,46 @@ function LightEditor({
           </div>
           {placement.mode === "orbit" ? (
             <>
-              <DebouncedRange
-                label="Azimuth"
-                value={placement.azimuthDeg}
-                min={-180}
-                max={180}
-                step={1}
-                onInput={(n) =>
-                  onLive((l) => {
-                    if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
-                  })
-                }
-                onCommit={(n) =>
-                  onCommit((l) => {
-                    if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
-                  })
-                }
-              />
-              <DebouncedRange
-                label="Elevation"
-                value={placement.elevationDeg}
-                min={-90}
-                max={90}
-                step={1}
-                onInput={(n) =>
-                  onLive((l) => {
-                    if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
-                  })
-                }
-                onCommit={(n) =>
-                  onCommit((l) => {
-                    if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
-                  })
-                }
-              />
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Azimuth</span>
+                <DebouncedRange
+                  label="Azimuth"
+                  value={placement.azimuthDeg}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  onInput={(n) =>
+                    onLive((l) => {
+                      if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
+                    })
+                  }
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
+                    })
+                  }
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Elevation</span>
+                <DebouncedRange
+                  label="Elevation"
+                  value={placement.elevationDeg}
+                  min={-90}
+                  max={90}
+                  step={1}
+                  onInput={(n) =>
+                    onLive((l) => {
+                      if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
+                    })
+                  }
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
+                    })
+                  }
+                />
+              </div>
               <div className="inspector-pose-grid">
                 <NumberField
                   label="distance"
@@ -1138,51 +1287,60 @@ function LightEditor({
         </DrillGroup>
 
         <DrillGroup label="Light">
-          <DebouncedRange
-            label="Intensity"
-            value={light.intensity}
-            min={0}
-            max={INTENSITY_MAX[light.type]}
-            step={0.05}
-            onInput={(n) => onLive((l) => (l.intensity = n))}
-            onCommit={(n) => onCommit((l) => (l.intensity = n))}
-          />
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Intensity</span>
+            <DebouncedRange
+              label="Intensity"
+              value={light.intensity}
+              min={0}
+              max={INTENSITY_MAX[light.type]}
+              step={0.05}
+              onInput={(n) => onLive((l) => (l.intensity = n))}
+              onCommit={(n) => onCommit((l) => (l.intensity = n))}
+            />
+          </div>
           {light.type === "spot" && (
             <>
-              <DebouncedRange
-                label="Cone °"
-                value={light.angleDeg}
-                min={1}
-                max={179}
-                step={1}
-                onInput={(n) =>
-                  onLive((l) => {
-                    if (l.type === "spot") l.angleDeg = n;
-                  })
-                }
-                onCommit={(n) =>
-                  onCommit((l) => {
-                    if (l.type === "spot") l.angleDeg = n;
-                  })
-                }
-              />
-              <DebouncedRange
-                label="Penumbra"
-                value={light.penumbra}
-                min={0}
-                max={1}
-                step={0.01}
-                onInput={(n) =>
-                  onLive((l) => {
-                    if (l.type === "spot") l.penumbra = n;
-                  })
-                }
-                onCommit={(n) =>
-                  onCommit((l) => {
-                    if (l.type === "spot") l.penumbra = n;
-                  })
-                }
-              />
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Cone</span>
+                <DebouncedRange
+                  label="Cone °"
+                  value={light.angleDeg}
+                  min={1}
+                  max={179}
+                  step={1}
+                  onInput={(n) =>
+                    onLive((l) => {
+                      if (l.type === "spot") l.angleDeg = n;
+                    })
+                  }
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.type === "spot") l.angleDeg = n;
+                    })
+                  }
+                />
+              </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Penumbra</span>
+                <DebouncedRange
+                  label="Penumbra"
+                  value={light.penumbra}
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  onInput={(n) =>
+                    onLive((l) => {
+                      if (l.type === "spot") l.penumbra = n;
+                    })
+                  }
+                  onCommit={(n) =>
+                    onCommit((l) => {
+                      if (l.type === "spot") l.penumbra = n;
+                    })
+                  }
+                />
+              </div>
             </>
           )}
           {(light.type === "point" || light.type === "spot") && (
@@ -1251,6 +1409,7 @@ function LightEditor({
 
         <DrillGroup label="Colour">
           <div className="lighting-kelvin-row">
+            <span className="popover-inline slider-row-label">Temperature</span>
             <span
               className="lighting-kelvin-swatch"
               style={{ background: swatch }}
@@ -1388,6 +1547,7 @@ function FixtureEditor({
               title={`${FORM_LABEL[form]} geometry`}
               onClick={() => onCommit((f) => (f.form = form))}
             >
+              <FixtureFormIcon form={form} />
               {FORM_LABEL[form]}
             </button>
           ))}
@@ -1457,6 +1617,7 @@ function FixtureEditor({
 
         <DrillGroup label="Glow">
           <div className="lighting-kelvin-row">
+            <span className="popover-inline slider-row-label">Temperature</span>
             <span
               className="lighting-kelvin-swatch"
               style={{ background: swatch }}
@@ -1472,24 +1633,30 @@ function FixtureEditor({
               onCommit={(n) => onCommit((f) => (f.kelvin = n))}
             />
           </div>
-          <DebouncedRange
-            label="Emissive"
-            value={fixture.emissive}
-            min={0}
-            max={8}
-            step={0.1}
-            onInput={(n) => onLive((f) => (f.emissive = n))}
-            onCommit={(n) => onCommit((f) => (f.emissive = n))}
-          />
-          <DebouncedRange
-            label="Light intensity"
-            value={fixture.lightIntensity}
-            min={0}
-            max={40}
-            step={0.5}
-            onInput={(n) => onLive((f) => (f.lightIntensity = n))}
-            onCommit={(n) => onCommit((f) => (f.lightIntensity = n))}
-          />
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Emissive</span>
+            <DebouncedRange
+              label="Emissive"
+              value={fixture.emissive}
+              min={0}
+              max={8}
+              step={0.1}
+              onInput={(n) => onLive((f) => (f.emissive = n))}
+              onCommit={(n) => onCommit((f) => (f.emissive = n))}
+            />
+          </div>
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Light intensity</span>
+            <DebouncedRange
+              label="Light intensity"
+              value={fixture.lightIntensity}
+              min={0}
+              max={40}
+              step={0.5}
+              onInput={(n) => onLive((f) => (f.lightIntensity = n))}
+              onCommit={(n) => onCommit((f) => (f.lightIntensity = n))}
+            />
+          </div>
           <p className="modal-hint">
             Emissive is the visible glow (above 1 it blooms); light intensity is the paired real
             light. Zero light intensity keeps a purely decorative fixture. Paired lights reach

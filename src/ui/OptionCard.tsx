@@ -1,8 +1,11 @@
+import type { ReactNode } from "react";
+
 /** One option-picker card: a still image, or a clip while hovered/selected; missing assets fall back to a text swatch. */
 export function OptionCard({
   label,
   title,
   image,
+  icon,
   clip,
   playing = false,
   selected,
@@ -14,6 +17,8 @@ export function OptionCard({
   title?: string;
   /** Poster/still URL (null = the text swatch placeholder). */
   image: string | null;
+  /** A small inline glyph shown instead of a still (an explicit "none" state); takes priority over `image`. */
+  icon?: ReactNode;
   /** Looping clip URL, rendered while `playing` (hover or selected). */
   clip?: string | null;
   playing?: boolean;
@@ -42,6 +47,8 @@ export function OptionCard({
       <div className="theme-card-thumb">
         {clip && playing ? (
           <video src={clip} poster={image ?? undefined} autoPlay loop muted playsInline />
+        ) : icon ? (
+          <div className="option-card-icon">{icon}</div>
         ) : image ? (
           <img src={image} alt="" draggable={false} />
         ) : (
