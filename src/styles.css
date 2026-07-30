@@ -891,17 +891,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Name row + the ⋯ actions button (2026-07-12 — replaces the overflowing button row;
-   the same menu opens on right-click anywhere on the card). */
-.media-card-head {
+/* Meta + the ⋯ actions button share the foot row, so the name keeps the whole top line;
+   the same menu opens on right-click anywhere on the card. */
+.media-card-foot {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.media-card-head .media-name {
+.media-card-foot .media-meta-line {
   flex: 1 1 auto;
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .media-menu-btn {
@@ -5898,6 +5901,11 @@ img.inspector-scene-thumb {
   min-height: 0;
   padding: 12px 16px;
   overflow-y: auto;
+}
+
+/* Media drills trade the side gutters for card width (three-across in a 342px rail). */
+.inspector-drill-body:has(.inspector-media-host) {
+  padding-inline: 8px;
 }
 
 /* Edit-text drill-in: rows drive the height, beating modal-input's fixed height on specificity (never !important). */

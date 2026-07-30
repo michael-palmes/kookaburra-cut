@@ -327,9 +327,16 @@ function MediaCard({
         )}
       </div>
       <div className="media-card-body">
-        <div className="media-card-head">
-          <span className="media-name" title={name}>
-            {name}
+        <span className="media-name" title={name}>
+          {name}
+        </span>
+        <div className="media-card-foot">
+          <span className="media-meta-line">
+            {meta
+              ? meta.kind === "video"
+                ? `${meta.width}×${meta.height} · ${meta.fps.toFixed(0)} fps`
+                : `${meta.width}×${meta.height} · image`
+              : "…"}
           </span>
           {onMenu && (
             <button
@@ -347,13 +354,6 @@ function MediaCard({
             </button>
           )}
         </div>
-        <span className="media-meta-line">
-          {meta
-            ? meta.kind === "video"
-              ? `${meta.width}×${meta.height} · ${meta.fps.toFixed(0)} fps`
-              : `${meta.width}×${meta.height} · image`
-            : "…"}
-        </span>
       </div>
     </div>
   );
