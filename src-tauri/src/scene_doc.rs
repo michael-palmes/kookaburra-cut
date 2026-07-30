@@ -421,10 +421,12 @@ fn scan_asset_refs(text: &str) -> Vec<String> {
             }
         }
         let rel = text[start..end].trim_end_matches([' ', '.']);
-        if standalone && rel.len() > "assets/".len() && !rel.contains("..") {
-            if !found.iter().any(|f| f == rel) {
-                found.push(rel.to_string());
-            }
+        if standalone
+            && rel.len() > "assets/".len()
+            && !rel.contains("..")
+            && !found.iter().any(|f| f == rel)
+        {
+            found.push(rel.to_string());
         }
         from = end.max(start + 1);
     }
