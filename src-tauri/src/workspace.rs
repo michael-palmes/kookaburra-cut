@@ -1500,16 +1500,20 @@ pub fn list_project_media(
     slug: String,
 ) -> Result<Vec<String>, String> {
     let mut files = list_by_extension(&app, &state, &slug, MEDIA_EXTENSIONS)?;
-    let assets = require_root(&app, &state)?.join(&slug).join("assets");
-    // Newest ADDED first: creation time, stamped now by touch_now at every user action and ancient on bundled content, so imports always surface, in-place rewrites never resurface a file, and seeded samples sit last. Stable, so the alphabetical pass breaks ties; unreadable stamps sink last.
+    let project_dir = require_root(&app, &state)?.join(&slug);
+    sort_media_by_added(&project_dir, &mut files);
+    Ok(files)
+}
+
+/// Newest ADDED first: creation time, stamped now by touch_now at every user action and ancient on bundled content, so imports always surface, in-place rewrites never resurface a file, and seeded samples sit last. Stable, so the alphabetical pass breaks ties; unreadable stamps sink last. Rels carry the `assets/` prefix, so they join the PROJECT dir (joining the assets dir made every stat miss and silently left the list alphabetical).
+fn sort_media_by_added(project_dir: &Path, files: &mut [String]) {
     files.sort_by_cached_key(|rel| {
         std::cmp::Reverse(
-            std::fs::metadata(assets.join(rel))
+            std::fs::metadata(project_dir.join(rel))
                 .and_then(|m| m.created().or_else(|_| m.modified()))
                 .ok(),
         )
     });
-    Ok(files)
 }
 
 fn list_by_extension(
@@ -1798,6 +1802,30 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&dest_root);
+    }
+
+    #[test]
+    fn media_sort_orders_by_added_and_sinks_seeded() {
+        let project = scratch_dir();
+        let assets = project.join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        for name in ["alpha.png", "beta.png", "sample.png"] {
+            std::fs::write(assets.join(name), b"x").unwrap();
+        }
+        // Two files pinned ancient with distinct indices; beta keeps its fresh creation time.
+        touch_ancient(&assets.join("sample.png"), 0);
+        touch_ancient(&assets.join("alpha.png"), 5);
+        let mut files = vec![
+            "assets/alpha.png".to_string(),
+            "assets/beta.png".to_string(),
+            "assets/sample.png".to_string(),
+        ];
+        sort_media_by_added(&project, &mut files);
+        assert_eq!(
+            files,
+            ["assets/beta.png", "assets/alpha.png", "assets/sample.png"]
+        );
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]
