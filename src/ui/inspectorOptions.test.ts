@@ -78,7 +78,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.media",
       "device.editVideo",
       "device.change",
-      "device.rotation",
+      "device.position",
       "style.shadow",
       "device.duplicate",
       "device.add",
@@ -119,7 +119,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     expect(sections.find((s) => s.id === "device")?.rows.map((r) => r.id)).toEqual([
       "device.media",
       "device.change",
-      "device.rotation",
+      "device.position",
       "style.shadow",
       "device.duplicate",
       "device.add",
@@ -157,7 +157,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     expect(rows).toEqual([
       "device.media",
       "device.change",
-      "device.rotation",
+      "device.position",
       "device.lid",
       "style.shadow",
       "device.duplicate",

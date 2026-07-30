@@ -15,13 +15,16 @@ import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
-import type {
-  SceneDoc,
-  SceneDocCameraPose,
-  SceneDocRigPose,
-  SceneDocVideoWindow,
-  SceneTextAlign,
-  VideoWindowMotionPreset,
+import {
+  DEVICE_LAYOUT_PRESETS,
+  type DeviceLayoutPreset,
+  type SceneDoc,
+  type SceneDocCameraPose,
+  type SceneDocDeviceLayoutDelta,
+  type SceneDocRigPose,
+  type SceneDocVideoWindow,
+  type SceneTextAlign,
+  type VideoWindowMotionPreset,
 } from "../../engine/sceneDocSchema";
 import { defaultRigPose } from "../../engine/sceneRig";
 import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/sceneRigConvert";
@@ -101,7 +104,27 @@ const SCREEN_TITLES: Record<string, string> = {
   "style.background": "Background",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
+  "device.position": "Position",
 };
+
+/** Layout presets for the Position drill's chips; ids match `DEVICE_LAYOUT_PRESETS`. */
+const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: string }> = {
+  row: { label: "Row", title: "A flat line-up facing the camera" },
+  "toe-in": { label: "Toe-in", title: "A row with outer devices turned toward centre" },
+  arc: { label: "Arc", title: "A shallow arc, outer devices receding" },
+  cascade: { label: "Cascade", title: "Fanned cards stepping across and back" },
+  hero: { label: "Hero", title: "Device 1 forward, the rest flanking behind" },
+  "depth-pair": { label: "Depth", title: "Two devices split front and back" },
+};
+
+/** Preset poses for a device's absolute rotation (block-less scenes): Front on is the glb's authored identity. */
+const ROTATION_PRESETS: { id: string; label: string; value: V3 }[] = [
+  { id: "front", label: "Front on", value: [0, 0, 0] },
+  { id: "editorial", label: "Editorial", value: [3, -14, 0] },
+  { id: "mirrored", label: "Mirrored", value: [3, 14, 0] },
+];
+
+const ROTATION_AXIS_LABELS = ["tilt x °", "turn y °", "roll z °"] as const;
 
 /** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
 function DevicePillIcon({ model }: { model: string }) {
@@ -158,6 +181,7 @@ function AlignIcon({ id }: { id: SceneTextAlign }) {
   );
 }
 
+import type { V3 } from "../../toolkit/types";
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
@@ -175,7 +199,6 @@ import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { DeviceDrillIn } from "./DeviceDrillIn";
-import { RotationDrillIn } from "./RotationDrillIn";
 import {
   ActionRow,
   DrillBack,
@@ -418,7 +441,7 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M15 12v5M12.5 14.5h5" />
         </svg>
       );
-    case "device.rotation":
+    case "device.position":
       return (
         <svg
           width="17"
@@ -1619,6 +1642,8 @@ export function SceneTab({
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
   // Snapshot of the doc at the start of a videoWindow slider drag: live ticks write history-less, release records one entry.
   const vwDragBaseline = useRef<SceneDoc | null>(null);
+  // The Position drill's drag baseline (same pattern).
+  const posDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
@@ -4930,18 +4955,269 @@ export function SceneTab({
     );
   }
 
-  if (drillIn === "device.rotation" && device) {
-    return (
-      <RotationDrillIn
-        rotationDeg={device.placement?.rotationDeg ?? [0, 0, 0]}
-        onBack={() => closeDrill()}
-        backLabel={backLabel}
-        onCommit={(rotationDeg) => {
-          patchDevice((d) => {
-            d.placement = { ...d.placement, rotationDeg };
+  if (drillIn === "device.position" && doc && devices.length > 0) {
+    const layout = doc.deviceLayout;
+    const posLive = (mutate: (next: SceneDoc) => void) => {
+      if (!posDragBaseline.current) posDragBaseline.current = structuredClone(doc);
+      void patchDoc(mutate, { history: false });
+    };
+    const posCommit = (mutate: (next: SceneDoc) => void) => {
+      const baseline = posDragBaseline.current;
+      posDragBaseline.current = null;
+      if (baseline) void commitFromBaseline(baseline, mutate);
+      else void patchDoc(mutate);
+    };
+    // With a block, sliders edit that device's DELTA (0 = on the preset); without one they edit raw placement.
+    const mutateDelta = (
+      next: SceneDoc,
+      id: string,
+      fn: (delta: SceneDocDeviceLayoutDelta) => void,
+    ) => {
+      if (!next.deviceLayout) return;
+      next.deviceLayout.devices ??= {};
+      next.deviceLayout.devices[id] ??= {};
+      fn(next.deviceLayout.devices[id]);
+    };
+    const mutatePlacement = (
+      next: SceneDoc,
+      id: string,
+      fn: (p: NonNullable<NonNullable<SceneDoc["devices"]>[number]["placement"]>) => void,
+    ) => {
+      const d = next.devices?.find((x) => x.id === id);
+      if (!d) return;
+      d.placement ??= {};
+      fn(d.placement);
+    };
+    const offsetSlider = (
+      id: string,
+      label: string,
+      axis: 0 | 1 | 2,
+      value: number,
+      min: number,
+      max: number,
+    ) => {
+      const write = (next: SceneDoc, val: number) => {
+        if (layout) {
+          mutateDelta(next, id, (delta) => {
+            const offset: V3 = [...(delta.offset ?? [0, 0, 0])];
+            offset[axis] = val;
+            delta.offset = offset;
           });
-        }}
-      />
+        } else {
+          mutatePlacement(next, id, (p) => {
+            const position: V3 = [...(p.position ?? [0, -0.3, 0])];
+            position[axis] = val;
+            p.position = position;
+          });
+        }
+      };
+      return (
+        <div className="popover-row" key={`${id}.${label}`}>
+          <span className="popover-inline slider-row-label">{label}</span>
+          <DebouncedRange
+            value={value}
+            min={min}
+            max={max}
+            step={0.01}
+            label={label}
+            onInput={(val) => posLive((next) => write(next, val))}
+            onCommit={(val) => posCommit((next) => write(next, val))}
+          />
+        </div>
+      );
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">
+          <span>Position</span>
+        </div>
+        <div className="inspector-drill-body">
+          {devices.length > 1 && (
+            <DrillGroup label="Layout">
+              <div className="wizard-presets">
+                {DEVICE_LAYOUT_PRESETS.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`chip${layout?.preset === p ? " selected" : ""}`}
+                    title={LAYOUT_PRESET_LABELS[p].title}
+                    onClick={() =>
+                      void patchDoc((next) => {
+                        // A preset tap overrides the per-device tuning below: deltas reset, gap survives.
+                        next.deviceLayout = {
+                          preset: p,
+                          ...(next.deviceLayout?.gap !== undefined
+                            ? { gap: next.deviceLayout.gap }
+                            : {}),
+                        };
+                      })
+                    }
+                  >
+                    {LAYOUT_PRESET_LABELS[p].label}
+                  </button>
+                ))}
+              </div>
+              {layout && (
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Gap</span>
+                  <DebouncedRange
+                    value={layout.gap ?? 0.35}
+                    min={-0.5}
+                    max={2}
+                    step={0.01}
+                    label="Gap"
+                    onInput={(val) =>
+                      posLive((next) => {
+                        if (next.deviceLayout) next.deviceLayout.gap = val;
+                      })
+                    }
+                    onCommit={(val) =>
+                      posCommit((next) => {
+                        if (next.deviceLayout) next.deviceLayout.gap = val;
+                      })
+                    }
+                  />
+                </div>
+              )}
+            </DrillGroup>
+          )}
+          {devices.map((d, i) => {
+            const delta = layout?.devices?.[d.id] ?? {};
+            const offset = layout
+              ? (delta.offset ?? [0, 0, 0])
+              : (d.placement?.position ?? [0, -0.3, 0]);
+            const rotation = layout
+              ? (delta.rotationDeg ?? [0, 0, 0])
+              : (d.placement?.rotationDeg ?? [0, 0, 0]);
+            const scale = layout ? (delta.scale ?? 1) : (d.placement?.scale ?? 1);
+            const modelName = isDeviceId(d.model) ? DEVICE_CATALOG[d.model].name : d.model;
+            const writeRotation = (next: SceneDoc, rotationDeg: V3) => {
+              if (layout) {
+                mutateDelta(next, d.id, (dd) => {
+                  dd.rotationDeg = rotationDeg;
+                });
+              } else {
+                mutatePlacement(next, d.id, (p) => {
+                  p.rotationDeg = rotationDeg;
+                });
+              }
+            };
+            const matches = (v: V3) => v.every((n, k) => Math.abs(n - rotation[k]) < 0.05);
+            return (
+              <DrillGroup
+                key={d.id}
+                label={devices.length > 1 ? `Device ${i + 1} · ${modelName}` : modelName}
+              >
+                {offsetSlider(d.id, "Left-right", 0, offset[0], -3, 3)}
+                {offsetSlider(d.id, "Up-down", 1, offset[1], -1.5, 1.5)}
+                {offsetSlider(d.id, "Depth", 2, offset[2], -2, 2)}
+                {!layout && (
+                  <div className="wizard-presets">
+                    {ROTATION_PRESETS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`chip${matches(p.value) ? " selected" : ""}`}
+                        onClick={() => void patchDoc((next) => writeRotation(next, [...p.value]))}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="inspector-pose-grid">
+                  {ROTATION_AXIS_LABELS.map((label, axis) => (
+                    <NumberField
+                      key={label}
+                      label={label}
+                      value={rotation[axis]}
+                      decimals={1}
+                      onCommit={(n) =>
+                        void patchDoc((next) => {
+                          const rotationDeg: V3 = [...rotation];
+                          rotationDeg[axis] = n;
+                          writeRotation(next, rotationDeg);
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Scale</span>
+                  <DebouncedRange
+                    value={scale}
+                    min={0.4}
+                    max={2}
+                    step={0.01}
+                    label="Scale"
+                    onInput={(val) =>
+                      posLive((next) => {
+                        if (layout) {
+                          mutateDelta(next, d.id, (dd) => {
+                            dd.scale = val;
+                          });
+                        } else {
+                          mutatePlacement(next, d.id, (p) => {
+                            p.scale = val;
+                          });
+                        }
+                      })
+                    }
+                    onCommit={(val) =>
+                      posCommit((next) => {
+                        if (layout) {
+                          mutateDelta(next, d.id, (dd) => {
+                            dd.scale = val;
+                          });
+                        } else {
+                          mutatePlacement(next, d.id, (p) => {
+                            p.scale = val;
+                          });
+                        }
+                      })
+                    }
+                  />
+                </div>
+                <ToggleRow
+                  label="Ground"
+                  description="Rests the device on the staged floor; inert without one."
+                  checked={d.placement?.ground === true}
+                  onChange={(on) =>
+                    void patchDoc((next) =>
+                      mutatePlacement(next, d.id, (p) => {
+                        if (on) p.ground = true;
+                        else delete p.ground;
+                      }),
+                    )
+                  }
+                />
+                <ActionRow
+                  label={layout ? "Back to layout" : "Reset position"}
+                  chevron={false}
+                  onClick={() =>
+                    void patchDoc((next) => {
+                      if (next.deviceLayout) {
+                        if (next.deviceLayout.devices) {
+                          delete next.deviceLayout.devices[d.id];
+                          if (Object.keys(next.deviceLayout.devices).length === 0)
+                            delete next.deviceLayout.devices;
+                        }
+                      } else {
+                        mutatePlacement(next, d.id, (p) => {
+                          p.position = [0, -0.3, 0];
+                          p.rotationDeg = [0, 0, 0];
+                          p.scale = 1;
+                        });
+                      }
+                    })
+                  }
+                />
+              </DrillGroup>
+            );
+          })}
+        </div>
+      </div>
     );
   }
 
@@ -5008,7 +5284,7 @@ export function SceneTab({
         "device.add": addDevice,
         "device.duplicate": duplicateDevice,
         "frame.add": addOverlay,
-        "device.rotation": () => openDrill("device.rotation"),
+        "device.position": () => openDrill("device.position"),
         // Both paths drill into the builder; it seeds the first layer for scenes without a block.
         "layeredScreenshot.edit": () => openDrill("layeredScreenshot.edit"),
         "layeredScreenshot.add": () => openDrill("layeredScreenshot.edit"),
@@ -5055,9 +5331,11 @@ export function SceneTab({
               (device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId
             ].name
           : undefined,
-        "device.rotation": device
-          ? (device.placement?.rotationDeg ?? [0, 0, 0]).map((n) => `${Math.round(n)}°`).join(" ")
-          : undefined,
+        "device.position": doc?.deviceLayout
+          ? LAYOUT_PRESET_LABELS[doc.deviceLayout.preset].label
+          : device
+            ? (device.placement?.rotationDeg ?? [0, 0, 0]).map((n) => `${Math.round(n)}°`).join(" ")
+            : undefined,
         "motion.transition": transitionValue,
         "style.theme": sceneTheme?.name,
         "style.background": doc
