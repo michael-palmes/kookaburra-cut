@@ -1304,6 +1304,7 @@ pub fn run() {
             global_screenshots::import_global_screenshots,
             global_screenshots::global_screenshot_meta,
             global_screenshots::copy_to_global_screenshots,
+            global_screenshots::delete_global_screenshot,
             settings_win::cache_stats,
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,

@@ -71,6 +71,11 @@ export function deleteMedia(slug: string, rel: string): Promise<void> {
   return invoke("delete_media", { slug, rel });
 }
 
+/** Reveal a file in Finder (the native side confines the path to workspace-readable roots). */
+export function revealPath(absPath: string): Promise<void> {
+  return invoke("reveal_in_finder", { path: absPath });
+}
+
 // ── Global screenshots (~/Kookaburra Cut/screenshots/, copy-on-use) ────────────
 
 export interface GlobalScreenshot {
@@ -95,6 +100,12 @@ export function globalScreenshotMeta(name: string): Promise<MediaMeta> {
 /** Copy a project asset out to the global folder; returns the stored name. */
 export function copyToGlobalScreenshots(slug: string, rel: string): Promise<string> {
   return invoke<string>("copy_to_global_screenshots", { slug, rel });
+}
+
+/** Move a library file to the Trash; projects keep their copy-on-use copies. */
+export async function deleteGlobalScreenshot(name: string): Promise<void> {
+  await invoke("delete_global_screenshot", { name });
+  await emit("kookaburra://media-changed", null);
 }
 
 /** Rename an asset within assets/ (same extension); returns the new rel. */
