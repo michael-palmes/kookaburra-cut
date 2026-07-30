@@ -103,7 +103,7 @@ function LoadedObject({
         <TransformControls
           object={groupRef as React.RefObject<Group>}
           mode={gizmoMode}
-          size={0.8}
+          size={1.3}
           showX={gizmoMode !== "scale"}
           showY={gizmoMode !== "scale"}
           showZ={gizmoMode !== "scale"}
