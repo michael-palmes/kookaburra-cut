@@ -37,6 +37,7 @@ import { preparingVideoTexture } from "../media/preparingTexture";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
 import { DEVICE_CATALOG, type DeviceId, deviceColour } from "./catalog";
+import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
@@ -690,7 +691,7 @@ export function Device(props: DeviceProps) {
   );
 }
 
-/** Host-side devices for scenes whose TSX never wires `useSceneDevices` (mounted by App's SceneHost, never scene TSX): reads the doc directly so it can't register as a consumer itself, and mirrors the device template's portrait scale so Add device looks the same on any scene kind. */
+/** Host-side devices for scenes whose TSX never wires `useSceneDevices` (mounted by App's SceneHost, never scene TSX): reads the doc directly so it can't register as a consumer itself, and mirrors the device template's portrait scale so Add device looks the same on any scene kind. A `deviceLayout` block routes through `resolveDeviceLayout` instead; block-less scenes keep the legacy path byte-identically. */
 export function DevicesFallback() {
   const doc = useContext(SceneDocContext);
   const sceneIndex = useSceneContext()?.index;
@@ -698,7 +699,18 @@ export function DevicesFallback() {
   const format = useFormat();
   const portrait = format.aspect < 1;
   const devices = doc?.devices ?? [];
+  const layout = doc?.deviceLayout;
   if (consumed || devices.length === 0) return null;
+  if (layout) {
+    const placements = resolveDeviceLayout(devices, layout, format);
+    return (
+      <>
+        {devices.map((d, i) => (
+          <Device key={d.id} {...(d as SceneDeviceProps)} placement={placements[i]} />
+        ))}
+      </>
+    );
+  }
   return (
     <>
       {devices.map((d) => (

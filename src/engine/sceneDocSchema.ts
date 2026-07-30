@@ -36,6 +36,32 @@ export interface SceneDocDeviceSpec {
   lidDeg?: number;
 }
 
+/** Multi-device layout presets, resolved to per-aspect placements in `toolkit/device/layout.ts`. */
+export const DEVICE_LAYOUT_PRESETS = [
+  "row",
+  "toe-in",
+  "arc",
+  "cascade",
+  "hero",
+  "depth-pair",
+] as const;
+export type DeviceLayoutPreset = (typeof DEVICE_LAYOUT_PRESETS)[number];
+
+/** Per-device customisation on top of the preset base: offsets and rotations add (world units and degrees), scale multiplies. */
+export interface SceneDocDeviceLayoutDelta {
+  offset?: [number, number, number];
+  rotationDeg?: [number, number, number];
+  scale?: number;
+}
+
+/** The live device layout: preset + gap derive per-aspect placements, each device's delta applies on top. While present, the devices' own `placement` position/rotation/scale are ignored (`ground` still applies), so removing the block reverts to whatever was authored before it existed. */
+export interface SceneDocDeviceLayout {
+  preset: DeviceLayoutPreset;
+  /** Edge-to-edge spacing in world units, authored for 16:9; narrower aspects compress the whole layout proportionally. */
+  gap?: number;
+  devices?: Record<string, SceneDocDeviceLayoutDelta>;
+}
+
 export type SceneDocDuration =
   | { mode: "manual" }
   | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
@@ -257,6 +283,8 @@ export interface SceneDoc {
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead. */
   headerIcon?: string;
   devices?: SceneDocDeviceSpec[];
+  /** The live multi-device layout block; see `SceneDocDeviceLayout`. */
+  deviceLayout?: SceneDocDeviceLayout;
   camera?: {
     keys: SceneDocCameraKey[];
     segments: SceneDocCameraSegment[];
@@ -378,6 +406,51 @@ function validVideoWindow(raw: unknown): raw is SceneDocVideoWindow {
   const vw = raw as SceneDocVideoWindow | null;
   if (!vw || typeof vw !== "object") return false;
   return !!vw.media && typeof vw.media.src === "string" && vw.media.src.length > 0;
+}
+
+const finiteV3 = (v: unknown): v is [number, number, number] =>
+  Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+
+/** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
+function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    console.warn(`[sceneDoc] ${source}: deviceLayout isn't an object, dropped`);
+    return undefined;
+  }
+  const l = raw as Record<string, unknown>;
+  let preset: DeviceLayoutPreset = "row";
+  if (DEVICE_LAYOUT_PRESETS.includes(l.preset as DeviceLayoutPreset)) {
+    preset = l.preset as DeviceLayoutPreset;
+  } else {
+    console.warn(`[sceneDoc] ${source}: deviceLayout.preset isn't known, using row`);
+  }
+  const out: SceneDocDeviceLayout = { preset };
+  if (typeof l.gap === "number" && Number.isFinite(l.gap)) {
+    out.gap = l.gap;
+  } else if (l.gap !== undefined) {
+    console.warn(`[sceneDoc] ${source}: deviceLayout.gap isn't a finite number, dropped`);
+  }
+  if (typeof l.devices === "object" && l.devices !== null && !Array.isArray(l.devices)) {
+    const devices: Record<string, SceneDocDeviceLayoutDelta> = {};
+    for (const [id, d] of Object.entries(l.devices as Record<string, unknown>)) {
+      if (typeof d !== "object" || d === null || Array.isArray(d)) {
+        console.warn(`[sceneDoc] ${source}: deviceLayout.devices["${id}"] is malformed, dropped`);
+        continue;
+      }
+      const delta = d as Record<string, unknown>;
+      const outDelta: SceneDocDeviceLayoutDelta = {};
+      if (finiteV3(delta.offset)) outDelta.offset = delta.offset;
+      if (finiteV3(delta.rotationDeg)) outDelta.rotationDeg = delta.rotationDeg;
+      if (typeof delta.scale === "number" && Number.isFinite(delta.scale) && delta.scale > 0) {
+        outDelta.scale = delta.scale;
+      }
+      if (Object.keys(outDelta).length > 0) devices[id] = outDelta;
+    }
+    if (Object.keys(devices).length > 0) out.devices = devices;
+  } else if (l.devices !== undefined) {
+    console.warn(`[sceneDoc] ${source}: deviceLayout.devices isn't an object, dropped`);
+  }
+  return out;
 }
 
 /** Field-level parse for the compare block (the degrade-not-throw rule): a non-object drops the block whole, a malformed sub-field drops alone so one typo can't kill the comparison. Deep normalisation (mask defaults, key sort, value sampling) lives in `sceneCompare.ts`. */
@@ -638,6 +711,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       }
     }
     out.devices = devices;
+  }
+  if (doc.deviceLayout !== undefined) {
+    const deviceLayout = parseDeviceLayout(doc.deviceLayout, source);
+    if (deviceLayout) out.deviceLayout = deviceLayout;
   }
   if (typeof doc.camera === "object" && doc.camera !== null) {
     const camera = doc.camera as NonNullable<SceneDoc["camera"]>;

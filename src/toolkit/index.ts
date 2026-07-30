@@ -53,6 +53,7 @@ export {
 } from "./device/Device";
 // DeviceMockup is the legacy (pre-catalog) device primitive; prefer Device for new scenes.
 export { DeviceMockup, type DeviceMockupProps } from "./device/DeviceMockup";
+export { resolveDeviceLayout } from "./device/layout";
 // Icon + text lockups animated as one unit through the text presets.
 export { AnimatedGroup, type AnimatedGroupProps } from "./group/AnimatedGroup";
 export { type GroupAnimationState, useGroupAnimation } from "./group/context";

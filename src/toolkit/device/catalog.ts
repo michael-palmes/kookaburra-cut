@@ -69,6 +69,8 @@ export interface DeviceSpec {
   previews: Record<string, string>;
   /** Auto-fit override; laptops fit by width since their bbox height is lid-angle-dependent. */
   fit?: DeviceFitSpec;
+  /** Fitted world-space body width at placement scale 1: a static constant (never the runtime bbox, which differs between licensed and placeholder glbs) so `resolveDeviceLayout`'s gap maths stays deterministic; approximations from body proportions, refined against fixture screenshots. */
+  layoutWidth: number;
   /** Hinge for lid-angle control: the glb node (three.js-sanitised name) whose local X rotation opens the lid, the authored open angle, and the default pose when the doc sets none. */
   lid?: { node: string; openDeg: number; defaultDeg: number };
 }
@@ -127,6 +129,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     glbUrl: iphone17ProModelUrl,
     // 2622 x 1206 display, portrait; matches the measured screen mesh (0.0664 x 0.1445 m).
     screen: { material: "screen", aspect: 1206 / 2622 },
+    // 71.9 x 149.6 mm body, height-fitted to 2.6.
+    layoutWidth: 1.25,
     colours: [
       // Silver is the authored (no-override) finish; the other two are the exported glbs' baseColorFactors per colour .blend, extracted 2026-07-15 via scripts/dump-glb-materials.mjs, linear to sRGB hex. "aluminum satin" also covers "aluminum rough" (identical in Silver, deduped at optimise).
       { id: "silver", name: "Silver", overrides: {}, swatch: "#bfbebb" },
@@ -200,6 +204,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     },
     // A laptop's bbox height depends on the lid angle; width is the stable hero extent.
     fit: { axis: "width", target: 3.4 },
+    // Width-fitted, so the fit target IS the width.
+    layoutWidth: 3.4,
     // DISPLAY.001 in the glb ("DISPLAY001" after three.js name sanitising), authored open at 110 degrees.
     lid: { node: "DISPLAY001", openDeg: 110, defaultDeg: 90 },
   },
@@ -210,6 +216,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     glbUrl: phoneModelUrl,
     // 2556 × 1179 display, portrait.
     screen: { material: "SCREEN", aspect: 1179 / 2556 },
+    // 70.6 x 146.6 mm body, height-fitted to 2.6.
+    layoutWidth: 1.25,
     colours: [
       // Natural titanium is the authored (no-override) finish; the other three are the vendor .blends' baseColorFactors, extracted 2026-07-05 via headless Blender inspect, linear to sRGB hex (max round-trip error 0.0022 linear).
       titaniumColour("natural-titanium", "Natural Titanium", null),
@@ -250,6 +258,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     glbUrl: androidModelUrl,
     // Generated Pixel-style handset; the "screen" mesh measures 0.0665 x 0.1478 m.
     screen: { material: "screen", aspect: 0.0665 / 0.1478 },
+    // Slimmer Pixel-style body, height-fitted to 2.6.
+    layoutWidth: 1.22,
     colours: [
       androidColour("graphite", "Graphite", "#4a4a4d", "#3a3a3c"),
       androidColour("black", "Black", "#2c2c2e", "#202022"),
