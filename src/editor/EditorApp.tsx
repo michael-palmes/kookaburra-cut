@@ -266,6 +266,9 @@ export function EditorApp() {
   const [refView, setRefView] = useState<{ clips: EditClip[]; sources: EditSource[] } | null>(null);
   // A swap in flight: once the new target's doc loads, the old active becomes ITS reference.
   const pendingSwapRef = useRef<{ forName: string; rel: string; offsetMs: number } | null>(null);
+  // Alignment aids: the ghost overlay and the sync-mark, both transient (never persisted).
+  const [ghost, setGhost] = useState(false);
+  const [activeMark, setActiveMark] = useState<number | null>(null);
 
   // Debounced autosave: rapid mutations coalesce into one save; flushSave() runs any pending write before renders (render_edit reads edit.json from disk) and on close. renderStaleRef backs the warn-on-close (changes not yet in a render).
   const saveTimer = useRef<number | null>(null);
@@ -526,6 +529,51 @@ export function EditorApp() {
       cancelled = true;
     };
   }, [target?.slug, refRel, mediaRefresh]);
+
+  // A different reference (or none) starts the aids clean.
+  useEffect(() => {
+    void refRel; // the reset keys off the pairing, not any read of it
+    setGhost(false);
+    setActiveMark(null);
+  }, [refRel]);
+
+  // ── Alignment aids: frame nudge, bake-as-trim, sync markers (03-editor-uplift.md) ──
+  const refFps = refView?.sources[0]?.fps ?? 0;
+  const refFrameMs = 1000 / (refFps > 0 ? refFps : 60);
+  /** Slide the reference by whole frames; provisional (pane + strip only) until baked. */
+  const nudgeReference = (frames: number) => {
+    if (!doc?.reference) return;
+    commitDoc({
+      ...doc,
+      reference: {
+        ...doc.reference,
+        offsetMs: Math.round(doc.reference.offsetMs + frames * refFrameMs),
+      },
+    });
+  };
+  const firstClip = doc?.clips[0];
+  const canBake =
+    !!doc?.reference && doc.reference.offsetMs > 0 && !!firstClip && firstClip.holdMs === undefined;
+  /** Apply a found positive offset to the ACTIVE clip's in-point (the reference is read-only by contract) and zero the offset. Negative offsets stay stored: a magnetic timeline has no blank lead to add. */
+  const bakeAsTrim = () => {
+    if (!doc?.reference || !canBake || !firstClip) return;
+    const speed = firstClip.speed > 0 ? firstClip.speed : 1;
+    const delta = doc.reference.offsetMs * speed;
+    const maxTrim = Math.max(0, firstClip.outMs - firstClip.inMs - refFrameMs);
+    const inMs = Math.round(firstClip.inMs + Math.min(delta, maxTrim));
+    const clips = relayout(doc.clips.map((c, i) => (i === 0 ? { ...c, inMs } : c)));
+    commitDoc({ ...doc, clips, reference: { ...doc.reference, offsetMs: 0 } });
+  };
+  /** Sync markers: Mark stores the beat's time on the active video; scrub until the reference pane shows the same beat, Match sets the offset from the difference. */
+  const matchReference = () => {
+    if (!doc?.reference || activeMark === null) return;
+    const refBeatMs = playheadMs + doc.reference.offsetMs;
+    commitDoc({
+      ...doc,
+      reference: { ...doc.reference, offsetMs: Math.round(refBeatMs - activeMark) },
+    });
+    setActiveMark(null);
+  };
 
   /** Swap: open the reference's edit as the active document; the current one becomes ITS reference with the offset negated (applied when the new doc loads). */
   const swapReference = useCallback(async () => {
@@ -1022,7 +1070,11 @@ export function EditorApp() {
               ) : !doc || !firstSource ? (
                 <p className="muted">Loading edit…</p>
               ) : (
-                <div className={`editor-preview-row${refView ? " with-reference" : ""}`}>
+                <div
+                  className={`editor-preview-row${refView ? " with-reference" : ""}${
+                    refView && ghost ? " ghost" : ""
+                  }`}
+                >
                   <Preview
                     clips={doc.clips}
                     sources={doc.sources}
@@ -1183,14 +1235,83 @@ export function EditorApp() {
                     </select>
                   </label>
                   {doc.reference && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => void swapReference()}
-                      title="Edit the reference instead; this video becomes the reference"
-                    >
-                      Swap
-                    </button>
+                    <>
+                      <div
+                        className="editor-nudge"
+                        title="Slide the reference in time by whole frames; positive means it runs ahead"
+                      >
+                        <button type="button" className="btn" onClick={() => nudgeReference(-10)}>
+                          ‹‹
+                        </button>
+                        <button type="button" className="btn" onClick={() => nudgeReference(-1)}>
+                          ‹
+                        </button>
+                        <span className="editor-nudge-value muted">
+                          {Math.round(doc.reference.offsetMs)}ms
+                        </span>
+                        <button type="button" className="btn" onClick={() => nudgeReference(1)}>
+                          ›
+                        </button>
+                        <button type="button" className="btn" onClick={() => nudgeReference(10)}>
+                          ››
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={!canBake}
+                        onClick={bakeAsTrim}
+                        title="Trim this video's start by the found offset so the match holds at zero (positive offsets only)"
+                      >
+                        Bake
+                      </button>
+                      {activeMark === null ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setActiveMark(playheadMs)}
+                          title="Mark the beat on THIS video, then scrub until the reference shows it and press Match"
+                        >
+                          Mark
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="btn selected"
+                            onClick={matchReference}
+                            title="The reference now shows the marked beat: set the offset from the difference"
+                          >
+                            Match
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => setActiveMark(null)}
+                            title="Forget the mark"
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        className={`btn${ghost ? " selected" : ""}`}
+                        aria-pressed={ghost}
+                        onClick={() => setGhost((g) => !g)}
+                        title="Overlay the reference at half opacity for pixel-level matching"
+                      >
+                        Ghost
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => void swapReference()}
+                        title="Edit the reference instead; this video becomes the reference"
+                      >
+                        Swap
+                      </button>
+                    </>
                   )}
                 </div>
               )}
