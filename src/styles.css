@@ -2045,12 +2045,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* "New project": a dashed affordance card (§8.6). */
+/* "New project": a dashed affordance card (§8.6); the aspect floor keeps a tile-only row near card height. */
 .project-card.new-project {
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
   min-height: 100%;
+  aspect-ratio: 4 / 3;
   background: transparent;
   border: 1px dashed var(--border-strong);
   color: var(--text-secondary);
@@ -3344,6 +3345,7 @@ body {
   width: min(66rem, calc(100% - 2rem));
 }
 .media-modal-wide .wizard-media-host {
+  min-height: min(24rem, 62vh);
   max-height: 62vh;
 }
 
