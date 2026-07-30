@@ -227,10 +227,33 @@ fn ensure_layout(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Stamp a fresh mtime on an imported copy. macOS `fs::copy` clones on APFS, which keeps the SOURCE's mtime, so an imported old file would sink down every newest-first listing instead of surfacing on top. Best effort: a failed stamp only costs sort position.
+/// Stamp "added just now" on an imported copy: macOS `fs::copy` clones on APFS, which keeps the SOURCE's creation and modification times, so an imported old file would sink down every newest-first listing instead of surfacing on top. Sets both stamps (listings sort by creation, the date-added contract). Best effort: a failed stamp only costs sort position.
 pub fn touch_now(path: &Path) {
+    use std::os::unix::ffi::OsStrExt;
+    let now = std::time::SystemTime::now();
+    if let (Ok(cpath), Ok(dur)) = (
+        std::ffi::CString::new(path.as_os_str().as_bytes()),
+        now.duration_since(std::time::UNIX_EPOCH),
+    ) {
+        let ts = libc::timespec {
+            tv_sec: dur.as_secs() as libc::time_t,
+            tv_nsec: dur.subsec_nanos() as _,
+        };
+        let mut attrs: libc::attrlist = unsafe { std::mem::zeroed() };
+        attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
+        attrs.commonattr = libc::ATTR_CMN_CRTIME;
+        unsafe {
+            libc::setattrlist(
+                cpath.as_ptr(),
+                &mut attrs as *mut _ as *mut libc::c_void,
+                &ts as *const _ as *mut libc::c_void,
+                std::mem::size_of::<libc::timespec>(),
+                0,
+            );
+        }
+    }
     if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
-        let _ = file.set_modified(std::time::SystemTime::now());
+        let _ = file.set_modified(now);
     }
 }
 
@@ -1429,22 +1452,18 @@ pub fn list_project_media(
 ) -> Result<Vec<String>, String> {
     let mut files = list_by_extension(&app, &state, &slug, MEDIA_EXTENSIONS)?;
     let assets = require_root(&app, &state)?.join(&slug).join("assets");
-    // Stable sort, so the alphabetical pass breaks mtime ties; unreadable stamps sink last. Seeded sample media (a "sample" word in the name) sinks below the user's own files, newest-first within each half.
+    // Newest ADDED first (creation time, so in-place rewrites like the app icon never resurface a file; imports stamp it via touch_now), stable so the alphabetical pass breaks ties and unreadable stamps sink last. Seeded sample media (a "sample" word in the name) and the app icon sink below the user's own files, newest-first within each half.
     files.sort_by_cached_key(|rel| {
         let stem = Path::new(rel)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let sample = stem.split('-').any(|part| part == "sample");
-        (
-            sample,
-            std::cmp::Reverse(
-                std::fs::metadata(assets.join(rel))
-                    .and_then(|m| m.modified())
-                    .ok(),
-            ),
-        )
+        let seeded = stem == "app-icon" || stem.split('-').any(|part| part == "sample");
+        let added = std::fs::metadata(assets.join(rel))
+            .and_then(|m| m.created().or_else(|_| m.modified()))
+            .ok();
+        (seeded, std::cmp::Reverse(added))
     });
     Ok(files)
 }

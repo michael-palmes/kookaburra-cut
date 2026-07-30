@@ -83,12 +83,13 @@ pub fn list_global_screenshots(
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        let modified = entry
+        // Creation time = date added (touch_now stamps it on import), immune to in-place rewrites.
+        let added = entry
             .metadata()
-            .and_then(|m| m.modified())
+            .and_then(|m| m.created().or_else(|_| m.modified()))
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         entries.push((
-            modified,
+            added,
             GlobalScreenshot {
                 name: name.to_string(),
                 abs_path: path.to_string_lossy().into_owned(),
