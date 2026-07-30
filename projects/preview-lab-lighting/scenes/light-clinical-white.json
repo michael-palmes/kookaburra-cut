@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Clinical white",
+  "backdrop": {
+    "type": "floor",
+    "color": "#5a6270",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "environment": { "source": "kookaburra:softbox", "intensity": 1.4, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": 0,
+      "elevationDeg": 70,
+      "intensity": 1.2,
+      "kelvin": 6500,
+      "angularDeg": 12
+    },
+    "ambient": 0.9,
+    "shadow": {
+      "technique": "none",
+      "softness": 0.5,
+      "opacity": 0,
+      "mapSize": 2048,
+      "bias": -0.0005
+    },
+    "preset": "clinical-white"
+  }
+}

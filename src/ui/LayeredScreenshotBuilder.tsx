@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { useFormat } from "../engine/format";
@@ -157,6 +158,13 @@ export function LayeredScreenshotBuilder({
   // One mediaMeta per screen item: width/height give the schematic (and the preset fit) each screen's true aspect, and video posters double as thumbnails.
   const [metas, setMetas] = useState<Record<string, MediaMeta>>({});
   const [mediaRefresh, setMediaRefresh] = useState(0);
+  // A file dropped on the window imports in the background; follow the app-wide broadcast so the open media grid shows it.
+  useEffect(() => {
+    const unlisten = listen("kookaburra://media-changed", () => setMediaRefresh((n) => n + 1));
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const screenSrcs = useMemo(
     () =>
@@ -268,10 +276,10 @@ export function LayeredScreenshotBuilder({
     commitBlock(next);
   };
 
-  // The Change-media sub-screen: one drill level down from the builder, mirroring the video window's media drill.
+  // The Change-media sub-screen: one drill level down from the builder, mirroring the video window's media drill. The .inspector-drill wrapper bounds the height so the media grid scrolls instead of growing the whole rail.
   if (changingMedia && item?.kind === "screen") {
     return (
-      <>
+      <div className="inspector-drill">
         <DrillBack label="Screenshot stack" onClick={() => setChangingMedia(false)} />
         <div className="inspector-drill-title">Change media</div>
         <div className="inspector-drill-body">
@@ -296,12 +304,12 @@ export function LayeredScreenshotBuilder({
             />
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="inspector-drill">
       <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Screenshot stack</div>
       <div className="ls-builder">
@@ -722,6 +730,6 @@ export function LayeredScreenshotBuilder({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

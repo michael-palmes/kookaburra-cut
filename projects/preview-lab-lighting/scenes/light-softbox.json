@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Softbox",
+  "lighting": {
+    "environment": { "source": "kookaburra:softbox", "intensity": 1.2, "rotationDeg": 0 },
+    "sun": { "azimuthDeg": 0, "elevationDeg": 40, "intensity": 0.4, "kelvin": 6500 },
+    "ambient": 0.15
+  }
+}

@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listEdits } from "../engine/edit";
@@ -326,9 +327,16 @@ function MediaCard({
         )}
       </div>
       <div className="media-card-body">
-        <div className="media-card-head">
-          <span className="media-name" title={name}>
-            {name}
+        <span className="media-name" title={name}>
+          {name}
+        </span>
+        <div className="media-card-foot">
+          <span className="media-meta-line">
+            {meta
+              ? meta.kind === "video"
+                ? `${meta.width}×${meta.height} · ${meta.fps.toFixed(0)} fps`
+                : `${meta.width}×${meta.height} · image`
+              : "…"}
           </span>
           {onMenu && (
             <button
@@ -346,13 +354,6 @@ function MediaCard({
             </button>
           )}
         </div>
-        <span className="media-meta-line">
-          {meta
-            ? meta.kind === "video"
-              ? `${meta.width}×${meta.height} · ${meta.fps.toFixed(0)} fps`
-              : `${meta.width}×${meta.height} · image`
-            : "…"}
-        </span>
       </div>
     </div>
   );
@@ -412,6 +413,21 @@ export function MediaBrowser({
     void refreshKey;
     refresh();
   }, [refresh, refreshKey]);
+
+  // Any import (a window drop, another window, the Add button) jumps to the imported kind's tab, so the new file is visibly first instead of hiding behind the other tab; the newest-first Rust sort puts it on top.
+  useEffect(() => {
+    const unlisten = listen<{ rels?: string[] }>("kookaburra://media-imported", (e) => {
+      const first = e.payload.rels?.[0];
+      if (!first) return;
+      const kind = kindOfRel(first);
+      if (kinds && !kinds.includes(kind)) return;
+      setSourceTab("project");
+      if (!kinds && kindToggle) setKindTab(kind);
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [kinds, kindToggle]);
 
   const refreshGlobal = useCallback(() => {
     listGlobalScreenshots()

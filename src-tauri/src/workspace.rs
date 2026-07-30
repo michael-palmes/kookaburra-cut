@@ -227,6 +227,69 @@ fn ensure_layout(root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Rewrite a file's CREATION time (APFS setattrlist); the media listings sort by it as "date added". Best effort: a failed stamp only costs sort position.
+fn stamp_crtime(path: &Path, at: std::time::SystemTime) {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(cpath) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return;
+    };
+    let Ok(dur) = at.duration_since(std::time::SystemTime::UNIX_EPOCH) else {
+        return;
+    };
+    let ts = libc::timespec {
+        tv_sec: dur.as_secs() as libc::time_t,
+        tv_nsec: dur.subsec_nanos() as _,
+    };
+    let mut attrs: libc::attrlist = unsafe { std::mem::zeroed() };
+    attrs.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
+    attrs.commonattr = libc::ATTR_CMN_CRTIME;
+    unsafe {
+        libc::setattrlist(
+            cpath.as_ptr(),
+            &mut attrs as *mut _ as *mut libc::c_void,
+            &ts as *const _ as *mut libc::c_void,
+            std::mem::size_of::<libc::timespec>(),
+            0,
+        );
+    }
+}
+
+/// Stamp "added just now": every user-caused asset write routes through here (imports, an app-icon replace, an edit render), because APFS clones and in-place rewrites both keep old dates. The creation stamp is what puts a file on top of the listings.
+pub fn touch_now(path: &Path) {
+    let now = std::time::SystemTime::now();
+    stamp_crtime(path, now);
+    if let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) {
+        let _ = file.set_modified(now);
+    }
+}
+
+/// Stamp bundled content "never added": an epoch creation time sinks seeded samples and the default app icon below every user file (mtime stays real so Finder reads sanely); `index` keeps their relative order stable.
+pub fn touch_ancient(path: &Path, index: u64) {
+    stamp_crtime(
+        path,
+        std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(index),
+    );
+}
+
+/// True when `path` already carries an ancient (seeded) creation stamp.
+fn is_ancient(path: &Path) -> bool {
+    let cutoff = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400);
+    std::fs::metadata(path)
+        .and_then(|m| m.created())
+        .map(|c| c <= cutoff)
+        .unwrap_or(false)
+}
+
+/// Ancient-stamp `dst` when its content still equals the bundled bytes: heals projects seeded by older versions without ever touching a file the user has replaced.
+fn heal_seeded_stamp(dst: &Path, bundled: &[u8], index: u64) {
+    let len_ok = std::fs::metadata(dst)
+        .map(|m| m.len() == bundled.len() as u64)
+        .unwrap_or(false);
+    if len_ok && std::fs::read(dst).map(|a| a == bundled).unwrap_or(false) {
+        touch_ancient(dst, index);
+    }
+}
+
 /// Move `path` to the Trash. Always route deletes through here: `trash`'s default macOS backend drives Finder via osascript, and TCC blames the Apple Event on us, so a hardened-runtime build silently fails every delete; `NsFileManager` trashes in-process (and still records Put Back).
 pub fn trash_path(path: &Path) -> Result<(), trash::Error> {
     use trash::macos::{DeleteMethod, TrashContextExtMacos};
@@ -1099,10 +1162,11 @@ pub fn create_project(
     // Always present even when the template ships none (e.g. "blank", since empty dirs don't survive git): media import and relative asset references expect the folder.
     std::fs::create_dir_all(dir.join("assets")).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir.join("edits")).map_err(|e| e.to_string())?;
-    for (name, bytes) in SAMPLE_SCREENSHOTS {
+    for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
         let dest = dir.join("assets").join(name);
         if !dest.exists() {
             std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
+            touch_ancient(&dest, (SAMPLE_ASSET_FILES.len() + i) as u64);
         }
     }
 
@@ -1203,17 +1267,23 @@ const SAMPLE_ASSET_FILES: [&str; 3] = [
     "app-icon.png",
 ];
 
-/// Copy each sample file into the project's assets/ only when missing; never clobbers.
+/// Copy each sample file into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
 fn copy_missing_sample_assets(source_assets: &Path, project_assets: &Path) -> Result<(), String> {
     std::fs::create_dir_all(project_assets).map_err(|e| e.to_string())?;
-    for name in SAMPLE_ASSET_FILES {
+    for (i, name) in SAMPLE_ASSET_FILES.iter().enumerate() {
         let dst = project_assets.join(name);
+        let src = source_assets.join(name);
         if dst.exists() {
+            if !is_ancient(&dst) {
+                if let Ok(bundled) = std::fs::read(&src) {
+                    heal_seeded_stamp(&dst, &bundled, i as u64);
+                }
+            }
             continue;
         }
-        let src = source_assets.join(name);
         if src.is_file() {
             std::fs::copy(&src, &dst).map_err(|e| format!("copying {name}: {e}"))?;
+            touch_ancient(&dst, i as u64);
         }
     }
     Ok(())
@@ -1233,7 +1303,16 @@ pub fn ensure_sample_assets(
         return Err(format!("\"{slug}\" is not a project folder"));
     }
     let source_assets = templates_root(&app).join("theme-starter").join("assets");
-    copy_missing_sample_assets(&source_assets, &dir.join("assets"))
+    let project_assets = dir.join("assets");
+    copy_missing_sample_assets(&source_assets, &project_assets)?;
+    // The creation-seeded screenshots heal the same way (their bundled bytes are embedded).
+    for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
+        let dst = project_assets.join(name);
+        if dst.is_file() && !is_ancient(&dst) {
+            heal_seeded_stamp(&dst, bytes, (SAMPLE_ASSET_FILES.len() + i) as u64);
+        }
+    }
+    Ok(())
 }
 
 /// Change fingerprint of a project's SOURCES (project.json + everything under scenes/); the frontend polls this to hot-reload the preview when Claude, or any external editor, writes files (workspace projects sit outside Vite's watch scope); returned as a hex string since u64 hashes don't survive JSON's f64 numbers.
@@ -1421,16 +1500,20 @@ pub fn list_project_media(
     slug: String,
 ) -> Result<Vec<String>, String> {
     let mut files = list_by_extension(&app, &state, &slug, MEDIA_EXTENSIONS)?;
-    let assets = require_root(&app, &state)?.join(&slug).join("assets");
-    // Stable sort, so the alphabetical pass breaks mtime ties; unreadable stamps sink last.
+    let project_dir = require_root(&app, &state)?.join(&slug);
+    sort_media_by_added(&project_dir, &mut files);
+    Ok(files)
+}
+
+/// Newest ADDED first: creation time, stamped now by touch_now at every user action and ancient on bundled content, so imports always surface, in-place rewrites never resurface a file, and seeded samples sit last. Stable, so the alphabetical pass breaks ties; unreadable stamps sink last. Rels carry the `assets/` prefix, so they join the PROJECT dir (joining the assets dir made every stat miss and silently left the list alphabetical).
+fn sort_media_by_added(project_dir: &Path, files: &mut [String]) {
     files.sort_by_cached_key(|rel| {
         std::cmp::Reverse(
-            std::fs::metadata(assets.join(rel))
-                .and_then(|m| m.modified())
+            std::fs::metadata(project_dir.join(rel))
+                .and_then(|m| m.created().or_else(|_| m.modified()))
                 .ok(),
         )
     });
-    Ok(files)
 }
 
 fn list_by_extension(
@@ -1719,6 +1802,30 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&dest_root);
+    }
+
+    #[test]
+    fn media_sort_orders_by_added_and_sinks_seeded() {
+        let project = scratch_dir();
+        let assets = project.join("assets");
+        std::fs::create_dir_all(&assets).unwrap();
+        for name in ["alpha.png", "beta.png", "sample.png"] {
+            std::fs::write(assets.join(name), b"x").unwrap();
+        }
+        // Two files pinned ancient with distinct indices; beta keeps its fresh creation time.
+        touch_ancient(&assets.join("sample.png"), 0);
+        touch_ancient(&assets.join("alpha.png"), 5);
+        let mut files = vec![
+            "assets/alpha.png".to_string(),
+            "assets/beta.png".to_string(),
+            "assets/sample.png".to_string(),
+        ];
+        sort_media_by_added(&project, &mut files);
+        assert_eq!(
+            files,
+            ["assets/beta.png", "assets/alpha.png", "assets/sample.png"]
+        );
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

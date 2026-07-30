@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "Hard keynote",
+  "backdrop": {
+    "type": "floor",
+    "color": "#5a6270",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "environment": { "source": "kookaburra:monochrome-studio", "intensity": 0.4, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": 50,
+      "elevationDeg": 55,
+      "intensity": 3.2,
+      "kelvin": 5200,
+      "angularDeg": 1
+    },
+    "ambient": 0.15,
+    "lights": [
+      {
+        "id": "rim",
+        "type": "spot",
+        "intensity": 60,
+        "kelvin": 5000,
+        "angleDeg": 40,
+        "penumbra": 0.5,
+        "placement": { "mode": "orbit", "azimuthDeg": 180, "elevationDeg": 35, "distance": 7 }
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.3,
+      "opacity": 0.45,
+      "mapSize": 2048,
+      "bias": -0.0005
+    },
+    "preset": "hard-keynote"
+  }
+}

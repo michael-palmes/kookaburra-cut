@@ -724,6 +724,15 @@ body {
      floors it at content min-size, so the grid overflows the modal to the editor width
      and the thumbnails' contained images end up centred off-screen (all-black cards). */
   min-width: 0;
+  /* Same trap vertically: `min-height: auto` refused to shrink below the full card stack,
+     so overflow-y above never engaged and the host (or rail) scrolled instead. Basis auto,
+     NOT 0: a zero basis collapses the grid inside auto-height hosts (the wizard boxes). */
+  flex: 1 1 auto;
+  min-height: 0;
+  /* No row/align tuning here: WKWebView only keeps this box height-bounded with the
+     default stretch OR with max-content rows; `align-content: start` alone un-bounds it.
+     The drill override below carries the full compact-panel recipe; the modal/wizard
+     hosts are height-capped, so the stretch default never visibly inflates rows there. */
   display: grid;
   /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
      floor, then a column drops (the inspector rail and narrow editor panels sit at 2). */
@@ -882,17 +891,20 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Name row + the ⋯ actions button (2026-07-12 — replaces the overflowing button row;
-   the same menu opens on right-click anywhere on the card). */
-.media-card-head {
+/* Meta + the ⋯ actions button share the foot row, so the name keeps the whole top line;
+   the same menu opens on right-click anywhere on the card. */
+.media-card-foot {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.media-card-head .media-name {
+.media-card-foot .media-meta-line {
   flex: 1 1 auto;
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .media-menu-btn {
@@ -1859,15 +1871,46 @@ body {
 
 /* ── Welcome screen (§7.10) ────────────────────────────────────────────────── */
 
+/* No top padding: a padded scroll container makes WKWebView pin sticky children below the padding, which let cards scroll past above the search band. The header margin carries the offset instead. */
 .welcome {
   grid-row: 2 / 4;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-8) clamp(24px, 6vw, 64px);
+  padding: 0 clamp(24px, 6vw, 64px) var(--space-8);
 }
 
 .welcome-header {
-  margin: var(--space-7) 0 var(--space-8);
+  margin: calc(var(--space-8) + var(--space-7)) 0 var(--space-8);
+}
+
+/* Docked beside the wordmark (the negative bottom margin lets the header flow underneath), sticky so ⌘F always has somewhere to land; the band paints only once content could slide under it. */
+.welcome-search {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: calc(var(--control-h-lg) + var(--space-4) * 2);
+  margin-top: calc(var(--space-8) + var(--space-6));
+  margin-bottom: calc(
+    -1 *
+    (var(--space-8) + var(--space-6) + var(--control-h-lg) + var(--space-4) * 2)
+  );
+  transition: background-color 120ms ease;
+}
+
+.welcome-search.scrolled {
+  background: var(--surface-window);
+}
+
+.welcome-search-input {
+  inline-size: min(420px, 100%);
+}
+
+.welcome-no-matches {
+  margin: 0 0 var(--space-6);
+  color: var(--text-tertiary);
 }
 
 /* The one display-type moment outside About (§5.2): the wordmark (v14 · M6). */
@@ -4450,6 +4493,9 @@ body {
 .ls-builder {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   gap: 10px;
   padding: 0 12px 12px;
 }
@@ -5857,6 +5903,11 @@ img.inspector-scene-thumb {
   overflow-y: auto;
 }
 
+/* Media drills trade the side gutters for card width (three-across in a 342px rail). */
+.inspector-drill-body:has(.inspector-media-host) {
+  padding-inline: 8px;
+}
+
 /* Edit-text drill-in: rows drive the height, beating modal-input's fixed height on specificity (never !important). */
 .inspector-drill-body .wizard-textarea {
   height: auto;
@@ -5963,6 +6014,13 @@ img.inspector-scene-thumb {
   align-items: center;
   gap: var(--space-2);
   padding: 0 8px 6px;
+}
+
+/* Chips that lead with a small glyph (the lighting add/type rows). */
+.camera-loop-modes .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 /* Lighting: the Kelvin slider with its live colour swatch alongside. */
@@ -6335,6 +6393,21 @@ img.inspector-scene-thumb {
   background: var(--surface-recessed);
 }
 
+.option-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--text-tertiary);
+  background: var(--surface-recessed);
+}
+
+.option-card-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
 .theme-card-thumb video {
   width: 100%;
   height: 100%;
@@ -6480,8 +6553,15 @@ img.inspector-scene-thumb {
   min-height: 0;
 }
 
+/* The compact editor panel's proven WKWebView recipe (max-content rows + start packs
+   naturally AND keeps the box bounded so it scrolls), safe here because the flat track
+   list below is immune to the column collapse that pairing causes with the auto-fill
+   formula. The rail is a fixed 342px: three across beats the formula's two. */
 .inspector-media-host .media-grid {
   padding-right: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
 }
 
 /* ── Colour picker (the app-wide swatch + anchored popover) ───────────────── */

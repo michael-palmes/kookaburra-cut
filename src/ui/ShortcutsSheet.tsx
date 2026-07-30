@@ -40,6 +40,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
     title: "App",
     rows: [
       ["⌘K", "Find an action (command palette)"],
+      ["⌘F", "Welcome screen: search your projects"],
       ["↑ ↓ · ⏎", "Command palette: navigate · run"],
       ["⌘,", "Settings"],
       ["⌘/", "This sheet"],

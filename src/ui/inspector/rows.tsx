@@ -220,6 +220,17 @@ export function RowIcon({ id }: { id: string }) {
         <path d="M8.5 7.5v5l4-2.5z" />
       </>
     ),
+    render: (
+      <>
+        <circle cx="10" cy="10" r="7" />
+        <path d="M11.62 7.2l4.02 6.96" />
+        <path d="M8.38 7.2h8.04" />
+        <path d="M6.77 10l4.02-6.96" />
+        <path d="M8.38 12.8L4.37 5.84" />
+        <path d="M11.62 12.8H3.58" />
+        <path d="M13.23 10l-4.02 6.96" />
+      </>
+    ),
   };
   const glyph = paths[id];
   if (!glyph) return null;

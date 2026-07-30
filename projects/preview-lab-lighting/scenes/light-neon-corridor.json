@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "name": "Neon corridor",
+  "backdrop": {
+    "type": "floor",
+    "color": "#5a6270",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "environment": { "source": "kookaburra:warehouse", "intensity": 0.35, "rotationDeg": 0 },
+    "sun": { "azimuthDeg": 0, "elevationDeg": 45, "intensity": 1, "enabled": false },
+    "ambient": 0.05,
+    "fixtures": [
+      {
+        "id": "tubes",
+        "form": "tube",
+        "size": [3.2, 0.06],
+        "kelvin": 4200,
+        "emissive": 3.5,
+        "lightIntensity": 14,
+        "placement": { "mode": "point", "position": [0, 2.4, 0] },
+        "rotationDeg": [-90, 0, 0],
+        "repeat": { "count": 8, "spacing": 2.4, "axis": "z" }
+      }
+    ],
+    "preset": "neon-corridor"
+  }
+}

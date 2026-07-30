@@ -267,6 +267,8 @@ pub async fn import_app_icon(
         let _ = workspace::trash_path(&dest);
     }
     std::fs::rename(&tmp, &dest).map_err(|e| format!("replacing icon: {e}"))?;
+    // A replaced icon is a user action, so it surfaces like any fresh import.
+    workspace::touch_now(&dest);
     Ok("assets/app-icon.png".into())
 }
 
@@ -507,6 +509,31 @@ pub fn rename_media(
     Ok(new_rel)
 }
 
+/// Slugged stem + lowercased extension for an incoming file; None when the extension is not a media type.
+fn media_stem_and_ext(path: &Path) -> Option<(String, String)> {
+    let ext = extension_of(path);
+    if !workspace::MEDIA_EXTENSIONS.contains(&ext.as_str()) {
+        return None;
+    }
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("media");
+    let mut base = workspace::slugify(stem);
+    if base.is_empty() {
+        base = "media".into();
+    }
+    Some((base, ext))
+}
+
+/// First free name in `assets`: base.ext, base-2.ext, base-3.ext, …
+fn free_asset_name(assets: &Path, base: &str, ext: &str) -> String {
+    let mut candidate = format!("{base}.{ext}");
+    let mut n = 1u32;
+    while assets.join(&candidate).exists() {
+        n += 1;
+        candidate = format!("{base}-{n}.{ext}");
+    }
+    candidate
+}
+
 /// Copy files into the project's `assets/` (slugged filenames, `-2`-style collision suffixes); non-media files are skipped with a warning. Returns the imported project-relative paths.
 #[tauri::command]
 pub fn import_media(
@@ -523,31 +550,55 @@ pub fn import_media(
     let mut imported = Vec::new();
     for source in paths {
         let source = PathBuf::from(source);
-        let ext = extension_of(&source);
-        if !workspace::MEDIA_EXTENSIONS.contains(&ext.as_str()) {
+        let Some((base, ext)) = media_stem_and_ext(&source) else {
             log::warn!("skipping non-media import: {}", source.display());
             continue;
-        }
-        let stem = source
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("media");
-        let mut base = workspace::slugify(stem);
-        if base.is_empty() {
-            base = "media".into();
-        }
-        // First free name: base.ext, base-2.ext, base-3.ext, …
-        let mut candidate = format!("{base}.{ext}");
-        let mut n = 1u32;
-        while assets.join(&candidate).exists() {
-            n += 1;
-            candidate = format!("{base}-{n}.{ext}");
-        }
+        };
+        let candidate = free_asset_name(&assets, &base, &ext);
         let dest = assets.join(&candidate);
         std::fs::copy(&source, &dest).map_err(|e| format!("copying {}: {e}", source.display()))?;
+        workspace::touch_now(&dest);
         imported.push(format!("assets/{candidate}"));
     }
     Ok(imported)
+}
+
+/// One file's bytes into the project's `assets/`: the editor window's HTML5 drops, where WKWebView exposes content but no real paths. Headers carry the slug and the dropped file's name, the body is the raw content (`write_snapshot` pattern). Returns the project-relative path, or None for a non-media extension (mirrors `import_media`'s skip).
+#[tauri::command]
+pub fn import_media_bytes(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    request: tauri::ipc::Request,
+) -> Result<Option<String>, String> {
+    let header = |name: &str| -> Result<String, String> {
+        request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned)
+            .ok_or(format!("missing {name} header"))
+    };
+    let slug = header("x-kookaburra-slug")?;
+    workspace::validate_slug(&slug)?;
+    // Only the final component; anything path-shaped is refused (the rename_media rule).
+    let name = header("x-kookaburra-name")?;
+    let name = Path::new(&name)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("the file name must be a plain name")?
+        .to_owned();
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("import_media_bytes expects a raw binary body".into());
+    };
+    let Some((base, ext)) = media_stem_and_ext(Path::new(&name)) else {
+        return Ok(None);
+    };
+    let root = workspace::require_root(&app, &state)?;
+    let assets = root.join(&slug).join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    let candidate = free_asset_name(&assets, &base, &ext);
+    std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
+    Ok(Some(format!("assets/{candidate}")))
 }
 
 /// Metadata + thumbnails for one project asset, generated on first sight and cached by content hash; videos get a poster (25% in) and ~10 evenly-spaced scrub frames, images get a poster only.
