@@ -276,10 +276,10 @@ export function LayeredScreenshotBuilder({
     commitBlock(next);
   };
 
-  // The Change-media sub-screen: one drill level down from the builder, mirroring the video window's media drill.
+  // The Change-media sub-screen: one drill level down from the builder, mirroring the video window's media drill. The .inspector-drill wrapper bounds the height so the media grid scrolls instead of growing the whole rail.
   if (changingMedia && item?.kind === "screen") {
     return (
-      <>
+      <div className="inspector-drill">
         <DrillBack label="Screenshot stack" onClick={() => setChangingMedia(false)} />
         <div className="inspector-drill-title">Change media</div>
         <div className="inspector-drill-body">
@@ -304,12 +304,12 @@ export function LayeredScreenshotBuilder({
             />
           </div>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="inspector-drill">
       <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Screenshot stack</div>
       <div className="ls-builder">
@@ -730,6 +730,6 @@ export function LayeredScreenshotBuilder({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

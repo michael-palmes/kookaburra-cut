@@ -4481,6 +4481,9 @@ body {
 .ls-builder {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   gap: 10px;
   padding: 0 12px 12px;
 }
