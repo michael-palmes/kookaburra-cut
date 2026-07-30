@@ -1272,6 +1272,8 @@ pub fn run() {
             scene_doc::copy_scene_to_project,
             objects::list_objects,
             objects::read_object,
+            objects::import_object,
+            objects::write_object_thumbnail,
             theme::list_themes,
             theme::read_theme,
             theme::write_theme,

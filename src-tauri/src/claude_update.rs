@@ -180,8 +180,14 @@ mod tests {
 
     #[test]
     fn classifies_install_methods_by_path() {
-        assert_eq!(detect_method("/opt/homebrew/lib/node_modules/x/claude"), "npm");
-        assert_eq!(detect_method("/opt/homebrew/Caskroom/claude-code/bin/claude"), "brew");
+        assert_eq!(
+            detect_method("/opt/homebrew/lib/node_modules/x/claude"),
+            "npm"
+        );
+        assert_eq!(
+            detect_method("/opt/homebrew/Caskroom/claude-code/bin/claude"),
+            "brew"
+        );
         assert_eq!(detect_method("/Users/x/.local/bin/claude"), "native");
         assert_eq!(detect_method("/usr/bin/claude"), "other");
     }

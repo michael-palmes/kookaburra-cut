@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "boombox",
+  "name": "Boombox",
+  "glb": "boombox.glb",
+  "thumbnail": "boombox.png",
+  "fitHeight": 0.7,
+  "licence": {
+    "name": "CC0",
+    "url": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/BoomBox"
+  },
+  "tags": ["product", "music"]
+}

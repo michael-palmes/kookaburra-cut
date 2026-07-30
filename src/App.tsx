@@ -127,6 +127,7 @@ import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
 import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
+import { ObjectsFallback } from "./toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
 import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
@@ -1884,6 +1885,7 @@ export default function App() {
                                 <SceneComponent />
                                 {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
                                 <DevicesFallback />
+                                <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />
@@ -1914,6 +1916,7 @@ export default function App() {
                                 <SceneBackground />
                                 <SceneComponent />
                                 <DevicesFallback />
+                                <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />

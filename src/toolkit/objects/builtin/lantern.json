@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "id": "lantern",
+  "name": "Lantern",
+  "glb": "lantern.glb",
+  "thumbnail": "lantern.png",
+  "fitHeight": 1.3,
+  "licence": {
+    "name": "CC0",
+    "holder": "Microsoft",
+    "url": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Lantern"
+  },
+  "tags": ["prop", "light"]
+}

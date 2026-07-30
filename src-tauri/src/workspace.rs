@@ -867,7 +867,9 @@ pub fn set_project_typography(
     body: Option<String>,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
-    let headline = headline.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let headline = headline
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty());
     let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
     let root = require_root(&app, &state)?;
     let path = root.join(&slug).join(MANIFEST_FILENAME);

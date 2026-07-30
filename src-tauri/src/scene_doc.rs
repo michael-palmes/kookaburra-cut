@@ -404,7 +404,11 @@ fn scan_asset_refs(text: &str) -> Vec<String> {
     let mut from = 0;
     while let Some(pos) = text[from..].find("assets/") {
         let start = from + pos;
-        let prev = if start == 0 { None } else { Some(bytes[start - 1]) };
+        let prev = if start == 0 {
+            None
+        } else {
+            Some(bytes[start - 1])
+        };
         let standalone = !matches!(prev, Some(p) if p.is_ascii_alphanumeric()
             || matches!(p, b'-' | b'_' | b'.' | b'/'));
         let mut end = start + "assets/".len();

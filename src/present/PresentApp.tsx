@@ -21,6 +21,7 @@ import { DevicesFallback } from "../toolkit/device/Device";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
 import { VideoWindowFallback } from "../toolkit/media/VideoWindow";
+import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { PresentCompositorDriver } from "./PresentCompositorDriver";
@@ -357,6 +358,7 @@ export function PresentApp() {
                         <SceneBackground />
                         <SceneComponent />
                         <DevicesFallback />
+                        <ObjectsFallback />
                         <LayeredScreenshotFallback />
                         <VideoWindowFallback />
                         <TextFallback />

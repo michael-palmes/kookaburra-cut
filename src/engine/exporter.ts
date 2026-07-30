@@ -10,6 +10,7 @@ import { preloadDeviceModels } from "../toolkit/device/models";
 import { preloadChipIcons } from "../toolkit/frame/chipIcons";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadHeroModels } from "../toolkit/hero/models";
+import { preloadSceneObjects } from "../toolkit/objects/preload";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { awaitEmojiRastersIdle, preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import { preloadText3dFonts } from "../toolkit/text3d/fonts";
@@ -41,6 +42,7 @@ import { setExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
 import { HELPER_LAYER } from "./lightEditStore";
+import { useObjectEditStore } from "./objectEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   isWorkspaceProjectId,
@@ -295,6 +297,8 @@ async function exportPreamble(
   onStep?: (step: number) => void,
 ): Promise<void> {
   configureDeterministicEngine();
+  // Explicit, not incidental: an object gizmo selected when an export starts must never reach a frame.
+  useObjectEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
@@ -323,6 +327,8 @@ async function exportPreamble(
   await preloadDeviceModels();
   await preloadCatalogModels();
   await preloadHeroModels();
+  // Staged library objects referenced by any scene (and compare side B), the same barrier over a dynamic id set.
+  await preloadSceneObjects([...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]);
   await preloadProjectImages(opts.projectId);
   onStep?.(2);
   // Parses the bundled typeface JSON for ExtrudedText (synchronous today; the barrier is kept so a future fetched font can't race frame 0).

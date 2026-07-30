@@ -36,6 +36,14 @@ export interface SceneDocDeviceSpec {
   lidDeg?: number;
 }
 
+/** One staged 3D object, deliberately shaped like the device entry: a stable scene-local id plus a library reference and the shared placement block. */
+export interface SceneDocObjectSpec {
+  id: string;
+  /** Object library id: a bundled key or `ws:<slug>` (unknown ids degrade to nothing rendered). */
+  objectId: string;
+  placement?: DevicePlacement;
+}
+
 export type SceneDocDuration =
   | { mode: "manual" }
   | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
@@ -257,6 +265,8 @@ export interface SceneDoc {
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead. */
   headerIcon?: string;
   devices?: SceneDocDeviceSpec[];
+  /** Staged 3D objects from the object library, rendered by `ObjectsFallback` on any scene. */
+  objects?: SceneDocObjectSpec[];
   camera?: {
     keys: SceneDocCameraKey[];
     segments: SceneDocCameraSegment[];
@@ -638,6 +648,23 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       }
     }
     out.devices = devices;
+  }
+  if (Array.isArray(doc.objects)) {
+    const objects: SceneDocObjectSpec[] = [];
+    for (const entry of doc.objects as unknown[]) {
+      const object = entry as SceneDocObjectSpec;
+      if (
+        object &&
+        typeof object === "object" &&
+        typeof object.id === "string" &&
+        typeof object.objectId === "string"
+      ) {
+        objects.push(object);
+      } else {
+        console.warn(`[sceneDoc] ${source}: object entry needs string "id" + "objectId" — dropped`);
+      }
+    }
+    out.objects = objects;
   }
   if (typeof doc.camera === "object" && doc.camera !== null) {
     const camera = doc.camera as NonNullable<SceneDoc["camera"]>;

@@ -932,7 +932,13 @@ The generative toolkit primitives (`ExtrudedText`, `ParticleField`, `WireGrid`,
   barrier explicit for any future fetched font. `HeroObject` mirrors the device
   contract: name-keyed bundled glTFs, fetched + parsed by `preloadHeroModels()`
   in the preamble (drei cache warmed), static after load so every frame is
-  synchronous.
+  synchronous. Staged library objects (`SceneDoc.objects`) extend that to a
+  DYNAMIC id set: `preloadSceneObjects()` resolves every referenced object id
+  (bundled or `ws:`) into a warm asset cache, then fetches + parses each glb
+  before frame 0; unknown ids resolve to nothing, deterministically. The
+  preview's PivotControls gizmo is UI-only: mount-gated on the inspector's
+  placement drill AND cleared by `exportPreamble` (`useObjectEditStore`), so it
+  can never reach an exported frame.
 
 **Framing is invisible to the gate.** `useFormat().frame`/`safe` are measured at
 the content plane `z=0`; content offset toward the camera projects larger and can

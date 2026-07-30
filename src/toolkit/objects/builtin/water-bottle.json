@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "water-bottle",
+  "name": "Water bottle",
+  "glb": "water-bottle.glb",
+  "thumbnail": "water-bottle.png",
+  "fitHeight": 0.9,
+  "licence": {
+    "name": "CC0",
+    "url": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/WaterBottle"
+  },
+  "tags": ["product"]
+}

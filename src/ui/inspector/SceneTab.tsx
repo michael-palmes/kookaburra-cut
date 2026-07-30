@@ -9,6 +9,7 @@ import { useFormat } from "../../engine/format";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
+import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
@@ -55,6 +56,11 @@ import type {
   FrameSide,
 } from "../../toolkit/frame/types";
 import {
+  besideDevicePlacement,
+  floorCentrePlacement,
+  frontOfDevicePlacement,
+} from "../../toolkit/objects/presets";
+import {
   SCENE3D_BACKGROUND_IDS,
   SCENE3D_BACKGROUND_PRESETS,
   SCENE3D_BACKGROUNDS,
@@ -81,7 +87,7 @@ import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
-import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import { objectRowLabel, type SceneSectionModel, sceneSections } from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
@@ -161,6 +167,7 @@ function AlignIcon({ id }: { id: SceneTextAlign }) {
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
+import { ObjectPicker } from "../ObjectPicker";
 import { OptionCard } from "../OptionCard";
 import { HeaderIconField, TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
@@ -424,6 +431,22 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <path d="M4 6h8M8 6v9" />
           <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "objects.edit":
+    case "objects.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7L10 3z" />
+          <path d="M10 3v7m0 0l6-3.5M10 10L4 6.5" />
         </svg>
       );
     case "device.rotation":
@@ -1613,6 +1636,9 @@ export function SceneTab({
   >({ kind: "device" });
   // Which device the device rows act on; null (or a stale id) falls back to the first device.
   const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // Which staged object the placement drill targets, plus the library picker modal.
+  const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
+  const [objectPickerOpen, setObjectPickerOpen] = useState(false);
   // The comparison drill's side pill and its full-height media screen's target device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
@@ -1688,6 +1714,32 @@ export function SceneTab({
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
   const deviceId = device?.id;
+  const objects = doc?.objects ?? [];
+  const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
+  // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
+  const patchDocRef = useRef(patchDoc);
+  patchDocRef.current = patchDoc;
+  useEffect(() => {
+    return useObjectEditStore.subscribe((s) => {
+      const commit = s.pendingCommit;
+      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      useObjectEditStore.getState().clearCommit();
+      void patchDocRef.current((next) => {
+        const o = next.objects?.find((x) => x.id === commit.objectId);
+        if (o) o.placement = commit.placement;
+      });
+    });
+  }, [sceneIndex]);
+  // The preview gizmo follows the placement drill; leaving it (or the scene) deselects.
+  const stagedObjectId = stagedObject?.id;
+  useEffect(() => {
+    const store = useObjectEditStore.getState();
+    if (drillIn === "objects.placement" && stagedObjectId !== undefined) {
+      store.select({ sceneIndex, objectId: stagedObjectId });
+      return () => useObjectEditStore.getState().select(null);
+    }
+    if (store.selected) store.select(null);
+  }, [drillIn, sceneIndex, stagedObjectId]);
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -1882,6 +1934,30 @@ export function SceneTab({
     });
     setPickedDeviceId(id);
   };
+  const freshObjectId = () => {
+    const used = new Set(objects.map((o) => o.id));
+    let n = 1;
+    while (used.has(`o${n}`)) n += 1;
+    return `o${n}`;
+  };
+  const addObjectFromPicker = (objectId: string) => {
+    const id = freshObjectId();
+    // Beside the device when one is staged, else grounded at centre; a starting point to nudge from.
+    const placement = device ? besideDevicePlacement(device, "right") : floorCentrePlacement();
+    void patchDoc((next) => {
+      next.objects = [...(next.objects ?? []), { id, objectId, placement }];
+    });
+    setPickedObjectId(id);
+    setObjectPickerOpen(false);
+    openDrill("objects.placement");
+  };
+  /** Mutate the drill's staged object in place; a no-op when the scene has none. */
+  const patchObject = (fn: (o: NonNullable<SceneDoc["objects"]>[number]) => void) =>
+    void patchDoc((next) => {
+      const o = next.objects?.find((x) => x.id === stagedObjectId);
+      if (o) fn(o);
+    });
+
   const addCompare = () => {
     void patchDoc((next) => {
       // A visible starting point: line + chips on; the halves stay identical until the after side changes something.
@@ -4944,6 +5020,142 @@ export function SceneTab({
     );
   }
 
+  if (drillIn === "objects.placement" && stagedObject) {
+    const placement = stagedObject.placement ?? {};
+    const pos = placement.position ?? [0, 0, 0];
+    const rot = placement.rotationDeg ?? [0, 0, 0];
+    const setAxis = (field: "position" | "rotationDeg", axis: number, value: number) =>
+      patchObject((o) => {
+        const current = o.placement?.[field] ?? [0, 0, 0];
+        const next: [number, number, number] = [current[0] ?? 0, current[1] ?? 0, current[2] ?? 0];
+        next[axis] = value;
+        o.placement = { ...o.placement, [field]: next };
+        if (field === "position" && axis === 1) delete o.placement.ground;
+      });
+    return (
+      <>
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">{objectRowLabel(stagedObject.objectId)}</div>
+        <div className="inspector-section-body">
+          <span className="modal-hint">
+            Drag the gizmo in the preview to move it, or set the pose here.
+          </span>
+          <div className="wizard-presets">
+            {device && (
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  patchObject((o) => {
+                    o.placement = besideDevicePlacement(device, "left");
+                  })
+                }
+              >
+                Left of device
+              </button>
+            )}
+            {device && (
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  patchObject((o) => {
+                    o.placement = besideDevicePlacement(device, "right");
+                  })
+                }
+              >
+                Right of device
+              </button>
+            )}
+            {device && (
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  patchObject((o) => {
+                    o.placement = frontOfDevicePlacement(device);
+                  })
+                }
+              >
+                In front
+              </button>
+            )}
+            <button
+              type="button"
+              className="chip"
+              onClick={() =>
+                patchObject((o) => {
+                  o.placement = floorCentrePlacement();
+                })
+              }
+            >
+              Floor centre
+            </button>
+          </div>
+          <div className="inspector-pose-grid">
+            {(["x", "y", "z"] as const).map((label, axis) => (
+              <NumberField
+                key={label}
+                label={label}
+                value={pos[axis] ?? 0}
+                decimals={2}
+                onCommit={(n) => setAxis("position", axis, n)}
+              />
+            ))}
+          </div>
+          <div className="inspector-pose-grid">
+            {(["tilt x °", "turn y °", "roll z °"] as const).map((label, axis) => (
+              <NumberField
+                key={label}
+                label={label}
+                value={rot[axis] ?? 0}
+                decimals={1}
+                onCommit={(n) => setAxis("rotationDeg", axis, n)}
+              />
+            ))}
+          </div>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="scale ×"
+              value={placement.scale ?? 1}
+              decimals={2}
+              onCommit={(n) =>
+                patchObject((o) => {
+                  o.placement = { ...o.placement, scale: Math.max(0.01, n) };
+                })
+              }
+            />
+          </div>
+          <ToggleRow
+            icon={<SceneRowIcon id="objects.edit" />}
+            label="Rest on floor"
+            description="Seats the object's base on the staged floor; off keeps the y above."
+            checked={placement.ground ?? false}
+            onChange={(on) =>
+              patchObject((o) => {
+                o.placement = { ...o.placement, ground: on };
+                if (!on) delete o.placement.ground;
+              })
+            }
+          />
+          <ActionRow
+            icon={<SceneRowIcon id="device.remove" />}
+            label="Remove object"
+            chevron={false}
+            danger
+            onClick={() => {
+              closeDrill();
+              setPickedObjectId(null);
+              void patchDoc((next) => {
+                next.objects = (next.objects ?? []).filter((x) => x.id !== stagedObject.id);
+              });
+            }}
+          />
+        </div>
+      </>
+    );
+  }
+
   if (drillIn === "device.rotation" && device) {
     return (
       <RotationDrillIn
@@ -5011,6 +5223,21 @@ export function SceneTab({
           />
         );
       }
+      if (row.id.startsWith("objects.edit:")) {
+        const objectEditId = row.id.slice("objects.edit:".length);
+        return (
+          <ActionRow
+            key={row.id}
+            icon={<SceneRowIcon id="objects.edit" />}
+            label={row.label}
+            chevron={row.chevron}
+            onClick={() => {
+              setPickedObjectId(objectEditId);
+              openDrill("objects.placement");
+            }}
+          />
+        );
+      }
       const onClick = {
         "device.media": () => {
           setMediaTarget({ kind: "device", deviceId });
@@ -5019,6 +5246,7 @@ export function SceneTab({
         "device.editVideo": () => device?.media && onOpenEditVideo(sceneIndex, device.media.src),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
+        "objects.add": () => setObjectPickerOpen(true),
         "device.duplicate": duplicateDevice,
         "frame.add": addOverlay,
         "device.rotation": () => openDrill("device.rotation"),
@@ -5455,6 +5683,9 @@ export function SceneTab({
 
       {/* ── Modals (the EditBar's hosting, re-homed) ─────────────────────── */}
       {mediaModal}
+      {objectPickerOpen && (
+        <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
+      )}
     </>
   );
 }

@@ -60,7 +60,21 @@ export function projectRows(input: {
   ];
 }
 
-export type SceneSectionId = "text" | "device" | "frame" | "style" | "camera" | "motion";
+export type SceneSectionId =
+  | "text"
+  | "device"
+  | "objects"
+  | "frame"
+  | "style"
+  | "camera"
+  | "motion";
+
+/** Row label for a staged object, derived purely from its library id (manifest names resolve async, so the model stays sync): "ws:coffee-mug" reads "Coffee mug". */
+export function objectRowLabel(objectId: string): string {
+  const slug = objectId.startsWith("ws:") ? objectId.slice(3) : objectId;
+  const words = slug.replace(/-/g, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "Object";
+}
 
 export interface SceneRowModel {
   id: string;
@@ -137,6 +151,29 @@ export function sceneSections(input: {
       id: "device",
       label: "Device",
       rows: [{ id: "device.add", label: "Add device", chevron: false }],
+    });
+  }
+
+  // The Objects section: one row per staged library object plus the add affordance.
+  const objects = doc?.objects ?? [];
+  if (objects.length > 0) {
+    sections.push({
+      id: "objects",
+      label: objects.length > 1 ? "Objects" : "Object",
+      rows: [
+        ...objects.map((o) => ({
+          id: `objects.edit:${o.id}`,
+          label: objectRowLabel(o.objectId),
+          chevron: true,
+        })),
+        { id: "objects.add", label: "Add object", chevron: false },
+      ],
+    });
+  } else if (doc) {
+    sections.push({
+      id: "objects",
+      label: "Object",
+      rows: [{ id: "objects.add", label: "Add object", chevron: false }],
     });
   }
 

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "id": "avocado",
+  "name": "Avocado",
+  "glb": "avocado.glb",
+  "thumbnail": "avocado.png",
+  "fitHeight": 0.45,
+  "licence": {
+    "name": "CC0",
+    "url": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Avocado"
+  },
+  "tags": ["prop", "food"]
+}
