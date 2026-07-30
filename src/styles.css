@@ -730,8 +730,9 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   /* The grid now fills its host, so rows must pack at the top at natural height; the
-     stretch default would inflate a few cards to fill the whole drill. */
-  grid-auto-rows: max-content;
+     stretch default would inflate a few cards to fill the whole drill. Deliberately NOT
+     `grid-auto-rows: max-content` here: WKWebView then collapses the auto-fill columns
+     to one and balloons 1:1 thumbs to their image's natural width. */
   align-content: start;
   display: grid;
   /* One rule for every host: aim 3 across, cards shrink with the host until the 140px
@@ -6547,6 +6548,8 @@ img.inspector-scene-thumb {
 
 .inspector-media-host .media-grid {
   padding-right: 0;
+  /* The rail is a fixed 342px: a flat three-across beats the auto-fill formula's two, and a percentage-free track list keeps WKWebView honest. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* ── Colour picker (the app-wide swatch + anchored popover) ───────────────── */
