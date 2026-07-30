@@ -482,7 +482,7 @@ export async function exportProject(
 
   // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
   const overlays = opts.sceneThemes
-    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
+    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes, opts.sceneDocs ?? [])
     : null;
 
   // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
@@ -602,7 +602,7 @@ export async function captureScreenshot(
         })
       : null;
   const overlays = opts.sceneThemes
-    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
+    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes, opts.sceneDocs ?? [])
     : null;
   // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
   const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
