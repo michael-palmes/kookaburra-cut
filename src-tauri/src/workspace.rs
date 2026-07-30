@@ -172,6 +172,8 @@ pub struct ProjectInfo {
     pub snapshot_mtime_ms: Option<u64>,
     /// When this project was last opened (unix ms), for welcome-screen ordering.
     pub last_opened_ms: Option<u64>,
+    /// Welcome-screen group heading from the manifest, when the project belongs to one.
+    pub group: Option<String>,
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -442,10 +444,16 @@ fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 /// Parse a project's manifest for listing: display name + total duration, following the overlap model (`total = Σdurations − Σoverlaps`) where a scene's `transition` pulls its start back by the transition duration; the first scene's transition has nothing to overlap and is ignored, matching `engine/sceneTimeline.ts`.
-pub(crate) fn manifest_summary(project_dir: &Path) -> Option<(String, u64)> {
+pub(crate) fn manifest_summary(project_dir: &Path) -> Option<(String, u64, Option<String>)> {
     let text = std::fs::read_to_string(project_dir.join(MANIFEST_FILENAME)).ok()?;
     let value: serde_json::Value = serde_json::from_str(&text).ok()?;
     let name = value.get("name")?.as_str().map(str::to_owned)?;
+    let group = value
+        .get("group")
+        .and_then(|g| g.as_str())
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+        .map(str::to_owned);
     let mut total: i64 = 0;
     if let Some(scenes) = value.get("scenes").and_then(|s| s.as_array()) {
         for (i, scene) in scenes.iter().enumerate() {
@@ -464,7 +472,7 @@ pub(crate) fn manifest_summary(project_dir: &Path) -> Option<(String, u64)> {
             }
         }
     }
-    Some((name, total.max(0) as u64))
+    Some((name, total.max(0) as u64, group))
 }
 
 pub(crate) fn now_unix_ms() -> u64 {
@@ -708,7 +716,8 @@ pub fn list_projects(
         if !path.is_dir() || slug.starts_with('.') || !path.join(MANIFEST_FILENAME).is_file() {
             continue;
         }
-        let (name, duration_ms) = manifest_summary(&path).unwrap_or_else(|| (slug.clone(), 0));
+        let (name, duration_ms, group) =
+            manifest_summary(&path).unwrap_or_else(|| (slug.clone(), 0, None));
         let snap = snapshot_file(&root, &slug);
         let snapshot_mtime_ms = file_mtime_ms(&snap);
         projects.push(ProjectInfo {
@@ -720,6 +729,7 @@ pub fn list_projects(
                 .then(|| snap.to_string_lossy().into_owned()),
             snapshot_mtime_ms,
             last_opened_ms: last_opened.get(&slug).copied(),
+            group,
             slug,
         });
     }
@@ -812,6 +822,35 @@ pub fn rename_project(
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
     manifest["name"] = serde_json::Value::String(display_name);
+    let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+/// Set or clear the project's welcome-screen group (empty or missing clears the field).
+#[tauri::command]
+pub fn set_project_group(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    group: Option<String>,
+) -> Result<(), String> {
+    validate_slug(&slug)?;
+    let group = group.map(|g| g.trim().to_owned()).filter(|g| !g.is_empty());
+    let root = require_root(&app, &state)?;
+    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    match group {
+        Some(g) => manifest["group"] = serde_json::Value::String(g),
+        None => {
+            if let Some(obj) = manifest.as_object_mut() {
+                obj.remove("group");
+            }
+        }
+    }
     let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, pretty + "\n").map_err(|e| e.to_string())?;
@@ -1107,6 +1146,7 @@ pub fn create_project(
     state: State<'_, SettingsState>,
     name: String,
     template_id: String,
+    group: Option<String>,
 ) -> Result<ProjectInfo, String> {
     let root = require_root(&app, &state)?;
     let display_name = name.trim().to_owned();
@@ -1177,6 +1217,10 @@ pub fn create_project(
         serde_json::from_str(&manifest_text).map_err(|e| format!("template manifest: {e}"))?;
     manifest["id"] = serde_json::Value::String(slug.clone());
     manifest["name"] = serde_json::Value::String(display_name.clone());
+    let group = group.map(|g| g.trim().to_owned()).filter(|g| !g.is_empty());
+    if let Some(g) = &group {
+        manifest["group"] = serde_json::Value::String(g.clone());
+    }
     let pretty = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(MANIFEST_FILENAME), pretty + "\n").map_err(|e| e.to_string())?;
 
@@ -1208,7 +1252,7 @@ pub fn create_project(
         Err(e) => log::warn!("git unavailable, skipping repo init: {e}"),
     }
 
-    let duration_ms = manifest_summary(&dir).map(|(_, d)| d).unwrap_or(0);
+    let duration_ms = manifest_summary(&dir).map(|(_, d, _)| d).unwrap_or(0);
     Ok(ProjectInfo {
         name: display_name,
         path: dir.to_string_lossy().into_owned(),
@@ -1216,6 +1260,7 @@ pub fn create_project(
         snapshot_path: None,
         snapshot_mtime_ms: None,
         last_opened_ms: None,
+        group,
         slug,
     })
 }

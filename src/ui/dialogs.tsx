@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PROJECT_TEMPLATES, slugifyName } from "../engine/workspace";
+import { listProjects, PROJECT_TEMPLATES, slugifyName } from "../engine/workspace";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "./ThemePicker";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -93,10 +93,18 @@ export function TrustGateModal({
 
 /** Create-project dialog: name + template, then the theme grid with hover-cycled previews. The theme applies to the new project's `project.json` after the template copy (`set_project_theme`). */
 export function NewProjectDialog({
+  initialGroup,
   onCreate,
   onCancel,
 }: {
-  onCreate: (name: string, templateId: string, themeId: string) => Promise<void>;
+  /** Preselected welcome-screen group (from a group heading's "+"). */
+  initialGroup?: string | null;
+  onCreate: (
+    name: string,
+    templateId: string,
+    themeId: string,
+    group: string | null,
+  ) => Promise<void>;
   onCancel: () => void;
 }) {
   const [step, setStep] = useState<"details" | "theme">("details");
@@ -104,6 +112,8 @@ export function NewProjectDialog({
   const [templateId, setTemplateId] = useState<string>(PROJECT_TEMPLATES[0].id);
   const [themeId, setThemeId] = useState("kookaburra-studio-white");
   const [themes, setThemes] = useState<ThemeChoice[]>([]);
+  const [group, setGroup] = useState(initialGroup ?? "");
+  const [groups, setGroups] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const slug = slugifyName(name);
@@ -114,6 +124,15 @@ export function NewProjectDialog({
     void listThemeChoices().then((choices) => {
       if (!cancelled) setThemes(choices);
     });
+    void listProjects()
+      .then((list) => {
+        if (cancelled) return;
+        const names = Array.from(
+          new Set(list.map((p) => p.group).filter((g): g is string => Boolean(g))),
+        ).sort((a, b) => a.localeCompare(b));
+        setGroups(names);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -130,7 +149,7 @@ export function NewProjectDialog({
     setBusy(true);
     setError(null);
     try {
-      await onCreate(name, templateId, themeId);
+      await onCreate(name, templateId, themeId, group.trim() || null);
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -171,6 +190,30 @@ export function NewProjectDialog({
                 </button>
               ))}
             </fieldset>
+            <div className="wizard-field">
+              <span className="wizard-label">Group (optional)</span>
+              {groups.length > 0 && (
+                <fieldset className="group-chips" aria-label="Existing groups">
+                  {groups.map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      className={`group-chip${group.trim() === g ? " selected" : ""}`}
+                      onClick={() => setGroup(group.trim() === g ? "" : g)}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </fieldset>
+              )}
+              <input
+                className="modal-input"
+                type="text"
+                placeholder="No group"
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+              />
+            </div>
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onCancel} disabled={busy}>

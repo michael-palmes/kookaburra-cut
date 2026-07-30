@@ -7,10 +7,12 @@ import {
   duplicateProject,
   listProjects,
   renameProject,
+  setProjectGroup,
   snapshotUrl,
   type WorkspaceProjectInfo,
 } from "../engine/workspace";
 import { NamePromptModal } from "./NamePromptModal";
+import { useEscapeClose } from "./useEscapeClose";
 
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000));
@@ -56,12 +58,99 @@ function PlaceholderArt() {
   );
 }
 
+/** Pick or type a group for one project; the NamePromptModal shape plus existing-group chips and a remove action. */
+function GroupPromptModal({
+  current,
+  groups,
+  onSubmit,
+  onCancel,
+}: {
+  current: string | null;
+  groups: string[];
+  onSubmit: (group: string | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(current ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEscapeClose(onCancel, !busy);
+  const submit = (v: string | null) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    onSubmit(v?.trim() ? v.trim() : null).catch((e) => {
+      setError(String(e));
+      setBusy(false);
+    });
+  };
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Move to group">
+      <div className="modal">
+        <h2>Move to group</h2>
+        {groups.length > 0 && (
+          <fieldset className="group-chips" aria-label="Existing groups">
+            {groups.map((g) => (
+              <button
+                key={g}
+                type="button"
+                className={`group-chip${value.trim() === g ? " selected" : ""}`}
+                onClick={() => setValue(g)}
+              >
+                {g}
+              </button>
+            ))}
+          </fieldset>
+        )}
+        <div className="wizard-field">
+          <span className="wizard-label">Group</span>
+          <input
+            className="modal-input"
+            placeholder="e.g. Client work"
+            value={value}
+            // biome-ignore lint/a11y/noAutofocus: a single-input prompt IS the focus target
+            autoFocus
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit(value);
+            }}
+          />
+        </div>
+        <p className="modal-hint">
+          Groups appear as sections on this screen; typing a new name creates it.
+        </p>
+        {error && <p className="modal-error">{error}</p>}
+        <div className="modal-actions">
+          {current && (
+            <button type="button" className="btn" onClick={() => submit(null)} disabled={busy}>
+              Remove from group
+            </button>
+          )}
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => submit(value)}
+            disabled={busy || !value.trim()}
+          >
+            {busy ? "Working…" : "Move"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProjectCard({
   project,
+  groups,
   onOpen,
   onChanged,
 }: {
   project: WorkspaceProjectInfo;
+  /** Every existing group name, for the move-to-group chips. */
+  groups: string[];
   onOpen: () => void;
   /** A management action landed (rename/duplicate/delete); the host re-scans. */
   onChanged: () => void;
@@ -72,7 +161,7 @@ function ProjectCard({
     .join(" · ");
   // The ⋯ management menu: a sibling of the card button, never inside it (nested buttons; the WKWebView img-in-button trap).
   const [menuOpen, setMenuOpen] = useState(false);
-  const [prompt, setPrompt] = useState<"rename" | "duplicate" | null>(null);
+  const [prompt, setPrompt] = useState<"rename" | "duplicate" | "group" | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -157,6 +246,17 @@ function ProjectCard({
           <button
             type="button"
             role="menuitem"
+            className="rail-menu-item"
+            onClick={() => {
+              setMenuOpen(false);
+              setPrompt("group");
+            }}
+          >
+            Move to group…
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             className={`rail-menu-item${confirmDelete ? " danger" : ""}`}
             onClick={() => {
               if (!confirmDelete) {
@@ -206,11 +306,23 @@ function ProjectCard({
           onCancel={() => setPrompt(null)}
         />
       )}
+      {prompt === "group" && (
+        <GroupPromptModal
+          current={project.group}
+          groups={groups}
+          onSubmit={async (group) => {
+            await setProjectGroup(project.slug, group);
+            setPrompt(null);
+            onChanged();
+          }}
+          onCancel={() => setPrompt(null)}
+        />
+      )}
     </div>
   );
 }
 
-/** The welcome screen: the user's projects as snapshot cards, a New Project affordance, and, behind an ⌥-click on the version label, the bundled dev/gate projects; sorted most-recently-opened first. */
+/** The welcome screen: the user's projects as snapshot cards (grouped projects under their own section headings), a New Project affordance, and, behind an ⌥-click on the version label, the bundled dev/gate projects; sorted most-recently-opened first. */
 export function Welcome({
   onOpenProject,
   onNewProject,
@@ -218,7 +330,7 @@ export function Welcome({
   focusSearchNonce,
 }: {
   onOpenProject: (projectId: string) => void;
-  onNewProject: () => void;
+  onNewProject: (group?: string) => void;
   /** Bump to re-scan the workspace (e.g. after a create). */
   refreshKey: number;
   /** Bump to focus and select the search field (⌘F). */
@@ -280,6 +392,11 @@ export function Welcome({
           p.slug.toLowerCase().includes(trimmedQuery),
       )
     : (projects ?? []);
+  // Group names come from ALL projects (not the filtered view) so the move-to-group chips stay stable while searching.
+  const groups = Array.from(
+    new Set((projects ?? []).map((p) => p.group).filter((g): g is string => Boolean(g))),
+  ).sort((a, b) => a.localeCompare(b));
+  const ungrouped = visibleProjects.filter((p) => !p.group);
 
   return (
     <div className="welcome" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
@@ -331,15 +448,16 @@ export function Welcome({
       )}
 
       <div className="project-grid">
-        {visibleProjects.map((p) => (
+        {ungrouped.map((p) => (
           <ProjectCard
             key={p.slug}
             project={p}
+            groups={groups}
             onOpen={() => onOpenProject(`ws:${p.slug}`)}
             onChanged={() => setRetryNonce((n) => n + 1)}
           />
         ))}
-        <button type="button" className="project-card new-project" onClick={onNewProject}>
+        <button type="button" className="project-card new-project" onClick={() => onNewProject()}>
           <span className="new-project-plus" aria-hidden="true">
             +
           </span>
@@ -357,6 +475,38 @@ export function Welcome({
           <span>Import a pack</span>
         </button>
       </div>
+
+      {groups.map((group) => {
+        const members = visibleProjects.filter((p) => p.group === group);
+        if (members.length === 0) return null;
+        return (
+          <section key={group} aria-label={group}>
+            <div className="welcome-group-head">
+              <h2 className="welcome-section">{group}</h2>
+              <button
+                type="button"
+                className="welcome-group-add"
+                aria-label={`New project in ${group}`}
+                title={`New project in ${group}`}
+                onClick={() => onNewProject(group)}
+              >
+                +
+              </button>
+            </div>
+            <div className="project-grid">
+              {members.map((p) => (
+                <ProjectCard
+                  key={p.slug}
+                  project={p}
+                  groups={groups}
+                  onOpen={() => onOpenProject(`ws:${p.slug}`)}
+                  onChanged={() => setRetryNonce((n) => n + 1)}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
 
       {showDevProjects && (
         <>

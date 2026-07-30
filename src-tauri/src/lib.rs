@@ -1247,6 +1247,7 @@ pub fn run() {
             workspace::set_export_to_downloads,
             workspace::set_lag_warning,
             workspace::rename_project,
+            workspace::set_project_group,
             workspace::duplicate_project,
             workspace::delete_project,
             workspace::write_snapshot,

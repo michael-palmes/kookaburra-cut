@@ -35,6 +35,8 @@ import { ensureFontRefsPinned } from "./systemFonts";
 export interface ProjectManifest {
   id: string;
   name: string;
+  /** Welcome-screen group heading; absent for ungrouped projects. */
+  group?: string;
   /** Per-project soundtrack: assets-relative file + mix params, muxed at export. */
   audio?: ProjectAudioSpec;
   /** Theme to apply, matched against `Theme.id` (`kookaburra-*` bundled, `ws:<slug>` user). */

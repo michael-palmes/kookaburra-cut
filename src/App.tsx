@@ -257,6 +257,8 @@ export default function App() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectListing[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
+  /** Group preselected in the create dialog (a group heading's "+" on the welcome screen). */
+  const [newProjectGroup, setNewProjectGroup] = useState<string | null>(null);
   const isAutoRun = useMemo(() => {
     try {
       return getAutoRunConfig() !== null;
@@ -1061,8 +1063,8 @@ export default function App() {
   );
 
   const handleCreateProject = useCallback(
-    async (name: string, templateId: string, themeId: string) => {
-      const project = await createProject(name, templateId);
+    async (name: string, templateId: string, themeId: string, group: string | null) => {
+      const project = await createProject(name, templateId, group);
       // The theme step's pick lands in the copied project.json before the first load, so the project opens already themed.
       await invoke("set_project_theme", { slug: project.slug, themeId });
       await refreshProjects();
@@ -1729,7 +1731,10 @@ export default function App() {
       {view === "welcome" && (
         <Welcome
           onOpenProject={openProject}
-          onNewProject={() => setShowNewProject(true)}
+          onNewProject={(group) => {
+            setNewProjectGroup(group ?? null);
+            setShowNewProject(true);
+          }}
           refreshKey={welcomeRefresh}
           focusSearchNonce={welcomeSearchNonce}
         />
@@ -2221,6 +2226,7 @@ export default function App() {
       )}
       {showNewProject && (
         <NewProjectDialog
+          initialGroup={newProjectGroup}
           onCreate={handleCreateProject}
           onCancel={() => setShowNewProject(false)}
         />
