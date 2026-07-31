@@ -883,6 +883,7 @@ mod tests {
             tap_style: None,
             tap_color: None,
             tap_size: None,
+            reference: None,
         }
     }
 
