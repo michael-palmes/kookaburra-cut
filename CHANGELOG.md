@@ -4,6 +4,66 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-31
+
+### Added
+
+- Before/after comparison scenes. One scene renders as two sides and
+  composites under an animatable mask (linear at any angle, circle,
+  radial or blend), with a divider line, grip and label chips drawn
+  from theme tokens. The divider gets its own timeline lane with eased
+  keys and four motion presets, and the after side can carry its own
+  media, theme, background and lighting through a Before/After pill in
+  the inspector.
+- Multi-device scenes. Stage two to four devices with six layout
+  presets, resolved per aspect, and a Position drill covering gap and
+  per-device position, rotation, scale and grounding. The comparison
+  kind scaffolds each device with its own screen media.
+- Staged 3D objects. Any scene can stage objects from a library with a
+  CC0 starter set and GLB import, beside-device presets and a
+  preview-only drag gizmo.
+- A reference pane in the video editor: match two recordings side by
+  side with scrub lock, swap, frame nudge that bakes as a trim, sync
+  markers and a ghost overlay.
+- Welcome screen project groups, and search docked beside the wordmark
+  with Cmd+F to focus it.
+- Copy scenes into another project with their assets, and a
+  project-wide font override.
+- Video window placement sliders, and a Window recording toggle that
+  crops the margins and corner radius off a raw macOS window capture,
+  set automatically when a capture is detected.
+- An Image scene kind, a wired Blank template and a header-icon image
+  picker.
+- A capture bridge so the embedded terminal can see rendered frames in
+  the packaged app.
+
+### Changed
+
+- The video window floats over the scene's own background: the backing
+  stage is gone, and wizard-created titled scenes place the window to
+  fit the text.
+- Media lists order by date added, file drops import while pickers are
+  open, and picker grids scroll three across under a pinned toolbar.
+- Media cards gain Copy path, Show in Finder and delete from library.
+- Overlays take a full-panel shape, panel text styles, and a default
+  colour that follows the visible backdrop.
+- Lighting sliders are labelled, light types carry icons, lighting
+  presets show baked thumbnails, and the Render row sits under
+  Playback options.
+- Show in Finder reveals exports that land in Downloads.
+- Change device applies to every staged device by default.
+
+### Fixed
+
+- Edit video re-points the device actually being edited, not always
+  the first.
+- 3D backgrounds no longer sort in front of scene content at oblique
+  camera angles.
+- Overlay bullets wrap from measured text, so the space reserved and
+  the space drawn agree.
+- Device rows in the inspector target the selected device, fixing a
+  latent bug when removing the first one.
+
 ## [0.8.0] - 2026-07-29
 
 ### Added
