@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "candlestick",
+  "name": "Candlestick",
+  "glb": "candlestick.glb",
+  "thumbnail": "candlestick.png",
+  "fitHeight": 1,
+  "licence": { "name": "Original work (project-owned)" },
+  "tags": ["prop", "crypto", "chart"]
+}

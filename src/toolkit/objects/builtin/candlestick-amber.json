@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "candlestick-amber",
+  "name": "Amber candlestick",
+  "glb": "candlestick-amber.glb",
+  "thumbnail": "candlestick-amber.png",
+  "fitHeight": 1,
+  "licence": { "name": "Original work (project-owned)" },
+  "tags": ["prop", "crypto", "chart"]
+}

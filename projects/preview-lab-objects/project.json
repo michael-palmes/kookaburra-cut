@@ -10,7 +10,7 @@
       "durationMs": 1000
     },
     {
-      "file": "scenes/object-water-bottle.tsx",
+      "file": "scenes/object-ethereum-coin.tsx",
       "durationMs": 1000
     },
     {
@@ -18,7 +18,11 @@
       "durationMs": 1000
     },
     {
-      "file": "scenes/object-boombox.tsx",
+      "file": "scenes/object-candlestick.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-candlestick-amber.tsx",
       "durationMs": 1000
     }
   ]

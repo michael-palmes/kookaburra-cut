@@ -10,8 +10,9 @@ CC0 needs no gitignore split.
 | File | Source model | Licence | Author |
 | --- | --- | --- | --- |
 | bitcoin-coin.glb | Original project asset | Project-owned | Authored for Kookaburra Cut (THREE.GLTFExporter) |
-| water-bottle.glb | WaterBottle | CC0 1.0 | Public domain (2017) |
+| ethereum-coin.glb | Original project asset | Project-owned | Authored for Kookaburra Cut (THREE.GLTFExporter) |
+| candlestick.glb | Original project asset | Project-owned | Authored for Kookaburra Cut (THREE.GLTFExporter) |
+| candlestick-amber.glb | Original project asset | Project-owned | Authored for Kookaburra Cut (THREE.GLTFExporter) |
 | avocado.glb | Avocado | CC0 1.0 | Public domain (2017) |
-| boombox.glb | BoomBox | CC0 1.0 | Public domain (2017) |
 
 Modifications: texture downscale to 1024 + webp, mesh weld/prune (geometry unchanged).

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Object: candlestick",
+  "duration": {
+    "mode": "manual"
+  },
+  "text": {},
+  "objects": [
+    {
+      "id": "o1",
+      "objectId": "candlestick",
+      "placement": {
+        "position": [0, 0, 1.2],
+        "rotationDeg": [0, 18, 0],
+        "scale": 2.6
+      }
+    }
+  ]
+}

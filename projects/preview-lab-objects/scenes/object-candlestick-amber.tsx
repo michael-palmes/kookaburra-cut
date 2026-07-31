@@ -1,12 +1,12 @@
 import { defineScene, SceneStage, useTheme } from "@kookaburra/toolkit";
 
 /**
- * Preview Lab: object-picker card for "boombox". DEV-ONLY, rendered by
+ * Preview Lab: object-picker card for "candlestick-amber". DEV-ONLY, rendered by
  * `pnpm kookaburra:run --action option-previews`; the sidecar stages the bundled object
  * scaled up to fill the card, so the composition stays empty.
  */
 export default defineScene({
-  id: "lab-object-boombox",
+  id: "lab-object-candlestick-amber",
   durationMs: 1000,
   Scene() {
     const theme = useTheme();

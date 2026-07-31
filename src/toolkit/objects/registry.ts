@@ -2,8 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { fsUrl } from "../../engine/media";
 import avocadoDoc from "./builtin/avocado.json";
 import bitcoinCoinDoc from "./builtin/bitcoin-coin.json";
-import boomboxDoc from "./builtin/boombox.json";
-import waterBottleDoc from "./builtin/water-bottle.json";
+import candlestickDoc from "./builtin/candlestick.json";
+import candlestickAmberDoc from "./builtin/candlestick-amber.json";
+import ethereumCoinDoc from "./builtin/ethereum-coin.json";
 import { BUILTIN_OBJECT_GLB_URLS } from "./builtinObjectGlbUrls";
 import { type ObjectManifest, parseObjectManifest } from "./schema";
 
@@ -12,9 +13,10 @@ import { type ObjectManifest, parseObjectManifest } from "./schema";
 // Explicit imports (not a glob) keep the bundled set type-checked and vitest-loadable; a new bundled object must register here AND in schema.test.ts (a silently-degraded builtin must fail unit tests, not gates).
 const BUILTIN_DOCS: { doc: unknown; source: string }[] = [
   { doc: bitcoinCoinDoc, source: "builtin/bitcoin-coin" },
-  { doc: waterBottleDoc, source: "builtin/water-bottle" },
+  { doc: ethereumCoinDoc, source: "builtin/ethereum-coin" },
   { doc: avocadoDoc, source: "builtin/avocado" },
-  { doc: boomboxDoc, source: "builtin/boombox" },
+  { doc: candlestickDoc, source: "builtin/candlestick" },
+  { doc: candlestickAmberDoc, source: "builtin/candlestick-amber" },
 ];
 
 /** Committed picker thumbnails for bundled objects, baked by `--action object-previews`; a missing still degrades to a text card. */

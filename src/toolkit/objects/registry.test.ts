@@ -7,8 +7,9 @@ describe("bundled objects", () => {
     expect(Object.keys(builtinObjects).sort()).toEqual([
       "avocado",
       "bitcoin-coin",
-      "boombox",
-      "water-bottle",
+      "candlestick",
+      "candlestick-amber",
+      "ethereum-coin",
     ]);
   });
 

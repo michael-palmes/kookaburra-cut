@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "Object: water-bottle",
+  "name": "Object: candlestick-amber",
   "duration": {
     "mode": "manual"
   },
@@ -8,11 +8,11 @@
   "objects": [
     {
       "id": "o1",
-      "objectId": "water-bottle",
+      "objectId": "candlestick-amber",
       "placement": {
         "position": [0, 0, 1.2],
         "rotationDeg": [0, 18, 0],
-        "scale": 3.0
+        "scale": 2.6
       }
     }
   ]
