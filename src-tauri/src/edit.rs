@@ -81,6 +81,18 @@ pub struct EditDoc {
     /// Tap size multiplier on the default dot size; absent = 1.25.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tap_size: Option<f64>,
+    /// The side-by-side reference pairing (scene matching); editor convenience, never read by renders.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<EditReference>,
+}
+
+/// A remembered reference video for side-by-side matching: another scene video shown in a read-only pane, its playhead offset in output ms (negative = the reference runs early).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditReference {
+    pub rel: String,
+    #[serde(default)]
+    pub offset_ms: i64,
 }
 
 /// Which edit the editor window should open; stored in managed state and read by the editor on boot (`get_editor_target`) rather than smuggled through a URL query.
@@ -93,6 +105,9 @@ pub struct EditTarget {
     pub path: String,
     /// The originating source video (project-relative); lets the editor recreate the document from scratch when `edit.json` is corrupt (`reset_edit`).
     pub source_rel: String,
+    /// The scene the edit was opened from; feeds the reference dropdown's media inventory.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene_index: Option<usize>,
 }
 
 /// The pending editor target (set just before the window opens / is refocused).
@@ -233,6 +248,7 @@ pub async fn open_edit(
     editor: State<'_, EditorState>,
     slug: String,
     source_rel: String,
+    scene_index: Option<usize>,
 ) -> Result<String, String> {
     let root = workspace::require_root(&app, &settings)?;
     workspace::validate_slug(&slug)?;
@@ -261,6 +277,7 @@ pub async fn open_edit(
         name: name.clone(),
         path: root.join(&slug).to_string_lossy().into_owned(),
         source_rel: source_rel.clone(),
+        scene_index,
     };
     *editor.0.lock().map_err(|_| "editor state poisoned")? = Some(target.clone());
     open_editor_window(&app, &target)?;
@@ -315,6 +332,7 @@ async fn create_default_doc(
         tap_style: prefs.tap_style,
         tap_color: prefs.tap_color,
         tap_size: prefs.tap_size,
+        reference: None,
     })
 }
 
@@ -326,6 +344,7 @@ pub fn open_edit_named(
     editor: State<'_, EditorState>,
     slug: String,
     name: String,
+    scene_index: Option<usize>,
 ) -> Result<String, String> {
     let root = workspace::require_root(&app, &settings)?;
     workspace::validate_slug(&slug)?;
@@ -341,6 +360,7 @@ pub fn open_edit_named(
         name: name.clone(),
         path: root.join(&slug).to_string_lossy().into_owned(),
         source_rel,
+        scene_index,
     };
     *editor.0.lock().map_err(|_| "editor state poisoned")? = Some(target.clone());
     open_editor_window(&app, &target)?;
@@ -863,6 +883,7 @@ mod tests {
             tap_style: None,
             tap_color: None,
             tap_size: None,
+            reference: None,
         }
     }
 

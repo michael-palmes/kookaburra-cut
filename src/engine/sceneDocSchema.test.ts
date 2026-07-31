@@ -450,4 +450,29 @@ describe("parseSceneDoc", () => {
     );
     expect(doc?.cameraRig).toEqual({ keys: [], segments: [] });
   });
+
+  it("round-trips a deviceLayout block and degrades its bad fields alone", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const block = {
+      preset: "hero",
+      gap: 0.5,
+      devices: { d2: { offset: [0.1, 0, -0.2], rotationDeg: [0, 5, 0], scale: 1.2 } },
+    };
+    const doc = parseSceneDoc({ version: 1, deviceLayout: block }, "test");
+    expect(doc?.deviceLayout).toEqual(block);
+    const degraded = parseSceneDoc(
+      {
+        version: 1,
+        deviceLayout: {
+          preset: "spiral",
+          gap: "wide",
+          devices: { d1: { offset: [1, 2], scale: 0 }, d2: "nope", d3: { scale: 2 } },
+        },
+      },
+      "test",
+    );
+    expect(degraded?.deviceLayout).toEqual({ preset: "row", devices: { d3: { scale: 2 } } });
+    expect(parseSceneDoc({ version: 1, deviceLayout: 7 }, "test")?.deviceLayout).toBeUndefined();
+    vi.restoreAllMocks();
+  });
 });

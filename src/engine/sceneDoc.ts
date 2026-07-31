@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { useContext, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
 import { useDeviceRegistry } from "./deviceRegistry";
+import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
@@ -71,17 +73,22 @@ export interface SceneDeviceProps extends Omit<DeviceProps, "model"> {
   model: DeviceId;
 }
 
-/** The scene document's devices array as `Device`-ready props; unknown models pass through since `Device` itself degrades (console error + fallback geometry) rather than crashing the tree. */
+/** The scene document's devices array as `Device`-ready props; unknown models pass through since `Device` itself degrades (console error + fallback geometry) rather than crashing the tree. A `deviceLayout` block resolves to per-aspect placements HERE, so every consuming scene (any kind, any scaffold vintage) honours it without template changes; templates that resolve the block themselves recompute the identical values (the resolver is pure and ignores input placements beyond `ground`). */
 export function useSceneDevices(): SceneDeviceProps[] {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
+  const format = useFormat();
   // Layout effect so DevicesFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
     useDeviceRegistry.getState().register(sceneIndex);
     return () => useDeviceRegistry.getState().unregister(sceneIndex);
   }, [sceneIndex]);
-  return (doc?.devices ?? []).map((d) => d as SceneDeviceProps);
+  const devices = (doc?.devices ?? []).map((d) => d as SceneDeviceProps);
+  const layout = doc?.deviceLayout;
+  if (!layout) return devices;
+  const placements = resolveDeviceLayout(devices, layout, format);
+  return devices.map((d, i) => ({ ...d, placement: placements[i] }));
 }
 
 /** The scene document's objects array; registers the scene as a consumer so `ObjectsFallback` stands down (the useSceneDevices pattern). */
@@ -178,6 +185,33 @@ export async function applyBackgroundToAllScenes(
     pushHistory({ label: "apply background to all scenes", changes });
   }
   return { applied: changes.length, failed };
+}
+
+/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
+export function applyEditRepoint(
+  doc: SceneDoc,
+  slot: "device" | "background" | "videoWindow",
+  rel: string,
+  deviceId?: string,
+): SceneDoc | null {
+  const next = structuredClone(doc);
+  if (slot === "background") {
+    if (next.background?.type !== "video") return null;
+    next.background = { ...next.background, src: rel };
+    return next;
+  }
+  if (slot === "videoWindow") {
+    if (!next.videoWindow) return null;
+    next.videoWindow = {
+      ...next.videoWindow,
+      media: { ...next.videoWindow.media, src: rel },
+    };
+    return next;
+  }
+  const device = deviceId ? next.devices?.find((d) => d.id === deviceId) : next.devices?.[0];
+  if (!device?.media) return null;
+  device.media = { ...device.media, src: rel };
+  return next;
 }
 
 // ── Duration-follow (engine-side; reads LoadedProject directly, never React context) ──

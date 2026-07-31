@@ -2,18 +2,20 @@ import {
   AnimatedHeadline,
   Device,
   defineScene,
+  resolveDeviceLayout,
   SceneStage,
   useFormat,
   useSceneDevices,
+  useSceneDoc,
   useSceneText,
   useTheme,
 } from "@kookaburra/toolkit";
 
 /**
- * Preview Lab: New-scene kind card for "Before / after". DEV-ONLY, rendered by
+ * Preview Lab: New-scene kind card for "Comparison". DEV-ONLY, rendered by
  * `pnpm kookaburra:run --action option-previews` into the committed kind-picker stills;
- * mirrors the scaffolded comparison-scene composition (a labelled symmetric pair) with
- * the scaffolder's current defaults.
+ * mirrors the scaffolded comparison-scene composition (labelled devices laid out by the
+ * sidecar's deviceLayout block) with the scaffolder's current defaults.
  */
 export default defineScene({
   id: "lab-kind-comparison",
@@ -27,9 +29,10 @@ export default defineScene({
     const labels = [useSceneText("beforeLabel"), useSceneText("afterLabel")];
     const labelKeys = ["beforeLabel", "afterLabel"];
     const devices = useSceneDevices();
-    // Portrait pulls the pair toward centre and shrinks it harder than a single device would.
-    const spread = portrait ? 0.62 : 1;
-    const scaleMult = portrait ? 0.62 : 0.92;
+    const doc = useSceneDoc();
+    const placements = doc?.deviceLayout
+      ? resolveDeviceLayout(devices, doc.deviceLayout, format)
+      : devices.map((d) => d.placement ?? {});
     return (
       <SceneStage>
         <color attach="background" args={[theme.colors.background]} />
@@ -56,7 +59,8 @@ export default defineScene({
           />
         ) : null}
         {devices.map((d, i) => {
-          const x = (d.placement?.position?.[0] ?? 0) * spread;
+          const placement = placements[i] ?? {};
+          const x = placement.position?.[0] ?? 0;
           const label = i < 2 ? labels[i] : null;
           return (
             <group key={d.id}>
@@ -72,18 +76,7 @@ export default defineScene({
                   fontSize={portrait ? 0.13 : 0.18}
                 />
               ) : null}
-              <Device
-                {...d}
-                placement={{
-                  ...d.placement,
-                  position: [
-                    x,
-                    d.placement?.position?.[1] ?? -0.3,
-                    d.placement?.position?.[2] ?? 0,
-                  ],
-                  scale: (d.placement?.scale ?? 1) * scaleMult,
-                }}
-              />
+              <Device {...d} placement={placement} />
             </group>
           );
         })}

@@ -45,12 +45,13 @@ Steps:
      floating). device: `placement` position `[0, -0.3, 0]`, `rotationDeg: [0, 0, 0]`,
      `scale: 1`. deviceonly: position `[0, 0, 0]` (no title to clear), `scale: 1.35`
      (dominant framing), `ground: true` (rests on a staged floor when the theme has one).
-   - comparison: seeds `text.beforeLabel: "Before"` and `text.afterLabel: "After"` too,
-     and TWO device entries sharing the catalog `model`/`colour`: `d1` at position
-     `[-0.85, -0.3, 0]`, `rotationDeg: [0, 12, 0]` with the first (before) media, `d2`
-     at `[0.85, -0.3, 0]`, `rotationDeg: [0, -12, 0]` with the second (after) media,
-     both `scale: 0.85`, `motion: { "preset": "none" }`, NO `shadow` key (auto-resolve,
-     as above). The template compresses x and scale further in portrait.
+   - comparison: seeds EMPTY `text.beforeLabel` and `text.afterLabel` (the chips appear
+     only when copy is typed), 2-4 device entries (`d1`..`dn`, default 2) sharing the
+     catalog `model`/`colour` with per-device media in order, `motion: { "preset":
+     "none" }`, NO `shadow` key and NO `placement` (auto-resolve, as above), plus a
+     `deviceLayout` block `{ "preset": "toe-in", "gap": 0.35 }`: the engine resolves
+     positions per aspect from it (`resolveDeviceLayout`), so devices carry no
+     hand-authored positions.
    - titleicon: `headerIcon` (the user's emoji or `assets/` image path, else `"🚀"`).
    - overlaystart/overlayend: `frame` = `{ "cutout": { "shape": "rounded-rect", "side":
      "start"|"end" }, "background": "background", "chip": { "label": "New", "icon":
@@ -85,9 +86,10 @@ Steps:
    (`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 <file>`,
    seconds → ms, rounded): `{ "mode": "follow-media", "sourceDeviceId": "d1" }` for the
    device kinds, `{ "mode": "follow-media", "source": "videoWindow" }` for videowindow,
-   `{ "mode": "follow-media" }` (no source) for the video kind. comparison: probe BOTH
-   videos and follow the longer one, `durationMs` = its length and `sourceDeviceId` =
-   its device (`"d1"` or `"d2"`); no videos at all → manual.
+   `{ "mode": "follow-media" }` (no source) for the video kind. comparison: probe EVERY
+   video slot and set `durationMs` to the longest; the sidecar stays UNPINNED
+   (`{ "mode": "follow-media" }`, no `sourceDeviceId`) because the engine's rule is
+   longest-wins; no videos at all → manual.
    Otherwise `{ "mode": "manual" }` and **4000ms**.
 6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
    `durationMs`, in order. The `file` must not already appear in `scenes` (the loader

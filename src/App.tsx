@@ -94,6 +94,7 @@ import { SceneHost } from "./engine/SceneHost";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
+  applyEditRepoint,
   resyncFollowMediaDuration,
   syncFollowMediaDurations,
   writeSceneDoc,
@@ -493,6 +494,7 @@ export default function App() {
     index: number;
     editName: string;
     slot: "device" | "background" | "videoWindow";
+    deviceId?: string;
   } | null>(null);
 
   // The fingerprint poll's baseline lives in a ref so UI-initiated writes can re-arm it (flicker fix): otherwise an app-made sidecar/project.json write would trigger a redundant reload ~2s later.
@@ -903,27 +905,8 @@ export default function App() {
         const doc = project.sceneDocs[pending.index];
         const sceneFile = project.sceneFiles[pending.index];
         const rel = `assets/${pending.editName}-edited.mp4`;
-        const next = doc ? structuredClone(doc) : null;
-        let repointed = false;
-        if (pending.slot === "background") {
-          if (next?.background?.type === "video") {
-            next.background = { ...next.background, src: rel };
-            repointed = true;
-          }
-        } else if (pending.slot === "videoWindow") {
-          if (next?.videoWindow) {
-            next.videoWindow = {
-              ...next.videoWindow,
-              media: { ...next.videoWindow.media, src: rel },
-            };
-            repointed = true;
-          }
-        } else if (next?.devices?.[0]?.media) {
-          const d = next.devices[0];
-          if (d.media) d.media = { ...d.media, src: rel };
-          repointed = true;
-        }
-        if (doc && next && sceneFile && repointed) {
+        const next = doc ? applyEditRepoint(doc, pending.slot, rel, pending.deviceId) : null;
+        if (doc && next && sceneFile) {
           try {
             await writeSceneDoc(pending.slug, sceneFile, next);
             // Surgical (flicker fix): patch the doc in memory since the scene re-binds its clip by src without a reload; only a duration change needs the timing refresh.
@@ -1571,6 +1554,7 @@ export default function App() {
       sceneIndex: number,
       mediaRel: string,
       slot: "device" | "background" | "videoWindow" = "device",
+      deviceId?: string,
     ) => {
       if (!project || !isWorkspaceProjectId(project.id)) return;
       const slug = workspaceSlug(project.id);
@@ -1579,9 +1563,9 @@ export default function App() {
         const m = /^assets\/(.+)-edited\.mp4$/.exec(mediaRel);
         const editedOf = m && (await listEdits(slug)).includes(m[1]) ? m[1] : null;
         const editName = editedOf
-          ? await openEditNamed(slug, editedOf)
-          : await openEdit(slug, mediaRel);
-        pendingRepointRef.current = { slug, index: sceneIndex, editName, slot };
+          ? await openEditNamed(slug, editedOf, sceneIndex)
+          : await openEdit(slug, mediaRel, sceneIndex);
+        pendingRepointRef.current = { slug, index: sceneIndex, editName, slot, deviceId };
       } catch (e) {
         console.warn("[edit-video] open failed:", e);
         setToast({ kind: "error", message: `Couldn't open the video editor: ${String(e)}` });
@@ -2228,7 +2212,9 @@ export default function App() {
               onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
-              onOpenEditVideo={(i, rel, slot) => void handleOpenEditVideo(i, rel, slot)}
+              onOpenEditVideo={(i, rel, slot, deviceId) =>
+                void handleOpenEditVideo(i, rel, slot, deviceId)
+              }
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
               onApplyTheme={(id) => void handleApplyTheme(id)}

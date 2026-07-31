@@ -135,6 +135,7 @@ export function InspectorPanel({
     sceneIndex: number,
     mediaRel: string,
     slot?: "device" | "background" | "videoWindow",
+    deviceId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;

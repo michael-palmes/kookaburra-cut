@@ -83,6 +83,11 @@ normally and simply shows no editing affordances.
   "layeredScreenshot": { /* the 3D screen stack — see "Layered screenshot" */ },
   "frame": { /* the scene overlay (panel + cutout) — see "Scene overlays (the frame block)" */ },
   "compare": { /* the before/after comparison (side-B overrides, mask, divider track, chrome) — full schema and value semantics in docs/comparisons.md */ },
+  "deviceLayout": {                          // multi-device layout, resolved per aspect (see "Multi-device layout")
+    "preset": "toe-in",                      // "row" | "toe-in" | "arc" | "cascade" | "hero" | "depth-pair"
+    "gap": 0.35,                             // edge-to-edge world units at 16:9; other aspects compress
+    "devices": { "d2": { "offset": [0.1,0,-0.2], "rotationDeg": [0,-4,0], "scale": 1.1 } }  // per-device deltas on the preset base
+  },
   "animatedTrack": "camera"                  // which keyed track animates this scene:
                                              // "camera" (the absent default) or "layeredScreenshot";
                                              // comparison scenes always stack the divider lane, no flag needed
@@ -777,9 +782,26 @@ brings the lit set; pass `lit={false}` to every additional one. Scaffolded scene
 device array from the sidecar via `useSceneDevices()` — prefer editing the sidecar over
 hard-coding `Device` props (skill rule 7). Unknown model/colour ids degrade with a console
 error, never a crash. Gate project: `ws:device-video-spike`. The `comparison` scene kind
-stages a labelled before/after PAIR (text keys `beforeLabel`/`afterLabel`, devices `d1`
-at x -0.85 yaw 12 and `d2` at x 0.85 yaw -12, scale 0.85, media per side; the template
-compresses x and scale in portrait, and follow-media tracks the longer clip).
+stages 2-4 devices with per-device media and optional label chips (text keys
+`beforeLabel`/`afterLabel`, scaffolded EMPTY so chips appear only when typed): devices
+carry NO placement, a sidecar `deviceLayout` block (`toe-in`, gap 0.35) resolves
+positions per aspect through `resolveDeviceLayout`, and follow-media tracks the longest
+clip. Multi-device cost is additive: each distinct video source is its own extraction
+and decode stream (two is measured fine; probe before optimising beyond that).
+
+**Multi-device layout (`deviceLayout`).** Any device scene may carry the block; while
+present, each device's own `placement` position/rotation/scale are IGNORED (`ground`
+still applies) and `resolveDeviceLayout(devices, block, format)` derives placements:
+preset base at natural size, uniform compression against the aspect's safe width
+(positions and scales together), then per-device deltas (offset/rotation add, scale
+multiplies). Presets: `row`, `toe-in`, `arc`, `cascade`, `hero` (device 1 forward),
+`depth-pair` (exactly 2, else falls back to toe-in). Widths come from catalog
+`layoutWidth` constants, never runtime bboxes, so placeholder and licensed builds lay
+out identically. Resolved placements carry a `resolvedLayout` stamp that `Device`
+prefers over the scalar fields, so scene TSX that post-processes placements (the
+templates' frozen portrait multipliers) cannot drift a laid-out scene: post-process
+only block-less scenes, or delete the field first. Gate fixture:
+`ws:multi-device-spike`.
 
 ```ts
 <VideoClip

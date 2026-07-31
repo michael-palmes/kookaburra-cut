@@ -12,11 +12,13 @@ import { MOTION_OPTIONS } from "../SceneWizards";
 import { useEscapeClose } from "../useEscapeClose";
 import { DrillBack } from "./rows";
 
-/** Change-device as an inspector drill-in: the EditBar modal's content (model switcher + catalog card + colour swatches + motion presets, applied on Save) re-laid for the 312px panel. */
+/** Change-device as an inspector drill-in: the EditBar modal's content (model switcher + catalog card + colour swatches + motion presets, applied on Save) re-laid for the 312px panel. With several devices the save targets all of them by default (the implicit link); switch the pill to change just the selected one, which is how mixed setups happen. */
 export function DeviceDrillIn({
   model,
   colour,
   motion,
+  deviceCount = 1,
+  deviceLabel,
   onBack,
   backLabel = "Scene",
   onSave,
@@ -24,13 +26,18 @@ export function DeviceDrillIn({
   model: DeviceId;
   colour: string;
   motion: DeviceMotionPreset;
+  /** How many devices the scene has; more than one shows the apply-target pill. */
+  deviceCount?: number;
+  /** Short name for the selected device, e.g. "Device 2". */
+  deviceLabel?: string;
   onBack: () => void;
   backLabel?: string;
-  onSave: (model: DeviceId, colour: string, motion: DeviceMotionPreset) => void;
+  onSave: (model: DeviceId, colour: string, motion: DeviceMotionPreset, applyAll: boolean) => void;
 }) {
   const [m, setM] = useState<DeviceId>(model);
   const [c, setC] = useState(colour);
   const [mo, setMo] = useState<DeviceMotionPreset>(motion);
+  const [applyAll, setApplyAll] = useState(true);
   useEscapeClose(onBack);
   const spec = DEVICE_CATALOG[m];
   return (
@@ -38,6 +45,24 @@ export function DeviceDrillIn({
       <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Change device</div>
       <div className="inspector-drill-body">
+        {deviceCount > 1 && (
+          <div className="wizard-presets" role="radiogroup" aria-label="Apply to">
+            {[
+              { all: true, label: "All devices" },
+              { all: false, label: deviceLabel ?? "This device" },
+            ].map((o) => (
+              <button
+                type="button"
+                key={o.label}
+                aria-pressed={applyAll === o.all}
+                className={`chip${applyAll === o.all ? " selected" : ""}`}
+                onClick={() => setApplyAll(o.all)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="inspector-device-switcher" role="radiogroup" aria-label="Device model">
           {DEVICE_IDS.map((id) => (
             <button
@@ -113,7 +138,11 @@ export function DeviceDrillIn({
         <button type="button" className="btn" onClick={onBack}>
           Cancel
         </button>
-        <button type="button" className="btn primary" onClick={() => onSave(m, c, mo)}>
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => onSave(m, c, mo, deviceCount > 1 && applyAll)}
+        >
           Save
         </button>
       </div>

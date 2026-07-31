@@ -136,7 +136,7 @@ export function sceneSections(input: {
     }
     rows.push(
       { id: "device.change", label: "Change device", chevron: true },
-      { id: "device.rotation", label: "Rotation", chevron: true },
+      { id: "device.position", label: "Position", chevron: true },
     );
     if (isDeviceId(device.model) && DEVICE_CATALOG[device.model].lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });

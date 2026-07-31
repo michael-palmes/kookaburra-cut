@@ -76,7 +76,7 @@ type SceneKind =
 const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "device", label: "Device + title", blurb: "A titled phone playing your media" },
   { id: "deviceonly", label: "Device only", blurb: "A centred phone with no title copy" },
-  { id: "comparison", label: "Before / after", blurb: "Two phones comparing old and new" },
+  { id: "comparison", label: "Comparison", blurb: "Devices side by side, old and new" },
   { id: "title", label: "Title", blurb: "A title on the theme background" },
   { id: "titleicon", label: "Title + icon", blurb: "A title with an icon above it" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
@@ -367,12 +367,13 @@ export function NewSceneWizard({
     kind: "video" | "image";
     meta: MediaMeta | null;
   } | null>(null);
-  // The comparison kind's second (after) screen; every other kind leaves it null.
-  const [mediaB, setMediaB] = useState<{
-    rel: string;
-    kind: "video" | "image";
-    meta: MediaMeta | null;
-  } | null>(null);
+  // The comparison kind's device count (2-4) and its extra screens (slots 2..n, slot 1 is `media`); every other kind leaves them alone.
+  const [deviceCount, setDeviceCount] = useState(2);
+  const [mediaExtra, setMediaExtra] = useState<
+    ({ rel: string; kind: "video" | "image"; meta: MediaMeta | null } | null)[]
+  >([null]);
+  // Which extra slot the "mediaB" step is picking (1-based device index).
+  const [mediaIndex, setMediaIndex] = useState(1);
   const [nameOverride, setNameOverride] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [title, setTitle] = useState("");
@@ -394,15 +395,23 @@ export function NewSceneWizard({
       void unlisten.then((fn) => fn());
     };
   }, []);
+  const advanceMediaStep = () => {
+    if (mediaIndex < deviceCount - 1) {
+      setMediaIndex(mediaIndex + 1);
+    } else {
+      setStep("details");
+    }
+  };
   const pickWizardMedia = (rel: string, meta: MediaMeta | null) => {
     const fallback = kind === "layeredscreenshot" ? "image" : "video";
     const picked = { rel, kind: meta?.kind ?? fallback, meta };
     if (step === "mediaB") {
-      setMediaB(picked);
-      setStep("details");
+      setMediaExtra((slots) => slots.map((s, i) => (i === mediaIndex - 1 ? picked : s)));
+      advanceMediaStep();
       return;
     }
     setMedia(picked);
+    setMediaIndex(1);
     setStep(kind === "comparison" ? "mediaB" : "details");
   };
 
@@ -472,12 +481,17 @@ export function NewSceneWizard({
           title: NO_TEXT_KINDS.includes(kind) ? null : title.trim() || null,
           subtitle: SUBTITLE_KINDS.includes(kind) ? subtitle.trim() || null : null,
           bullets: BULLET_KINDS.includes(kind) ? bullets.trim() || null : null,
-          deviceModel: isDeviceKind ? model : null,
-          colour: isDeviceKind ? colour : null,
+          deviceModel: isDeviceKind || isComparison ? model : null,
+          colour: isDeviceKind || isComparison ? colour : null,
           mediaRel: takesMedia ? (media?.rel ?? null) : null,
           mediaKind: takesMedia ? (media?.kind ?? null) : null,
-          mediaRelB: isComparison ? (mediaB?.rel ?? null) : null,
-          mediaKindB: isComparison ? (mediaB?.kind ?? null) : null,
+          deviceCount: isComparison ? deviceCount : null,
+          mediaSlots: isComparison
+            ? [media, ...mediaExtra.slice(0, deviceCount - 1)].map((s) => ({
+                rel: s?.rel ?? null,
+                kind: s?.kind ?? null,
+              }))
+            : null,
           headerIcon: kind === "titleicon" ? headerIcon.trim() || null : null,
           recording,
           position: position ?? null,
@@ -586,6 +600,29 @@ export function NewSceneWizard({
                 }}
               />
             </Field>
+            {isComparison && (
+              <Field label="How many devices?">
+                <div className="wizard-presets">
+                  {[2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`chip${deviceCount === n ? " selected" : ""}`}
+                      onClick={() => {
+                        setDeviceCount(n);
+                        setMediaExtra((slots) => {
+                          const next = slots.slice(0, n - 1);
+                          while (next.length < n - 1) next.push(null);
+                          return next;
+                        });
+                      }}
+                    >
+                      {n} devices
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
             <div className="modal-actions">
               <button type="button" className="btn" onClick={() => setStep("type")}>
                 Back
@@ -601,7 +638,7 @@ export function NewSceneWizard({
           <>
             <Field
               label={
-                isComparison ? (
+                isComparison && deviceCount === 2 ? (
                   <span className="wizard-side-label">
                     <span className={`wizard-side-chip${step === "mediaB" ? " after" : ""}`}>
                       <SideChipGlyph side={step === "mediaB" ? "after" : "before"} />
@@ -611,6 +648,8 @@ export function NewSceneWizard({
                       ? "What plays on the After screen?"
                       : "What plays on the Before screen?"}
                   </span>
+                ) : isComparison ? (
+                  `What plays on screen ${step === "mediaB" ? mediaIndex + 1 : 1} of ${deviceCount}?`
                 ) : kind === "layeredscreenshot" ? (
                   "First screen (the builder grows the stack from here)"
                 ) : kind === "video" ? (
@@ -642,7 +681,7 @@ export function NewSceneWizard({
                   selectedRel={
                     isComparison
                       ? step === "mediaB"
-                        ? (mediaB?.rel ?? null)
+                        ? (mediaExtra[mediaIndex - 1]?.rel ?? null)
                         : (media?.rel ?? null)
                       : VIDEO_MEDIA_KINDS.includes(kind) || kind === "image"
                         ? (media?.rel ?? null)
@@ -663,11 +702,15 @@ export function NewSceneWizard({
               <button
                 type="button"
                 className="btn"
-                onClick={() =>
+                onClick={() => {
+                  if (step === "mediaB" && mediaIndex > 1) {
+                    setMediaIndex(mediaIndex - 1);
+                    return;
+                  }
                   setStep(
                     step === "mediaB" ? "media" : isDeviceKind || isComparison ? "device" : "type",
-                  )
-                }
+                  );
+                }}
               >
                 Back
               </button>
@@ -681,11 +724,14 @@ export function NewSceneWizard({
                   className="btn"
                   onClick={() => {
                     if (step === "mediaB") {
-                      setMediaB(null);
-                      setStep("details");
+                      setMediaExtra((slots) =>
+                        slots.map((s, i) => (i === mediaIndex - 1 ? null : s)),
+                      );
+                      advanceMediaStep();
                       return;
                     }
                     setMedia(null);
+                    setMediaIndex(1);
                     setStep(isComparison ? "mediaB" : "details");
                   }}
                 >
@@ -751,12 +797,14 @@ export function NewSceneWizard({
                 {media.kind === "video" && " — the scene will follow its length"}
               </p>
             )}
-            {isComparison && (media || mediaB) && (
+            {isComparison && (media || mediaExtra.some(Boolean)) && (
               <p className="modal-hint">
-                Before: {media ? media.rel.replace(/^assets\//, "") : "empty screen"}
-                {" · "}After: {mediaB ? mediaB.rel.replace(/^assets\//, "") : "empty screen"}
-                {(media?.kind === "video" || mediaB?.kind === "video") &&
-                  " — the scene will follow the longer video"}
+                {[media, ...mediaExtra.slice(0, deviceCount - 1)]
+                  .map((s, i) => `Screen ${i + 1}: ${s ? s.rel.replace(/^assets\//, "") : "empty"}`)
+                  .join(" · ")}
+                {[media, ...mediaExtra.slice(0, deviceCount - 1)].some(
+                  (s) => s?.kind === "video",
+                ) && " (the scene will follow the longest video)"}
               </p>
             )}
             {!NO_TEXT_KINDS.includes(kind) && (

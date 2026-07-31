@@ -51,6 +51,8 @@ export interface EditDoc {
   tapColor?: string;
   /** Tap size multiplier on the default dot size; absent = 1.25. */
   tapSize?: number;
+  /** The side-by-side reference pairing (scene matching); editor convenience, never read by renders. Older app versions strip it on their next autosave, which only forgets the pairing. */
+  reference?: { rel: string; offsetMs: number };
 }
 
 export interface EditTarget {
@@ -60,6 +62,8 @@ export interface EditTarget {
   path: string;
   /** The originating source video; fuels `resetEdit` when the document is corrupt. */
   sourceRel: string;
+  /** The scene the edit was opened from; feeds the reference dropdown's media inventory. */
+  sceneIndex?: number;
 }
 
 export interface RenderProgress {
@@ -68,13 +72,13 @@ export interface RenderProgress {
 }
 
 /** Creates or opens an edit for a source video and opens the editor window on it (main-window side); returns the edit name (the slugified source stem). */
-export function openEdit(slug: string, sourceRel: string): Promise<string> {
-  return invoke<string>("open_edit", { slug, sourceRel });
+export function openEdit(slug: string, sourceRel: string, sceneIndex?: number): Promise<string> {
+  return invoke<string>("open_edit", { slug, sourceRel, sceneIndex: sceneIndex ?? null });
 }
 
 /** Open the editor on an EXISTING edit by name ("Open in editor" on a rendered output). */
-export function openEditNamed(slug: string, name: string): Promise<string> {
-  return invoke<string>("open_edit_named", { slug, name });
+export function openEditNamed(slug: string, name: string, sceneIndex?: number): Promise<string> {
+  return invoke<string>("open_edit_named", { slug, name, sceneIndex: sceneIndex ?? null });
 }
 
 /** Recovery: back the broken document up as `.json.bak` and recreate it from the source. */
