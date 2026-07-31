@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "bitcoin-coin",
+  "name": "Bitcoin coin",
+  "glb": "bitcoin-coin.glb",
+  "thumbnail": "bitcoin-coin.png",
+  "fitHeight": 0.8,
+  "licence": { "name": "Original work (project-owned)" },
+  "tags": ["prop", "crypto", "coin"]
+}

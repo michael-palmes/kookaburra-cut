@@ -1,12 +1,12 @@
 import { defineScene, SceneStage, useTheme } from "@kookaburra/toolkit";
 
 /**
- * Preview Lab: object-picker card for "lantern". DEV-ONLY, rendered by
+ * Preview Lab: object-picker card for "bitcoin-coin". DEV-ONLY, rendered by
  * `pnpm kookaburra:run --action option-previews`; the sidecar stages the bundled object
  * scaled up to fill the card, so the composition stays empty.
  */
 export default defineScene({
-  id: "lab-object-lantern",
+  id: "lab-object-bitcoin-coin",
   durationMs: 1000,
   Scene() {
     const theme = useTheme();

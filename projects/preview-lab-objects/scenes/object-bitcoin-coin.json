@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "Object: avocado",
+  "name": "Object: bitcoin-coin",
   "duration": {
     "mode": "manual"
   },
@@ -8,11 +8,11 @@
   "objects": [
     {
       "id": "o1",
-      "objectId": "avocado",
+      "objectId": "bitcoin-coin",
       "placement": {
         "position": [0, 0, 1.2],
-        "rotationDeg": [0, 18, 0],
-        "scale": 6.0
+        "rotationDeg": [8, 24, 0],
+        "scale": 3.2
       }
     }
   ]

@@ -6,16 +6,16 @@ describe("bundled objects", () => {
   it("every starter manifest parses and registers", () => {
     expect(Object.keys(builtinObjects).sort()).toEqual([
       "avocado",
+      "bitcoin-coin",
       "boombox",
-      "lantern",
       "water-bottle",
     ]);
   });
 
-  it("every starter carries a fit height and a CC0 licence", () => {
+  it("every starter carries a fit height and a documented licence", () => {
     for (const manifest of Object.values(builtinObjects)) {
       expect(manifest.fitHeight).toBeGreaterThan(0);
-      expect(manifest.licence?.name).toBe("CC0");
+      expect(manifest.licence?.name).toBeTruthy();
     }
   });
 });

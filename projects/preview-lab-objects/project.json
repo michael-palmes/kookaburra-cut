@@ -6,7 +6,7 @@
   "formats": ["16:9"],
   "scenes": [
     {
-      "file": "scenes/object-lantern.tsx",
+      "file": "scenes/object-bitcoin-coin.tsx",
       "durationMs": 1000
     },
     {

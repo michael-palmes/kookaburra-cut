@@ -9,7 +9,7 @@ CC0 needs no gitignore split.
 
 | File | Source model | Licence | Author |
 | --- | --- | --- | --- |
-| lantern.glb | Lantern | CC0 1.0 | Microsoft (2017), glTF conversion Frank Galligan |
+| bitcoin-coin.glb | Original project asset | Project-owned | Authored for Kookaburra Cut (THREE.GLTFExporter) |
 | water-bottle.glb | WaterBottle | CC0 1.0 | Public domain (2017) |
 | avocado.glb | Avocado | CC0 1.0 | Public domain (2017) |
 | boombox.glb | BoomBox | CC0 1.0 | Public domain (2017) |
