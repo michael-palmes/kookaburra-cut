@@ -9,7 +9,7 @@ import { FrameChip } from "./FrameChip";
 import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
-import { framePanelLayout } from "./framePanelLayout";
+import { framePanelLayout, frameTextAlign } from "./framePanelLayout";
 import {
   BULLET_LINE_GAP,
   BULLET_OF_TITLE,
@@ -18,11 +18,11 @@ import {
   HEADER_BODY_GAP,
   ICON_GAP,
   ICON_SIZE,
-  LINE_HEIGHT,
   panelMeasureVersion,
   requestPanelTextMeasure,
   SUBTITLE_OF_TITLE,
   solvePanelLayout,
+  splitBullets,
   subscribePanelMeasures,
   TITLE_GAP,
   TITLE_HEIGHT_FRACTION,
@@ -36,15 +36,7 @@ import type { SceneDoc } from "./sceneDocSchema";
 /** Nudges the whole editorial column (title/subtitle/bullets/chip, not the decorations) left, as a fraction of the column width. */
 const CONTENT_LEFT_SHIFT = 0.06;
 
-function splitBullets(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-}
-
-/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Title and subtitle heights come from `solvePanelLayout`'s measured fixpoint (the wrap estimate standing in until measurements land), so reserved and rendered space agree and the header and body never overlap. Reads the sidecar text DIRECTLY (like `TextFallback`) so it never registers as a text-key consumer, and lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
+/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Title, subtitle and per-bullet heights come from `solvePanelLayout`'s measured fixpoint (the wrap estimate standing in until measurements land), so reserved and rendered space agree and wrapped bullets never overlap their neighbours. Reads the sidecar text directly, and its headlines carry `textKey`s so the sidecar's `textStyle.<key>*` overrides (font/colour/size) apply and the Edit-text drill-in offers them. Lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
 function PanelContent({ frame }: { frame: FrameSpec }) {
   const doc = useSceneDoc();
   const format = useFormat();
@@ -73,7 +65,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
 
   const col = framePanelLayout(format, frame);
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
-  const { fit, titleH, subH } = solution;
+  const { fit, titleH, subH, bulletHeights } = solution;
 
   const titleSize = baseTitle * fit;
   const subtitleSize = baseTitle * SUBTITLE_OF_TITLE * fit;
@@ -82,7 +74,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const chipHeight = CHIP_HEIGHT_FRAC * format.frame.height * fit;
   // Text alignment: the anchor x sits at the column's left (nudged), centre or right edge, with the
   // headlines and chip anchored to match. Default "left" reproduces the original contentX exactly.
-  const align = frame.textAlign ?? "left";
+  const align = frameTextAlign(frame);
   const alignX =
     align === "center"
       ? col.left + col.width / 2
@@ -103,14 +95,24 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   if (subtitle.trim()) y -= subH;
   const headerBottom = y;
 
-  // Body (bullets + chip): stacked directly under the header, kept inside the bottom edge.
-  const bulletAdv = (LINE_HEIGHT + BULLET_LINE_GAP) * bulletSize;
+  // Body (bullets + chip): stacked directly under the header, kept inside the bottom edge; each bullet advances by its own measured height, so wrapped lines push the rest down.
+  const bulletGap = BULLET_LINE_GAP * bulletSize;
   const bulletsHeight =
-    bullets.length > 0 ? (bullets.length - 1) * bulletAdv + LINE_HEIGHT * bulletSize : 0;
+    bulletHeights.length > 0
+      ? bulletHeights.reduce((sum, h) => sum + h, 0) + (bulletHeights.length - 1) * bulletGap
+      : 0;
+  const bulletTops: number[] = [];
   const chipGap = bullets.length > 0 && frame.chip ? CHIP_GAP * bulletSize : 0;
   const bodyHeight = bulletsHeight + chipGap + (frame.chip ? chipHeight : 0);
   let bodyTop = headerBottom - HEADER_BODY_GAP * titleSize;
   bodyTop = Math.max(bodyTop, col.bottom + bodyHeight);
+  {
+    let cursor = bodyTop;
+    for (const h of bulletHeights) {
+      bulletTops.push(cursor);
+      cursor -= h + bulletGap;
+    }
+  }
   const chipBottom = bodyTop - bulletsHeight - chipGap - chipHeight;
 
   return (
@@ -128,6 +130,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
       {title.trim() && (
         <AnimatedHeadline
           text={title}
+          textKey="title"
           from={200}
           to={900}
           position={at(titleTop)}
@@ -141,12 +144,13 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
       {subtitle.trim() && (
         <AnimatedHeadline
           text={subtitle}
+          textKey="subtitle"
           from={350}
           to={1050}
           position={at(subtitleTop)}
           fontSize={subtitleSize}
           face="body"
-          color="muted"
+          defaultColor="muted"
           anchorX={align}
           anchorY="top"
           textAlign={align}
@@ -157,9 +161,10 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
         <AnimatedHeadline
           key={line}
           text={`•  ${line}`}
+          textKey="bullets"
           from={500 + i * 140}
           to={1000 + i * 140}
-          position={at(bodyTop - i * bulletAdv)}
+          position={at(bulletTops[i] ?? bodyTop)}
           fontSize={bulletSize}
           face="body"
           anchorX={align}

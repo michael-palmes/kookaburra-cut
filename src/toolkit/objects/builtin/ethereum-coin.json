@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "ethereum-coin",
+  "name": "Ethereum coin",
+  "glb": "ethereum-coin.glb",
+  "thumbnail": "ethereum-coin.png",
+  "fitHeight": 0.8,
+  "licence": { "name": "Original work (project-owned)" },
+  "tags": ["prop", "crypto", "coin"]
+}

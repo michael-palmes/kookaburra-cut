@@ -1044,7 +1044,7 @@ fn build_project(
     let summary = crate::workspace::manifest_summary(&dir);
     let name = summary
         .as_ref()
-        .map(|(n, _)| n.clone())
+        .map(|(n, _, _)| n.clone())
         .unwrap_or_else(|| slug.to_owned());
 
     let mut candidates: Vec<(String, PathBuf)> = Vec::new();
@@ -1119,7 +1119,7 @@ fn build_project(
         manifest_version: doc.get("version").and_then(Value::as_u64).unwrap_or(1) as u32,
         scene_count: scene_files.len(),
         scene_files,
-        duration_ms: summary.map(|(_, d)| d).unwrap_or(0),
+        duration_ms: summary.map(|(_, d, _)| d).unwrap_or(0),
         formats,
         theme_id: str_field(&doc, "themeId").unwrap_or_default(),
         requires: resolver

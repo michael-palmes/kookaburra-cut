@@ -31,6 +31,15 @@ export function duplicateProjectScene(
   return invoke("duplicate_scene", { slug, index, position: position ?? null });
 }
 
+/** Copy a scene into another workspace project: files, referenced assets and a fresh manifest entry land in the destination; the current project is untouched. */
+export function copySceneToProject(
+  slug: string,
+  index: number,
+  destSlug: string,
+): Promise<{ file: string; docFile: string; sceneId: string; durationMs: number }> {
+  return invoke("copy_scene_to_project", { slug, index, destSlug });
+}
+
 /** The raw project.json text; the undo history's manifest snapshot. */
 export function readProjectManifestSnapshot(slug: string): Promise<string> {
   return invoke("read_project_manifest_snapshot", { slug });

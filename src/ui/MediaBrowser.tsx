@@ -3,6 +3,7 @@ import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listEdits } from "../engine/edit";
 import {
+  deleteGlobalScreenshot,
   formatMediaDuration,
   fsUrl,
   type GlobalScreenshot,
@@ -14,6 +15,7 @@ import {
   MEDIA_DRAG_TYPE,
   type MediaMeta,
   mediaMeta,
+  revealPath,
 } from "../engine/media";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
@@ -35,6 +37,33 @@ function kindOfRel(rel: string): "image" | "video" {
 export interface MediaActionContext {
   /** The owning edit's name when this file is a rendered editor output, else null. */
   editedOf: string | null;
+}
+
+/** Path actions every card gets regardless of host (the host menu still owns Insert/Edit/Delete); slotted just above the first danger item so Delete stays last. */
+function withPathItems(
+  items: ContextMenuItem[],
+  absPath: string,
+  onError: (message: string) => void,
+): ContextMenuItem[] {
+  const path: ContextMenuItem[] = [
+    {
+      id: "copy-path",
+      label: "Copy path",
+      onSelect: () => void navigator.clipboard?.writeText(absPath),
+    },
+    {
+      id: "reveal",
+      label: "Show in Finder",
+      onSelect: () => {
+        revealPath(absPath).catch((e) => {
+          console.warn(`[media] reveal failed for ${absPath}:`, e);
+          onError(`Couldn't show the file: ${String(e)}`);
+        });
+      },
+    },
+  ];
+  const at = items.findIndex((it) => it.danger);
+  return at < 0 ? [...items, ...path] : [...items.slice(0, at), ...path, ...items.slice(at)];
 }
 
 /** The import button, extracted so modal hosts can seat it in their title row (top-right, across from the heading). Hosts pass `onImported` to bump an embedded browser's `refreshKey`. */
@@ -93,7 +122,7 @@ export function AddMediaButton({
 }
 
 /** The library import button: same flow as AddMediaButton but into the global media library folder (~/Kookaburra Cut/screenshots). */
-function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
+function AddGlobalScreenshotButton({ onImported }: { onImported: (names: string[]) => void }) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const handleAdd = useCallback(async () => {
@@ -108,8 +137,8 @@ function AddGlobalScreenshotButton({ onImported }: { onImported: () => void }) {
     setImporting(true);
     setError(null);
     try {
-      await importGlobalScreenshots(paths);
-      onImported();
+      const names = await importGlobalScreenshots(paths);
+      onImported(names);
     } catch (e) {
       console.warn("[media] global screenshot import failed:", e);
       setError(`Import failed: ${String(e)}`);
@@ -579,7 +608,14 @@ export function MediaBrowser({
     />
   ) : null;
   const addButton = hideAdd ? null : sourceTab === "global" ? (
-    <AddGlobalScreenshotButton onImported={refreshGlobal} />
+    <AddGlobalScreenshotButton
+      onImported={(names) => {
+        refreshGlobal();
+        // A library add stays on the Library tab, but the kind tab still follows the new file.
+        const first = names[0];
+        if (first && !kinds && kindToggle) setKindTab(kindOfRel(first));
+      }}
+    />
   ) : (
     <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
   );
@@ -623,6 +659,31 @@ export function MediaBrowser({
                 edited={false}
                 canDrag={false}
                 selected={false}
+                onMenu={(x, y) =>
+                  setMenu({
+                    x,
+                    y,
+                    items: withPathItems(
+                      [
+                        {
+                          id: "delete",
+                          label: "Delete",
+                          confirmLabel: "Really delete?",
+                          danger: true,
+                          title: "Moves the file to the Trash (projects keep their own copies)",
+                          onSelect: () => {
+                            setPickError(null);
+                            deleteGlobalScreenshot(shot.name)
+                              .then(refreshGlobal)
+                              .catch((e) => setPickError(`Couldn't delete: ${String(e)}`));
+                          },
+                        },
+                      ],
+                      shot.absPath,
+                      setPickError,
+                    ),
+                  })
+                }
                 onPreview={() => setPreview(shot.name)}
                 onPick={onPick ? () => void pickGlobal(shot) : undefined}
               />
@@ -653,15 +714,18 @@ export function MediaBrowser({
               edited={editNameOf(rel) !== null}
               canDrag={Boolean(draggableVideos && metas[rel]?.kind === "video")}
               selected={selectedRel != null && rel === selectedRel}
-              onMenu={
-                cardMenu
-                  ? (x, y) =>
-                      setMenu({
-                        x,
-                        y,
-                        items: cardMenu(rel, metas[rel] ?? null, { editedOf: editNameOf(rel) }),
-                      })
-                  : undefined
+              onMenu={(x, y) =>
+                setMenu({
+                  x,
+                  y,
+                  items: withPathItems(
+                    cardMenu
+                      ? cardMenu(rel, metas[rel] ?? null, { editedOf: editNameOf(rel) })
+                      : [],
+                    `${projectPath}/${rel}`,
+                    setPickError,
+                  ),
+                })
               }
               onPreview={() => setPreview(rel)}
               onPick={onPick ? () => onPick(rel, metas[rel] ?? null) : undefined}

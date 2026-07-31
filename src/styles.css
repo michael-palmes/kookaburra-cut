@@ -1973,6 +1973,124 @@ body {
   color: var(--text-secondary);
 }
 
+/* Group sections: heading + a small new-project-in-group affordance beside it. */
+.welcome-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-5);
+}
+.welcome-group-head .welcome-section {
+  margin-bottom: 0;
+}
+.welcome-group-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.welcome-group-add:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-border);
+  background: var(--surface-hover);
+}
+
+/* Object library picker: thumbnail cards, the template-grid look at media-card proportions. */
+.object-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-4);
+  max-height: 50vh;
+  margin-bottom: var(--space-3);
+  overflow-y: auto;
+}
+.object-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.object-card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-elevated);
+}
+.object-card-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  background: var(--surface-recessed);
+  border-radius: var(--radius-xs);
+}
+.object-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.object-card-name {
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Copy-scene destination list: rail-menu rows in a scrollable modal column. */
+.copy-scene-projects {
+  display: flex;
+  flex-direction: column;
+  max-height: 40vh;
+  margin-bottom: var(--space-3);
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+}
+
+/* Existing-group picks in the move-to-group and new-project dialogs (a reset fieldset). */
+.group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  border: 0;
+}
+.group-chip {
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+.group-chip:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.group-chip.selected {
+  color: var(--text-primary);
+  border-color: var(--accent-border);
+  background: var(--surface-hover);
+}
+
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
@@ -2045,12 +2163,13 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* "New project": a dashed affordance card (§8.6). */
+/* "New project": a dashed affordance card (§8.6); the aspect floor keeps a tile-only row near card height. */
 .project-card.new-project {
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
   min-height: 100%;
+  aspect-ratio: 4 / 3;
   background: transparent;
   border: 1px dashed var(--border-strong);
   color: var(--text-secondary);
@@ -2979,7 +3098,7 @@ body {
   gap: var(--space-4);
 }
 
-/* The type step: twelve presets sit four across by three high. */
+/* The type step: fourteen presets sit four across (the last row runs short). */
 .wizard-kind-wide {
   width: min(68rem, calc(100% - 2rem));
 }
@@ -3344,6 +3463,7 @@ body {
   width: min(66rem, calc(100% - 2rem));
 }
 .media-modal-wide .wizard-media-host {
+  min-height: min(24rem, 62vh);
   max-height: 62vh;
 }
 
@@ -4940,7 +5060,8 @@ body {
   border: 0;
 }
 /* Aspect chips carry a proportioned rect glyph before the label. */
-.export-aspect-row .chip {
+.export-aspect-row .chip,
+.object-preset-chips .chip {
   display: inline-flex;
   gap: 5px;
   align-items: center;
@@ -5982,6 +6103,17 @@ img.inspector-scene-thumb {
   color: var(--text-primary);
   background: var(--surface-raised);
 }
+/* The object placement drill's rhythm: clear air above every labelled group (less for the first, which sits under the drill title), content hugging its own label, and the gizmo pills stripped of their stock margins so they align with the 8px label inset and their hint reads attached. */
+.object-drill .drill-group {
+  margin-top: var(--space-7);
+}
+.object-drill .drill-group:first-child {
+  margin-top: var(--space-4);
+}
+.object-drill .drill-group .inspector-subtabs {
+  margin: 0 8px;
+}
+
 /* Pill scale: the camera pill runs the same control at a smaller size. */
 .camera-pill-modes .inspector-subtab {
   height: 20px;

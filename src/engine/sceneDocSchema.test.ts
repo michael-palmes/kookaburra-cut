@@ -60,6 +60,25 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("keeps well-formed object entries and drops the malformed, like devices", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        objects: [
+          { id: "o1", objectId: "lantern", placement: { position: [1, 0, 0], ground: true } },
+          { id: "o2" },
+          "not-an-object",
+        ],
+      },
+      "test",
+    );
+    expect(doc?.objects).toHaveLength(1);
+    expect(doc?.objects?.[0].objectId).toBe("lantern");
+    expect(doc?.objects?.[0].placement?.ground).toBe(true);
+    warn.mockRestore();
+  });
+
   it("drops an unknown duration mode but keeps the doc", () => {
     const doc = parseSceneDoc({ version: 1, duration: { mode: "warp" } }, "test");
     expect(doc).toBeDefined();

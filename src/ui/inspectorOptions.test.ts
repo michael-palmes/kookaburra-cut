@@ -8,6 +8,7 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       isWorkspace: true,
       themeName: "Editorial",
+      typographyLabel: "Theme fonts",
       aspect: "16:9",
       soundtrackName: null,
       playbackLabel: "Full quality",
@@ -17,6 +18,7 @@ describe("projectRows (the Project-tab pin)", () => {
     expect(rows.map((r) => r.id)).toEqual([
       "scenes",
       "theme",
+      "typography",
       "media",
       "appIcon",
       "playback",
@@ -28,6 +30,7 @@ describe("projectRows (the Project-tab pin)", () => {
     expect(rows.find((r) => r.id === "scenes")?.value).toBe("3 scenes");
     expect(rows.find((r) => r.id === "music")?.value).toBe("None");
     expect(rows.find((r) => r.id === "theme")?.value).toBe("Editorial");
+    expect(rows.find((r) => r.id === "typography")?.value).toBe("Theme fonts");
     expect(rows.find((r) => r.id === "aspect")?.value).toBe("16:9");
     expect(rows.find((r) => r.id === "playback")?.value).toBe("Full quality");
   });
@@ -36,6 +39,7 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       isWorkspace: true,
       themeName: "Pacific",
+      typographyLabel: "Inter",
       aspect: "9:16",
       soundtrackName: "sunrise.mp3",
       playbackLabel: "Performance",
@@ -50,6 +54,7 @@ describe("projectRows (the Project-tab pin)", () => {
     const rows = projectRows({
       isWorkspace: false,
       themeName: "Default",
+      typographyLabel: "Theme fonts",
       aspect: "1:1",
       soundtrackName: null,
       playbackLabel: "Full quality",
@@ -72,7 +77,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "video", src: "assets/a.mp4" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 3 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "objects",
+      "frame",
+      "camera",
+      "motion",
+    ]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows.map((r) => r.id);
     expect(deviceRows).toEqual([
       "device.media",
@@ -91,7 +103,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       devices: [{ media: { kind: "image", src: "assets/a.png" } }] as SceneDoc["devices"],
     });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "objects",
+      "frame",
+      "camera",
+      "motion",
+    ]);
     const textRows = sections.find((s) => s.id === "text")?.rows;
     expect(textRows?.map((r) => r.id)).toEqual(["text.add"]);
     expect(textRows?.[0].chevron).toBe(false);
@@ -104,7 +123,14 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
   it("no device → the device section offers a single Add device row and no Shadow row", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2 });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "objects",
+      "frame",
+      "camera",
+      "motion",
+    ]);
     const deviceRows = sections.find((s) => s.id === "device")?.rows;
     expect(deviceRows?.map((r) => r.id)).toEqual(["device.add"]);
     expect(deviceRows?.[0].chevron).toBe(false);
@@ -271,7 +297,14 @@ describe("sceneSections Overlay section", () => {
   it("a deck frame that resolves for this scene shows Overlay after device, with cutout + panel rows", () => {
     const doc = docWith({ text: { headline: "Hi" } });
     const sections = sceneSections({ doc, slotsCount: 2, deckFrame: true, frame: cutoutFrame });
-    expect(sections.map((s) => s.id)).toEqual(["text", "device", "frame", "camera", "motion"]);
+    expect(sections.map((s) => s.id)).toEqual([
+      "text",
+      "device",
+      "objects",
+      "frame",
+      "camera",
+      "motion",
+    ]);
     expect(sections.find((s) => s.id === "frame")?.rows.map((r) => r.id)).toEqual([
       "frame.enabled",
       "frame.cutout",

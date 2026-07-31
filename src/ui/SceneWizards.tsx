@@ -66,6 +66,7 @@ type SceneKind =
   | "appversion"
   | "layeredscreenshot"
   | "video"
+  | "image"
   | "videowindow"
   | "overlaystart"
   | "overlayend"
@@ -81,19 +82,21 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
   { id: "video", label: "Video", blurb: "A video filling the whole frame" },
+  { id: "image", label: "Image", blurb: "An image filling the whole frame" },
   { id: "videowindow", label: "Video window", blurb: "A floating screen recording" },
   { id: "overlaystart", label: "Cutout start", blurb: "Panel text beside a scene window" },
   { id: "overlayend", label: "Cutout end", blurb: "A scene window beside panel text" },
+  { id: "overlaypanel", label: "Overlay title", blurb: "A full-panel title, no scene window" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
 ];
 
 /** Kinds whose panel body takes bullet lines at create time (same storage as the Edit text drill-in). */
-const BULLET_KINDS: SceneKind[] = ["overlaystart", "overlayend"];
+const BULLET_KINDS: SceneKind[] = ["overlaystart", "overlayend", "overlaypanel"];
 
 /** Kinds whose media step picks the window/backdrop video, starting on the bundled sample. */
 const VIDEO_MEDIA_KINDS: SceneKind[] = ["video", "videowindow"];
 /** Kinds with no text fields at all (the device stays centred). */
-const NO_TEXT_KINDS: SceneKind[] = ["video", "deviceonly"];
+const NO_TEXT_KINDS: SceneKind[] = ["video", "image", "deviceonly"];
 /** Kinds whose composition renders a subtitle on its own; blank/layeredscreenshot text rides TextFallback, which needs a title. */
 const SUBTITLE_KINDS: SceneKind[] = [
   "device",
@@ -421,6 +424,7 @@ export function NewSceneWizard({
       appversion: "App version",
       layeredscreenshot: "Layered screenshot",
       video: "Video",
+      image: "Image",
       videowindow: "Video window",
       overlaystart: "Overlay",
       overlayend: "Overlay",
@@ -450,6 +454,7 @@ export function NewSceneWizard({
     isDeviceKind ||
     isComparison ||
     kind === "layeredscreenshot" ||
+    kind === "image" ||
     VIDEO_MEDIA_KINDS.includes(kind);
 
   async function submit() {
@@ -555,7 +560,9 @@ export function NewSceneWizard({
                   setStep(
                     isDeviceKind || isComparison
                       ? "device"
-                      : kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind)
+                      : kind === "layeredscreenshot" ||
+                          kind === "image" ||
+                          VIDEO_MEDIA_KINDS.includes(kind)
                         ? "media"
                         : "details",
                   );
@@ -608,6 +615,8 @@ export function NewSceneWizard({
                   "First screen (the builder grows the stack from here)"
                 ) : kind === "video" ? (
                   "What fills the frame?"
+                ) : kind === "image" ? (
+                  "What image fills the frame?"
                 ) : kind === "videowindow" ? (
                   "What plays in the window?"
                 ) : (
@@ -619,7 +628,13 @@ export function NewSceneWizard({
                 <MediaBrowser
                   slug={slug}
                   projectPath={projectPath}
-                  kinds={VIDEO_MEDIA_KINDS.includes(kind) ? ["video"] : undefined}
+                  kinds={
+                    VIDEO_MEDIA_KINDS.includes(kind)
+                      ? ["video"]
+                      : kind === "image"
+                        ? ["image"]
+                        : undefined
+                  }
                   kindToggle={kind === "layeredscreenshot"}
                   kindDefault={kind === "layeredscreenshot" ? "image" : undefined}
                   globalToggle
@@ -629,7 +644,7 @@ export function NewSceneWizard({
                       ? step === "mediaB"
                         ? (mediaB?.rel ?? null)
                         : (media?.rel ?? null)
-                      : VIDEO_MEDIA_KINDS.includes(kind)
+                      : VIDEO_MEDIA_KINDS.includes(kind) || kind === "image"
                         ? (media?.rel ?? null)
                         : undefined
                   }
@@ -674,7 +689,11 @@ export function NewSceneWizard({
                     setStep(isComparison ? "mediaB" : "details");
                   }}
                 >
-                  {kind === "layeredscreenshot" ? "Skip (empty stack)" : "Skip (Empty screen)"}
+                  {kind === "layeredscreenshot"
+                    ? "Skip (empty stack)"
+                    : kind === "image"
+                      ? "Skip (Theme background)"
+                      : "Skip (Empty screen)"}
                 </button>
               )}
             </div>
@@ -773,6 +792,8 @@ export function NewSceneWizard({
                 value={headerIcon}
                 selected={headerIcon}
                 hint="Drawn above the headline. An emoji, or a project image path."
+                slug={slug}
+                projectPath={projectPath}
                 onChange={setHeaderIcon}
                 onPick={setHeaderIcon}
               />

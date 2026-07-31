@@ -397,6 +397,212 @@ pub fn duplicate_scene(
     })
 }
 
+/// Every `assets/...` path a scene's TSX or sidecar text mentions; over-capture is harmless because callers gate on the file existing in the source project.
+fn scan_asset_refs(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut found: Vec<String> = Vec::new();
+    let mut from = 0;
+    while let Some(pos) = text[from..].find("assets/") {
+        let start = from + pos;
+        let prev = if start == 0 {
+            None
+        } else {
+            Some(bytes[start - 1])
+        };
+        let standalone = !matches!(prev, Some(p) if p.is_ascii_alphanumeric()
+            || matches!(p, b'-' | b'_' | b'.' | b'/'));
+        let mut end = start + "assets/".len();
+        while end < bytes.len() {
+            let c = bytes[end];
+            if c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-' | b'/' | b' ') {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        let rel = text[start..end].trim_end_matches([' ', '.']);
+        if standalone
+            && rel.len() > "assets/".len()
+            && !rel.contains("..")
+            && !found.iter().any(|f| f == rel)
+        {
+            found.push(rel.to_string());
+        }
+        from = end.max(start + 1);
+    }
+    found
+}
+
+/// First free sibling name for `name` in `dir`: stem-2.ext, stem-3.ext, …
+fn free_sibling_name(dir: &Path, name: &str) -> String {
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_owned(), Some(e.to_owned())),
+        _ => (name.to_owned(), None),
+    };
+    let mut n = 1u32;
+    loop {
+        n += 1;
+        let candidate = match &ext {
+            Some(e) => format!("{stem}-{n}.{e}"),
+            None => format!("{stem}-{n}"),
+        };
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+}
+
+/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem, every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
+#[tauri::command]
+pub fn copy_scene_to_project(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    index: usize,
+    dest_slug: String,
+) -> Result<ScaffoldResult, String> {
+    let root = workspace::require_root(&app, &state)?;
+    workspace::validate_slug(&slug)?;
+    workspace::validate_slug(&dest_slug)?;
+    if slug == dest_slug {
+        return Err("pick a different project to copy into".into());
+    }
+    let project = root.join(&slug);
+    let dest = root.join(&dest_slug);
+    let dest_manifest_path = dest.join(MANIFEST_FILENAME);
+    if !dest_manifest_path.is_file() {
+        return Err(format!("no project named {dest_slug} in the workspace"));
+    }
+
+    let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+        .map_err(|e| format!("reading project.json: {e}"))?;
+    let source_manifest: Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    let source = source_manifest
+        .get("scenes")
+        .and_then(Value::as_array)
+        .ok_or("project.json has no scenes array")?
+        .get(index)
+        .cloned()
+        .ok_or_else(|| format!("project.json has no scene at index {index}"))?;
+    let file = source
+        .get("file")
+        .and_then(Value::as_str)
+        .ok_or("scene entry has no file")?
+        .to_string();
+    if !file.starts_with("scenes/") || file.contains("..") {
+        return Err(format!("invalid scene path: {file:?}"));
+    }
+    let mut tsx =
+        std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
+    let doc_file_src = file.replace(".tsx", ".json");
+    let mut doc_text = match std::fs::read_to_string(project.join(&doc_file_src)) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
+    };
+
+    // Dependency copy: everything the scene text references and the source actually has.
+    let mut refs = scan_asset_refs(&tsx);
+    if let Some(t) = &doc_text {
+        for rel in scan_asset_refs(t) {
+            if !refs.iter().any(|r| r == &rel) {
+                refs.push(rel);
+            }
+        }
+    }
+    for rel in refs {
+        let src_path = project.join(&rel);
+        if !src_path.is_file() {
+            continue;
+        }
+        let (dir_rel, name) = rel.rsplit_once('/').unwrap_or(("assets", rel.as_str()));
+        let dest_dir = dest.join(dir_rel);
+        let mut dest_path = dest_dir.join(name);
+        if dest_path.is_file() {
+            let same = std::fs::read(&src_path)
+                .and_then(|a| std::fs::read(&dest_path).map(|b| a == b))
+                .unwrap_or(false);
+            if same {
+                continue;
+            }
+            let free = free_sibling_name(&dest_dir, name);
+            let new_rel = format!("{dir_rel}/{free}");
+            dest_path = dest_dir.join(&free);
+            tsx = tsx.replace(rel.as_str(), &new_rel);
+            if let Some(t) = doc_text.take() {
+                doc_text = Some(t.replace(rel.as_str(), &new_rel));
+            }
+        }
+        std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+        std::fs::copy(&src_path, &dest_path).map_err(|e| format!("copying {rel}: {e}"))?;
+        workspace::touch_now(&dest_path);
+    }
+
+    let doc = match &doc_text {
+        Some(t) => Some(
+            serde_json::from_str::<Value>(t)
+                .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
+        ),
+        None => None,
+    };
+
+    // Fresh stem in the destination, keeping the source's display name.
+    let scenes_dir = dest.join("scenes");
+    std::fs::create_dir_all(&scenes_dir).map_err(|e| e.to_string())?;
+    let stem_src = file.trim_start_matches("scenes/").trim_end_matches(".tsx");
+    let base_name = doc
+        .as_ref()
+        .and_then(|d| d.get("name"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            stem_src
+                .split_once('-')
+                .map_or(stem_src, |(_, rest)| rest)
+                .replace('-', " ")
+        });
+    let base = slugify(&base_name);
+    let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
+    let new_file = format!("scenes/{stem}.tsx");
+    let new_doc_file = format!("scenes/{stem}.json");
+
+    let tsx_path = scenes_dir.join(format!("{stem}.tsx"));
+    let tmp = tsx_path.with_extension("tsx.tmp");
+    std::fs::write(&tmp, tsx).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &tsx_path).map_err(|e| e.to_string())?;
+    if let Some(doc) = &doc {
+        atomic_write_json(&scene_doc_path(&root, &dest_slug, &new_doc_file)?, doc)?;
+    }
+
+    let dest_text = std::fs::read_to_string(&dest_manifest_path)
+        .map_err(|e| format!("reading {dest_slug}/project.json: {e}"))?;
+    let mut dest_manifest: Value = serde_json::from_str(&dest_text)
+        .map_err(|e| format!("{dest_slug}/project.json isn't valid JSON: {e}"))?;
+    migrate_manifest_transitions(&mut dest_manifest);
+    let scenes = dest_manifest
+        .get_mut("scenes")
+        .and_then(Value::as_array_mut)
+        .ok_or(format!("{dest_slug}/project.json has no scenes array"))?;
+    let duration_ms = source
+        .get("durationMs")
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_SCENE_DURATION_MS);
+    let mut entry = json!({ "file": new_file, "durationMs": duration_ms });
+    if let Some(effects) = source.get("effects") {
+        entry["effects"] = effects.clone();
+    }
+    scenes.push(entry);
+    atomic_write_json(&dest_manifest_path, &dest_manifest)?;
+
+    Ok(ScaffoldResult {
+        file: new_file,
+        doc_file: new_doc_file,
+        scene_id: base,
+        duration_ms,
+    })
+}
+
 /// Set a project's project-level theme (`project.json.themeId`, atomic), the New-project theme step and the main-window theme mode; the id is either a bundled `kookaburra-*` or a workspace `ws:<slug>`, the frontend resolves (and degrades) it on load.
 #[tauri::command]
 pub fn set_project_theme(
@@ -460,6 +666,7 @@ const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
 const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
+const TSX_IMAGE: &str = include_str!("../templates/scenes/image.tsx.tmpl");
 const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
 const TSX_COMPARISON: &str = include_str!("../templates/scenes/comparison.tsx.tmpl");
 
@@ -469,7 +676,7 @@ const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
+    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -569,6 +776,7 @@ pub async fn scaffold_scene(
         "appversion" => TSX_APP_VERSION,
         "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
         "video" => TSX_VIDEO,
+        "image" => TSX_IMAGE,
         "videowindow" => TSX_VIDEO_WINDOW,
         other => return Err(format!("unknown scene kind {other:?}")),
     };
@@ -688,7 +896,7 @@ pub async fn scaffold_scene(
     if options.kind == "titleicon" {
         doc["headerIcon"] = json!(options.header_icon.as_deref().unwrap_or("🚀"));
     }
-    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant collapses its cutout to a sliver (min size, max inset) so the panel reads full-frame at every aspect. The cutout pair pins the panel to the flat background token, paired with the template's lifted scene clear.
+    // Overlay trio: a sidecar frame stands alone when it carries a cutout; the panel variant uses the real full-panel shape ("none": no cutout, content centred). The cutout pair pins the panel to the flat background token, paired with the template's lifted scene clear.
     let overlay_frame = match options.kind.as_str() {
         "overlaystart" => Some(json!({
             "cutout": { "shape": "rounded-rect", "side": "start" },
@@ -699,7 +907,7 @@ pub async fn scaffold_scene(
             "background": "background",
         })),
         "overlaypanel" => Some(json!({
-            "cutout": { "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 },
+            "cutout": { "shape": "none" },
         })),
         _ => None,
     };
@@ -758,6 +966,12 @@ pub async fn scaffold_scene(
     if options.kind == "video" {
         if let Some(rel) = &options.media_rel {
             doc["background"] = json!({ "type": "video", "src": rel });
+        }
+    }
+    // An image scene without a pick keeps the theme background (no bundled sample image).
+    if options.kind == "image" {
+        if let Some(rel) = &options.media_rel {
+            doc["background"] = json!({ "type": "image", "src": rel });
         }
     }
     if is_device_kind {
@@ -882,4 +1096,26 @@ pub async fn scaffold_scene(
         scene_id: base,
         duration_ms,
     })
+}
+
+#[cfg(test)]
+mod asset_scan_tests {
+    use super::scan_asset_refs;
+
+    #[test]
+    fn finds_refs_in_code_and_json() {
+        let tsx = r#"const clip = "assets/feature.mp4"; useTexture(`assets/logo dark.png`)"#;
+        assert_eq!(
+            scan_asset_refs(tsx),
+            vec!["assets/feature.mp4", "assets/logo dark.png"]
+        );
+        let json = r#"{ "media": { "src": "assets/screen-2.png" } }"#;
+        assert_eq!(scan_asset_refs(json), vec!["assets/screen-2.png"]);
+    }
+
+    #[test]
+    fn skips_traversal_dedupes_and_longer_segments() {
+        let text = r#""assets/a.png" and again "assets/a.png"; "my-assets/no.png"; "assets/../x""#;
+        assert_eq!(scan_asset_refs(text), vec!["assets/a.png"]);
+    }
 }

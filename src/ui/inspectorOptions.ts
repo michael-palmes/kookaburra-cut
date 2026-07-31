@@ -6,7 +6,16 @@ import type { FrameSpec } from "../toolkit/frame/types";
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
 
 export interface ProjectRowModel {
-  id: "media" | "scenes" | "theme" | "appIcon" | "aspect" | "music" | "render" | "playback";
+  id:
+    | "media"
+    | "scenes"
+    | "theme"
+    | "typography"
+    | "appIcon"
+    | "aspect"
+    | "music"
+    | "render"
+    | "playback";
   label: string;
   /** Right-aligned value text (11px tertiary). */
   value?: string;
@@ -18,6 +27,8 @@ export interface ProjectRowModel {
 export function projectRows(input: {
   isWorkspace: boolean;
   themeName: string;
+  /** "Theme fonts" when no override; else the override summary. */
+  typographyLabel: string;
   aspect: AspectName;
   soundtrackName: string | null;
   playbackLabel: string;
@@ -39,6 +50,7 @@ export function projectRows(input: {
       chevron: true,
     },
     { id: "theme", label: "Theme", value: input.themeName, chevron: true },
+    { id: "typography", label: "Typography", value: input.typographyLabel, chevron: true },
     { id: "media", label: "Media library", chevron: true },
     { id: "appIcon", label: "App icon", chevron: true },
     { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
@@ -48,7 +60,21 @@ export function projectRows(input: {
   ];
 }
 
-export type SceneSectionId = "text" | "device" | "frame" | "style" | "camera" | "motion";
+export type SceneSectionId =
+  | "text"
+  | "device"
+  | "objects"
+  | "frame"
+  | "style"
+  | "camera"
+  | "motion";
+
+/** Row label for a staged object, derived purely from its library id (manifest names resolve async, so the model stays sync): "ws:coffee-mug" reads "Coffee mug". */
+export function objectRowLabel(objectId: string): string {
+  const slug = objectId.startsWith("ws:") ? objectId.slice(3) : objectId;
+  const words = slug.replace(/-/g, " ").trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "Object";
+}
 
 export interface SceneRowModel {
   id: string;
@@ -125,6 +151,29 @@ export function sceneSections(input: {
       id: "device",
       label: "Device",
       rows: [{ id: "device.add", label: "Add device", chevron: false }],
+    });
+  }
+
+  // The Objects section: one row per staged library object plus the add affordance.
+  const objects = doc?.objects ?? [];
+  if (objects.length > 0) {
+    sections.push({
+      id: "objects",
+      label: objects.length > 1 ? "Objects" : "Object",
+      rows: [
+        ...objects.map((o) => ({
+          id: `objects.edit:${o.id}`,
+          label: objectRowLabel(o.objectId),
+          chevron: true,
+        })),
+        { id: "objects.add", label: "Add object", chevron: false },
+      ],
+    });
+  } else if (doc) {
+    sections.push({
+      id: "objects",
+      label: "Object",
+      rows: [{ id: "objects.add", label: "Add object", chevron: false }],
     });
   }
 

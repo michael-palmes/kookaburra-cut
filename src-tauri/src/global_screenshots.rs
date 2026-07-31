@@ -137,6 +137,21 @@ pub async fn global_screenshot_meta(
     media::ensure_media_cache(&app, &abs, &name).await
 }
 
+/// Move a library file to the Trash. No reference check: projects always copy on use, so nothing ever points into the shared folder.
+#[tauri::command]
+pub fn delete_global_screenshot(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    name: String,
+) -> Result<(), String> {
+    validate_name(&name)?;
+    let path = screenshots_root(&app, &state)?.join(&name);
+    if !path.is_file() {
+        return Err(format!("no library file named {name}"));
+    }
+    workspace::trash_path(&path).map_err(|e| format!("couldn't move the file to the Trash: {e}"))
+}
+
 /// The media-card action: copy a project asset out to the global folder; returns the stored name.
 #[tauri::command]
 pub fn copy_to_global_screenshots(

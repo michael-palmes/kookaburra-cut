@@ -1,6 +1,6 @@
 {
   "id": "preview-lab-stage",
-  "name": "Preview Lab — stage (dev-only)",
+  "name": "Preview Lab \u2014 stage (dev-only)",
   "version": 2,
   "themeId": "kookaburra-studio-white",
   "formats": ["16:9"],
@@ -59,6 +59,10 @@
     },
     {
       "file": "scenes/kind-video.tsx",
+      "durationMs": 3650
+    },
+    {
+      "file": "scenes/kind-image.tsx",
       "durationMs": 3650
     },
     {

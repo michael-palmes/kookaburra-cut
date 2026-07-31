@@ -21,6 +21,7 @@ import {
 } from "./engine/autorun";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
+import { pollCaptureBridge } from "./engine/captureBridge";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -114,6 +115,7 @@ import {
   projectFingerprint,
   setLastExportPreset,
   setLastProject,
+  setProjectTypography,
   slugifyName,
 } from "./engine/workspace";
 import { useAssetVersionStore } from "./store/assetVersionStore";
@@ -126,6 +128,7 @@ import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
 import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
+import { ObjectsFallback } from "./toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
 import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
@@ -257,6 +260,8 @@ export default function App() {
   const [setupError, setSetupError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectListing[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
+  /** Group preselected in the create dialog (a group heading's "+" on the welcome screen). */
+  const [newProjectGroup, setNewProjectGroup] = useState<string | null>(null);
   const isAutoRun = useMemo(() => {
     try {
       return getAutoRunConfig() !== null;
@@ -614,6 +619,31 @@ export default function App() {
       handleTimingChanged();
     } catch (e) {
       setToast({ kind: "error", message: `Render settings failed: ${String(e)}` });
+    }
+  }
+
+  async function handleSetTypography(headline: string | null, body: string | null) {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    try {
+      const slug = workspaceSlug(current.id);
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      await setProjectTypography(slug, headline, body);
+      pushHistory({
+        label: "project fonts",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+      handleTimingChanged();
+    } catch (e) {
+      setToast({ kind: "error", message: `Project fonts failed: ${String(e)}` });
     }
   }
 
@@ -1061,8 +1091,8 @@ export default function App() {
   );
 
   const handleCreateProject = useCallback(
-    async (name: string, templateId: string, themeId: string) => {
-      const project = await createProject(name, templateId);
+    async (name: string, templateId: string, themeId: string, group: string | null) => {
+      const project = await createProject(name, templateId, group);
       // The theme step's pick lands in the copied project.json before the first load, so the project opens already themed.
       await invoke("set_project_theme", { slug: project.slug, themeId });
       await refreshProjects();
@@ -1236,6 +1266,24 @@ export default function App() {
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
   const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
   const compareLaneOpen = useCompareEditStore((s) => s.open);
+
+  // The capture bridge: answer the embedded terminal's frame requests from the running app (engine/captureBridge.ts); mounts on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
+  const bridgeBusyRef = useRef(false);
+  useEffect(() => {
+    if (isAutoRun) return;
+    const timer = window.setInterval(() => {
+      if (bridgeBusyRef.current) return;
+      bridgeBusyRef.current = true;
+      void pollCaptureBridge({
+        project: loadedProjectRef.current,
+        exporting,
+        setExporting,
+      }).finally(() => {
+        bridgeBusyRef.current = false;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isAutoRun, exporting]);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
@@ -1729,7 +1777,10 @@ export default function App() {
       {view === "welcome" && (
         <Welcome
           onOpenProject={openProject}
-          onNewProject={() => setShowNewProject(true)}
+          onNewProject={(group) => {
+            setNewProjectGroup(group ?? null);
+            setShowNewProject(true);
+          }}
           refreshKey={welcomeRefresh}
           focusSearchNonce={welcomeSearchNonce}
         />
@@ -1853,6 +1904,7 @@ export default function App() {
                                 <SceneComponent />
                                 {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
                                 <DevicesFallback />
+                                <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />
@@ -1883,6 +1935,7 @@ export default function App() {
                                 <SceneBackground />
                                 <SceneComponent />
                                 <DevicesFallback />
+                                <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
                                 <TextFallback />
@@ -2187,6 +2240,7 @@ export default function App() {
               onPasteBackground={(i) => void handlePasteBackground(i)}
               onDuplicateSceneAt={handleDuplicateScene}
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
+              onSetTypography={(headline, body) => void handleSetTypography(headline, body)}
             />
           )}
         </div>
@@ -2221,6 +2275,7 @@ export default function App() {
       )}
       {showNewProject && (
         <NewProjectDialog
+          initialGroup={newProjectGroup}
           onCreate={handleCreateProject}
           onCancel={() => setShowNewProject(false)}
         />
