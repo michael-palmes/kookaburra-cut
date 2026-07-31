@@ -2050,11 +2050,6 @@ body {
   text-align: center;
 }
 
-/* The object placement drill breathes wider above every labelled group, the title included. */
-.object-drill .drill-group {
-  margin-top: var(--space-7);
-}
-
 /* Copy-scene destination list: rail-menu rows in a scrollable modal column. */
 .copy-scene-projects {
   display: flex;
@@ -6108,6 +6103,17 @@ img.inspector-scene-thumb {
   color: var(--text-primary);
   background: var(--surface-raised);
 }
+/* The object placement drill's rhythm: clear air above every labelled group (less for the first, which sits under the drill title), content hugging its own label, and the gizmo pills stripped of their stock margins so they align with the 8px label inset and their hint reads attached. */
+.object-drill .drill-group {
+  margin-top: var(--space-7);
+}
+.object-drill .drill-group:first-child {
+  margin-top: var(--space-4);
+}
+.object-drill .drill-group .inspector-subtabs {
+  margin: 0 8px;
+}
+
 /* Pill scale: the camera pill runs the same control at a smaller size. */
 .camera-pill-modes .inspector-subtab {
   height: 20px;
