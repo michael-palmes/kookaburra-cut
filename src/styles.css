@@ -2050,8 +2050,8 @@ body {
   text-align: center;
 }
 
-/* The object placement drill breathes wider between its labelled groups. */
-.object-drill .drill-group:not(:first-child) {
+/* The object placement drill breathes wider above every labelled group, the title included. */
+.object-drill .drill-group {
   margin-top: var(--space-7);
 }
 
