@@ -813,6 +813,86 @@ function LidRow({
   );
 }
 
+/** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size. */
+function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
+  const glyph = {
+    translate: (
+      <>
+        <path d="M10 3.5v13M3.5 10h13" />
+        <path d="M8 5.5l2-2 2 2M8 14.5l2 2 2-2M5.5 8l-2 2 2 2M14.5 8l2 2-2 2" />
+      </>
+    ),
+    rotate: (
+      <>
+        <path d="M16.2 10a6.2 6.2 0 11-1.9-4.5" />
+        <path d="M16.6 2.6v3.2h-3.2" />
+      </>
+    ),
+    scale: (
+      <>
+        <rect x="3.5" y="8.5" width="8" height="8" rx="1" />
+        <path d="M11.5 8.5L16.5 3.5M16.5 7V3.5H13" />
+      </>
+    ),
+  }[mode];
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** Object placement preset chip icons: a dot for the object against a phone outline (or the floor). */
+function ObjectPresetIcon({ id }: { id: "left" | "right" | "front" | "floor" }) {
+  const glyph = {
+    left: (
+      <>
+        <rect x="11" y="4" width="6" height="12" rx="1.4" />
+        <circle cx="5.5" cy="13.5" r="2.3" />
+      </>
+    ),
+    right: (
+      <>
+        <rect x="3" y="4" width="6" height="12" rx="1.4" />
+        <circle cx="14.5" cy="13.5" r="2.3" />
+      </>
+    ),
+    front: (
+      <>
+        <rect x="7" y="3.5" width="6" height="11" rx="1.4" />
+        <circle cx="10" cy="15" r="2.3" />
+      </>
+    ),
+    floor: (
+      <>
+        <path d="M3 16h14" />
+        <circle cx="10" cy="12.5" r="2.6" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
 /** Cutout-shape tiles, the `BgTypeIcon` sibling scoped to `FrameShape`. */
 function FrameShapeIcon({ id }: { id: FrameShape }) {
   const shape = {
@@ -5038,104 +5118,114 @@ export function SceneTab({
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{objectRowLabel(stagedObject.objectId)}</div>
         <div className="inspector-section-body">
-          <SegmentedRow
-            options={[
-              { value: "translate", label: "Move" },
-              { value: "rotate", label: "Rotate" },
-              { value: "scale", label: "Scale" },
-            ]}
-            value={gizmoMode}
-            onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
-          />
-          <span className="modal-hint">
-            Drag the gizmo in the preview (Scale resizes evenly), or set the pose here.
-          </span>
-          <div className="wizard-presets">
-            {device && (
-              <button
-                type="button"
-                className="chip"
-                onClick={() =>
-                  patchObject((o) => {
-                    o.placement = besideDevicePlacement(device, "left");
-                  })
-                }
-              >
-                Left of device
-              </button>
-            )}
-            {device && (
-              <button
-                type="button"
-                className="chip"
-                onClick={() =>
-                  patchObject((o) => {
-                    o.placement = besideDevicePlacement(device, "right");
-                  })
-                }
-              >
-                Right of device
-              </button>
-            )}
-            {device && (
-              <button
-                type="button"
-                className="chip"
-                onClick={() =>
-                  patchObject((o) => {
-                    o.placement = frontOfDevicePlacement(device);
-                  })
-                }
-              >
-                In front
-              </button>
-            )}
-            <button
-              type="button"
-              className="chip"
-              onClick={() =>
-                patchObject((o) => {
-                  o.placement = floorCentrePlacement();
-                })
-              }
-            >
-              Floor centre
-            </button>
-          </div>
-          <div className="inspector-pose-grid">
-            {(["x", "y", "z"] as const).map((label, axis) => (
-              <NumberField
-                key={label}
-                label={label}
-                value={pos[axis] ?? 0}
-                decimals={2}
-                onCommit={(n) => setAxis("position", axis, n)}
-              />
-            ))}
-          </div>
-          <div className="inspector-pose-grid">
-            {(["tilt x °", "turn y °", "roll z °"] as const).map((label, axis) => (
-              <NumberField
-                key={label}
-                label={label}
-                value={rot[axis] ?? 0}
-                decimals={1}
-                onCommit={(n) => setAxis("rotationDeg", axis, n)}
-              />
-            ))}
-          </div>
-          <div className="inspector-pose-grid">
-            <NumberField
-              label="scale ×"
-              value={placement.scale ?? 1}
-              decimals={2}
-              onCommit={(n) =>
-                patchObject((o) => {
-                  o.placement = { ...o.placement, scale: Math.max(0.01, n) };
-                })
-              }
+          <DrillGroup label="Gizmo">
+            <SegmentedRow
+              options={[
+                { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
+                { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
+                { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
+              ]}
+              value={gizmoMode}
+              onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
             />
-          </div>
+            <span className="drill-group-hint">
+              Drag the gizmo in the preview; Scale resizes evenly.
+            </span>
+          </DrillGroup>
+          <DrillGroup label="Presets">
+            <div className="wizard-presets object-preset-chips">
+              {device && (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() =>
+                    patchObject((o) => {
+                      o.placement = besideDevicePlacement(device, "left");
+                    })
+                  }
+                >
+                  <ObjectPresetIcon id="left" />
+                  Left of device
+                </button>
+              )}
+              {device && (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() =>
+                    patchObject((o) => {
+                      o.placement = besideDevicePlacement(device, "right");
+                    })
+                  }
+                >
+                  <ObjectPresetIcon id="right" />
+                  Right of device
+                </button>
+              )}
+              {device && (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() =>
+                    patchObject((o) => {
+                      o.placement = frontOfDevicePlacement(device);
+                    })
+                  }
+                >
+                  <ObjectPresetIcon id="front" />
+                  In front
+                </button>
+              )}
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  patchObject((o) => {
+                    o.placement = floorCentrePlacement();
+                  })
+                }
+              >
+                <ObjectPresetIcon id="floor" />
+                Floor centre
+              </button>
+            </div>
+          </DrillGroup>
+          <DrillGroup label="Pose">
+            <div className="inspector-pose-grid">
+              {(["x", "y", "z"] as const).map((label, axis) => (
+                <NumberField
+                  key={label}
+                  label={label}
+                  value={pos[axis] ?? 0}
+                  decimals={2}
+                  onCommit={(n) => setAxis("position", axis, n)}
+                />
+              ))}
+            </div>
+            <div className="inspector-pose-grid">
+              {(["tilt x °", "turn y °", "roll z °"] as const).map((label, axis) => (
+                <NumberField
+                  key={label}
+                  label={label}
+                  value={rot[axis] ?? 0}
+                  decimals={1}
+                  onCommit={(n) => setAxis("rotationDeg", axis, n)}
+                />
+              ))}
+            </div>
+            <div className="inspector-pose-grid">
+              <NumberField
+                label="scale ×"
+                value={placement.scale ?? 1}
+                decimals={2}
+                onCommit={(n) =>
+                  patchObject((o) => {
+                    o.placement = { ...o.placement, scale: Math.max(0.01, n) };
+                  })
+                }
+              />
+            </div>
+          </DrillGroup>
           <ToggleRow
             icon={<SceneRowIcon id="objects.edit" />}
             label="Rest on floor"

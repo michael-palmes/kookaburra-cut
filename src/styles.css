@@ -5060,7 +5060,8 @@ body {
   border: 0;
 }
 /* Aspect chips carry a proportioned rect glyph before the label. */
-.export-aspect-row .chip {
+.export-aspect-row .chip,
+.object-preset-chips .chip {
   display: inline-flex;
   gap: 5px;
   align-items: center;
