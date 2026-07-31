@@ -2050,6 +2050,11 @@ body {
   text-align: center;
 }
 
+/* The object placement drill breathes wider between its labelled groups. */
+.object-drill .drill-group:not(:first-child) {
+  margin-top: var(--space-7);
+}
+
 /* Copy-scene destination list: rail-menu rows in a scrollable modal column. */
 .copy-scene-projects {
   display: flex;

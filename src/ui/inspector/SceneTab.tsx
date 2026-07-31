@@ -5117,7 +5117,7 @@ export function SceneTab({
       <>
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{objectRowLabel(stagedObject.objectId)}</div>
-        <div className="inspector-section-body">
+        <div className="inspector-section-body object-drill">
           <DrillGroup label="Gizmo">
             <SegmentedRow
               options={[
