@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Object: bitcoin-coin",
+  "duration": {
+    "mode": "manual"
+  },
+  "text": {},
+  "objects": [
+    {
+      "id": "o1",
+      "objectId": "bitcoin-coin",
+      "placement": {
+        "position": [0, 0, 1.2],
+        "rotationDeg": [8, 24, 0],
+        "scale": 3.2
+      }
+    }
+  ]
+}

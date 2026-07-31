@@ -27,3 +27,9 @@ plain language, not code terms.
    remote URLs.
 5. Preview updates automatically when you save — tell the user to look at the
    Kookaburra Cut window after a change.
+6. **You can SEE frames.** Whenever the user asks what's on screen, what's in a
+   scene, or how something looks (or you want to check your own change), run:
+   `python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py`
+   (optionally `--scene <stem-or-index> --at <seconds>`). It asks the running
+   app for a rendered frame and prints a PNG path; Read that file. Never guess
+   at visuals from the code when you can look.

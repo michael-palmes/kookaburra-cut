@@ -1,17 +1,18 @@
 ---
 description: Scaffold a new Kookaburra Cut scene (TSX + sidecar doc) and register it in its project.json
-argument-hint: <project> <scene-name> [device|deviceonly|comparison|title|titleicon|appversion|layeredscreenshot|video|videowindow|overlaystart|overlayend|overlaypanel|rig|blank]
+argument-hint: <project> <scene-name> [device|deviceonly|comparison|title|titleicon|appversion|layeredscreenshot|video|image|videowindow|overlaystart|overlayend|overlaypanel|rig|blank]
 ---
 
 Create a new scene for the Kookaburra Cut project `$1` named `$2`, of kind `$3` (default `device` if the
 user mentions a device/media (`deviceonly` when they want no title copy), `comparison`
 for a labelled before/after pair of devices with two screen recordings, `appversion` for
 an app icon + version lockup, `layeredscreenshot` for a 3D stack of app screens, `video`
-for a full-frame background video, `videowindow` for a floating screen recording on a
-backing stage, `titleicon` for a title with an icon above it, `overlaystart`/`overlayend`
-for a panel beside a scene cutout window (window on the start or end side),
-`overlaypanel` for a full panel with a chip, `rig` for a free-camera fly-through, else
-`title`; `blank` only when asked).
+for a full-frame background video, `image` for a full-frame background image,
+`videowindow` for a floating screen recording on a backing stage, `titleicon` for a title
+with an icon above it, `overlaystart`/`overlayend` for a panel beside a scene cutout
+window (window on the start or end side), `overlaypanel` for a full panel with no scene
+window (content centres), `rig` for a free-camera fly-through, else `title`; `blank` only
+when asked).
 
 The app's native scaffolder (`scaffold_scene` in `src-tauri/src/scene_doc.rs`) and this
 command emit IDENTICAL scenes from the SAME templates — never invent a different shape.
@@ -56,8 +57,9 @@ Steps:
      "start"|"end" }, "background": "background", "chip": { "label": "New", "icon":
      "circle-check", "colour": "accent" } }`; user bullet lines (one per line) go to
      `text.bullets`.
-   - overlaypanel: same `frame` but the cutout collapses to a sliver so the panel reads
-     full-frame: `{ "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 }`.
+   - overlaypanel: `frame` = `{ "cutout": { "shape": "none" } }` plus the same starter
+     chip; no scene shows through and content centres by default (the `"none"` shape's
+     alignment default). User bullet lines go to `text.bullets` here too.
    - layeredscreenshot: a `layeredScreenshot` block with one layer (`{ "id": "l1",
      "visible": true, "z": 0, "items": [...] }`, the first screen as `{ "id": "i1",
      "kind": "screen", "src": "assets/<file>", "media": "image"|"video", "attach": null }`
@@ -66,6 +68,9 @@ Steps:
    - video: no text keys and a `background` block `{ "type": "video", "src":
      "assets/<file>" }` (the media the user gave, else the bundled
      `assets/sample-laptop-recording.mp4`).
+   - image: no text keys and a `background` block `{ "type": "image", "src":
+     "assets/<file>" }` when an image was given; without one the scene keeps the theme
+     background (no bundled sample image).
    - rig: uses `title.tsx.tmpl` (in-app only; the native scaffolder has no rig kind, the
      inspector's camera presets cover it there) and seeds `cameraMode: "rig"` plus a
      `cameraRig` block from the fly-through preset shape relative to the base camera at

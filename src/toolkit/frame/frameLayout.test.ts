@@ -167,6 +167,23 @@ describe("frameLayout guards", () => {
   });
 });
 
+describe('frameLayout with shape "none"', () => {
+  it("gives the panel the whole frame at every aspect, zero cutout", () => {
+    for (const aspect of [WIDE, SQUARE, PORTRAIT, TALL]) {
+      const layout = frameLayout(aspect, { shape: "none" });
+      expect(layout.content).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+      expect(layout.cutout.width * layout.cutout.height).toBe(0);
+      expect(layout.radius).toBe(0);
+    }
+  });
+
+  it("ignores side, size and inset", () => {
+    const bare = frameLayout(WIDE, { shape: "none" });
+    const decorated = frameLayout(WIDE, { shape: "none", side: "end", size: 0.4, inset: 0.15 });
+    expect(decorated).toEqual(bare);
+  });
+});
+
 describe("cutoutPixelRect", () => {
   it("rounds onto the pixel grid", () => {
     const { cutout } = frameLayout(WIDE, rounded);

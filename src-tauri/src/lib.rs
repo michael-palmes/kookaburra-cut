@@ -1,5 +1,6 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+mod bridge;
 mod claude_update;
 mod concurrency;
 mod edit;
@@ -681,35 +682,7 @@ async fn save_screenshot(
             pending.height
         ));
     }
-    let raw = pending.out.with_extension("rgba");
-    std::fs::write(&raw, bytes).map_err(|e| e.to_string())?;
-    let result = media::run_sidecar(
-        &app,
-        "ffmpeg",
-        vec![
-            "-y".into(),
-            "-hide_banner".into(),
-            "-loglevel".into(),
-            "error".into(),
-            "-f".into(),
-            "rawvideo".into(),
-            "-pix_fmt".into(),
-            "rgba".into(),
-            "-s".into(),
-            format!("{}x{}", pending.width, pending.height),
-            "-i".into(),
-            raw.to_string_lossy().into_owned(),
-            "-vf".into(),
-            "vflip".into(),
-            "-frames:v".into(),
-            "1".into(),
-            pending.out.to_string_lossy().into_owned(),
-        ],
-        media::SidecarPriority::Foreground,
-    )
-    .await;
-    let _ = std::fs::remove_file(&raw);
-    result?;
+    media::write_rgba_png(&app, bytes, pending.width, pending.height, &pending.out).await?;
     Ok(pending.out.to_string_lossy().into_owned())
 }
 
@@ -1005,6 +978,7 @@ pub fn run() {
         .manage(ExportState::default())
         .manage(LastExport::default())
         .manage(ScreenshotState(Mutex::new(None)))
+        .manage(bridge::BridgeScreenshotState::default())
         .manage(concurrency::BackgroundLimiter::default())
         .manage(workspace::SettingsState::default())
         .manage(updater::PendingUpdate::default())
@@ -1247,6 +1221,8 @@ pub fn run() {
             workspace::set_export_to_downloads,
             workspace::set_lag_warning,
             workspace::rename_project,
+            workspace::set_project_group,
+            workspace::set_project_typography,
             workspace::duplicate_project,
             workspace::delete_project,
             workspace::write_snapshot,
@@ -1267,8 +1243,15 @@ pub fn run() {
             scene_doc::set_project_audio,
             scene_doc::scaffold_scene,
             scene_doc::duplicate_scene,
+            scene_doc::copy_scene_to_project,
+            bridge::bridge_claim_request,
+            bridge::bridge_write_response,
+            bridge::begin_bridge_screenshot,
+            bridge::save_bridge_screenshot,
             objects::list_objects,
             objects::read_object,
+            objects::import_object,
+            objects::write_object_thumbnail,
             theme::list_themes,
             theme::read_theme,
             theme::write_theme,
@@ -1304,6 +1287,7 @@ pub fn run() {
             global_screenshots::import_global_screenshots,
             global_screenshots::global_screenshot_meta,
             global_screenshots::copy_to_global_screenshots,
+            global_screenshots::delete_global_screenshot,
             settings_win::cache_stats,
             settings_win::clear_media_cache,
             settings_win::clear_clips_cache,

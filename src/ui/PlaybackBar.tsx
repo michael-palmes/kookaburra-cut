@@ -6,11 +6,12 @@ import {
   useState,
 } from "react";
 import { isExporting } from "../engine/exportState";
-import { type LoadedProject, sceneFileStem } from "../engine/project";
+import { type LoadedProject, sceneFileStem, workspaceSlug } from "../engine/project";
 import { ensureSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { CopySceneModal } from "./CopySceneModal";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
 import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
@@ -70,6 +71,7 @@ export function PlaybackBar({
   const trackRef = useRef<HTMLDivElement>(null);
   const scrubbing = useRef(false);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [copying, setCopying] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
   const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
   const [duplicating, setDuplicating] = useState<number | null>(null);
@@ -111,6 +113,7 @@ export function PlaybackBar({
         },
         onPasteBackground: () => onPasteBackground(index),
         onDelete: () => onDeleteScene(index),
+        onCopyToProject: () => setCopying(index),
         onManage: () => {
           const ui = useUiStore.getState();
           ui.setInspectorTab("project");
@@ -346,6 +349,15 @@ export function PlaybackBar({
         )}
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {copying !== null && project && (
+        <CopySceneModal
+          slug={workspaceSlug(project.id)}
+          indices={[copying]}
+          sceneLabel={`“${sceneName(copying)}”`}
+          onDone={() => setCopying(null)}
+          onCancel={() => setCopying(null)}
+        />
+      )}
       {duplicating !== null && project && (
         <DuplicateSceneDialog
           project={project}

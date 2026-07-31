@@ -205,9 +205,14 @@ export function TerminalPanel({
           setStatus("missing");
           return;
         }
-        // Heal provisioning (managed skill copy, missing CLAUDE.md/settings) before launch.
-        await invoke("provision_project", { slug }).catch(() => {});
+        // Heal provisioning (managed skill copy, missing CLAUDE.md/settings) before launch. `false` = the packaged skill resource is missing (a packaging defect): warn visibly where the user is about to type, rather than starting Claude silently unskilled; an invoke throw stays soft (the session is still useful).
+        const provisioned = await invoke<boolean>("provision_project", { slug }).catch(() => true);
         term.clear();
+        if (provisioned === false) {
+          term.writeln(
+            "\r\n⚠ Kookaburra Cut's scene-authoring skill is missing from this install, so Claude may not know this app's conventions. Try reinstalling Kookaburra Cut.\r\n",
+          );
+        }
         const startedAt = Date.now();
         const session = await spawnTerminalSession({
           term,

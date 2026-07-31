@@ -119,6 +119,45 @@ pub(crate) enum SidecarPriority {
     Background,
 }
 
+/// One raw RGBA frame (bottom-up, hence vflip) to a PNG on disk via the ffmpeg sidecar; shared by the autorun and bridge screenshot commands.
+pub(crate) async fn write_rgba_png(
+    app: &AppHandle,
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+    out: &std::path::Path,
+) -> Result<(), String> {
+    let raw = out.with_extension("rgba");
+    std::fs::write(&raw, bytes).map_err(|e| e.to_string())?;
+    let result = run_sidecar(
+        app,
+        "ffmpeg",
+        vec![
+            "-y".into(),
+            "-hide_banner".into(),
+            "-loglevel".into(),
+            "error".into(),
+            "-f".into(),
+            "rawvideo".into(),
+            "-pix_fmt".into(),
+            "rgba".into(),
+            "-s".into(),
+            format!("{width}x{height}"),
+            "-i".into(),
+            raw.to_string_lossy().into_owned(),
+            "-vf".into(),
+            "vflip".into(),
+            "-frames:v".into(),
+            "1".into(),
+            out.to_string_lossy().into_owned(),
+        ],
+        SidecarPriority::Foreground,
+    )
+    .await;
+    let _ = std::fs::remove_file(&raw);
+    result.map(|_| ())
+}
+
 /// Run a sidecar to completion, returning its stdout (stderr is drained and discarded; the event channel has a 1-item buffer and MUST be drained or the child blocks). Background runs queue on the shared limiter and drop scheduling priority.
 pub(crate) async fn run_sidecar(
     app: &AppHandle,

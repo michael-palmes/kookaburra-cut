@@ -96,8 +96,8 @@ export function CompositorDriver({
 
   // Per-scene overlays with panel colours resolved; null unless some scene declares a frame.
   const overlays = useMemo(
-    () => (sceneThemes ? resolveOverlays(sceneFrames ?? [], sceneThemes) : null),
-    [sceneFrames, sceneThemes],
+    () => (sceneThemes ? resolveOverlays(sceneFrames ?? [], sceneThemes, sceneDocs ?? []) : null),
+    [sceneFrames, sceneThemes, sceneDocs],
   );
 
   // Comparison plan inputs: normalised specs per scene (chrome colours resolved against each scene's own theme), plus side B's render states built over B-substituted themes/docs (non-compare entries reuse side A's inputs and are never read).

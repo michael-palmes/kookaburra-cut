@@ -1,0 +1,29 @@
+{
+  "id": "preview-lab-objects",
+  "name": "Preview Lab \u2014 objects (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/object-bitcoin-coin.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-ethereum-coin.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-avocado.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-candlestick.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/object-candlestick-amber.tsx",
+      "durationMs": 1000
+    }
+  ]
+}

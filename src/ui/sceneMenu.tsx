@@ -15,6 +15,8 @@ export function sceneMenuItems(opts: {
   onManage?: () => void;
   /** Scenes-manager multi-select: > 1 relabels Duplicate to the instant bulk action. */
   duplicateCount?: number;
+  /** Workspace projects only: opens the copy-to-project picker (bulk when duplicateCount > 1). */
+  onCopyToProject?: () => void;
 }): (ContextMenuItem | "separator")[] {
   const bulk = (opts.duplicateCount ?? 0) > 1;
   return [
@@ -30,6 +32,15 @@ export function sceneMenuItems(opts: {
       label: bulk ? `Duplicate ${opts.duplicateCount} scenes` : "Duplicate…",
       onSelect: opts.onDuplicate,
     },
+    ...(opts.onCopyToProject
+      ? [
+          {
+            id: "copy-to-project",
+            label: bulk ? `Copy ${opts.duplicateCount} scenes to project…` : "Copy to project…",
+            onSelect: opts.onCopyToProject,
+          } as ContextMenuItem,
+        ]
+      : []),
     { id: "duration", label: "Change duration…", onSelect: opts.onDuration },
     ...(opts.onManage
       ? [{ id: "manage", label: "Manage scenes…", onSelect: opts.onManage } as ContextMenuItem]

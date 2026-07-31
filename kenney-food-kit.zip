@@ -1,0 +1,211 @@
+
+<!DOCTYPE html>
+<html lang='en'>
+
+	<head>
+	
+		<meta charset='utf-8'>
+		<meta name='viewport' content='width=device-width, initial-scale=1'>
+
+		<title>Error &middot; Kenney</title>
+		
+		<meta name='description' content=''>
+		<meta name='keywords' content='Games, Software, Game assets, Assets, Gamedev'>
+		<meta name='author' content='Kenney'>
+		
+		<script>
+		
+			(function(){
+				
+				const savedTheme = localStorage.getItem('theme');
+				const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+				
+				if(savedTheme === 'dark' || (!savedTheme && systemDark)){
+					
+					document.documentElement.classList.add('dark');
+					
+				}else{
+					
+					document.documentElement.classList.remove('dark');
+					
+				}
+				
+			})();
+		
+		</script>
+		
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/bootstrap-grid.min.css?1' />
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/fonts.css?1' />
+		
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/kenney.css?1' />
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/kenney-common.css?1' />
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/kenney-dark.css?1' />
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/kenney-forms.css?1' />
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/kenney-sidebar.css?1' />
+		
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/animate.min.css?1' />
+		<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/code-github-dark-dimmed.css' />
+		
+		<!-- OpenGraph !-->
+		
+		<meta property='og:url'	content='https://kenney.nl/error' />
+		<meta property='og:type' content='article' />
+	
+		<meta property='og:title' content='Error &middot; Kenney' />
+		
+		<!-- Meta !-->
+		
+		<meta name='twitter:card' content='summary_large_image'>
+		<meta property='twitter:domain' content='kenney.nl'>
+		<meta property='twitter:url' content='https://kenney.nl/error'>
+		<meta name='twitter:title' content='Error &middot; Kenney'>
+		
+		<meta property='og:image'	content='https://kenney.nl/data/img/kenney-promo.png' />		
+				
+	</head>
+	
+	<body class='wrapper'>
+	
+			
+	<a target='_blank' href='https://kenney.itch.io/kenney-game-assets' class='warning no-select'><img src='https://kenney.nl/data/img/sparkles.svg' height='20px' style='vertical-align: bottom; margin-right:0.25em' /> Get Kenney Game Assets All-in-1 to download <em>everything</em> at once, plus free updates!</a>
+	
+	
+		<div id='header-container'>
+			<div id='header'>
+			
+				<div class='logo-full mobile-show'>
+					<a href='https://kenney.nl'><img src="https://kenney.nl/data/img/logo.png" srcset="https://kenney.nl/data/img/logo@2.png 2x"/></a>
+				</div>
+				
+					<div class="navigation">
+					
+						<ul>
+							<li class='icon mobile-show'><a href='#' onclick="openNavigation()"><span><img width='20' height='20' style='vertical-align: middle;' src='https://kenney.nl/data/img/icons/menu.svg'/></span></a></li>
+						
+							<li class='logo mobile-hide'>
+								<a href='https://kenney.nl'><img src="https://kenney.nl/data/img/logo.png" srcset="https://kenney.nl/data/img/logo@2.png 2x"/></a>
+							</li>
+							
+							<div class='mobile-hide'>
+								<li class='item '><a href='https://kenney.nl/games'><span>Games</span></a></li>
+								<li class='item '><a href='https://kenney.nl/tools'><span>Tools</span></a></li>
+								<li class='item '><a href='https://kenney.nl/assets'><span>Assets</span></a></li>
+								<li class='item '><a href='https://kenney.nl/starter-kits'><span>Starter Kits</span></a></li>
+							</div>
+						</ul>
+						
+					</div>
+					
+					<div class="navigation right">
+					
+						<ul class='mobile-hide'>
+							<li class='icon'><a class='toggle-theme' href='#'><img width='20' height='20' style='vertical-align: middle' src='https://kenney.nl/data/img/icons/icon-mode-dark.svg'/></a></li>
+							<li class='item '><a href='https://kenney.nl/donate'><span>Donate</span></a></li>
+						</ul>
+					
+					</div>
+					
+					<div id="sidebar" class='sidebar' class='no-select'>
+					
+						<a href="javascript:void(0)" class="close" onclick="closeNavigation()">&times;</a>
+						
+						<div class="sidebar-menu">
+							<a href="https://kenney.nl/games">Games</a>
+							<a href="https://kenney.nl/tools">Tools</a>
+							<a href="https://kenney.nl/assets">Assets</a>
+							<a href="https://kenney.nl/starter-kits">Starter Kits</a>
+						</div>
+						
+						<hr>
+						
+						<div class="sidebar-menu small">
+							<a href="https://kenney.nl/support">Support</a>
+							<a href="https://kenney.nl/knowledge-base">Knowledge Base</a>
+							<a href="https://kenney.nl/donate">Donate</a>
+						</div>
+						
+						<hr>
+						
+						<div class="sidebar-menu small">
+							<a class='toggle-theme' href='#'><img width='20' height='20' style='vertical-align: middle; filter: brightness(0) invert(1)' src='https://kenney.nl/data/img/icons/icon-mode-dark.svg'/></a>
+						</div>
+						
+					</div>
+				
+				<div style='clear:both'></div>
+				
+			</div>
+		</div>
+		
+		<!-- Tab !-->
+		
+		<div id='content'>
+<section class='no-padding'>
+
+	<div class='container text-center'>
+	
+		<div class='row'>
+		
+			<div class='col'>
+			
+				<h1 class='text-center'>Oops!</h1>
+				
+				<p class='lato'>The page you're looking for doesn't exist (anymore)<br>
+				If you feel like this page should be working don't hesitate to <a href='https://kenney.nl/support'>contact</a> Kenney</p>
+				
+				<p class='margin-top' style='margin-bottom: 0.8em'><a href='https://kenney.nl/assets' class='button'>Game assets <span class='chevron'></span></a></p>
+			
+			</div>
+		
+		</div>
+		
+	</div>
+
+</section>
+
+	</div>
+
+<footer class='text-muted'>
+	
+	<div class='row mobile-stack horizontal-list text-center'>
+	
+		<div class='col'>
+		
+			<span>Copyright &copy; 2010 - 2026 &middot; All rights reserved</span>
+		
+		</div>
+	
+	</div>
+	
+	<div class='row mobile-stack text-center'>
+	
+		<div class='col mobile-text-center mobile-margin-top horizontal-list'>
+		
+					
+			<a href='https://kenney.nl/support'>Support</a>
+			<a href='https://kenney.nl/knowledge-base'>Knowledge Base</a>
+			<a href='https://kenney.nl/privacy-policy'>Privacy Policy</a>
+			<a href='https://kenney.nl/terms-of-service'>Terms of Service</a>
+			
+						
+		</div>
+	
+	</div>
+	
+</footer>
+
+
+<link rel='stylesheet' type='text/css' href='https://kenney.nl/data/css/lity.min.css' />
+
+<script type='text/javascript' src='https://kenney.nl/data/js/mobile-menu.js'></script>
+<script type='text/javascript' src='https://kenney.nl/data/js/jquery.slim.min.js'></script>
+<script type='text/javascript' src='https://kenney.nl/data/js/lity.min.js'></script>
+<script type='text/javascript' src='https://kenney.nl/data/js/kenney.js'></script>
+<script type='text/javascript' src='https://kenney.nl/data/js/kenney-theme-switching.js'></script>
+
+<a style='display:none' rel="me" href="https://mastodon.gamedev.place/@kenney">Mastodon</a>
+
+</body>
+</html>
+
+<!-- Rendered at 2026-07-30 10:53:58 -->

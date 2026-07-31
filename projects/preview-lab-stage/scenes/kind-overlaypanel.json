@@ -6,7 +6,13 @@
     "subtitle": "Make it yours"
   },
   "frame": {
-    "cutout": { "shape": "rounded-rect", "side": "end", "size": 0.1, "inset": 0.2 },
-    "chip": { "label": "New", "icon": "circle-check", "colour": "accent" }
+    "cutout": {
+      "shape": "none"
+    },
+    "chip": {
+      "label": "New",
+      "icon": "circle-check",
+      "colour": "accent"
+    }
   }
 }

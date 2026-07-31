@@ -9,6 +9,7 @@ import { useFormat } from "../../engine/format";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
+import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
@@ -58,6 +59,11 @@ import type {
   FrameSide,
 } from "../../toolkit/frame/types";
 import {
+  besideDevicePlacement,
+  floorCentrePlacement,
+  frontOfDevicePlacement,
+} from "../../toolkit/objects/presets";
+import {
   SCENE3D_BACKGROUND_IDS,
   SCENE3D_BACKGROUND_PRESETS,
   SCENE3D_BACKGROUNDS,
@@ -84,7 +90,7 @@ import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
-import { type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import { objectRowLabel, type SceneSectionModel, sceneSections } from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
@@ -185,6 +191,7 @@ import type { V3 } from "../../toolkit/types";
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
+import { ObjectPicker } from "../ObjectPicker";
 import { OptionCard } from "../OptionCard";
 import { HeaderIconField, TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
@@ -213,13 +220,21 @@ import {
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
-const FRAME_SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule"];
+const FRAME_SHAPES: FrameShape[] = [
+  "rect",
+  "rounded-rect",
+  "squircle",
+  "circle",
+  "capsule",
+  "none",
+];
 const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
   rect: "Rectangle",
   "rounded-rect": "Rounded",
   squircle: "Squircle",
   circle: "Circle",
   capsule: "Capsule",
+  none: "Full panel",
 };
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
@@ -439,6 +454,22 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <path d="M4 6h8M8 6v9" />
           <path d="M15 12v5M12.5 14.5h5" />
+        </svg>
+      );
+    case "objects.edit":
+    case "objects.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7L10 3z" />
+          <path d="M10 3v7m0 0l6-3.5M10 10L4 6.5" />
         </svg>
       );
     case "device.position":
@@ -805,6 +836,86 @@ function LidRow({
   );
 }
 
+/** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size. */
+function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
+  const glyph = {
+    translate: (
+      <>
+        <path d="M10 3.5v13M3.5 10h13" />
+        <path d="M8 5.5l2-2 2 2M8 14.5l2 2 2-2M5.5 8l-2 2 2 2M14.5 8l2 2-2 2" />
+      </>
+    ),
+    rotate: (
+      <>
+        <path d="M16.2 10a6.2 6.2 0 11-1.9-4.5" />
+        <path d="M16.6 2.6v3.2h-3.2" />
+      </>
+    ),
+    scale: (
+      <>
+        <rect x="3.5" y="8.5" width="8" height="8" rx="1" />
+        <path d="M11.5 8.5L16.5 3.5M16.5 7V3.5H13" />
+      </>
+    ),
+  }[mode];
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** Object placement preset chip icons: a dot for the object against a phone outline (or the floor). */
+function ObjectPresetIcon({ id }: { id: "left" | "right" | "front" | "floor" }) {
+  const glyph = {
+    left: (
+      <>
+        <rect x="11" y="4" width="6" height="12" rx="1.4" />
+        <circle cx="5.5" cy="13.5" r="2.3" />
+      </>
+    ),
+    right: (
+      <>
+        <rect x="3" y="4" width="6" height="12" rx="1.4" />
+        <circle cx="14.5" cy="13.5" r="2.3" />
+      </>
+    ),
+    front: (
+      <>
+        <rect x="7" y="3.5" width="6" height="11" rx="1.4" />
+        <circle cx="10" cy="15" r="2.3" />
+      </>
+    ),
+    floor: (
+      <>
+        <path d="M3 16h14" />
+        <circle cx="10" cy="12.5" r="2.6" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
 /** Cutout-shape tiles, the `BgTypeIcon` sibling scoped to `FrameShape`. */
 function FrameShapeIcon({ id }: { id: FrameShape }) {
   const shape = {
@@ -813,6 +924,7 @@ function FrameShapeIcon({ id }: { id: FrameShape }) {
     squircle: <path d="M10 4c4.5 0 6 1.5 6 6s-1.5 6-6 6-6-1.5-6-6 1.5-6 6-6z" />,
     circle: <circle cx="10" cy="10" r="6.5" />,
     capsule: <rect x="3" y="6" width="14" height="8" rx="4" />,
+    none: <rect x="4" y="4" width="12" height="12" rx="1.5" fill="currentColor" stroke="none" />,
   }[id];
   return (
     <svg
@@ -1628,6 +1740,10 @@ export function SceneTab({
   >({ kind: "device" });
   // Which device the device rows act on; null (or a stale id) falls back to the first device.
   const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // Which staged object the placement drill targets, plus the library picker modal.
+  const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
+  const [objectPickerOpen, setObjectPickerOpen] = useState(false);
+  const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
   // The comparison drill's side pill and its full-height media screen's target device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
@@ -1705,6 +1821,32 @@ export function SceneTab({
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
   const deviceId = device?.id;
+  const objects = doc?.objects ?? [];
+  const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
+  // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
+  const patchDocRef = useRef(patchDoc);
+  patchDocRef.current = patchDoc;
+  useEffect(() => {
+    return useObjectEditStore.subscribe((s) => {
+      const commit = s.pendingCommit;
+      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      useObjectEditStore.getState().clearCommit();
+      void patchDocRef.current((next) => {
+        const o = next.objects?.find((x) => x.id === commit.objectId);
+        if (o) o.placement = commit.placement;
+      });
+    });
+  }, [sceneIndex]);
+  // The preview gizmo follows the placement drill; leaving it (or the scene) deselects.
+  const stagedObjectId = stagedObject?.id;
+  useEffect(() => {
+    const store = useObjectEditStore.getState();
+    if (drillIn === "objects.placement" && stagedObjectId !== undefined) {
+      store.select({ sceneIndex, objectId: stagedObjectId });
+      return () => useObjectEditStore.getState().select(null);
+    }
+    if (store.selected) store.select(null);
+  }, [drillIn, sceneIndex, stagedObjectId]);
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -1899,6 +2041,30 @@ export function SceneTab({
     });
     setPickedDeviceId(id);
   };
+  const freshObjectId = () => {
+    const used = new Set(objects.map((o) => o.id));
+    let n = 1;
+    while (used.has(`o${n}`)) n += 1;
+    return `o${n}`;
+  };
+  const addObjectFromPicker = (objectId: string) => {
+    const id = freshObjectId();
+    // Beside the device when one is staged, else grounded at centre; a starting point to nudge from.
+    const placement = device ? besideDevicePlacement(device, "right") : floorCentrePlacement();
+    void patchDoc((next) => {
+      next.objects = [...(next.objects ?? []), { id, objectId, placement }];
+    });
+    setPickedObjectId(id);
+    setObjectPickerOpen(false);
+    openDrill("objects.placement");
+  };
+  /** Mutate the drill's staged object in place; a no-op when the scene has none. */
+  const patchObject = (fn: (o: NonNullable<SceneDoc["objects"]>[number]) => void) =>
+    void patchDoc((next) => {
+      const o = next.objects?.find((x) => x.id === stagedObjectId);
+      if (o) fn(o);
+    });
+
   const addCompare = () => {
     void patchDoc((next) => {
       // A visible starting point: line + chips on; the halves stay identical until the after side changes something.
@@ -2222,67 +2388,71 @@ export function SceneTab({
               </button>
             ))}
           </div>
-          <div className="popover-row">
-            <span className="popover-inline">
-              Side
-              <div className="wizard-presets">
-                {sides.map((sd) => (
-                  <button
-                    key={sd.id}
-                    type="button"
-                    className={`chip${(cutout.side ?? "start") === sd.id ? " selected" : ""}`}
-                    onClick={() => patchCutout({ side: sd.id })}
-                  >
-                    {sd.label}
-                  </button>
-                ))}
+          {cutout.shape !== "none" && (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline">
+                  Side
+                  <div className="wizard-presets">
+                    {sides.map((sd) => (
+                      <button
+                        key={sd.id}
+                        type="button"
+                        className={`chip${(cutout.side ?? "start") === sd.id ? " selected" : ""}`}
+                        onClick={() => patchCutout({ side: sd.id })}
+                      >
+                        {sd.label}
+                      </button>
+                    ))}
+                  </div>
+                </span>
               </div>
-            </span>
-          </div>
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">
-              <CutoutSliderIcon id="size" />
-              Size
-            </span>
-            <DebouncedRange
-              value={cutout.size ?? 0.56}
-              min={0.3}
-              max={0.85}
-              step={0.01}
-              label="Cutout size"
-              onCommit={(v) => patchCutout({ size: v })}
-            />
-          </div>
-          {cutout.shape === "rounded-rect" && (
-            <div className="popover-row">
-              <span className="popover-inline slider-row-label">
-                <CutoutSliderIcon id="radius" />
-                Corner radius
-              </span>
-              <DebouncedRange
-                value={cutout.radius ?? 0.12}
-                min={0}
-                max={0.5}
-                step={0.01}
-                label="Corner radius"
-                onCommit={(v) => patchCutout({ radius: v })}
-              />
-            </div>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">
+                  <CutoutSliderIcon id="size" />
+                  Size
+                </span>
+                <DebouncedRange
+                  value={cutout.size ?? 0.56}
+                  min={0.3}
+                  max={0.85}
+                  step={0.01}
+                  label="Cutout size"
+                  onCommit={(v) => patchCutout({ size: v })}
+                />
+              </div>
+              {cutout.shape === "rounded-rect" && (
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">
+                    <CutoutSliderIcon id="radius" />
+                    Corner radius
+                  </span>
+                  <DebouncedRange
+                    value={cutout.radius ?? 0.12}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    label="Corner radius"
+                    onCommit={(v) => patchCutout({ radius: v })}
+                  />
+                </div>
+              )}
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">
+                  <CutoutSliderIcon id="inset" />
+                  Inset
+                </span>
+                <DebouncedRange
+                  value={cutout.inset ?? 0}
+                  min={0}
+                  max={0.2}
+                  step={0.01}
+                  label="Inset"
+                  onCommit={(v) => patchCutout({ inset: v })}
+                />
+              </div>
+            </>
           )}
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">
-              <CutoutSliderIcon id="inset" />
-              Inset
-            </span>
-            <DebouncedRange
-              value={cutout.inset ?? 0}
-              min={0}
-              max={0.2}
-              step={0.01}
-              label="Inset"
-              onCommit={(v) => patchCutout({ inset: v })}
-            />
-          </div>
         </div>
       </div>
     );
@@ -4372,6 +4542,8 @@ export function SceneTab({
                 ? "Drawn above the panel title. An emoji, or a project image path."
                 : "Drawn above the headline. An emoji, or a project image path."
             }
+            slug={slug}
+            projectPath={workspaceProjectPath(slug) ?? ""}
             onChange={liveHeaderIcon}
             onBlur={flushHeaderIcon}
             onPick={setHeaderIcon}
@@ -4965,6 +5137,161 @@ export function SceneTab({
     );
   }
 
+  if (drillIn === "objects.placement" && stagedObject) {
+    const placement = stagedObject.placement ?? {};
+    const pos = placement.position ?? [0, 0, 0];
+    const rot = placement.rotationDeg ?? [0, 0, 0];
+    const setAxis = (field: "position" | "rotationDeg", axis: number, value: number) =>
+      patchObject((o) => {
+        const current = o.placement?.[field] ?? [0, 0, 0];
+        const next: [number, number, number] = [current[0] ?? 0, current[1] ?? 0, current[2] ?? 0];
+        next[axis] = value;
+        o.placement = { ...o.placement, [field]: next };
+        if (field === "position" && axis === 1) delete o.placement.ground;
+      });
+    return (
+      <>
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">{objectRowLabel(stagedObject.objectId)}</div>
+        <div className="inspector-section-body object-drill">
+          <DrillGroup label="Gizmo">
+            <SegmentedRow
+              options={[
+                { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
+                { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
+                { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
+              ]}
+              value={gizmoMode}
+              onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
+            />
+            <span className="drill-group-hint">
+              Drag the gizmo in the preview; Scale resizes evenly.
+            </span>
+          </DrillGroup>
+          <DrillGroup label="Presets">
+            <div className="wizard-presets object-preset-chips">
+              {device && (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() =>
+                    patchObject((o) => {
+                      o.placement = besideDevicePlacement(device, "left");
+                    })
+                  }
+                >
+                  <ObjectPresetIcon id="left" />
+                  Left of device
+                </button>
+              )}
+              {device && (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() =>
+                    patchObject((o) => {
+                      o.placement = besideDevicePlacement(device, "right");
+                    })
+                  }
+                >
+                  <ObjectPresetIcon id="right" />
+                  Right of device
+                </button>
+              )}
+              {device && (
+                <button
+                  type="button"
+                  className="chip"
+                  onClick={() =>
+                    patchObject((o) => {
+                      o.placement = frontOfDevicePlacement(device);
+                    })
+                  }
+                >
+                  <ObjectPresetIcon id="front" />
+                  In front
+                </button>
+              )}
+              <button
+                type="button"
+                className="chip"
+                onClick={() =>
+                  patchObject((o) => {
+                    o.placement = floorCentrePlacement();
+                  })
+                }
+              >
+                <ObjectPresetIcon id="floor" />
+                Floor centre
+              </button>
+            </div>
+          </DrillGroup>
+          <DrillGroup label="Pose">
+            <div className="inspector-pose-grid">
+              {(["x", "y", "z"] as const).map((label, axis) => (
+                <NumberField
+                  key={label}
+                  label={label}
+                  value={pos[axis] ?? 0}
+                  decimals={2}
+                  onCommit={(n) => setAxis("position", axis, n)}
+                />
+              ))}
+            </div>
+            <div className="inspector-pose-grid">
+              {(["tilt x °", "turn y °", "roll z °"] as const).map((label, axis) => (
+                <NumberField
+                  key={label}
+                  label={label}
+                  value={rot[axis] ?? 0}
+                  decimals={1}
+                  onCommit={(n) => setAxis("rotationDeg", axis, n)}
+                />
+              ))}
+            </div>
+            <div className="inspector-pose-grid">
+              <NumberField
+                label="scale ×"
+                value={placement.scale ?? 1}
+                decimals={2}
+                onCommit={(n) =>
+                  patchObject((o) => {
+                    o.placement = { ...o.placement, scale: Math.max(0.01, n) };
+                  })
+                }
+              />
+            </div>
+          </DrillGroup>
+          <ToggleRow
+            icon={<SceneRowIcon id="objects.edit" />}
+            label="Rest on floor"
+            description="Seats the object's base on the staged floor; off keeps the y above."
+            checked={placement.ground ?? false}
+            onChange={(on) =>
+              patchObject((o) => {
+                o.placement = { ...o.placement, ground: on };
+                if (!on) delete o.placement.ground;
+              })
+            }
+          />
+          <ActionRow
+            icon={<SceneRowIcon id="device.remove" />}
+            label="Remove object"
+            chevron={false}
+            danger
+            onClick={() => {
+              closeDrill();
+              setPickedObjectId(null);
+              void patchDoc((next) => {
+                next.objects = (next.objects ?? []).filter((x) => x.id !== stagedObject.id);
+              });
+            }}
+          />
+        </div>
+      </>
+    );
+  }
+
   if (drillIn === "device.position" && doc && devices.length > 0) {
     const layout = doc.deviceLayout;
     const posLive = (mutate: (next: SceneDoc) => void) => {
@@ -5283,6 +5610,21 @@ export function SceneTab({
           />
         );
       }
+      if (row.id.startsWith("objects.edit:")) {
+        const objectEditId = row.id.slice("objects.edit:".length);
+        return (
+          <ActionRow
+            key={row.id}
+            icon={<SceneRowIcon id="objects.edit" />}
+            label={row.label}
+            chevron={row.chevron}
+            onClick={() => {
+              setPickedObjectId(objectEditId);
+              openDrill("objects.placement");
+            }}
+          />
+        );
+      }
       const onClick = {
         "device.media": () => {
           setMediaTarget({ kind: "device", deviceId });
@@ -5292,6 +5634,7 @@ export function SceneTab({
           device?.media && onOpenEditVideo(sceneIndex, device.media.src, "device", device.id),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
+        "objects.add": () => setObjectPickerOpen(true),
         "device.duplicate": duplicateDevice,
         "frame.add": addOverlay,
         "device.position": () => openDrill("device.position"),
@@ -5452,6 +5795,9 @@ export function SceneTab({
         )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
         {mediaModal}
+        {objectPickerOpen && (
+          <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
+        )}
       </div>
     );
   }
@@ -5555,6 +5901,21 @@ export function SceneTab({
       label: "Add comparison",
       icon: "compare.edit",
       onClick: addCompare,
+    });
+  if (objects.length > 0)
+    contentEntries.push({
+      key: "objects",
+      label: objects.length > 1 ? "Objects" : "Object",
+      icon: "objects.edit",
+      value: objects.length > 1 ? `${objects.length}` : objectRowLabel(objects[0].objectId),
+      onClick: () => openDrill("objects"),
+    });
+  else if (doc)
+    addEntries.push({
+      key: "objects.add",
+      label: "Add object",
+      icon: "objects.add",
+      onClick: () => setObjectPickerOpen(true),
     });
   // The video pair closes the content section, always adjacent: Change video first (the
   // device's picker wins when a scene has both surfaces), its edit right under.
@@ -5730,6 +6091,9 @@ export function SceneTab({
 
       {/* ── Modals (the EditBar's hosting, re-homed) ─────────────────────── */}
       {mediaModal}
+      {objectPickerOpen && (
+        <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
+      )}
     </>
   );
 }

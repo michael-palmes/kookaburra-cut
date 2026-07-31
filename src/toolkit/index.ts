@@ -9,12 +9,14 @@ export {
   useSceneDevices,
   useSceneDoc,
   useSceneLayeredScreenshot,
+  useSceneObjects,
   useSceneText,
 } from "../engine/sceneDoc";
 export type {
   SceneDoc,
   SceneDocDeviceSpec,
   SceneDocDuration,
+  SceneDocObjectSpec,
   SceneTextAlign,
 } from "../engine/sceneDocSchema";
 // Shared-element morph sampling for persistent (hoisted) modules.
@@ -67,11 +69,16 @@ export { LayeredScreenshot, type LayeredScreenshotProps } from "./media/LayeredS
 export { VideoClip, type VideoClipProps } from "./media/VideoClip";
 // A macOS screen recording as a floating window over a backing stage, animated in 3D.
 export { VideoWindow, type VideoWindowProps } from "./media/VideoWindow";
-// The 3D objects library: bundled + workspace manifests (structure first, objects later).
+// The 3D objects library: bundled + workspace manifests, staged by the sidecar `objects` array.
+export { ObjectsFallback, StagedObject } from "./objects/ObjectPrimitive";
+export { preloadSceneObjects } from "./objects/preload";
 export {
+  importObject,
   isWorkspaceObjectId,
   listObjects,
+  type ResolvedObjectAsset,
   resolveObject,
+  resolveObjectAsset,
   WORKSPACE_OBJECT_PREFIX,
 } from "./objects/registry";
 export {

@@ -1,6 +1,6 @@
 # Kookaburra Cut toolkit reference
 
-Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loaded on demand by the `kookaburra-scene-authoring` skill.
+Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loaded on demand by the `kookaburra-scene-authoring` skill. Any `src/` or `docs/` paths mentioned here are background about the app's internals, not places to read: in a packaged install they do not exist on disk.
 
 ## Table of contents
 

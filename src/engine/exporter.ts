@@ -10,6 +10,7 @@ import { preloadDeviceModels } from "../toolkit/device/models";
 import { preloadChipIcons } from "../toolkit/frame/chipIcons";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadHeroModels } from "../toolkit/hero/models";
+import { preloadSceneObjects } from "../toolkit/objects/preload";
 import { preloadBundledBackdrops } from "../toolkit/stage/backdrops";
 import { awaitEmojiRastersIdle, preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import { preloadText3dFonts } from "../toolkit/text3d/fonts";
@@ -41,6 +42,7 @@ import { setExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
 import { HELPER_LAYER } from "./lightEditStore";
+import { useObjectEditStore } from "./objectEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   isWorkspaceProjectId,
@@ -295,6 +297,8 @@ async function exportPreamble(
   onStep?: (step: number) => void,
 ): Promise<void> {
   configureDeterministicEngine();
+  // Explicit, not incidental: an object gizmo selected when an export starts must never reach a frame.
+  useObjectEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
@@ -323,6 +327,8 @@ async function exportPreamble(
   await preloadDeviceModels();
   await preloadCatalogModels();
   await preloadHeroModels();
+  // Staged library objects referenced by any scene (and compare side B), the same barrier over a dynamic id set.
+  await preloadSceneObjects([...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]);
   await preloadProjectImages(opts.projectId);
   onStep?.(2);
   // Parses the bundled typeface JSON for ExtrudedText (synchronous today; the barrier is kept so a future fetched font can't race frame 0).
@@ -482,7 +488,7 @@ export async function exportProject(
 
   // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
   const overlays = opts.sceneThemes
-    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
+    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes, opts.sceneDocs ?? [])
     : null;
 
   // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
@@ -564,6 +570,10 @@ export async function captureScreenshot(
   opts: ExportOptions,
   tMs: number,
   name: string,
+  commands: { begin: string; save: string } = {
+    begin: "begin_screenshot",
+    save: "save_screenshot",
+  },
 ): Promise<string> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
@@ -602,7 +612,7 @@ export async function captureScreenshot(
         })
       : null;
   const overlays = opts.sceneThemes
-    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes)
+    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes, opts.sceneDocs ?? [])
     : null;
   // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
   const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>
@@ -656,8 +666,8 @@ export async function captureScreenshot(
       compareFrame,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
-    await invoke("begin_screenshot", { width, height, name });
-    return await invoke<string>("save_screenshot", rgba);
+    await invoke(commands.begin, { width, height, name });
+    return await invoke<string>(commands.save, rgba);
   } finally {
     setExporting(false);
     setClipLane(everydayClipLane());

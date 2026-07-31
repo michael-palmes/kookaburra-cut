@@ -20,7 +20,7 @@ edge.
 | Centring | Fit: the cutout becomes the design frame | Existing scenes compose correctly with no edits. |
 | Decorations | Draw above everything, may cross the cutout edge | The breakout is what makes the layout read as designed. |
 | Transitions | The whole frame transitions with the scene | Each slide carries its own title and chip, so the frame change *is* the slide change. |
-| Shapes | rect, rounded-rect, squircle, circle, capsule | Superellipse squircle is its own SDF, not a rounded rect. |
+| Shapes | rect, rounded-rect, squircle, circle, capsule, none | Superellipse squircle is its own SDF, not a rounded rect. `none` removes the cutout: the panel fills the whole frame, no scene shows through, `side`/`size`/`inset`/`radius` are no-ops, and content centres by default. |
 | Colour | Theme tokens, with a custom override | Overlays restyle with the theme, one-off brand colours still possible. |
 
 ## Architecture
@@ -87,7 +87,7 @@ Project-level default in `project.json`, per-scene override in the sidecar. The
 scene value merges over the project value, and `enabled: false` opts a scene out.
 
 ```ts
-export type FrameShape = "rect" | "rounded-rect" | "squircle" | "circle" | "capsule";
+export type FrameShape = "rect" | "rounded-rect" | "squircle" | "circle" | "capsule" | "none";
 export type FrameSide = "start" | "end";
 
 export interface FrameCutoutSpec {
@@ -148,7 +148,8 @@ is nothing to render through). A scene sidecar carries a `FrameOverrideSpec`,
 merged over the deck's by `mergeFrameSpec`. An override's `cutout`, when present,
 replaces the deck's outright rather than merging field by field, so a scene
 picking a new shape never inherits a radius meant for another one. An override
-alone cannot create a frame where the deck declares none.
+carrying its own `cutout` can also create a frame on a scene where the deck
+declares none (how `overlaypanel` scenes work).
 
 ### Text source
 

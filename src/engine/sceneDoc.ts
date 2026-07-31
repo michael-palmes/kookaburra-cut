@@ -8,6 +8,7 @@ import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
+import { useObjectRegistry } from "./objectRegistry";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
@@ -88,6 +89,18 @@ export function useSceneDevices(): SceneDeviceProps[] {
   if (!layout) return devices;
   const placements = resolveDeviceLayout(devices, layout, format);
   return devices.map((d, i) => ({ ...d, placement: placements[i] }));
+}
+
+/** The scene document's objects array; registers the scene as a consumer so `ObjectsFallback` stands down (the useSceneDevices pattern). */
+export function useSceneObjects() {
+  const doc = useSceneDoc();
+  const sceneIndex = useSceneContext()?.index;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined) return;
+    useObjectRegistry.getState().register(sceneIndex);
+    return () => useObjectRegistry.getState().unregister(sceneIndex);
+  }, [sceneIndex]);
+  return doc?.objects ?? [];
 }
 
 /** The scene document's layeredScreenshot block, deep-validated, or null when absent; registers the scene as a consumer so `LayeredScreenshotFallback` stands down (the useSceneDevices pattern). */

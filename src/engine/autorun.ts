@@ -298,6 +298,30 @@ export function reportAutoRunError(error: unknown): void {
 }
 
 /** Drives a full auto-run: for each aspect, sets the store format so scenes lay out correctly (the in-app Verify button only resizes the drawing buffer), lets React commit, then runs the same verify/export the button runs; `applyProject` swaps a freshly-loaded project into the canvas exactly as the App's loader effect does. */
+/** `--scene` picks a slot (midpoint default); `--at` is seconds into it, or into the project without one; absent both = project start. Shared by the autorun screenshot action and the capture bridge, so both resolve identically. */
+export function resolveScreenshotTimeMs(
+  project: Pick<LoadedProject, "slots" | "sceneFiles" | "totalMs">,
+  scene: string | undefined,
+  atSeconds: number | undefined,
+  fallbackMs?: number,
+): number {
+  if (scene !== undefined) {
+    const idx = /^\d+$/.test(scene)
+      ? Number(scene)
+      : project.sceneFiles.findIndex((f) => sceneFileStem(f) === scene);
+    const slot = project.slots[idx];
+    if (!slot) {
+      throw new Error(
+        `unknown scene "${scene}" (expected a scene index 0-${project.slots.length - 1} or file stem)`,
+      );
+    }
+    const local = atSeconds !== undefined ? atSeconds * 1000 : slot.durationMs / 2;
+    return slot.startMs + Math.min(Math.max(0, local), Math.max(0, slot.durationMs - 1));
+  }
+  const t = atSeconds !== undefined ? atSeconds * 1000 : (fallbackMs ?? 0);
+  return Math.min(Math.max(0, t), Math.max(0, project.totalMs - 1));
+}
+
 export async function runAutoRun(
   project: LoadedProject,
   config: AutoRunConfig,
@@ -447,25 +471,7 @@ export async function runAutoRun(
       const format = config.aspects[0];
       useEditorStore.getState().setFormat(format);
       await nextCommit();
-      // --scene picks a slot (midpoint default); --at is seconds into it, or into the project without one.
-      let tMs: number;
-      if (config.scene !== undefined) {
-        const idx = /^\d+$/.test(config.scene)
-          ? Number(config.scene)
-          : project.sceneFiles.findIndex((f) => sceneFileStem(f) === config.scene);
-        const slot = project.slots[idx];
-        if (!slot) {
-          throw new Error(
-            `unknown KOOKABURRA_SCENE "${config.scene}" (expected a scene index 0-${project.slots.length - 1} or file stem)`,
-          );
-        }
-        const local =
-          config.atSeconds !== undefined ? config.atSeconds * 1000 : slot.durationMs / 2;
-        tMs = slot.startMs + Math.min(Math.max(0, local), Math.max(0, slot.durationMs - 1));
-      } else {
-        const t = (config.atSeconds ?? 0) * 1000;
-        tMs = Math.min(Math.max(0, t), Math.max(0, project.totalMs - 1));
-      }
+      const tMs = resolveScreenshotTimeMs(project, config.scene, config.atSeconds);
       const name = `screenshot-${project.id.replace(/^ws:/, "")}-${Math.round(tMs)}ms-${format.name.replace(":", "x")}`;
       const path = await captureScreenshot(
         {

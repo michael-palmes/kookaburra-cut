@@ -1,12 +1,13 @@
 /** Real troika heights for the overlay panel's title and subtitle: an off-screen `Text` typesets each (text, font, size, wrap width) once into a write-once cache, so the panel lays out from measured blocks instead of estimates. Wrap count depends on font size, and font size depends on the fit-to-column scale, so `solvePanelLayout` iterates that fixpoint: measure at the candidate size, recompute fit, re-measure, until reserved and rendered agree. Deterministic: same inputs, same troika 0.52.4 layout, same heights, same iteration sequence. The export preamble pre-warms the cache along the same iteration path (`preloadPanelMeasures`, the emoji-raster pattern) so frame 0 renders the settled layout; the preview falls back to the estimate until measurements land, then re-renders. */
 
 import { Text } from "troika-three-text";
+import { parseFontString } from "../theme/fontRef";
 import { fontUrl } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { prepareEmojiText } from "../toolkit/text/emojiText";
 import type { FormatInfo } from "../toolkit/types";
-import { framePanelLayout } from "./framePanelLayout";
+import { framePanelLayout, frameTextAlign } from "./framePanelLayout";
 import { estimateTitleLines } from "./framePanelText";
 import type { SceneDoc } from "./sceneDocSchema";
 
@@ -99,6 +100,15 @@ export async function awaitPanelMeasuresIdle(): Promise<void> {
   }
 }
 
+/** The sidecar's bullet lines (one per rendered bullet); the ONE splitter the solver and the renderer share, so measured and rendered bullets can never disagree. */
+export function splitBullets(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 interface PanelTextInput {
   text: string;
   font: string;
@@ -113,6 +123,8 @@ export interface PanelLayoutSolution {
   /** Actual world heights at the solved fit (already scaled; advance by them directly). */
   titleH: number;
   subH: number;
+  /** Per-bullet measured heights at the solved fit, in `splitBullets` order (wrapped bullets are taller than one line). */
+  bulletHeights: number[];
   /** Cache misses hit along the iteration path; request these, then re-solve when they land. */
   pending: PanelTextSpec[];
 }
@@ -124,11 +136,18 @@ function textInput(
   maxWidth: number,
   textAlign: "left" | "center" | "right",
   theme: Theme,
+  doc: SceneDoc | undefined,
+  key: string,
 ): PanelTextInput {
+  // Mirror AnimatedHeadline's sidecar dispatch for the overrides that change layout (font + size), so reserved and rendered heights agree.
+  const fontValue = doc?.textStyle?.[`${key}Font`];
+  const sizeMul = doc?.textStyle?.[`${key}Size`];
   return {
     text: prepareEmojiText(text).text,
-    font: fontUrl(theme.typography[face]),
-    baseSize,
+    font: fontUrl(
+      typeof fontValue === "string" ? parseFontString(fontValue) : theme.typography[face],
+    ),
+    baseSize: typeof sizeMul === "number" ? baseSize * sizeMul : baseSize,
     maxWidth,
     textAlign,
   };
@@ -163,42 +182,57 @@ export function solvePanelLayout(
   const claimed = frame.claimsSceneText !== false;
   const title = claimed ? (doc?.text?.title ?? "").trim() : "";
   const subtitle = claimed ? (doc?.text?.subtitle ?? "").trim() : "";
-  const bulletCount = claimed
-    ? (doc?.text?.bullets ?? "").split("\n").filter((l) => l.trim().length > 0).length
-    : 0;
-  const align = frame.textAlign ?? "left";
+  const bulletLines = claimed ? splitBullets(doc?.text?.bullets) : [];
+  const align = frameTextAlign(frame);
   const titleInput = title
-    ? textInput(title, "headline", baseTitle, col.width, align, theme)
+    ? textInput(title, "headline", baseTitle, col.width, align, theme, doc, "title")
     : null;
   const subInput = subtitle
-    ? textInput(subtitle, "body", baseTitle * SUBTITLE_OF_TITLE, col.width, align, theme)
+    ? textInput(
+        subtitle,
+        "body",
+        baseTitle * SUBTITLE_OF_TITLE,
+        col.width,
+        align,
+        theme,
+        doc,
+        "subtitle",
+      )
     : null;
+  // Bullets measure the exact rendered string (the leading marker changes wrapping); each wraps independently.
+  const baseBullet = baseTitle * BULLET_OF_TITLE;
+  const bulletInputs = bulletLines.map((line) =>
+    textInput(`•  ${line}`, "body", baseBullet, col.width, align, theme, doc, "bullets"),
+  );
 
   // Every non-measured block scales linearly with fit; sum them once at fit = 1.
-  const baseBullet = baseTitle * BULLET_OF_TITLE;
   const iconBudget = frame.icon ? baseTitle * ICON_SIZE + ICON_GAP * baseTitle : 0;
   const titleGap = title && subtitle ? TITLE_GAP * baseTitle : 0;
-  const bulletsBudget =
-    bulletCount > 0
-      ? (bulletCount - 1) * (LINE_HEIGHT + BULLET_LINE_GAP) * baseBullet + LINE_HEIGHT * baseBullet
-      : 0;
   const baseChip = CHIP_HEIGHT_FRAC * format.frame.height;
-  const chipBudget = frame.chip ? (bulletCount > 0 ? CHIP_GAP * baseBullet : 0) + baseChip : 0;
-  const fixedBudget =
-    iconBudget + titleGap + HEADER_BODY_GAP * baseTitle + bulletsBudget + chipBudget;
+  const chipBudget = frame.chip
+    ? (bulletLines.length > 0 ? CHIP_GAP * baseBullet : 0) + baseChip
+    : 0;
+  const fixedBudget = iconBudget + titleGap + HEADER_BODY_GAP * baseTitle + chipBudget;
 
   let fit = 1;
   let titleH = 0;
   let subH = 0;
+  let bulletHeights: number[] = [];
   const pending: PanelTextSpec[] = [];
   for (let i = 0; i < FIT_ITERATIONS; i++) {
     titleH = heightAt(titleInput, fit, pending);
     subH = heightAt(subInput, fit, pending);
-    const stack = fixedBudget * fit + titleH + subH;
+    bulletHeights = bulletInputs.map((input) => heightAt(input, fit, pending));
+    const bulletsH =
+      bulletHeights.length > 0
+        ? bulletHeights.reduce((sum, h) => sum + h, 0) +
+          (bulletHeights.length - 1) * BULLET_LINE_GAP * baseBullet * fit
+        : 0;
+    const stack = fixedBudget * fit + titleH + subH + bulletsH;
     if (stack <= col.height || stack <= 0) break;
     fit = (fit * col.height) / stack;
   }
-  return { fit, titleH, subH, pending };
+  return { fit, titleH, subH, bulletHeights, pending };
 }
 
 /** Pre-warm every overlay scene's measurements along the solver's own iteration path before frame 0 (called from the export preamble beside the emoji-raster preload). */

@@ -79,7 +79,7 @@ export function PresentCompositorDriver({
     [project],
   );
   const overlays = useMemo(
-    () => resolveOverlays(project.sceneFrames, project.sceneThemes),
+    () => resolveOverlays(project.sceneFrames, project.sceneThemes, project.sceneDocs),
     [project],
   );
 
