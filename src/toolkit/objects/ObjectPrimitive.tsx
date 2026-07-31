@@ -1,4 +1,4 @@
-import { TransformControls, useGLTF } from "@react-three/drei";
+import { TransformControls } from "@react-three/drei";
 import { useContext, useMemo, useRef } from "react";
 import { Box3, type Group, type Object3D, Vector3 } from "three";
 import { useObjectEditStore } from "../../engine/objectEditStore";
@@ -7,6 +7,7 @@ import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocObjectSpec } from "../../engine/sceneDocSchema";
 import { useStageFloorY } from "../stage/context";
 import type { V3 } from "../types";
+import { readObjectGltf } from "./preload";
 import { readObjectAsset } from "./registry";
 
 /** World height an object auto-fits to when its manifest carries no `fitHeight` (a phone fits 2.6). */
@@ -21,7 +22,7 @@ const round = (v: number, dp: number) => {
   return Math.round(v * f) / f;
 };
 
-/** One staged library object: `readObjectAsset` suspends until the manifest + URLs land (unknown ids degrade to nothing), then `LoadedObject` suspends on the glb (both pre-warmed by the export preamble). */
+/** One staged library object: `readObjectAsset` suspends until the manifest + URLs land (unknown ids degrade to nothing), then `LoadedObject` suspends on the glb through the objects' own gltf cache (both pre-warmed by the export preamble and the option-preview capture). */
 export function StagedObject({ spec }: { spec: SceneDocObjectSpec }) {
   const asset = readObjectAsset(spec.objectId);
   if (!asset) return null;
@@ -41,7 +42,7 @@ function LoadedObject({
   const selected = useObjectEditStore((s) => s.selected);
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
   const groupRef = useRef<Group>(null);
-  const { scene } = useGLTF(asset.glbUrl);
+  const { scene } = readObjectGltf(asset.glbUrl);
 
   // Clone once per model (drei's cache is shared, never mutate it), recentre on the origin and auto-fit to the manifest height (the HeroObject treatment).
   const { root, fit, fittedHeight } = useMemo(() => {
