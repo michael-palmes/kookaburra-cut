@@ -103,7 +103,7 @@ const SCREEN_TITLES: Record<string, string> = {
   text: "Text",
   device: "Device",
   frame: "Overlay",
-  camera: "Camera",
+  camera: "Animations",
   lighting: "Lighting",
   motion: "Timing",
   "text.edit": "Edit text",
@@ -603,6 +603,37 @@ function SceneRowIcon({ id }: { id: string }) {
         >
           <rect x="3" y="6" width="10" height="8" rx="1.5" />
           <path d="M13 9l4-2.2v6.4L13 11" />
+        </svg>
+      );
+    case "camera.orbit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <ellipse cx="10" cy="10" rx="7" ry="3.6" transform="rotate(-20 10 10)" />
+          <circle cx="16.6" cy="7.6" r="1.7" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "camera.free":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M2.5 9.4L17.4 3l-6.5 14.4-2.4-6z" />
+          <path d="M8.5 11.4L17.4 3" />
         </svg>
       );
     case "motion.transition":
@@ -1108,7 +1139,7 @@ function nextDecorationId(src: string, taken: Set<string>): string {
   return `${stem}-${n}`;
 }
 
-/** The Camera section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
+/** The Animations section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
 function CameraSectionBody({
   project,
   sceneIndex,
@@ -1144,6 +1175,8 @@ function CameraSectionBody({
   const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const cameraOpen = useCameraEditStore((s) => s.open);
+  const detailedLane = useUiStore((s) => s.detailedAnimationView);
+  const setDetailedLane = useUiStore((s) => s.setDetailedAnimationView);
   const keyCount = free ? rig.keys.length : camera.keys.length;
   // Re-render only when the target key changes, not per playhead tick; for a trackless scene, follow the playhead in coarse quarter-second buckets (display only, commits snapshot the live clock).
   const targetKeyId = useClockStore((s) => {
@@ -1219,10 +1252,16 @@ function CameraSectionBody({
     <>
       <SegmentedRow
         options={[
-          { value: "orbit" as const, label: "Orbit", title: "Poses orbit a target" },
+          {
+            value: "orbit" as const,
+            label: "Orbit",
+            icon: <SceneRowIcon id="camera.orbit" />,
+            title: "Poses orbit a target",
+          },
           {
             value: "rig" as const,
             label: "Free",
+            icon: <SceneRowIcon id="camera.free" />,
             title: "Free-flight poses: a position and an aim",
           },
         ]}
@@ -1257,6 +1296,12 @@ function CameraSectionBody({
           Convert to orbit
         </button>
       )}
+      <ToggleRow
+        label="Detailed animation view"
+        description="Draw keyframes on every animation lane as narrow lines instead of diamonds, for finer editing."
+        checked={detailedLane}
+        onChange={setDetailedLane}
+      />
     </>
   );
 
@@ -1468,7 +1513,7 @@ function CameraSectionBody({
   return (
     <div className="inspector-drill">
       <DrillBack label="Scene" onClick={onBack} />
-      <div className="inspector-drill-title">Camera</div>
+      <div className="inspector-drill-title">Animations</div>
       {keyCount > 0 && (
         <div className="inspector-drill-reset">
           <button
@@ -5996,7 +6041,7 @@ export function SceneTab({
   }
   settingEntries.push({
     key: "camera",
-    label: "Camera",
+    label: "Animations",
     icon: "camera.animate",
     onClick: () => openDrill("camera"),
   });
