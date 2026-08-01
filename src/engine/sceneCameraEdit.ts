@@ -49,6 +49,7 @@ export {
   setSegmentChannelEase,
   setSegmentEase,
   setSegmentSmooth,
+  splitSegmentAt,
   syncSegmentStartToPrevious,
   type TrackContext,
   trackLayout as cameraLayout,

@@ -18,6 +18,7 @@ import {
   resizeSegment,
   setSegmentChannelEase,
   setSegmentSmooth,
+  splitSegmentAt,
   type TrackContext,
 } from "./keyedTrack";
 
@@ -545,6 +546,37 @@ describe("mergeGap", () => {
     expect(mergeGap(gapped(), "k2", "k2")).toBeNull();
     expect(mergeGap(gapped(), "k2", "nope")).toBeNull();
     expect(mergeGap(gapped(), "k2", "k1")).toBeNull();
+  });
+});
+
+describe("splitSegmentAt", () => {
+  const base = (): KeyedTrack<Pose> => ({
+    keys: [K("k1", 0), K("k2", 1000, 2), K("k3", 2000, 3)],
+    segments: [
+      { from: "k1", to: "k2", ease: "outQuad", easePosition: "linear" } as KeyedTrackSegment,
+      S("k2", "k3"),
+    ],
+  });
+
+  it("inserts the sampled pose at the split, both halves keeping ease and channel settings", () => {
+    const next = splitSegmentAt(base(), 0, 400, { d: 9 });
+    const added = next?.keys.find((k) => !["k1", "k2", "k3"].includes(k.id));
+    expect(added).toMatchObject({ tMs: 400, pose: { d: 9 } });
+    expect(next?.segments).toEqual([
+      { from: "k1", to: added?.id, ease: "outQuad", easePosition: "linear" },
+      { from: added?.id, to: "k2", ease: "outQuad", easePosition: "linear" },
+      S("k2", "k3"),
+    ]);
+  });
+
+  it("refuses a split leaving either half under the minimum length", () => {
+    expect(splitSegmentAt(base(), 0, 200, { d: 9 }, 250)).toBeNull();
+    expect(splitSegmentAt(base(), 0, 800, { d: 9 }, 250)).toBeNull();
+    expect(splitSegmentAt(base(), 0, 500, { d: 9 }, 250)).not.toBeNull();
+  });
+
+  it("refuses an unknown doc index", () => {
+    expect(splitSegmentAt(base(), 5, 400, { d: 9 })).toBeNull();
   });
 });
 

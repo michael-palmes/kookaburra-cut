@@ -346,6 +346,34 @@ export function duplicateKey<P, T extends KeyedTrack<P>>(
   };
 }
 
+/** Split an animation at `tMs`: a new key carrying the SAMPLED pose at that instant, both halves keeping the original ease and channel settings, so the camera still passes through exactly that pose. Null when either half would fall under the minimum length. */
+export function splitSegmentAt<P, T extends KeyedTrack<P>>(
+  track: T,
+  docIndex: number,
+  tMs: number,
+  pose: P,
+  minLenMs = MIN_KEY_GAP_MS,
+): T | null {
+  const seg = trackLayout(track).segments.find((s) => s.docIndex === docIndex);
+  if (!seg) return null;
+  const min = minLen(minLenMs);
+  const t = Math.round(tMs);
+  if (t - seg.fromTMs < min || seg.toTMs - t < min) return null;
+  const id = nextKeyId(track);
+  return {
+    ...track,
+    keys: [...track.keys, { id, tMs: t, pose }],
+    segments: track.segments.flatMap((s, i) =>
+      i === docIndex
+        ? [
+            { ...s, to: id },
+            { ...s, from: id },
+          ]
+        : [s],
+    ),
+  };
+}
+
 /** Duplicate a key BEFORE itself, the mirror of duplicateKey: an identical-pose key at 50% of the previous animation (which keeps its ease and channel settings), joined to the original by a hold segment. With nothing before it the hold starts 25% of the window earlier, never before the end of the transition in. */
 export function duplicateKeyBefore<P, T extends KeyedTrack<P>>(
   track: T,

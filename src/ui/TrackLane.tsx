@@ -23,6 +23,7 @@ import {
   resizeSegment,
   type SegmentEaseChannel,
   setSegmentEase,
+  splitSegmentAt,
   type TrackContext,
   type TrackLayout,
   trackLayout,
@@ -465,11 +466,22 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     });
   }
 
-  /** Right-click an animation: easing, resize and delete (the Delete key's edit). */
+  /** Right-click an animation: easing, resize, split at the clicked point, delete. */
   function onSegmentContextMenu(e: React.MouseEvent, docIndex: number) {
     e.preventDefault();
     select(null, docIndex);
     const bounds = resizeBounds(track, ctx, docIndex, minLenMs);
+    const rect = trackRef.current?.getBoundingClientRect();
+    const clickedT =
+      rect && pxPerMs > 0
+        ? snapToFrame(windowStartMs + (e.clientX - rect.left - PAD) / pxPerMs)
+        : null;
+    const splitNext =
+      clickedT === null
+        ? null
+        : splitSegmentAt(track, docIndex, clickedT, poseAt(clickedT), minLenMs);
+    const splitKeyId =
+      splitNext?.keys.find((k) => !track.keys.some((o) => o.id === k.id))?.id ?? null;
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -488,6 +500,20 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             ? "Type its length; later keyframes shift with it"
             : "This animation has no room to resize",
           onSelect: () => setResizeSegIndex(docIndex),
+        },
+        {
+          id: "add-key",
+          label: "Add keyframe",
+          disabled: !splitNext,
+          title: splitNext
+            ? "Splits the animation here; the camera keeps its position at this point"
+            : "Too close to a keyframe to split here",
+          onSelect: () => {
+            if (splitNext) {
+              select(splitKeyId, null);
+              void commit(splitNext);
+            }
+          },
         },
         {
           id: "delete",
