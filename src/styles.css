@@ -388,10 +388,12 @@ body {
   font-size: var(--text-sm);
 }
 
-/* ── Editor body: optional Claude rail + the stage/timeline-dock column ────── */
+/* ── Editor body: optional Claude rail + the stage column ─────────────────── */
 
+/* Row 2 only: the timeline dock owns row 3 full width, so the rail and the
+   inspector end above it. */
 .editor-body {
-  grid-row: 2 / 4;
+  grid-row: 2;
   display: flex;
   min-height: 0;
 }
@@ -401,7 +403,7 @@ body {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr;
 }
 
 /* ── Claude Code rail (v6 · M3) ────────────────────────────────────────────── */
@@ -1190,11 +1192,13 @@ body {
 
 /* ── Timeline dock + playback bar (v13 · M6, redesign §6) ─────────────────── */
 
-/* The bottom panel: (M7) animation-lane slot above the segmented playback bar.
+/* The bottom panel: (M7) animation-lane slot above the segmented playback bar,
+   the full-width bottom row of the app grid.
    position: relative is LOAD-BEARING — the .dock-connector SVG is absolutely
    positioned with dock-local path coordinates; without a positioned ancestor it
    anchors to the viewport and draws at the window's top-left. */
 .timeline-dock {
+  grid-row: 3;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1203,7 +1207,9 @@ body {
 }
 
 /* auto 1fr auto columns; the connector row lands in M7. Chrome text (labels,
-   readout) is never selectable — a scrub drag must not paint selections. */
+   readout) is never selectable: a scrub drag must not paint selections.
+   The whole bar (lane bottom edge to window bottom) is the scrub surface; the
+   handlers still map against .pb-track's rect, so the mapping is unchanged. */
 .playback-bar {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -1213,6 +1219,7 @@ body {
   padding: 6px 18px 9px;
   -webkit-user-select: none;
   user-select: none;
+  touch-action: none;
 }
 
 .pb-left {

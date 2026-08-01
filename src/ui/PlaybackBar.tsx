@@ -1,5 +1,6 @@
 import {
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   useEffect,
   useRef,
@@ -78,7 +79,7 @@ export function PlaybackBar({
 
   const spans = project ? sceneCellSpans(project.slots, durationMs) : [];
   const active = project ? activeSceneIndex(project.slots, currentMs) : 0;
-  const fraction = playheadFraction(currentMs, durationMs);
+  const fraction = playheadFraction(currentMs, durationMs, spans);
 
   const sceneName = (i: number): string => {
     if (!project) return `Scene ${i + 1}`;
@@ -150,26 +151,57 @@ export function PlaybackBar({
     if (ms !== project.slots[t.index]?.durationMs) onSceneDuration(t.index, ms);
   };
 
-  const scrubTo = (clientX: number) => {
+  /** Pointer x → clock ms through the track's rect, so every surface in the bar scrubs exactly like the track itself; null while the track is unmounted. */
+  const trackMsAt = (clientX: number): number | null => {
     const rect = trackRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    onScrub(msFromTrackX(clientX - rect.left, rect.width, durationMs));
+    if (!rect) return null;
+    return msFromTrackX(clientX - rect.left, rect.width, durationMs, spans);
   };
 
+  const scrubTo = (clientX: number) => {
+    const ms = trackMsAt(clientX);
+    if (ms !== null) onScrub(ms);
+  };
+
+  const sceneAt = (clientX: number): number | null => {
+    const ms = trackMsAt(clientX);
+    if (ms === null || !project) return null;
+    return ms >= durationMs ? project.slots.length - 1 : activeSceneIndex(project.slots, ms);
+  };
+
+  /** Interactive children opt out of the surrounding scrub surface. */
+  const holdPointer = (e: ReactPointerEvent) => e.stopPropagation();
+
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu only, so the dead chrome around the track (down to the window's bottom edge) still opens the scene menu
+    // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven scrub surface (keyboard access rides the app-wide transport keydown) plus the right-click scene menu
     <div
       className="playback-bar"
+      onPointerDown={(e) => {
+        // isExporting() also guards autorun exports, not just the UI-disabled state; a right-click opens the scene menu instead of scrubbing.
+        if (e.button !== 0 || exporting || isExporting() || !project) return;
+        const label = (e.target as HTMLElement).closest<HTMLElement>(".pb-label");
+        // A drag must never start a native text selection; labels keep their default, and capture on the label itself, so the click/double-click pair still targets it (rename) instead of the capturing bar.
+        if (!label) e.preventDefault();
+        scrubbing.current = true;
+        (label ?? (e.currentTarget as HTMLDivElement)).setPointerCapture(e.pointerId);
+        scrubTo(e.clientX);
+      }}
+      onPointerMove={(e) => {
+        if (scrubbing.current && !isExporting()) scrubTo(e.clientX);
+      }}
+      onPointerUp={(e) => {
+        scrubbing.current = false;
+        const el = e.currentTarget as HTMLDivElement;
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      }}
+      onPointerCancel={() => {
+        scrubbing.current = false;
+      }}
       onContextMenu={(e) => {
-        // The track and labels handle their own right-clicks (defaultPrevented); everything else clamps into the track to resolve a scene.
+        // The labels handle their own right-clicks (defaultPrevented); everything else clamps into the track to resolve a scene.
         if (e.defaultPrevented || !project) return;
-        const rect = trackRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const x = Math.min(Math.max(e.clientX - rect.left, 0), rect.width);
-        const ms = msFromTrackX(x, rect.width, durationMs);
-        const index =
-          ms >= durationMs ? project.slots.length - 1 : activeSceneIndex(project.slots, ms);
-        openSceneMenu(e, index);
+        const index = sceneAt(e.clientX);
+        if (index !== null) openSceneMenu(e, index);
       }}
     >
       <div className="pb-left">
@@ -177,6 +209,7 @@ export function PlaybackBar({
           type="button"
           ref={playRef}
           className="play-btn"
+          onPointerDown={holdPointer}
           onClick={onTogglePlay}
           disabled={!project || exporting}
           aria-label={playing ? "Pause (Space)" : "Play (Space)"}
@@ -206,6 +239,7 @@ export function PlaybackBar({
                 ? "Unmute the soundtrack (preview only)"
                 : "Mute the soundtrack (preview only)"
             }
+            onPointerDown={holdPointer}
             onClick={onToggleMute}
           >
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -232,7 +266,7 @@ export function PlaybackBar({
       </div>
 
       <div className="pb-center">
-        {/* Keyboard access rides the app-wide transport keydown (←/→ frame-step). */}
+        {/* The scrub handlers live on the whole bar (they map against this rect); keyboard access rides the app-wide transport keydown (←/→ frame-step). */}
         <div
           ref={trackRef}
           className={`pb-track${exporting ? " disabled" : ""}`}
@@ -243,35 +277,6 @@ export function PlaybackBar({
           aria-valuemax={Math.round(durationMs)}
           aria-valuenow={Math.round(currentMs)}
           aria-valuetext={readout}
-          onPointerDown={(e) => {
-            // isExporting() also guards autorun exports, not just the UI-disabled state; a right-click opens the scene menu instead of scrubbing.
-            if (e.button !== 0 || exporting || isExporting() || !project) return;
-            // A drag must never start a native text selection.
-            e.preventDefault();
-            scrubbing.current = true;
-            (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-            scrubTo(e.clientX);
-          }}
-          onPointerMove={(e) => {
-            if (scrubbing.current && !isExporting()) scrubTo(e.clientX);
-          }}
-          onPointerUp={(e) => {
-            scrubbing.current = false;
-            (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
-          }}
-          onPointerCancel={() => {
-            scrubbing.current = false;
-          }}
-          onContextMenu={(e) => {
-            // The expanded hit zone (.pb-track::before) sits over the cells, so the menu opens from the track itself; the scene comes from the pointer X.
-            if (!project) return;
-            const rect = trackRef.current?.getBoundingClientRect();
-            if (!rect) return;
-            const ms = msFromTrackX(e.clientX - rect.left, rect.width, durationMs);
-            const index =
-              ms >= durationMs ? project.slots.length - 1 : activeSceneIndex(project.slots, ms);
-            openSceneMenu(e, index);
-          }}
         >
           {spans.map((span) => (
             <div
@@ -293,6 +298,7 @@ export function PlaybackBar({
                 // biome-ignore lint/a11y/noAutofocus: entered from the context menu — it IS the focus target
                 autoFocus
                 aria-label="Scene name"
+                onPointerDown={holdPointer}
                 onChange={(e) => setRenaming({ index: span.index, text: e.target.value })}
                 onBlur={() => finishRename(true)}
                 onKeyDown={(e) => {
@@ -310,6 +316,7 @@ export function PlaybackBar({
                 // biome-ignore lint/a11y/noAutofocus: entered from the context menu — it IS the focus target
                 autoFocus
                 aria-label="Scene duration in seconds"
+                onPointerDown={holdPointer}
                 onChange={(e) => setTiming({ index: span.index, text: e.target.value })}
                 onBlur={() => finishTiming(true)}
                 onKeyDown={(e) => {
@@ -335,13 +342,16 @@ export function PlaybackBar({
       </div>
 
       <div className="pb-right">
-        <span className="pb-readout">{readout}</span>
+        <span className="pb-readout" onPointerDown={holdPointer}>
+          {readout}
+        </span>
         {isWorkspace && (
           <button
             type="button"
             className="pb-new-scene"
             disabled={exporting}
             title="Add a scene (opens the scene wizard)"
+            onPointerDown={holdPointer}
             onClick={onNewScene}
           >
             ＋ New scene
