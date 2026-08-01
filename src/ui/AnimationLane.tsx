@@ -103,15 +103,20 @@ export function AnimationLane({
     [rig, commitRig],
   );
 
-  // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries.
+  // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries. The transition bounds inside it are where auto-placed animations start and stop.
   const nextSlot = project.slots[sceneIndex + 1];
+  const windowEndMs = slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2;
   const shared = {
     open,
     label,
     slotStartMs: slot.startMs,
     durationMs: slot.durationMs,
     windowStartMs: (slot.transitionIn?.durationMs ?? 0) / 2,
-    windowEndMs: slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2,
+    windowEndMs,
+    transitionInMs: slot.transitionIn?.durationMs ?? 0,
+    transitionOutStartMs: nextSlot?.transitionIn
+      ? slot.durationMs - nextSlot.transitionIn.durationMs
+      : windowEndMs,
     lastScene: !nextSlot,
     selectedKeyId,
     selectedSegment,
@@ -133,7 +138,7 @@ export function AnimationLane({
         commit={commitRig}
         poseAt={appliedRigAt}
         segmentExtras={segmentExtras}
-        addTitle="Insert a 1s camera flight at the playhead (it starts from the current pose)"
+        addTitle="Add a camera flight after the last one, or ending at the playhead when it is past it"
       />
     );
   }
@@ -144,7 +149,7 @@ export function AnimationLane({
       preview={preview}
       commit={commit}
       poseAt={appliedPoseAt}
-      addTitle="Insert a 1s camera animation at the playhead (it starts from the current pose)"
+      addTitle="Add a camera animation after the last one, or ending at the playhead when it is past it"
     />
   );
 }

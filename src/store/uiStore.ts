@@ -8,6 +8,7 @@ export type InspectorTab = "project" | "scene";
 export type PreviewQuality = "full" | "balanced" | "performance";
 
 const QUALITY_KEY = "kookaburra:preview-quality";
+const DETAILED_LANE_KEY = "kookaburra:detailed-animation-view";
 
 function loadPreviewQuality(): PreviewQuality {
   try {
@@ -15,6 +16,14 @@ function loadPreviewQuality(): PreviewQuality {
     return v === "balanced" || v === "performance" ? v : "full";
   } catch {
     return "full";
+  }
+}
+
+function loadDetailedAnimationView(): boolean {
+  try {
+    return localStorage.getItem(DETAILED_LANE_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -39,6 +48,8 @@ interface UiState {
   audioMuted: boolean;
   /** Preview canvas resolution; preview-only, the exporter pins its own pixel ratio. */
   previewQuality: PreviewQuality;
+  /** Animation lanes draw keyframes as narrow lines instead of diamonds (finer editing); chrome-only. */
+  detailedAnimationView: boolean;
   inspector: InspectorState;
   /** A pending "open this wizard" request for the Claude rail (consumed by TerminalPanel). */
   railWizardRequest: "new-scene" | "edit-scene" | null;
@@ -50,6 +61,7 @@ interface UiState {
   togglePalette: () => void;
   setAudioMuted: (muted: boolean) => void;
   setPreviewQuality: (quality: PreviewQuality) => void;
+  setDetailedAnimationView: (detailed: boolean) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   /** Push a screen (forward navigation): row list to a group, or a group to a detail. */
   openInspectorDrill: (id: string) => void;
@@ -68,6 +80,7 @@ export const useUiStore = create<UiState>((set) => ({
   paletteOpen: false,
   audioMuted: false,
   previewQuality: loadPreviewQuality(),
+  detailedAnimationView: loadDetailedAnimationView(),
   // Scene is the default tab: it's where editing happens; bundled projects heal back to Project.
   inspector: { tab: "scene", drillStack: [], drillIn: null },
   railWizardRequest: null,
@@ -83,6 +96,14 @@ export const useUiStore = create<UiState>((set) => ({
       // Storage unavailable: the choice still applies for this session.
     }
     set({ previewQuality });
+  },
+  setDetailedAnimationView: (detailedAnimationView) => {
+    try {
+      localStorage.setItem(DETAILED_LANE_KEY, detailedAnimationView ? "1" : "0");
+    } catch {
+      // Storage unavailable: the choice still applies for this session.
+    }
+    set({ detailedAnimationView });
   },
   setInspectorTab: (tab) =>
     set((s) => ({ inspector: { ...s.inspector, tab, drillStack: [], drillIn: null } })),

@@ -94,15 +94,19 @@ export function LayeredScreenshotAnimationLane({
     [onSceneDuration, sceneIndex],
   );
 
-  // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries.
+  // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries. The stack lane has no transition stance of its own, so auto-placement works to the window edges.
   const nextSlot = project.slots[sceneIndex + 1];
+  const windowStartMs = (slot.transitionIn?.durationMs ?? 0) / 2;
+  const windowEndMs = slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2;
   return (
     <TrackLane<LayeredScreenshotPose, LayeredScreenshotAnimationDoc>
       open={open}
       slotStartMs={slot.startMs}
       durationMs={slot.durationMs}
-      windowStartMs={(slot.transitionIn?.durationMs ?? 0) / 2}
-      windowEndMs={slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2}
+      windowStartMs={windowStartMs}
+      windowEndMs={windowEndMs}
+      transitionInMs={windowStartMs}
+      transitionOutStartMs={windowEndMs}
       lastScene={!nextSlot}
       track={track}
       selectedKeyId={selectedKeyId}
@@ -116,7 +120,7 @@ export function LayeredScreenshotAnimationLane({
       commit={commitTrack}
       poseAt={appliedPoseAt}
       onSceneDuration={onDuration}
-      addTitle="Insert a 1s stack animation at the playhead (it starts from the current pose)"
+      addTitle="Add a stack animation after the last one, or ending at the playhead when it is past it"
       label={label}
       writeErrorPrefix="Save failed, this stack edit isn’t on disk:"
     />

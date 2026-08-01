@@ -4025,6 +4025,33 @@ body {
   opacity: 0.4;
 }
 
+/* Detailed view (decision 2 of batch 11): keys read as narrow lines so animations
+   can pack tightly; the ±3px pseudo-element keeps them grabbable at 2px wide. */
+.anim-key.detailed {
+  width: 2px;
+  height: 44px;
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.anim-key.detailed::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.anim-key.detailed.near {
+  width: 3px;
+  height: 44px;
+  outline-offset: 1px;
+}
+
+/* The gap key a drag would merge into on release (legacy gaps only). */
+.anim-key.merge-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 3px;
+}
+
 /* A segment pinned at the lane edge (living inside a trimmed transition half) dims like edge keys. */
 .anim-seg.overhang {
   opacity: 0.4;
@@ -4279,6 +4306,9 @@ body {
   color: var(--text-secondary);
   white-space: nowrap;
   text-overflow: ellipsis;
+  /* Pill copy is furniture: a drag over it must never paint a selection. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Content-sized: the pill's per-mode width owns the layout, so the stepper never shrinks into the clip. */
@@ -4352,22 +4382,25 @@ body {
   color: var(--text-tertiary);
   opacity: 0;
   transition: opacity var(--dur-base) var(--ease-standard);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .camera-pill-hint.visible {
   opacity: 1;
 }
 
-/* Easing popover — floats above the lane when a segment is selected. */
+/* Easing popover: floats above the lane, opened from an animation's right-click menu. The width caps so the eight family chips wrap into two rows instead of one long shelf. */
 .camera-easing {
   position: absolute;
   bottom: calc(100% + var(--space-2));
   left: 50%;
   z-index: 10;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
+  gap: var(--space-5);
+  padding: var(--space-4);
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -4379,37 +4412,95 @@ body {
 .camera-easing-families {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
-/* The first chip row keeps clear of the close button's corner. */
-.camera-easing > .camera-easing-row:first-of-type {
-  padding-right: 30px;
+/* Title left, close far right: the header owns the clear space the close button used to steal from the first chip row. */
+.camera-easing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
 }
 
-/* Sits in the first chip row's slack; the wider families row sets the popover width. */
-.camera-easing-close {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
+.camera-easing-title {
+  font-size: var(--text-sm);
+  font-weight: 590;
+  color: var(--text-primary);
+}
+
+/* Labelled groups (STYLE / DIRECTION / FAMILY / ADVANCED) reuse the drill-in section label; its inset is cleared beside .drill-group-label, which owns it. */
+.camera-easing-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Chips carry a curve icon, so they lay out as a row rather than plain text. */
+.camera-easing .chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
+  padding: 0 var(--space-3);
+}
+
+.ease-curve-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The drawn cross centres exactly, unlike the × glyph's own metrics. */
+.camera-easing-close {
+  position: relative;
+  flex: none;
   width: 24px;
   height: 24px;
-  font: inherit;
-  font-size: var(--text-md);
-  line-height: 1;
-  color: var(--text-secondary);
+  padding: 0;
+  font-size: 0;
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   cursor: pointer;
 }
 
+.camera-easing-close::before,
+.camera-easing-close::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 1.5px;
+  background: var(--text-secondary);
+  border-radius: var(--radius-full);
+}
+
+.camera-easing-close::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.camera-easing-close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 .camera-easing-close:hover {
-  color: var(--text-primary);
   background: var(--surface-hover);
+}
+
+.camera-easing-close:hover::before,
+.camera-easing-close:hover::after {
+  background: var(--text-primary);
+}
+
+/* The lane's Resize… modal: one seconds field, sized to its digits rather than the modal width. */
+.resize-anim-field {
+  width: 120px;
 }
 
 /* The rig's segment extras: smoothing, then the three channel eases behind a disclosure. */
@@ -5785,6 +5876,11 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
+}
+
+/* The easing popover borrows the label but not the row inset: its chips sit flush. */
+.camera-easing-group > .drill-group-label {
+  padding: 0;
 }
 
 .drill-group-hint {
