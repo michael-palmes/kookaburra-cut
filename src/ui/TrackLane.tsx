@@ -505,16 +505,12 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     });
   }
 
-  // What's in effect at the playhead: inside an animation both boundary keys glow and the bar tints, but a diamond under the playhead (within half a frame, where "+ Animation" plants its snapped key) wins alone.
+  // The playhead's animation tints the bar; the glowing diamond is the key a camera edit will write to (the selected key, else the nearest), mirroring the pill and tool overlays.
   const activeSegment =
     layout.segments.find((s) => playheadLocal >= s.fromTMs && playheadLocal <= s.toTMs) ?? null;
-  const nearKey = nearestKey(shown, playheadLocal);
-  const nearIds =
-    nearKey && Math.abs(nearKey.tMs - playheadLocal) <= FRAME_MS / 2
-      ? [nearKey.id]
-      : activeSegment
-        ? [activeSegment.fromId, activeSegment.toId]
-        : [nearKey?.id ?? ""];
+  const selectedKey = shown.keys.find((k) => k.id === selectedKeyId);
+  const targetKey = selectedKey ?? nearestKey(shown, playheadLocal);
+  const nearIds = [targetKey?.id ?? ""];
 
   // Probed every render: null means nothing fits at this playhead, which is what disables the button.
   const addNext = addAnimationAuto(track, ctx, snapToFrame(playheadLocal), poseAt, minLenMs);
