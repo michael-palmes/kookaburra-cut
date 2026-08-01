@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  addAnimationAuto,
   addSegmentAt,
   type CameraDoc,
   cameraLayout,
+  deleteKeyMerged,
+  duplicateKey,
   MIN_KEY_GAP_MS,
+  mergeGap,
   moveKey,
   moveSegment,
   nearestKey,
@@ -12,8 +16,10 @@ import {
   playheadDriftTarget,
   removeKey,
   removeSegment,
+  resizeSegment,
   setSegmentEase,
   syncSegmentStartToPrevious,
+  type TrackContext,
 } from "./sceneCameraEdit";
 import type { SceneDocCameraPose } from "./sceneDocSchema";
 
@@ -263,21 +269,76 @@ describe("panCentreSnap", () => {
   });
 });
 
+describe("connected camera edits", () => {
+  const ctx: TrackContext = {
+    durationMs: DUR,
+    windowStartMs: 0,
+    windowEndMs: DUR,
+    transitionInMs: 0,
+    transitionOutStartMs: DUR,
+  };
+  const poseAt = (tMs: number) => pose({ azimuthDeg: tMs / 100 });
+
+  it("addAnimationAuto chains off the last end key with a pose-neutral seed", () => {
+    const next = addAnimationAuto(doc(), ctx, 0, poseAt, 200);
+    expect(next?.segments[2]).toMatchObject({ from: "k4", to: "k5" });
+    expect(next?.keys[4]).toEqual({ id: "k5", tMs: 4000, pose: poseAt(4000) });
+    expect(addAnimationAuto(doc(), ctx, 3800, poseAt, 200)?.keys[4].tMs).toBe(3800);
+  });
+
+  it("deleteKeyMerged hands back the pose the caller freezes as a static reframe", () => {
+    const single: CameraDoc = {
+      keys: [
+        { id: "k1", tMs: 0, pose: pose({ distance: 7 }) },
+        { id: "k2", tMs: 1000, pose: pose({ distance: 2 }) },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "inOutQuad" }],
+    };
+    const result = deleteKeyMerged(single, "k2");
+    expect(result?.track).toMatchObject({ keys: [], segments: [] });
+    expect(result?.frozenPose).toEqual(pose({ distance: 7 }));
+  });
+
+  it("mergeGap closes the fixture's legacy gap in either direction", () => {
+    expect(mergeGap(doc(), "k3", "k2")?.segments).toEqual([
+      { from: "k1", to: "k2", ease: "inOutQuad" },
+      { from: "k2", to: "k4", ease: "outCubic" },
+    ]);
+    expect(mergeGap(doc(), "k2", "k3")?.keys.map((k) => k.id)).toEqual(["k1", "k3", "k4"]);
+  });
+
+  it("resizeSegment ripples the second animation along, gap intact", () => {
+    expect(resizeSegment(doc(), ctx, 0, 1400)?.keys.map((k) => k.tMs)).toEqual([
+      0, 1400, 2900, 3900,
+    ]);
+  });
+});
+
 describe("presentLoop preservation", () => {
   const looped = (): CameraDoc => ({ ...doc(), presentLoop: { mode: "smooth", blendMs: 1500 } });
+  const loop = { mode: "smooth", blendMs: 1500 };
+  const ctx: TrackContext = {
+    durationMs: 4000,
+    windowStartMs: 0,
+    windowEndMs: 4000,
+    transitionInMs: 0,
+    transitionOutStartMs: 4000,
+  };
 
   it("survives every mutation that rebuilds the doc", () => {
     const added = addSegmentAt(looped(), 1500, pose(), pose({ azimuthDeg: 10 }), 4000, 800);
-    expect(added?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
-    expect(removeSegment(looped(), 0)?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
-    expect(removeKey(looped(), "k2")?.presentLoop).toEqual({ mode: "smooth", blendMs: 1500 });
-    expect(syncSegmentStartToPrevious(looped(), 1)?.presentLoop).toEqual({
-      mode: "smooth",
-      blendMs: 1500,
-    });
-    expect(moveKey(looped(), "k2", 1200, 4000)?.presentLoop).toEqual({
-      mode: "smooth",
-      blendMs: 1500,
-    });
+    expect(added?.presentLoop).toEqual(loop);
+    expect(removeSegment(looped(), 0)?.presentLoop).toEqual(loop);
+    expect(removeKey(looped(), "k2")?.presentLoop).toEqual(loop);
+    expect(syncSegmentStartToPrevious(looped(), 1)?.presentLoop).toEqual(loop);
+    expect(moveKey(looped(), "k2", 1200, 4000)?.presentLoop).toEqual(loop);
+  });
+
+  it("survives the connected ops too, including the collapse to a frozen pose", () => {
+    expect(addAnimationAuto(looped(), ctx, 0, () => pose(), 200)?.presentLoop).toEqual(loop);
+    expect(duplicateKey(looped(), ctx, "k1", 200)?.presentLoop).toEqual(loop);
+    expect(deleteKeyMerged(looped(), "k2")?.track.presentLoop).toEqual(loop);
+    expect(mergeGap(looped(), "k3", "k2")?.presentLoop).toEqual(loop);
+    expect(resizeSegment(looped(), ctx, 0, 1400)?.presentLoop).toEqual(loop);
   });
 });
