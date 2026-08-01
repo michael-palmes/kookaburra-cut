@@ -1,0 +1,90 @@
+diff --git a/dist/troika-three-utils.esm.js b/dist/troika-three-utils.esm.js
+index 34ce08716ad1fcba2d6408730fb1b0725a25e228..c85200c868729afe6722abc06390b3ce4fdbbe9b 100644
+--- a/dist/troika-three-utils.esm.js
++++ b/dist/troika-three-utils.esm.js
+@@ -409,16 +409,23 @@ vec3 troika_normal_${key};
+ vec2 troika_uv_${key};
+ ${vertexShader}
+ `;
++    // Copy in/out instead of inout params: ANGLE's Metal backend wraps a hoisted global inout arg in ANGLE_InOut, which the macOS 27 Metal compiler rejects, so the program fails to link.
+     vertexDefs = `${vertexDefs}
+-void troikaVertexTransform${key}(inout vec3 position, inout vec3 normal, inout vec2 uv) {
++void troikaVertexTransform${key}() {
++  vec3 position = troika_position_${key};
++  vec3 normal = troika_normal_${key};
++  vec2 uv = troika_uv_${key};
+   ${vertexTransform}
++  troika_position_${key} = position;
++  troika_normal_${key} = normal;
++  troika_uv_${key} = uv;
+ }
+ `;
+     vertexMainIntro = `
+ troika_position_${key} = vec3(position);
+ troika_normal_${key} = vec3(normal);
+ troika_uv_${key} = vec2(uv);
+-troikaVertexTransform${key}(troika_position_${key}, troika_normal_${key}, troika_uv_${key});
++troikaVertexTransform${key}();
+ ${vertexMainIntro}
+ `;
+     vertexShader = vertexShader.replace(/\b(position|normal|uv)\b/g, (match, match1, index, fullStr) => {
+diff --git a/dist/troika-three-utils.umd.js b/dist/troika-three-utils.umd.js
+index de70cc6652eff339f2a3e636e47a9cb5297ba034..ed5185e4406149c8883e0da9519e7acf30a0771f 100644
+--- a/dist/troika-three-utils.umd.js
++++ b/dist/troika-three-utils.umd.js
+@@ -413,16 +413,23 @@ vec3 troika_normal_${key};
+ vec2 troika_uv_${key};
+ ${vertexShader}
+ `;
++      // Copy in/out instead of inout params: ANGLE's Metal backend wraps a hoisted global inout arg in ANGLE_InOut, which the macOS 27 Metal compiler rejects, so the program fails to link.
+       vertexDefs = `${vertexDefs}
+-void troikaVertexTransform${key}(inout vec3 position, inout vec3 normal, inout vec2 uv) {
++void troikaVertexTransform${key}() {
++  vec3 position = troika_position_${key};
++  vec3 normal = troika_normal_${key};
++  vec2 uv = troika_uv_${key};
+   ${vertexTransform}
++  troika_position_${key} = position;
++  troika_normal_${key} = normal;
++  troika_uv_${key} = uv;
+ }
+ `;
+       vertexMainIntro = `
+ troika_position_${key} = vec3(position);
+ troika_normal_${key} = vec3(normal);
+ troika_uv_${key} = vec2(uv);
+-troikaVertexTransform${key}(troika_position_${key}, troika_normal_${key}, troika_uv_${key});
++troikaVertexTransform${key}();
+ ${vertexMainIntro}
+ `;
+       vertexShader = vertexShader.replace(/\b(position|normal|uv)\b/g, (match, match1, index, fullStr) => {
+diff --git a/src/DerivedMaterial.js b/src/DerivedMaterial.js
+index 0cc3f17a0d039050b3dba3c2bc5b7fcd7c609a55..c6aca7d5798681f7148dc4be331ab72053fb44ab 100644
+--- a/src/DerivedMaterial.js
++++ b/src/DerivedMaterial.js
+@@ -360,16 +360,23 @@ vec3 troika_normal_${key};
+ vec2 troika_uv_${key};
+ ${vertexShader}
+ `
++    // Copy in/out instead of inout params: ANGLE's Metal backend wraps a hoisted global inout arg in ANGLE_InOut, which the macOS 27 Metal compiler rejects, so the program fails to link.
+     vertexDefs = `${vertexDefs}
+-void troikaVertexTransform${key}(inout vec3 position, inout vec3 normal, inout vec2 uv) {
++void troikaVertexTransform${key}() {
++  vec3 position = troika_position_${key};
++  vec3 normal = troika_normal_${key};
++  vec2 uv = troika_uv_${key};
+   ${vertexTransform}
++  troika_position_${key} = position;
++  troika_normal_${key} = normal;
++  troika_uv_${key} = uv;
+ }
+ `
+     vertexMainIntro = `
+ troika_position_${key} = vec3(position);
+ troika_normal_${key} = vec3(normal);
+ troika_uv_${key} = vec2(uv);
+-troikaVertexTransform${key}(troika_position_${key}, troika_normal_${key}, troika_uv_${key});
++troikaVertexTransform${key}();
+ ${vertexMainIntro}
+ `
+     vertexShader = vertexShader.replace(/\b(position|normal|uv)\b/g, (match, match1, index, fullStr) => {

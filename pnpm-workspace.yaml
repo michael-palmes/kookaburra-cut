@@ -1,2 +1,3 @@
 patchedDependencies:
   troika-three-text@0.52.4: patches/troika-three-text@0.52.4.patch
+  troika-three-utils@0.52.4: patches/troika-three-utils@0.52.4.patch

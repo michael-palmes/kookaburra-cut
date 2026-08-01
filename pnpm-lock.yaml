@@ -6,6 +6,7 @@ settings:
 
 patchedDependencies:
   troika-three-text@0.52.4: b2b7c7c8473c75fb9c9ffab03c49a98d9591d30c6c2ecaac76e489e714cd3d1d
+  troika-three-utils@0.52.4: 0a0e5650413d2f6bed66f32c835d4ac3ae7b1081e920ef8484f1e737dd479adb
 
 importers:
 
@@ -79,7 +80,7 @@ importers:
         version: 0.52.4(patch_hash=b2b7c7c8473c75fb9c9ffab03c49a98d9591d30c6c2ecaac76e489e714cd3d1d)(three@0.185.1)
       troika-three-utils:
         specifier: 0.52.4
-        version: 0.52.4(three@0.185.1)
+        version: 0.52.4(patch_hash=0a0e5650413d2f6bed66f32c835d4ac3ae7b1081e920ef8484f1e737dd479adb)(three@0.185.1)
       zustand:
         specifier: ^5.0.14
         version: 5.0.14(@types/react@19.2.17)(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
@@ -1996,11 +1997,11 @@ snapshots:
     dependencies:
       bidi-js: 1.0.3
       three: 0.185.1
-      troika-three-utils: 0.52.4(three@0.185.1)
+      troika-three-utils: 0.52.4(patch_hash=0a0e5650413d2f6bed66f32c835d4ac3ae7b1081e920ef8484f1e737dd479adb)(three@0.185.1)
       troika-worker-utils: 0.52.0
       webgl-sdf-generator: 1.1.1
 
-  troika-three-utils@0.52.4(three@0.185.1):
+  troika-three-utils@0.52.4(patch_hash=0a0e5650413d2f6bed66f32c835d4ac3ae7b1081e920ef8484f1e737dd479adb)(three@0.185.1):
     dependencies:
       three: 0.185.1
 
