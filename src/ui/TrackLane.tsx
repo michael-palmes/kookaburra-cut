@@ -505,12 +505,16 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     });
   }
 
-  // What's in effect at the playhead: inside an animation both boundary keys glow and the bar tints; otherwise the single nearest diamond keeps the proximity emphasis.
+  // What's in effect at the playhead: inside an animation both boundary keys glow and the bar tints, but a diamond under the playhead (within half a frame, where "+ Animation" plants its snapped key) wins alone.
   const activeSegment =
     layout.segments.find((s) => playheadLocal >= s.fromTMs && playheadLocal <= s.toTMs) ?? null;
-  const nearIds = activeSegment
-    ? [activeSegment.fromId, activeSegment.toId]
-    : [nearestKey(shown, playheadLocal)?.id ?? ""];
+  const nearKey = nearestKey(shown, playheadLocal);
+  const nearIds =
+    nearKey && Math.abs(nearKey.tMs - playheadLocal) <= FRAME_MS / 2
+      ? [nearKey.id]
+      : activeSegment
+        ? [activeSegment.fromId, activeSegment.toId]
+        : [nearKey?.id ?? ""];
 
   // Probed every render: null means nothing fits at this playhead, which is what disables the button.
   const addNext = addAnimationAuto(track, ctx, snapToFrame(playheadLocal), poseAt, minLenMs);
