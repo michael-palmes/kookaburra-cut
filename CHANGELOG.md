@@ -4,6 +4,38 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-02
+
+### Added
+
+- Neighbouring animations share one draggable keyframe: the lane draws a
+  single diamond per junction, so moving it retimes both sides at once.
+  Legacy animations with a gap between them show two keyframes until they
+  are dragged together.
+- Keyframe and segment menus to duplicate an animation, add a keyframe at
+  the clicked point, resize it to an exact duration or delete it and merge
+  the gap, with a playhead-aware "+ Animation".
+- An optional Detailed view that swaps the diamonds for narrow lines, with
+  a minimum length derived from the strip's pixel width.
+
+### Changed
+
+- Both timelines span the full window width, and the whole timeline dock
+  scrubs, not just the strip.
+- Scenes shorter than 8% of the strip are floored so they stay selectable,
+  with scrubbing mapped piecewise so the playhead still tracks the pointer.
+- The easing panel is rebuilt with a title, grouped options and curve
+  icons, opened from the keyframe menu.
+- The scene inspector's Camera section is now Animations, with mode icons.
+- Deleting the last animation freezes the framing where it was.
+
+### Fixed
+
+- Text renders again on macOS 27. Its Metal compiler rejects the code ANGLE
+  generates for `inout` parameters bound to hoisted globals, so troika's
+  derived text material never linked and every text mesh was invisible in
+  both preview and export.
+
 ## [0.9.0] - 2026-07-31
 
 ### Added
