@@ -1171,7 +1171,7 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `355f9429…` | stale | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `f304f1bd…` | stale | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `8d293536…` | `ed66045e…` | `63dfb18b…` | `aa3cb9b1…` | — | — | — |
@@ -1180,6 +1180,20 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
+
+> **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
+> code ANGLE generates for `inout` parameters bound to hoisted globals, so
+> troika's derived text material never linked and every text mesh was invisible
+> in preview AND export. A missing draw is not drift: the pre-fix `c2a8c54a…`
+> reading was that bug, not a determinism failure. The fix is a second troika
+> patch (`troika-three-utils@0.52.4`) whose generated `troikaVertexTransform`
+> takes no parameters, copying the hoisted globals into locals and back.
+> Re-roll it on any troika upgrade. The rewritten body moves text pixels on
+> `showcase-tour`, a DELIBERATE move from `355f9429…` to `f304f1bd…`, recorded
+> Verify ×2 with an export-path frame eyeballed for glyphs and stagger colours;
+> `ws:launch-2026` came back EQUAL and UNCHANGED at `eb89826c…`, so the patch is
+> pixel-null on that content. Baselines recorded before the OS upgrade cannot be
+> compared across it.
 
 > **2026-07-30 (deviceLayout):** multi-device scenes gained a sidecar
 > `deviceLayout` block resolved to per-aspect placements by a pure toolkit
