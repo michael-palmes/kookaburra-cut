@@ -168,6 +168,35 @@ describe("sampleSceneCamera", () => {
     expect(sampleSceneCamera(lone, 4000).distance).toBe(3);
   });
 
+  // The lane hides keys attached to no segment, so what they do to the SAMPLE is load-bearing: inside a segment they are inert, but they own the hold before the first segment and after the last, which is why the connected edit ops absorb or drop them rather than leave them behind.
+  describe("keys unattached to any segment", () => {
+    const withStray = (strayMs: number) =>
+      track({
+        keys: [
+          { id: "a", tMs: 1000, pose: pose() },
+          { id: "b", tMs: 2000, pose: pose({ azimuthDeg: 40 }) },
+          { id: "s", tMs: strayMs, pose: pose({ azimuthDeg: -90 }) },
+        ],
+        segments: [{ from: "a", to: "b", ease: "linear" }],
+      });
+
+    it("are inert inside a segment: the segment always wins", () => {
+      expect(sampleSceneCamera(withStray(1500), 1500).azimuthDeg).toBeCloseTo(20, 12);
+      expect(sampleSceneCamera(withStray(1500), 2500).azimuthDeg).toBe(40);
+    });
+
+    it("own the hold BEFORE the first segment (the clamp picks the earliest key)", () => {
+      expect(sampleSceneCamera(withStray(500), 0).azimuthDeg).toBe(-90);
+      expect(sampleSceneCamera(withStray(500), 999).azimuthDeg).toBe(-90);
+      expect(sampleSceneCamera(withStray(500), 1500).azimuthDeg).toBeCloseTo(20, 12);
+    });
+
+    it("hijack the hold AFTER the last segment", () => {
+      expect(sampleSceneCamera(withStray(3000), 2500).azimuthDeg).toBe(40);
+      expect(sampleSceneCamera(withStray(3000), 3000).azimuthDeg).toBe(-90);
+    });
+  });
+
   it("eased golden value (inOutQuad at 25% progress)", () => {
     const t = track({
       keys: [

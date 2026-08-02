@@ -2123,77 +2123,6 @@ export default function App() {
                 </div>
               )}
             </div>
-
-            {/* The timeline dock: the animation lane self-collapses on cameraEditStore.open; the dock draws the lane-to-cell connector. */}
-            <TimelineDock
-              connectorActive={
-                (comparePresent && compareLaneOpen) || (lsActive ? lsLaneOpen : cameraEditOpen)
-              }
-              activeIndex={camSceneIndex}
-              lane={
-                project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-                  <div className={comparePresent ? "anim-lane-stack" : undefined}>
-                    {comparePresent && (
-                      <CompareAnimationLane
-                        project={project}
-                        sceneIndex={camSceneIndex}
-                        onDocChanged={handleDocChanged}
-                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                      />
-                    )}
-                    {lsActive ? (
-                      <LayeredScreenshotAnimationLane
-                        project={project}
-                        sceneIndex={camSceneIndex}
-                        onDocChanged={handleDocChanged}
-                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                        label={comparePresent ? "Stack" : undefined}
-                      />
-                    ) : (
-                      <AnimationLane
-                        project={project}
-                        sceneIndex={camSceneIndex}
-                        onDocChanged={handleDocChanged}
-                        onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                        label={comparePresent ? "Camera" : undefined}
-                        alwaysOpen={comparePresent}
-                      />
-                    )}
-                  </div>
-                ) : null
-              }
-            >
-              <PlaybackBar
-                project={project}
-                playing={playing}
-                exporting={exporting}
-                currentMs={currentMs}
-                durationMs={durationMs}
-                readout={error ?? timeReadout}
-                hasAudio={!!project?.audio}
-                audioMuted={audioMuted}
-                isWorkspace={!!project && isWorkspaceProjectId(project.id)}
-                playRef={playBtnRef}
-                onTogglePlay={togglePlay}
-                onToggleMute={() => useUiStore.getState().setAudioMuted(!audioMuted)}
-                onScrub={(ms) => {
-                  // Module-flag guard: `disabled` only covers UI-button exports, not autorun.
-                  if (!isExporting()) {
-                    replayReturnMsRef.current = null; // a scrub owns the playhead
-                    setCurrentMs(ms);
-                  }
-                }}
-                onNewScene={() => {
-                  useUiStore.getState().requestRailWizard("new-scene");
-                  setRailOpen(true);
-                }}
-                onRenameScene={(i, name) => void handleRenameScene(i, name)}
-                onDeleteScene={(i) => void handleDeleteScene(i)}
-                onDuplicateScene={handleDuplicateScene}
-                onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                onPasteBackground={(i) => void handlePasteBackground(i)}
-              />
-            </TimelineDock>
           </div>
 
           {/* The right-hand inspector: hidden during export/autorun like the edit bar; bundled projects get its Project tab only (decision 12). */}
@@ -2230,6 +2159,79 @@ export default function App() {
             />
           )}
         </div>
+      )}
+
+      {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); the animation lane self-collapses on cameraEditStore.open and the dock draws the lane-to-cell connector. */}
+      {editorView && (
+        <TimelineDock
+          connectorActive={
+            (comparePresent && compareLaneOpen) || (lsActive ? lsLaneOpen : cameraEditOpen)
+          }
+          activeIndex={camSceneIndex}
+          lane={
+            project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
+              <div className={comparePresent ? "anim-lane-stack" : undefined}>
+                {comparePresent && (
+                  <CompareAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {lsActive ? (
+                  <LayeredScreenshotAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                    label={comparePresent ? "Stack" : undefined}
+                  />
+                ) : (
+                  <AnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                    label={comparePresent ? "Camera" : undefined}
+                    alwaysOpen={comparePresent}
+                  />
+                )}
+              </div>
+            ) : null
+          }
+        >
+          <PlaybackBar
+            project={project}
+            playing={playing}
+            exporting={exporting}
+            currentMs={currentMs}
+            durationMs={durationMs}
+            readout={error ?? timeReadout}
+            hasAudio={!!project?.audio}
+            audioMuted={audioMuted}
+            isWorkspace={!!project && isWorkspaceProjectId(project.id)}
+            playRef={playBtnRef}
+            onTogglePlay={togglePlay}
+            onToggleMute={() => useUiStore.getState().setAudioMuted(!audioMuted)}
+            onScrub={(ms) => {
+              // Module-flag guard: `disabled` only covers UI-button exports, not autorun.
+              if (!isExporting()) {
+                replayReturnMsRef.current = null; // a scrub owns the playhead
+                setCurrentMs(ms);
+              }
+            }}
+            onNewScene={() => {
+              useUiStore.getState().requestRailWizard("new-scene");
+              setRailOpen(true);
+            }}
+            onRenameScene={(i, name) => void handleRenameScene(i, name)}
+            onDeleteScene={(i) => void handleDeleteScene(i)}
+            onDuplicateScene={handleDuplicateScene}
+            onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+            onPasteBackground={(i) => void handlePasteBackground(i)}
+          />
+        </TimelineDock>
       )}
 
       {settings && !settings.workspaceRoot && setupError && !isAutoRun && (

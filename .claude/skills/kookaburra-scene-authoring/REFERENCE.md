@@ -277,7 +277,7 @@ Semantics:
   paths only, as ever.
 - **In the app**: the builder (the Screens & devices section's Edit screenshot stack
   drill-in, or the ⌘K palette) edits layers/chains/pose; the animated-track toggle lives
-  in the Camera section when a block exists; the LS lane and pill mirror the camera's
+  in the Animations section when a block exists; the LS lane and pill mirror the camera's
   (O/P/Z plus the S spread tool); four presets (Expand to isometric, Flatten, Zoom to
   screen, Slow drift) scaffold editable keys from the current pose.
 

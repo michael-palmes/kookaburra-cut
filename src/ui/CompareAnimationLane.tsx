@@ -53,13 +53,18 @@ export function CompareAnimationLane({
   );
   const slot = project.slots[sceneIndex];
   const nextSlot = project.slots[sceneIndex + 1];
+  // No transition stance of its own (the divider is one channel), so auto-placement works to the window edges.
+  const windowStartMs = (slot.transitionIn?.durationMs ?? 0) / 2;
+  const windowEndMs = slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2;
   return (
     <TrackLane<{ value: number }, CompareTrackDoc>
       open={open}
       slotStartMs={slot.startMs}
       durationMs={slot.durationMs}
-      windowStartMs={(slot.transitionIn?.durationMs ?? 0) / 2}
-      windowEndMs={slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2}
+      windowStartMs={windowStartMs}
+      windowEndMs={windowEndMs}
+      transitionInMs={windowStartMs}
+      transitionOutStartMs={windowEndMs}
       lastScene={!nextSlot}
       track={track}
       selectedKeyId={selectedKeyId}
@@ -73,7 +78,7 @@ export function CompareAnimationLane({
       commit={(t) => commit(t)}
       poseAt={(localT) => ({ value: appliedValueAt(localT) })}
       onSceneDuration={onDuration}
-      addTitle="Add comparison animation"
+      addTitle="Add a divider animation after the last one, or ending at the playhead when it is past it"
       label="Comparison"
       laneClassName="lane-compare"
       writeErrorPrefix="Save failed — this divider edit isn’t on disk:"

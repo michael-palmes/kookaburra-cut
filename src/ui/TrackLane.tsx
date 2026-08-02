@@ -1,35 +1,68 @@
 import { useEffect, useRef, useState } from "react";
 import { useClockStore } from "../engine/clock";
-import { DEFAULT_EASE, EASE_FAMILIES } from "../engine/ease";
+import { DEFAULT_EASE, EASE_FAMILIES, ease } from "../engine/ease";
 import { FPS } from "../engine/format";
 import {
-  addSegmentAt,
+  addAnimationAuto,
+  deleteKeyMerged,
+  duplicateKey,
+  duplicateKeyBefore,
+  junctionInfo,
   type KeyedTrack,
+  type KeyedTrackKey,
+  type MergedDelete,
+  MIN_KEY_GAP_MS,
+  mergeGap,
   moveKey,
   moveSegment,
   nearestKey,
+  nextKeyId,
   playheadDriftTarget,
-  removeKey,
   removeSegment,
+  resizeBounds,
+  resizeSegment,
   type SegmentEaseChannel,
   setSegmentEase,
-  syncSegmentStartToPrevious,
+  splitSegmentAt,
+  type TrackContext,
+  type TrackLayout,
   trackLayout,
 } from "../engine/keyedTrack";
+import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { ToggleRow } from "./inspector/rows";
+import { ResizeAnimationModal } from "./ResizeAnimationModal";
 
-/** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16), drag clamps remain the engine's MIN_KEY_GAP_MS. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
+/** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16). Animations are CONNECTED: one diamond per key, so a shared junction is ONE handle, keys attached to no segment draw nothing, and the pixel-derived `minLenMs` (24px, 10px in the Detailed view) rather than MIN_KEY_GAP_MS is what drags and the connected engine ops clamp against. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
 
 const PAD = 12; // px inset either side of the track
 const SNAP_PX = 8; // playhead snap radius for diamond drags
 const MOVE_THRESHOLD_PX = 4; // pointer travel before a press becomes a drag
 const FRAME_MS = 1000 / FPS;
 const MIN_SEGMENT_VISUAL = 0.04; // of the track's inner width, visual floor only
+/** The visible minimum length of an animation, in px of lane (decision 1); the Detailed view trades legibility for finer packing. */
+const MIN_LEN_PX = 24;
+const MIN_LEN_PX_DETAILED = 10;
 
 /** Round to the export frame grid, then to whole ms (sidecar times stay integers). */
 function snapToFrame(ms: number): number {
   return Math.round(Math.round(ms / FRAME_MS) * FRAME_MS);
+}
+
+/** What a merged delete writes: the collapsed track, or the static single-key doc freezing the surviving pose (decision 4), so losing the last animation holds the shot instead of leaving a lone diamond. */
+function withFrozenPose<P, T extends KeyedTrack<P>>(result: MergedDelete<P, T>): T {
+  if (result.frozenPose === undefined) return result.track;
+  return {
+    ...result.track,
+    keys: [{ id: nextKeyId(result.track), tMs: 0, pose: result.frozenPose }],
+    segments: [],
+  };
+}
+
+/** Keeps the keys some resolved animation joins: the rest (a legacy stray, or the frozen static pose) are invisible on the lane and unpickable. */
+function hasSegment<P>(layout: TrackLayout<P>): (key: KeyedTrackKey<P>) => boolean {
+  const attached = new Set(layout.segments.flatMap((s) => [s.fromId, s.toId]));
+  return (key) => attached.has(key.id);
 }
 
 type DragState<T> =
@@ -54,6 +87,10 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   windowStartMs: number;
   /** Scene-local end of the attribution window (duration minus half the outgoing overlap): the lane's right edge. */
   windowEndMs: number;
+  /** Scene-local end of the incoming transition: where a first animation starts. Lanes with no transition awareness pass `windowStartMs`. */
+  transitionInMs: number;
+  /** Scene-local start of the outgoing transition: where an auto-placed animation stops. Lanes with no transition awareness pass `windowEndMs`. */
+  transitionOutStartMs: number;
   /** No scene follows: lane seeks may land exactly on the window end (else they stop 1ms short so the chrome can never retarget to the next scene mid-drag). */
   lastScene: boolean;
   track: T;
@@ -80,7 +117,7 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   label?: string;
   /** Extra root class for per-lane theming (`lane-compare` recolours diamonds and segments via --lane-accent). */
   laneClassName?: string;
-  /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) renders the popover exactly as it always did; the lane NEVER branches on track type to decide this. */
+  /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) drops the popover's Advanced group; the lane NEVER branches on track type to decide this. */
   segmentExtras?: SegmentExtras;
 }
 
@@ -100,6 +137,8 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   durationMs,
   windowStartMs,
   windowEndMs,
+  transitionInMs,
+  transitionOutStartMs,
   lastScene,
   track,
   selectedKeyId,
@@ -120,12 +159,18 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   segmentExtras,
 }: TrackLaneProps<P, T>) {
   const currentMs = useClockStore((s) => s.currentMs);
+  const detailed = useUiStore((s) => s.detailedAnimationView);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const [trackW, setTrackW] = useState(0);
   const [drag, setDrag] = useState<DragState<T> | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [durEdit, setDurEdit] = useState<string | null>(null);
+  /** The gap neighbour the dragged key would merge into on release (decision 2). */
+  const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+  /** The animation the easing popover is open for; only the context menu opens it. */
+  const [easingSegment, setEasingSegment] = useState<number | null>(null);
+  const [resizeSegIndex, setResizeSegIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const el = trackRef.current;
@@ -142,6 +187,20 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   const pxPerMs = innerW > 0 ? innerW / windowMs : 0;
   const playheadLocal = Math.min(windowEndMs, Math.max(windowStartMs, currentMs - slotStartMs));
   const layout = trackLayout(track);
+  // Only keys an animation joins are drawn (a frozen static pose has none), so only those can be picked.
+  const shown = { keys: layout.keys.filter(hasSegment(layout)), segments: [] };
+  const ctx: TrackContext = {
+    durationMs,
+    windowStartMs,
+    windowEndMs,
+    transitionInMs,
+    transitionOutStartMs,
+  };
+  // The visible floor in ms at the CURRENT lane width, so a narrow window keeps its animations grabbable.
+  const minLenMs = Math.max(
+    2 * MIN_KEY_GAP_MS,
+    pxPerMs > 0 ? (detailed ? MIN_LEN_PX_DETAILED : MIN_LEN_PX) / pxPerMs : 0,
+  );
 
   const xOf = (tMs: number) =>
     PAD + (Math.min(windowEndMs, Math.max(windowStartMs, tMs)) - windowStartMs) * pxPerMs;
@@ -183,7 +242,13 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         const key = track.keys.find((k) => k.id === selection.keyId);
         if (!key) return;
         const frames = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1);
-        const next = moveKey(track, key.id, snapToFrame(key.tMs + frames * FRAME_MS), durationMs);
+        const next = moveKey(
+          track,
+          key.id,
+          snapToFrame(key.tMs + frames * FRAME_MS),
+          durationMs,
+          minLenMs,
+        );
         if (next && next !== track) void commit(next);
         return;
       }
@@ -196,24 +261,26 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             void commit(next);
           }
         } else if (selection.keyId) {
-          const next = removeKey(track, selection.keyId);
-          if (next) {
+          const result = deleteKeyMerged(track, selection.keyId);
+          if (result) {
             select(null, null);
-            void commit(next);
+            void commit(withFrozenPose(result));
           }
         }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, track, commit, durationMs, select, getSelection, onToolKey, onEscape]);
+  }, [open, track, commit, durationMs, minLenMs, select, getSelection, onToolKey, onEscape]);
 
   // ── Drags ─────────────────────────────────
 
   function onKeyPointerDown(e: React.PointerEvent, keyId: string) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault(); // a drag must never paint a native text selection
     e.currentTarget.setPointerCapture(e.pointerId);
+    setEasingSegment(null);
     setDrag({ kind: "key", id: keyId, startX: e.clientX, orig: track, moved: false });
   }
 
@@ -225,7 +292,9 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   ) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
+    setEasingSegment(null);
     setDrag({
       kind: "segment",
       docIndex,
@@ -246,12 +315,12 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     for (const target of [
       windowStartMs,
       windowEndMs,
-      ...track.keys.map((k) => Math.min(windowEndMs, Math.max(windowStartMs, k.tMs))),
+      ...shown.keys.map((k) => Math.min(windowEndMs, Math.max(windowStartMs, k.tMs))),
     ]) {
       if (Math.abs(local - target) <= snapRadius) local = target;
     }
     seekLocal(local);
-    const near = nearestKey(track, Math.min(windowEndMs, Math.max(windowStartMs, local)));
+    const near = nearestKey(shown, Math.min(windowEndMs, Math.max(windowStartMs, local)));
     if (near) select(near.id, null);
   }
 
@@ -274,8 +343,11 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
       // Snap to the playhead within radius, then to the frame grid.
       const snapRadius = SNAP_PX / pxPerMs;
       if (Math.abs(target - playheadLocal) <= snapRadius) target = playheadLocal;
-      const next = moveKey(drag.orig, drag.id, snapToFrame(target), durationMs);
-      if (next) preview(next, false);
+      const next = moveKey(drag.orig, drag.id, snapToFrame(target), durationMs, minLenMs);
+      if (!next) return;
+      const moved = next.keys.find((k) => k.id === drag.id);
+      setMergeTarget(moved ? mergeCandidate(drag.orig, drag.id, moved.tMs) : null);
+      preview(next, false);
     } else {
       const next = moveSegment(
         drag.orig,
@@ -283,9 +355,26 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         drag.toId,
         snapToFrame(dx / pxPerMs),
         durationMs,
+        minLenMs,
       );
       if (next) preview(next, false);
     }
+  }
+
+  /** The key a dragged key would merge into: only a legacy gap has one, the neighbour on the other side, and only once the drag is within the snap radius of it (decision 2, connect-on-drag). */
+  function mergeCandidate(base: T, keyId: string, tMs: number): string | null {
+    if (pxPerMs <= 0) return null;
+    const { prevSeg, nextSeg } = junctionInfo(base, keyId);
+    if (Boolean(prevSeg) === Boolean(nextSeg)) return null;
+    const segments = trackLayout(base).segments;
+    const across = prevSeg
+      ? segments.filter((s) => s.fromId !== keyId && s.fromTMs >= tMs).at(0)?.fromId
+      : segments.filter((s) => s.toId !== keyId && s.toTMs <= tMs).at(-1)?.toId;
+    const target = across ? base.keys.find((k) => k.id === across) : null;
+    // Never under the data floor: on a short scene the wall parks the key further out than the snap radius.
+    const range = Math.max(SNAP_PX / pxPerMs, MIN_KEY_GAP_MS);
+    if (!target || Math.abs(target.tMs - tMs) > range) return null;
+    return mergeGap(base, keyId, target.id) ? target.id : null;
   }
 
   function onPointerUp() {
@@ -296,7 +385,10 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     }
     if (drag.kind === "key") {
       if (drag.moved) {
-        void commit(track);
+        // Dropped on its gap neighbour: the two collapse into one shared junction (decision 2).
+        const merged = mergeTarget ? mergeGap(track, drag.id, mergeTarget) : null;
+        if (merged) select(mergeTarget, null);
+        void commit(merged ?? track);
       } else {
         // Click: select the diamond AND seek the playhead to it (window-clamped, so an edge key never hops the chrome to a neighbouring scene).
         select(drag.id, null);
@@ -306,51 +398,121 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     } else {
       if (drag.moved) void commit(track);
       else {
-        select(null, drag.docIndex); // click: select block → easing popover
+        // Click: select the animation and drift the playhead; easing lives in the right-click menu now.
+        select(null, drag.docIndex);
         driftPlayhead();
       }
     }
+    setMergeTarget(null);
     setDrag(null);
   }
 
   function onBackgroundPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
+    setEasingSegment(null);
     setDrag({ kind: "scrub" });
     scrubAt(e.clientX);
   }
 
-  function onAddAnimation() {
-    const start = snapToFrame(playheadLocal);
-    const next = addSegmentAt(
-      track,
-      start,
-      poseAt(start),
-      poseAt(Math.min(start + 1000, durationMs)),
-      durationMs,
-    );
-    if (next) void commit(next);
-  }
-
-  /** Right-click a segment: snap-to-previous plus instant delete (same as the Delete key). */
-  function onSegmentContextMenu(e: React.MouseEvent, docIndex: number) {
+  /** Right-click a keyframe: the connected edits, each probed so a disabled item can say why. */
+  function onKeyContextMenu(e: React.MouseEvent, keyId: string) {
     e.preventDefault();
-    select(null, docIndex);
-    const canSync = syncSegmentStartToPrevious(track, docIndex) !== null;
+    e.stopPropagation();
+    select(keyId, null);
+    const after = duplicateKey(track, ctx, keyId, minLenMs);
+    const before = duplicateKeyBefore(track, ctx, keyId, minLenMs);
     setMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
         {
-          id: "sync-prev",
-          label: "Snap start to previous animation",
-          disabled: !canSync,
-          title: canSync
-            ? "Move this animation's first keyframe onto the previous animation's end"
-            : "Already chained, or no animation before this one",
+          id: "duplicate",
+          label: "Duplicate",
+          disabled: !after,
+          title: after
+            ? "Hold this pose, then run the animation after it from halfway"
+            : "No room after this keyframe for a hold",
           onSelect: () => {
-            const next = syncSegmentStartToPrevious(track, docIndex);
-            if (next) void commit(next);
+            if (after) void commit(after);
+          },
+        },
+        {
+          id: "duplicate-before",
+          label: "Duplicate before",
+          disabled: !before,
+          title: before
+            ? "Hold this pose, arriving halfway through the animation before it"
+            : "No room before this keyframe for a hold",
+          onSelect: () => {
+            if (before) void commit(before);
+          },
+        },
+        {
+          id: "delete",
+          label: "Delete",
+          danger: true,
+          title: "Joins the animations either side; the last one leaves the pose frozen",
+          onSelect: () => {
+            const result = deleteKeyMerged(track, keyId);
+            if (result) {
+              select(null, null);
+              void commit(withFrozenPose(result));
+            }
+          },
+        },
+      ],
+    });
+  }
+
+  /** Right-click an animation: easing, resize, split at the clicked point, delete. */
+  function onSegmentContextMenu(e: React.MouseEvent, docIndex: number) {
+    e.preventDefault();
+    select(null, docIndex);
+    const bounds = resizeBounds(track, ctx, docIndex, minLenMs);
+    const rect = trackRef.current?.getBoundingClientRect();
+    const clickedT =
+      rect && pxPerMs > 0
+        ? snapToFrame(windowStartMs + (e.clientX - rect.left - PAD) / pxPerMs)
+        : null;
+    const splitNext =
+      clickedT === null
+        ? null
+        : splitSegmentAt(track, docIndex, clickedT, poseAt(clickedT), minLenMs);
+    const splitKeyId =
+      splitNext?.keys.find((k) => !track.keys.some((o) => o.id === k.id))?.id ?? null;
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          id: "easing",
+          label: "Easing…",
+          title: "How this animation is paced",
+          onSelect: () => setEasingSegment(docIndex),
+        },
+        {
+          id: "resize",
+          label: "Resize…",
+          disabled: !bounds,
+          title: bounds
+            ? "Type its length; later keyframes shift with it"
+            : "This animation has no room to resize",
+          onSelect: () => setResizeSegIndex(docIndex),
+        },
+        {
+          id: "add-key",
+          label: "Add keyframe",
+          disabled: !splitNext,
+          title: splitNext
+            ? "Splits the animation here; the camera keeps its position at this point"
+            : "Too close to a keyframe to split here",
+          onSelect: () => {
+            if (splitNext) {
+              select(splitKeyId, null);
+              void commit(splitNext);
+            }
           },
         },
         {
@@ -369,15 +531,21 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     });
   }
 
-  // What's in effect at the playhead: inside an animation both boundary keys glow and the bar tints; otherwise the single nearest diamond keeps the proximity emphasis.
+  // The playhead's animation tints the bar; the glowing diamond is the key a camera edit will write to (the selected key, else the nearest), mirroring the pill and tool overlays.
   const activeSegment =
     layout.segments.find((s) => playheadLocal >= s.fromTMs && playheadLocal <= s.toTMs) ?? null;
-  const nearIds = activeSegment
-    ? [activeSegment.fromId, activeSegment.toId]
-    : [nearestKey(track, playheadLocal)?.id ?? ""];
+  const selectedKey = shown.keys.find((k) => k.id === selectedKeyId);
+  const targetKey = selectedKey ?? nearestKey(shown, playheadLocal);
+  const nearIds = [targetKey?.id ?? ""];
 
-  const selectedSegmentLayout =
-    selectedSegment !== null ? layout.segments.find((s) => s.docIndex === selectedSegment) : null;
+  // Probed every render: null means nothing fits at this playhead, which is what disables the button.
+  const addNext = addAnimationAuto(track, ctx, snapToFrame(playheadLocal), poseAt, minLenMs);
+  const easingLayout =
+    easingSegment === null
+      ? null
+      : (layout.segments.find((s) => s.docIndex === easingSegment) ?? null);
+  const resizeSegBounds =
+    resizeSegIndex === null ? null : resizeBounds(track, ctx, resizeSegIndex, minLenMs);
 
   function finishDurationEdit(commitEdit: boolean) {
     const text = durEdit;
@@ -399,8 +567,11 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         <button
           type="button"
           className="btn primary btn-small"
-          title={addTitle}
-          onClick={onAddAnimation}
+          title={addNext ? addTitle : "No room left in this scene for another animation"}
+          disabled={!addNext}
+          onClick={() => {
+            if (addNext) void commit(addNext);
+          }}
         >
           ＋ {label ?? "Animation"}
         </button>
@@ -428,7 +599,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
                 title={
                   outside
                     ? `Animation at ${(seg.fromTMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
-                    : `Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`} — drag to move, click for easing, right-click to delete`
+                    : `Animation ${seg.ease === "jump" ? "(jump cut)" : `(${seg.ease})`}, drag to move, right-click for easing, resize and delete`
                 }
                 onPointerDown={(e) => onSegmentPointerDown(e, seg.docIndex, seg.fromId, seg.toId)}
                 onPointerMove={onPointerMove}
@@ -437,23 +608,27 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               />
             );
           })}
-          {layout.keys.map((key) => (
+          {shown.keys.map((key) => (
+            // biome-ignore lint/a11y/noStaticElementInteractions: pointer-driven editing surface, keyboard editing rides the window-level Delete/arrow handlers
             <div
               key={key.id}
-              className={`anim-key${selectedKeyId === key.id ? " selected" : ""}${
-                nearIds.includes(key.id) ? " near" : ""
+              className={`anim-key${detailed ? " detailed" : ""}${
+                selectedKeyId === key.id ? " selected" : ""
+              }${nearIds.includes(key.id) ? " near" : ""}${
+                mergeTarget === key.id ? " merge-target" : ""
               }${key.tMs < windowStartMs || key.tMs > windowEndMs ? " overhang" : ""}`}
               style={{ left: xOf(key.tMs) }}
               title={
                 key.tMs > durationMs
-                  ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s — past the scene end (holds clamp)`
+                  ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, past the scene end (holds clamp)`
                   : key.tMs < windowStartMs || key.tMs > windowEndMs
                     ? `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, inside the transition (shown at the lane edge)`
-                    : `Keyframe at ${(key.tMs / 1000).toFixed(2)}s — drag to retime, click to select + seek`
+                    : `Keyframe at ${(key.tMs / 1000).toFixed(2)}s, drag to retime, right-click to duplicate or delete`
               }
               onPointerDown={(e) => onKeyPointerDown(e, key.id)}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
+              onContextMenu={(e) => onKeyContextMenu(e, key.id)}
             />
           ))}
           <span className="anim-playhead" style={{ left: xOf(playheadLocal) }} />
@@ -494,16 +669,28 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         </div>
       )}
 
-      {selectedSegmentLayout && (
+      {easingLayout && (
         <EasingPopover
-          ease={selectedSegmentLayout.ease}
-          onPick={(ease) => {
-            const next = setSegmentEase(track, selectedSegmentLayout.docIndex, ease);
+          easeName={easingLayout.ease}
+          onPick={(name) => {
+            const next = setSegmentEase(track, easingLayout.docIndex, name);
             if (next) void commit(next);
           }}
           extras={segmentExtras}
-          docIndex={selectedSegmentLayout.docIndex}
-          onClose={() => select(null, null)}
+          docIndex={easingLayout.docIndex}
+          onClose={() => setEasingSegment(null)}
+        />
+      )}
+
+      {resizeSegIndex !== null && resizeSegBounds && (
+        <ResizeAnimationModal
+          bounds={resizeSegBounds}
+          onCommit={(spanMs) => {
+            const next = resizeSegment(track, ctx, resizeSegIndex, spanMs, minLenMs);
+            setResizeSegIndex(null);
+            if (next && next !== track) void commit(next);
+          }}
+          onCancel={() => setResizeSegIndex(null)}
         />
       )}
 
@@ -520,14 +707,29 @@ const CHANNELS: { channel: SegmentEaseChannel; label: string; hint: string }[] =
   { channel: "easeLens", label: "Lens", hint: "How the field of view is paced" },
 ];
 
+const CURVE_SAMPLES = 12;
+
+/** One ease drawn from the curve itself: 12 samples of `ease` as a polyline, so Linear reads as a diagonal and Jump cut as a step with no per-name artwork. Back's overshoot fits inside the 2px margin. */
+export function EaseCurveIcon({ name }: { name: string }) {
+  const points = Array.from({ length: CURVE_SAMPLES }, (_, i) => {
+    const t = i / (CURVE_SAMPLES - 1);
+    return `${(2 + t * 12).toFixed(2)},${(14 - ease(name, t) * 12).toFixed(2)}`;
+  }).join(" ");
+  return (
+    <svg className="ease-curve-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <polyline points={points} />
+    </svg>
+  );
+}
+
 function EasingPopover({
-  ease,
+  easeName,
   onPick,
   extras,
   docIndex,
   onClose,
 }: {
-  ease: string;
+  easeName: string;
   onPick: (ease: string) => void;
   extras?: SegmentExtras;
   docIndex: number;
@@ -535,54 +737,69 @@ function EasingPopover({
 }) {
   const [channelsOpen, setChannelsOpen] = useState(false);
   // Parse "inQuad"/"outSine"/"inOutBack" into direction + family for the grid state.
-  const m = /^(in|out|inOut)([A-Z][a-z]+)$/.exec(ease);
+  const m = /^(in|out|inOut)([A-Z][a-z]+)$/.exec(easeName);
   const family = m ? m[2] : "Quad";
-  const chip = (value: string, label: string, extra = "") => (
+  const dir = m ? m[1] : "inOut";
+  const chip = (value: string, label: string, icon = false) => (
     <button
       type="button"
       key={value + label}
-      className={`chip${ease === value ? " selected" : ""}${extra}`}
+      className={`chip${easeName === value ? " selected" : ""}`}
       onClick={() => onPick(value)}
     >
+      {icon && <EaseCurveIcon name={value} />}
       {label}
     </button>
   );
   return (
     <div className="camera-easing" role="menu" aria-label="Segment easing">
-      <button
-        type="button"
-        className="camera-easing-close"
-        title="Done (deselects the animation)"
-        aria-label="Close easing options"
-        onClick={onClose}
-      >
-        ×
-      </button>
-      <div className="camera-easing-row">
-        {chip(DEFAULT_EASE, "Default")}
-        {chip("linear", "Linear")}
-        {chip(`in${family}`, "In")}
-        {chip(`out${family}`, "Out")}
-        {chip(`inOut${family}`, "In Out")}
-        {chip("jump", "Jump cut")}
+      <div className="camera-easing-head">
+        <span className="camera-easing-title">Easing</span>
+        <button
+          type="button"
+          className="camera-easing-close"
+          title="Done"
+          aria-label="Close easing options"
+          onClick={onClose}
+        >
+          ×
+        </button>
       </div>
-      <div className="camera-easing-families">
-        {EASE_FAMILIES.map((f) => {
-          const dir = m ? m[1] : "inOut";
-          return (
+      <div className="camera-easing-group">
+        <span className="drill-group-label">Style</span>
+        <div className="camera-easing-row">
+          {chip(DEFAULT_EASE, "Default", true)}
+          {chip("linear", "Linear", true)}
+          {chip("jump", "Jump cut", true)}
+        </div>
+      </div>
+      <div className="camera-easing-group">
+        <span className="drill-group-label">Direction</span>
+        <div className="camera-easing-row">
+          {chip(`in${family}`, "In")}
+          {chip(`out${family}`, "Out")}
+          {chip(`inOut${family}`, "In Out")}
+        </div>
+      </div>
+      <div className="camera-easing-group">
+        <span className="drill-group-label">Family</span>
+        <div className="camera-easing-families">
+          {EASE_FAMILIES.map((f) => (
             <button
               type="button"
               key={f}
               className={`chip${family === f && m ? " selected" : ""}`}
               onClick={() => onPick(`${dir}${f}`)}
             >
+              <EaseCurveIcon name={`${dir}${f}`} />
               {f}
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
       {extras && (
-        <>
+        <div className="camera-easing-group">
+          <span className="drill-group-label">Advanced</span>
           <ToggleRow
             label="Smooth through keys"
             description="Curve the path through its neighbouring keys instead of running straight"
@@ -621,7 +838,7 @@ function EasingPopover({
                 </div>
               );
             })}
-        </>
+        </div>
       )}
     </div>
   );
