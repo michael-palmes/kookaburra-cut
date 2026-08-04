@@ -25,7 +25,7 @@ import {
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
 import { ColourPicker } from "./colour/ColourPicker";
-import { SegmentedRow } from "./inspector/rows";
+import { ChartTypeIcon, SegmentedRow } from "./inspector/rows";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
@@ -214,70 +214,6 @@ function SideChipGlyph({ side }: { side: "before" | "after" }) {
         rx="1"
         fill="currentColor"
       />
-    </svg>
-  );
-}
-
-/** Chart-type glyphs for the wizard's picker: one 16px mark per type, drawn from the type's own shape (bars, line, area, wedge) rather than art. */
-function ChartTypeGlyph({ type }: { type: ChartType }) {
-  const marks: Record<ChartType, React.ReactNode> = {
-    column: (
-      <>
-        <rect x="2" y="8" width="3" height="6" />
-        <rect x="6.5" y="4.5" width="3" height="9.5" />
-        <rect x="11" y="6.5" width="3" height="7.5" />
-      </>
-    ),
-    stackedColumn: (
-      <>
-        <rect x="3" y="8" width="4" height="6" />
-        <rect x="3" y="3.5" width="4" height="3.5" />
-        <rect x="9" y="9.5" width="4" height="4.5" />
-        <rect x="9" y="5.5" width="4" height="3" />
-      </>
-    ),
-    bar: (
-      <>
-        <rect x="2" y="2.5" width="6" height="3" />
-        <rect x="2" y="7" width="11.5" height="3" />
-        <rect x="2" y="11.5" width="8" height="3" />
-      </>
-    ),
-    stackedBar: (
-      <>
-        <rect x="2" y="3.5" width="5" height="4" />
-        <rect x="8" y="3.5" width="4" height="4" />
-        <rect x="2" y="9.5" width="7" height="4" />
-        <rect x="10" y="9.5" width="3.5" height="4" />
-      </>
-    ),
-    line: (
-      <polyline
-        points="2,12 6,7 9.5,9.5 14,3.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    ),
-    area: <path d="M2 13V9l4-4 3.5 2.5L14 3v10z" />,
-    stackedArea: (
-      <>
-        <path d="M2 14V10l4-2.5 3.5 2L14 7v7z" />
-        <path d="M2 8.5V6l4-2 3.5 1.8L14 3v2.5L9.5 7.5 6 5.5z" />
-      </>
-    ),
-    pie: (
-      <>
-        <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
-        <path d="M8 8V2.4A5.6 5.6 0 0113.6 8z" />
-      </>
-    ),
-  };
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-      {marks[type]}
     </svg>
   );
 }
@@ -889,7 +825,7 @@ export function NewSceneWizard({
                     aria-pressed={chartType === t.id}
                     onClick={() => setChartType(t.id)}
                   >
-                    <ChartTypeGlyph type={t.id} />
+                    <ChartTypeIcon id={t.id} size={14} />
                     {t.label}
                   </button>
                 ))}

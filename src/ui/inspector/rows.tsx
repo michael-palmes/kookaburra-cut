@@ -1,4 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import type { ChartType } from "../../toolkit/chart/types";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
 
@@ -245,6 +246,64 @@ export function RowIcon({ id }: { id: string }) {
     <svg
       width="17"
       height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** Chart-type glyphs, drawn from each type's own marks (bars, line, area, wedge) rather than art: ONE set shared by the chart inspector's type grid (18px) and the New-scene wizard's chips (14px), so a type never wears two faces. */
+export function ChartTypeIcon({ id, size = 18 }: { id: ChartType; size?: number }) {
+  const glyph = {
+    column: <path d="M4 16V9M10 16V5M16 16v-4M3 16.5h14" />,
+    stackedColumn: (
+      <>
+        <path d="M5 16v-4M5 12V8M13 16v-3M13 13V6" />
+        <path d="M3 16.5h14" opacity="0.6" />
+      </>
+    ),
+    bar: <path d="M4 4.5h7M4 9.5h11M4 14.5h5M3.5 3v13" />,
+    stackedBar: (
+      <>
+        <path d="M4 5.5h5M9 5.5h5M4 12.5h4M8 12.5h7" />
+        <path d="M3.5 3v13" opacity="0.6" />
+      </>
+    ),
+    line: (
+      <>
+        <path d="M3.5 13.5l3.5-4 3 2.5 6.5-7" />
+        <path d="M3 16.5h14" opacity="0.6" />
+      </>
+    ),
+    area: (
+      <>
+        <path d="M3.5 13l3.5-4 3 2.5 6.5-6.5V15h-13z" fill="currentColor" opacity="0.28" />
+        <path d="M3.5 13l3.5-4 3 2.5 6.5-6.5" />
+      </>
+    ),
+    stackedArea: (
+      <>
+        <path d="M3.5 14l4-2 3 1.5 5.5-3V16h-12.5z" fill="currentColor" opacity="0.28" />
+        <path d="M3.5 14l4-2 3 1.5 5.5-3" />
+        <path d="M3.5 9.5l4-3 3 2 5.5-4" />
+      </>
+    ),
+    pie: (
+      <>
+        <circle cx="10" cy="10" r="6.5" />
+        <path d="M10 3.5v6.5h6.5" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width={size}
+      height={size}
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
