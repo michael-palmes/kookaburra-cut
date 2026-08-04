@@ -1281,6 +1281,7 @@ pub fn run() {
             claude_update::dismiss_claude_update,
             media::import_media,
             media::import_media_bytes,
+            media::import_chart_data,
             media::media_meta,
             media::read_media_thumb,
             global_screenshots::list_global_screenshots,

@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { fsUrl, importMediaBytes } from "../engine/media";
+import { fsUrl, importChartData } from "../engine/media";
 import { type LoadedProject, resolveAssetPath } from "../engine/project";
 import type { SceneDoc, SceneDocChart, SceneDocChartSeries } from "../engine/sceneDocSchema";
 import {
@@ -260,7 +260,7 @@ function ChartDataSheet({
       const text = await file.text();
       // Best effort: a copy beside the project is what makes Re-import silent later.
       const rel = slug
-        ? await importMediaBytes(slug, file.name, new Uint8Array(await file.arrayBuffer())).catch(
+        ? await importChartData(slug, file.name, new Uint8Array(await file.arrayBuffer())).catch(
             () => null,
           )
         : null;

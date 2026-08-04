@@ -48,6 +48,17 @@ export async function importMediaBytes(
   return rel;
 }
 
+/** Copy a picked CSV into the project's assets/ for the chart data modal; returns the project-relative path. No inventory refresh or media-changed broadcast: csv is deliberately not a media type, so it never lists in a picker. */
+export function importChartData(
+  slug: string,
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<string> {
+  return invoke<string>("import_chart_data", bytes, {
+    headers: { "x-kookaburra-slug": slug, "x-kookaburra-name": fileName },
+  });
+}
+
 /** Probe + thumbnail one asset (cached by content hash; first call generates). */
 export function mediaMeta(slug: string, rel: string): Promise<MediaMeta> {
   return invoke<MediaMeta>("media_meta", { slug, rel });
