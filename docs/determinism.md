@@ -1113,8 +1113,9 @@ and do not need their own verifies.**
   the changed path: `showcase-tour` for themes/staging/text/presets (the
   rolling gate project, six themes, devices, video, ImageCard, camera moves
   and bloom in one project), `ws:device-video-spike` for device/media/camera,
-  `ws:fx-spike` for effects, a hand-rolled workspace mini-project for anything
-  narrower. `pnpm gate` runs the showcase-tour leg (~2 min).
+  `ws:fx-spike` for effects, `ws:dof-spike` for depth of field, a hand-rolled
+  workspace mini-project for anything narrower. `pnpm gate` runs the
+  showcase-tour leg (~2 min).
 - **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
   merges (and at any rebase or phase close), `pnpm gate:merge` runs
   `showcase-tour` + `ws:launch-2026` Verify ×2 in ONE app boot (`--project`
@@ -1180,6 +1181,24 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `cee2ab6f…` | `09f57c3c…` | — | — | — | — | — |
+
+> **2026-08-04 (depth of field):** camera poses gained a sparse `dof` block
+> (depth or tilt-shift family), resolved per frame through the camera plan and
+> applied by stock `postprocessing` effects at the composer chain's head, with
+> transition/compare sides dof-graded individually through a dof-only side
+> composer before the composite. Null-for-legacy holds: a project with no dof
+> anywhere resolves a null union and takes the pre-existing paths byte for
+> byte (`showcase-tour` re-verified EQUAL at `f304f1bd…`, `ws:fx-spike` frame
+> byte-identical to the pre-feature chain). Display constants
+> (`DOF_BOKEH_SCALE_MAX` 6, `DOF_INACTIVE_FOCUS` 100, `DOF_RESOLUTION_SCALE`
+> 0.5, `TILT_FEATHER` 0.3 in `engine/effects.ts`) are export-contract
+> constants: changing one is a deliberate rebase. Composer depth arrives via
+> postprocessing's stable-depth target, a per-frame fixed-function
+> `blitFramebuffer` alongside the gated MSAA resolve; proven EQUAL ×2 on
+> WKWebView/ANGLE Metal before anything else was built. Eyeball note: with
+> autofocus the aimed subject is SUPPOSED to be sharp, so judge dof frames
+> with the camera-to-subject distances in hand, not by "is anything blurry".
 
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so

@@ -51,6 +51,8 @@ baked look point, which is what every fallback lands on:
 | Aim direction | Slerp of unit vectors | A 180 degree pan-in-place rotates instead of dragging its aim through the camera |
 | Aim distance | Logarithmic | A 6 to 1 push reads evenly rather than crawling at the end |
 | Roll, fov | Lerp | Nothing subtler is wanted, and both are optional |
+| Depth of field: focus | Logarithmic, in lockstep with aim distance | A manual rack covers ground the way an autofocus flight does |
+| Depth of field: blur, range, tilt fields | Lerp | Strength and band ramps read evenly |
 
 Smoothing shapes POSITION only; the aim still slerps, because splining that too
 gives a wandering look direction that is very hard to author against. The eased
@@ -68,9 +70,40 @@ Each segment joins two keys with an ease (the `engine/ease.ts` names, plus
 
 - **Smooth through keys** — ABSENT means smooth. Turn it off for a deliberate
   straight dolly; the ghost path draws dashed when nothing on the track smooths.
-- **Per-channel easing** — optional overrides for Position, Rotation and Lens.
-  "Same as segment" writes nothing at all, so sidecars stay clean. A dolly zoom
-  uses this: the lens lags the move, which is the whole trick.
+- **Per-channel easing** — optional overrides for Position, Rotation, Lens and
+  Focus. "Same as segment" writes nothing at all, so sidecars stay clean. A
+  dolly zoom uses this: the lens lags the move, which is the whole trick. A
+  whip-pan with a slow focus catch-up is the Focus channel's version of it.
+
+## Depth of field
+
+A `dof` block rides a camera key's pose in BOTH modes, beside `fov`/`rollDeg`
+on the rig and beside `distance` on orbit poses. Fields are sparse and carry
+FORWARD along the track from the last key that authored them, so a rack focus
+restates only `focus`; a key with no `dof` at all changes nothing. The first
+authored `mode` ("depth", the default, or "tilt") is the scene's; blur can
+animate, the family cannot swap mid-flight.
+
+- Depth mode: `blur` (0..1), `range` (world units of full sharpness around the
+  focus plane) and `focus` (world units). Absent `focus` (or `"auto"`) follows
+  the pose's aim distance, rig aim or orbit distance-to-target, recomputed per
+  frame, so the aimed subject stays sharp through a whole move with zero keys.
+  An object-aim rig autofocuses on the object as it and the camera travel.
+- Tilt mode: `blur`, `band` (screen-fraction sharp strip), `offset` (-1..1
+  centre) and `angleDeg`. Screen space; depth is not involved.
+- Everything blurs by its true depth, device screens and SDF text included
+  (the exact-colour contract holds AT the focal plane, and whatever you focus
+  on stays exact). Keep legibility-critical text on or near the focus plane.
+- A scene whose keys never exceed `blur: 0` stays on the composer-free path
+  byte for byte; any active dof routes the project through the effects
+  composer, the same switch bloom makes. Transition and comparison frames
+  render each side with its OWN dof before the composite, so a rack rides
+  into a crossfade instead of releasing at the cut.
+
+The inspector's Depth-of-field group (both camera modes) shows the key's
+EFFECTIVE values with the fov-style inherit affordances, presets (Subtle,
+Cinematic, Macro) and the Auto/Manual focus switch. Gate fixture:
+`ws:dof-spike`; probe pass: `no-dof`.
 
 ## Tools and shortcuts
 

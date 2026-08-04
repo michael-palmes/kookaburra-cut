@@ -208,6 +208,28 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
 - Everything else matches the orbit track: half-open segments, hold outside, shared
   boundary keys, the same ease names, degrade-don't-crash validation.
 
+**Depth of field** rides a key's pose as a sparse `dof` block, in BOTH camera modes
+(orbit poses take it too). Fields carry forward from the last key that authored them:
+
+```jsonc
+"pose": { "position": [0.2, 0.15, 5.4],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "dof": { "blur": 0.7, "range": 0.6, "focus": 4.4 } }
+```
+
+- Depth mode (the default): `blur` 0..1, `range` (world units kept sharp around the
+  focus plane), `focus` (world units). Absent `focus` (or `"auto"`) autofocuses on the
+  pose's aim distance (orbit: distance to target) recomputed per frame, so the aimed
+  subject stays sharp through a whole move. A rack focus is two keys restating only
+  `focus`; `easeDof` shapes the pull per segment (the popover's Focus channel).
+- Tilt-shift: `"mode": "tilt"` with `band` (0..1 screen strip), `offset` (-1..1) and
+  `angleDeg`. The first authored `mode` is the scene's; blur animates, the family
+  does not swap mid-scene.
+- Everything blurs by its true depth, text and device screens included: keep
+  legibility-critical text on or near the focus plane. Any active dof routes the
+  project through the effects composer (like bloom); `blur: 0` everywhere keeps the
+  composer-free path byte for byte.
+
 **`<DepthStage>`** gives a rig something to fly through: four named slots at pinned
 depths (`foreground` 1.8, `content` 0, `midground` -2.4, `backdrop` -5.5), each sizing
 itself from the scene's camera travel so full-bleed layers stay full-bleed.
