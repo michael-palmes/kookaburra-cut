@@ -1,4 +1,4 @@
-/** Where a chart sits in the world: the pure half of the chart host. It composes the fixed-scale layout the chart engine documents (the track's upper envelope pins the value axis, each frame's sample supplies the marks), resolves the series palette, and turns a `FormatInfo` safe frame into the plot rect each mount needs: a flat chart shrinks by the furniture bands `chart2dMath` reserves, a tilted 3D chart scales to fit its rotated bounding box. No clock, no three.js, no state, so every mount is a pure function of (chart, format, time). */
+/** Where a chart sits in the world: the pure half of the chart host. It composes the fixed-scale layout the chart engine documents (the track's upper envelope pins the value axis, each frame's sample supplies the marks), resolves the series palette, schedules the build-in (when the sampler is still needed, and the whole-chart entrance offset a channel cannot carry), and turns a `FormatInfo` safe frame into the plot rect each mount needs: a flat chart shrinks by the furniture bands `chart2dMath` reserves, a tilted 3D chart scales to fit its rotated bounding box, and a hero chart under a headline first gives up a title band. No clock, no three.js, no state, so every mount is a pure function of (chart, format, time). */
 
 import {
   chartDataWithValues,
@@ -10,6 +10,12 @@ import type { Theme } from "../../theme/tokens";
 import type { DevicePlacement } from "../device/Device";
 import type { FormatInfo, V3 } from "../types";
 import {
+  CHART_ENTER_LIFT,
+  type ChartRevealDims,
+  chartAnimationEndMs,
+  chartPresetFor,
+} from "./animation";
+import {
   CHART_2D_APPEARANCE,
   type Chart2DAppearance,
   type Chart2DInsets,
@@ -18,8 +24,9 @@ import {
 } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import { resolveSeriesColour } from "./palette";
+import { revealAt } from "./reveal";
 import { chart3dSpace } from "./space3d";
-import type { ChartConfig, ChartLayout, ChartStyle } from "./types";
+import type { ChartConfig, ChartLayout, ChartRevealSampler, ChartStyle } from "./types";
 
 /** A flat chart's furniture bands scale with the plot they leave behind, so the rect settles over a fixed number of passes: a pure, terminating fixpoint rather than a convergence loop. */
 const CHART_2D_FIT_PASSES = 3;
@@ -29,6 +36,12 @@ const CHART_3D_FURNITURE = 0.16;
 
 /** Plot size a staged chart is built at, near the device auto-fit height so a chart beside a phone reads at the same scale; `placement.scale` multiplies it. */
 export const CHART_STAGED_SIZE: ChartSize = { width: 3.3, height: 2.2 };
+
+/** Modular-scale steps below the title size the gap between a headline and the plot takes (the `TitleBlock` subtitle step, so chart scenes breathe like text scenes). */
+const CHART_TITLE_GAP_STEPS = 4;
+
+/** Ceiling on the title band as a share of the safe height, so no frame can be starved of a plot. */
+const CHART_TITLE_BAND_MAX = 0.4;
 
 const MIN_EXTENT = 1e-3;
 const DEG2RAD = Math.PI / 180;
@@ -49,6 +62,45 @@ export function chartSafeRect(format: FormatInfo): ChartRect {
     y: (safe.bottom - safe.top) / 2,
     width: Math.max(MIN_EXTENT, frame.width - safe.left - safe.right),
     height: Math.max(MIN_EXTENT, frame.height - safe.top - safe.bottom),
+  };
+}
+
+/** The headline a chart scene draws above its plot, as the scaffold's `chart.tsx` template places it: middle-anchored at this world y at this size, portrait then landscape. Mirrored here (not shared) because the band a hero chart gives up has to agree with the title a scene actually draws, and the template is the only thing that draws it. */
+export function chartTitleMetrics(format: FormatInfo): { y: number; size: number } {
+  return format.aspect < 1 ? { y: 1.9, size: 0.23 } : { y: 1.72, size: 0.42 };
+}
+
+/** Band a hero chart gives up off the top of the safe frame so it never runs into the scene's headline: the drop from the safe top to the title's bottom edge, plus a modular-scale gap. 0 without a title, and capped so a small frame always keeps a plot. */
+export function chartTitleBand(
+  title: string | null | undefined,
+  format: FormatInfo,
+  theme: Theme,
+): number {
+  if (!title || title.trim().length === 0) return 0;
+  const { y, size } = chartTitleMetrics(format);
+  const gap = size / Math.max(1, theme.typography.scale) ** CHART_TITLE_GAP_STEPS;
+  const band = format.frame.height / 2 - format.safe.top - (y - size / 2) + gap;
+  const available = Math.max(
+    MIN_EXTENT,
+    format.frame.height - format.safe.top - format.safe.bottom,
+  );
+  return Math.min(Math.max(0, band), CHART_TITLE_BAND_MAX * available);
+}
+
+/** What a hero chart lays out inside: the safe frame, less the title band, recentred on what is left. */
+export function chartHeroRect(
+  format: FormatInfo,
+  theme: Theme,
+  title: string | null | undefined,
+): ChartRect {
+  const safe = chartSafeRect(format);
+  const band = Math.min(chartTitleBand(title, format, theme), safe.height - MIN_EXTENT);
+  if (band <= 0) return safe;
+  return {
+    x: safe.x,
+    y: safe.y - band / 2,
+    width: safe.width,
+    height: Math.max(MIN_EXTENT, safe.height - band),
   };
 }
 
@@ -87,6 +139,29 @@ export function chartLayoutAt(
       value: { ...chart.axis.value, min: bounds.min, max: bounds.max },
     },
   });
+}
+
+/** When the chart is done moving under its build-in, so the host can stop sampling and let the renderers' value-keyed geometry rest on the full-reveal default. Infinite while a data track can still move it: the marks change every frame regardless, and the build composes with the morph. */
+export function chartSettleMs(chart: ResolvedChart, dims: ChartRevealDims): number {
+  if (chart.track.keys.length > 0) return Number.POSITIVE_INFINITY;
+  return chartAnimationEndMs(chart.animation, dims);
+}
+
+/** The whole-chart entrance the `lift` channel asks for (`fadeUp`), as a SIGNED fraction of the plot's height: the chart starts low and rises to 0, driven by the mean counting progress so one number covers any delivery. 0 for every other preset, and 0 once the build has settled. The other entrance (`fall`) is per element and belongs to the renderers. */
+export function chartEnterOffset(
+  chart: ResolvedChart,
+  dims: ChartRevealDims,
+  sampler: ChartRevealSampler | null,
+): number {
+  if (!sampler) return 0;
+  if (chartPresetFor(chart.type, chart.animation.preset).channels.enter !== "lift") return 0;
+  const count = dims.seriesCount * dims.categoryCount;
+  if (count <= 0) return 0;
+  let total = 0;
+  for (let s = 0; s < dims.seriesCount; s++) {
+    for (let c = 0; c < dims.categoryCount; c++) total += revealAt(sampler.at, s, c).count;
+  }
+  return -(1 - total / count) * CHART_ENTER_LIFT;
 }
 
 export interface Chart2DFit {

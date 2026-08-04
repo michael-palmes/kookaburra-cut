@@ -3,16 +3,22 @@ import { computeFormat, FORMATS } from "../../engine/format";
 import { type ResolvedChart, resolveChart } from "../../engine/sceneChart";
 import type { SceneDoc, SceneDocChart } from "../../engine/sceneDocSchema";
 import { builtinThemes } from "../../theme/registry";
+import { buildChartRevealSampler, CHART_ENTER_LIFT, type ChartRevealDims } from "./animation";
 import { chart2dInsets } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import {
   CHART_STAGED_SIZE,
   chartColours,
+  chartEnterOffset,
   chartGroundY,
+  chartHeroRect,
   chartLayoutAt,
   chartPose,
   chartSafeRect,
   chartScaleBounds,
+  chartSettleMs,
+  chartTitleBand,
+  chartTitleMetrics,
   fitChart2d,
   fitChart3d,
 } from "./mount";
@@ -130,6 +136,166 @@ describe("chartScaleBounds", () => {
     expect(first(0)).toBeCloseTo(10, 10);
     expect(first(500)).toBeCloseTo(50, 10);
     expect(first(1000)).toBeCloseTo(90, 10);
+  });
+});
+
+describe("chartTitleBand", () => {
+  const landscape = computeFormat(FORMATS["16:9"]);
+  const portrait = computeFormat(FORMATS["9:16"]);
+
+  it("reserves nothing without a title", () => {
+    expect(chartTitleBand("", landscape, theme)).toBe(0);
+    expect(chartTitleBand("   ", landscape, theme)).toBe(0);
+    expect(chartTitleBand(undefined, landscape, theme)).toBe(0);
+    expect(chartTitleBand(null, portrait, theme)).toBe(0);
+  });
+
+  it("clears the title the template draws, in both dimensions", () => {
+    for (const format of [landscape, portrait]) {
+      const band = chartTitleBand("Revenue by quarter", format, theme);
+      const metrics = chartTitleMetrics(format);
+      const safeTop = format.frame.height / 2 - format.safe.top;
+      expect(band).toBeGreaterThan(0);
+      expect(safeTop - band).toBeLessThan(metrics.y - metrics.size / 2);
+    }
+  });
+
+  it("grows with the gap the theme's type scale asks for", () => {
+    const tight = { ...theme, typography: { ...theme.typography, scale: 2 } };
+    expect(chartTitleBand("Revenue", landscape, tight)).toBeLessThan(
+      chartTitleBand("Revenue", landscape, theme),
+    );
+  });
+
+  it("never goes negative, and never eats the whole frame", () => {
+    const crushed = { ...landscape, safe: { top: 2, right: 0, bottom: 0, left: 0 } };
+    expect(chartTitleBand("Revenue", crushed, theme)).toBe(0);
+    const squat = { ...landscape, safe: { top: 0, right: 0, bottom: 3.4, left: 0 } };
+    const safe = chartSafeRect(squat);
+    expect(chartTitleBand("Revenue", squat, theme)).toBeLessThan(safe.height / 2);
+    expect(chartHeroRect(squat, theme, "Revenue").height).toBeGreaterThan(safe.height / 2);
+  });
+});
+
+describe("chartHeroRect", () => {
+  const landscape = computeFormat(FORMATS["16:9"]);
+  const portrait = computeFormat(FORMATS["9:16"]);
+  const title = "Revenue by quarter";
+
+  it("is the safe rect untouched without a title", () => {
+    expect(chartHeroRect(landscape, theme, "")).toEqual(chartSafeRect(landscape));
+    expect(chartHeroRect(portrait, theme, undefined)).toEqual(chartSafeRect(portrait));
+  });
+
+  it("takes the band off the TOP only, keeping the width and the bottom edge", () => {
+    for (const format of [landscape, portrait]) {
+      const safe = chartSafeRect(format);
+      const rect = chartHeroRect(format, theme, title);
+      const band = chartTitleBand(title, format, theme);
+      expect(rect.width).toBeCloseTo(safe.width, 10);
+      expect(rect.height).toBeCloseTo(safe.height - band, 10);
+      expect(rect.y - rect.height / 2).toBeCloseTo(safe.y - safe.height / 2, 10);
+      expect(rect.y + rect.height / 2).toBeCloseTo(safe.y + safe.height / 2 - band, 10);
+    }
+  });
+
+  it("leaves a portrait frame most of its height", () => {
+    const safe = chartSafeRect(portrait);
+    expect(chartHeroRect(portrait, theme, title).height).toBeGreaterThan(0.8 * safe.height);
+  });
+
+  it("keeps a flat plot clear of the title", () => {
+    const chart = columns();
+    const layout = layoutOf(chart);
+    for (const format of [landscape, portrait]) {
+      const rect = chartHeroRect(format, theme, title);
+      const fit = fitChart2d(chart, layout, rect);
+      const metrics = chartTitleMetrics(format);
+      expect(fit.centre[1] + fit.size.height / 2).toBeLessThan(metrics.y - metrics.size / 2);
+    }
+  });
+
+  it("keeps a tilted 3D plot clear of the title", () => {
+    const chart = columns();
+    for (const format of [landscape, portrait]) {
+      const rect = chartHeroRect(format, theme, title);
+      const fit = fitChart3d(chart.style, rect);
+      const metrics = chartTitleMetrics(format);
+      expect(fit.size.height).toBeCloseTo(rect.height, 10);
+      expect(rect.y + (fit.size.height / 2) * fit.scale).toBeLessThan(metrics.y - metrics.size / 2);
+    }
+  });
+});
+
+describe("chartSettleMs", () => {
+  const dims = (chart: ResolvedChart): ChartRevealDims => ({
+    seriesCount: chart.data.series.length,
+    categoryCount: chart.data.categories.length,
+    type: chart.type,
+  });
+
+  it("lands after the last element's window", () => {
+    const chart = columns();
+    // rise, cascade, 60ms stagger over 6 elements, 900ms windows.
+    expect(chartSettleMs(chart, dims(chart))).toBeCloseTo(1200, 10);
+  });
+
+  it("never settles while a data track can still move the marks", () => {
+    const chart = keyframed();
+    expect(chartSettleMs(chart, dims(chart))).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("hands over to the full-reveal default with nothing left to say", () => {
+    const chart = columns();
+    const d = dims(chart);
+    const sampler = buildChartRevealSampler(chart.animation, d, chartSettleMs(chart, d));
+    for (let s = 0; s < d.seriesCount; s++) {
+      for (let c = 0; c < d.categoryCount; c++) {
+        const at = sampler.at(s, c);
+        expect(at.grow).toBeCloseTo(1, 10);
+        expect(at.alpha).toBeCloseTo(1, 10);
+        // The label prints value * count, so the settle must hand over on exactly the true value.
+        expect(at.count).toBe(1);
+        expect(at.pulse).toBe(0);
+      }
+      expect(sampler.series(s).draw).toBe(1);
+    }
+  });
+});
+
+describe("chartEnterOffset", () => {
+  const dims: ChartRevealDims = { seriesCount: 2, categoryCount: 3, type: "column" };
+  const lifted = (): ResolvedChart =>
+    resolve({
+      type: "column",
+      data: {
+        categories: ["Q1", "Q2", "Q3"],
+        series: [
+          { id: "a", name: "Revenue", values: [10, 20, 30] },
+          { id: "b", name: "Costs", values: [5, 8, 12] },
+        ],
+      },
+      animation: { preset: "fadeUp", delivery: "all" },
+    });
+
+  it("is nothing once the build has settled", () => {
+    expect(chartEnterOffset(lifted(), dims, null)).toBe(0);
+  });
+
+  it("starts a lifting preset a fraction of the plot low and rises to nothing", () => {
+    const chart = lifted();
+    const at = (localMs: number) =>
+      chartEnterOffset(chart, dims, buildChartRevealSampler(chart.animation, dims, localMs));
+    expect(at(0)).toBeCloseTo(-CHART_ENTER_LIFT, 10);
+    expect(at(450)).toBeGreaterThan(-CHART_ENTER_LIFT);
+    expect(at(450)).toBeLessThan(0);
+    expect(at(900)).toBeCloseTo(0, 10);
+  });
+
+  it("leaves every other preset alone", () => {
+    const chart = columns();
+    const sampler = buildChartRevealSampler(chart.animation, dims, 0);
+    expect(chartEnterOffset(chart, dims, sampler)).toBe(0);
   });
 });
 
