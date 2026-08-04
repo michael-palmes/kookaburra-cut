@@ -50,7 +50,7 @@ import {
   overlayVertexShader,
 } from "./overlayShader";
 import { getPersistentLayers } from "./persistentLayerRegistry";
-import { previewEnvironmentOff } from "./previewMedia";
+import { previewDofOff, previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
 import { COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
 import type { SceneHostHandle } from "./sceneHostRegistry";
@@ -578,8 +578,8 @@ export function renderComposited(
   const tr = resolved.transition;
   const prevTarget = gl.getRenderTarget();
 
-  // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer. A dof-active project with no other effects still routes fx (empty config): the composer owns dof, and tone mapping must stay uniform project-wide.
-  const dofUnion = cameras?.dofUnion ?? null;
+  // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer. A dof-active project with no other effects still routes fx (empty config): the composer owns dof, and tone mapping must stay uniform project-wide. The probe's no-dof pass drops the union preview-only (never during export).
+  const dofUnion = previewDofOff() && !isExporting() ? null : (cameras?.dofUnion ?? null);
   const fx = resolveFrameEffects(resolved) ?? (dofUnion ? {} : null);
   const seed = fx ? grainSeed(useClockStore.getState().currentMs, FPS) : 0;
 
