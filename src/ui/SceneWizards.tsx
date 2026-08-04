@@ -65,6 +65,7 @@ type SceneKind =
   | "titleicon"
   | "appversion"
   | "layeredscreenshot"
+  | "chart"
   | "video"
   | "image"
   | "videowindow"
@@ -81,6 +82,7 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "titleicon", label: "Title + icon", blurb: "A title with an icon above it" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
+  { id: "chart", label: "Chart", blurb: "Your numbers as a 3D chart" },
   { id: "video", label: "Video", blurb: "A video filling the whole frame" },
   { id: "image", label: "Image", blurb: "An image filling the whole frame" },
   { id: "videowindow", label: "Video window", blurb: "A floating screen recording" },
@@ -432,6 +434,7 @@ export function NewSceneWizard({
       titleicon: "Title",
       appversion: "App version",
       layeredscreenshot: "Layered screenshot",
+      chart: "Chart",
       video: "Video",
       image: "Image",
       videowindow: "Video window",
@@ -451,9 +454,11 @@ export function NewSceneWizard({
           ? "Optional, sits above the device"
           : kind === "comparison"
             ? "Optional, sits above the pair"
-            : kind.startsWith("overlay")
-              ? "The panel headline"
-              : "Optional";
+            : kind === "chart"
+              ? "Optional, sits above the chart"
+              : kind.startsWith("overlay")
+                ? "The panel headline"
+                : "Optional";
   // The lockup's hero line is the version; its label is muted, the reverse of a title scene.
   const isLockup = kind === "appversion";
 

@@ -15,6 +15,9 @@ const SCENE_DOC_VERSION: u64 = 1;
 /// Wizard/scaffold default when the scene has no video media to follow.
 const DEFAULT_SCENE_DURATION_MS: u64 = 4000;
 
+/// Chart scenes start longer than the default: the build-in and its counters need room to land.
+const CHART_SCENE_DURATION_MS: u64 = 5000;
+
 /// Validate and resolve a `scenes/<stem>.json` path under the project, traversal-hardened: reject anything that isn't exactly one flat path segment under `scenes/` (the `resolve_asset` lesson).
 fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String> {
     let rest = file
@@ -665,6 +668,7 @@ const TSX_OVERLAY: &str = include_str!("../templates/scenes/overlay.tsx.tmpl");
 const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
+const TSX_CHART: &str = include_str!("../templates/scenes/chart.tsx.tmpl");
 const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
 const TSX_IMAGE: &str = include_str!("../templates/scenes/image.tsx.tmpl");
 const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
@@ -676,7 +680,7 @@ const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
+    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "chart" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -789,6 +793,7 @@ pub async fn scaffold_scene(
         "blank" => TSX_BLANK,
         "appversion" => TSX_APP_VERSION,
         "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
+        "chart" => TSX_CHART,
         "video" => TSX_VIDEO,
         "image" => TSX_IMAGE,
         "videowindow" => TSX_VIDEO_WINDOW,
@@ -816,7 +821,11 @@ pub async fn scaffold_scene(
         "device" | "deviceonly" | "video" | "videowindow"
     ) && options.media_kind.as_deref() == Some("video")
         && options.media_rel.is_some();
-    let mut duration_ms = DEFAULT_SCENE_DURATION_MS;
+    let mut duration_ms = if options.kind == "chart" {
+        CHART_SCENE_DURATION_MS
+    } else {
+        DEFAULT_SCENE_DURATION_MS
+    };
     let mut media_aspect: Option<f64> = None;
     if is_video {
         if let Some(rel) = &options.media_rel {
@@ -993,6 +1002,21 @@ pub async fn scaffold_scene(
         doc["layeredScreenshot"] = json!({
             "layers": [{ "id": "l1", "visible": true, "z": 0, "items": items }],
             "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] },
+        });
+    }
+    if options.kind == "chart" {
+        // Starter data only: style, axis, labels and animation stay absent so `resolveChart` owns every default, and series carry no colour so the theme palette drives them.
+        doc["chart"] = json!({
+            "type": "column",
+            "dimension": "3d",
+            "mount": "hero",
+            "data": {
+                "categories": ["April", "May", "June", "July"],
+                "series": [
+                    { "id": "s1", "name": "Region 1", "values": [17, 26, 53, 96] },
+                    { "id": "s2", "name": "Region 2", "values": [55, 43, 70, 58] },
+                ],
+            },
         });
     }
     if options.kind == "video" {
