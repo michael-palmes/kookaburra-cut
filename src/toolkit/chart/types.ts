@@ -275,3 +275,22 @@ export interface ChartLayout {
   bandWidth: number;
   barWidth: number;
 }
+
+/** Per-element build state: `grow` scales a mark from its base (0 = nothing there, 1 = final size), `alpha` multiplies its opacity. */
+export interface ChartReveal {
+  grow: number;
+  alpha: number;
+}
+
+/** Per-element reveal lookup, called once per mark. Pie slices key on `categoryIndex`, line and area points on both. Absent means everything is fully revealed. */
+export type ChartRevealFn = (seriesIndex: number, categoryIndex: number) => ChartReveal;
+
+/** What every chart renderer takes, 2D and 3D alike: the resolved block, its computed layout, one colour per series (one per CATEGORY for pie), the plot area in WORLD units, and the optional build state. */
+export interface ChartRendererProps {
+  chart: ChartConfig;
+  layout: ChartLayout;
+  colours: string[];
+  size: { width: number; height: number };
+  reveal?: ChartRevealFn;
+  opacity?: number;
+}

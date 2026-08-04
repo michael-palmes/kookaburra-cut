@@ -75,6 +75,12 @@ export function derivedChartPalette(theme: Theme): string[] {
   });
 }
 
+/** The colour at a series (or, for pie, category) index of a resolved palette, wrapping like `resolveSeriesColour` does; an empty palette falls through to the caller's theme token. Every renderer, flat and 3D, indexes the `colours` prop through this, so one mark can never disagree with its legend entry. */
+export function chartColourAt(colours: readonly string[], index: number, fallback: string): string {
+  if (colours.length === 0) return fallback;
+  return colours[wrap(index, colours.length)] ?? fallback;
+}
+
 /** The colour for one series: per-series `colour` override, else the theme swatch at that index, else the derived ramp. Indices wrap in every case, and a malformed hex falls through to the next source rather than painting a broken mark. */
 export function resolveSeriesColour(theme: Theme, index: number, override?: string | null): string {
   const authored = hex(override);

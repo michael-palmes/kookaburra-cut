@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { builtinThemes } from "../../theme/registry";
 import type { Theme } from "../../theme/tokens";
-import { CHART_PALETTE_SIZE, derivedChartPalette, resolveSeriesColour } from "./palette";
+import {
+  CHART_PALETTE_SIZE,
+  chartColourAt,
+  derivedChartPalette,
+  resolveSeriesColour,
+} from "./palette";
 
 /** WCAG 2.x reference maths (mirrors themePreset.test.ts): chart marks are graphical objects, so 3:1 against the theme background is the bar every derived swatch must clear, on every theme, because it derives at render time where no reviewer eyeballs it. */
 const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
@@ -163,5 +168,17 @@ describe("resolveSeriesColour", () => {
     const palette = derivedChartPalette(dark);
     expect(resolveSeriesColour(dark, Number.NaN)).toBe(palette[0]);
     expect(resolveSeriesColour(withSwatches(dark, []), 3)).toBe(palette[3]);
+  });
+});
+
+describe("chartColourAt", () => {
+  it("wraps the palette", () => {
+    expect(chartColourAt(["#111111", "#222222"], 3, "#000000")).toBe("#222222");
+    expect(chartColourAt(["#111111", "#222222"], -1, "#000000")).toBe("#222222");
+  });
+
+  it("falls back on an empty palette or a broken index", () => {
+    expect(chartColourAt([], 0, "#abcdef")).toBe("#abcdef");
+    expect(chartColourAt(["#111111", "#222222"], Number.NaN, "#000000")).toBe("#111111");
   });
 });
