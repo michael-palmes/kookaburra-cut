@@ -276,14 +276,36 @@ export interface ChartLayout {
   barWidth: number;
 }
 
-/** Per-element build state: `grow` scales a mark from its base (0 = nothing there, 1 = final size), `alpha` multiplies its opacity. */
+/** Per-element build state. `grow` scales a mark from its base (0 = nothing there, 1 = final size; an overshoot preset may push it to `CHART_GROW_MAX` and a landing squash a little under 1). `alpha` multiplies its opacity. `count` is the CLAMPED, monotone counting channel a value label prints against (`value * count`), so a label never runs past the true value while `grow` overshoots. `pulse` is a 0..1 emphasis envelope (glow and scale pops), 0 at rest. `shine` is the shine-band sweep position, 0..1 with 1 = swept past; -1 = no band. `drop` translates the whole element along the VALUE axis in plot-space units (positive = displaced toward the far end), which is the one entrance a scaling channel cannot express; 0 at rest. */
 export interface ChartReveal {
   grow: number;
+  alpha: number;
+  count: number;
+  pulse: number;
+  shine: number;
+  drop: number;
+}
+
+/** Per-series build state. `draw` is left-to-right draw-on progress over the series polyline, and doubles as the wipe clip edge along the category axis (1 = fully drawn). `headX` is the plot-space x of the leading head, for its glow; -1 when no head is travelling. `alpha` is the series-level opacity a stroke or fill takes as one unit. */
+export interface ChartSeriesReveal {
+  draw: number;
+  headX: number;
   alpha: number;
 }
 
 /** Per-element reveal lookup, called once per mark. Pie slices key on `categoryIndex`, line and area points on both. Absent means everything is fully revealed. */
 export type ChartRevealFn = (seriesIndex: number, categoryIndex: number) => ChartReveal;
+
+export type ChartSeriesRevealFn = (seriesIndex: number) => ChartSeriesReveal;
+
+/** One build's two lookups: `at` per element, `series` per series. A fresh object (and fresh closures) per frame, which is what the instanced writers key their dep arrays on. */
+export interface ChartRevealSampler {
+  at: ChartRevealFn;
+  series: ChartSeriesRevealFn;
+}
+
+/** What every renderer accepts for `reveal`: the per-element lookup alone (a scene's own override) or a whole sampler. `revealSource.ts` reads either shape, so a renderer never branches on which. */
+export type ChartRevealSource = ChartRevealFn | ChartRevealSampler;
 
 /** What every chart renderer takes, 2D and 3D alike: the resolved block, its computed layout, one colour per series (one per CATEGORY for pie), the plot area in WORLD units, and the optional build state. */
 export interface ChartRendererProps {
@@ -291,6 +313,6 @@ export interface ChartRendererProps {
   layout: ChartLayout;
   colours: string[];
   size: { width: number; height: number };
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity?: number;
 }
