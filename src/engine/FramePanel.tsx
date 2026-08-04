@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Group } from "three";
 import { useTheme } from "../theme";
 import type { Theme } from "../theme/tokens";
+import { MountedChart } from "../toolkit/chart/Chart";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { V3 } from "../toolkit/types";
@@ -9,7 +10,7 @@ import { FrameChip } from "./FrameChip";
 import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
-import { framePanelLayout, frameTextAlign } from "./framePanelLayout";
+import { framePanelChartSlot, framePanelLayout, frameTextAlign } from "./framePanelLayout";
 import {
   BULLET_LINE_GAP,
   BULLET_OF_TITLE,
@@ -29,6 +30,7 @@ import {
   TITLE_WIDTH_FRACTION,
 } from "./framePanelMeasure";
 import { registerFramePanel, unregisterFramePanel } from "./framePanelRegistry";
+import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
@@ -36,17 +38,31 @@ import type { SceneDoc } from "./sceneDocSchema";
 /** Nudges the whole editorial column (title/subtitle/bullets/chip, not the decorations) left, as a fraction of the column width. */
 const CONTENT_LEFT_SHIFT = 0.06;
 
-/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Title, subtitle and per-bullet heights come from `solvePanelLayout`'s measured fixpoint (the wrap estimate standing in until measurements land), so reserved and rendered space agree and wrapped bullets never overlap their neighbours. Reads the sidecar text directly, and its headlines carry `textKey`s so the sidecar's `textStyle.<key>*` overrides (font/colour/size) apply and the Edit-text drill-in offers them. Lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. */
+/** The panel's chart: the scene's own block (resolved exactly as any other mount reads it, so the build-in, the data track and the appearance preset are the same chart), taken only when it asks for the panel mount, then given the panel's label defaults where the author left them unset. A legend rarely earns its space in a column, and a single series reads better with its values printed. Resolved directly rather than through `useSceneChart` so the panel never registers as the scene's chart consumer. */
+function panelChart(doc: SceneDoc | null | undefined): ResolvedChart | null {
+  const chart = resolveChart(doc ?? undefined);
+  if (chart?.mount !== "panel") return null;
+  const authored = doc?.chart?.labels;
+  return {
+    ...chart,
+    labels: {
+      legend: { ...chart.labels.legend, visible: authored?.legend?.visible ?? false },
+      values: {
+        ...chart.labels.values,
+        visible: authored?.values?.visible ?? chart.data.series.length === 1,
+      },
+    },
+  };
+}
+
+/** The overlay panel's editorial content: the header (icon + title + subtitle) anchors to the column top, and the body (bullets, then chip) stacks directly beneath it, so the lower panel stays free for a breakout illustration. Title, subtitle and per-bullet heights come from `solvePanelLayout`'s measured fixpoint (the wrap estimate standing in until measurements land), so reserved and rendered space agree and wrapped bullets never overlap their neighbours. Reads the sidecar text directly, and its headlines carry `textKey`s so the sidecar's `textStyle.<key>*` overrides (font/colour/size) apply and the Edit-text drill-in offers them. Lays out against the FULL frame's panel region since it mounts outside the cutout's `FormatContext`. The frame's `chart` slot hosts the scene's panel-mounted chart in the same column, in the band `framePanelChartSlot` measures. */
 function PanelContent({ frame }: { frame: FrameSpec }) {
   const doc = useSceneDoc();
   const format = useFormat();
   const theme = useTheme();
-  // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
-  const claimed = frame.claimsSceneText !== false;
-  const title = claimed ? (doc?.text?.title ?? "") : "";
-  const subtitle = claimed ? (doc?.text?.subtitle ?? "") : "";
-  const bullets = claimed ? splitBullets(doc?.text?.bullets) : [];
   const decorations = frame.decorations ?? [];
+  const hosted = !!frame.chart && frame.chart.enabled !== false;
+  const chart = useMemo(() => (hosted ? panelChart(doc) : null), [hosted, doc]);
   // The measured fixpoint: the cache fills async (pre-warmed by the export preamble); each landing bumps the store, re-solving until nothing is pending.
   const measureTick = useSyncExternalStore(
     subscribePanelMeasures,
@@ -60,10 +76,21 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   useEffect(() => {
     for (const spec of solution.pending) requestPanelTextMeasure(spec);
   }, [solution]);
-  const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
-  if (!hasText && !frame.icon && !frame.chip && decorations.length === 0) return null;
 
   const col = framePanelLayout(format, frame);
+  const slot = chart ? framePanelChartSlot(col, frame.chart) : undefined;
+  // A chart that replaces the text owns the column outright, so the editorial content stands down; the decorations are frame-placed breakouts and stay.
+  const replaced = slot?.replaces === true;
+  // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
+  const claimed = frame.claimsSceneText !== false && !replaced;
+  const title = claimed ? (doc?.text?.title ?? "") : "";
+  const subtitle = claimed ? (doc?.text?.subtitle ?? "") : "";
+  const bullets = claimed ? splitBullets(doc?.text?.bullets) : [];
+  const icon = replaced ? undefined : frame.icon;
+  const chip = replaced ? undefined : frame.chip;
+  const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
+  if (!hasText && !icon && !chip && decorations.length === 0 && !chart) return null;
+
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
   const { fit, titleH, subH, bulletHeights } = solution;
 
@@ -87,7 +114,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   // Header, top-anchored; titleH/subH are the solved heights at the fitted size.
   let y = col.top;
   const iconTop = y;
-  if (frame.icon) y -= iconSize + ICON_GAP * titleSize;
+  if (icon) y -= iconSize + ICON_GAP * titleSize;
   const titleTop = y;
   if (title.trim()) y -= titleH;
   if (title.trim() && subtitle.trim()) y -= TITLE_GAP * titleSize;
@@ -102,10 +129,12 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
       ? bulletHeights.reduce((sum, h) => sum + h, 0) + (bulletHeights.length - 1) * bulletGap
       : 0;
   const bulletTops: number[] = [];
-  const chipGap = bullets.length > 0 && frame.chip ? CHIP_GAP * bulletSize : 0;
-  const bodyHeight = bulletsHeight + chipGap + (frame.chip ? chipHeight : 0);
+  const chipGap = bullets.length > 0 && chip ? CHIP_GAP * bulletSize : 0;
+  const bodyHeight = bulletsHeight + chipGap + (chip ? chipHeight : 0);
+  // A chart under the text takes the bottom of the column, so the body's floor lifts to the slot's gap.
+  const textBottom = slot && !slot.replaces ? slot.textBottom : col.bottom;
   let bodyTop = headerBottom - HEADER_BODY_GAP * titleSize;
-  bodyTop = Math.max(bodyTop, col.bottom + bodyHeight);
+  bodyTop = Math.max(bodyTop, textBottom + bodyHeight);
   {
     let cursor = bodyTop;
     for (const h of bulletHeights) {
@@ -117,9 +146,9 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
 
   return (
     <>
-      {frame.icon && (
+      {icon && (
         <FrameIcon
-          icon={frame.icon}
+          icon={icon}
           position={at(iconTop)}
           size={iconSize}
           from={150}
@@ -173,9 +202,9 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           maxWidth={col.width}
         />
       ))}
-      {frame.chip && (
+      {chip && (
         <FrameChip
-          chip={frame.chip}
+          chip={chip}
           position={[alignX, chipBottom, 0]}
           height={chipHeight}
           from={700}
@@ -183,6 +212,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           anchorFrac={chipAnchor}
         />
       )}
+      {chart && slot && <MountedChart chart={chart} panel={slot.rect} />}
       {decorations.map((decoration, i) => (
         <FrameDecoration
           key={decoration.id}
