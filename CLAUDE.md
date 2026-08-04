@@ -93,6 +93,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
+- Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
