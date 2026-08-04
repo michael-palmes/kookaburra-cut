@@ -63,6 +63,22 @@ export function parseGradient(v: unknown): GradientSpec | undefined {
   return gradient;
 }
 
+const HEX_COLOR = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** Chart series swatches: hex strings only, a malformed entry dropping alone (the palette then wraps over the survivors). Nothing valid leaves the theme without the field, so the derived accent ramp applies. */
+function parseChartColors(v: unknown, source: string): string[] | undefined {
+  if (!Array.isArray(v)) {
+    console.warn(`[theme] ${source}: "chartColors" isn't an array, dropped`);
+    return undefined;
+  }
+  const colors: string[] = [];
+  for (const entry of v) {
+    if (isStr(entry) && HEX_COLOR.test(entry)) colors.push(entry);
+    else console.warn(`[theme] ${source}: a "chartColors" entry isn't a hex colour, dropped`);
+  }
+  return colors.length > 0 ? colors : undefined;
+}
+
 /** Backdrop parser, exported for reuse by the sidecar schema (a scene doc may override its theme's backdrop). Same degrade semantics. */
 export function parseBackdropSpec(v: unknown, source: string): ThemeBackdrop | undefined {
   if (!isRecord(v)) return undefined;
@@ -382,6 +398,11 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
       else console.warn(`[theme] ${source}: gradient "${name}" is invalid — dropped`);
     }
     if (Object.keys(gradients).length > 0) theme.gradients = gradients;
+  }
+
+  if (raw.chartColors !== undefined) {
+    const chartColors = parseChartColors(raw.chartColors, source);
+    if (chartColors) theme.chartColors = chartColors;
   }
 
   if (raw.textAnimation !== undefined) {

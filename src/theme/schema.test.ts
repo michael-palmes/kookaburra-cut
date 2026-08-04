@@ -402,6 +402,21 @@ describe("builtin theme documents (structure pins)", () => {
       expect(parseThemeDoc(doc, "pin")?.effects, id).toBeUndefined();
     }
   });
+
+  it("no bundled theme carries chartColors yet (the additive-palette pin)", () => {
+    // chartColors is purely additive: until the curation pass adds swatches, every bundled theme must parse without the field, so no standing baseline can move.
+    const lineup = [
+      kookaburraDefaultDoc,
+      kookaburraFxDoc,
+      kookaburraMidnightDoc,
+      kookaburraStudioWhiteDoc,
+      ...LINEUP_PINS.map((p) => p.doc),
+    ];
+    for (const doc of lineup) {
+      const theme = parseThemeDoc(doc, "pin");
+      expect(theme?.chartColors, theme?.id).toBeUndefined();
+    }
+  });
 });
 
 describe("parseThemeDoc degrade behaviour", () => {
@@ -431,6 +446,28 @@ describe("parseThemeDoc degrade behaviour", () => {
     expect(parseThemeDoc({ ...validDoc(), card: { radius: -1 } }, "t")?.card).toBeUndefined();
     expect(parseThemeDoc({ ...validDoc(), card: 0.08 }, "t")?.card).toBeUndefined();
     expect(parseThemeDoc(validDoc(), "t")?.card).toBeUndefined();
+  });
+
+  it("chartColors keeps hex swatches, drops malformed entries and stays absent otherwise", () => {
+    const palette = ["#3ad1c4", "#f0a848", "#6f93a8", "#c45d7a", "#8fbf6a", "#9a7fd1"];
+    expect(parseThemeDoc({ ...validDoc(), chartColors: palette }, "t")?.chartColors).toEqual(
+      palette,
+    );
+    // Short hexes are legal; a name, a number or a malformed hex drops alone and the palette wraps over the survivors.
+    expect(
+      parseThemeDoc({ ...validDoc(), chartColors: ["#abc", "teal", 7, "#12345", "#123456"] }, "t")
+        ?.chartColors,
+    ).toEqual(["#abc", "#123456"]);
+    expect(
+      parseThemeDoc({ ...validDoc(), chartColors: ["nope"] }, "t")?.chartColors,
+    ).toBeUndefined();
+    expect(parseThemeDoc({ ...validDoc(), chartColors: [] }, "t")?.chartColors).toBeUndefined();
+    expect(
+      parseThemeDoc({ ...validDoc(), chartColors: "#3ad1c4" }, "t")?.chartColors,
+    ).toBeUndefined();
+    // Absent leaves the field off entirely, so a theme without it parses exactly as before.
+    expect(parseThemeDoc(validDoc(), "t")?.chartColors).toBeUndefined();
+    expect(Object.hasOwn(parseThemeDoc(validDoc(), "t") ?? {}, "chartColors")).toBe(false);
   });
 
   it("name falls back to id; unknown fields are ignored", () => {
