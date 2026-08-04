@@ -403,8 +403,8 @@ describe("builtin theme documents (structure pins)", () => {
     }
   });
 
-  it("no bundled theme carries chartColors yet (the additive-palette pin)", () => {
-    // chartColors is purely additive: until the curation pass adds swatches, every bundled theme must parse without the field, so no standing baseline can move.
+  it("every bundled theme carries a six-swatch chartColors palette (the curation pin)", () => {
+    // A dropped or degraded swatch would silently wrap the palette short, so the count is pinned here and the design contract (contrast, steps, accent harmony) in chartColors.test.ts.
     const lineup = [
       kookaburraDefaultDoc,
       kookaburraFxDoc,
@@ -414,8 +414,12 @@ describe("builtin theme documents (structure pins)", () => {
     ];
     for (const doc of lineup) {
       const theme = parseThemeDoc(doc, "pin");
-      expect(theme?.chartColors, theme?.id).toBeUndefined();
+      expect(theme?.chartColors, theme?.id).toHaveLength(6);
     }
+    // The house palette: the fallback theme's lineage, and kookaburra-fx shares its tokens.
+    const house = ["#3ad1c4", "#5c8bf5", "#a78bfa", "#f2b34d", "#f2718c", "#6fd8a8"];
+    expect(parseThemeDoc(kookaburraDefaultDoc, "pin")?.chartColors).toEqual(house);
+    expect(parseThemeDoc(kookaburraFxDoc, "pin")?.chartColors).toEqual(house);
   });
 });
 

@@ -38,6 +38,9 @@ const withSwatches = (theme: Theme, chartColors: string[]): Theme => ({
   chartColors,
 });
 
+/** Every bundled theme now ships a curated palette, so the derived-ramp fallback needs a theme stripped of one. */
+const bare = (theme: Theme): Theme => ({ ...theme, chartColors: undefined });
+
 describe("derivedChartPalette", () => {
   it("pins the ramp for a dark theme", () => {
     expect(derivedChartPalette(dark)).toEqual([
@@ -125,8 +128,12 @@ describe("derivedChartPalette", () => {
 describe("resolveSeriesColour", () => {
   it("takes the derived ramp when the theme has no palette", () => {
     const palette = derivedChartPalette(dark);
-    expect(resolveSeriesColour(dark, 0)).toBe(palette[0]);
-    expect(resolveSeriesColour(dark, 2)).toBe(palette[2]);
+    expect(resolveSeriesColour(bare(dark), 0)).toBe(palette[0]);
+    expect(resolveSeriesColour(bare(dark), 2)).toBe(palette[2]);
+  });
+
+  it("prefers a bundled theme's curated palette over the derived ramp", () => {
+    expect(resolveSeriesColour(dark, 2)).toBe(dark.chartColors?.[2]);
   });
 
   it("prefers the theme palette over the derived ramp", () => {
@@ -143,10 +150,11 @@ describe("resolveSeriesColour", () => {
 
   it("ignores an absent or malformed override", () => {
     const palette = derivedChartPalette(dark);
-    expect(resolveSeriesColour(dark, 0, null)).toBe(palette[0]);
-    expect(resolveSeriesColour(dark, 0, undefined)).toBe(palette[0]);
-    expect(resolveSeriesColour(dark, 0, "rebeccapurple")).toBe(palette[0]);
-    expect(resolveSeriesColour(dark, 0, "#12345")).toBe(palette[0]);
+    const plain = bare(dark);
+    expect(resolveSeriesColour(plain, 0, null)).toBe(palette[0]);
+    expect(resolveSeriesColour(plain, 0, undefined)).toBe(palette[0]);
+    expect(resolveSeriesColour(plain, 0, "rebeccapurple")).toBe(palette[0]);
+    expect(resolveSeriesColour(plain, 0, "#12345")).toBe(palette[0]);
   });
 
   it("falls through to the derived ramp on a malformed theme swatch", () => {
@@ -156,9 +164,10 @@ describe("resolveSeriesColour", () => {
 
   it("wraps the index past the end of either palette", () => {
     const palette = derivedChartPalette(dark);
-    expect(resolveSeriesColour(dark, CHART_PALETTE_SIZE)).toBe(palette[0]);
-    expect(resolveSeriesColour(dark, CHART_PALETTE_SIZE + 1)).toBe(palette[1]);
-    expect(resolveSeriesColour(dark, -1)).toBe(palette[CHART_PALETTE_SIZE - 1]);
+    const plain = bare(dark);
+    expect(resolveSeriesColour(plain, CHART_PALETTE_SIZE)).toBe(palette[0]);
+    expect(resolveSeriesColour(plain, CHART_PALETTE_SIZE + 1)).toBe(palette[1]);
+    expect(resolveSeriesColour(plain, -1)).toBe(palette[CHART_PALETTE_SIZE - 1]);
     const themed = withSwatches(dark, ["#112233", "#445566"]);
     expect(resolveSeriesColour(themed, 4)).toBe("#112233");
     expect(resolveSeriesColour(themed, 5)).toBe("#445566");
@@ -166,7 +175,7 @@ describe("resolveSeriesColour", () => {
 
   it("survives a broken index or an empty palette", () => {
     const palette = derivedChartPalette(dark);
-    expect(resolveSeriesColour(dark, Number.NaN)).toBe(palette[0]);
+    expect(resolveSeriesColour(bare(dark), Number.NaN)).toBe(palette[0]);
     expect(resolveSeriesColour(withSwatches(dark, []), 3)).toBe(palette[3]);
   });
 });

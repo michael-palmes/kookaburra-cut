@@ -26,6 +26,7 @@
       "stops": [["#fff1e8", 0], ["#efe9ff", 1]]
     }
   },
+  "chartColors": ["#e2523a", "#8b5cd6", "#a83a5c", "#0f8b8d", "#96520f", "#3b4fa8"],
   "typography": {
     "headline": {
       "family": "Open Sans",

@@ -16,6 +16,7 @@
       "stops": [["#f7f1e3", 0], ["#eadfc8", 1]]
     }
   },
+  "chartColors": ["#b4552d", "#3f5a4c", "#1f3a5f", "#8c2f39", "#8a6d1f", "#4a4a52"],
   "typography": {
     "headline": {
       "family": "Playfair Display",
