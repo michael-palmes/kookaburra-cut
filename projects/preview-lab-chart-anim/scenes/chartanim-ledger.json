@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "Chart build-in: Ledger",
+  "chart": {
+    "type": "stackedColumn",
+    "dimension": "3d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Apr", "May", "Jun", "Jul"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Organic",
+          "values": [32, 41, 53, 66]
+        },
+        {
+          "id": "s2",
+          "name": "Referral",
+          "values": [14, 17, 21, 24]
+        },
+        {
+          "id": "s3",
+          "name": "Paid",
+          "values": [9, 12, 16, 20]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "preset": "ledger",
+      "delivery": "cascade",
+      "staggerMs": 70,
+      "durationMs": 700,
+      "from": "start"
+    },
+    "style": {
+      "preset": "studio"
+    }
+  }
+}

@@ -3,7 +3,7 @@ import { preloadSceneObjects } from "../toolkit/objects/preload";
 import { type LoadedProject, sceneFileStem } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
-/** Option previews: committed app-rendered preview assets for the inspector's option pickers (text-motion clips, shadow stills, stage/backdrop stills, New-scene kind stills), rendered from the dev-only `projects/preview-lab-*` projects (one per family: text, stage, one per background) via `pnpm kookaburra:run --action option-previews` and committed under `src/assets/option-previews/` beside `manifest.json` (per-set source hashes; the wrapper re-renders only stale sets, `--all` re-records everything). Missing assets degrade to swatch placeholders, never a broken card. Set naming (pinned in tests, MIRRORED by scripts/option-preview-stale.mjs): `textanim-<preset>` · `shadow-<mode>` · `stage-<type>` · `kind-<sceneKind>`; clips ship as `<set>.mp4` + `<set>-poster.jpg`, stills as `<set>.jpg`. */
+/** Option previews: committed app-rendered preview assets for the inspector's option pickers (text-motion clips, shadow stills, stage/backdrop stills, New-scene kind stills, chart appearance stills, chart build-in clips), rendered from the dev-only `projects/preview-lab-*` projects (one per family: text, stage, chart, chart build-ins, one per background) via `pnpm kookaburra:run --action option-previews` and committed under `src/assets/option-previews/` beside `manifest.json` (per-set source hashes; the wrapper re-renders only stale sets, `--all` re-records everything). Missing assets degrade to swatch placeholders, never a broken card. Set naming (pinned in tests, MIRRORED by scripts/option-preview-stale.mjs): `textanim-<preset>` · `shadow-<mode>` · `stage-<type>` · `kind-<sceneKind>` · `chart-<stylePreset>` · `chartanim-<buildIn>`; clips ship as `<set>.mp4` + `<set>-poster.jpg`, stills as `<set>.jpg`. */
 
 /** Capture rate for clip sets; the generator captures one frame per 1000/fps ms. */
 export const OPTION_CLIP_FPS = 20;
@@ -37,7 +37,7 @@ export interface OptionPreviewJob {
   kind: "still" | "clip";
 }
 
-/** Map preview-lab's scene stems to capture jobs (pure; the autorun action and its tests share it): `tm-<preset>` scenes render text-motion CLIPS (except `tm-none`, which is motionless, so one still is honest); `bg-<shader>` scenes render animated-background CLIPS; `bgp-<shader>-<preset>` scenes render shader-preset STILLS (small tiles, motion already shown by the type card); `shadow-*` / `stage-*` / `kind-*` (New-scene kind cards) / `object-*` (object-picker cards) scenes are stills. Unknown stems are skipped, so lab experiments never break the batch. */
+/** Map preview-lab's scene stems to capture jobs (pure; the autorun action and its tests share it): `tm-<preset>` scenes render text-motion CLIPS (except `tm-none`, which is motionless, so one still is honest); `bg-<shader>` scenes render animated-background CLIPS; `chartanim-<preset>` scenes render chart build-in CLIPS (the motion IS the option); `bgp-<shader>-<preset>` scenes render shader-preset STILLS (small tiles, motion already shown by the type card); `shadow-*` / `stage-*` / `kind-*` (New-scene kind cards) / `object-*` (object-picker cards) / `chart-*` (chart appearance cards, a settled chart) scenes are stills. Unknown stems are skipped, so lab experiments never break the batch. */
 export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
   const jobs: OptionPreviewJob[] = [];
   for (const stem of stems) {
@@ -50,13 +50,14 @@ export function optionPreviewJobs(stems: string[]): OptionPreviewJob[] {
       });
     } else if (stem.startsWith("bgp-")) {
       jobs.push({ stem, set: stem, kind: "still" });
-    } else if (stem.startsWith("bg-")) {
+    } else if (stem.startsWith("bg-") || stem.startsWith("chartanim-")) {
       jobs.push({ stem, set: stem, kind: "clip" });
     } else if (
       stem.startsWith("shadow-") ||
       stem.startsWith("stage-") ||
       stem.startsWith("kind-") ||
-      stem.startsWith("object-")
+      stem.startsWith("object-") ||
+      stem.startsWith("chart-")
     ) {
       jobs.push({ stem, set: stem, kind: "still" });
     }
