@@ -124,6 +124,7 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
+import { ChartFallback } from "./toolkit/chart/ChartFallback";
 import { CompareChips } from "./toolkit/compare/CompareChips";
 import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
@@ -1891,6 +1892,7 @@ export default function App() {
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
+                                <ChartFallback />
                                 <TextFallback />
                                 <CompareChips />
                               </AssetBoundary>
@@ -1922,6 +1924,7 @@ export default function App() {
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
+                                <ChartFallback />
                                 <TextFallback />
                                 <CompareChips />
                               </AssetBoundary>

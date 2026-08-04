@@ -17,6 +17,7 @@ import { SceneHost } from "../engine/SceneHost";
 import { ProjectIdContext } from "../engine/sceneContext";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
+import { ChartFallback } from "../toolkit/chart/ChartFallback";
 import { DevicesFallback } from "../toolkit/device/Device";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
@@ -361,6 +362,7 @@ export function PresentApp() {
                         <ObjectsFallback />
                         <LayeredScreenshotFallback />
                         <VideoWindowFallback />
+                        <ChartFallback />
                         <TextFallback />
                       </AssetBoundary>
                     </SceneHost>
