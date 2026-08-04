@@ -206,6 +206,7 @@ import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { DeviceDrillIn } from "./DeviceDrillIn";
+import { DofFields } from "./DofFields";
 import {
   ActionRow,
   DrillBack,
@@ -1431,6 +1432,37 @@ function CameraSectionBody({
           onCommit={(n) => commitPose((p) => (p.target[2] = n))}
         />
       </div>
+      <DofFields
+        keys={camera.keys}
+        targetKeyId={targetKey?.id ?? null}
+        authored={pose.dof}
+        autoDistance={pose.distance}
+        autoLabel="the target"
+        preview={(next) =>
+          previewPose((p) => {
+            if (next) p.dof = next;
+            else delete p.dof;
+          })
+        }
+        commit={(next) =>
+          commitPose((p) => {
+            if (next) p.dof = next;
+            else delete p.dof;
+          })
+        }
+        commitAll={(map) =>
+          void commit({
+            ...camera,
+            keys: camera.keys.map((key) => {
+              const dof = map(key.pose.dof);
+              const nextPose = { ...key.pose };
+              if (dof) nextPose.dof = dof;
+              else delete nextPose.dof;
+              return { ...key, pose: nextPose };
+            }),
+          })
+        }
+      />
       <ActionRow
         icon={<SceneRowIcon id="camera.animate" />}
         label="Animate scene"
