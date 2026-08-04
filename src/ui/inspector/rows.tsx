@@ -256,6 +256,43 @@ export function RowIcon({ id }: { id: string }) {
   );
 }
 
+/** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size; shared by the object and chart placement drills. */
+export function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
+  const glyph = {
+    translate: (
+      <>
+        <path d="M10 3.5v13M3.5 10h13" />
+        <path d="M8 5.5l2-2 2 2M8 14.5l2 2 2-2M5.5 8l-2 2 2 2M14.5 8l2 2-2 2" />
+      </>
+    ),
+    rotate: (
+      <>
+        <path d="M16.2 10a6.2 6.2 0 11-1.9-4.5" />
+        <path d="M16.6 2.6v3.2h-3.2" />
+      </>
+    ),
+    scale: (
+      <>
+        <rect x="3.5" y="8.5" width="8" height="8" rx="1" />
+        <path d="M11.5 8.5L16.5 3.5M16.5 7V3.5H13" />
+      </>
+    ),
+  }[mode];
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
 function Chevron() {
   return (
     <svg

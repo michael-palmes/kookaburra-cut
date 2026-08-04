@@ -1,8 +1,12 @@
 /** The chart host: one primitive a scene mounts bare (`<Chart />`) to draw its sidecar `chart` block, or with overrides to retype/restage it. It owns everything the renderers deliberately do not: the series palette, the fixed-scale layout composition (the track's upper envelope pins the value axis, the current scene-local sample supplies the marks), the build-in sampler (rebuilt every frame from the scene-local clock, so the instanced writers see a fresh identity and rewrite) and placement, which is the only thing that differs between the hero, staged and panel mounts. Flat charts lay out against `useFormat()`'s safe frame minus the bands their furniture needs (and minus the title band when the scene draws a headline); 3D charts stand at the content depth band under the presentation tilt, scaled so the tilted footprint still fits. Sidecar-driven, so a chart block renders with no scene TSX at all (`ChartFallback`). */
 
-import { useMemo } from "react";
+import { TransformControls } from "@react-three/drei";
+import { useMemo, useRef } from "react";
+import type { Group } from "three";
+import { useChartEditStore } from "../../engine/chartEditStore";
 import { useFormat } from "../../engine/format";
 import type { ResolvedChart } from "../../engine/sceneChart";
+import { useSceneContext } from "../../engine/sceneContext";
 import { useSceneChart, useSceneDoc } from "../../engine/sceneDoc";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
@@ -37,6 +41,13 @@ import type {
   ChartStyleSurface,
   ChartType,
 } from "./types";
+
+const RAD2DEG = 180 / Math.PI;
+
+const round = (v: number, dp: number) => {
+  const f = 10 ** dp;
+  return Math.round(v * f) / f;
+};
 
 /** Overrides applied over the sidecar block; every field is optional, so `<Chart />` is the whole authoring surface for a sidecar-driven chart. */
 export interface ChartProps {
@@ -263,45 +274,103 @@ function PanelChart({
   );
 }
 
-/** Placed among the scene's devices and text: a fixed world-space plot under the block's `placement`, so a chart poses exactly like a `Device` does. */
+/** Placed among the scene's devices and text: a fixed world-space plot under the block's `placement`, so a chart poses exactly like a `Device` does. While the inspector's position drill is open the staged-object gizmo attaches to the posed group (`chartEditStore`), and `exportPreamble` clears that selection, so exports render the bare transform. */
 function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opacity }: MountArgs) {
   const floorY = useStageFloorY();
+  const sceneIndex = useSceneContext()?.index;
+  const selected = useChartEditStore((s) => s.selected);
+  const gizmoMode = useChartEditStore((s) => s.gizmoMode);
+  const groupRef = useRef<Group>(null);
   const pose = chartPose(chart.placement);
   const y = chartGroundY(pose, floorY);
   const lift = enter * CHART_STAGED_SIZE.height;
+  const gizmo = selected !== null && selected.sceneIndex === sceneIndex;
+
+  // The control mutates the group live; the commit reads it back, so the doc lands exactly what is on screen. A drag pins an explicit y, so `ground` drops.
+  const commitDrag = () => {
+    const group = groupRef.current;
+    if (!group || sceneIndex === undefined) return;
+    useChartEditStore.getState().requestCommit({
+      sceneIndex,
+      placement: {
+        position: [
+          round(group.position.x, 3),
+          round(group.position.y, 3),
+          round(group.position.z, 3),
+        ],
+        rotationDeg: [
+          round(group.rotation.x * RAD2DEG, 1),
+          round(group.rotation.y * RAD2DEG, 1),
+          round(group.rotation.z * RAD2DEG, 1),
+        ],
+        scale: round(group.scale.x, 3),
+      },
+    });
+  };
+
+  // Uniform scale only (the staged-object rule): snap all three axes to the furthest-moved one.
+  const uniformiseScale = () => {
+    const group = groupRef.current;
+    if (gizmoMode !== "scale" || !group || pose.scale <= 1e-6) return;
+    let u = 1;
+    for (const ratio of [
+      group.scale.x / pose.scale,
+      group.scale.y / pose.scale,
+      group.scale.z / pose.scale,
+    ]) {
+      if (Math.abs(Math.log(Math.max(1e-3, Math.abs(ratio)))) > Math.abs(Math.log(Math.abs(u)))) {
+        u = ratio;
+      }
+    }
+    const next = Math.max(0.01 * pose.scale, Math.abs(u) * pose.scale);
+    group.scale.set(next, next, next);
+  };
+
   return (
-    <group
-      position={[pose.position[0], y, pose.position[2]]}
-      rotation={pose.rotation}
-      scale={pose.scale}
-    >
-      {chart.dimension === "3d" ? (
-        // A 3D chart stands on its own floor at y 0, so it drops half a plot to centre on the pose.
-        <group position={[0, lift - CHART_STAGED_SIZE.height / 2, 0]}>
-          <Chart3D
-            chart={chart}
-            layout={layout}
-            colours={colours}
-            size={CHART_STAGED_SIZE}
-            surface={surface}
-            reveal={reveal}
-            opacity={opacity}
-          />
-        </group>
-      ) : (
-        <group position={[0, lift, 0]}>
-          <Chart2D
-            chart={chart}
-            layout={layout}
-            colours={colours}
-            size={CHART_STAGED_SIZE}
-            surface={surface}
-            look={look}
-            reveal={reveal}
-            opacity={opacity}
-          />
-        </group>
+    <>
+      {gizmo && (
+        <TransformControls
+          object={groupRef as React.RefObject<Group>}
+          mode={gizmoMode}
+          size={1.8}
+          onObjectChange={uniformiseScale}
+          onMouseUp={commitDrag}
+        />
       )}
-    </group>
+      <group
+        ref={groupRef}
+        position={[pose.position[0], y, pose.position[2]]}
+        rotation={pose.rotation}
+        scale={pose.scale}
+      >
+        {chart.dimension === "3d" ? (
+          // A 3D chart stands on its own floor at y 0, so it drops half a plot to centre on the pose.
+          <group position={[0, lift - CHART_STAGED_SIZE.height / 2, 0]}>
+            <Chart3D
+              chart={chart}
+              layout={layout}
+              colours={colours}
+              size={CHART_STAGED_SIZE}
+              surface={surface}
+              reveal={reveal}
+              opacity={opacity}
+            />
+          </group>
+        ) : (
+          <group position={[0, lift, 0]}>
+            <Chart2D
+              chart={chart}
+              layout={layout}
+              colours={colours}
+              size={CHART_STAGED_SIZE}
+              surface={surface}
+              look={look}
+              reveal={reveal}
+              opacity={opacity}
+            />
+          </group>
+        )}
+      </group>
+    </>
   );
 }
