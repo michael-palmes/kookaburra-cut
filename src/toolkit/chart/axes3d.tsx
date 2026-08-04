@@ -2,14 +2,21 @@
 
 import { useEffect, useMemo } from "react";
 import { BoxGeometry, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from "three";
-import { barSpan, CHART_2D_APPEARANCE, dashSegments, legendLabels } from "./chart2dMath";
+import {
+  barLabelSpot,
+  CHART_2D_APPEARANCE,
+  dashSegments,
+  legendLabels,
+  revealedPoint,
+} from "./chart2dMath";
 import { ChartLabel, ChartLegendRow } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { pieCentreY, pieRadius } from "./pie3d";
 import { revealAt } from "./reveal";
+import { type ChartRevealSource, chartRevealFn } from "./revealSource";
 import { type Chart3DSpace, chartWorldX, chartWorldY } from "./space3d";
-import type { ChartConfig, ChartLayout, ChartRevealFn } from "./types";
+import type { ChartConfig, ChartLayout } from "./types";
 
 /** Gridline strips run thicker than the flat renderer's quads: they sit metres behind the marks and thin out under perspective. */
 const GRID_THICKNESS = 0.0035;
@@ -133,7 +140,7 @@ export interface ChartText3DProps {
   colours: readonly string[];
   textColour: string;
   mutedColour: string;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
 }
 
@@ -275,15 +282,16 @@ interface ChartValues3DProps {
   space: Chart3DSpace;
   colour: string;
   fontSize: number;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
 }
 
-/** Value labels for whichever family the layout populated: outside the growing end of a bar, above a line/area point, or beyond the rim of a pie slice. */
+/** Value labels for whichever family the layout populated: riding the growing end of a bar, riding a line/area point up out of its baseline, or beyond the rim of a pie slice. The flat renderer places them by the same rules and the same helpers, so a chart's labels never sit differently between dimensions; every counting label prints against the CLAMPED `count` channel, so it can never run past its true value while a mark overshoots. */
 function ChartValues3D(props: ChartValues3DProps) {
   const { chart, layout, space, colour, fontSize, reveal, opacity } = props;
-  const { format, countUp } = chart.labels.values;
-  const outward = chart.labels.values.location === "above" ? fontSize * 0.75 : 0;
+  const { format, countUp, location } = chart.labels.values;
+  const at = chartRevealFn(reveal);
+  const outward = fontSize * 0.75;
   const vertical = layout.valueAxis === "y";
   const z = space.frontZ;
 
@@ -293,11 +301,11 @@ function ChartValues3D(props: ChartValues3DProps) {
     return (
       <>
         {layout.pie.slices.map((slice) => {
-          const build = revealAt(reveal, slice.seriesIndex, slice.categoryIndex);
+          const build = revealAt(at, slice.seriesIndex, slice.categoryIndex);
           return (
             <ChartLabel
               key={slice.categoryIndex}
-              text={formatChartValue(countUp ? slice.value * build.grow : slice.value, format)}
+              text={formatChartValue(countUp ? slice.value * build.count : slice.value, format)}
               position={[
                 radius * Math.sin(slice.midAngle),
                 centreY + radius * Math.cos(slice.midAngle),
@@ -320,15 +328,26 @@ function ChartValues3D(props: ChartValues3DProps) {
     return (
       <>
         {layout.bars.map((mark) => {
-          const nudge = outward * barSpan(mark, layout.valueAxis, 1).direction;
-          const build = revealAt(reveal, mark.seriesIndex, mark.categoryIndex);
+          const build = revealAt(at, mark.seriesIndex, mark.categoryIndex);
+          const spot = barLabelSpot(
+            mark,
+            layout.valueAxis,
+            location,
+            build.grow,
+            outward,
+            build.drop,
+          );
           return (
             <ChartLabel
               key={`${mark.seriesIndex}-${mark.categoryIndex}`}
-              text={formatChartValue(countUp ? mark.value * build.grow : mark.value, format)}
+              text={formatChartValue(countUp ? mark.value * build.count : mark.value, format)}
               position={[
-                chartWorldX(space, mark.labelAnchor.x) + (vertical ? 0 : nudge),
-                chartWorldY(space, mark.labelAnchor.y) + (vertical ? nudge : 0),
+                vertical
+                  ? chartWorldX(space, spot.across)
+                  : chartWorldX(space, spot.along) + spot.nudge,
+                vertical
+                  ? chartWorldY(space, spot.along) + spot.nudge
+                  : chartWorldY(space, spot.across),
                 z,
               ]}
               fontSize={fontSize}
@@ -347,15 +366,16 @@ function ChartValues3D(props: ChartValues3DProps) {
   return (
     <>
       {layout.series.flatMap((series) =>
-        series.points.map((point) => {
-          const build = revealAt(reveal, series.seriesIndex, point.categoryIndex);
+        series.points.map((point, i) => {
+          const build = revealAt(at, series.seriesIndex, point.categoryIndex);
+          const rode = revealedPoint(point, series.baseline[i], build.grow, build.drop);
           return (
             <ChartLabel
               key={`${series.seriesIndex}-${point.categoryIndex}`}
-              text={formatChartValue(countUp ? point.value * build.grow : point.value, format)}
+              text={formatChartValue(countUp ? point.value * build.count : point.value, format)}
               position={[
-                chartWorldX(space, point.x),
-                chartWorldY(space, point.y) + fontSize * 0.9,
+                chartWorldX(space, rode.x),
+                chartWorldY(space, rode.y) + fontSize * 0.9,
                 z,
               ]}
               fontSize={fontSize}

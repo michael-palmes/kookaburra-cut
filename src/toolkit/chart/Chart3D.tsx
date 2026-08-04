@@ -1,4 +1,4 @@
-/** The 3D chart renderer: all eight types as staged solids in one group whose plot spans `size.width` x `size.height` world units with the ground at y 0 and the group origin at the centre of the floor. It adds NO lights (the stage lights it, the `Device` contract) and never applies `style.rotation`: the HOST owns placement, the presentation tilt and the camera rig. Every element takes its `grow`/`alpha` from `reveal`, which defaults to fully built, so the animation phase only has to thread a real sampler. */
+/** The 3D chart renderer: all eight types as staged solids in one group whose plot spans `size.width` x `size.height` world units with the ground at y 0 and the group origin at the centre of the floor. It adds NO lights (the stage lights it, the `Device` contract) and never applies `style.rotation`: the HOST owns placement, the presentation tilt and the camera rig. Every element takes its channels from `reveal` (a bare per-element lookup or a whole sampler), which defaults to fully built. */
 
 import { useMemo } from "react";
 import { useTheme } from "../../theme";

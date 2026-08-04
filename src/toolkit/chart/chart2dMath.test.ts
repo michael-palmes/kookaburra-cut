@@ -1,26 +1,42 @@
+import { ShaderLib } from "three";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { describe, expect, it } from "vitest";
 import {
   areaShape,
+  barLabelSpot,
   barSpan,
   CHART_2D_APPEARANCE,
+  CHART_PULSE_LIFT,
+  CHART_PULSE_POP,
   chart2dBands,
   chart2dInsets,
   chart2dMetrics,
+  chartShineAmount,
   contrastPick,
   dashSegments,
+  drawEdgeX,
+  droppedBaseline,
   gridlineRects,
+  makeChartFillMaterial,
+  makeChartRectMaterial,
   markCornerRadius,
   packLegendRows,
+  patchChartLineMaterial,
   pieSliceShape,
   plotToWorldX,
   plotToWorldY,
   pointsKey,
   polylinePositions,
+  polylineYAt,
+  pulseColour,
+  pulseGain,
+  pulseScale,
   rectsGeometry,
+  revealedPoint,
   revealedPoints,
 } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
-import { CHART_FULL_REVEAL, meanAlpha, revealAt } from "./reveal";
+import { CHART_FULL_REVEAL, CHART_GROW_MAX, meanAlpha, revealAt } from "./reveal";
 import type {
   ChartBarMark,
   ChartConfig,
@@ -138,6 +154,228 @@ describe("barSpan", () => {
   it("settles a stacked segment on its own span", () => {
     const bar = mark({ y: 0.3, height: 0.2, base: 0.3 });
     expect(barSpan(bar, "y", 1)).toMatchObject({ lo: 0.3, size: 0.2, end: 0.5 });
+  });
+});
+
+describe("barLabelSpot", () => {
+  const mark = (parts: Partial<ChartBarMark>): ChartBarMark => ({
+    seriesIndex: 0,
+    categoryIndex: 0,
+    x: 0,
+    y: 0,
+    width: 0.1,
+    height: 0.6,
+    value: 6,
+    base: 0,
+    stackBase: 0,
+    labelAnchor: { x: 0.05, y: 0.6 },
+    ...parts,
+  });
+
+  it("rides the growing end and nudges outward", () => {
+    const bar = mark({});
+    expect(barLabelSpot(bar, "y", "above", 0.5, 0.1)).toMatchObject({
+      along: 0.3,
+      across: 0.05,
+      nudge: 0.1,
+      direction: 1,
+    });
+    expect(barLabelSpot(bar, "y", "above", 1, 0.1).along).toBeCloseTo(0.6, 10);
+  });
+
+  it("parks at the base and at the midpoint", () => {
+    const bar = mark({});
+    expect(barLabelSpot(bar, "y", "below", 0.5, 0.1)).toMatchObject({ along: 0, nudge: 0 });
+    expect(barLabelSpot(bar, "y", "inside", 0.5, 0.1).along).toBeCloseTo(0.15, 10);
+  });
+
+  it("flips the nudge on a negative mark and reads the other anchor axis", () => {
+    const falling = mark({ y: 0.2, height: 0.4, base: 0.6 });
+    expect(barLabelSpot(falling, "y", "above", 1, 0.1).nudge).toBeCloseTo(-0.1, 10);
+    const horizontal = mark({ x: 0, width: 0.5, height: 0.1, base: 0 });
+    expect(barLabelSpot(horizontal, "x", "above", 1, 0).across).toBe(0.6);
+  });
+
+  it("carries a falling mark's label with it, wherever it is parked", () => {
+    const bar = mark({});
+    for (const spot of ["above", "inside", "below"] as const) {
+      const home = barLabelSpot(bar, "y", spot, 1, 0.1);
+      const dropped = barLabelSpot(bar, "y", spot, 1, 0.1, 0.45);
+      expect(dropped.along).toBeCloseTo(home.along + 0.45, 10);
+      expect(dropped.direction).toBe(home.direction);
+      expect(dropped.nudge).toBe(home.nudge);
+    }
+  });
+});
+
+describe("the fall entrance", () => {
+  const bar: ChartBarMark = {
+    seriesIndex: 0,
+    categoryIndex: 0,
+    x: 0,
+    y: 0,
+    width: 0.1,
+    height: 0.6,
+    value: 6,
+    base: 0,
+    stackBase: 0,
+    labelAnchor: { x: 0.05, y: 0.6 },
+  };
+
+  it("translates a bar span rigidly, keeping its size and direction", () => {
+    const home = barSpan(bar, "y", 1);
+    const dropped = barSpan(bar, "y", 1, 0.45);
+    expect(dropped.size).toBeCloseTo(home.size, 10);
+    expect(dropped.direction).toBe(home.direction);
+    expect(dropped.lo).toBeCloseTo(home.lo + 0.45, 10);
+    expect(dropped.end).toBeCloseTo(home.end + 0.45, 10);
+  });
+
+  it("translates a negative bar the same way, never inverting it", () => {
+    const falling: ChartBarMark = { ...bar, y: 0.2, height: 0.4, base: 0.6 };
+    const home = barSpan(falling, "y", 1);
+    const dropped = barSpan(falling, "y", 1, 0.45);
+    expect(dropped.size).toBeCloseTo(home.size, 10);
+    expect(dropped.direction).toBe(-1);
+    expect(dropped.lo).toBeCloseTo(home.lo + 0.45, 10);
+  });
+
+  it("rides a point and its fill boundary by the same offset", () => {
+    const point = { x: 0.5, y: 0.8 };
+    const base = { x: 0.5, y: 0.1 };
+    expect(revealedPoint(point, base, 1, 0.45).y).toBeCloseTo(1.25, 10);
+    expect(revealedPoint(point, base, 0, 0.45).y).toBeCloseTo(0.55, 10);
+    const boundary = droppedBaseline([base, base], [0.45, 0.45]);
+    expect(boundary.map((p) => p.y)).toEqual([0.55, 0.55]);
+  });
+
+  it("holds the fill boundary's identity when nothing is falling", () => {
+    const boundary = [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+    ];
+    expect(droppedBaseline(boundary, [0, 0])).toBe(boundary);
+    expect(droppedBaseline(boundary, [])).toBe(boundary);
+  });
+
+  it("keeps a settled series exactly where the layout put it", () => {
+    const layout = layoutOf("area", data(["a", "b", "c"], [1, 2, 3]));
+    const series = layout.series[0];
+    const settled = revealedPoints(series.points, series.baseline, [1, 1, 1], [0, 0, 0]);
+    expect(settled.map((p) => p.y)).toEqual(series.points.map((p) => p.y));
+  });
+});
+
+describe("draw-on geometry", () => {
+  const points = [
+    { x: 0.125, y: 0.2 },
+    { x: 0.375, y: 0.4 },
+    { x: 0.625, y: 0.3 },
+    { x: 0.875, y: 0.9 },
+  ];
+
+  it("walks the edge from the first band centre to the last", () => {
+    expect(drawEdgeX(points, 0)).toBeCloseTo(0.125, 10);
+    expect(drawEdgeX(points, 1)).toBeCloseTo(0.875, 10);
+    expect(drawEdgeX([], 0.5)).toBe(1);
+  });
+
+  it("lands on the sampler's own head position", () => {
+    const categories = points.length;
+    for (const draw of [0.2, 0.5, 0.75]) {
+      const headX = (0.5 + draw * (categories - 1)) / categories;
+      expect(drawEdgeX(points, draw)).toBeCloseTo(headX, 12);
+    }
+  });
+
+  it("rides the head on the line, clamped to the ends", () => {
+    expect(polylineYAt(points, 0.125)).toBeCloseTo(0.2, 10);
+    expect(polylineYAt(points, 0.25)).toBeCloseTo(0.3, 10);
+    expect(polylineYAt(points, 0)).toBeCloseTo(0.2, 10);
+    expect(polylineYAt(points, 2)).toBeCloseTo(0.9, 10);
+    expect(polylineYAt([], 0.5)).toBe(0);
+  });
+
+  it("rides one point out of its baseline", () => {
+    const point = { x: 0.5, y: 0.8 };
+    const base = { x: 0.5, y: 0.1 };
+    expect(revealedPoint(point, base, 0)).toEqual(base);
+    expect(revealedPoint(point, base, 1)).toEqual(point);
+    expect(revealedPoint(point, base, 0.5).y).toBeCloseTo(0.45, 10);
+    expect(revealedPoint(point, undefined, 0)).toEqual(point);
+  });
+});
+
+describe("emphasis channels", () => {
+  it("gains brightness and scale with the pulse envelope", () => {
+    expect(pulseGain(0)).toBe(1);
+    expect(pulseGain(1)).toBeCloseTo(1 + CHART_PULSE_LIFT, 10);
+    expect(pulseGain(2)).toBeCloseTo(1 + CHART_PULSE_LIFT, 10);
+    expect(pulseScale(0)).toBe(1);
+    expect(pulseScale(1)).toBeCloseTo(1 + CHART_PULSE_POP, 10);
+    expect(CHART_PULSE_POP).toBeLessThanOrEqual(0.06);
+  });
+
+  it("holds a colour at rest and lifts it under a pulse", () => {
+    expect(pulseColour("#3366cc", 0)).toBe("#3366cc");
+    expect(pulseColour("#3366cc", 1)).not.toBe("#3366cc");
+  });
+
+  it("sweeps the shine band across a mark and rests off it", () => {
+    expect(chartShineAmount(0, 1, -1)).toBe(0);
+    expect(chartShineAmount(0, 0, 0.5)).toBe(0);
+    // The band centre crosses the mark's own centre exactly halfway through the sweep.
+    expect(chartShineAmount(0, 1, 0.5)).toBeCloseTo(1, 10);
+    expect(chartShineAmount(0, 1, 0)).toBe(0);
+    expect(chartShineAmount(0, 1, 1)).toBe(0);
+    expect(chartShineAmount(0.9, 1, 0.5)).toBeLessThan(chartShineAmount(0.2, 1, 0.5));
+  });
+});
+
+/** The three source these patches splice into is an upstream contract: a version bump that renames an anchor would silently drop a channel, so every injection is asserted here rather than discovered on a stage. */
+describe("patched materials", () => {
+  const compile = (material: {
+    onBeforeCompile: (shader: never, renderer: never) => void;
+    vertexShader?: string;
+    fragmentShader?: string;
+  }): { vertexShader: string; fragmentShader: string } => {
+    const shader = {
+      uniforms: {},
+      vertexShader: material.vertexShader ?? ShaderLib.basic.vertexShader,
+      fragmentShader: material.fragmentShader ?? ShaderLib.basic.fragmentShader,
+    };
+    material.onBeforeCompile(shader as never, undefined as never);
+    return shader;
+  };
+
+  it("gives every bar its own build state through instanced attributes", () => {
+    const rect = makeChartRectMaterial();
+    const shader = compile(rect.material);
+    expect(shader.vertexShader).toContain("vRectShine = iShine;");
+    expect(shader.fragmentShader).toContain("chartShineAmount(dot(vRectP, rectAxis)");
+    expect(shader.fragmentShader).toContain("diffuseColor *= vRectColour;");
+    rect.material.dispose();
+  });
+
+  it("clips an area fill on its stroke's edge", () => {
+    const fill = makeChartFillMaterial();
+    const shader = compile(fill.material);
+    expect(shader.vertexShader).toContain("vChartX = transformed.x;");
+    expect(shader.fragmentShader).toContain("gl_FragColor.a *= 1.0 - smoothstep(");
+    fill.material.dispose();
+  });
+
+  it("clips a stroke and lights its head off the segment's own x", () => {
+    const material = new LineMaterial();
+    patchChartLineMaterial(material);
+    const shader = compile(material);
+    expect(shader.vertexShader).toContain(
+      "vChartX = ( position.y < 0.5 ) ? instanceStart.x : instanceEnd.x;",
+    );
+    expect(shader.vertexShader).toContain("float aspect = resolution.x / resolution.y;");
+    expect(shader.fragmentShader).toContain("uChartHeadColour");
+    expect(shader.fragmentShader).toContain("gl_FragColor = vec4( chartRgb, alpha );");
+    material.dispose();
   });
 });
 
@@ -321,13 +559,25 @@ describe("reveal", () => {
     expect(meanAlpha(undefined, 0, 4)).toBe(1);
   });
 
-  it("clamps a preset overshoot", () => {
-    const over = () => ({ grow: 1.4, alpha: -0.2 });
-    expect(revealAt(over, 0, 0)).toEqual({ grow: 1, alpha: 0 });
+  it("clamps a preset overshoot to the grow ceiling and its channels", () => {
+    const over = () => ({ grow: 1.4, alpha: -0.2, count: 1.4, pulse: 2, shine: 1.4, drop: 3 });
+    expect(revealAt(over, 0, 0)).toEqual({
+      grow: CHART_GROW_MAX,
+      alpha: 0,
+      count: 1,
+      pulse: 1,
+      shine: 1,
+      drop: 1,
+    });
+    expect(revealAt(() => ({ ...CHART_FULL_REVEAL, drop: -3 }), 0, 0).drop).toBe(-1);
+    expect(revealAt(() => ({ ...CHART_FULL_REVEAL, drop: Number.NaN }), 0, 0).drop).toBe(0);
   });
 
   it("averages a cascade into one stroke alpha", () => {
-    const stagger = (_s: number, c: number) => ({ grow: 1, alpha: c === 0 ? 1 : 0 });
+    const stagger = (_s: number, c: number) => ({
+      ...CHART_FULL_REVEAL,
+      alpha: c === 0 ? 1 : 0,
+    });
     expect(meanAlpha(stagger, 0, 2)).toBe(0.5);
   });
 });

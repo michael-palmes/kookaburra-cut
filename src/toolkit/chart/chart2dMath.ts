@@ -4,10 +4,14 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DoubleSide,
   MeshBasicMaterial,
+  type ShaderMaterial,
   Shape,
   SRGBColorSpace,
+  Vector3,
 } from "three";
+import { SHINE_AXIS, SHINE_HALF_W } from "../text/presets";
 import { formatChartValue } from "./format";
 import type {
   ChartAxisKey,
@@ -16,6 +20,7 @@ import type {
   ChartGridlineStyle,
   ChartLayout,
   ChartPoint,
+  ChartValueLabelLocation,
 } from "./types";
 
 /** Coplanar layers step apart by this much in z, so a fill can never z-fight the stroke or gridline it sits against (a fixed geometric epsilon, never `polygonOffset`). */
@@ -153,19 +158,98 @@ export interface BarSpan {
   direction: number;
 }
 
-export function barSpan(mark: ChartBarMark, valueAxis: ChartAxisKey, grow: number): BarSpan {
+export function barSpan(
+  mark: ChartBarMark,
+  valueAxis: ChartAxisKey,
+  grow: number,
+  drop = 0,
+): BarSpan {
   const lo = valueAxis === "y" ? mark.y : mark.x;
   const length = valueAxis === "y" ? mark.height : mark.width;
   // `base` is one of the mark's two value-axis edges, so the far edge mirrors it.
   const far = 2 * lo + length - mark.base;
   const end = mark.base + (far - mark.base) * grow;
+  // The entrance displaces the whole span, so a falling mark keeps its size and its direction.
+  const d = Number.isFinite(drop) ? drop : 0;
   return {
-    lo: Math.min(mark.base, end),
+    lo: Math.min(mark.base, end) + d,
     size: Math.abs(end - mark.base),
-    end,
+    end: end + d,
     direction: far >= mark.base ? 1 : -1,
   };
 }
+
+/** Where a bar's value label sits at a build state: `along` the value axis (riding the growing end unless the block parked it at the base or inside), `across` the category axis, plus the outward `nudge` an "above" label takes and the direction it grew in. One rule for the flat and the 3D renderers, so a label never sits differently between dimensions. */
+export interface BarLabelSpot {
+  along: number;
+  across: number;
+  nudge: number;
+  direction: number;
+}
+
+export function barLabelSpot(
+  mark: ChartBarMark,
+  valueAxis: ChartAxisKey,
+  location: ChartValueLabelLocation,
+  grow: number,
+  outward: number,
+  drop = 0,
+): BarLabelSpot {
+  const span = barSpan(mark, valueAxis, grow, drop);
+  const base = mark.base + (Number.isFinite(drop) ? drop : 0);
+  const along =
+    location === "below" ? base : location === "inside" ? (base + span.end) / 2 : span.end;
+  return {
+    along,
+    across: valueAxis === "y" ? mark.labelAnchor.x : mark.labelAnchor.y,
+    nudge: location === "above" ? outward * span.direction : 0,
+    direction: span.direction,
+  };
+}
+
+/** Emphasis brightness at a `pulse` sample: a mark's colour is multiplied by this, so a pop reads as light rather than a layout shift. */
+export const CHART_PULSE_LIFT = 0.18;
+/** Scale pop at a full `pulse`, the house 2 to 6 percent bound; only radial marks (pie slices) take it. */
+export const CHART_PULSE_POP = 0.05;
+
+export const pulseGain = (pulse: number): number =>
+  1 + CHART_PULSE_LIFT * (Number.isFinite(pulse) ? Math.min(1, Math.max(0, pulse)) : 0);
+
+export const pulseScale = (pulse: number): number =>
+  1 + CHART_PULSE_POP * (Number.isFinite(pulse) ? Math.min(1, Math.max(0, pulse)) : 0);
+
+const _pulse = new Color();
+
+/** A mark's colour under an emphasis pulse: the same linear gain the instanced writers apply, as a hex a JSX material can take. */
+export function pulseColour(colour: string, pulse: number): string {
+  if (!(pulse > 0)) return colour;
+  return `#${_pulse.set(colour).multiplyScalar(pulseGain(pulse)).getHexString()}`;
+}
+
+/** Peak luminance lift under the shine band's centre: deliberately restrained, a gleam rather than a flash. */
+export const CHART_SHINE_GAIN = 0.12;
+
+/** The shine band's 0..1 strength at a projected coordinate `s`, for a mark whose projection spans -extent..+extent, at sweep position `u` (-1 is no band). The text motion pack's band, reused: it enters with its trailing edge on the low corner and leaves with its leading edge past the high one. */
+export function chartShineAmount(s: number, extent: number, u: number): number {
+  if (!(extent > 0) || !(u >= 0)) return 0;
+  const band = SHINE_HALF_W * 2 * extent;
+  const centre = -extent - band + (2 * extent + 2 * band) * Math.min(1, u);
+  const t = Math.max(0, Math.min(1, 1 - Math.abs(s - centre) / band));
+  return t * t * (3 - 2 * t);
+}
+
+/** The same band in GLSL, so the flat and the 3D bar materials sweep identically. */
+export const CHART_SHINE_GLSL = /* glsl */ `
+float chartShineAmount(float s, float extent, float u) {
+  if (extent <= 0.0 || u < 0.0) return 0.0;
+  float band = ${SHINE_HALF_W.toFixed(4)} * 2.0 * extent;
+  float centre = -extent - band + (2.0 * extent + 2.0 * band) * min(1.0, u);
+  float t = clamp(1.0 - abs(s - centre) / band, 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}`;
+
+/** The 45 degree sweep axis, matching the text pack's. */
+export const CHART_SHINE_AXIS_GLSL = `vec2(${SHINE_AXIS[0].toFixed(8)}, ${SHINE_AXIS[1].toFixed(8)})`;
 
 /** Split a run into dashes that start and end on a dash, so a dashed gridline never trails off mid-gap. Returns `[start, length]` pairs along the run. */
 export function dashSegments(length: number, dash: number, gap: number): [number, number][] {
@@ -241,17 +325,62 @@ export function gridlineRects(
   return rects;
 }
 
+/** One point ridden from its baseline towards its value at `grow`, then displaced by `drop` along the value axis (always y for the line families); the value labels place against exactly this. */
+export function revealedPoint(
+  point: ChartPoint,
+  baseline: ChartPoint | undefined,
+  grow: number,
+  drop = 0,
+): ChartPoint {
+  const b = baseline ?? point;
+  const g = Number.isFinite(grow) ? grow : 1;
+  const d = Number.isFinite(drop) ? drop : 0;
+  return { x: b.x + (point.x - b.x) * g, y: b.y + (point.y - b.y) * g + d };
+}
+
+/** A fill boundary displaced by the same per-point `drop` as the curve above it, so a falling area translates as one rigid band instead of stretching. Returns the ORIGINAL array when nothing is displaced, which keeps the fill's vertex key (and its buffers) unchanged on a settled chart. */
+export function droppedBaseline(
+  baseline: readonly ChartPoint[],
+  drops: readonly number[],
+): readonly ChartPoint[] {
+  if (!drops.some((d) => d !== 0)) return baseline;
+  return baseline.map((p, i) => ({ x: p.x, y: p.y + (drops[i] ?? 0) }));
+}
+
 /** A series' drawn points at a build state: each point rides from its baseline up to its value, so a cascade reads as a growth story rather than a pop. */
 export function revealedPoints(
   points: readonly ChartPoint[],
   baseline: readonly ChartPoint[],
   grows: readonly number[],
+  drops?: readonly number[],
 ): ChartPoint[] {
-  return points.map((p, i) => {
-    const b = baseline[i] ?? p;
-    const g = grows[i] ?? 1;
-    return { x: b.x + (p.x - b.x) * g, y: b.y + (p.y - b.y) * g };
-  });
+  return points.map((p, i) => revealedPoint(p, baseline[i], grows[i] ?? 1, drops?.[i] ?? 0));
+}
+
+/** Where the draw-on edge has reached across a point run, in plot space: the head walks from the first point's x to the last's, which are the band centres the sampler's `headX` reports. */
+export function drawEdgeX(points: readonly ChartPoint[], draw: number): number {
+  if (points.length === 0) return 1;
+  const first = points[0].x;
+  const last = points[points.length - 1].x;
+  const d = Number.isFinite(draw) ? Math.min(1, Math.max(0, draw)) : 1;
+  return first + (last - first) * d;
+}
+
+/** The polyline's y at a plot-space x, linearly along the run (the glow head rides the line, never floats off it). Clamped to the end points outside the run. */
+export function polylineYAt(points: readonly ChartPoint[], x: number): number {
+  if (points.length === 0) return 0;
+  if (x <= points[0].x) return points[0].y;
+  const last = points[points.length - 1];
+  if (x >= last.x) return last.y;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (x <= b.x) {
+      const span = b.x - a.x;
+      return span > 0 ? a.y + ((b.y - a.y) * (x - a.x)) / span : b.y;
+    }
+  }
+  return last.y;
 }
 
 /** Flat XYZ triples for a polyline, ready for `LineGeometry.setPositions`. */
@@ -315,7 +444,7 @@ export function pieRadial(angle: number, radius: number): [number, number] {
   return [Math.sin(angle) * radius, Math.cos(angle) * radius];
 }
 
-/** The SDF rounded-rect material behind every bar family: one `MeshBasicMaterial` (unlit, so a 2D chart reads as graphic design, not a lit object) patched to take per-instance half-extents, corner radius and colour, the `FrameChip.makePillMaterial` idiom. `iColour` carries alpha too, which is how one shared material still gives every bar its own build state. */
+/** The SDF rounded-rect material behind every bar family: one `MeshBasicMaterial` (unlit, so a 2D chart reads as graphic design, not a lit object) patched to take per-instance half-extents, corner radius, colour and shine sweep, the `FrameChip.makePillMaterial` idiom. `iColour` carries alpha too, and `iShine` the band position, which is how one shared material still gives every bar its own build state. */
 export interface ChartRectMaterial {
   material: MeshBasicMaterial;
   /** Edge softening, world units (about a pixel at the export resolution). */
@@ -331,23 +460,28 @@ export function makeChartRectMaterial(): ChartRectMaterial {
     shader.vertexShader = `attribute vec2 iHalf;
 attribute float iRadius;
 attribute vec4 iColour;
+attribute float iShine;
 varying vec2 vRectP;
 varying vec2 vRectHalf;
 varying float vRectRadius;
 varying vec4 vRectColour;
+varying float vRectShine;
 ${shader.vertexShader}`.replace(
       "#include <begin_vertex>",
       `#include <begin_vertex>
   vRectP = position.xy * iHalf * 2.0;
   vRectHalf = iHalf;
   vRectRadius = iRadius;
-  vRectColour = iColour;`,
+  vRectColour = iColour;
+  vRectShine = iShine;`,
     );
     shader.fragmentShader = `uniform float uFeather;
 varying vec2 vRectP;
 varying vec2 vRectHalf;
 varying float vRectRadius;
 varying vec4 vRectColour;
+varying float vRectShine;
+${CHART_SHINE_GLSL}
 ${shader.fragmentShader}`
       .replace("#include <color_fragment>", "diffuseColor *= vRectColour;")
       .replace(
@@ -356,11 +490,106 @@ ${shader.fragmentShader}`
         float rectR = min(vRectRadius, min(vRectHalf.x, vRectHalf.y));
         vec2 rectQ = abs(vRectP) - vRectHalf + rectR;
         float rectD = length(max(rectQ, 0.0)) + min(max(rectQ.x, rectQ.y), 0.0) - rectR;
-        gl_FragColor.a *= 1.0 - smoothstep(-uFeather, uFeather, rectD);`,
+        gl_FragColor.a *= 1.0 - smoothstep(-uFeather, uFeather, rectD);
+        vec2 rectAxis = ${CHART_SHINE_AXIS_GLSL};
+        float rectExtent = dot(abs(vRectHalf), abs(rectAxis));
+        gl_FragColor.rgb *= 1.0 + ${CHART_SHINE_GAIN.toFixed(
+          4,
+        )} * chartShineAmount(dot(vRectP, rectAxis), rectExtent, vRectShine);`,
       );
   };
-  material.customProgramCacheKey = () => "kookaburra-chart-rect-v1";
+  material.customProgramCacheKey = () => "kookaburra-chart-rect-v2";
   return { material, feather };
+}
+
+/** A draw-on clip plus a glow head, in the ONE form both flat line layers take: `clip` is (edge x in the group's local units, feather half-width, enabled) and `head` is (head x, inverse half-width, enabled), with `headColour` the accent tint the band adds. Both are uniform writes: a build-in never rebuilds a fill or a stroke. */
+export interface ChartDrawUniforms {
+  clip: { value: Vector3 };
+  head: { value: Vector3 };
+  headColour: { value: Color };
+}
+
+export const makeChartDrawUniforms = (): ChartDrawUniforms => ({
+  clip: { value: new Vector3(0, 1, 0) },
+  head: { value: new Vector3(0, 1, 0) },
+  headColour: { value: new Color(0, 0, 0) },
+});
+
+const CLIP_FRAGMENT_DEFS = /* glsl */ `
+uniform vec3 uChartClip;
+varying float vChartX;`;
+
+const clipAlpha = (target: string): string => /* glsl */ `
+  if (uChartClip.z > 0.5) {
+    ${target} *= 1.0 - smoothstep(-uChartClip.y, uChartClip.y, vChartX - uChartClip.x);
+  }`;
+
+/** The area fill's material: unlit like the gridlines, with the same x clip its stroke takes so a fill can never lead or trail the line it sits under. */
+export function makeChartFillMaterial(): {
+  material: MeshBasicMaterial;
+  uniforms: ChartDrawUniforms;
+} {
+  const uniforms = makeChartDrawUniforms();
+  const material = new MeshBasicMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+  });
+  material.toneMapped = false;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uChartClip = uniforms.clip;
+    shader.vertexShader = `varying float vChartX;
+${shader.vertexShader}`.replace(
+      "#include <begin_vertex>",
+      "#include <begin_vertex>\n  vChartX = transformed.x;",
+    );
+    shader.fragmentShader = `${CLIP_FRAGMENT_DEFS}
+${shader.fragmentShader}`.replace(
+      "#include <opaque_fragment>",
+      `#include <opaque_fragment>${clipAlpha("gl_FragColor.a")}`,
+    );
+  };
+  material.customProgramCacheKey = () => "kookaburra-chart-fill-v1";
+  return { material, uniforms };
+}
+
+/** Patch a `LineMaterial` (a `ShaderMaterial`, so its own source is patched rather than three's includes) with the draw clip and the glow head. `vChartX` takes the segment END POINT's object-space x, which interpolates along the segment, so the edge is the polyline's own x and never a screen-space guess. */
+export function patchChartLineMaterial(material: ShaderMaterial): ChartDrawUniforms {
+  const uniforms = makeChartDrawUniforms();
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uChartClip = uniforms.clip;
+    shader.uniforms.uChartHead = uniforms.head;
+    shader.uniforms.uChartHeadColour = uniforms.headColour;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        "#include <clipping_planes_pars_vertex>",
+        "#include <clipping_planes_pars_vertex>\nvarying float vChartX;",
+      )
+      .replace(
+        "float aspect = resolution.x / resolution.y;",
+        `vChartX = ( position.y < 0.5 ) ? instanceStart.x : instanceEnd.x;
+			float aspect = resolution.x / resolution.y;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <clipping_planes_pars_fragment>",
+        `#include <clipping_planes_pars_fragment>
+uniform vec3 uChartHead;
+uniform vec3 uChartHeadColour;
+${CLIP_FRAGMENT_DEFS}`,
+      )
+      .replace(
+        "gl_FragColor = vec4( diffuseColor.rgb, alpha );",
+        `vec3 chartRgb = diffuseColor.rgb;
+			if (uChartHead.z > 0.5) {
+				float chartG = clamp(1.0 - abs(vChartX - uChartHead.x) * uChartHead.y, 0.0, 1.0);
+				chartRgb += uChartHeadColour * (chartG * chartG * (3.0 - 2.0 * chartG));
+			}${clipAlpha("alpha")}
+			gl_FragColor = vec4( chartRgb, alpha );`,
+      );
+  };
+  material.customProgramCacheKey = () => "kookaburra-chart-line-v1";
+  return uniforms;
 }
 
 const _colour = new Color();

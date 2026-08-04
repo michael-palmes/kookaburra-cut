@@ -1,7 +1,7 @@
-/** Flat lines and areas. Strokes are `Line2` fat lines (`three/addons/lines`): `linewidth` in pixels with `worldUnits: false`, `alphaToCoverage` for MSAA edges, and the `resolution` uniform taken ONCE from the format's fixed pixel dimensions, never a resize listener, so a stroke is exactly the same fraction of the frame in preview and in export. Area fills are `ShapeGeometry` polygons between the value curve and the boundary below it (linear sampling in v1, so the fill and its stroke share vertices exactly), stacked layers stepped apart in z with explicit render order. */
+/** Flat lines and areas. Strokes are `Line2` fat lines (`three/addons/lines`): `linewidth` in pixels with `worldUnits: false`, `alphaToCoverage` for MSAA edges, and the `resolution` uniform taken ONCE from the format's fixed pixel dimensions, never a resize listener, so a stroke is exactly the same fraction of the frame in preview and in export. Area fills are `ShapeGeometry` polygons between the value curve and the boundary below it (linear sampling in v1, so the fill and its stroke share vertices exactly), stacked layers stepped apart in z with explicit render order. The build channels are separate: `grow` rides each point up out of its baseline and `drop` displaces it and its fill boundary together (both move vertices), while the series' `draw` is a UNIFORM x-clip both the stroke and its fill take, plus a glow head (an accent dot on the line and a brightness ramp in the stroke material) at the series' `headX`. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { CircleGeometry, DoubleSide, type InterleavedBufferAttribute, ShapeGeometry } from "three";
+import { CircleGeometry, type InterleavedBufferAttribute, ShapeGeometry } from "three";
 import { Line2 } from "three/addons/lines/Line2.js";
 import { LineGeometry } from "three/addons/lines/LineGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
@@ -12,19 +12,36 @@ import {
   CHART_2D_Z_STEP,
   type Chart2DAppearance,
   type Chart2DMetrics,
+  type ChartDrawUniforms,
   type ChartSize,
+  drawEdgeX,
+  droppedBaseline,
+  makeChartFillMaterial,
+  patchChartLineMaterial,
   plotPointToWorld,
   plotToWorldX,
   plotToWorldY,
   pointsKey,
   polylinePositions,
+  polylineYAt,
+  pulseColour,
+  pulseGain,
+  pulseScale,
+  revealedPoint,
   revealedPoints,
 } from "./chart2dMath";
 import { ChartLabel } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
-import { meanAlpha, revealAt } from "./reveal";
-import type { ChartLayout, ChartPoint, ChartRevealFn, ChartValueLabels } from "./types";
+import { revealAt } from "./reveal";
+import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
+import type { ChartLayout, ChartPoint, ChartValueLabels } from "./types";
+
+/** Glow-head sizes, in point radii: the dot itself, and how far the stroke brightens either side of the head. */
+const HEAD_DOT = 1.7;
+const HEAD_GLOW = 3.5;
+/** Additive accent at the head's centre, on top of the series colour. */
+const HEAD_GAIN = 0.35;
 
 export interface Lines2DProps {
   layout: ChartLayout;
@@ -33,7 +50,7 @@ export interface Lines2DProps {
   metrics: Chart2DMetrics;
   look: Chart2DAppearance;
   labels: ChartValueLabels;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
   /** The export frame in pixels: the `LineMaterial` resolution reference. */
   resolution: { width: number; height: number };
@@ -42,9 +59,16 @@ export interface Lines2DProps {
   z: number;
 }
 
+/** The draw-on edge and the glow head in the group's world units, or null when the series is settled (nothing clipped, no head). */
+interface DrawState {
+  clipX: number | null;
+  head: { x: number; y: number; pulse: number } | null;
+}
+
 export function Lines2D(props: Lines2DProps) {
   const { layout, colours, size, metrics, look, labels, reveal, opacity, z } = props;
   const theme = useTheme();
+  const at = chartRevealFn(reveal);
   const filled = layout.type === "area" || layout.type === "stackedArea";
   const dot = useMemo(() => new CircleGeometry(1, 20), []);
   useEffect(() => () => dot.dispose(), [dot]);
@@ -52,22 +76,32 @@ export function Lines2D(props: Lines2DProps) {
   return (
     <>
       {layout.series.map((series) => {
-        const grows = series.points.map(
-          (p) => revealAt(reveal, series.seriesIndex, p.categoryIndex).grow,
+        const builds = series.points.map((p) => revealAt(at, series.seriesIndex, p.categoryIndex));
+        const drops = builds.map((b) => b.drop);
+        const points = revealedPoints(
+          series.points,
+          series.baseline,
+          builds.map((b) => b.grow),
+          drops,
         );
-        const points = revealedPoints(series.points, series.baseline, grows);
+        // A falling series translates as one band, so its fill boundary drops with it; identity when nothing is falling, which keeps the fill's vertex key stable.
+        const baseline = droppedBaseline(series.baseline, drops);
+        const build = chartSeriesReveal(reveal, series.seriesIndex, series.points.length);
         const colour = chartColourAt(colours, series.seriesIndex, theme.colors.accent);
-        const alpha = meanAlpha(reveal, series.seriesIndex, series.points.length) * opacity;
+        const alpha = build.alpha * opacity;
         const layerZ = z + series.seriesIndex * CHART_2D_Z_STEP;
+        const draw = drawState(points, build.draw, build.headX, size, (i) => builds[i]?.pulse ?? 0);
         return (
           <group key={series.seriesIndex}>
             {filled && (
               <AreaFill
                 points={points}
-                baseline={series.baseline}
+                baseline={baseline}
                 size={size}
                 colour={colour}
                 opacity={alpha * look.areaOpacity}
+                clipX={draw.clipX}
+                feather={metrics.grid}
                 z={layerZ}
               />
             )}
@@ -79,11 +113,18 @@ export function Lines2D(props: Lines2DProps) {
                 opacity={alpha}
                 width={metrics.stroke * props.pixelsPerUnit}
                 resolution={props.resolution}
+                draw={draw}
+                feather={metrics.grid}
+                glow={metrics.point * HEAD_GLOW}
+                accent={theme.colors.accent}
                 z={layerZ + CHART_2D_Z_STEP / 2}
               />
             )}
-            {look.points &&
-              points.map((p, i) => (
+            {points.map((p, i) => {
+              const pulse = builds[i].pulse;
+              // A chart without point dots still shows an emphasis pulse: the dot fades up with the envelope and leaves with it.
+              if (!look.points && pulse <= 0) return null;
+              return (
                 <mesh
                   key={series.points[i].categoryIndex}
                   geometry={dot}
@@ -92,18 +133,35 @@ export function Lines2D(props: Lines2DProps) {
                     plotToWorldY(size, p.y),
                     layerZ + CHART_2D_Z_STEP,
                   ]}
-                  scale={metrics.point}
+                  scale={metrics.point * pulseScale(pulse)}
                   renderOrder={CHART_2D_ORDER.mark}
                 >
                   <meshBasicMaterial
-                    color={colour}
+                    color={pulseColour(colour, pulse)}
                     transparent
-                    opacity={alpha}
+                    opacity={alpha * (look.points ? 1 : pulse)}
                     depthWrite={false}
                     toneMapped={false}
                   />
                 </mesh>
-              ))}
+              );
+            })}
+            {draw.head && (
+              <mesh
+                geometry={dot}
+                position={[draw.head.x, draw.head.y, layerZ + CHART_2D_Z_STEP * 1.5]}
+                scale={metrics.point * HEAD_DOT * pulseScale(draw.head.pulse)}
+                renderOrder={CHART_2D_ORDER.mark}
+              >
+                <meshBasicMaterial
+                  color={pulseColour(theme.colors.accent, draw.head.pulse)}
+                  transparent
+                  opacity={alpha}
+                  depthWrite={false}
+                  toneMapped={false}
+                />
+              </mesh>
+            )}
           </group>
         );
       })}
@@ -122,16 +180,39 @@ export function Lines2D(props: Lines2DProps) {
   );
 }
 
-/** The closed fill under a value curve. The polygon is keyed on its VERTEX VALUES, not array identity, so a settled chart holds one buffer while a data morph pays earcut over tens of vertices (deterministic for the same polygon). */
+/** Where the draw-on has reached, in world units: the clip edge, and the head riding the line (with the emphasis pulse of the point it is passing). Both null once the series is fully drawn, so a preset without the draw channel pays nothing. */
+function drawState(
+  points: readonly ChartPoint[],
+  draw: number,
+  headX: number,
+  size: ChartSize,
+  pulseAt: (index: number) => number,
+): DrawState {
+  if (draw >= 1 || points.length < 2) return { clipX: null, head: null };
+  const edge = drawEdgeX(points, draw);
+  const head =
+    headX < 0
+      ? null
+      : {
+          x: plotToWorldX(size, headX),
+          y: plotToWorldY(size, polylineYAt(points, headX)),
+          pulse: pulseAt(Math.round(draw * (points.length - 1))),
+        };
+  return { clipX: plotToWorldX(size, edge), head };
+}
+
+/** The closed fill under a value curve. The polygon is keyed on its VERTEX VALUES, not array identity, so a settled chart holds one buffer while a data morph pays earcut over tens of vertices (deterministic for the same polygon). The draw-on is a uniform clip on the SAME edge the stroke takes, never a re-triangulation. */
 function AreaFill(props: {
   points: ChartPoint[];
   baseline: readonly ChartPoint[];
   size: ChartSize;
   colour: string;
   opacity: number;
+  clipX: number | null;
+  feather: number;
   z: number;
 }) {
-  const { points, baseline, size, colour, opacity, z } = props;
+  const { points, baseline, size, colour, opacity, clipX, feather, z } = props;
   const key = `${pointsKey(points)}/${pointsKey(baseline)}`;
   const held = useRef(props);
   held.current = props;
@@ -141,19 +222,27 @@ function AreaFill(props: {
     return shape ? new ShapeGeometry(shape) : null;
   }, [key, size.width, size.height]);
   useEffect(() => () => geometry?.dispose(), [geometry]);
+
+  const fill = useMemo(() => makeChartFillMaterial(), []);
+  useEffect(() => () => fill.material.dispose(), [fill]);
+  fill.material.color.set(colour);
+  fill.material.opacity = opacity;
+  writeClip(fill.uniforms, clipX, feather);
+
   if (!geometry) return null;
   return (
-    <mesh geometry={geometry} position={[0, 0, z]} renderOrder={CHART_2D_ORDER.fill}>
-      <meshBasicMaterial
-        color={colour}
-        transparent
-        opacity={opacity}
-        depthWrite={false}
-        toneMapped={false}
-        side={DoubleSide}
-      />
-    </mesh>
+    <mesh
+      geometry={geometry}
+      material={fill.material}
+      position={[0, 0, z]}
+      renderOrder={CHART_2D_ORDER.fill}
+    />
   );
+}
+
+/** The clip uniform, off when the layer is settled. */
+function writeClip(uniforms: ChartDrawUniforms, clipX: number | null, feather: number): void {
+  uniforms.clip.value.set(clipX ?? 0, Math.max(1e-5, feather), clipX === null ? 0 : 1);
 }
 
 /** Write a polyline's world positions into a `LineGeometry`'s interleaved segment buffer in place: `setPositions` allocates fresh GPU buffers on every call, which a per-frame morph must not do. */
@@ -182,9 +271,15 @@ function LineStroke(props: {
   /** Stroke width in pixels of the resolution reference. */
   width: number;
   resolution: { width: number; height: number };
+  draw: DrawState;
+  /** Clip edge softening and glow-head half width, world units. */
+  feather: number;
+  glow: number;
+  accent: string;
   z: number;
 }) {
-  const { points, size, colour, opacity, width, resolution, z } = props;
+  const { points, size, colour, opacity, width, resolution, draw, feather, glow, accent, z } =
+    props;
   const count = points.length;
 
   const line = useMemo(() => {
@@ -196,30 +291,52 @@ function LineStroke(props: {
       transparent: true,
       depthWrite: false,
     });
+    const uniforms = patchChartLineMaterial(material);
     const object = new Line2(geometry, material);
     object.frustumCulled = false;
     object.renderOrder = CHART_2D_ORDER.mark;
-    return object;
+    return { object, uniforms };
   }, [count]);
   useEffect(
     () => () => {
-      line.geometry.dispose();
-      line.material.dispose();
+      line.object.geometry.dispose();
+      line.object.material.dispose();
     },
     [line],
   );
 
   useLayoutEffect(() => {
     if (count < 2) return;
-    writeSegments(line.geometry, polylinePositions(points, size, z));
-    line.material.color.set(colour);
-    line.material.opacity = opacity;
-    line.material.linewidth = width;
-    line.material.resolution.set(resolution.width, resolution.height);
-  }, [count, colour, line, opacity, points, resolution, size, width, z]);
+    const material = line.object.material;
+    writeSegments(line.object.geometry, polylinePositions(points, size, z));
+    material.color.set(colour);
+    material.opacity = opacity;
+    material.linewidth = width;
+    material.resolution.set(resolution.width, resolution.height);
+    writeClip(line.uniforms, draw.clipX, feather);
+    const head = draw.head;
+    line.uniforms.head.value.set(head?.x ?? 0, 1 / Math.max(1e-5, glow), head ? 1 : 0);
+    if (head) {
+      line.uniforms.headColour.value.set(accent).multiplyScalar(HEAD_GAIN * pulseGain(head.pulse));
+    }
+  }, [
+    accent,
+    count,
+    colour,
+    draw,
+    feather,
+    glow,
+    line,
+    opacity,
+    points,
+    resolution,
+    size,
+    width,
+    z,
+  ]);
 
   if (count < 2) return null;
-  return <primitive object={line} />;
+  return <primitive object={line.object} />;
 }
 
 function PointValueLabels(props: {
@@ -227,28 +344,26 @@ function PointValueLabels(props: {
   size: ChartSize;
   metrics: Chart2DMetrics;
   labels: ChartValueLabels;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
   z: number;
 }) {
   const { layout, size, metrics, labels, reveal, opacity, z } = props;
   const theme = useTheme();
+  const sample = chartRevealFn(reveal);
   const below = labels.location === "below";
   return (
     <>
       {layout.series.map((series) =>
         series.points.map((point, i) => {
-          const build = revealAt(reveal, series.seriesIndex, point.categoryIndex);
-          const base = series.baseline[i] ?? point;
-          const at: ChartPoint = {
-            x: base.x + (point.x - base.x) * build.grow,
-            y: base.y + (point.y - base.y) * build.grow,
-          };
+          const build = revealAt(sample, series.seriesIndex, point.categoryIndex);
+          const base = revealedPoint(series.baseline[i] ?? point, undefined, 1, build.drop);
+          const at = revealedPoint(point, series.baseline[i], build.grow, build.drop);
           const [x, y] = plotPointToWorld(
             size,
             labels.location === "inside" ? midpoint(base, at) : at,
           );
-          const value = labels.countUp ? point.value * build.grow : point.value;
+          const value = labels.countUp ? point.value * build.count : point.value;
           return (
             <ChartLabel
               key={`${series.seriesIndex}-${point.categoryIndex}`}

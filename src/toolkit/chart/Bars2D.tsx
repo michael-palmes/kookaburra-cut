@@ -1,4 +1,4 @@
-/** Flat columns, bars and their stacked variants: one `InstancedMesh` of unit quads behind the SDF rounded-rect material, so a whole chart is a single draw call whatever its series count. Every per-instance write (matrix, half-extents, radius, colour) is imperative in a layout effect, never r3f JSX prop diffing (per-instance colour through the reconciler is a known upstream bug), and the write is a pure function of the layout plus the build state. */
+/** Flat columns, bars and their stacked variants: one `InstancedMesh` of unit quads behind the SDF rounded-rect material, so a whole chart is a single draw call whatever its series count. Every per-instance write (matrix, half-extents, radius, colour, shine) is imperative in a layout effect, never r3f JSX prop diffing (per-instance colour through the reconciler is a known upstream bug), and the write is a pure function of the layout plus the build state. The build state is per ELEMENT, so its channels ride instanced attributes rather than uniforms: `iColour` carries the pulse lift and the alpha, `iShine` the band position. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
@@ -13,6 +13,7 @@ import {
 } from "three";
 import { useTheme } from "../../theme";
 import {
+  barLabelSpot,
   barSpan,
   CHART_2D_ORDER,
   type Chart2DMetrics,
@@ -22,12 +23,14 @@ import {
   markCornerRadius,
   plotToWorldX,
   plotToWorldY,
+  pulseGain,
 } from "./chart2dMath";
 import { ChartLabel } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
-import type { ChartLayout, ChartRevealFn, ChartValueLabels } from "./types";
+import { type ChartRevealSource, chartRevealFn } from "./revealSource";
+import type { ChartLayout, ChartValueLabels } from "./types";
 
 const IDENTITY = new Quaternion();
 const _matrix = new Matrix4();
@@ -43,7 +46,7 @@ export interface Bars2DProps {
   /** `chart.style.cornerRadius`, 0..1 of half the bar thickness. */
   cornerRadius: number;
   labels: ChartValueLabels;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
   /** SDF edge softening, world units. */
   feather: number;
@@ -66,12 +69,15 @@ export function Bars2D(props: Bars2DProps) {
     const half = new InstancedBufferAttribute(new Float32Array(count * 2), 2);
     const radius = new InstancedBufferAttribute(new Float32Array(count), 1);
     const colour = new InstancedBufferAttribute(new Float32Array(count * 4), 4);
+    const shine = new InstancedBufferAttribute(new Float32Array(count).fill(-1), 1);
     half.setUsage(DynamicDrawUsage);
     radius.setUsage(DynamicDrawUsage);
     colour.setUsage(DynamicDrawUsage);
+    shine.setUsage(DynamicDrawUsage);
     g.setAttribute("iHalf", half);
     g.setAttribute("iRadius", radius);
     g.setAttribute("iColour", colour);
+    g.setAttribute("iShine", shine);
     return g;
   }, [count]);
   useEffect(() => () => geometry.dispose(), [geometry]);
@@ -84,11 +90,13 @@ export function Bars2D(props: Bars2DProps) {
     const half = geometry.getAttribute("iHalf") as InstancedBufferAttribute;
     const radii = geometry.getAttribute("iRadius") as InstancedBufferAttribute;
     const colour = geometry.getAttribute("iColour") as InstancedBufferAttribute;
+    const shine = geometry.getAttribute("iShine") as InstancedBufferAttribute;
+    const at = chartRevealFn(reveal);
     const vertical = layout.valueAxis === "y";
     for (let i = 0; i < bars.length; i++) {
       const mark = bars[i];
-      const build = revealAt(reveal, mark.seriesIndex, mark.categoryIndex);
-      const span = barSpan(mark, layout.valueAxis, build.grow);
+      const build = revealAt(at, mark.seriesIndex, mark.categoryIndex);
+      const span = barSpan(mark, layout.valueAxis, build.grow, build.drop);
       const width = vertical ? mark.width * size.width : span.size * size.width;
       const height = vertical ? span.size * size.height : mark.height * size.height;
       const cx = vertical
@@ -106,13 +114,17 @@ export function Bars2D(props: Bars2DProps) {
         i,
         markCornerRadius(cornerRadius, vertical ? width : height, vertical ? height : width),
       );
-      _colour.set(chartColourAt(colours, mark.seriesIndex, accent));
+      _colour
+        .set(chartColourAt(colours, mark.seriesIndex, accent))
+        .multiplyScalar(pulseGain(build.pulse));
       colour.setXYZW(i, _colour.r, _colour.g, _colour.b, build.alpha * opacity);
+      shine.setX(i, build.shine);
     }
     target.instanceMatrix.needsUpdate = true;
     half.needsUpdate = true;
     radii.needsUpdate = true;
     colour.needsUpdate = true;
+    shine.needsUpdate = true;
   }, [accent, bars, colours, cornerRadius, geometry, layout.valueAxis, opacity, reveal, size, z]);
 
   return (
@@ -149,34 +161,39 @@ function BarValueLabels(props: {
   size: ChartSize;
   metrics: Chart2DMetrics;
   labels: ChartValueLabels;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
   z: number;
 }) {
   const { layout, colours, size, metrics, labels, reveal, opacity, z } = props;
   const theme = useTheme();
+  const at = chartRevealFn(reveal);
   const vertical = layout.valueAxis === "y";
   const inside = labels.location === "inside";
   return (
     <>
       {layout.bars.map((mark) => {
-        const build = revealAt(reveal, mark.seriesIndex, mark.categoryIndex);
-        const span = barSpan(mark, layout.valueAxis, build.grow);
-        const along =
-          labels.location === "below" ? mark.base : inside ? (mark.base + span.end) / 2 : span.end;
-        const across = vertical ? mark.labelAnchor.x : mark.labelAnchor.y;
-        const nudge = labels.location === "above" ? metrics.gap * span.direction : 0;
+        const build = revealAt(at, mark.seriesIndex, mark.categoryIndex);
+        const spot = barLabelSpot(
+          mark,
+          layout.valueAxis,
+          labels.location,
+          build.grow,
+          metrics.gap,
+          build.drop,
+        );
+        const { along, across, nudge } = spot;
         const fill = chartColourAt(colours, mark.seriesIndex, theme.colors.accent);
         const colour = inside
           ? contrastPick(fill, theme.colors.text, theme.colors.background)
           : theme.colors.text;
         const x = vertical ? plotToWorldX(size, across) : plotToWorldX(size, along) + nudge;
         const y = vertical ? plotToWorldY(size, along) + nudge : plotToWorldY(size, across);
-        const outward = span.direction > 0;
+        const outward = spot.direction > 0;
         const anchorX = vertical || inside ? "center" : outward ? "left" : "right";
         const anchorY = !vertical || inside ? "middle" : outward ? "bottom" : "top";
-        // A counting label rides its own build state, so it lands on exactly the printed static value (grow settles at 1).
-        const value = labels.countUp ? mark.value * build.grow : mark.value;
+        // The CLAMPED counting channel, never `grow`: a label lands on exactly the printed static value and never runs past it while the mark overshoots.
+        const value = labels.countUp ? mark.value * build.count : mark.value;
         return (
           <ChartLabel
             key={`${mark.seriesIndex}-${mark.categoryIndex}`}

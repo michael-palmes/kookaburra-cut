@@ -1,4 +1,4 @@
-/** Flat pie and donut: one `ShapeGeometry` wedge per slice, built from the same d3 angles the 3D renderer extrudes, with `innerRadius` opening the donut and a fixed angular pad separating neighbours. A slice's build state scales it about the pie centre and multiplies its alpha; geometry rebuilds only when the angles move (a keyframed data morph), which is a handful of triangles. Colours index by CATEGORY here, since a pie is one series split into slices. */
+/** Flat pie and donut: one `ShapeGeometry` wedge per slice, built from the same d3 angles the 3D renderer extrudes, with `innerRadius` opening the donut and a fixed angular pad separating neighbours. A slice's build state scales it about the pie centre and multiplies its alpha (never the `drop` entrance: a pie has no value axis to fall along, and both `fall` presets degrade to `sweep` here); geometry rebuilds only when the angles move (a keyframed data morph), which is a handful of triangles. Colours index by CATEGORY here, since a pie is one series split into slices. */
 
 import { useEffect, useMemo, useRef } from "react";
 import { DoubleSide, ShapeGeometry } from "three";
@@ -12,12 +12,15 @@ import {
   PIE_CURVE_SEGMENTS,
   pieRadial,
   pieSliceShape,
+  pulseColour,
+  pulseScale,
 } from "./chart2dMath";
 import { ChartLabel } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
-import type { ChartLayout, ChartPieSlice, ChartRevealFn, ChartValueLabels } from "./types";
+import { type ChartRevealSource, chartRevealFn } from "./revealSource";
+import type { ChartLayout, ChartPieSlice, ChartValueLabels } from "./types";
 
 /** Label radius as a fraction of the outer radius, by where the author wants the value. */
 const LABEL_RADIUS = { above: 1.12, inside: 0.66, below: 1.12 } as const;
@@ -30,7 +33,7 @@ export interface Pie2DProps {
   metrics: Chart2DMetrics;
   look: Chart2DAppearance;
   labels: ChartValueLabels;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
   z: number;
 }
@@ -38,6 +41,7 @@ export interface Pie2DProps {
 export function Pie2D(props: Pie2DProps) {
   const { layout, colours, metrics, look, labels, reveal, opacity, z } = props;
   const theme = useTheme();
+  const at = chartRevealFn(reveal);
   const pie = layout.pie;
   const outer = metrics.pieOuter;
   const inner = outer * (pie?.innerRadius ?? 0);
@@ -70,17 +74,21 @@ export function Pie2D(props: Pie2DProps) {
       {slices.map((slice, i) => {
         const geometry = geometries[i];
         if (!geometry) return null;
-        const build = revealAt(reveal, slice.seriesIndex, slice.categoryIndex);
+        const build = revealAt(at, slice.seriesIndex, slice.categoryIndex);
         return (
           <mesh
             key={slice.categoryIndex}
             geometry={geometry}
+            // The pop scales about the pie centre, which the wedge geometry already sits on, so a pulse never shifts the layout.
             position={[0, 0, z + i * CHART_2D_Z_STEP]}
-            scale={build.grow}
+            scale={build.grow * pulseScale(build.pulse)}
             renderOrder={CHART_2D_ORDER.mark}
           >
             <meshBasicMaterial
-              color={chartColourAt(colours, slice.categoryIndex, theme.colors.accent)}
+              color={pulseColour(
+                chartColourAt(colours, slice.categoryIndex, theme.colors.accent),
+                build.pulse,
+              )}
               transparent
               opacity={build.alpha * opacity}
               depthWrite={false}
@@ -99,14 +107,14 @@ export function Pie2D(props: Pie2DProps) {
             radius={outer * CATEGORY_RADIUS}
             fontSize={metrics.tick}
             colour={theme.colors.text}
-            alpha={revealAt(reveal, slice.seriesIndex, slice.categoryIndex).alpha * opacity}
+            alpha={revealAt(at, slice.seriesIndex, slice.categoryIndex).alpha * opacity}
             z={z + slices.length * CHART_2D_Z_STEP}
           />
         ))}
       {labels.visible &&
         slices.map((slice) => {
-          const build = revealAt(reveal, slice.seriesIndex, slice.categoryIndex);
-          const value = labels.countUp ? slice.value * build.grow : slice.value;
+          const build = revealAt(at, slice.seriesIndex, slice.categoryIndex);
+          const value = labels.countUp ? slice.value * build.count : slice.value;
           return (
             <SliceLabel
               key={slice.categoryIndex}

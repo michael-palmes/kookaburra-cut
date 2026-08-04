@@ -8,13 +8,21 @@ import {
   type InstancedMesh,
   Matrix4,
   MeshStandardMaterial,
+  Vector2,
 } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { barSpan } from "./chart2dMath";
+import {
+  barSpan,
+  CHART_SHINE_AXIS_GLSL,
+  CHART_SHINE_GAIN,
+  CHART_SHINE_GLSL,
+  pulseGain,
+} from "./chart2dMath";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
+import { type ChartRevealSource, chartRevealFn } from "./revealSource";
 import type { Chart3DSpace } from "./space3d";
-import type { ChartLayout, ChartRevealFn } from "./types";
+import type { ChartLayout } from "./types";
 
 export interface Bars3DProps {
   layout: ChartLayout;
@@ -23,7 +31,7 @@ export interface Bars3DProps {
   cornerRadius: number;
   colours: readonly string[];
   fallbackColour: string;
-  reveal?: ChartRevealFn;
+  reveal?: ChartRevealSource;
   opacity: number;
   shadows: boolean;
   roughness: number;
@@ -36,23 +44,51 @@ const BAR_SEGMENTS = 3;
 const MIN_RADIUS_FRACTION = 0.02;
 const MAX_RADIUS_FRACTION = 0.5;
 
-/** Per-instance alpha: three multiplies `instanceColor` into `vColor` for us, so only the alpha channel needs patching in. */
-function applyInstanceAlpha(material: MeshStandardMaterial): void {
+/** Half the diagonal of the normalised face the band sweeps: the projection of (1, 1) on the 45 degree axis. */
+const SHINE_EXTENT = Math.SQRT2.toFixed(8);
+
+/** Per-instance alpha and shine: three multiplies `instanceColor` into `vColor` for us, so only the alpha channel and the shine band need patching in. The band sweeps each bar's own NORMALISED face (the shared box is baked at the full value span and scaled per instance), so every bar gleams across itself whatever its height, and the lift rides `totalEmissiveRadiance` to stay the same +12 percent under any stage light. */
+function applyInstanceChannels(material: MeshStandardMaterial, invHalf: [number, number]): void {
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.uChartInvHalf = { value: new Vector2(invHalf[0], invHalf[1]) };
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nattribute float instanceAlpha;\nvarying float vChartAlpha;",
+        `#include <common>
+attribute float instanceAlpha;
+attribute float instanceShine;
+uniform vec2 uChartInvHalf;
+varying float vChartAlpha;
+varying float vChartShine;
+varying float vChartShineS;`,
       )
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvChartAlpha = instanceAlpha;");
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+vChartAlpha = instanceAlpha;
+vChartShine = instanceShine;
+vChartShineS = dot(transformed.xy * uChartInvHalf, ${CHART_SHINE_AXIS_GLSL});`,
+      );
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vChartAlpha;")
+      .replace(
+        "#include <common>",
+        `#include <common>
+varying float vChartAlpha;
+varying float vChartShine;
+varying float vChartShineS;
+${CHART_SHINE_GLSL}`,
+      )
       .replace(
         "#include <color_fragment>",
         "#include <color_fragment>\ndiffuseColor.a *= vChartAlpha;",
+      )
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * ${CHART_SHINE_GAIN.toFixed(4)} * chartShineAmount(vChartShineS, ${SHINE_EXTENT}, vChartShine);`,
       );
   };
-  material.customProgramCacheKey = () => "kookaburra-chart-bar-alpha-v1";
+  material.customProgramCacheKey = () => "kookaburra-chart-bar-channels-v1";
 }
 
 export function Bars3D(props: Bars3DProps) {
@@ -98,15 +134,19 @@ export function Bars3D(props: Bars3DProps) {
       "instanceAlpha",
       new InstancedBufferAttribute(new Float32Array(Math.max(1, count)).fill(1), 1),
     );
+    box.setAttribute(
+      "instanceShine",
+      new InstancedBufferAttribute(new Float32Array(Math.max(1, count)).fill(-1), 1),
+    );
     return box;
   }, [boxX, boxY, boxZ, radius, count]);
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   const material = useMemo(() => {
     const m = new MeshStandardMaterial({ vertexColors: true, roughness, metalness });
-    applyInstanceAlpha(m);
+    applyInstanceChannels(m, [2 / Math.max(1e-4, boxX), 2 / Math.max(1e-4, boxY)]);
     return m;
-  }, [roughness, metalness]);
+  }, [roughness, metalness, boxX, boxY]);
   useEffect(() => () => material.dispose(), [material]);
 
   // Per-frame instance state: matrices, colours and alphas, written straight to the buffers.
@@ -116,10 +156,16 @@ export function Bars3D(props: Bars3DProps) {
     const matrix = new Matrix4();
     const colour = new Color();
     const alphas = geometry.getAttribute("instanceAlpha") as InstancedBufferAttribute;
+    const shines = geometry.getAttribute("instanceShine") as InstancedBufferAttribute;
+    const at = chartRevealFn(reveal);
     let translucent = false;
     layout.bars.forEach((mark, i) => {
-      const { grow, alpha } = revealAt(reveal, mark.seriesIndex, mark.categoryIndex);
-      const span = barSpan(mark, layout.valueAxis, grow);
+      const { grow, alpha, pulse, shine, drop } = revealAt(
+        at,
+        mark.seriesIndex,
+        mark.categoryIndex,
+      );
+      const span = barSpan(mark, layout.valueAxis, grow, drop);
       const middle = span.lo + span.size / 2;
       const stack = layout.stacked ? mark.seriesIndex * space.stackEpsilon : 0;
       let px: number;
@@ -140,14 +186,18 @@ export function Bars3D(props: Bars3DProps) {
       matrix.makeScale(sx, sy, 1);
       matrix.setPosition(px, py, 0);
       mesh.setMatrixAt(i, matrix);
-      colour.set(chartColourAt(colours, mark.seriesIndex, fallbackColour));
+      colour
+        .set(chartColourAt(colours, mark.seriesIndex, fallbackColour))
+        .multiplyScalar(pulseGain(pulse));
       mesh.setColorAt(i, colour);
       alphas.setX(i, alpha);
+      shines.setX(i, shine);
       if (alpha < 1) translucent = true;
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     alphas.needsUpdate = true;
+    shines.needsUpdate = true;
     material.opacity = opacity;
     const transparent = translucent || opacity < 1;
     if (material.transparent !== transparent) {
