@@ -2,27 +2,39 @@ import { ShaderLib } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { describe, expect, it } from "vitest";
 import {
+  AXIS_LINE_WEIGHT,
   areaShape,
+  axisLineRect,
   barLabelSpot,
   barSpan,
   CHART_2D_APPEARANCE,
   CHART_PULSE_LIFT,
   CHART_PULSE_POP,
+  CHART_RAMP_ROWS,
   chart2dBands,
   chart2dInsets,
+  chart2dLook,
   chart2dMetrics,
+  chartRampTexture,
   chartShineAmount,
   contrastPick,
   dashSegments,
   drawEdgeX,
   droppedBaseline,
+  estimateTextWidth,
   gridlineRects,
+  LABEL_PILL,
+  labelPillRect,
+  legendChipRect,
   makeChartFillMaterial,
   makeChartRectMaterial,
   markCornerRadius,
   packLegendRows,
   patchChartLineMaterial,
   pieSliceShape,
+  pieSweepEnd,
+  pieSweepKey,
+  pieSweepScale,
   plotToWorldX,
   plotToWorldY,
   pointsKey,
@@ -37,12 +49,14 @@ import {
 } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import { CHART_FULL_REVEAL, CHART_GROW_MAX, meanAlpha, revealAt } from "./reveal";
+import { CHART_STYLE_PRESETS } from "./stylePresets";
 import type {
   ChartBarMark,
   ChartConfig,
   ChartData,
   ChartLayout,
   ChartLayoutConfig,
+  ChartPieSlice,
   ChartType,
 } from "./types";
 
@@ -579,5 +593,161 @@ describe("reveal", () => {
       alpha: c === 0 ? 1 : 0,
     });
     expect(meanAlpha(stagger, 0, 2)).toBe(0.5);
+  });
+});
+
+describe("appearance surface", () => {
+  const boardroom = CHART_STYLE_PRESETS.boardroom.surface;
+
+  it("merges the scene's own overrides over the preset's flat facet", () => {
+    const look = chart2dLook(boardroom, { areaOpacity: 0.1, points: true });
+    expect(look.areaOpacity).toBe(0.1);
+    expect(look.points).toBe(true);
+    expect(look.labelFraction).toBe(boardroom.twod.labelFraction);
+    // Never the catalogue's own object.
+    expect(look).not.toBe(boardroom.twod);
+    expect(boardroom.twod.areaOpacity).not.toBe(0.1);
+  });
+
+  it("folds the preset's pie gap scale into the gap both dimensions cut with", () => {
+    const terminal = CHART_STYLE_PRESETS.terminal.surface;
+    expect(chart2dLook(terminal).pieGap).toBeCloseTo(
+      terminal.twod.pieGap * terminal.pieGapScale,
+      12,
+    );
+  });
+
+  it("multiplies stroke THICKNESSES by the preset's weight, and nothing else", () => {
+    const plain = chart2dMetrics(size, CHART_2D_APPEARANCE);
+    const heavy = chart2dMetrics(size, { ...CHART_2D_APPEARANCE, strokeWidthScale: 2 });
+    expect(heavy.stroke).toBeCloseTo(plain.stroke * 2, 12);
+    expect(heavy.grid).toBeCloseTo(plain.grid * 2, 12);
+    expect(heavy.point).toBeCloseTo(plain.point * 2, 12);
+    expect(heavy.dash).toBe(plain.dash);
+    expect(heavy.tick).toBe(plain.tick);
+    expect(heavy.pieOuter).toBe(plain.pieOuter);
+  });
+});
+
+describe("axis line", () => {
+  const values = data(["a", "b"], [10, 20]);
+
+  it("rules the category axis at value zero, heavier than a gridline", () => {
+    const layout = layoutOf("column", values);
+    const metrics = chart2dMetrics(size, CHART_2D_APPEARANCE);
+    const rect = axisLineRect(layout, size, metrics);
+    expect(rect?.width).toBe(size.width);
+    expect(rect?.height).toBeCloseTo(metrics.grid * AXIS_LINE_WEIGHT, 12);
+    expect(rect?.y).toBeCloseTo(
+      plotToWorldY(size, layout.value.zero) - (rect?.height ?? 0) / 2,
+      12,
+    );
+  });
+
+  it("runs up the side for a bar chart and never draws on a pie", () => {
+    const metrics = chart2dMetrics(size, CHART_2D_APPEARANCE);
+    const bar = axisLineRect(layoutOf("bar", values), size, metrics);
+    expect(bar?.height).toBe(size.height);
+    expect(bar?.width).toBeCloseTo(metrics.grid * AXIS_LINE_WEIGHT, 12);
+    expect(axisLineRect(layoutOf("pie", values), size, metrics)).toBeNull();
+  });
+
+  it("clamps into the plot when the domain excludes zero", () => {
+    const layout = layoutOf("column", data(["a", "b"], [100, 200]), {
+      axis: { value: { min: 100, max: 200 } },
+    });
+    const metrics = chart2dMetrics(size, CHART_2D_APPEARANCE);
+    const rect = axisLineRect(layout, size, metrics);
+    // The rule centres on the plot's own bottom edge rather than floating off it.
+    expect((rect?.y ?? 0) + (rect?.height ?? 0) / 2).toBeCloseTo(-size.height / 2, 12);
+  });
+});
+
+describe("label pills", () => {
+  it("hugs the estimated text box, anchored the same way the label is", () => {
+    const centred = labelPillRect("12.5", 1, 0, 0, "center", "middle");
+    expect(centred.width).toBeCloseTo(estimateTextWidth("12.5", 1) + 2 * LABEL_PILL.padX, 12);
+    expect(centred.height).toBeCloseTo(1 + 2 * LABEL_PILL.padY, 12);
+    expect(centred.x + centred.width / 2).toBeCloseTo(0, 12);
+    expect(centred.y + centred.height / 2).toBeCloseTo(0, 12);
+
+    const left = labelPillRect("12.5", 1, 0, 0, "left", "middle");
+    expect(left.x).toBeCloseTo(-LABEL_PILL.padX, 12);
+    const right = labelPillRect("12.5", 1, 0, 0, "right", "middle");
+    expect(right.x + right.width).toBeCloseTo(LABEL_PILL.padX, 12);
+  });
+
+  it("centres on the text box a top or bottom anchor implies", () => {
+    const above = labelPillRect("9", 2, 0, 0, "center", "bottom");
+    expect(above.y + above.height / 2).toBeCloseTo(1, 12);
+    const below = labelPillRect("9", 2, 0, 0, "center", "top");
+    expect(below.y + below.height / 2).toBeCloseTo(-1, 12);
+  });
+
+  it("pads a legend chip around its whole entry", () => {
+    const chip = legendChipRect(4, 1, 0, 0);
+    expect(chip.width).toBeCloseTo(4 + 2 * 0.5, 12);
+    expect(chip.x).toBeCloseTo(-0.5, 12);
+    expect(chip.y + chip.height / 2).toBeCloseTo(0, 12);
+  });
+});
+
+describe("pie sweep", () => {
+  const slice = (start: number, end: number): ChartPieSlice => ({
+    seriesIndex: 0,
+    categoryIndex: 0,
+    startAngle: start,
+    endAngle: end,
+    midAngle: (start + end) / 2,
+    value: 1,
+    fraction: 1,
+  });
+
+  it("sweeps the arc out of its own start angle", () => {
+    const s = slice(1, 3);
+    expect(pieSweepEnd(s, 0)).toBe(1);
+    expect(pieSweepEnd(s, 0.5)).toBeCloseTo(2, 12);
+    expect(pieSweepEnd(s, 1)).toBe(3);
+  });
+
+  it("never overdraws its neighbour on an overshoot, and pops instead", () => {
+    const s = slice(1, 3);
+    expect(pieSweepEnd(s, 1.05)).toBe(3);
+    expect(pieSweepScale(1.05, 0)).toBeCloseTo(1.05, 12);
+    expect(pieSweepScale(0.4, 0)).toBe(1);
+    expect(pieSweepScale(1, 1)).toBeCloseTo(pulseScale(1), 12);
+  });
+
+  it("keys the drawn arcs, so a settled pie holds its buffers", () => {
+    expect(pieSweepKey([[0, 1]])).toBe(pieSweepKey([[0, 1]]));
+    expect(pieSweepKey([[0, 1]])).not.toBe(pieSweepKey([[0, 0.5]]));
+  });
+});
+
+describe("gradient ramp", () => {
+  const stops: [string, number][] = [
+    ["#000000", 0],
+    ["#804020", 0.5],
+    ["#ffffff", 1],
+  ];
+
+  it("rasters the stops into a one-pixel column, base at v 0", () => {
+    const texture = chartRampTexture(stops);
+    const data = texture.image.data as Uint8Array;
+    expect(texture.image.width).toBe(1);
+    expect(texture.image.height).toBe(CHART_RAMP_ROWS);
+    expect(data.length).toBe(CHART_RAMP_ROWS * 4);
+    expect([data[0], data[1], data[2], data[3]]).toEqual([0, 0, 0, 255]);
+    const last = (CHART_RAMP_ROWS - 1) * 4;
+    expect([data[last], data[last + 1], data[last + 2]]).toEqual([255, 255, 255]);
+    texture.dispose();
+  });
+
+  it("is a pure function of its stops", () => {
+    const a = chartRampTexture(stops);
+    const b = chartRampTexture([...stops].reverse());
+    expect(Array.from(a.image.data as Uint8Array)).toEqual(Array.from(b.image.data as Uint8Array));
+    a.dispose();
+    b.dispose();
   });
 });

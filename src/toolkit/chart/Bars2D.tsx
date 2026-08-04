@@ -19,13 +19,16 @@ import {
   type Chart2DMetrics,
   type ChartSize,
   contrastPick,
+  LABEL_PILL,
+  labelPillRect,
   makeChartRectMaterial,
   markCornerRadius,
   plotToWorldX,
   plotToWorldY,
   pulseGain,
+  type WorldRect,
 } from "./chart2dMath";
-import { ChartLabel } from "./chartText";
+import { ChartLabel, ChartPills } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
@@ -43,9 +46,13 @@ export interface Bars2DProps {
   colours: string[];
   size: ChartSize;
   metrics: Chart2DMetrics;
-  /** `chart.style.cornerRadius`, 0..1 of half the bar thickness. */
+  /** `chart.style.cornerRadius` under the preset's scale, 0..1 of half the bar thickness. */
   cornerRadius: number;
   labels: ChartValueLabels;
+  /** Chip fill behind every value label under `labelPill`; null draws them bare. */
+  pill: string | null;
+  /** Value labels take the family's semibold face (the preset's `fontEmphasis`). */
+  bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
   /** SDF edge softening, world units. */
@@ -146,8 +153,11 @@ export function Bars2D(props: Bars2DProps) {
           size={size}
           metrics={metrics}
           labels={labels}
+          pill={props.pill}
+          bold={props.bold}
           reveal={reveal}
           opacity={opacity}
+          feather={feather}
           z={z}
         />
       )}
@@ -161,52 +171,75 @@ function BarValueLabels(props: {
   size: ChartSize;
   metrics: Chart2DMetrics;
   labels: ChartValueLabels;
+  pill: string | null;
+  bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
+  feather: number;
   z: number;
 }) {
-  const { layout, colours, size, metrics, labels, reveal, opacity, z } = props;
+  const { layout, colours, size, metrics, labels, pill, bold, reveal, opacity, feather, z } = props;
   const theme = useTheme();
   const at = chartRevealFn(reveal);
   const vertical = layout.valueAxis === "y";
   const inside = labels.location === "inside";
+  const pills: WorldRect[] = [];
+
+  const drawn = layout.bars.map((mark) => {
+    const build = revealAt(at, mark.seriesIndex, mark.categoryIndex);
+    const spot = barLabelSpot(
+      mark,
+      layout.valueAxis,
+      labels.location,
+      build.grow,
+      metrics.gap,
+      build.drop,
+    );
+    const { along, across, nudge } = spot;
+    const fill = chartColourAt(colours, mark.seriesIndex, theme.colors.accent);
+    // A pill carries the label's contrast itself, so an inside label stops reading against the mark under it.
+    const colour =
+      inside && !pill
+        ? contrastPick(fill, theme.colors.text, theme.colors.background)
+        : theme.colors.text;
+    const x = vertical ? plotToWorldX(size, across) : plotToWorldX(size, along) + nudge;
+    const y = vertical ? plotToWorldY(size, along) + nudge : plotToWorldY(size, across);
+    const outward = spot.direction > 0;
+    const anchorX = vertical || inside ? "center" : outward ? "left" : "right";
+    const anchorY = !vertical || inside ? "middle" : outward ? "bottom" : "top";
+    // The CLAMPED counting channel, never `grow`: a label lands on exactly the printed static value and never runs past it while the mark overshoots.
+    const value = labels.countUp ? mark.value * build.count : mark.value;
+    const text = formatChartValue(value, labels.format);
+    if (pill) pills.push(labelPillRect(text, metrics.value, x, y, anchorX, anchorY));
+    return { mark, text, x, y, anchorX, anchorY, colour, alpha: build.alpha } as const;
+  });
+
   return (
     <>
-      {layout.bars.map((mark) => {
-        const build = revealAt(at, mark.seriesIndex, mark.categoryIndex);
-        const spot = barLabelSpot(
-          mark,
-          layout.valueAxis,
-          labels.location,
-          build.grow,
-          metrics.gap,
-          build.drop,
-        );
-        const { along, across, nudge } = spot;
-        const fill = chartColourAt(colours, mark.seriesIndex, theme.colors.accent);
-        const colour = inside
-          ? contrastPick(fill, theme.colors.text, theme.colors.background)
-          : theme.colors.text;
-        const x = vertical ? plotToWorldX(size, across) : plotToWorldX(size, along) + nudge;
-        const y = vertical ? plotToWorldY(size, along) + nudge : plotToWorldY(size, across);
-        const outward = spot.direction > 0;
-        const anchorX = vertical || inside ? "center" : outward ? "left" : "right";
-        const anchorY = !vertical || inside ? "middle" : outward ? "bottom" : "top";
-        // The CLAMPED counting channel, never `grow`: a label lands on exactly the printed static value and never runs past it while the mark overshoots.
-        const value = labels.countUp ? mark.value * build.count : mark.value;
-        return (
-          <ChartLabel
-            key={`${mark.seriesIndex}-${mark.categoryIndex}`}
-            text={formatChartValue(value, labels.format)}
-            position={[x, y, z + 0.001]}
-            fontSize={metrics.value}
-            colour={colour}
-            anchorX={anchorX}
-            anchorY={anchorY}
-            alpha={build.alpha * opacity}
-          />
-        );
-      })}
+      {pill && (
+        <ChartPills
+          rects={pills}
+          radiusFraction={LABEL_PILL.radius}
+          colour={pill}
+          opacity={opacity}
+          alphas={drawn.map((label) => label.alpha)}
+          feather={feather}
+          z={z + 0.0005}
+        />
+      )}
+      {drawn.map((label) => (
+        <ChartLabel
+          key={`${label.mark.seriesIndex}-${label.mark.categoryIndex}`}
+          text={label.text}
+          position={[label.x, label.y, z + 0.001]}
+          fontSize={metrics.value}
+          colour={label.colour}
+          anchorX={label.anchorX}
+          anchorY={label.anchorY}
+          bold={bold}
+          alpha={label.alpha * opacity}
+        />
+      ))}
     </>
   );
 }

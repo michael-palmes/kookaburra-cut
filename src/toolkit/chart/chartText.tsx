@@ -1,21 +1,129 @@
 /** Chart typography: the two label primitives the 2D and 3D renderers share. Text is troika SDF through the theme's `typography` (the `AnimatedHeadline`/`FrameChip` font resolution), never HTML, and every position is a plain prop, so a label is a pure function of its inputs. Billboarding is opt-in for orbiting 3D charts; flat charts keep their labels in the chart plane, where billboarding would be waste. */
 
 import { Billboard, Text } from "@react-three/drei";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  Color,
+  DynamicDrawUsage,
+  InstancedBufferAttribute,
+  type InstancedMesh,
+  Matrix4,
+  PlaneGeometry,
+  Quaternion,
+  Vector3,
+} from "three";
 import { useTheme } from "../../theme";
 import { fontUrl } from "../../theme/fonts";
-import type { FontRef } from "../../theme/tokens";
+import type { FontRef, Theme } from "../../theme/tokens";
+import { liftColour } from "../colour";
 import {
   CHART_2D_ORDER,
   CHART_LINE_HEIGHT,
+  LABEL_PILL,
   LEGEND_ENTRY_GAP,
   LEGEND_SWATCH,
   LEGEND_SWATCH_GAP,
+  legendChipRect,
   legendEntryWidth,
+  makeChartRectMaterial,
   packLegendRows,
+  type WorldRect,
 } from "./chart2dMath";
+import type { ChartLegendChrome } from "./types";
 
 /** Swatch circle segments; fixed, so the geometry is identical every run. */
 const SWATCH_SEGMENTS = 24;
+
+/** How far a pill lifts off the theme background toward its text colour, and how solid it sits: a chip that reads on a light or a dark stage without ever competing with the mark it labels. */
+const PILL_LIFT = 0.13;
+const PILL_ALPHA = 0.86;
+
+const IDENTITY = new Quaternion();
+const _matrix = new Matrix4();
+const _position = new Vector3();
+const _scale = new Vector3();
+const _colour = new Color();
+
+/** The chip a value label or legend entry sits on, under `labelPill` and `legendChrome: "chips"`. */
+export const chartPillColour = (theme: Theme): string =>
+  liftColour(theme.colors.background, theme.colors.text, PILL_LIFT);
+
+export interface ChartPillsProps {
+  rects: readonly WorldRect[];
+  /** Corner radius as a fraction of the pill's height; 0.5 is a capsule. */
+  radiusFraction: number;
+  colour: string;
+  opacity: number;
+  /** Per-pill build alpha, index for index with `rects`; absent leaves every pill at `opacity`. */
+  alphas?: readonly number[];
+  /** SDF edge softening, world units. */
+  feather: number;
+  z: number;
+}
+
+/** The rounded chips behind a run of labels: ONE instanced mesh behind the shared SDF rect material (the bar family's own), so a chart's pills never cost more than a draw call whatever the label count. The chip's own translucency is baked in here, so every caller lands on the same weight. */
+export function ChartPills(props: ChartPillsProps) {
+  const { rects, radiusFraction, colour, opacity, alphas, feather, z } = props;
+  const count = rects.length;
+  const mesh = useRef<InstancedMesh>(null);
+
+  const rect = useMemo(() => makeChartRectMaterial(), []);
+  useEffect(() => () => rect.material.dispose(), [rect]);
+
+  const geometry = useMemo(() => {
+    const g = new PlaneGeometry(1, 1);
+    const half = new InstancedBufferAttribute(new Float32Array(Math.max(1, count) * 2), 2);
+    const radius = new InstancedBufferAttribute(new Float32Array(Math.max(1, count)), 1);
+    const tint = new InstancedBufferAttribute(new Float32Array(Math.max(1, count) * 4), 4);
+    const shine = new InstancedBufferAttribute(new Float32Array(Math.max(1, count)).fill(-1), 1);
+    half.setUsage(DynamicDrawUsage);
+    radius.setUsage(DynamicDrawUsage);
+    tint.setUsage(DynamicDrawUsage);
+    g.setAttribute("iHalf", half);
+    g.setAttribute("iRadius", radius);
+    g.setAttribute("iColour", tint);
+    g.setAttribute("iShine", shine);
+    return g;
+  }, [count]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  rect.feather.value = feather;
+
+  useLayoutEffect(() => {
+    const target = mesh.current;
+    if (!target) return;
+    const half = geometry.getAttribute("iHalf") as InstancedBufferAttribute;
+    const radii = geometry.getAttribute("iRadius") as InstancedBufferAttribute;
+    const tint = geometry.getAttribute("iColour") as InstancedBufferAttribute;
+    _colour.set(colour);
+    for (let i = 0; i < rects.length; i++) {
+      const { x, y, width, height } = rects[i];
+      _position.set(x + width / 2, y + height / 2, z);
+      _scale.set(Math.max(width, 0), Math.max(height, 0), 1);
+      _matrix.compose(_position, IDENTITY, _scale);
+      target.setMatrixAt(i, _matrix);
+      half.setXY(i, width / 2, height / 2);
+      radii.setX(i, Math.min(height, width) * radiusFraction);
+      tint.setXYZW(i, _colour.r, _colour.g, _colour.b, opacity * PILL_ALPHA * (alphas?.[i] ?? 1));
+    }
+    target.instanceMatrix.needsUpdate = true;
+    half.needsUpdate = true;
+    radii.needsUpdate = true;
+    tint.needsUpdate = true;
+  }, [alphas, colour, geometry, opacity, radiusFraction, rects, z]);
+
+  if (count === 0 || opacity <= 0) return null;
+  return (
+    // Instance matrices change every frame; the geometry-derived bounding sphere would cull them.
+    <instancedMesh
+      key={count}
+      ref={mesh}
+      args={[geometry, rect.material, count]}
+      frustumCulled={false}
+      renderOrder={CHART_2D_ORDER.pill}
+    />
+  );
+}
 
 export interface ChartLabelProps {
   text: string;
@@ -97,6 +205,14 @@ export interface ChartLegendRowProps {
   /** Row alignment inside the block (default centred; a trailing legend wants "left"). */
   align?: "center" | "left";
   billboard?: boolean;
+  /** Plain swatch and label, or each entry on its own chip. */
+  chrome?: ChartLegendChrome;
+  /** Chip fill under `chrome: "chips"`; the theme's own pill colour when absent. */
+  chipColour?: string;
+  /** SDF edge softening for the chips, world units. */
+  feather?: number;
+  /** Take the family's semibold face (the preset's `fontEmphasis`). */
+  bold?: boolean;
 }
 
 interface PackedEntry extends ChartLegendEntry {
@@ -114,7 +230,12 @@ export function ChartLegendRow(props: ChartLegendRowProps) {
     alpha = 1,
     align = "center",
     billboard = false,
+    chrome = "plain",
+    chipColour,
+    feather = fontSize * 0.02,
+    bold = false,
   } = props;
+  const theme = useTheme();
   if (entries.length === 0 || alpha <= 0) return null;
 
   const swatch = fontSize * LEGEND_SWATCH;
@@ -126,6 +247,7 @@ export function ChartLegendRow(props: ChartLegendRowProps) {
   const rows = packLegendRows(packed, maxWidth, gap);
   const pitch = fontSize * CHART_LINE_HEIGHT;
   const topY = ((rows.length - 1) * pitch) / 2;
+  const chips: WorldRect[] = [];
 
   const content = rows.map((row, r) => {
     const width = row.reduce((w, e, i) => w + e.width + (i > 0 ? gap : 0), 0);
@@ -134,6 +256,7 @@ export function ChartLegendRow(props: ChartLegendRowProps) {
     return row.map((entry) => {
       const at = x;
       x += entry.width + gap;
+      if (chrome === "chips") chips.push(legendChipRect(entry.width, fontSize, at, y));
       return (
         <group key={`${entry.label}-${at}`} position={[at, y, 0]}>
           <mesh position={[swatch / 2, 0, 0]} renderOrder={CHART_2D_ORDER.label}>
@@ -153,12 +276,29 @@ export function ChartLegendRow(props: ChartLegendRowProps) {
             colour={colour}
             anchorX="left"
             alpha={alpha}
+            bold={bold}
           />
         </group>
       );
     });
   });
 
-  if (billboard) return <Billboard position={position}>{content}</Billboard>;
-  return <group position={position}>{content}</group>;
+  const block = (
+    <>
+      {chips.length > 0 && (
+        <ChartPills
+          rects={chips}
+          radiusFraction={LABEL_PILL.radius}
+          colour={chipColour ?? chartPillColour(theme)}
+          opacity={alpha}
+          feather={feather}
+          z={-fontSize * 0.01}
+        />
+      )}
+      {content}
+    </>
+  );
+
+  if (billboard) return <Billboard position={position}>{block}</Billboard>;
+  return <group position={position}>{block}</group>;
 }

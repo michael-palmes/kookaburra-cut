@@ -1,14 +1,15 @@
 /** 3D lines and areas: an extruded ribbon swept along the value curve, or the solid between that curve and its baseline (the zero line, or the stack layer below). The build channels are separate, exactly as in the flat renderer: `grow` rides each point up out of its baseline and `drop` displaces it and its fill boundary together (the solid rebuilds only when its coordinates actually move), while `draw` is a fragment X-clip against a uniform, so a draw-on never rebuilds geometry. Line and area families are always vertically oriented, so the category axis is x and the clip runs left to right. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { Color, MeshStandardMaterial } from "three";
+import { Color } from "three";
 import { drawEdgeX, droppedBaseline, revealedPoints } from "./chart2dMath";
 import { buildAreaSolid, buildRibbonSolid, type ChartPoint2 } from "./geometry3d";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
 import { type Chart3DSpace, chartWorldX, chartWorldY } from "./space3d";
-import type { ChartLayout, ChartPoint } from "./types";
+import { makeChartMaterial } from "./surface3d";
+import type { ChartLayout, ChartPoint, ChartStyleSurface3D } from "./types";
 
 export interface Series3DProps {
   layout: ChartLayout;
@@ -20,8 +21,7 @@ export interface Series3DProps {
   reveal?: ChartRevealSource;
   opacity: number;
   shadows: boolean;
-  roughness: number;
-  metalness: number;
+  finish: ChartStyleSurface3D;
 }
 
 /** Line ribbon thickness as a fraction of the plot's short side. */
@@ -32,42 +32,44 @@ const CLIP_MARGIN = 1e-3;
 const HEAD_WIDTH_FRACTION = 0.06;
 const HEAD_GAIN = 0.5;
 
-function clipMaterial(colour: string, roughness: number, metalness: number) {
+function clipMaterial(colour: string, finish: ChartStyleSurface3D) {
   const uniform = { value: 0 };
   const head = { value: new Color(0, 0, 0) };
   const headAt = { value: 0 };
   const headWidth = { value: 1 };
-  const material = new MeshStandardMaterial({ color: colour, roughness, metalness });
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uChartClipX = uniform;
-    shader.uniforms.uChartHeadColour = head;
-    shader.uniforms.uChartHeadX = headAt;
-    shader.uniforms.uChartHeadWidth = headWidth;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying float vChartX;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvChartX = transformed.x;");
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "#include <common>",
-        `#include <common>
+  const material = makeChartMaterial(finish, {
+    colour,
+    cacheKey: "kookaburra-chart-clip-v3",
+    patch: (shader) => {
+      shader.uniforms.uChartClipX = uniform;
+      shader.uniforms.uChartHeadColour = head;
+      shader.uniforms.uChartHeadX = headAt;
+      shader.uniforms.uChartHeadWidth = headWidth;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying float vChartX;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvChartX = transformed.x;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
 varying float vChartX;
 uniform float uChartClipX;
 uniform vec3 uChartHeadColour;
 uniform float uChartHeadX;
 uniform float uChartHeadWidth;`,
-      )
-      .replace(
-        "#include <clipping_planes_fragment>",
-        "#include <clipping_planes_fragment>\nif ( vChartX > uChartClipX ) discard;",
-      )
-      .replace(
-        "#include <emissivemap_fragment>",
-        `#include <emissivemap_fragment>
+        )
+        .replace(
+          "#include <clipping_planes_fragment>",
+          "#include <clipping_planes_fragment>\nif ( vChartX > uChartClipX ) discard;",
+        )
+        .replace(
+          "#include <emissivemap_fragment>",
+          `#include <emissivemap_fragment>
 float chartG = clamp(1.0 - abs(vChartX - uChartHeadX) / uChartHeadWidth, 0.0, 1.0);
 totalEmissiveRadiance += uChartHeadColour * (chartG * chartG * (3.0 - 2.0 * chartG));`,
-      );
-  };
-  material.customProgramCacheKey = () => "kookaburra-chart-clip-v2";
+        );
+    },
+  });
   return { material, uniform, head, headAt, headWidth };
 }
 
@@ -85,8 +87,7 @@ interface SeriesSolidProps {
   alpha: number;
   yOffset: number;
   shadows: boolean;
-  roughness: number;
-  metalness: number;
+  finish: ChartStyleSurface3D;
 }
 
 /** A stable signature for a polyline: the geometry rebuilds only when the actual coordinates move. */
@@ -106,8 +107,7 @@ function SeriesSolid(props: SeriesSolidProps) {
     alpha,
     yOffset,
     shadows,
-    roughness,
-    metalness,
+    finish,
   } = props;
   const topKey = pointKey(points);
   const baseKey = filled ? pointKey(baseline) : "";
@@ -132,8 +132,8 @@ function SeriesSolid(props: SeriesSolidProps) {
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   const { material, uniform, head, headAt, headWidth } = useMemo(
-    () => clipMaterial(colour, roughness, metalness),
-    [colour, roughness, metalness],
+    () => clipMaterial(colour, finish),
+    [colour, finish],
   );
   useEffect(() => () => material.dispose(), [material]);
 
@@ -165,18 +165,8 @@ function SeriesSolid(props: SeriesSolidProps) {
 }
 
 export function Series3D(props: Series3DProps) {
-  const {
-    layout,
-    space,
-    filled,
-    colours,
-    fallbackColour,
-    reveal,
-    opacity,
-    shadows,
-    roughness,
-    metalness,
-  } = props;
+  const { layout, space, filled, colours, fallbackColour, reveal, opacity, shadows, finish } =
+    props;
   const at = chartRevealFn(reveal);
   return (
     <>
@@ -204,8 +194,7 @@ export function Series3D(props: Series3DProps) {
             alpha={build.alpha * opacity}
             yOffset={layout.stacked ? series.seriesIndex * space.stackEpsilon : 0}
             shadows={shadows}
-            roughness={roughness}
-            metalness={metalness}
+            finish={finish}
           />
         );
       })}

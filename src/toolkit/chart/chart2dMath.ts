@@ -3,12 +3,18 @@
 import {
   BufferAttribute,
   BufferGeometry,
+  ClampToEdgeWrapping,
   Color,
+  DataTexture,
   DoubleSide,
+  LinearFilter,
   MeshBasicMaterial,
+  RGBAFormat,
   type ShaderMaterial,
   Shape,
   SRGBColorSpace,
+  type Texture,
+  UnsignedByteType,
   Vector3,
 } from "three";
 import { SHINE_AXIS, SHINE_HALF_W } from "../text/presets";
@@ -19,7 +25,10 @@ import type {
   ChartConfig,
   ChartGridlineStyle,
   ChartLayout,
+  ChartPieSlice,
   ChartPoint,
+  ChartStyleSurface,
+  ChartStyleSurface2D,
   ChartValueLabelLocation,
 } from "./types";
 
@@ -31,7 +40,8 @@ export const CHART_2D_ORDER = {
   grid: 0,
   fill: 1,
   mark: 2,
-  label: 3,
+  pill: 3,
+  label: 4,
 } as const;
 
 /** Average glyph advance as a fraction of the font size, for reserving label bands without a troika measure round trip (Inter/Space Grotesk digits and short labels sit near this). */
@@ -92,6 +102,19 @@ export const CHART_2D_APPEARANCE: Chart2DAppearance = {
   pieRadius: 0.86,
 };
 
+/** What the flat metrics resolve from: the appearance fractions, plus the resolved surface's stroke-weight multiplier when one is passed (a bare `Chart2DAppearance` leaves every thickness alone). */
+export type Chart2DLook = Chart2DAppearance & { strokeWidthScale?: number };
+
+/** The appearance one flat chart actually draws with: the resolved surface's flat facet, then the scene's own `look` overrides, with the preset's `pieGapScale` folded into `pieGap` so every arc (flat and extruded) cuts the same gap. A fresh object, never the surface's own. */
+export function chart2dLook(
+  surface: ChartStyleSurface,
+  look?: Partial<Chart2DAppearance>,
+): ChartStyleSurface2D {
+  const merged: ChartStyleSurface2D = { ...surface.twod, ...look };
+  merged.pieGap *= Math.max(0, surface.pieGapScale);
+  return merged;
+}
+
 /** World-unit sizes the renderer draws with, resolved once from the plot size. */
 export interface Chart2DMetrics {
   tick: number;
@@ -112,18 +135,22 @@ export interface ChartSize {
   height: number;
 }
 
-export function chart2dMetrics(size: ChartSize, look: Chart2DAppearance): Chart2DMetrics {
+export function chart2dMetrics(size: ChartSize, look: Chart2DLook): Chart2DMetrics {
   const short = Math.max(1e-6, Math.min(size.width, size.height));
   const tick = short * look.labelFraction;
+  // Only THICKNESSES take the preset's stroke weight; dash lengths are a pattern, and gridline presence rides `gridStyleWeight` instead, so nothing multiplies twice.
+  const weight = Number.isFinite(look.strokeWidthScale)
+    ? Math.max(0, look.strokeWidthScale as number)
+    : 1;
   return {
     tick,
     value: tick * look.valueScale,
     axisName: tick * look.axisNameScale,
     legend: tick * look.legendScale,
     gap: tick * look.gapScale,
-    stroke: short * look.strokeFraction,
-    grid: short * look.gridFraction,
-    point: short * look.pointFraction,
+    stroke: short * look.strokeFraction * weight,
+    grid: short * look.gridFraction * weight,
+    point: short * look.pointFraction * weight,
     dash: short * look.dashFraction,
     dashGap: short * look.dashGapFraction,
     pieOuter: (short / 2) * look.pieRadius,
@@ -325,6 +352,70 @@ export function gridlineRects(
   return rects;
 }
 
+/** The baseline rule under `axisLine`, as a multiple of a gridline's thickness: a hair heavier, so the rule reads as the axis rather than as one more gridline. */
+export const AXIS_LINE_WEIGHT = 1.6;
+
+/** The rule along the CATEGORY axis at the value axis' zero, clamped into the plot when the domain excludes it. Null for a pie, which has no value axis to rule. */
+export function axisLineRect(
+  layout: ChartLayout,
+  size: ChartSize,
+  metrics: Chart2DMetrics,
+): WorldRect | null {
+  if (layout.type === "pie") return null;
+  const at = Math.min(1, Math.max(0, layout.value.zero));
+  const thickness = metrics.grid * AXIS_LINE_WEIGHT;
+  if (layout.valueAxis === "y") {
+    return {
+      x: -size.width / 2,
+      y: plotToWorldY(size, at) - thickness / 2,
+      width: size.width,
+      height: thickness,
+    };
+  }
+  return {
+    x: plotToWorldX(size, at) - thickness / 2,
+    y: -size.height / 2,
+    width: thickness,
+    height: size.height,
+  };
+}
+
+/** Value-label pill proportions, in font sizes: padding either side of the estimated text box, padding above and below, and the corner radius as a fraction of the pill height (0.5 is a capsule). */
+export const LABEL_PILL = { padX: 0.42, padY: 0.26, radius: 0.5 } as const;
+/** Legend chip proportions: padding either side of the entry, and its height in font sizes. */
+export const LEGEND_CHIP = { padX: 0.5, height: 1.62 } as const;
+
+/** The pill behind one label, from the same width ESTIMATE the bands are reserved with (no troika measure round trip, so a pill is a pure function of its inputs). The label's anchor point is `(x, y)`; the text box is one font size tall. */
+export function labelPillRect(
+  text: string,
+  fontSize: number,
+  x: number,
+  y: number,
+  anchorX: "left" | "center" | "right",
+  anchorY: "top" | "middle" | "bottom",
+): WorldRect {
+  const padX = fontSize * LABEL_PILL.padX;
+  const width = estimateTextWidth(text, fontSize) + 2 * padX;
+  const height = fontSize * (1 + 2 * LABEL_PILL.padY);
+  const left =
+    anchorX === "left" ? x - padX : anchorX === "right" ? x + padX - width : x - width / 2;
+  const centreY =
+    anchorY === "middle" ? y : anchorY === "top" ? y - fontSize / 2 : y + fontSize / 2;
+  return { x: left, y: centreY - height / 2, width, height };
+}
+
+/** The chip behind one legend entry (swatch and label together), anchored on the entry's left edge and vertical centre. */
+export function legendChipRect(
+  entryWidth: number,
+  fontSize: number,
+  x: number,
+  y: number,
+): WorldRect {
+  const padX = fontSize * LEGEND_CHIP.padX;
+  const height = fontSize * LEGEND_CHIP.height;
+  return { x: x - padX, y: y - height / 2, width: entryWidth + 2 * padX, height };
+}
+
 /** One point ridden from its baseline towards its value at `grow`, then displaced by `drop` along the value axis (always y for the line families); the value labels place against exactly this. */
 export function revealedPoint(
   point: ChartPoint,
@@ -444,6 +535,23 @@ export function pieRadial(angle: number, radius: number): [number, number] {
   return [Math.sin(angle) * radius, Math.cos(angle) * radius];
 }
 
+/** A slice's DRAWN end angle at a build state: `grow` sweeps the arc out of its own start angle, so a pie irises open instead of scaling up. Clamped at the full arc, so an overshoot preset can never draw over its neighbour. */
+export function pieSweepEnd(slice: ChartPieSlice, grow: number): number {
+  const g = Number.isFinite(grow) ? Math.min(1, Math.max(0, grow)) : 1;
+  return slice.startAngle + (slice.endAngle - slice.startAngle) * g;
+}
+
+/** The scale a swept slice takes: whatever `grow` overshoots past a full sweep, times the emphasis pop, so `bloom` keeps its bloom on top of the sweep. */
+export function pieSweepScale(grow: number, pulse: number): number {
+  const g = Number.isFinite(grow) ? Math.max(1, grow) : 1;
+  return g * pulseScale(pulse);
+}
+
+/** A signature of the drawn arcs, so a pie's geometry rebuilds while its sweep (or a data morph) moves the angles and rests the moment they settle. */
+export function pieSweepKey(angles: readonly [number, number][]): string {
+  return angles.map(([a, b]) => `${a},${b}`).join("|");
+}
+
 /** The SDF rounded-rect material behind every bar family: one `MeshBasicMaterial` (unlit, so a 2D chart reads as graphic design, not a lit object) patched to take per-instance half-extents, corner radius, colour and shine sweep, the `FrameChip.makePillMaterial` idiom. `iColour` carries alpha too, and `iShine` the band position, which is how one shared material still gives every bar its own build state. */
 export interface ChartRectMaterial {
   material: MeshBasicMaterial;
@@ -502,6 +610,50 @@ ${shader.fragmentShader}`
   return { material, feather };
 }
 
+/** Rows in a fill's vertical ramp: enough for a smooth blend under linear filtering, small enough to raster in a frame. */
+export const CHART_RAMP_ROWS = 64;
+
+/** #rrggbb to raw sRGB bytes; NOT three's `Color`, which converts to the linear working space. */
+function hexBytes(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const v = Number.parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h, 16);
+  return [(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+}
+
+/** A vertical ramp texture from `chartGradientRamp`'s stops (base at v 0, the value curve at v 1), rasterised in pure JS so it is bit-identical on any machine and written ONCE per colour set: the `gradientTexture` idiom, one pixel wide. Stops interpolate per channel in sRGB bytes; the perceptual work already happened in OKLCH when the stops were mixed. */
+export function chartRampTexture(stops: readonly (readonly [string, number])[]): DataTexture {
+  const sorted = [...stops]
+    .sort((a, b) => a[1] - b[1])
+    .map(([hex, pos]) => ({ rgb: hexBytes(hex), pos }));
+  const rows = CHART_RAMP_ROWS;
+  const data = new Uint8Array(rows * 4);
+  for (let row = 0; row < rows; row++) {
+    const t = row / (rows - 1);
+    let lo = sorted[0];
+    let hi = sorted[sorted.length - 1];
+    for (let s = 0; s < sorted.length - 1; s++) {
+      if (t >= sorted[s].pos && t <= sorted[s + 1].pos) {
+        lo = sorted[s];
+        hi = sorted[s + 1];
+        break;
+      }
+    }
+    const span = hi.pos - lo.pos;
+    const k = span > 0 ? Math.min(1, Math.max(0, (t - lo.pos) / span)) : 0;
+    const i = row * 4;
+    for (let c = 0; c < 3; c++) data[i + c] = Math.round(lo.rgb[c] + (hi.rgb[c] - lo.rgb[c]) * k);
+    data[i + 3] = 255;
+  }
+  const texture = new DataTexture(data, 1, rows, RGBAFormat, UnsignedByteType);
+  texture.colorSpace = SRGBColorSpace;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 /** A draw-on clip plus a glow head, in the ONE form both flat line layers take: `clip` is (edge x in the group's local units, feather half-width, enabled) and `head` is (head x, inverse half-width, enabled), with `headColour` the accent tint the band adds. Both are uniform writes: a build-in never rebuilds a fill or a stroke. */
 export interface ChartDrawUniforms {
   clip: { value: Vector3 };
@@ -524,12 +676,22 @@ const clipAlpha = (target: string): string => /* glsl */ `
     ${target} *= 1.0 - smoothstep(-uChartClip.y, uChartClip.y, vChartX - uChartClip.x);
   }`;
 
-/** The area fill's material: unlit like the gridlines, with the same x clip its stroke takes so a fill can never lead or trail the line it sits under. */
+/** The area fill's uniforms: the draw clip and glow head every flat line layer shares, plus the vertical ramp under `areaGradient` (`span` is (plot base y, 1 / plot height, enabled), so the ramp runs over the PLOT rather than each fill's own moving extent, and a build never re-rasters it). */
+export interface ChartFillUniforms extends ChartDrawUniforms {
+  ramp: { value: Texture | null };
+  rampSpan: { value: Vector3 };
+}
+
+/** The area fill's material: unlit like the gridlines, with the same x clip its stroke takes so a fill can never lead or trail the line it sits under, and an optional vertical ramp that replaces the flat series colour. */
 export function makeChartFillMaterial(): {
   material: MeshBasicMaterial;
-  uniforms: ChartDrawUniforms;
+  uniforms: ChartFillUniforms;
 } {
-  const uniforms = makeChartDrawUniforms();
+  const uniforms: ChartFillUniforms = {
+    ...makeChartDrawUniforms(),
+    ramp: { value: null },
+    rampSpan: { value: new Vector3(0, 1, 0) },
+  };
   const material = new MeshBasicMaterial({
     transparent: true,
     depthWrite: false,
@@ -538,18 +700,28 @@ export function makeChartFillMaterial(): {
   material.toneMapped = false;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uChartClip = uniforms.clip;
+    shader.uniforms.uChartRamp = uniforms.ramp;
+    shader.uniforms.uChartRampSpan = uniforms.rampSpan;
     shader.vertexShader = `varying float vChartX;
+varying float vChartY;
 ${shader.vertexShader}`.replace(
       "#include <begin_vertex>",
-      "#include <begin_vertex>\n  vChartX = transformed.x;",
+      "#include <begin_vertex>\n  vChartX = transformed.x;\n  vChartY = transformed.y;",
     );
     shader.fragmentShader = `${CLIP_FRAGMENT_DEFS}
+uniform sampler2D uChartRamp;
+uniform vec3 uChartRampSpan;
+varying float vChartY;
 ${shader.fragmentShader}`.replace(
       "#include <opaque_fragment>",
-      `#include <opaque_fragment>${clipAlpha("gl_FragColor.a")}`,
+      `#include <opaque_fragment>
+  if (uChartRampSpan.z > 0.5) {
+    float rampT = clamp((vChartY - uChartRampSpan.x) * uChartRampSpan.y, 0.0, 1.0);
+    gl_FragColor.rgb = texture2D(uChartRamp, vec2(0.5, rampT)).rgb;
+  }${clipAlpha("gl_FragColor.a")}`,
     );
   };
-  material.customProgramCacheKey = () => "kookaburra-chart-fill-v1";
+  material.customProgramCacheKey = () => "kookaburra-chart-fill-v2";
   return { material, uniforms };
 }
 
@@ -667,7 +839,7 @@ export function chart2dBands(
   chart: ChartConfig,
   layout: ChartLayout,
   size: ChartSize,
-  look: Chart2DAppearance = CHART_2D_APPEARANCE,
+  look: Chart2DLook = CHART_2D_APPEARANCE,
 ): Chart2DBands {
   const m = chart2dMetrics(size, look);
   const vertical = layout.valueAxis === "y";
@@ -724,7 +896,7 @@ export function chart2dInsets(
   chart: ChartConfig,
   layout: ChartLayout,
   size: ChartSize,
-  look: Chart2DAppearance = CHART_2D_APPEARANCE,
+  look: Chart2DLook = CHART_2D_APPEARANCE,
 ): Chart2DInsets {
   const m = chart2dMetrics(size, look);
   const bands = chart2dBands(chart, layout, size, look);

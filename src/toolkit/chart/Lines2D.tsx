@@ -10,12 +10,14 @@ import {
   areaShape,
   CHART_2D_ORDER,
   CHART_2D_Z_STEP,
-  type Chart2DAppearance,
   type Chart2DMetrics,
   type ChartDrawUniforms,
   type ChartSize,
+  chartRampTexture,
   drawEdgeX,
   droppedBaseline,
+  LABEL_PILL,
+  labelPillRect,
   makeChartFillMaterial,
   patchChartLineMaterial,
   plotPointToWorld,
@@ -29,13 +31,15 @@ import {
   pulseScale,
   revealedPoint,
   revealedPoints,
+  type WorldRect,
 } from "./chart2dMath";
-import { ChartLabel } from "./chartText";
+import { ChartLabel, ChartPills } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
-import type { ChartLayout, ChartPoint, ChartValueLabels } from "./types";
+import { chartGradientRamp } from "./stylePresets";
+import type { ChartLayout, ChartPoint, ChartStyleSurface2D, ChartValueLabels } from "./types";
 
 /** Glow-head sizes, in point radii: the dot itself, and how far the stroke brightens either side of the head. */
 const HEAD_DOT = 1.7;
@@ -48,14 +52,20 @@ export interface Lines2DProps {
   colours: string[];
   size: ChartSize;
   metrics: Chart2DMetrics;
-  look: Chart2DAppearance;
+  look: ChartStyleSurface2D;
   labels: ChartValueLabels;
+  /** Chip fill behind every value label under `labelPill`; null draws them bare. */
+  pill: string | null;
+  /** Value labels take the family's semibold face. */
+  bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
   /** The export frame in pixels: the `LineMaterial` resolution reference. */
   resolution: { width: number; height: number };
   /** Pixels per world unit at that resolution, for the stroke's pixel width. */
   pixelsPerUnit: number;
+  /** SDF edge softening for the label pills, world units. */
+  feather: number;
   z: number;
 }
 
@@ -99,6 +109,7 @@ export function Lines2D(props: Lines2DProps) {
                 baseline={baseline}
                 size={size}
                 colour={colour}
+                stops={look.areaGradient === "vertical" ? chartGradientRamp(theme, colour) : null}
                 opacity={alpha * look.areaOpacity}
                 clipX={draw.clipX}
                 feather={metrics.grid}
@@ -171,8 +182,11 @@ export function Lines2D(props: Lines2DProps) {
           size={size}
           metrics={metrics}
           labels={labels}
+          pill={props.pill}
+          bold={props.bold}
           reveal={reveal}
           opacity={opacity}
+          feather={props.feather}
           z={z + layout.seriesCount * CHART_2D_Z_STEP}
         />
       )}
@@ -201,18 +215,20 @@ function drawState(
   return { clipX: plotToWorldX(size, edge), head };
 }
 
-/** The closed fill under a value curve. The polygon is keyed on its VERTEX VALUES, not array identity, so a settled chart holds one buffer while a data morph pays earcut over tens of vertices (deterministic for the same polygon). The draw-on is a uniform clip on the SAME edge the stroke takes, never a re-triangulation. */
+/** The closed fill under a value curve. The polygon is keyed on its VERTEX VALUES, not array identity, so a settled chart holds one buffer while a data morph pays earcut over tens of vertices (deterministic for the same polygon). The draw-on is a uniform clip on the SAME edge the stroke takes, never a re-triangulation. Under `areaGradient` the flat colour gives way to a write-once ramp texture, sampled over the PLOT's height so stacked layers share one gradient rather than each restarting. */
 function AreaFill(props: {
   points: ChartPoint[];
   baseline: readonly ChartPoint[];
   size: ChartSize;
   colour: string;
+  /** Vertical ramp stops (base to curve), or null for a flat fill. */
+  stops: readonly (readonly [string, number])[] | null;
   opacity: number;
   clipX: number | null;
   feather: number;
   z: number;
 }) {
-  const { points, baseline, size, colour, opacity, clipX, feather, z } = props;
+  const { points, baseline, size, colour, stops, opacity, clipX, feather, z } = props;
   const key = `${pointsKey(points)}/${pointsKey(baseline)}`;
   const held = useRef(props);
   held.current = props;
@@ -223,10 +239,20 @@ function AreaFill(props: {
   }, [key, size.width, size.height]);
   useEffect(() => () => geometry?.dispose(), [geometry]);
 
+  const rampKey = stops ? stops.map(([hex, at]) => `${hex}@${at}`).join("|") : "";
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the stop key stands in for the stops, which are a fresh array each render
+  const ramp = useMemo(() => {
+    const current = held.current.stops;
+    return current ? chartRampTexture(current) : null;
+  }, [rampKey]);
+  useEffect(() => () => ramp?.dispose(), [ramp]);
+
   const fill = useMemo(() => makeChartFillMaterial(), []);
   useEffect(() => () => fill.material.dispose(), [fill]);
   fill.material.color.set(colour);
   fill.material.opacity = opacity;
+  fill.uniforms.ramp.value = ramp;
+  fill.uniforms.rampSpan.value.set(-size.height / 2, 1 / Math.max(1e-6, size.height), ramp ? 1 : 0);
   writeClip(fill.uniforms, clipX, feather);
 
   if (!geometry) return null;
@@ -344,39 +370,65 @@ function PointValueLabels(props: {
   size: ChartSize;
   metrics: Chart2DMetrics;
   labels: ChartValueLabels;
+  pill: string | null;
+  bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
+  feather: number;
   z: number;
 }) {
-  const { layout, size, metrics, labels, reveal, opacity, z } = props;
+  const { layout, size, metrics, labels, pill, bold, reveal, opacity, feather, z } = props;
   const theme = useTheme();
   const sample = chartRevealFn(reveal);
   const below = labels.location === "below";
+  const anchorY = below ? "top" : "bottom";
+  const pills: WorldRect[] = [];
+
+  const drawn = layout.series.flatMap((series) =>
+    series.points.map((point, i) => {
+      const build = revealAt(sample, series.seriesIndex, point.categoryIndex);
+      const base = revealedPoint(series.baseline[i] ?? point, undefined, 1, build.drop);
+      const at = revealedPoint(point, series.baseline[i], build.grow, build.drop);
+      const [x, y] = plotPointToWorld(size, labels.location === "inside" ? midpoint(base, at) : at);
+      const value = labels.countUp ? point.value * build.count : point.value;
+      const text = formatChartValue(value, labels.format);
+      const labelY = below ? y - metrics.gap : y + metrics.gap;
+      if (pill) pills.push(labelPillRect(text, metrics.value, x, labelY, "center", anchorY));
+      return {
+        key: `${series.seriesIndex}-${point.categoryIndex}`,
+        text,
+        x,
+        y: labelY,
+        alpha: build.alpha,
+      };
+    }),
+  );
+
   return (
     <>
-      {layout.series.map((series) =>
-        series.points.map((point, i) => {
-          const build = revealAt(sample, series.seriesIndex, point.categoryIndex);
-          const base = revealedPoint(series.baseline[i] ?? point, undefined, 1, build.drop);
-          const at = revealedPoint(point, series.baseline[i], build.grow, build.drop);
-          const [x, y] = plotPointToWorld(
-            size,
-            labels.location === "inside" ? midpoint(base, at) : at,
-          );
-          const value = labels.countUp ? point.value * build.count : point.value;
-          return (
-            <ChartLabel
-              key={`${series.seriesIndex}-${point.categoryIndex}`}
-              text={formatChartValue(value, labels.format)}
-              position={[x, below ? y - metrics.gap : y + metrics.gap, z]}
-              fontSize={metrics.value}
-              colour={theme.colors.text}
-              anchorY={below ? "top" : "bottom"}
-              alpha={build.alpha * opacity}
-            />
-          );
-        }),
+      {pill && (
+        <ChartPills
+          rects={pills}
+          radiusFraction={LABEL_PILL.radius}
+          colour={pill}
+          opacity={opacity}
+          alphas={drawn.map((label) => label.alpha)}
+          feather={feather}
+          z={z - CHART_2D_Z_STEP / 2}
+        />
       )}
+      {drawn.map((label) => (
+        <ChartLabel
+          key={label.key}
+          text={label.text}
+          position={[label.x, label.y, z]}
+          fontSize={metrics.value}
+          colour={theme.colors.text}
+          anchorY={anchorY}
+          bold={bold}
+          alpha={label.alpha * opacity}
+        />
+      ))}
     </>
   );
 }

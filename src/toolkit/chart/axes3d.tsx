@@ -2,21 +2,16 @@
 
 import { useEffect, useMemo } from "react";
 import { BoxGeometry, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from "three";
-import {
-  barLabelSpot,
-  CHART_2D_APPEARANCE,
-  dashSegments,
-  legendLabels,
-  revealedPoint,
-} from "./chart2dMath";
-import { ChartLabel, ChartLegendRow } from "./chartText";
+import { useTheme } from "../../theme";
+import { barLabelSpot, dashSegments, legendLabels, revealedPoint } from "./chart2dMath";
+import { ChartLabel, ChartLegendRow, chartPillColour } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
 import { pieCentreY, pieRadius } from "./pie3d";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn } from "./revealSource";
 import { type Chart3DSpace, chartWorldX, chartWorldY } from "./space3d";
-import type { ChartConfig, ChartLayout } from "./types";
+import type { ChartConfig, ChartLayout, ChartLegendChrome } from "./types";
 
 /** Gridline strips run thicker than the flat renderer's quads: they sit metres behind the marks and thin out under perspective. */
 const GRID_THICKNESS = 0.0035;
@@ -34,10 +29,14 @@ const TRAILING_LEGEND_FRACTION = 0.4;
 export interface ChartStage3DProps {
   layout: ChartLayout;
   space: Chart3DSpace;
-  /** Chart's own floor clearing; off when the scene already stages one. */
+  /** Chart's own floor clearing; off when the scene already stages one, or when the preset lays none. */
   floor: boolean;
   floorColour: string;
   gridColour: string;
+  /** The back-wall gridlines, off under a preset that clears the wall. */
+  wallGrid: boolean;
+  /** Dash lengths for a dashed gridline style, fractions of the plot's short side. */
+  dash: { length: number; gap: number };
   opacity: number;
   shadows: boolean;
 }
@@ -53,17 +52,14 @@ function gridPieces(
   vertical: boolean,
   position: number,
   dashed: boolean,
+  dash: { length: number; gap: number },
 ): GridPiece[] {
   const thickness = GRID_THICKNESS * space.unit;
   const run = vertical ? space.width : space.height;
   const origin = vertical ? -space.width / 2 : 0;
   const fixed = vertical ? chartWorldY(space, position) : chartWorldX(space, position);
   const runs: [number, number][] = dashed
-    ? dashSegments(
-        run,
-        CHART_2D_APPEARANCE.dashFraction * space.unit,
-        CHART_2D_APPEARANCE.dashGapFraction * space.unit,
-      )
+    ? dashSegments(run, dash.length * space.unit, dash.gap * space.unit)
     : [[0, run]];
   return runs.map(([start, length]) => {
     const centre = origin + start + length / 2;
@@ -75,7 +71,7 @@ function gridPieces(
 }
 
 export function ChartStage3D(props: ChartStage3DProps) {
-  const { layout, space, floor, floorColour, gridColour, opacity, shadows } = props;
+  const { layout, space, floor, floorColour, gridColour, wallGrid, dash, opacity, shadows } = props;
   const vertical = layout.valueAxis === "y";
   const dashed = layout.value.gridlineStyle === "dashed";
 
@@ -118,17 +114,18 @@ export function ChartStage3D(props: ChartStage3DProps) {
           receiveShadow={shadows}
         />
       )}
-      {layout.value.gridlines.flatMap((position) =>
-        gridPieces(space, vertical, position, dashed).map((piece) => (
-          <mesh
-            key={`${position}-${piece.position[0]}-${piece.position[1]}`}
-            geometry={gridGeometry}
-            material={gridMaterial}
-            position={piece.position}
-            scale={piece.scale}
-          />
-        )),
-      )}
+      {wallGrid &&
+        layout.value.gridlines.flatMap((position) =>
+          gridPieces(space, vertical, position, dashed, dash).map((piece) => (
+            <mesh
+              key={`${position}-${piece.position[0]}-${piece.position[1]}`}
+              geometry={gridGeometry}
+              material={gridMaterial}
+              position={piece.position}
+              scale={piece.scale}
+            />
+          )),
+        )}
     </group>
   );
 }
@@ -139,13 +136,19 @@ export interface ChartText3DProps {
   space: Chart3DSpace;
   colours: readonly string[];
   textColour: string;
+  /** Tick and value label colour: the muted token already lifted by the preset's `tickWeight`. */
   mutedColour: string;
+  /** Legend entries plain, or each on its own chip. */
+  legendChrome: ChartLegendChrome;
+  /** Value and legend labels take the family's semibold face (the preset's `fontEmphasis`). */
+  bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
 }
 
 export function ChartText3D(props: ChartText3DProps) {
   const { chart, layout, space, colours, textColour, mutedColour, reveal, opacity } = props;
+  const theme = useTheme();
   const vertical = layout.valueAxis === "y";
   const pie = chart.type === "pie";
   const unit = space.unit;
@@ -257,6 +260,7 @@ export function ChartText3D(props: ChartText3DProps) {
           space={space}
           colour={textColour}
           fontSize={valueFont}
+          bold={props.bold}
           reveal={reveal}
           opacity={opacity}
         />
@@ -269,6 +273,9 @@ export function ChartText3D(props: ChartText3DProps) {
           fontSize={legendFont}
           colour={textColour}
           align={legendPosition === "trailing" ? "left" : "center"}
+          chrome={props.legendChrome}
+          chipColour={chartPillColour(theme)}
+          bold={props.bold}
           alpha={opacity}
         />
       )}
@@ -282,13 +289,14 @@ interface ChartValues3DProps {
   space: Chart3DSpace;
   colour: string;
   fontSize: number;
+  bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
 }
 
 /** Value labels for whichever family the layout populated: riding the growing end of a bar, riding a line/area point up out of its baseline, or beyond the rim of a pie slice. The flat renderer places them by the same rules and the same helpers, so a chart's labels never sit differently between dimensions; every counting label prints against the CLAMPED `count` channel, so it can never run past its true value while a mark overshoots. */
 function ChartValues3D(props: ChartValues3DProps) {
-  const { chart, layout, space, colour, fontSize, reveal, opacity } = props;
+  const { chart, layout, space, colour, fontSize, bold, reveal, opacity } = props;
   const { format, countUp, location } = chart.labels.values;
   const at = chartRevealFn(reveal);
   const outward = fontSize * 0.75;
@@ -316,6 +324,7 @@ function ChartValues3D(props: ChartValues3DProps) {
               anchorX="center"
               anchorY="middle"
               billboard
+              bold={bold}
               alpha={build.alpha * opacity}
             />
           );
@@ -355,6 +364,7 @@ function ChartValues3D(props: ChartValues3DProps) {
               anchorX="center"
               anchorY="middle"
               billboard
+              bold={bold}
               alpha={build.alpha * opacity}
             />
           );
@@ -383,6 +393,7 @@ function ChartValues3D(props: ChartValues3DProps) {
               anchorX="center"
               anchorY="middle"
               billboard
+              bold={bold}
               alpha={build.alpha * opacity}
             />
           );

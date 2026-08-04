@@ -17,8 +17,8 @@ import {
 } from "./animation";
 import {
   CHART_2D_APPEARANCE,
-  type Chart2DAppearance,
   type Chart2DInsets,
+  type Chart2DLook,
   type ChartSize,
   chart2dInsets,
 } from "./chart2dMath";
@@ -26,6 +26,7 @@ import { computeChartLayout } from "./layout";
 import { resolveSeriesColour } from "./palette";
 import { revealAt } from "./reveal";
 import { chart3dSpace } from "./space3d";
+import { chartSeriesTint } from "./stylePresets";
 import type { ChartConfig, ChartLayout, ChartRevealSampler, ChartStyle } from "./types";
 
 /** A flat chart's furniture bands scale with the plot they leave behind, so the rect settles over a fixed number of passes: a pure, terminating fixpoint rather than a convergence loop. */
@@ -104,12 +105,14 @@ export function chartHeroRect(
   };
 }
 
-/** One colour per series, or per CATEGORY for pie (the `ChartRendererProps` contract): an authored series override wins, then the theme palette. */
-export function chartColours(chart: ChartConfig, theme: Theme): string[] {
+/** One colour per series, or per CATEGORY for pie (the `ChartRendererProps` contract): an authored series override wins, then the theme palette, then the preset's own lightness stepping (0 for every preset that leaves the palette alone). */
+export function chartColours(chart: ChartConfig, theme: Theme, lightnessStep = 0): string[] {
+  const tint = (colour: string, i: number): string =>
+    chartSeriesTint(colour, theme.colors.background, i, lightnessStep);
   if (chart.type === "pie") {
-    return chart.data.categories.map((_, i) => resolveSeriesColour(theme, i));
+    return chart.data.categories.map((_, i) => tint(resolveSeriesColour(theme, i), i));
   }
-  return chart.data.series.map((s, i) => resolveSeriesColour(theme, i, s.colour));
+  return chart.data.series.map((s, i) => tint(resolveSeriesColour(theme, i, s.colour), i));
 }
 
 export interface ChartValueBounds {
@@ -175,9 +178,9 @@ export function fitChart2d(
   chart: ChartConfig,
   layout: ChartLayout,
   available: ChartRect,
-  look?: Partial<Chart2DAppearance>,
+  look?: Partial<Chart2DLook>,
 ): Chart2DFit {
-  const appearance: Chart2DAppearance = { ...CHART_2D_APPEARANCE, ...look };
+  const appearance: Chart2DLook = { ...CHART_2D_APPEARANCE, ...look };
   let size: ChartSize = { width: available.width, height: available.height };
   let insets: Chart2DInsets = { top: 0, right: 0, bottom: 0, left: 0 };
   for (let pass = 0; pass < CHART_2D_FIT_PASSES; pass++) {

@@ -1,30 +1,33 @@
-/** 3D pie and donut: the flat renderer's wedge shape (same d3 angles, same arc sampling) extruded with a subtle bevel, built ONCE at the final angles so a build-in never re-triangulates. The disc stands upright in the XY plane and extrudes along z, the Keynote pose, and the HOST tips it with `style.rotation`. Slice reveal is a scale about the pie centre plus alpha, never an angle rebuild, and never the `drop` entrance: a pie has no value axis to fall along, and both `fall` presets degrade to `sweep` here. */
+/** 3D pie and donut: the flat renderer's wedge shape (same d3 angles, same arc sampling, same gap) extruded with a subtle bevel. The disc stands upright in the XY plane and extrudes along z, the Keynote pose, and the HOST tips it with `style.rotation`. A slice's build state SWEEPS it, exactly as in the flat renderer: `grow` drives the drawn end angle, so the wedges iris open out of their own start angles, and whatever an overshoot preset pushes past a full sweep rides the pop scale. Geometry rebuilds while those angles move (the sweep window, or a keyframed data morph) and rests the moment they land, never on the `drop` entrance: a pie has no value axis to fall along, and both `fall` presets degrade to `sweep` here. */
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { type BufferGeometry, ExtrudeGeometry, MeshStandardMaterial } from "three";
+import { type BufferGeometry, ExtrudeGeometry } from "three";
 import {
-  CHART_2D_APPEARANCE,
   PIE_CURVE_SEGMENTS,
   pieSliceShape,
+  pieSweepEnd,
+  pieSweepKey,
+  pieSweepScale,
   pulseColour,
-  pulseScale,
 } from "./chart2dMath";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn } from "./revealSource";
 import type { Chart3DSpace } from "./space3d";
-import type { ChartPieLayout } from "./types";
+import { makeChartMaterial } from "./surface3d";
+import type { ChartPieLayout, ChartStyleSurface3D } from "./types";
 
 export interface Pie3DProps {
   pie: ChartPieLayout;
   space: Chart3DSpace;
   colours: readonly string[];
   fallbackColour: string;
+  /** Angular gap between slices, radians, already under the preset's `pieGapScale`. */
+  pieGap: number;
   reveal?: ChartRevealSource;
   opacity: number;
   shadows: boolean;
-  roughness: number;
-  metalness: number;
+  finish: ChartStyleSurface3D;
 }
 
 /** Outer radius as a fraction of the plot's short side. */
@@ -40,27 +43,26 @@ export const pieRadius = (space: Chart3DSpace): number => PIE_RADIUS_FRACTION * 
 export const pieCentreY = (space: Chart3DSpace): number => space.height / 2;
 
 export function Pie3D(props: Pie3DProps) {
-  const { pie, space, colours, fallbackColour, reveal, opacity, shadows, roughness, metalness } =
-    props;
+  const { pie, space, colours, fallbackColour, pieGap, reveal, opacity, shadows, finish } = props;
   const at = chartRevealFn(reveal);
   const count = pie.slices.length;
   const outer = pieRadius(space);
   const inner = pie.innerRadius * outer;
-  const angles = pie.slices.map((s) => `${s.startAngle},${s.endAngle}`).join("|");
-  const held = useRef(pie.slices);
-  held.current = pie.slices;
+  const arcs = pie.slices.map<[number, number]>((slice) => [
+    slice.startAngle,
+    pieSweepEnd(slice, revealAt(at, slice.seriesIndex, slice.categoryIndex).grow),
+  ]);
+  const arcKey = pieSweepKey(arcs);
+  const held = useRef(arcs);
+  held.current = arcs;
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: angles stands in for the slice list, which is a fresh identity every render
+  // biome-ignore lint/correctness/useExhaustiveDependencies: arcKey stands in for the arcs, which are a fresh identity every render
   const geometries = useMemo(() => {
-    const bevel = Math.min(space.depth * BEVEL_DEPTH_FRACTION, outer * BEVEL_RADIUS_FRACTION);
-    return held.current.map((slice) => {
-      const shape = pieSliceShape(
-        slice.startAngle,
-        slice.endAngle,
-        inner,
-        outer,
-        CHART_2D_APPEARANCE.pieGap,
-      );
+    const bevel =
+      Math.min(space.depth * BEVEL_DEPTH_FRACTION, outer * BEVEL_RADIUS_FRACTION) *
+      Math.max(0, finish.bevelScale);
+    return held.current.map(([start, end]) => {
+      const shape = pieSliceShape(start, end, inner, outer, pieGap);
       if (!shape) return null;
       const geometry = new ExtrudeGeometry(shape, {
         depth: Math.max(1e-4, space.depth),
@@ -75,8 +77,7 @@ export function Pie3D(props: Pie3DProps) {
       geometry.translate(0, 0, -space.depth / 2);
       return geometry;
     });
-    // `angles` stands in for the slice list: same arcs, same triangulation.
-  }, [angles, inner, outer, space.depth]);
+  }, [arcKey, inner, outer, pieGap, space.depth, finish.bevelScale]);
   useEffect(() => {
     return () => {
       for (const geometry of geometries) geometry?.dispose();
@@ -84,8 +85,11 @@ export function Pie3D(props: Pie3DProps) {
   }, [geometries]);
 
   const materials = useMemo(
-    () => Array.from({ length: count }, () => new MeshStandardMaterial({ roughness, metalness })),
-    [count, roughness, metalness],
+    () =>
+      Array.from({ length: count }, () =>
+        makeChartMaterial(finish, { cacheKey: "kookaburra-chart-pie-v1" }),
+      ),
+    [count, finish],
   );
   useEffect(() => {
     return () => {
@@ -125,7 +129,7 @@ export function Pie3D(props: Pie3DProps) {
             geometry={geometry}
             material={materials[i]}
             // The pop scales about the disc centre this group already sits on, so a pulse never shifts the layout.
-            scale={Math.max(1e-4, build.grow * pulseScale(build.pulse))}
+            scale={pieSweepScale(build.grow, build.pulse)}
             castShadow={shadows}
             receiveShadow={shadows}
           />
