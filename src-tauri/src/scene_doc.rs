@@ -713,6 +713,13 @@ pub struct ScaffoldOptions {
     /// Title-icon scenes: the sidecar `headerIcon` (emoji or asset path).
     #[serde(default)]
     pub header_icon: Option<String>,
+    /// Chart scenes: the wizard's type ("column", "bar", "pie"…), "2d"|"3d" and the starter dataset; each absent field keeps the chart arm's own default.
+    #[serde(default)]
+    pub chart_type: Option<String>,
+    #[serde(default)]
+    pub chart_dimension: Option<String>,
+    #[serde(default)]
+    pub chart_data: Option<ScaffoldChartData>,
     /// Video-window scenes: the picked clip looked like a raw macOS window recording (the wizard's poster detection; Rust can't see pixels).
     #[serde(default)]
     pub recording: Option<bool>,
@@ -726,6 +733,22 @@ pub struct ScaffoldMediaSlot {
     pub rel: Option<String>,
     /// "video" | "image".
     pub kind: Option<String>,
+}
+
+/// One starter dataset for a chart scene: the block's `data`, rows aligned to `categories`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldChartData {
+    pub categories: Vec<String>,
+    pub series: Vec<ScaffoldChartSeries>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldChartSeries {
+    pub id: String,
+    pub name: Option<String>,
+    pub values: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1006,17 +1029,32 @@ pub async fn scaffold_scene(
     }
     if options.kind == "chart" {
         // Starter data only: style, axis, labels and animation stay absent so `resolveChart` owns every default, and series carry no colour so the theme palette drives them.
-        doc["chart"] = json!({
-            "type": "column",
-            "dimension": "3d",
-            "mount": "hero",
-            "data": {
+        let data = match &options.chart_data {
+            Some(picked) => json!({
+                "categories": picked.categories,
+                "series": picked
+                    .series
+                    .iter()
+                    .map(|s| json!({
+                        "id": s.id,
+                        "name": s.name.as_deref().unwrap_or(&s.id),
+                        "values": s.values,
+                    }))
+                    .collect::<Vec<_>>(),
+            }),
+            None => json!({
                 "categories": ["April", "May", "June", "July"],
                 "series": [
                     { "id": "s1", "name": "Region 1", "values": [17, 26, 53, 96] },
                     { "id": "s2", "name": "Region 2", "values": [55, 43, 70, 58] },
                 ],
-            },
+            }),
+        };
+        doc["chart"] = json!({
+            "type": options.chart_type.as_deref().unwrap_or("column"),
+            "dimension": options.chart_dimension.as_deref().unwrap_or("3d"),
+            "mount": "hero",
+            "data": data,
         });
     }
     if options.kind == "video" {

@@ -345,7 +345,7 @@ export interface SceneDoc {
   /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
   chart?: SceneDocChart;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
-  animatedTrack?: "camera" | "layeredScreenshot" | "compare";
+  animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart";
 }
 
 /** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
@@ -1215,12 +1215,13 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (
     doc.animatedTrack === "camera" ||
     doc.animatedTrack === "layeredScreenshot" ||
-    doc.animatedTrack === "compare"
+    doc.animatedTrack === "compare" ||
+    doc.animatedTrack === "chart"
   ) {
     out.animatedTrack = doc.animatedTrack;
   } else if (doc.animatedTrack !== undefined) {
     console.warn(
-      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare, dropped`,
+      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare|chart, dropped`,
     );
   }
   return out;

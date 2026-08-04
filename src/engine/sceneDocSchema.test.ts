@@ -241,14 +241,13 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
-  it("keeps only the two known animatedTrack values", () => {
+  it("keeps only the known animatedTrack values", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(parseSceneDoc({ version: 1, animatedTrack: "camera" }, "test")?.animatedTrack).toBe(
-      "camera",
-    );
-    expect(
-      parseSceneDoc({ version: 1, animatedTrack: "layeredScreenshot" }, "test")?.animatedTrack,
-    ).toBe("layeredScreenshot");
+    for (const track of ["camera", "layeredScreenshot", "compare", "chart"]) {
+      expect(parseSceneDoc({ version: 1, animatedTrack: track }, "test")?.animatedTrack).toBe(
+        track,
+      );
+    }
     expect(
       parseSceneDoc({ version: 1, animatedTrack: "both" }, "test")?.animatedTrack,
     ).toBeUndefined();

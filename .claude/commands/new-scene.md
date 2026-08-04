@@ -69,7 +69,11 @@ Steps:
    - chart: a `chart` block seeded `{ "type": "column", "dimension": "3d", "mount": "hero",
      "data": { "categories": ["April", "May", "June", "July"], "series": [{ "id": "s1",
      "name": "Region 1", "values": [17, 26, 53, 96] }, { "id": "s2", "name": "Region 2",
-     "values": [55, 43, 70, 58] }] } }`. `style`, `axis`, `labels`, `animation` and `track`
+     "values": [55, 43, 70, 58] }] } }`. `type` takes the chart the user asked for
+     (`column`, `stackedColumn`, `bar`, `stackedBar`, `line`, `area`, `stackedArea`, `pie`),
+     `dimension` is `"2d"` when they want a flat chart, and their own numbers replace the
+     starter `data` (the app's wizard offers three starter sets: revenue quarters, weekly
+     growth, share split). `style`, `axis`, `labels`, `animation` and `track`
      stay ABSENT so `resolveChart` owns every default, and series carry no `colour` so the
      theme palette drives them. Text: `title` only, and only when the user gave copy.
    - video: no text keys and a `background` block `{ "type": "video", "src":

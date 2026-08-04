@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
+import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import { useCompareEditStore } from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
@@ -36,7 +37,10 @@ const onEscape = () => {
 const select = (keyId: string | null, segment: number | null) => {
   useCameraEditStore.getState().select(keyId, segment);
   // Stacked lanes each bind window-level key handlers; only one selection may be live.
-  if (keyId !== null || segment !== null) useCompareEditStore.getState().select(null, null);
+  if (keyId !== null || segment !== null) {
+    useCompareEditStore.getState().select(null, null);
+    useChartTrackEditStore.getState().select(null, null);
+  }
 };
 
 export function AnimationLane({

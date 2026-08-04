@@ -14,6 +14,7 @@ import { resyncFollowMediaDuration, writeSceneDoc } from "../engine/sceneDoc";
 import { parseSceneDoc, type SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
+import type { ChartDimension, ChartType } from "../toolkit/chart/types";
 import {
   CUSTOM_COLOUR_PREFIX,
   customColourHex,
@@ -24,6 +25,7 @@ import {
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
 import { ColourPicker } from "./colour/ColourPicker";
+import { SegmentedRow } from "./inspector/rows";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
@@ -115,6 +117,53 @@ const SUBTITLE_KINDS: SceneKind[] = [
 /** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
 const SAMPLE_LAPTOP_VIDEO = "assets/sample-laptop-recording.mp4";
 
+const CHART_TYPE_OPTIONS: { id: ChartType; label: string }[] = [
+  { id: "column", label: "Column" },
+  { id: "stackedColumn", label: "Stacked column" },
+  { id: "bar", label: "Bar" },
+  { id: "stackedBar", label: "Stacked bar" },
+  { id: "line", label: "Line" },
+  { id: "area", label: "Area" },
+  { id: "stackedArea", label: "Stacked area" },
+  { id: "pie", label: "Pie" },
+];
+
+interface ChartStarterData {
+  categories: string[];
+  series: { id: string; name: string; values: number[] }[];
+}
+
+/** The wizard's starter datasets: tiny, plausible numbers so a new chart scene opens on something worth looking at, threaded to the scaffolder as the block's `data`. */
+const CHART_STARTER_DATA: { id: string; label: string; data: ChartStarterData }[] = [
+  {
+    id: "revenue",
+    label: "Revenue quarters",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { id: "s1", name: "Last year", values: [42, 55, 61, 78] },
+        { id: "s2", name: "This year", values: [58, 64, 80, 96] },
+      ],
+    },
+  },
+  {
+    id: "growth",
+    label: "Growth weekly",
+    data: {
+      categories: ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"],
+      series: [{ id: "s1", name: "Signups", values: [120, 180, 260, 340, 470] }],
+    },
+  },
+  {
+    id: "share",
+    label: "Share split",
+    data: {
+      categories: ["Mobile", "Desktop", "Tablet", "Other"],
+      series: [{ id: "s1", name: "Share", values: [52, 31, 11, 6] }],
+    },
+  },
+];
+
 export const MOTION_OPTIONS: { id: string; label: string }[] = [
   { id: "none", label: "None" },
   { id: "push-in", label: "Push-in settle" },
@@ -165,6 +214,70 @@ function SideChipGlyph({ side }: { side: "before" | "after" }) {
         rx="1"
         fill="currentColor"
       />
+    </svg>
+  );
+}
+
+/** Chart-type glyphs for the wizard's picker: one 16px mark per type, drawn from the type's own shape (bars, line, area, wedge) rather than art. */
+function ChartTypeGlyph({ type }: { type: ChartType }) {
+  const marks: Record<ChartType, React.ReactNode> = {
+    column: (
+      <>
+        <rect x="2" y="8" width="3" height="6" />
+        <rect x="6.5" y="4.5" width="3" height="9.5" />
+        <rect x="11" y="6.5" width="3" height="7.5" />
+      </>
+    ),
+    stackedColumn: (
+      <>
+        <rect x="3" y="8" width="4" height="6" />
+        <rect x="3" y="3.5" width="4" height="3.5" />
+        <rect x="9" y="9.5" width="4" height="4.5" />
+        <rect x="9" y="5.5" width="4" height="3" />
+      </>
+    ),
+    bar: (
+      <>
+        <rect x="2" y="2.5" width="6" height="3" />
+        <rect x="2" y="7" width="11.5" height="3" />
+        <rect x="2" y="11.5" width="8" height="3" />
+      </>
+    ),
+    stackedBar: (
+      <>
+        <rect x="2" y="3.5" width="5" height="4" />
+        <rect x="8" y="3.5" width="4" height="4" />
+        <rect x="2" y="9.5" width="7" height="4" />
+        <rect x="10" y="9.5" width="3.5" height="4" />
+      </>
+    ),
+    line: (
+      <polyline
+        points="2,12 6,7 9.5,9.5 14,3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+    area: <path d="M2 13V9l4-4 3.5 2.5L14 3v10z" />,
+    stackedArea: (
+      <>
+        <path d="M2 14V10l4-2.5 3.5 2L14 7v7z" />
+        <path d="M2 8.5V6l4-2 3.5 1.8L14 3v2.5L9.5 7.5 6 5.5z" />
+      </>
+    ),
+    pie: (
+      <>
+        <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M8 8V2.4A5.6 5.6 0 0113.6 8z" />
+      </>
+    ),
+  };
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      {marks[type]}
     </svg>
   );
 }
@@ -360,8 +473,13 @@ export function NewSceneWizard({
   onCancel: () => void;
 }) {
   const titleId = useId();
-  const [step, setStep] = useState<"type" | "device" | "media" | "mediaB" | "details">("type");
+  const [step, setStep] = useState<"type" | "device" | "media" | "mediaB" | "chart" | "details">(
+    "type",
+  );
   const [kind, setKind] = useState<SceneKind>("device");
+  const [chartType, setChartType] = useState<ChartType>("column");
+  const [chartDimension, setChartDimension] = useState<ChartDimension>("3d");
+  const [chartData, setChartData] = useState(CHART_STARTER_DATA[0].id);
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
   const [media, setMedia] = useState<{
@@ -498,6 +616,12 @@ export function NewSceneWizard({
               }))
             : null,
           headerIcon: kind === "titleicon" ? headerIcon.trim() || null : null,
+          chartType: kind === "chart" ? chartType : null,
+          chartDimension: kind === "chart" ? chartDimension : null,
+          chartData:
+            kind === "chart"
+              ? (CHART_STARTER_DATA.find((d) => d.id === chartData)?.data ?? null)
+              : null,
           recording,
           position: position ?? null,
         },
@@ -579,11 +703,13 @@ export function NewSceneWizard({
                   setStep(
                     isDeviceKind || isComparison
                       ? "device"
-                      : kind === "layeredscreenshot" ||
-                          kind === "image" ||
-                          VIDEO_MEDIA_KINDS.includes(kind)
-                        ? "media"
-                        : "details",
+                      : kind === "chart"
+                        ? "chart"
+                        : kind === "layeredscreenshot" ||
+                            kind === "image" ||
+                            VIDEO_MEDIA_KINDS.includes(kind)
+                          ? "media"
+                          : "details",
                   );
                 }}
               >
@@ -751,6 +877,52 @@ export function NewSceneWizard({
           </>
         )}
 
+        {step === "chart" && (
+          <>
+            <Field label="Chart type">
+              <div className="wizard-presets">
+                {CHART_TYPE_OPTIONS.map((t) => (
+                  <button
+                    type="button"
+                    key={t.id}
+                    className={`chip chart-type-chip${chartType === t.id ? " selected" : ""}`}
+                    aria-pressed={chartType === t.id}
+                    onClick={() => setChartType(t.id)}
+                  >
+                    <ChartTypeGlyph type={t.id} />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Look">
+              <SegmentedRow<ChartDimension>
+                options={[
+                  { value: "2d", label: "2D", title: "A flat chart, drawn face on" },
+                  { value: "3d", label: "3D", title: "Extruded marks on a staged floor" },
+                ]}
+                value={chartDimension}
+                onChange={setChartDimension}
+              />
+            </Field>
+            <Field label="Starter data">
+              <SegmentedRow
+                options={CHART_STARTER_DATA.map((d) => ({ value: d.id, label: d.label }))}
+                value={chartData}
+                onChange={setChartData}
+              />
+            </Field>
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => setStep("type")}>
+                Back
+              </button>
+              <button type="button" className="btn primary" onClick={() => setStep("details")}>
+                Next
+              </button>
+            </div>
+          </>
+        )}
+
         {step === "details" && (
           <>
             <div className="wizard-scene-name">
@@ -876,7 +1048,9 @@ export function NewSceneWizard({
                   setStep(
                     isDeviceKind || kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind)
                       ? "media"
-                      : "type",
+                      : kind === "chart"
+                        ? "chart"
+                        : "type",
                   )
                 }
               >

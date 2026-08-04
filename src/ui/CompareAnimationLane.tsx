@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
+import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import { type CompareTrackDoc, useCompareEditStore } from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
@@ -18,7 +19,10 @@ const onEscape = () => useCompareEditStore.getState().select(null, null);
 const select = (keyId: string | null, segment: number | null) => {
   useCompareEditStore.getState().select(keyId, segment);
   // Stacked lanes each bind window-level key handlers; only one selection may be live.
-  if (keyId !== null || segment !== null) useCameraEditStore.getState().select(null, null);
+  if (keyId !== null || segment !== null) {
+    useCameraEditStore.getState().select(null, null);
+    useChartTrackEditStore.getState().select(null, null);
+  }
 };
 
 const onToolKey = () => false;
