@@ -10,7 +10,12 @@ import { FrameChip } from "./FrameChip";
 import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
-import { framePanelChartSlot, framePanelLayout, frameTextAlign } from "./framePanelLayout";
+import {
+  framePanelChartReplaces,
+  framePanelChartSlot,
+  framePanelLayout,
+  frameTextAlign,
+} from "./framePanelLayout";
 import {
   BULLET_LINE_GAP,
   BULLET_OF_TITLE,
@@ -78,9 +83,8 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   }, [solution]);
 
   const col = framePanelLayout(format, frame);
-  const slot = chart ? framePanelChartSlot(col, frame.chart) : undefined;
   // A chart that replaces the text owns the column outright, so the editorial content stands down; the decorations are frame-placed breakouts and stay.
-  const replaced = slot?.replaces === true;
+  const replaced = !!chart && framePanelChartReplaces(frame.chart);
   // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
   const claimed = frame.claimsSceneText !== false && !replaced;
   const title = claimed ? (doc?.text?.title ?? "") : "";
@@ -131,9 +135,13 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const bulletTops: number[] = [];
   const chipGap = bullets.length > 0 && chip ? CHIP_GAP * bulletSize : 0;
   const bodyHeight = bulletsHeight + chipGap + (chip ? chipHeight : 0);
+  const bodyGap = HEADER_BODY_GAP * titleSize;
+  // What the chart band has to clear: the solved header, plus the body when one draws.
+  const textHeight = col.top - headerBottom + (bodyHeight > 0 ? bodyGap + bodyHeight : 0);
+  const slot = chart ? framePanelChartSlot(col, frame.chart, textHeight) : undefined;
   // A chart under the text takes the bottom of the column, so the body's floor lifts to the slot's gap.
   const textBottom = slot && !slot.replaces ? slot.textBottom : col.bottom;
-  let bodyTop = headerBottom - HEADER_BODY_GAP * titleSize;
+  let bodyTop = headerBottom - bodyGap;
   bodyTop = Math.max(bodyTop, textBottom + bodyHeight);
   {
     let cursor = bodyTop;

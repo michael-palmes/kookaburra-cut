@@ -49,17 +49,26 @@ function slotFraction(height: number | undefined, replaces: boolean): number {
   return Math.min(1, Math.max(CHART_SLOT_HEIGHT_MIN, height));
 }
 
-/** The chart band inside an already-padded panel column: full column width, bottom-anchored so the text keeps the top whatever height the slot asks for, and the same `PANEL_PAD_FRACTION` margin the text has. Undefined when the frame has no slot or the scene switched it off. */
+/** Whether the slot takes the whole column, so the panel draws no text at all. One rule, read by the band maths and by the panel deciding what to render. */
+export function framePanelChartReplaces(slot: FrameChartSlot | undefined): boolean {
+  return !!slot && slot.enabled !== false && slot.position === "replace";
+}
+
+/** The chart band inside an already-padded panel column: full column width, bottom-anchored so the text keeps the top whatever height the slot asks for, and the same `PANEL_PAD_FRACTION` margin the text has. `textHeight` is the world height the panel's text actually occupies (`solvePanelLayout`'s solved header, plus the body when one draws): the authored height is a REQUEST, and the band gives way to that text plus a gap rather than climbing into it, whatever the alignment. Undefined when the frame has no slot or the scene switched it off. */
 export function framePanelChartSlot(
   col: FramePanelLayout,
   slot: FrameChartSlot | undefined,
+  textHeight = 0,
 ): FramePanelChartSlot | undefined {
   if (!slot || slot.enabled === false) return undefined;
-  const replaces = slot.position === "replace";
-  const height = col.height * slotFraction(slot.height, replaces);
+  const replaces = framePanelChartReplaces(slot);
+  const gap = CHART_SLOT_GAP_FRACTION * Math.min(col.width, col.height);
+  const requested = col.height * slotFraction(slot.height, replaces);
+  const room = replaces || textHeight <= 0 ? col.height : col.height - textHeight - gap;
+  const height = Math.max(col.height * CHART_SLOT_HEIGHT_MIN, Math.min(requested, room));
   return {
     rect: { x: col.left + col.width / 2, y: col.bottom + height / 2, width: col.width, height },
-    textBottom: col.bottom + height + CHART_SLOT_GAP_FRACTION * Math.min(col.width, col.height),
+    textBottom: col.bottom + height + gap,
     replaces,
   };
 }
