@@ -1,6 +1,7 @@
 /** The chart vocabulary: the authored config (mirroring the sidecar `chart` block) and the RESOLVED layout the renderers consume. Layout is normalised to a 0..1 plot rect with x right and y UP, and is already orientation-resolved (bar charts swap axes here), so the 2D and 3D renderers share one contract and never re-derive orientation from the chart type. */
 
 import type { DevicePlacement } from "../device/Device";
+import type { Chart2DAppearance } from "./chart2dMath";
 
 export type ChartType =
   | "column"
@@ -306,6 +307,70 @@ export interface ChartRevealSampler {
 
 /** What every renderer accepts for `reveal`: the per-element lookup alone (a scene's own override) or a whole sampler. `revealSource.ts` reads either shape, so a renderer never branches on which. */
 export type ChartRevealSource = ChartRevealFn | ChartRevealSampler;
+
+/** How an area fill is painted: flat at `areaOpacity`, or a vertical ramp built from `chartGradientRamp`. */
+export type ChartAreaGradient = "none" | "vertical";
+
+/** Legend swatches as plain dots, or as filled chips (the FrameChip pill treatment). */
+export type ChartLegendChrome = "plain" | "chips";
+
+/** Which theme face chart numerals and labels take. */
+export type ChartFontEmphasis = "body" | "headline";
+
+/** The flat facet of an appearance preset: every `Chart2DAppearance` fraction the 2D metrics resolve, plus the treatments only a preset asks for. A superset, so `chart2dMetrics` takes it as is. */
+export interface ChartStyleSurface2D extends Chart2DAppearance {
+  /** Value labels sit in a filled pill rather than floating over the mark. */
+  labelPill: boolean;
+  /** 0..1: how far tick and category labels lift from the muted token toward the text token (0 = muted, the flat default). */
+  tickWeight: number;
+  /** Draw a rule along the category axis at the value baseline. */
+  axisLine: boolean;
+  areaGradient: ChartAreaGradient;
+  /** Multiplies every stroke THICKNESS the metrics resolve (line stroke, gridline, point radius, axis line); the per-element fractions stay comparable across presets. */
+  strokeWidthScale: number;
+}
+
+/** The lit facet: `MeshStandardMaterial` params plus the physical extras a gloss or glass preset needs (the renderer builds a `MeshPhysicalMaterial` only when `clearcoat` or `transmission` is non-zero) and the 3D furniture flags. */
+export interface ChartStyleSurface3D {
+  roughness: number;
+  metalness: number;
+  /** 0 = no clearcoat. */
+  clearcoat: number;
+  clearcoatRoughness: number;
+  /** 0 = opaque; above 0 makes frosted glass with `thickness` and `ior`. */
+  transmission: number;
+  /** Refraction thickness in world units at the default depth; `resolveChartStyle` scales it by the authored `style.depth`. */
+  thickness: number;
+  ior: number;
+  /** 0..1 emissive rim along the mark's edges: the neon look, in-material, never post-processing bloom. */
+  emissiveEdge: number;
+  /** Multiplies the extrusion bevel on pie slices and ribbon edges; bar boxes take `cornerRadiusScale` instead. */
+  bevelScale: number;
+  /** Draw the back-wall gridlines. */
+  wallGrid: boolean;
+  /** Let the chart lay its own floor and catch a shadow when the stage has none. */
+  floorShadow: boolean;
+  /** Stack segments take the matte finish `chartStackSurface` returns, so a tall stack is not a column of highlights. */
+  interiorFlatStacks: boolean;
+}
+
+/** The resolved appearance BOTH renderers consume: one flat facet, one lit facet, and the treatments that cross both. `resolveChartStyle` is its only maker, and nothing downstream of it reads `style.preset`. */
+export interface ChartStyleSurface {
+  /** The preset actually applied (`boardroom` after a degrade). */
+  id: string;
+  twod: ChartStyleSurface2D;
+  threed: ChartStyleSurface3D;
+  /** Gridline presence, 0..2: multiplies `twod.gridOpacity` flat and the wall-grid lift in 3D; 0 suppresses gridlines the block asked for. */
+  gridStyleWeight: number;
+  legendChrome: ChartLegendChrome;
+  /** Multiplies `twod.pieGap`, which both dimensions cut their arcs with. */
+  pieGapScale: number;
+  /** Multiplies the authored `style.cornerRadius`; resolve caps it so the product never passes 1. */
+  cornerRadiusScale: number;
+  fontEmphasis: ChartFontEmphasis;
+  /** OKLCH lightness step per series index, away from the background (`chartSeriesTint`); 0 leaves the palette as resolved. */
+  seriesLightnessStep: number;
+}
 
 /** What every chart renderer takes, 2D and 3D alike: the resolved block, its computed layout, one colour per series (one per CATEGORY for pie), the plot area in WORLD units, and the optional build state. */
 export interface ChartRendererProps {
