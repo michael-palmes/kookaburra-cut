@@ -14,8 +14,11 @@ import type {
   DeviceShadowMode,
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
+import type { SceneDocDof } from "./dof";
 import { parseFrameOverride } from "./frameSchema";
 import { normalizeLighting } from "./sceneLighting";
+
+export type { SceneDocDof } from "./dof";
 
 /** The per-scene sidecar schema (`scenes/<stem>.json` beside a scene's TSX): holds everything machine-editable (name, text, devices, camera, duration), written atomically via `write_scene_doc`; this module is pure (types + validation only) so it's unit-testable and safe to import anywhere, with IO and hooks living in `sceneDoc.ts`. Field docs: the kookaburra-scene-authoring skill; rationale: docs/decisions.md. */
 
@@ -80,6 +83,8 @@ export interface SceneDocCameraPose {
   azimuthDeg: number;
   elevationDeg: number;
   distance: number;
+  /** Depth of field; absent inherits the last keyed value along the track (see engine/dof.ts). */
+  dof?: SceneDocDof;
 }
 
 export interface SceneDocCameraKey {
@@ -94,6 +99,8 @@ export interface SceneDocCameraSegment {
   to: string;
   /** An `engine/ease.ts` name (anime.js v4 style) or `"jump"`. */
   ease: string;
+  /** Focus-channel ease override; absent means the segment's own `ease`. */
+  easeDof?: string;
 }
 
 /** Present-slideshow hold looping for the camera track: once the authored keys finish during a hold, smooth eases back to the first key over blendMs then replays, jump restarts each cycle. Never read by preview or export sampling. */
@@ -117,6 +124,8 @@ export interface SceneDocRigPose {
   fov?: number;
   /** Bank around the view axis; absent or zero applies no roll at all. */
   rollDeg?: number;
+  /** Depth of field; absent inherits the last keyed value along the track (see engine/dof.ts). */
+  dof?: SceneDocDof;
 }
 
 export interface SceneDocRigKey {
@@ -135,10 +144,11 @@ export interface SceneDocRigSegment {
   ease: string;
   /** ABSENT means smooth: rig paths curve out of the box, `false` is a deliberate straight dolly. */
   smooth?: boolean;
-  /** Per-channel ease overrides; absent means the segment's own `ease` (position covers position, rotation covers aim and roll, lens covers fov). */
+  /** Per-channel ease overrides; absent means the segment's own `ease` (position covers position, rotation covers aim and roll, lens covers fov, dof covers focus and blur). */
   easePosition?: string;
   easeRotation?: string;
   easeLens?: string;
+  easeDof?: string;
 }
 
 /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */

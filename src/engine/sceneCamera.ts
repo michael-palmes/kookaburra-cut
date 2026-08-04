@@ -5,6 +5,15 @@ import {
   type CameraPose,
   sampleCameraTrack,
 } from "./cameraTrack";
+import {
+  carryDof,
+  type EffectiveDof,
+  holdDof,
+  mixDof,
+  normalizeDocDof,
+  type ResolvedDof,
+  type TrackDof,
+} from "./dof";
 import { ease, isEaseName } from "./ease";
 import { lerp, lerp3 } from "./keyframes";
 import type {
@@ -22,12 +31,18 @@ export interface SceneCameraSegment {
   to: SceneDocCameraKey;
   /** An engine/ease.ts name (`ease()` degrades unknown names to the default at sample time). */
   ease: string;
+  /** Focus-channel ease override; absent means the segment's own `ease`. */
+  easeDof?: string;
 }
 
 /** A validated, sorted scene camera track (keys ascending; segments ordered, non-overlapping). */
 export interface SceneCameraTrack {
   keys: SceneDocCameraKey[];
   segments: SceneCameraSegment[];
+  /** Track-level dof summary; null/absent when no key authors a dof block. */
+  dof?: TrackDof | null;
+  /** Per-key EFFECTIVE dof after carry-forward, keyed by key id (normalise-time product). */
+  dofByKey?: Map<string, EffectiveDof | null>;
 }
 
 // The orbit <-> view pair moved to engine/orbit.ts when lights gained orbit placement; re-exported here so camera call sites stay put.
@@ -74,11 +89,36 @@ export function normalizeSceneCamera(
       continue;
     }
     seen.add(key.id);
+    const pose = { ...key.pose };
+    const dofAuthored = normalizeDocDof(key.pose.dof, (message) =>
+      console.warn(`[sceneCamera] ${source}: camera key "${key.id}" ${message}`),
+    );
+    if (dofAuthored) pose.dof = dofAuthored;
+    else delete pose.dof;
     // Negative times can't be authored in the UI; clamp hand-edited ones rather than drop.
-    keys.push(key.tMs < 0 ? { ...key, tMs: 0 } : key);
+    keys.push({ ...key, tMs: key.tMs < 0 ? 0 : key.tMs, pose });
   }
   if (keys.length === 0) return null;
   keys.sort((a, b) => a.tMs - b.tMs);
+
+  // Effective dof per key, carry-forward semantics identical to the rig's (sceneRig.ts).
+  let dofMode: TrackDof["mode"] | null = null;
+  let dofCarried: EffectiveDof | null = null;
+  let dofActive = false;
+  const dofByKey = new Map<string, EffectiveDof | null>();
+  for (const key of keys) {
+    const authored = key.pose.dof;
+    if (authored?.mode && dofMode && authored.mode !== dofMode) {
+      console.warn(
+        `[sceneCamera] ${source}: dof mode is per scene; key "${key.id}" "${authored.mode}" ignored`,
+      );
+    }
+    if (authored && dofMode === null) dofMode = authored.mode ?? "depth";
+    dofCarried = carryDof(dofCarried, authored);
+    if (dofCarried && dofCarried.blur > 0) dofActive = true;
+    dofByKey.set(key.id, dofCarried);
+  }
+  const dof: TrackDof | null = dofMode ? { mode: dofMode, active: dofActive } : null;
 
   const byId = new Map(keys.map((k) => [k.id, k]));
   const segments: SceneCameraSegment[] = [];
@@ -92,7 +132,16 @@ export function normalizeSceneCamera(
     if (typeof seg.ease === "string" && !isEaseName(seg.ease)) {
       console.warn(`[sceneCamera] ${source}: unknown ease "${seg.ease}" — will render as default`);
     }
-    segments.push({ from, to, ease: seg.ease });
+    let easeDof: string | undefined;
+    if (seg.easeDof !== undefined) {
+      if (isEaseName(seg.easeDof)) easeDof = seg.easeDof;
+      else {
+        console.warn(
+          `[sceneCamera] ${source}: unknown easeDof "${seg.easeDof}" — falling back to the segment's`,
+        );
+      }
+    }
+    segments.push({ from, to, ease: seg.ease, easeDof });
   }
   segments.sort((a, b) => a.from.tMs - b.from.tMs);
   const ordered: SceneCameraSegment[] = [];
@@ -104,7 +153,7 @@ export function normalizeSceneCamera(
     }
     ordered.push(seg);
   }
-  return { keys, segments: ordered };
+  return { keys, segments: ordered, dof, dofByKey };
 }
 
 /** Mix two orbit poses; the one copy, shared with the Present loop's return leg (two copies is how Present and the editor drift apart). Angles interpolate as plain numbers, no shortest-arc wrapping, so authored values are honoured verbatim. */
@@ -121,12 +170,32 @@ export function mixPose(
   };
 }
 
-/** Sample a normalized track at scene-local time. Inside a segment ([from, to), the end instant belongs to the hold rule, which is what makes `jump` land its target exactly at the segment end): eased interpolation of the orbit parameters (angles interpolate as plain numbers, no shortest-arc wrapping, so authored values are honoured verbatim). Outside a segment: hold the latest key at/before `t`, clamping to the first key before it. */
-export function sampleSceneCamera(track: SceneCameraTrack, localMs: number): SceneDocCameraPose {
+/** An orbit sample with its resolved dof (autofocus = the pose's distance to target). */
+export interface SceneCameraSample {
+  pose: SceneDocCameraPose;
+  dof: ResolvedDof | null;
+}
+
+/** Sample a normalized track at scene-local time, dof included. Inside a segment ([from, to), the end instant belongs to the hold rule, which is what makes `jump` land its target exactly at the segment end): eased interpolation of the orbit parameters (angles interpolate as plain numbers, no shortest-arc wrapping, so authored values are honoured verbatim). Outside a segment: hold the latest key at/before `t`, clamping to the first key before it. */
+export function sampleSceneCameraWithDof(
+  track: SceneCameraTrack,
+  localMs: number,
+): SceneCameraSample {
   for (const seg of track.segments) {
     if (localMs >= seg.from.tMs && localMs < seg.to.tMs) {
       const p = (localMs - seg.from.tMs) / (seg.to.tMs - seg.from.tMs);
-      return mixPose(seg.from.pose, seg.to.pose, ease(seg.ease, p));
+      const pose = mixPose(seg.from.pose, seg.to.pose, ease(seg.ease, p));
+      let dof: ResolvedDof | null = null;
+      if (track.dof) {
+        const mixedDof = mixDof(
+          track.dofByKey?.get(seg.from.id) ?? null,
+          track.dofByKey?.get(seg.to.id) ?? null,
+          ease(seg.easeDof ?? seg.ease, p),
+          pose.distance,
+        );
+        if (mixedDof) dof = { mode: track.dof.mode, ...mixedDof };
+      }
+      return { pose, dof };
     }
   }
   let held = track.keys[0];
@@ -134,7 +203,18 @@ export function sampleSceneCamera(track: SceneCameraTrack, localMs: number): Sce
     if (key.tMs <= localMs) held = key;
     else break;
   }
-  return { ...held.pose, target: [...held.pose.target] };
+  const pose = { ...held.pose, target: [...held.pose.target] as [number, number, number] };
+  let dof: ResolvedDof | null = null;
+  if (track.dof) {
+    const heldDof = holdDof(track.dofByKey?.get(held.id) ?? null, pose.distance);
+    if (heldDof) dof = { mode: track.dof.mode, ...heldDof };
+  }
+  return { pose, dof };
+}
+
+/** The pose-only sampler every existing call site uses. */
+export function sampleSceneCamera(track: SceneCameraTrack, localMs: number): SceneDocCameraPose {
+  return sampleSceneCameraWithDof(track, localMs).pose;
 }
 
 /** One scene's camera, both blocks resolved. `mode` is "rig" only when the doc SAYS rig and the rig actually has keys, so flipping the switch before authoring anything falls through to orbit and the camera never jumps. */
@@ -260,6 +340,24 @@ export interface FrameCameraPlan {
   a?: CameraPose;
   b?: CameraPose;
   overlay?: CameraPose;
+  /** The PROJECT's dof union (constant across frames, a pure function of the tracks): which blur families the composer chain must build. Null when no scene's driving track has active dof. */
+  dofUnion?: { depth: boolean; tilt: boolean } | null;
+}
+
+/** Which dof families any scene's DRIVING track activates (rig mode reads the rig block, orbit mode the orbit block, matching `poseFor`). Constant per project load, so the composer chain it keys stays project-stable. */
+export function dofUnionOf(
+  tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
+): { depth: boolean; tilt: boolean } | null {
+  let depth = false;
+  let tilt = false;
+  for (const scene of tracks ?? []) {
+    if (!scene) continue;
+    const dof = scene.mode === "rig" ? scene.rig?.dof : scene.orbit?.dof;
+    if (!dof?.active) continue;
+    if (dof.mode === "depth") depth = true;
+    else tilt = true;
+  }
+  return depth || tilt ? { depth, tilt } : null;
 }
 
 /** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base; `fov` comes from the project-level track unless a rig key authored one. */
@@ -283,22 +381,32 @@ export function resolveFrameCameras(
         lookAt: rig.lookAt,
         fov: rig.fov ?? fallback.fov,
         rollDeg: rig.rollDeg,
+        dof: rig.dof,
       };
     }
     if (!scene.orbit) return fallback;
-    const view = orbitToView(sampleSceneCamera(scene.orbit, active.localMs));
-    return { position: view.position, lookAt: view.lookAt, fov: fallback.fov };
+    const sample = sampleSceneCameraWithDof(scene.orbit, active.localMs);
+    const view = orbitToView(sample.pose);
+    return {
+      position: view.position,
+      lookAt: view.lookAt,
+      fov: fallback.fov,
+      dof: sample.dof ?? undefined,
+    };
   };
 
+  const dofUnion = dofUnionOf(tracks);
   const tr = resolved.transition;
   if (resolved.active.length < 2 || !tr) {
-    return { solo: poseFor(resolved.active[resolved.active.length - 1]) };
+    return { solo: poseFor(resolved.active[resolved.active.length - 1]), dofUnion };
   }
   const byIndex = new Map(resolved.active.map((s) => [s.index, s]));
   const from = byIndex.get(tr.fromIndex);
   const to = byIndex.get(tr.toIndex);
-  if (!from || !to) return { solo: poseFor(resolved.active[resolved.active.length - 1]) };
+  if (!from || !to) {
+    return { solo: poseFor(resolved.active[resolved.active.length - 1]), dofUnion };
+  }
   const a = poseFor(from);
   const b = poseFor(to);
-  return { a, b, overlay: tr.progress < 0.5 ? a : b };
+  return { a, b, overlay: tr.progress < 0.5 ? a : b, dofUnion };
 }

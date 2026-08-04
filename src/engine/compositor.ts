@@ -31,6 +31,7 @@ import {
   drawingBufferSize,
   ensureComposer,
   releaseComposer,
+  renderSideWithDof,
   renderThroughComposer,
   resolveFrameEffects,
 } from "./effects";
@@ -577,8 +578,9 @@ export function renderComposited(
   const tr = resolved.transition;
   const prevTarget = gl.getRenderTarget();
 
-  // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer.
-  const fx = resolveFrameEffects(resolved);
+  // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer. A dof-active project with no other effects still routes fx (empty config): the composer owns dof, and tone mapping must stay uniform project-wide.
+  const dofUnion = cameras?.dofUnion ?? null;
+  const fx = resolveFrameEffects(resolved) ?? (dofUnion ? {} : null);
   const seed = fx ? grainSeed(useClockStore.getState().currentMs, FPS) : 0;
 
   // Comparison path: the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep), overlays are not composed here (a framed comparison renders full-bleed, the v1 rule), and transition frames never reach this branch (resolveCompareFrame yields null, the transition below blends side A only).
@@ -601,20 +603,30 @@ export function renderComposited(
     // Persistent layers draw exactly once over the composite, never into the side targets (the transition ghosting rule).
     for (const g of persistent) g.visible = false;
 
+    // One camera pose (and so one dof) serves both comparison sides; each side renders through the dof side composer when the pose carries dof, so the divider blends two focus-graded halves.
+    const sideDof = dofUnion && cameras?.solo?.dof ? cameras.solo.dof : null;
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     showOnly(idx);
     if (compare.stateA) applyState(compare.stateA);
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     applyFrameLighting(scene, lighting?.solo);
-    gl.setRenderTarget(tgtA);
-    gl.render(scene, camera);
+    if (sideDof && dofUnion) {
+      renderSideWithDof(gl, scene, camera, sideDof, tgtA, size.x, size.y, dofUnion);
+    } else {
+      gl.setRenderTarget(tgtA);
+      gl.render(scene, camera);
+    }
 
     showOnly(idx, "b");
     if (compare.stateB) applyState(compare.stateB);
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     applyFrameLighting(scene, lighting?.solo);
-    gl.setRenderTarget(tgtB);
-    gl.render(scene, camera);
+    if (sideDof && dofUnion) {
+      renderSideWithDof(gl, scene, camera, sideDof, tgtB, size.x, size.y, dofUnion);
+    } else {
+      gl.setRenderTarget(tgtB);
+      gl.render(scene, camera);
+    }
 
     // The dominant side's state backs the persistent-overlay draw (the transition dominance rule).
     const domState = compare.value >= 0.5 ? compare.stateA : compare.stateB;
@@ -649,14 +661,16 @@ export function renderComposited(
       for (const g of persistent) g.visible = true;
     }
     if (fx) {
+      // The sides already carry their dof; the main chain's dof stays zeroed (null) so the composite is never double-focused.
       renderThroughComposer(
         gl,
-        ensureComposer(gl, size.x, size.y),
+        ensureComposer(gl, size.x, size.y, dofUnion),
         st.quadScene,
         st.quadCamera,
         fx,
         seed,
         hasOverlay ? { scene, camera } : undefined,
+        null,
       );
     } else {
       gl.setRenderTarget(null);
@@ -699,7 +713,16 @@ export function renderComposited(
       if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
     } else if (fx) {
       const size = drawingBufferSize(gl);
-      renderThroughComposer(gl, ensureComposer(gl, size.x, size.y), scene, camera, fx, seed);
+      renderThroughComposer(
+        gl,
+        ensureComposer(gl, size.x, size.y, dofUnion),
+        scene,
+        camera,
+        fx,
+        seed,
+        undefined,
+        cameras?.solo?.dof ?? null,
+      );
     } else {
       gl.setRenderTarget(null);
       gl.render(scene, camera);
@@ -748,6 +771,9 @@ export function renderComposited(
     renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
     const panelA = panelFor(tr.fromIndex);
     if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+  } else if (dofUnion && cameras?.a?.dof) {
+    // Per-side dof: the side renders through the dof composer into its target, so a rack focus rides INTO the transition instead of releasing at the cut.
+    renderSideWithDof(gl, scene, camera, cameras.a.dof, tgtA, size.x, size.y, dofUnion);
   } else {
     gl.setRenderTarget(tgtA);
     gl.render(scene, camera);
@@ -762,6 +788,8 @@ export function renderComposited(
     renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
     const panelB = panelFor(tr.toIndex);
     if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
+  } else if (dofUnion && cameras?.b?.dof) {
+    renderSideWithDof(gl, scene, camera, cameras.b.dof, tgtB, size.x, size.y, dofUnion);
   } else {
     gl.setRenderTarget(tgtB);
     gl.render(scene, camera);
@@ -807,15 +835,16 @@ export function renderComposited(
   }
 
   if (fx) {
-    // Effects: the overlay is layered into the composer's pre-effect input buffer, so bloom/grade/grain apply to the morph exactly as they do to the scenes.
+    // Effects: the overlay is layered into the composer's pre-effect input buffer, so bloom/grade/grain apply to the morph exactly as they do to the scenes. The sides already carry their dof, so the main chain's stays zeroed (null).
     renderThroughComposer(
       gl,
-      ensureComposer(gl, size.x, size.y),
+      ensureComposer(gl, size.x, size.y, dofUnion),
       st.quadScene,
       st.quadCamera,
       fx,
       seed,
       hasOverlay ? { scene, camera } : undefined,
+      null,
     );
   } else {
     gl.setRenderTarget(null);

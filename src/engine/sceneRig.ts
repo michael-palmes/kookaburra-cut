@@ -1,5 +1,14 @@
 /** Per-SCENE camera RIG: free-flight pose keyframes stored in a scene's sidecar `cameraRig` block and sampled in SCENE-LOCAL time. A separate block behind `cameraMode`, so the orbit sampler (sceneCamera.ts) is untouched and projects without a rig render byte-identically. Pure (no three.js, no clock reads) like every sampler here, with hand-rolled directional maths: poses interpolate through a CANONICAL form (position + unit forward + aim distance), which is what lets a 180 degree pan-in-place turn without the look point sweeping through the camera. See docs/determinism.md. */
 import { viewBasis } from "./cameraProject";
+import {
+  carryDof,
+  type EffectiveDof,
+  holdDof,
+  mixDof,
+  normalizeDocDof,
+  type ResolvedDof,
+  type TrackDof,
+} from "./dof";
 import { ease, isEaseName } from "./ease";
 import { CAMERA } from "./format";
 import { catmullRom, catmullRomTangent, lerp, lerp3 } from "./keyframes";
@@ -93,12 +102,13 @@ export interface CanonicalPose {
   fov: number | undefined;
 }
 
-/** The applied pose a rig sample produces. `fov` is absent when neither end of the sample authored one, leaving it to the project-level track. */
+/** The applied pose a rig sample produces. `fov` is absent when neither end of the sample authored one, leaving it to the project-level track; `dof` is absent until some key authors a dof block. */
 export interface RigPose {
   position: V3;
   lookAt: V3;
   fov?: number;
   rollDeg: number;
+  dof?: ResolvedDof;
 }
 
 export function toCanonical(pose: SceneDocRigPose): CanonicalPose {
@@ -182,6 +192,7 @@ export interface SceneRigSegment {
   easePosition?: string;
   easeRotation?: string;
   easeLens?: string;
+  easeDof?: string;
 }
 
 /** The stand-in for a missing spline neighbour: the far endpoint mirrored through the near one. Duplicating the endpoint instead (the other standard trick) would give a two-key segment a smoothstep speed profile on top of its ease and a ZERO start tangent, which a tangent aim then can't read. Reflection makes a neighbourless smooth segment exactly its straight lerp. EXPORT CONTRACT. */
@@ -193,6 +204,10 @@ function reflect(near: RV3, far: RV3): V3 {
 export interface SceneRigTrack {
   keys: SceneDocRigKey[];
   segments: SceneRigSegment[];
+  /** Track-level dof summary; null/absent when no key authors a dof block. */
+  dof?: TrackDof | null;
+  /** Per-key EFFECTIVE dof after carry-forward, keyed by key id (normalise-time product). */
+  dofByKey?: Map<string, EffectiveDof | null>;
 }
 
 const finite3 = (v: unknown): v is V3 =>
@@ -279,11 +294,35 @@ export function normalizeSceneRig(
         );
       }
     }
+    const dofAuthored = normalizeDocDof(key.pose.dof, (message) =>
+      console.warn(`[sceneRig] ${source}: rig key "${key.id}" ${message}`),
+    );
+    if (dofAuthored) pose.dof = dofAuthored;
+    else delete pose.dof;
     // Negative times can't be authored in the UI; clamp hand-edited ones rather than drop.
     keys.push({ ...key, tMs: key.tMs < 0 ? 0 : key.tMs, pose });
   }
   if (keys.length === 0) return null;
   keys.sort((a, b) => a.tMs - b.tMs);
+
+  // Effective dof per key: fields carry forward from the last key that authored them; the first authored mode is the scene's (dof blur can ease in and out, the blur FAMILY cannot swap mid-flight).
+  let dofMode: TrackDof["mode"] | null = null;
+  let dofCarried: EffectiveDof | null = null;
+  let dofActive = false;
+  const dofByKey = new Map<string, EffectiveDof | null>();
+  for (const key of keys) {
+    const authored = key.pose.dof;
+    if (authored?.mode && dofMode && authored.mode !== dofMode) {
+      console.warn(
+        `[sceneRig] ${source}: dof mode is per scene; key "${key.id}" "${authored.mode}" ignored`,
+      );
+    }
+    if (authored && dofMode === null) dofMode = authored.mode ?? "depth";
+    dofCarried = carryDof(dofCarried, authored);
+    if (dofCarried && dofCarried.blur > 0) dofActive = true;
+    dofByKey.set(key.id, dofCarried);
+  }
+  const dof: TrackDof | null = dofMode ? { mode: dofMode, active: dofActive } : null;
 
   const byId = new Map(keys.map((k) => [k.id, k]));
   const indexOf = new Map(keys.map((k, i) => [k.id, i]));
@@ -322,6 +361,7 @@ export function normalizeSceneRig(
       easePosition: channel(seg.easePosition, "easePosition"),
       easeRotation: channel(seg.easeRotation, "easeRotation"),
       easeLens: channel(seg.easeLens, "easeLens"),
+      easeDof: channel(seg.easeDof, "easeDof"),
     });
   }
   segments.sort((a, b) => a.from.tMs - b.from.tMs);
@@ -334,7 +374,7 @@ export function normalizeSceneRig(
     }
     ordered.push(seg);
   }
-  return { keys, segments: ordered };
+  return { keys, segments: ordered, dof, dofByKey };
 }
 
 /** The path direction at this instant, or null when there isn't one. Four rules, and they are the corner authors hit: inside a SMOOTHED segment it's the analytic spline derivative; inside a STRAIGHT one it's the segment chord; a held key outside any segment has no path at all; and a near-zero derivative or chord (a stationary key pair) has none either. Every null falls back to the key's baked `at`. */
@@ -345,7 +385,7 @@ function pathTangent(seg: SceneRigSegment, ePos: number): V3 | null {
   return normalize3(catmullRomTangent(seg.before, from, to, seg.after, ePos));
 }
 
-function sampleSegment(seg: SceneRigSegment, p: number): RigPose {
+function sampleSegment(track: SceneRigTrack, seg: SceneRigSegment, p: number): RigPose {
   const a = toCanonical(seg.from.pose);
   const b = toCanonical(seg.to.pose);
   const e: ChannelProgress = {
@@ -373,14 +413,25 @@ function sampleSegment(seg: SceneRigSegment, p: number): RigPose {
       e.position,
     );
   }
-  return fromCanonical(mixed);
+  const pose = fromCanonical(mixed);
+  if (track.dof) {
+    const eDof = ease(seg.easeDof ?? seg.ease, p);
+    const mixedDof = mixDof(
+      track.dofByKey?.get(seg.from.id) ?? null,
+      track.dofByKey?.get(seg.to.id) ?? null,
+      eDof,
+      mixed.aimDistance,
+    );
+    if (mixedDof) pose.dof = { mode: track.dof.mode, ...mixedDof };
+  }
+  return pose;
 }
 
 /** Sample a normalized rig at scene-local time, returning the APPLIED pose (the authored-key accessor the inspector wants is a separate thing; don't conflate them). Semantics match the orbit sampler exactly: segments are half-open `[from, to)` so `jump` lands its target at the segment end, and outside a segment the camera holds the latest key at/before `t`, clamping to the first key before it. Smoothing shapes POSITION only, because splining the aim as well gives a wandering look direction that is very hard to author against. */
 export function sampleSceneRig(track: SceneRigTrack, localMs: number): RigPose {
   for (const seg of track.segments) {
     if (localMs >= seg.from.tMs && localMs < seg.to.tMs) {
-      return sampleSegment(seg, (localMs - seg.from.tMs) / (seg.to.tMs - seg.from.tMs));
+      return sampleSegment(track, seg, (localMs - seg.from.tMs) / (seg.to.tMs - seg.from.tMs));
     }
   }
   let held = track.keys[0];
@@ -388,7 +439,13 @@ export function sampleSceneRig(track: SceneRigTrack, localMs: number): RigPose {
     if (key.tMs <= localMs) held = key;
     else break;
   }
-  return fromCanonical(toCanonical(held.pose));
+  const canonical = toCanonical(held.pose);
+  const pose = fromCanonical(canonical);
+  if (track.dof) {
+    const heldDof = holdDof(track.dofByKey?.get(held.id) ?? null, canonical.aimDistance);
+    if (heldDof) pose.dof = { mode: track.dof.mode, ...heldDof };
+  }
+  return pose;
 }
 
 /** How many evenly spaced samples summarise a rig's travel. FIXED and documented: the envelope feeds SIZING maths, which must land on the same numbers in preview and export, so it can never depend on frame rate or scene length. EXPORT CONTRACT. */

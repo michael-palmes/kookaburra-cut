@@ -6,6 +6,7 @@ import { baseCameraPose } from "./cameraTrack";
 import {
   buildSceneCameraTracks,
   defaultOrbitPose,
+  dofUnionOf,
   hasSceneCameraTracks,
   normalizeSceneCamera,
   orbitFromView,
@@ -13,6 +14,7 @@ import {
   resolveFrameCameras,
   type SceneCameraTrack,
   sampleSceneCamera,
+  sampleSceneCameraWithDof,
 } from "./sceneCamera";
 import { parseSceneDoc, type SceneDoc, type SceneDocCameraPose } from "./sceneDocSchema";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
@@ -491,5 +493,64 @@ describe("cross-scene continuity", () => {
     expect(
       warn.mock.calls.filter((c) => String(c[0]).includes("continueFromPrevious")),
     ).toHaveLength(3);
+  });
+});
+
+describe("orbit dof", () => {
+  it("autofocus follows the orbit distance, manual holds its number", () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose({ distance: 6, dof: { blur: 0.5 } }) },
+        { id: "b", tMs: 1000, pose: pose({ distance: 2 }) },
+      ],
+      segments: [{ from: "a", to: "b", ease: "linear" }],
+    });
+    expect(t.dof).toEqual({ mode: "depth", active: true });
+    const mid = sampleSceneCameraWithDof(t, 500);
+    expect(mid.pose.distance).toBeCloseTo(4, 12);
+    expect(mid.dof?.focus).toBeCloseTo(4, 12);
+    const manual = track({
+      keys: [{ id: "a", tMs: 0, pose: pose({ distance: 6, dof: { blur: 0.5, focus: 3 } }) }],
+      segments: [],
+    });
+    expect(sampleSceneCameraWithDof(manual, 0).dof?.focus).toBe(3);
+  });
+
+  it("easeDof on an orbit segment shapes focus independently", () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose({ distance: 6, dof: { blur: 0.5, focus: 2 } }) },
+        { id: "b", tMs: 1000, pose: pose({ distance: 6, dof: { focus: 8 } }) },
+      ],
+      segments: [{ from: "a", to: "b", ease: "linear", easeDof: "jump" }],
+    });
+    expect(sampleSceneCameraWithDof(t, 500).dof?.focus).toBe(2);
+  });
+
+  it("the plan carries the pose dof and the project union", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      camera: {
+        keys: [{ id: "k", tMs: 0, pose: pose({ dof: { blur: 0.7 } }) }],
+        segments: [],
+      },
+    };
+    const slots: SceneSlot[] = [{ index: 0, id: "s0", startMs: 0, endMs: 4000, durationMs: 4000 }];
+    const tracks = buildSceneCameraTracks([doc]);
+    expect(dofUnionOf(tracks)).toEqual({ depth: true, tilt: false });
+    const plan = resolveFrameCameras(tracks, undefined, resolveAt(slots, 500), 500);
+    expect(plan?.dofUnion).toEqual({ depth: true, tilt: false });
+    expect(plan?.solo?.dof).toMatchObject({ mode: "depth", blur: 0.7, focus: 5 });
+  });
+
+  it("the union ignores the non-driving block and inactive dof", () => {
+    const orbitOnly: SceneDoc = {
+      version: 1,
+      camera: {
+        keys: [{ id: "k", tMs: 0, pose: pose({ dof: { blur: 0 } }) }],
+        segments: [],
+      },
+    };
+    expect(dofUnionOf(buildSceneCameraTracks([orbitOnly]))).toBeNull();
   });
 });
