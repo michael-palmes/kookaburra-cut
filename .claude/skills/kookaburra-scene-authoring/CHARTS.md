@@ -39,8 +39,7 @@ is enough. One chart per scene.
     "cornerRadius": 0.25,
     "rotation": [0, 0],         // hero 3D tilt/turn degrees; FRONT ON by default
     "innerRadius": 0,           // pie only; > 0 makes a donut (0.55 reads well)
-    "offset": [0, 0.4],         // hero nudge, world units; the 0.4 default lifts the
-                                // chart clear of a staged floor
+    "offset": [0, 0],           // hero nudge, world units
     "scale": 1                  // hero size multiplier, 0.2..3
   },
 
@@ -187,8 +186,10 @@ and let the device hold the other side.
 
 - One chart per scene; a second block is not a thing. Two charts means two scenes or
   a staged chart beside other content.
-- `style.offset` default `[0, 0.4]` exists to clear staged floors; setting y back to 0
-  on a floor-staged theme will intersect the floor.
+- New chart scenes scaffold `backdrop: { "type": "none" }` (the chart floats on the
+  scene background; users toggle the stage back on in the inspector). On a
+  floor-staged theme, lift the chart clear of the floor with
+  `chart.style.offset: [0, 0.4]` before reaching for anything else.
 - Stacked types clamp negative values to 0; plain types chart them below the axis.
 - Emoji do not render in chart labels (plain troika text); keep prefixes/suffixes to
   plain glyphs like `$` and `%`.

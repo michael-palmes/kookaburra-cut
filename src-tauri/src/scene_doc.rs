@@ -1056,6 +1056,8 @@ pub async fn scaffold_scene(
             "mount": "hero",
             "data": data,
         });
+        // The chart floats on the scene's own background; staged scenery boxes it in (toggle the backdrop back on in the inspector).
+        doc["backdrop"] = json!({ "type": "none" });
     }
     if options.kind == "video" {
         if let Some(rel) = &options.media_rel {

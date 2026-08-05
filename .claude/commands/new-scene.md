@@ -75,7 +75,10 @@ Steps:
      starter `data` (the app's wizard offers three starter sets: revenue quarters, weekly
      growth, share split). `style`, `axis`, `labels`, `animation` and `track`
      stay ABSENT so `resolveChart` owns every default, and series carry no `colour` so the
-     theme palette drives them. Text: `title` only, and only when the user gave copy.
+     theme palette drives them. The sidecar also seeds `backdrop: { "type": "none" }`:
+     the chart floats on the scene background rather than boxed by staged scenery
+     (toggle the backdrop back on in the inspector). Text: `title` only, and only when
+     the user gave copy.
    - video: no text keys and a `background` block `{ "type": "video", "src":
      "assets/<file>" }` (the media the user gave, else the bundled
      `assets/sample-laptop-recording.mp4`).

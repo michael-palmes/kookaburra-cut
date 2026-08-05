@@ -95,7 +95,7 @@ them.
     "cornerRadius": 0.25,       // 0..1 of half the bar width
     "rotation": [0, 0],         // hero 3D presentation tilt, X/Y degrees; front on by default
     "innerRadius": 0,           // pie only; > 0 makes a donut
-    "offset": [0, 0.4],         // hero nudge off the fitted centre, world units
+    "offset": [0, 0],           // hero nudge off the fitted centre, world units
     "scale": 1                  // hero size multiplier, 0.2..3
   },
 
@@ -170,9 +170,10 @@ Resolution rules worth knowing:
   extrusion) fits again. Both stand at `DEPTH_BANDS.content`. A hero 3D chart
   centres its full content block (plot plus both label stacks, with a front-plane
   perspective allowance) in the rect; the plot builds at `CHART_3D_PLOT_HEIGHT` of
-  the rect so the fit holds near scale 1 and fills most of the frame width. The
-  resolved default `offset` carries a 0.4 lift, which keeps the label stack clear
-  of a staged floor without any stage coupling. `style.offset` nudges either
+  the rect so the fit holds near scale 1 and fills most of the frame width. New chart
+  scenes scaffold with `backdrop: { "type": "none" }`, so the chart floats on the
+  scene background; on a floor-staged theme, lift the chart with `style.offset`
+  (the Placement group) so the label stack clears the floor. `style.offset` nudges either
   dimension off the fitted pose in world units and `style.scale` multiplies the
   fitted scale (the inspector's Placement group).
 - **Furniture bands are estimated, not measured.** Label widths come from a
