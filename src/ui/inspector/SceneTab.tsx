@@ -25,6 +25,8 @@ import {
   type SceneDocRigPose,
   type SceneDocVideoWindow,
   type SceneTextAlign,
+  TEXT_LINE_HEIGHT_MAX,
+  TEXT_LINE_HEIGHT_MIN,
   type VideoWindowMotionPreset,
 } from "../../engine/sceneDocSchema";
 import { defaultRigPose } from "../../engine/sceneRig";
@@ -1593,6 +1595,9 @@ const ALIGN_OPTIONS: { id: SceneTextAlign; label: string }[] = [
   { id: "right", label: "Right" },
 ];
 
+/** Where the line-spacing slider parks for troika's own "normal" spacing; landing here clears the override, so an untouched field keeps rendering exactly as it always has. */
+const LINE_SPACING_NORMAL = 1.2;
+
 /** Background fill-type icons for the drill-in's tile grid; same 20-viewBox stroke style as SceneRowIcon. */
 function BgTypeIcon({ id }: { id: string }) {
   switch (id) {
@@ -1811,6 +1816,8 @@ export function SceneTab({
   const vwDragBaseline = useRef<SceneDoc | null>(null);
   // The Position drill's drag baseline (same pattern).
   const posDragBaseline = useRef<SceneDoc | null>(null);
+  // The Text drill's line-spacing drag baseline (same pattern).
+  const lineDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
@@ -4434,16 +4441,30 @@ export function SceneTab({
       const v = doc.textStyle?.[k];
       return typeof v === "number" ? v : undefined;
     };
+    const writeStyle = (k: string, value: string | number | undefined) => (next: SceneDoc) => {
+      const style = { ...(next.textStyle ?? {}) };
+      if (value === undefined) delete style[k];
+      else style[k] = value;
+      next.textStyle = Object.keys(style).length > 0 ? style : undefined;
+    };
     const patchStyle = (history: string, k: string, value: string | number | undefined) =>
-      void patchDoc(
-        (next) => {
-          const style = { ...(next.textStyle ?? {}) };
-          if (value === undefined) delete style[k];
-          else style[k] = value;
-          next.textStyle = Object.keys(style).length > 0 ? style : undefined;
-        },
-        { history },
-      );
+      void patchDoc(writeStyle(k, value), { history });
+    // Slider drags write live (history-less) and record ONE entry on release, the lighting/position drill pattern.
+    const liveStyle = (k: string, value: string | number | undefined) => {
+      if (!lineDragBaseline.current) lineDragBaseline.current = structuredClone(doc);
+      void patchDoc(writeStyle(k, value), { history: false });
+    };
+    const commitStyle = (history: string, k: string, value: string | number | undefined) => {
+      const baseline = lineDragBaseline.current;
+      lineDragBaseline.current = null;
+      if (baseline) void commitFromBaseline(baseline, writeStyle(k, value));
+      else patchStyle(history, k, value);
+    };
+    // Snap to the 0.05 grid so the slider's own float drift can't write 1.2000000000000002 (which would also miss the clear-at-Normal test).
+    const lineSpacing = (n: number): number | undefined => {
+      const v = Math.round(n * 20) / 20;
+      return v === LINE_SPACING_NORMAL ? undefined : v;
+    };
     const clearAllText = () => {
       // Drop pending live edits first so a focused field can't write itself back.
       if (textEditTimer.current !== null) {
@@ -4605,6 +4626,42 @@ export function SceneTab({
                         )
                       }
                     />
+                  </div>
+                )}
+                {styleCapable.has(key) && (
+                  <div className="popover-row text-style-line-row">
+                    <span className="popover-inline slider-row-label">Line spacing</span>
+                    <DebouncedRange
+                      label={`${label} line spacing`}
+                      value={styleNum(`${key}LineHeight`) ?? LINE_SPACING_NORMAL}
+                      min={TEXT_LINE_HEIGHT_MIN}
+                      max={TEXT_LINE_HEIGHT_MAX}
+                      step={0.05}
+                      onInput={(n) => liveStyle(`${key}LineHeight`, lineSpacing(n))}
+                      onCommit={(n) =>
+                        commitStyle(
+                          `${label.toLowerCase()} line spacing`,
+                          `${key}LineHeight`,
+                          lineSpacing(n),
+                        )
+                      }
+                    />
+                    {styleNum(`${key}LineHeight`) !== undefined && (
+                      <button
+                        type="button"
+                        className="inspector-reset-btn"
+                        title="Back to the font's normal line spacing"
+                        onClick={() =>
+                          patchStyle(
+                            `${label.toLowerCase()} line spacing`,
+                            `${key}LineHeight`,
+                            undefined,
+                          )
+                        }
+                      >
+                        Normal
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

@@ -57,6 +57,8 @@ normally and simply shows no editing affordances.
     "titleSize": 1.25,                       //   Size: multiplier of the element's default (1 = as designed;
                                              //   multiplies, so portrait/landscape defaults survive)
     "titleOffsetX": 0.4, "titleOffsetY": -0.2, // OffsetX/Y: world-unit nudges from the scene's layout
+    "titleLineHeight": 1.4,                    //   LineHeight: line spacing as a multiple of the font
+                                               //   size (0.8..2); absent keeps the font's own spacing
     "subtitleColor": "#9aa4b5"
   },                                         // consumed by any text primitive given the matching
                                              // textKey (TitleBlock owns title/subtitle); inert
