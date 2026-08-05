@@ -209,6 +209,8 @@ function StageLoadingOverlay({
 /** A transient export/verify notification. `path` (success exports) enables Show in Finder. */
 type Toast = { kind: "success" | "error"; message: string; path?: string };
 
+const TOAST_AUTO_CLOSE_MS = 4000;
+
 /** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
 function PreviewClock() {
   const invalidate = useThree((s) => s.invalidate);
@@ -247,6 +249,12 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  // Plain confirmations self-dismiss (the corner-toast design); errors and toasts carrying a Show-in-Finder action wait for the user, and a new toast restarts the clock.
+  useEffect(() => {
+    if (toast?.kind !== "success" || toast.path) return;
+    const t = window.setTimeout(() => setToast(null), TOAST_AUTO_CLOSE_MS);
+    return () => window.clearTimeout(t);
+  }, [toast]);
   // The export modal resolves preset/custom to an EncodeSpec; the Titlebar codec select is subsumed, and Kookaburra Standard is the frozen path.
   const [showExport, setShowExport] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
