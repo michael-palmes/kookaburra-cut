@@ -7,6 +7,7 @@ import {
 } from "./cameraTrack";
 import {
   carryDof,
+  type DofUnion,
   type EffectiveDof,
   holdDof,
   mixDof,
@@ -341,23 +342,30 @@ export interface FrameCameraPlan {
   b?: CameraPose;
   overlay?: CameraPose;
   /** The PROJECT's dof union (constant across frames, a pure function of the tracks): which blur families the composer chain must build. Null when no scene's driving track has active dof. */
-  dofUnion?: { depth: boolean; tilt: boolean } | null;
+  dofUnion?: DofUnion | null;
 }
 
 /** Which dof families any scene's DRIVING track activates (rig mode reads the rig block, orbit mode the orbit block, matching `poseFor`). Constant per project load, so the composer chain it keys stays project-stable. */
 export function dofUnionOf(
   tracks: readonly (SceneCameraTracks | null)[] | null | undefined,
-): { depth: boolean; tilt: boolean } | null {
-  let depth = false;
-  let tilt = false;
+): DofUnion | null {
+  const union: DofUnion = {
+    depth: false,
+    tilt: false,
+    soft: false,
+    radial: false,
+    directional: false,
+    split: false,
+  };
+  let any = false;
   for (const scene of tracks ?? []) {
     if (!scene) continue;
     const dof = scene.mode === "rig" ? scene.rig?.dof : scene.orbit?.dof;
     if (!dof?.active) continue;
-    if (dof.mode === "depth") depth = true;
-    else tilt = true;
+    union[dof.mode] = true;
+    any = true;
   }
-  return depth || tilt ? { depth, tilt } : null;
+  return any ? union : null;
 }
 
 /** Resolve the frame's camera plan. Null whenever the PROJECT has no scene tracks (the seams then run today's exact path, `applyCameraTrack`, preserving byte-identity for every existing project). When any scene has a track, EVERY frame gets an explicit plan (untracked scenes fall back to the project-level track sample, else the base pose) so the camera never inherits a stale pose from a neighbouring scene. Per-scene precedence is rig -> orbit -> project -> base; `fov` comes from the project-level track unless a rig key authored one. */

@@ -38,6 +38,15 @@ describe("normalizeDocDof", () => {
     expect(normalizeDocDof({ mode: "bokeh", blur: 0.5 }, silent)).toEqual({ blur: 0.5 });
   });
 
+  it("accepts the style modes and clamps their fields", () => {
+    for (const mode of ["soft", "radial", "directional", "split"] as const) {
+      expect(normalizeDocDof({ mode }, silent)).toEqual({ mode });
+    }
+    expect(
+      normalizeDocDof({ glow: 2, centerX: -3, centerY: 1.5, squeeze: 5, focusB: 0 }, silent),
+    ).toEqual({ glow: 1, centerX: -1, centerY: 1, squeeze: 2, focusB: DOF_FOCUS_MIN });
+  });
+
   it("returns undefined when nothing usable remains", () => {
     expect(normalizeDocDof({ mode: "wat", blur: "x" }, silent)).toBeUndefined();
   });
@@ -65,6 +74,18 @@ describe("carryDof", () => {
     const k2 = carryDof(k1, { focus: "auto" });
     expect(k2?.focus).toBeNull();
     expect(k2?.blur).toBe(0.6);
+  });
+
+  it("carries the style fields like any other", () => {
+    const k1 = carryDof(null, { mode: "radial", blur: 0.5, centerX: -0.4, glow: 0.3 });
+    const k2 = carryDof(k1, { centerY: 0.2 });
+    expect(k2).toEqual({
+      ...DOF_DEFAULTS,
+      blur: 0.5,
+      centerX: -0.4,
+      centerY: 0.2,
+      glow: 0.3,
+    });
   });
 });
 
@@ -104,6 +125,16 @@ describe("mixDof", () => {
   it("a missing end mixes against the defaults (blur eases in from 0)", () => {
     const eff = { ...DOF_DEFAULTS, blur: 0.8 };
     expect(mixDof(null, eff, 0.5, 5)?.blur).toBeCloseTo(0.4, 12);
+  });
+
+  it("style fields lerp; the second focus plane racks in log space", () => {
+    const a = { ...DOF_DEFAULTS, blur: 0.5, centerX: -1, squeeze: 1, focusB: 2 };
+    const b = { ...DOF_DEFAULTS, blur: 0.5, centerX: 1, squeeze: 2, focusB: 8 };
+    const mid = mixDof(a, b, 0.5, 5);
+    expect(mid?.centerX).toBeCloseTo(0, 12);
+    expect(mid?.squeeze).toBeCloseTo(1.5, 12);
+    expect(mid?.focusB).toBeCloseTo(4, 10);
+    expect(mid?.focusB).toBe(mixFocusDistance(2, 8, 0.5));
   });
 });
 

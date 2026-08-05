@@ -537,9 +537,9 @@ describe("orbit dof", () => {
     };
     const slots: SceneSlot[] = [{ index: 0, id: "s0", startMs: 0, endMs: 4000, durationMs: 4000 }];
     const tracks = buildSceneCameraTracks([doc]);
-    expect(dofUnionOf(tracks)).toEqual({ depth: true, tilt: false });
+    expect(dofUnionOf(tracks)).toMatchObject({ depth: true, tilt: false });
     const plan = resolveFrameCameras(tracks, undefined, resolveAt(slots, 500), 500);
-    expect(plan?.dofUnion).toEqual({ depth: true, tilt: false });
+    expect(plan?.dofUnion).toMatchObject({ depth: true, tilt: false });
     expect(plan?.solo?.dof).toMatchObject({ mode: "depth", blur: 0.7, focus: 5 });
   });
 
@@ -552,5 +552,31 @@ describe("orbit dof", () => {
       },
     };
     expect(dofUnionOf(buildSceneCameraTracks([orbitOnly]))).toBeNull();
+  });
+
+  it("every mode raises its own union flag", () => {
+    const docFor = (mode: "soft" | "radial" | "directional" | "split"): SceneDoc => ({
+      version: 1,
+      camera: {
+        keys: [{ id: "k", tMs: 0, pose: pose({ dof: { mode, blur: 0.4 } }) }],
+        segments: [],
+      },
+    });
+    expect(dofUnionOf(buildSceneCameraTracks([docFor("soft"), docFor("split")]))).toEqual({
+      depth: false,
+      tilt: false,
+      soft: true,
+      radial: false,
+      directional: false,
+      split: true,
+    });
+    expect(dofUnionOf(buildSceneCameraTracks([docFor("radial"), docFor("directional")]))).toEqual({
+      depth: false,
+      tilt: false,
+      soft: false,
+      radial: true,
+      directional: true,
+      split: false,
+    });
   });
 });
