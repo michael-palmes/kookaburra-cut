@@ -43,8 +43,12 @@ Steps:
      `media` if given, `motion: { "preset": "none" }`) and NO `shadow` key for either
      kind, so Device auto-resolves it (map shadows over a staged floor, soft blob when
      floating). device: `placement` position `[0, -0.3, 0]`, `rotationDeg: [0, 0, 0]`,
-     `scale: 1`. deviceonly: position `[0, 0, 0]` (no title to clear), `scale: 1.35`
-     (dominant framing), `ground: true` (rests on a staged floor when the theme has one).
+     `scale: 1`, plus a `camera` block `{ "keys": [{ "id": "k1", "tMs": 0, "pose": {
+     "target": [0, 0.1, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 4.2 } }],
+     "segments": [] }` (frames the phone larger than the engine default pose; the empty
+     `segments` array is required). deviceonly: position `[0, 0, 0]` (no title to clear),
+     `scale: 1.35` (dominant framing), `ground: true` (rests on a staged floor when the
+     theme has one) and NO `camera` block, since the scale already dominates the frame.
    - comparison: seeds EMPTY `text.beforeLabel` and `text.afterLabel` (the chips appear
      only when copy is typed), 2-4 device entries (`d1`..`dn`, default 2) sharing the
      catalog `model`/`colour` with per-device media in order, `motion: { "preset":

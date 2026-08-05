@@ -1037,6 +1037,22 @@ pub async fn scaffold_scene(
             device["media"] = json!({ "src": rel, "kind": kind });
         }
         doc["devices"] = json!([device]);
+        // A closer pose than the engine default (target origin, distance 5) frames the titled phone larger; the device-only kind already dominates through scale, so pulling in would crop it.
+        if !device_only {
+            doc["camera"] = json!({
+                "keys": [{
+                    "id": "k1",
+                    "tMs": 0,
+                    "pose": {
+                        "target": [0, 0.1, 0],
+                        "azimuthDeg": 0,
+                        "elevationDeg": 0,
+                        "distance": 4.2,
+                    },
+                }],
+                "segments": [],
+            });
+        }
     }
     if is_comparison {
         // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
