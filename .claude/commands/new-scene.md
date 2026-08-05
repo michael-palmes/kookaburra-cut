@@ -86,6 +86,10 @@ Steps:
      <width/height when known> }, "stage": { "type": "color", "color": <the theme's
      background hex> }, "radius": "macos" }` (media defaults to the bundled laptop
      sample; omit `border`/`shadow`/`motion`/`scale` so engine defaults apply).
+   Then, when the kind wrote NO `background` of its own (every kind but video, and image
+   with a pick), copy `project.json`'s `appliedBackground` blocks into the sidecar: its
+   `background`, and its `backdrop` unless the kind already wrote one. Absent stamp = the
+   scene follows the theme.
 5. Duration: video media → follow-media and `durationMs` = the video's length
    (`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 <file>`,
    seconds → ms, rounded): `{ "mode": "follow-media", "sourceDeviceId": "d1" }` for the

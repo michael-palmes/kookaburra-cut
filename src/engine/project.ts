@@ -7,7 +7,15 @@ import { assetVersionSuffix } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
-import type { EffectsConfig, EffectsOverride, FontRef, LightingSpec, Theme } from "../theme/tokens";
+import type {
+  EffectsConfig,
+  EffectsOverride,
+  FontRef,
+  LightingSpec,
+  Theme,
+  ThemeBackdrop,
+  ThemeBackground,
+} from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
@@ -66,6 +74,8 @@ export interface ProjectManifest {
   render?: unknown;
   /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
   lighting?: unknown;
+  /** The background "Apply everywhere" last stamped across the project, so NEW scenes scaffold with it (`scaffold_scene` reads it; nothing on the render path does). Absent means new scenes follow the theme, and clearing one scene's background in the inspector leaves that scene reverted. */
+  appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
