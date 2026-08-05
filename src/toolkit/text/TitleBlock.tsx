@@ -1,10 +1,21 @@
-import { useContext } from "react";
+import { useContext, useEffect, useId, useMemo, useSyncExternalStore } from "react";
 import { FrameIcon } from "../../engine/FrameIcon";
 import { useFormat } from "../../engine/format";
+import {
+  panelMeasureVersion,
+  requestPanelTextMeasure,
+  subscribePanelMeasures,
+} from "../../engine/framePanelMeasure";
 import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc } from "../../engine/sceneDoc";
 import type { SceneTextAlign } from "../../engine/sceneDocSchema";
 import { useSceneConsumesAnyTextKey } from "../../engine/textKeyRegistry";
+import {
+  clearTitleMeasures,
+  NO_TITLE_CASCADE,
+  reportTitleMeasures,
+  solveTitleCascade,
+} from "../../engine/titleBlockMeasure";
 import { useTheme } from "../../theme";
 import type { V3 } from "../types";
 import { AnimatedHeadline } from "./AnimatedHeadline";
@@ -60,12 +71,67 @@ export function TitleBlock(props: TitleBlockProps) {
   const doc = useSceneDoc();
   const claimed = useContext(SceneTextClaimedContext);
   const portrait = format.aspect < 1;
-  // The overlay panel renders the headline instead; suppress the in-world one.
-  if (claimed) return null;
   const align = props.align ?? doc?.textLayout?.align ?? "center";
   const titleSize = props.fontSize ?? (portrait ? 0.34 : 0.56);
   const subtitleSize = titleSize / theme.typography.scale ** SUBTITLE_SCALE_STEPS;
   const hasSubtitle = typeof subtitle === "string" && subtitle.trim().length > 0;
+  const subtitleText = subtitle ?? "";
+  const { maxWidth } = props;
+
+  // Measured multi-line growth (engine/titleBlockMeasure): the cache fills async, each landing bumps the store and re-solves, and single-line text solves to a hard zero so the constants below stay untouched.
+  const measureTick = useSyncExternalStore(
+    subscribePanelMeasures,
+    panelMeasureVersion,
+    panelMeasureVersion,
+  );
+  const measureId = useId();
+  const cascade = useMemo(() => {
+    void measureTick;
+    if (claimed) return NO_TITLE_CASCADE;
+    return solveTitleCascade(
+      {
+        text: title,
+        face: "headline",
+        fontSize: titleSize,
+        maxWidth,
+        textAlign: align,
+        textKey: register ? "title" : undefined,
+      },
+      hasSubtitle
+        ? {
+            text: subtitleText,
+            face: "body",
+            fontSize: subtitleSize,
+            maxWidth,
+            textAlign: align,
+            textKey: register ? "subtitle" : undefined,
+          }
+        : null,
+      theme,
+      doc ?? undefined,
+    );
+  }, [
+    measureTick,
+    claimed,
+    title,
+    subtitleText,
+    hasSubtitle,
+    titleSize,
+    subtitleSize,
+    maxWidth,
+    align,
+    register,
+    theme,
+    doc,
+  ]);
+  useEffect(() => {
+    for (const spec of cascade.pending) requestPanelTextMeasure(spec);
+    reportTitleMeasures(measureId, cascade.pending.length);
+    return () => clearTitleMeasures(measureId);
+  }, [cascade, measureId]);
+
+  // The overlay panel renders the headline instead; suppress the in-world one.
+  if (claimed) return null;
 
   const anchorX =
     align === "left"
@@ -73,15 +139,17 @@ export function TitleBlock(props: TitleBlockProps) {
       : align === "right"
         ? format.frame.width / 2 - format.safe.right
         : 0;
+  // The title stays anchored and grows around its middle, so half its growth lifts the icon and half pushes the subtitle down; the subtitle's own growth pushes it down again so it only ever extends downward.
+  const titleLift = cascade.titleGrowth / 2;
   const titleY = hasSubtitle ? (portrait ? 0.55 : 0.35) : 0;
-  const subtitleY = portrait ? -0.28 : -0.42;
+  const subtitleY = (portrait ? -0.28 : -0.42) - titleLift - cascade.subtitleGrowth / 2;
   const at = (y: number): V3 => [anchorX + position[0], y + position[1], position[2]];
 
   // The sidecar's headerIcon is the default so any scene that renders a TitleBlock (the scaffold's own, not just TextFallback) shows it; an explicit prop still wins.
   const icon = props.icon ?? doc?.headerIcon;
   const iconSize = titleSize * HEADER_ICON_SIZE;
   // The title is middle-anchored at titleY; lift the top-anchored icon above its top edge (~titleSize/2) plus the gap.
-  const iconTopY = titleY + titleSize * (0.5 + HEADER_ICON_GAP) + iconSize;
+  const iconTopY = titleY + titleSize * (0.5 + HEADER_ICON_GAP) + iconSize + titleLift;
 
   return (
     <>

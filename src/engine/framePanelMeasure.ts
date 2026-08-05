@@ -44,10 +44,12 @@ export interface PanelTextSpec {
   fontSize: number;
   maxWidth: number;
   textAlign: "left" | "center" | "right";
+  /** Line-height multiplier when the caller pins one; unset leaves troika's own "normal". */
+  lineHeight?: number;
 }
 
 function specKey(spec: PanelTextSpec): string {
-  return `${spec.font}|${spec.fontSize}|${spec.maxWidth}|${spec.textAlign}|${spec.text}`;
+  return `${spec.font}|${spec.fontSize}|${spec.maxWidth}|${spec.textAlign}|${spec.lineHeight ?? ""}|${spec.text}`;
 }
 
 const heights = new Map<string, number>();
@@ -71,6 +73,7 @@ export function requestPanelTextMeasure(spec: PanelTextSpec): void {
     t.fontSize = spec.fontSize;
     t.maxWidth = spec.maxWidth;
     t.textAlign = spec.textAlign;
+    if (spec.lineHeight !== undefined) t.lineHeight = spec.lineHeight;
     t.sync(() => {
       const b = t.textRenderInfo?.blockBounds;
       heights.set(key, b ? b[3] - b[1] : 0);
