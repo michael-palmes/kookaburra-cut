@@ -1,17 +1,23 @@
 import { Effect, EffectAttribute } from "postprocessing";
 import { Uniform, Vector2 } from "three";
 
-/** Screen-space smear serving two dof modes: radial ("Burst") streaks toward an animatable centre, and a directional ("Swipe") smear along an angle. One effect covers both because modes are exclusive per scene and EffectPass allows a single convolution effect. Deterministic: a fixed tap count, CPU-written uniforms (trig included), no time reads. See docs/determinism.md. */
+/** Screen-space smear serving two dof modes: radial ("Burst") streaks toward an animatable centre, and a directional ("Swipe") smear along an angle. One effect covers both because modes are exclusive per scene and EffectPass allows a single convolution effect. Deterministic: a fixed tap count, a spatial hash jitter that is a pure function of the pixel coordinate (the grain rule, no time or seed), CPU-written uniforms (trig included). See docs/determinism.md. */
 
 /** Fixed sample count along the smear. EXPORT CONTRACT (deliberate-rebase constant). */
-export const SMEAR_TAPS = 24;
+export const SMEAR_TAPS = 32;
 
-// inputBuffer is declared by the merged EffectPass shader (the convolution contract); resolution is the pass's built-in.
+// inputBuffer is declared by the merged EffectPass shader (the convolution contract); resolution is the pass's built-in. The jitter offsets each pixel's taps along the span, trading the ghost-copy banding of a fixed comb for smooth noise.
 const fragmentShader = /* glsl */ `
   uniform float uAmount;
   uniform float uRadial;
   uniform vec2 uCenter;
   uniform vec2 uCosSin;
+
+  float smearHash(vec2 p) {
+    p = fract(p * vec2(233.34, 851.73));
+    p += dot(p, p + 23.45);
+    return fract(p.x * p.y);
+  }
 
   void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
     if (uAmount <= 0.0) {
@@ -21,9 +27,10 @@ const fragmentShader = /* glsl */ `
     vec2 dirSpan = vec2(uCosSin.x * resolution.y / resolution.x, uCosSin.y) * uAmount;
     vec2 raySpan = (uCenter - uv) * uAmount;
     vec2 span = mix(dirSpan, raySpan, uRadial);
+    float j = smearHash(uv * resolution);
     vec4 acc = vec4(0.0);
     for (int i = 0; i < SMEAR_TAPS; ++i) {
-      float t = float(i) / float(SMEAR_TAPS - 1) - (1.0 - uRadial) * 0.5;
+      float t = (float(i) + j) / float(SMEAR_TAPS) - (1.0 - uRadial) * 0.5;
       acc += texture2D(inputBuffer, uv + span * t);
     }
     outputColor = vec4(acc.rgb / float(SMEAR_TAPS), inputColor.a);
