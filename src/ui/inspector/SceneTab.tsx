@@ -200,6 +200,7 @@ import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
 import { TransitionModal } from "../TransitionPicker";
 import { describeSpec } from "../textAnimationOptions";
+import { isTypingIn } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
@@ -788,8 +789,7 @@ function DurationRow({
     onCommit: (seconds) => onCommit(Math.round(seconds * 1000)),
   });
   useEffect(() => {
-    if (!dragging && document.activeElement !== inputRef.current)
-      setText((durationMs / 1000).toFixed(2));
+    if (!dragging && !isTypingIn(inputRef.current)) setText((durationMs / 1000).toFixed(2));
   }, [durationMs, dragging]);
   const commit = () => {
     const seconds = Number(text);

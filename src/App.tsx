@@ -160,6 +160,7 @@ import {
   TitlebarIdentity,
   TitlebarProjects,
 } from "./ui/Titlebar";
+import { hasPendingTextEdit } from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import { commitSceneDuration } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
@@ -849,12 +850,9 @@ export default function App() {
   const historyBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
-    const isTextTarget = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return !!el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable);
-    };
     const run = async (dir: "undo" | "redo") => {
-      if (isTextTarget()) {
+      // Only a field mid-typing owns ⌘Z; one that merely holds focus (a drag-scrubbed number, a committed edit) must not swallow app undo.
+      if (hasPendingTextEdit()) {
         document.execCommand(dir); // the text field's own history
         return;
       }

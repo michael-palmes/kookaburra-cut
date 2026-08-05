@@ -1,4 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { isTypingIn } from "../textEditFocus";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
 
@@ -113,9 +114,9 @@ export function NumberField({
     step,
     dragScale,
   });
-  // Mirror the prop unless the user is typing or mid-drag.
+  // Mirror the prop unless the user is typing or mid-drag; a field that merely holds focus (after a drag, or a committed edit) still tracks the value, so an undo shows.
   useEffect(() => {
-    if (!dragging && document.activeElement !== inputRef.current) setText(value.toFixed(decimals));
+    if (!dragging && !isTypingIn(inputRef.current)) setText(value.toFixed(decimals));
   }, [value, decimals, dragging]);
 
   const commit = () => {
