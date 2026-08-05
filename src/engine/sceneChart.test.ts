@@ -331,3 +331,19 @@ describe("chartDataWithValues", () => {
     expect(chartDataWithValues(chart, [[7, 8, 9]]).series[1].values).toEqual([5, 15, 25]);
   });
 });
+
+describe("hero placement style", () => {
+  it("defaults offset and scale and keeps rotation front on", () => {
+    const chart = resolveChart(chartDoc({ type: "column", data: data() }));
+    expect(chart?.style.rotation).toEqual([0, 0]);
+    expect(chart?.style.offset).toEqual([0, 0]);
+    expect(chart?.style.scale).toBe(1);
+  });
+  it("clamps authored offset and scale", () => {
+    const chart = resolveChart(
+      chartDoc({ type: "column", data: data(), style: { offset: [99, -99], scale: 9 } }),
+    );
+    expect(chart?.style.offset).toEqual([20, -20]);
+    expect(chart?.style.scale).toBe(3);
+  });
+});

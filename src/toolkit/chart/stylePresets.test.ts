@@ -26,6 +26,8 @@ const style = (parts: Partial<ChartStyle> = {}): ChartStyle => ({
   cornerRadius: 0.25,
   rotation: [18.5, -18.1],
   innerRadius: 0,
+  offset: [0, 0],
+  scale: 1,
   ...parts,
 });
 

@@ -800,6 +800,11 @@ function parseChartStyle(raw: unknown, source: string): Partial<ChartStyle> | un
   if (Array.isArray(rotation) && rotation.length === 2 && rotation.every(finiteNum)) {
     out.rotation = [rotation[0], rotation[1]];
   }
+  const offset = raw.offset;
+  if (Array.isArray(offset) && offset.length === 2 && offset.every(finiteNum)) {
+    out.offset = [offset[0], offset[1]];
+  }
+  if (finiteNum(raw.scale)) out.scale = raw.scale;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

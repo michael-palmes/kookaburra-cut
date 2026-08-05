@@ -27,14 +27,16 @@ import type {
   SceneDocChartValueLabels,
 } from "./sceneDocSchema";
 
-/** Appearance defaults; `rotation` is the Keynote-style presentation tilt for hero 3D charts. */
+/** Appearance defaults; hero 3D charts stand front on until a tilt is authored (the inspector's tilt and turn fields). */
 export const CHART_STYLE_DEFAULTS: ChartStyle = {
   preset: "boardroom",
   depth: 0.5,
   gap: CHART_DEFAULT_GAP,
   cornerRadius: 0.25,
-  rotation: [18.5, -18.1],
+  rotation: [0, 0],
   innerRadius: 0,
+  offset: [0, 0],
+  scale: 1,
 };
 
 /** Axis labels default to auto decimals: round tick values print without trailing zeros. */
@@ -144,6 +146,10 @@ function resolveStyle(raw: Partial<ChartStyle> | undefined): ChartStyle {
       ? [num(rotation[0], 0), num(rotation[1], 0)]
       : [CHART_STYLE_DEFAULTS.rotation[0], CHART_STYLE_DEFAULTS.rotation[1]],
     innerRadius: Math.max(0, num(raw?.innerRadius, CHART_STYLE_DEFAULTS.innerRadius)),
+    offset: raw?.offset
+      ? [clamp(num(raw.offset[0], 0), -20, 20), clamp(num(raw.offset[1], 0), -20, 20)]
+      : [CHART_STYLE_DEFAULTS.offset[0], CHART_STYLE_DEFAULTS.offset[1]],
+    scale: clamp(num(raw?.scale, CHART_STYLE_DEFAULTS.scale), 0.2, 3),
   };
 }
 

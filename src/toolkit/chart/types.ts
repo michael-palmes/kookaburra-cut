@@ -118,6 +118,10 @@ export interface ChartStyle {
   rotation: [number, number];
   /** Pie only; > 0 makes a donut, as a fraction of the outer radius. */
   innerRadius: number;
+  /** Hero-mount nudge off the fitted centre, world units X/Y. */
+  offset: [number, number];
+  /** Hero-mount size multiplier over the fitted scale. */
+  scale: number;
 }
 
 export interface ChartAnimationConfig {
