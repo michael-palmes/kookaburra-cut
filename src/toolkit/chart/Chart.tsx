@@ -15,15 +15,18 @@ import { LightRig } from "../lighting/LightRig";
 import { useSceneStaged, useStageFloorY } from "../stage/context";
 import { DEPTH_BANDS } from "../stage/DepthStage";
 import { buildChartRevealSampler, type ChartRevealDims } from "./animation";
+import { chart3dBelowStack } from "./axes3d";
 import { Chart2D } from "./Chart2D";
 import { Chart3D } from "./Chart3D";
 import { type Chart2DAppearance, chart2dLook } from "./chart2dMath";
 import {
+  CHART_3D_STACK_PERSPECTIVE,
   CHART_STAGED_SIZE,
   type ChartRect,
   chartColours,
   chartEnterOffset,
   chartGroundY,
+  chartHeroPose,
   chartHeroRect,
   chartLayoutAt,
   chartPose,
@@ -33,6 +36,7 @@ import {
   fitChart3d,
 } from "./mount";
 import type { ChartRevealSource } from "./revealSource";
+import { chart3dSpace } from "./space3d";
 import { resolveChartStyle } from "./stylePresets";
 import type {
   ChartDimension,
@@ -199,7 +203,14 @@ function Hero2D({
     [chart, layout, available, appearance],
   );
   return (
-    <group position={[fit.centre[0], fit.centre[1] + enter * fit.size.height, DEPTH_BANDS.content]}>
+    <group
+      position={[
+        fit.centre[0] + chart.style.offset[0],
+        fit.centre[1] + chart.style.offset[1] + enter * fit.size.height,
+        DEPTH_BANDS.content,
+      ]}
+      scale={chart.style.scale}
+    >
       <Chart2D
         chart={chart}
         layout={layout}
@@ -218,13 +229,36 @@ function Hero2D({
 function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity }: MountArgs) {
   const format = useFormat();
   const theme = useTheme();
+  const floorY = useStageFloorY();
   const available = useMemo(() => chartHeroRect(format, theme, title), [format, theme, title]);
-  const fit = useMemo(() => fitChart3d(chart.style, available), [chart.style, available]);
+  const fit = useMemo(() => {
+    const size = { width: available.width, height: available.height };
+    const space = chart3dSpace(chart.style.depth, size.width, size.height);
+    const stack = chart3dBelowStack(chart, layout, space, surface.legendChrome);
+    return fitChart3d(chart.style, available, {
+      below: stack.depth * CHART_3D_STACK_PERSPECTIVE,
+      top: stack.top * CHART_3D_STACK_PERSPECTIVE,
+    });
+  }, [chart, layout, surface.legendChrome, available]);
+  const grounded = floorY !== null;
+  // A staged floor already catches the shadow, so the chart's own clearing stands down.
+  const mountSurface = useMemo(
+    () =>
+      grounded && surface.threed.floorShadow
+        ? { ...surface, threed: { ...surface.threed, floorShadow: false } }
+        : surface,
+    [surface, grounded],
+  );
+  const ground = chartHeroPose(fit, chart.style.scale, available, floorY);
   return (
     <group
-      position={[available.x, available.y, DEPTH_BANDS.content]}
+      position={[
+        available.x + chart.style.offset[0],
+        ground.y + chart.style.offset[1],
+        DEPTH_BANDS.content,
+      ]}
       rotation={[fit.rotation[0], fit.rotation[1], 0]}
-      scale={fit.scale}
+      scale={ground.scale}
     >
       <group position={[0, (enter - 0.5) * fit.size.height, 0]}>
         <Chart3D
@@ -232,7 +266,7 @@ function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity
           layout={layout}
           colours={colours}
           size={fit.size}
-          surface={surface}
+          surface={mountSurface}
           reveal={reveal}
           opacity={opacity}
         />

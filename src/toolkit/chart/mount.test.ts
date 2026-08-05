@@ -4,6 +4,7 @@ import { type ResolvedChart, resolveChart } from "../../engine/sceneChart";
 import type { SceneDoc, SceneDocChart } from "../../engine/sceneDocSchema";
 import { builtinThemes } from "../../theme/registry";
 import { buildChartRevealSampler, CHART_ENTER_LIFT, type ChartRevealDims } from "./animation";
+import { chart3dBelowStack } from "./axes3d";
 import { chart2dInsets } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import {
@@ -11,6 +12,7 @@ import {
   chartColours,
   chartEnterOffset,
   chartGroundY,
+  chartHeroPose,
   chartHeroRect,
   chartLayoutAt,
   chartPose,
@@ -22,6 +24,7 @@ import {
   fitChart2d,
   fitChart3d,
 } from "./mount";
+import { chart3dSpace } from "./space3d";
 import type { ChartLayout } from "./types";
 
 const theme = builtinThemes["kookaburra-default"];
@@ -434,5 +437,45 @@ describe("degenerate data", () => {
   it("matches a plain layout when nothing is pinned", () => {
     const chart = columns();
     expect(chartLayoutAt(chart, 0, null)).toEqual(computeChartLayout(chart.data, chart));
+  });
+});
+
+describe("chartHeroPose", () => {
+  const rect = { x: 0, y: 0, width: 5.9, height: 2.9 };
+  const chart = resolveChart({
+    version: 1,
+    chart: {
+      type: "column",
+      dimension: "3d",
+      data: {
+        categories: ["a", "b", "c"],
+        series: [{ id: "s1", values: [1, 2, 3] }],
+      },
+    },
+  } as SceneDoc);
+  if (!chart) throw new Error("chart resolves");
+  const layout = chartLayoutAt(chart, 0, null);
+  const space = chart3dSpace(chart.style.depth, rect.width, rect.height);
+  const stack = chart3dBelowStack(chart, layout, space);
+  const fit = fitChart3d(chart.style, rect, { below: stack.depth, top: stack.top });
+  it("centres the full content block without a stage floor", () => {
+    const pose = chartHeroPose(fit, 1, rect, null);
+    const top = pose.y + (fit.plotHalfHeight + fit.top) * pose.scale;
+    const bottom = pose.y - (fit.plotHalfHeight + fit.below) * pose.scale;
+    expect((top + bottom) / 2).toBeCloseTo(rect.y, 6);
+    expect(bottom).toBeGreaterThanOrEqual(rect.y - rect.height / 2 - 1e-6);
+  });
+  it("rests the plot floor on the staged floor", () => {
+    const floorY = rect.y - rect.height / 2 + 0.4;
+    const pose = chartHeroPose(fit, 1, rect, floorY);
+    const plotFloor = pose.y - (fit.size.height / 2) * pose.scale;
+    expect(plotFloor).toBeCloseTo(floorY, 6);
+  });
+  it("keeps the below-floor furniture inside the rect when grounded", () => {
+    const tightFloor = rect.y - rect.height / 2 + 0.02;
+    const pose = chartHeroPose(fit, 1, rect, tightFloor);
+    const bottom = tightFloor - fit.below * pose.scale;
+    expect(bottom).toBeGreaterThanOrEqual(rect.y - rect.height / 2 - 1e-6);
+    expect(pose.scale).toBeLessThan(fit.scale);
   });
 });

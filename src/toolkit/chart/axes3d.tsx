@@ -3,7 +3,13 @@
 import { useEffect, useMemo } from "react";
 import { BoxGeometry, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from "three";
 import { useTheme } from "../../theme";
-import { barLabelSpot, dashSegments, legendLabels, revealedPoint } from "./chart2dMath";
+import {
+  barLabelSpot,
+  dashSegments,
+  LEGEND_CHIP,
+  legendLabels,
+  revealedPoint,
+} from "./chart2dMath";
 import { ChartLabel, ChartLegendRow, chartPillColour } from "./chartText";
 import { formatChartValue } from "./format";
 import { chartColourAt } from "./palette";
@@ -130,6 +136,47 @@ export function ChartStage3D(props: ChartStage3DProps) {
   );
 }
 
+/** The rows a 3D chart stacks under its floor, and how deep the stack runs (chart-space units below y 0). One source for the renderer and the grounded hero fit, so reserved and drawn depth cannot disagree. */
+export function chart3dBelowStack(
+  chart: ChartConfig,
+  layout: ChartLayout,
+  space: Chart3DSpace,
+  chrome: ChartLegendChrome = "plain",
+): {
+  tickY: number | null;
+  categoryY: number | null;
+  nameY: number | null;
+  legendY: number;
+  depth: number;
+  top: number;
+} {
+  const vertical = layout.valueAxis === "y";
+  const pie = chart.type === "pie";
+  const unit = space.unit;
+  const pad = space.pad;
+  const tickFont = TICK_FONT * unit;
+  const catFont = CATEGORY_FONT * unit;
+  const nameFont = NAME_FONT * unit;
+  const legendFont = LEGEND_FONT * unit;
+  const showTicks = !pie && layout.value.labels && layout.value.ticks.length > 0;
+  const showCategories = !pie && layout.category.labels;
+  let below = pad;
+  const tickY = !vertical && showTicks ? -(below + tickFont * 0.6) : null;
+  if (tickY !== null) below += tickFont * 1.5;
+  const categoryY = vertical && showCategories ? -(below + catFont * 0.6) : null;
+  if (categoryY !== null) below += catFont * 1.5;
+  const bottomName = vertical ? layout.category.name : layout.value.name;
+  const nameY = !pie && bottomName ? -(below + nameFont * 0.6) : null;
+  if (nameY !== null) below += nameFont * 1.6;
+  const legendY = -(below + legendFont * 0.7);
+  const legendBottom = chart.labels.legend.visible && chart.labels.legend.position === "bottom";
+  const legendHalf = chrome === "chips" ? LEGEND_CHIP.height / 2 : 0.7;
+  const depth = legendBottom ? below + legendFont * (0.7 + legendHalf) : below;
+  const legendTop = chart.labels.legend.visible && chart.labels.legend.position === "top";
+  const top = legendTop ? pad + legendFont * (0.7 + legendHalf) : pad;
+  return { tickY, categoryY, nameY, legendY, depth, top };
+}
+
 export interface ChartText3DProps {
   chart: ChartConfig;
   layout: ChartLayout;
@@ -164,16 +211,13 @@ export function ChartText3D(props: ChartText3DProps) {
   const showCategories = !pie && layout.category.labels;
   const showValues = chart.labels.values.visible;
 
-  // Rows stack downward from the floor so nothing overlaps; which rows exist depends on the orientation.
-  let below = pad;
-  const bottomTickY = !vertical && showTicks ? -(below + tickFont * 0.6) : null;
-  if (bottomTickY !== null) below += tickFont * 1.5;
-  const bottomCategoryY = vertical && showCategories ? -(below + catFont * 0.6) : null;
-  if (bottomCategoryY !== null) below += catFont * 1.5;
+  // Rows stack downward from the floor so nothing overlaps; shared with the grounded hero fit.
+  const stack = chart3dBelowStack(chart, layout, space);
+  const bottomTickY = stack.tickY;
+  const bottomCategoryY = stack.categoryY;
   const bottomName = vertical ? layout.category.name : layout.value.name;
-  const bottomNameY = !pie && bottomName ? -(below + nameFont * 0.6) : null;
-  if (bottomNameY !== null) below += nameFont * 1.6;
-  const legendY = -(below + legendFont * 0.7);
+  const bottomNameY = stack.nameY;
+  const legendY = stack.legendY;
 
   const sideName = vertical ? layout.value.name : layout.category.name;
   const sideNameX = -space.width / 2 - pad - TICK_ALLOWANCE * (vertical ? tickFont : catFont);
