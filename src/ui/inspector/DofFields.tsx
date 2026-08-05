@@ -4,6 +4,8 @@ import {
   DOF_FOCUS_MAX,
   DOF_FOCUS_MIN,
   DOF_RANGE_MAX,
+  DOF_SQUEEZE_MAX,
+  type DofMode,
   type EffectiveDof,
   type SceneDocDof,
 } from "../../engine/dof";
@@ -71,6 +73,26 @@ function DofIcon({ id, size = 17 }: { id: string; size?: number }) {
             <circle cx="12" cy="10" r="2.3" />
           </>
         );
+      case "dream":
+        return <path d="M10 2.5a5 5 0 0 0 7.5 7.5 7.5 7.5 0 1 1-7.5-7.5z" />;
+      case "burst":
+        return (
+          <>
+            <circle cx="10" cy="10" r="1.6" />
+            <path d="M13.2 10h3.6M10 13.2v3.6M6.8 10H3.2M10 6.8V3.2" />
+            <path d="M12.26 12.26l2.55 2.55M7.74 12.26l-2.55 2.55M12.26 7.74l2.55-2.55M7.74 7.74L5.19 5.19" />
+          </>
+        );
+      case "swipe":
+        return <path d="M4 6.5h9M4 10h12M4 13.5h7" />;
+      case "split":
+        return (
+          <>
+            <path d="M10 3.5v13" />
+            <circle cx="6.2" cy="8" r="2" />
+            <circle cx="13.8" cy="12" r="2" />
+          </>
+        );
       default:
         return null;
     }
@@ -90,25 +112,15 @@ function DofIcon({ id, size = 17 }: { id: string; size?: number }) {
   );
 }
 
-const MODE_OPTIONS = [
-  {
-    value: "off" as const,
-    label: "Off",
-    icon: <DofIcon id="off" />,
-    title: "No depth of field in this scene",
-  },
-  {
-    value: "depth" as const,
-    label: "Depth",
-    icon: <DofIcon id="depth" />,
-    title: "Blur by distance from a focus plane",
-  },
-  {
-    value: "tilt" as const,
-    label: "Tilt-shift",
-    icon: <DofIcon id="tilt" />,
-    title: "Blur outside a screen-space band",
-  },
+/** The blur-family picker: seven options, so a wrapping chip row rather than a segmented pill. */
+const MODE_OPTIONS: { value: "off" | DofMode; label: string; icon: string; title: string }[] = [
+  { value: "off", label: "Off", icon: "off", title: "No depth of field in this scene" },
+  { value: "depth", label: "Depth", icon: "depth", title: "Blur by distance from a focus plane" },
+  { value: "tilt", label: "Tilt-shift", icon: "tilt", title: "Blur outside a screen-space band" },
+  { value: "soft", label: "Dream", icon: "dream", title: "Soft diffusion with a highlight glow" },
+  { value: "radial", label: "Burst", icon: "burst", title: "Zoom streaks from a centre point" },
+  { value: "directional", label: "Swipe", icon: "swipe", title: "A smear along one angle" },
+  { value: "split", label: "Split", icon: "split", title: "Two focus distances across a divider" },
 ];
 
 /** Preset looks (decision 13); depth mode only, values are pose fields, nothing of their own. */
@@ -133,12 +145,17 @@ export interface DofKeyView {
 }
 
 /** An effective dof rewritten as a full authored block (the "Set on this key" write). */
-function effectiveToDoc(e: EffectiveDof, mode: "depth" | "tilt"): SceneDocDof {
+function effectiveToDoc(e: EffectiveDof, mode: DofMode): SceneDocDof {
   const out: SceneDocDof = { mode, blur: e.blur, range: e.range };
   if (e.focus !== null) out.focus = e.focus;
   out.band = e.band;
   out.offset = e.offset;
   out.angleDeg = e.angleDeg;
+  out.glow = e.glow;
+  out.centerX = e.centerX;
+  out.centerY = e.centerY;
+  out.squeeze = e.squeeze;
+  out.focusB = e.focusB;
   return out;
 }
 
@@ -184,38 +201,61 @@ export function DofFields({
   /** Merge one field into the current key's authored block. */
   const patch = (fields: Partial<SceneDocDof>): SceneDocDof => ({ ...authored, ...fields });
 
-  const setMode = (next: "off" | "depth" | "tilt") => {
+  const setMode = (next: "off" | DofMode) => {
     if (next === "off") {
       commitAll(() => undefined);
       return;
     }
     if (!sceneHasDof) {
-      commit({ mode: next, blur: 0.5 });
+      // Split starts with a visible second plane: half the frame's auto distance.
+      commit(
+        next === "split"
+          ? { mode: next, blur: 0.5, focusB: Math.round(autoDistance * 50) / 100 }
+          : { mode: next, blur: 0.5 },
+      );
       return;
     }
     commitAll((dof) => (dof ? { ...dof, mode: next } : dof));
   };
 
+  const depthFamily = mode === "depth" || mode === "split";
+
   return (
     <DrillGroup label="Depth of field">
-      <SegmentedRow options={MODE_OPTIONS} value={mode} onChange={setMode} />
+      <div className="camera-loop-modes">
+        {MODE_OPTIONS.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            className={`chip${mode === m.value ? " selected" : ""}`}
+            title={m.title}
+            onClick={() => setMode(m.value)}
+          >
+            <DofIcon id={m.icon} size={13} />
+            {m.label}
+          </button>
+        ))}
+      </div>
 
       {mode === "depth" && (
+        <div className="camera-loop-modes">
+          {DEPTH_PRESETS.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              className={`chip${shown.blur === p.blur && shown.range === p.range ? " selected" : ""}`}
+              title={p.title}
+              onClick={() => commit(patch({ blur: p.blur, range: p.range }))}
+            >
+              <DofIcon id={p.icon} size={13} />
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {depthFamily && (
         <>
-          <div className="camera-loop-modes">
-            {DEPTH_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                className={`chip${shown.blur === p.blur && shown.range === p.range ? " selected" : ""}`}
-                title={p.title}
-                onClick={() => commit(patch({ blur: p.blur, range: p.range }))}
-              >
-                <DofIcon id={p.icon} size={13} />
-                {p.label}
-              </button>
-            ))}
-          </div>
           <div className="inspector-pose-grid">
             <NumberField
               label="blur %"
@@ -238,6 +278,54 @@ export function DofFields({
               onCommit={(n) => commit(patch({ range: n }))}
             />
           </div>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="squeeze ×"
+              value={shown.squeeze}
+              decimals={2}
+              dragScale={0.01}
+              min={1}
+              max={DOF_SQUEEZE_MAX}
+              onInput={(n) => preview(patch({ squeeze: n }))}
+              onCommit={(n) => commit(patch({ squeeze: n }))}
+            />
+            {mode === "split" && (
+              <NumberField
+                label="distance B"
+                value={shown.focusB}
+                decimals={2}
+                dragScale={0.02}
+                min={DOF_FOCUS_MIN}
+                max={DOF_FOCUS_MAX}
+                onInput={(n) => preview(patch({ focusB: n }))}
+                onCommit={(n) => commit(patch({ focusB: n }))}
+              />
+            )}
+          </div>
+          {mode === "split" && (
+            <div className="inspector-pose-grid">
+              <NumberField
+                label="split %"
+                value={shown.offset * 100}
+                decimals={0}
+                dragScale={0.5}
+                min={-100}
+                max={100}
+                onInput={(n) => preview(patch({ offset: n / 100 }))}
+                onCommit={(n) => commit(patch({ offset: n / 100 }))}
+              />
+              <NumberField
+                label="angle °"
+                value={shown.angleDeg}
+                decimals={0}
+                dragScale={0.5}
+                min={-90}
+                max={90}
+                onInput={(n) => preview(patch({ angleDeg: n }))}
+                onCommit={(n) => commit(patch({ angleDeg: n }))}
+              />
+            </div>
+          )}
           <SegmentedRow
             options={[
               {
@@ -335,6 +423,95 @@ export function DofFields({
             />
           </div>
         </>
+      )}
+
+      {mode === "soft" && (
+        <div className="inspector-pose-grid">
+          <NumberField
+            label="blur %"
+            value={shown.blur * 100}
+            decimals={0}
+            dragScale={0.5}
+            min={0}
+            max={100}
+            onInput={(n) => preview(patch({ blur: n / 100 }))}
+            onCommit={(n) => commit(patch({ blur: n / 100 }))}
+          />
+          <NumberField
+            label="glow %"
+            value={shown.glow * 100}
+            decimals={0}
+            dragScale={0.5}
+            min={0}
+            max={100}
+            onInput={(n) => preview(patch({ glow: n / 100 }))}
+            onCommit={(n) => commit(patch({ glow: n / 100 }))}
+          />
+        </div>
+      )}
+
+      {mode === "radial" && (
+        <>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="blur %"
+              value={shown.blur * 100}
+              decimals={0}
+              dragScale={0.5}
+              min={0}
+              max={100}
+              onInput={(n) => preview(patch({ blur: n / 100 }))}
+              onCommit={(n) => commit(patch({ blur: n / 100 }))}
+            />
+          </div>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="centre X %"
+              value={shown.centerX * 100}
+              decimals={0}
+              dragScale={0.5}
+              min={-100}
+              max={100}
+              onInput={(n) => preview(patch({ centerX: n / 100 }))}
+              onCommit={(n) => commit(patch({ centerX: n / 100 }))}
+            />
+            <NumberField
+              label="centre Y %"
+              value={shown.centerY * 100}
+              decimals={0}
+              dragScale={0.5}
+              min={-100}
+              max={100}
+              onInput={(n) => preview(patch({ centerY: n / 100 }))}
+              onCommit={(n) => commit(patch({ centerY: n / 100 }))}
+            />
+          </div>
+        </>
+      )}
+
+      {mode === "directional" && (
+        <div className="inspector-pose-grid">
+          <NumberField
+            label="blur %"
+            value={shown.blur * 100}
+            decimals={0}
+            dragScale={0.5}
+            min={0}
+            max={100}
+            onInput={(n) => preview(patch({ blur: n / 100 }))}
+            onCommit={(n) => commit(patch({ blur: n / 100 }))}
+          />
+          <NumberField
+            label="angle °"
+            value={shown.angleDeg}
+            decimals={0}
+            dragScale={0.5}
+            min={-90}
+            max={90}
+            onInput={(n) => preview(patch({ angleDeg: n }))}
+            onCommit={(n) => commit(patch({ angleDeg: n }))}
+          />
+        </div>
       )}
 
       {mode !== "off" && !authored && carriedBefore && (
