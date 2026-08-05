@@ -705,6 +705,55 @@ export function ChartDrillIn({
         )}
       </DrillGroup>
 
+      {chart.mount === "hero" && (
+        <DrillGroup label="Placement" hint="Nudge and size the chart against its fitted pose.">
+          <div className="popover-row">
+            <span className="popover-inline slider-row-label">Scale</span>
+            <DebouncedRange
+              value={chart.style.scale}
+              min={0.2}
+              max={2}
+              step={0.01}
+              label="Scale"
+              onInput={(v) =>
+                live((c) => {
+                  c.style = { ...c.style, scale: v };
+                })
+              }
+              onCommit={(v) =>
+                commit((c) => {
+                  c.style = { ...c.style, scale: v };
+                }, "chart placement")
+              }
+            />
+          </div>
+          <div className="inspector-pose-grid">
+            <NumberField
+              label="x"
+              value={chart.style.offset[0]}
+              decimals={2}
+              step={0.05}
+              min={-20}
+              max={20}
+              onCommit={(n) =>
+                writeStyle({ offset: [n, chart.style.offset[1]] }, "chart placement")
+              }
+            />
+            <NumberField
+              label="y"
+              value={chart.style.offset[1]}
+              decimals={2}
+              step={0.05}
+              min={-20}
+              max={20}
+              onCommit={(n) =>
+                writeStyle({ offset: [chart.style.offset[0], n] }, "chart placement")
+              }
+            />
+          </div>
+        </DrillGroup>
+      )}
+
       <DrillGroup label="Legend">
         <ToggleRow
           label="Show legend"
@@ -810,15 +859,18 @@ export function ChartDrillIn({
   const categoryAxis = chart.axis.category;
   const axis = (
     <>
-      <SegmentedRow
-        className="subtabs-compact"
-        options={[
-          { value: "value" as const, label: "Value (Y)" },
-          { value: "category" as const, label: "Category (X)" },
-        ]}
-        value={axisTab}
-        onChange={setAxisTab}
-      />
+      {/* Wrapped so the fieldset's straddle rule cannot lift this pill onto the Graph/Axis/Series control. */}
+      <div className="chart-axis-subtabs">
+        <SegmentedRow
+          className="subtabs-compact"
+          options={[
+            { value: "value" as const, label: "Value (Y)" },
+            { value: "category" as const, label: "Category (X)" },
+          ]}
+          value={axisTab}
+          onChange={setAxisTab}
+        />
+      </div>
       {axisTab === "value" ? (
         <>
           <ToggleRow

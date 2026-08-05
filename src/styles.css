@@ -7389,3 +7389,10 @@ img.inspector-scene-thumb {
   gap: var(--space-2);
   font-variant-numeric: tabular-nums;
 }
+
+/* The Axis tab's Value/Category pill: wrapped so the fieldset straddle rule leaves it in flow, sitting as its own row under the Graph/Axis/Series control. */
+.chart-axis-subtabs {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+}
