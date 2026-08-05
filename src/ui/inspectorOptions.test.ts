@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { projectRows, sceneSections } from "./inspectorOptions";
+import { drillStackForScene, projectRows, sceneSections } from "./inspectorOptions";
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {
@@ -321,5 +321,59 @@ describe("sceneSections Overlay section", () => {
     const rows = sections.find((s) => s.id === "frame")?.rows;
     expect(rows?.map((r) => r.id)).toEqual(["frame.enabled"]);
     expect(rows?.[0].chevron).toBe(false);
+  });
+});
+
+describe("drillStackForScene (what the inspector keeps open across a scene change)", () => {
+  const full = {
+    hasDoc: true,
+    textKeys: ["title", "subtitle"],
+    hasDevice: true,
+    hasObject: true,
+    hasOverlay: true,
+  };
+
+  it("keeps a generic section the new scene also has", () => {
+    expect(drillStackForScene(["text"], full)).toEqual(["text"]);
+    expect(drillStackForScene(["style.background"], full)).toEqual(["style.background"]);
+    expect(drillStackForScene(["lighting"], full)).toEqual(["lighting"]);
+    expect(drillStackForScene(["style.theme"], full)).toEqual(["style.theme"]);
+    expect(drillStackForScene(["device"], full)).toEqual(["device"]);
+  });
+
+  it("Animations survives even a doc-less scene", () => {
+    expect(drillStackForScene(["camera"], { ...full, hasDoc: false, textKeys: [] })).toEqual([
+      "camera",
+    ]);
+  });
+
+  it("a font screen follows only while the new scene exposes that key", () => {
+    expect(drillStackForScene(["text", "text.font:title"], full)).toEqual([
+      "text",
+      "text.font:title",
+    ]);
+    expect(
+      drillStackForScene(["text", "text.font:title"], { ...full, textKeys: ["headline"] }),
+    ).toEqual(["text"]);
+  });
+
+  it("a scene the section is missing from drops to the row list", () => {
+    expect(drillStackForScene(["text"], { ...full, hasDoc: false, textKeys: [] })).toEqual([]);
+    expect(drillStackForScene(["style.background"], { ...full, hasDoc: false })).toEqual([]);
+    expect(drillStackForScene(["device"], { ...full, hasDevice: false })).toEqual([]);
+    expect(drillStackForScene(["objects"], { ...full, hasObject: false })).toEqual([]);
+    expect(drillStackForScene(["frame"], { ...full, hasOverlay: false })).toEqual([]);
+  });
+
+  it("scene-specific editors never survive, popping to their section", () => {
+    expect(drillStackForScene(["device", "device.position"], full)).toEqual(["device"]);
+    expect(drillStackForScene(["frame", "frame.cutout"], full)).toEqual(["frame"]);
+    expect(drillStackForScene(["objects", "objects.placement"], full)).toEqual(["objects"]);
+    expect(drillStackForScene(["style.background", "style.background.media"], full)).toEqual([
+      "style.background",
+    ]);
+    expect(drillStackForScene(["compare.edit"], full)).toEqual([]);
+    expect(drillStackForScene(["motion.transition"], full)).toEqual([]);
+    expect(drillStackForScene(["videoWindow.edit"], full)).toEqual([]);
   });
 });

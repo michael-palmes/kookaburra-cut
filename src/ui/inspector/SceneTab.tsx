@@ -90,7 +90,12 @@ import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
-import { objectRowLabel, type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import {
+  drillStackForScene,
+  objectRowLabel,
+  type SceneSectionModel,
+  sceneSections,
+} from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { LightingSectionBody } from "./LightingSection";
 
@@ -1766,6 +1771,7 @@ export function SceneTab({
   const openDrill = useUiStore((s) => s.openInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
+  const jumpDrill = useUiStore((s) => s.jumpInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
   const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
@@ -1821,8 +1827,9 @@ export function SceneTab({
     setTextValues((v) => ({ ...v, [key]: value }));
     if (!textEditBaseline.current && doc) textEditBaseline.current = structuredClone(doc);
     if (textEditTimer.current !== null) window.clearTimeout(textEditTimer.current);
-    textEditTimer.current = window.setTimeout(() => {
-      textEditTimer.current = null;
+    // The handle check keeps a write detached by a scene change from clearing the new scene's own.
+    const id = window.setTimeout(() => {
+      if (textEditTimer.current === id) textEditTimer.current = null;
       void patchDoc(
         (next) => {
           next.text = { ...(next.text ?? {}), [key]: value };
@@ -1830,6 +1837,7 @@ export function SceneTab({
         { history: false },
       );
     }, 200);
+    textEditTimer.current = id;
   };
   const flushText = () => {
     if (textEditTimer.current !== null) {
@@ -1950,7 +1958,8 @@ export function SceneTab({
     [],
   );
 
-  // Collapse transient state when the playhead moves to another scene.
+  // Collapse transient state when the playhead moves to another scene. The open screen stays put
+  // where the new scene has it (its editor reads the new doc), else it pops back a level.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-scene
   useEffect(() => {
     setModal(null);
@@ -1961,14 +1970,35 @@ export function SceneTab({
     setConfirmRemoveCompare(false);
     setBgTarget("scene");
     setLightingTarget("scene");
-    resetDrill();
+    // Text drafts are keyed by field name, not by scene, so a leftover would shadow the new
+    // scene's text. A pending debounce is detached rather than cancelled: its closure holds the
+    // old scene's patchDoc, so unflushed typing still lands on the scene it was typed in.
+    setTextValues({});
+    textEditTimer.current = null;
+    textEditBaseline.current = null;
+    setIconDraft(null);
+    iconEditTimer.current = null;
+    iconEditBaseline.current = null;
+    setThemeDraft(doc?.themeId ?? "");
+    const kept = drillStackForScene(drillStack, {
+      hasDoc: !!doc,
+      textKeys: Object.keys(doc?.text ?? {}),
+      hasDevice: devices.length > 0,
+      hasObject: objects.length > 0,
+      hasOverlay: project.deckFrame !== undefined || doc?.frame?.cutout !== undefined,
+    });
+    if (kept.length !== drillStack.length) {
+      if (kept.length === 0) resetDrill();
+      else jumpDrill(kept);
+    }
     setRenaming(false);
     setBgTabOverride(null);
+    setBackingTabOverride(null);
     setLiveThumb((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
-  }, [sceneIndex, resetDrill]);
+  }, [sceneIndex, resetDrill, jumpDrill]);
 
   // The remove confirmation disarms itself (the EditBar pattern).
   useEffect(() => {
@@ -4371,12 +4401,13 @@ export function SceneTab({
       setIconDraft(value);
       if (!iconEditBaseline.current) iconEditBaseline.current = structuredClone(doc);
       if (iconEditTimer.current !== null) window.clearTimeout(iconEditTimer.current);
-      iconEditTimer.current = window.setTimeout(() => {
-        iconEditTimer.current = null;
+      const id = window.setTimeout(() => {
+        if (iconEditTimer.current === id) iconEditTimer.current = null;
         void patchDoc((next) => writeHeaderIcon(next, value.trim() || undefined), {
           history: false,
         });
       }, 200);
+      iconEditTimer.current = id;
     };
     const flushHeaderIcon = () => {
       if (iconEditTimer.current !== null) {
