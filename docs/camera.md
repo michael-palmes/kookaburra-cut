@@ -51,8 +51,8 @@ baked look point, which is what every fallback lands on:
 | Aim direction | Slerp of unit vectors | A 180 degree pan-in-place rotates instead of dragging its aim through the camera |
 | Aim distance | Logarithmic | A 6 to 1 push reads evenly rather than crawling at the end |
 | Roll, fov | Lerp | Nothing subtler is wanted, and both are optional |
-| Depth of field: focus | Logarithmic, in lockstep with aim distance | A manual rack covers ground the way an autofocus flight does |
-| Depth of field: blur, range, tilt fields | Lerp | Strength and band ramps read evenly |
+| Depth of field: focus (and split's `focusB`) | Logarithmic, in lockstep with aim distance | A manual rack covers ground the way an autofocus flight does |
+| Depth of field: blur, range, tilt and style fields | Lerp | Strength, band, glow, centre, angle and squeeze ramps read evenly |
 
 Smoothing shapes POSITION only; the aim still slerps, because splining that too
 gives a wandering look direction that is very hard to author against. The eased
@@ -81,16 +81,27 @@ A `dof` block rides a camera key's pose in BOTH modes, beside `fov`/`rollDeg`
 on the rig and beside `distance` on orbit poses. Fields are sparse and carry
 FORWARD along the track from the last key that authored them, so a rack focus
 restates only `focus`; a key with no `dof` at all changes nothing. The first
-authored `mode` ("depth", the default, or "tilt") is the scene's; blur can
-animate, the family cannot swap mid-flight.
+authored `mode` ("depth", the default; "tilt"; or a style mode below) is the
+scene's; blur can animate, the family cannot swap mid-flight.
 
 - Depth mode: `blur` (0..1), `range` (world units of full sharpness around the
   focus plane) and `focus` (world units). Absent `focus` (or `"auto"`) follows
   the pose's aim distance, rig aim or orbit distance-to-target, recomputed per
   frame, so the aimed subject stays sharp through a whole move with zero keys.
   An object-aim rig autofocuses on the object as it and the camera travel.
+  `squeeze` (1..2) ovalises the bokeh discs for the anamorphic look.
 - Tilt mode: `blur`, `band` (screen-fraction sharp strip), `offset` (-1..1
   centre) and `angleDeg`. Screen space; depth is not involved.
+- Soft mode ("Dream"): `blur` mixes a fixed-kernel diffusion over the sharp
+  frame, `glow` (0..1) screen-lifts the blurred highlights. Screen space.
+- Radial mode ("Burst"): `blur` scales zoom streaks toward `centerX`/`centerY`
+  (-1..1 from screen centre, animatable). Screen space, fixed tap count.
+- Directional mode ("Swipe"): `blur` scales a symmetric smear along
+  `angleDeg`, screen-true at any aspect. Screen space, fixed tap count.
+- Split mode: depth's fields plus `focusB` (a second, always-manual focus
+  distance) held sharp at once across a screen divider (`offset` -1..1,
+  `angleDeg`; the seam softness is fixed). Focus A still autofocuses; both
+  distances rack logarithmically. The split-diopter shot.
 - Everything blurs by its true depth, device screens and SDF text included
   (the exact-colour contract holds AT the focal plane, and whatever you focus
   on stays exact). Keep legibility-critical text on or near the focus plane.
@@ -101,9 +112,10 @@ animate, the family cannot swap mid-flight.
   into a crossfade instead of releasing at the cut.
 
 The inspector's Depth-of-field group (both camera modes) shows the key's
-EFFECTIVE values with the fov-style inherit affordances, presets (Subtle,
-Cinematic, Macro) and the Auto/Manual focus switch. Gate fixture:
-`ws:dof-spike`; probe pass: `no-dof`.
+EFFECTIVE values with the fov-style inherit affordances, a seven-way family
+chip row, presets (Subtle, Cinematic, Macro; depth mode) and the Auto/Manual
+focus switch. Gate fixture: `ws:dof-spike`; probe pass: `no-dof` (it covers
+every mode, since all of them ride the same union).
 
 ## Tools and shortcuts
 

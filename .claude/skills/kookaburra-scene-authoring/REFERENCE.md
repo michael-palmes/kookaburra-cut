@@ -225,6 +225,13 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
 - Tilt-shift: `"mode": "tilt"` with `band` (0..1 screen strip), `offset` (-1..1) and
   `angleDeg`. The first authored `mode` is the scene's; blur animates, the family
   does not swap mid-scene.
+- Style modes, all screen-space and animatable like any other field:
+  `"mode": "soft"` (Dream) adds `glow` 0..1 over the diffusion `blur`;
+  `"mode": "radial"` (Burst) streaks toward `centerX`/`centerY` (-1..1);
+  `"mode": "directional"` (Swipe) smears along `angleDeg`;
+  `"mode": "split"` holds depth's `focus` AND a second `focusB` sharp at once
+  across a divider (`offset` -1..1, `angleDeg`), the split-diopter shot.
+  Depth and split also take `squeeze` (1..2) for anamorphic oval bokeh.
 - Everything blurs by its true depth, text and device screens included: keep
   legibility-critical text on or near the focus plane. Any active dof routes the
   project through the effects composer (like bloom); `blur: 0` everywhere keeps the

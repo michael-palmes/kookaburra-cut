@@ -1181,7 +1181,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `cee2ab6f…` | `09f57c3c…` | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `ae8b22f3…` | `91680399…` | — | — | — | — | — |
 
 > **2026-08-04 (depth of field):** camera poses gained a sparse `dof` block
 > (depth or tilt-shift family), resolved per frame through the camera plan and
@@ -1199,6 +1199,25 @@ rolling-gate project (`showcase-tour`):
 > WKWebView/ANGLE Metal before anything else was built. Eyeball note: with
 > autofocus the aimed subject is SUPPOSED to be sharp, so judge dof frames
 > with the camera-to-subject distances in hand, not by "is anything blurry".
+
+> **2026-08-06 (dof blur styles):** the `dof` block gained four style modes
+> (soft "Dream", radial "Burst", directional "Swipe", split diopter) plus the
+> depth-family `squeeze` field. Burst and swipe share one convolution
+> `SmearEffect` (fixed `SMEAR_TAPS` 32, spatial-hash tap jitter, a pure
+> function of the pixel coordinate like the grain hash); Dream is
+> `SoftFocusEffect` (fixed `SOFT_FOCUS_KERNEL` 35 Gaussian + screen blend);
+> split and squeeze run on ALWAYS-PATCHED stock materials (a second focus
+> plane in the CoC, an X squeeze in the bokeh kernels; `mustPatch` anchors
+> throw on a postprocessing upgrade). New export-contract constants:
+> `SMEAR_TAPS`, `SOFT_FOCUS_KERNEL`, `SPLIT_FEATHER` 0.08,
+> `SMEAR_RADIAL_SPAN` 0.35, `SMEAR_DIR_SPAN` 0.25. The patched programs are
+> uniform-neutral for plain depth scenes but different PROGRAMS, so the
+> dof-active fixture was a DELIBERATE re-record: `ws:dof-spike` grew to ten
+> scenes (one per style, plus an anamorphic→split crossfade proving the
+> patched per-side path) and moved `cee2ab6f…`→`ae8b22f3…` (16:9) and
+> `09f57c3c…`→`91680399…` (9:16), both Verify ×2 EQUAL, every style eyeballed
+> first. Null-for-legacy is untouched: dof-less projects never build the
+> patched materials.
 
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so
