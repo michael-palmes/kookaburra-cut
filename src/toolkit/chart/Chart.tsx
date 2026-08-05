@@ -229,7 +229,6 @@ function Hero2D({
 function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity }: MountArgs) {
   const format = useFormat();
   const theme = useTheme();
-  const floorY = useStageFloorY();
   const available = useMemo(() => chartHeroRect(format, theme, title), [format, theme, title]);
   const fit = useMemo(() => {
     const size = { width: available.width, height: available.height };
@@ -240,16 +239,7 @@ function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity
       top: stack.top * CHART_3D_STACK_PERSPECTIVE,
     });
   }, [chart, layout, surface.legendChrome, available]);
-  const grounded = floorY !== null;
-  // A staged floor already catches the shadow, so the chart's own clearing stands down.
-  const mountSurface = useMemo(
-    () =>
-      grounded && surface.threed.floorShadow
-        ? { ...surface, threed: { ...surface.threed, floorShadow: false } }
-        : surface,
-    [surface, grounded],
-  );
-  const ground = chartHeroPose(fit, chart.style.scale, available, floorY);
+  const ground = chartHeroPose(fit, chart.style.scale, available);
   return (
     <group
       position={[
@@ -266,7 +256,7 @@ function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity
           layout={layout}
           colours={colours}
           size={fit.size}
-          surface={mountSurface}
+          surface={surface}
           reveal={reveal}
           opacity={opacity}
         />

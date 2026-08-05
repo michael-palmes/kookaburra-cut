@@ -38,6 +38,9 @@ const CHART_3D_FURNITURE = 0.16;
 /** The 3D label stacks stand at the plot's front plane, so the base camera (z 5) projects their offsets up to ~8 per cent larger than the mid-plane maths; reserved at 12 so the deepest chart still clears the frame. */
 export const CHART_3D_STACK_PERSPECTIVE = 1.12;
 
+/** A hero 3D plot builds shorter than its rect so the label stacks mostly fit without shrinking the whole chart: the fit then holds near scale 1 and the plot fills ~80 per cent of the frame width. */
+export const CHART_3D_PLOT_HEIGHT = 0.78;
+
 /** Plot size a staged chart is built at, near the device auto-fit height so a chart beside a phone reads at the same scale; `placement.scale` multiplies it. */
 export const CHART_STAGED_SIZE: ChartSize = { width: 3.3, height: 2.2 };
 
@@ -221,7 +224,10 @@ export function fitChart3d(
   available: ChartRect,
   furniture?: { below: number; top: number },
 ): Chart3DFit {
-  const size: ChartSize = { width: available.width, height: available.height };
+  const size: ChartSize = {
+    width: available.width,
+    height: available.height * CHART_3D_PLOT_HEIGHT,
+  };
   const space = chart3dSpace(style.depth, size.width, size.height);
   const margin = CHART_3D_FURNITURE * space.unit;
   const below = furniture?.below ?? margin;
@@ -246,24 +252,14 @@ export function fitChart3d(
   return { size, rotation: [rx, ry], scale, plotHalfHeight: height, below, top };
 }
 
-/** A hero 3D chart's final pose: grounded when the scene stages a floor (the plot floor rests ON it, shrinking further if the furniture stacks would leave the rect), else the full content block (plot plus both stacks) centred in the rect. */
+/** A hero 3D chart's final pose: the full content block (plot plus both label stacks) centred in the rect; `style.offset` then lifts it clear of a staged floor (the resolved default carries a 0.4 lift). */
 export function chartHeroPose(
   fit: Chart3DFit,
   styleScale: number,
   available: ChartRect,
-  floorY: number | null,
 ): ChartHeroGround {
   const base = fit.scale * styleScale;
-  if (floorY === null) {
-    return { y: available.y + ((fit.below - fit.top) / 2) * base, scale: base };
-  }
-  const roomBelow = Math.max(0, floorY - (available.y - available.height / 2));
-  const roomAbove = Math.max(MIN_EXTENT, available.y + available.height / 2 - floorY);
-  const aboveExtent = fit.plotHalfHeight + fit.size.height / 2 + fit.top;
-  const scaleBelow = fit.below > MIN_EXTENT ? roomBelow / fit.below : Number.POSITIVE_INFINITY;
-  const scaleAbove = roomAbove / Math.max(MIN_EXTENT, aboveExtent);
-  const scale = Math.min(base, scaleBelow, scaleAbove);
-  return { y: floorY + (fit.size.height / 2) * scale, scale };
+  return { y: available.y + ((fit.below - fit.top) / 2) * base, scale: base };
 }
 
 /** A grounded hero chart's pose: group y and final scale. */

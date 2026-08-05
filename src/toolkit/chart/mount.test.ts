@@ -8,6 +8,7 @@ import { chart3dBelowStack } from "./axes3d";
 import { chart2dInsets } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import {
+  CHART_3D_PLOT_HEIGHT,
   CHART_STAGED_SIZE,
   chartColours,
   chartEnterOffset,
@@ -224,7 +225,7 @@ describe("chartHeroRect", () => {
       const rect = chartHeroRect(format, theme, title);
       const fit = fitChart3d(chart.style, rect);
       const metrics = chartTitleMetrics(format);
-      expect(fit.size.height).toBeCloseTo(rect.height, 10);
+      expect(fit.size.height).toBeCloseTo(rect.height * CHART_3D_PLOT_HEIGHT, 10);
       expect(rect.y + (fit.size.height / 2) * fit.scale).toBeLessThan(metrics.y - metrics.size / 2);
     }
   });
@@ -458,24 +459,11 @@ describe("chartHeroPose", () => {
   const space = chart3dSpace(chart.style.depth, rect.width, rect.height);
   const stack = chart3dBelowStack(chart, layout, space);
   const fit = fitChart3d(chart.style, rect, { below: stack.depth, top: stack.top });
-  it("centres the full content block without a stage floor", () => {
-    const pose = chartHeroPose(fit, 1, rect, null);
+  it("centres the full content block in the rect", () => {
+    const pose = chartHeroPose(fit, 1, rect);
     const top = pose.y + (fit.plotHalfHeight + fit.top) * pose.scale;
     const bottom = pose.y - (fit.plotHalfHeight + fit.below) * pose.scale;
     expect((top + bottom) / 2).toBeCloseTo(rect.y, 6);
     expect(bottom).toBeGreaterThanOrEqual(rect.y - rect.height / 2 - 1e-6);
-  });
-  it("rests the plot floor on the staged floor", () => {
-    const floorY = rect.y - rect.height / 2 + 0.4;
-    const pose = chartHeroPose(fit, 1, rect, floorY);
-    const plotFloor = pose.y - (fit.size.height / 2) * pose.scale;
-    expect(plotFloor).toBeCloseTo(floorY, 6);
-  });
-  it("keeps the below-floor furniture inside the rect when grounded", () => {
-    const tightFloor = rect.y - rect.height / 2 + 0.02;
-    const pose = chartHeroPose(fit, 1, rect, tightFloor);
-    const bottom = tightFloor - fit.below * pose.scale;
-    expect(bottom).toBeGreaterThanOrEqual(rect.y - rect.height / 2 - 1e-6);
-    expect(pose.scale).toBeLessThan(fit.scale);
   });
 });

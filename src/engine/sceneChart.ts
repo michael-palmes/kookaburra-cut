@@ -35,7 +35,7 @@ export const CHART_STYLE_DEFAULTS: ChartStyle = {
   cornerRadius: 0.25,
   rotation: [0, 0],
   innerRadius: 0,
-  offset: [0, 0],
+  offset: [0, 0.4],
   scale: 1,
 };
 

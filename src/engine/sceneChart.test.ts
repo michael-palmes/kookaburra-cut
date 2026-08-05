@@ -336,7 +336,7 @@ describe("hero placement style", () => {
   it("defaults offset and scale and keeps rotation front on", () => {
     const chart = resolveChart(chartDoc({ type: "column", data: data() }));
     expect(chart?.style.rotation).toEqual([0, 0]);
-    expect(chart?.style.offset).toEqual([0, 0]);
+    expect(chart?.style.offset).toEqual([0, 0.4]);
     expect(chart?.style.scale).toBe(1);
   });
   it("clamps authored offset and scale", () => {

@@ -95,7 +95,7 @@ them.
     "cornerRadius": 0.25,       // 0..1 of half the bar width
     "rotation": [0, 0],         // hero 3D presentation tilt, X/Y degrees; front on by default
     "innerRadius": 0,           // pie only; > 0 makes a donut
-    "offset": [0, 0],           // hero nudge off the fitted centre, world units
+    "offset": [0, 0.4],         // hero nudge off the fitted centre, world units
     "scale": 1                  // hero size multiplier, 0.2..3
   },
 
@@ -167,13 +167,14 @@ Resolution rules worth knowing:
   `chart2dInsets` reserves, settled over three fixed passes: a terminating fixpoint,
   never a convergence loop. A 3D chart is built at the available size and scaled so
   its tilted bounding box (plot, plus a symmetric 0.16 furniture allowance, plus the
-  extrusion) fits again. Both stand at `DEPTH_BANDS.content`. On a staged scene a
-  hero 3D chart GROUNDS: `chartHeroPose` rests the tilted bounds' bottom on the
-  stage floor and the chart's own floor clearing stands down (the stage catches the
-  shadow); without a stage the full content block (plot plus both label stacks, with
-  a front-plane perspective allowance) centres in the rect. `style.offset` then nudges
-  either dimension off the fitted pose in world units and `style.scale` multiplies
-  the fitted scale (the inspector's Placement group).
+  extrusion) fits again. Both stand at `DEPTH_BANDS.content`. A hero 3D chart
+  centres its full content block (plot plus both label stacks, with a front-plane
+  perspective allowance) in the rect; the plot builds at `CHART_3D_PLOT_HEIGHT` of
+  the rect so the fit holds near scale 1 and fills most of the frame width. The
+  resolved default `offset` carries a 0.4 lift, which keeps the label stack clear
+  of a staged floor without any stage coupling. `style.offset` nudges either
+  dimension off the fitted pose in world units and `style.scale` multiplies the
+  fitted scale (the inspector's Placement group).
 - **Furniture bands are estimated, not measured.** Label widths come from a
   character-count estimate (`CHART_GLYPH_ADVANCE`), so the plot rect is a pure
   function of its inputs with no typeset round trip. Reserved space and drawn space
