@@ -1,4 +1,4 @@
-import { ShaderLib } from "three";
+import { Matrix4, Quaternion, ShaderLib, Vector3 } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,6 +15,7 @@ import {
   chart2dInsets,
   chart2dLook,
   chart2dMetrics,
+  chartBillboardMatrix,
   chartRampTexture,
   chartShineAmount,
   contrastPick,
@@ -749,5 +750,35 @@ describe("gradient ramp", () => {
     expect(Array.from(a.image.data as Uint8Array)).toEqual(Array.from(b.image.data as Uint8Array));
     a.dispose();
     b.dispose();
+  });
+});
+
+describe("chartBillboardMatrix", () => {
+  it("keeps the anchor's world position and uniform scale while facing the camera", () => {
+    const anchor = new Matrix4().compose(
+      new Vector3(2, 1.5, -3),
+      new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.4),
+      new Vector3(0.95, 0.95, 0.95),
+    );
+    const cam = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -0.3);
+    const out = chartBillboardMatrix(anchor, cam, 0, new Matrix4());
+    const pos = new Vector3().setFromMatrixPosition(out);
+    const scl = new Vector3().setFromMatrixScale(out);
+    expect(pos.x).toBeCloseTo(2, 6);
+    expect(pos.y).toBeCloseTo(1.5, 6);
+    expect(pos.z).toBeCloseTo(-3, 6);
+    expect(scl.x).toBeCloseTo(0.95, 6);
+    const zBasis = new Vector3(0, 0, 1).applyMatrix4(out).sub(pos).normalize();
+    const camZ = new Vector3(0, 0, 1).applyQuaternion(cam);
+    expect(zBasis.dot(camZ)).toBeCloseTo(1, 6);
+  });
+  it("composes the z rotation without moving the anchor and is identical across calls", () => {
+    const anchor = new Matrix4().makeTranslation(-1, 0.5, 2);
+    const cam = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 1.1);
+    const a = chartBillboardMatrix(anchor, cam, Math.PI / 2, new Matrix4());
+    const b = chartBillboardMatrix(anchor, cam, Math.PI / 2, new Matrix4());
+    expect(a.equals(b)).toBe(true);
+    const pos = new Vector3().setFromMatrixPosition(a);
+    expect(pos.x).toBeCloseTo(-1, 6);
   });
 });

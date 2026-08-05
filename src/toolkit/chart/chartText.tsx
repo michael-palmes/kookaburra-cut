@@ -1,13 +1,16 @@
 /** Chart typography: the two label primitives the 2D and 3D renderers share. Text is troika SDF through the theme's `typography` (the `AnimatedHeadline`/`FrameChip` font resolution), never HTML, and every position is a plain prop, so a label is a pure function of its inputs. Billboarding is opt-in for orbiting 3D charts; flat charts keep their labels in the chart plane, where billboarding would be waste. */
 
-import { Billboard, Text } from "@react-three/drei";
+import { Text } from "@react-three/drei";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
+  type Camera,
   Color,
   DynamicDrawUsage,
+  type Group,
   InstancedBufferAttribute,
   type InstancedMesh,
   Matrix4,
+  type Mesh,
   PlaneGeometry,
   Quaternion,
   Vector3,
@@ -19,6 +22,7 @@ import { liftColour } from "../colour";
 import {
   CHART_2D_ORDER,
   CHART_LINE_HEIGHT,
+  chartBillboardMatrix,
   LABEL_PILL,
   LEGEND_ENTRY_GAP,
   LEGEND_SWATCH,
@@ -158,32 +162,55 @@ export function ChartLabel(props: ChartLabelProps) {
     renderOrder = CHART_2D_ORDER.label,
   } = props;
   const theme = useTheme();
+  const anchorRef = useRef<Group>(null);
+  const labelRef = useRef<Mesh>(null);
+  // Rewrites the label's matrixWorld from the render camera after the graph's updateMatrixWorld (the FixedBackdrop idiom): orientation is a pure function of the frame's camera, never frame-loop state, so Verify passes agree.
+  const faceCamera = useMemo(
+    () => (_renderer: unknown, _scene: unknown, camera: Camera) => {
+      const anchor = anchorRef.current;
+      const mesh = labelRef.current;
+      if (!anchor || !mesh) return;
+      chartBillboardMatrix(anchor.matrixWorld, camera.quaternion, rotation, mesh.matrixWorld);
+    },
+    [rotation],
+  );
   if (!text || alpha <= 0) return null;
   // Both faces are refs the theme DECLARES, never a synthesised weight: the export preamble preloads exactly the declared refs, and a face first typeset mid-run claims cells in the shared SDF atlas late (docs/determinism.md, "Fonts").
   const face: FontRef = bold ? theme.typography.headline : theme.typography.body;
-  const label = (
-    <Text
-      font={fontUrl(face)}
-      fontSize={fontSize}
-      color={colour}
-      anchorX={anchorX}
-      anchorY={anchorY}
-      fillOpacity={alpha}
-      renderOrder={renderOrder}
-    >
-      {text}
-    </Text>
-  );
   if (billboard) {
     return (
-      <Billboard position={position}>
-        <group rotation={[0, 0, rotation]}>{label}</group>
-      </Billboard>
+      <group ref={anchorRef} position={position}>
+        <Text
+          ref={labelRef}
+          font={fontUrl(face)}
+          fontSize={fontSize}
+          color={colour}
+          anchorX={anchorX}
+          anchorY={anchorY}
+          fillOpacity={alpha}
+          renderOrder={renderOrder}
+          matrixAutoUpdate={false}
+          frustumCulled={false}
+          onBeforeRender={faceCamera}
+        >
+          {text}
+        </Text>
+      </group>
     );
   }
   return (
     <group position={position} rotation={[0, 0, rotation]}>
-      {label}
+      <Text
+        font={fontUrl(face)}
+        fontSize={fontSize}
+        color={colour}
+        anchorX={anchorX}
+        anchorY={anchorY}
+        fillOpacity={alpha}
+        renderOrder={renderOrder}
+      >
+        {text}
+      </Text>
     </group>
   );
 }
@@ -204,7 +231,6 @@ export interface ChartLegendRowProps {
   alpha?: number;
   /** Row alignment inside the block (default centred; a trailing legend wants "left"). */
   align?: "center" | "left";
-  billboard?: boolean;
   /** Plain swatch and label, or each entry on its own chip. */
   chrome?: ChartLegendChrome;
   /** Chip fill under `chrome: "chips"`; the theme's own pill colour when absent. */
@@ -229,7 +255,6 @@ export function ChartLegendRow(props: ChartLegendRowProps) {
     colour,
     alpha = 1,
     align = "center",
-    billboard = false,
     chrome = "plain",
     chipColour,
     feather = fontSize * 0.02,
@@ -299,6 +324,5 @@ export function ChartLegendRow(props: ChartLegendRowProps) {
     </>
   );
 
-  if (billboard) return <Billboard position={position}>{block}</Billboard>;
   return <group position={position}>{block}</group>;
 }

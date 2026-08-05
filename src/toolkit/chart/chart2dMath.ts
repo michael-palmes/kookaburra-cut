@@ -8,7 +8,9 @@ import {
   DataTexture,
   DoubleSide,
   LinearFilter,
+  Matrix4,
   MeshBasicMaterial,
+  type Quaternion,
   RGBAFormat,
   type ShaderMaterial,
   Shape,
@@ -925,4 +927,18 @@ export function chart2dInsets(
     } else insets.bottom += m.gap + bands.legend;
   }
   return insets;
+}
+
+/** Deterministic billboard transform: the label plane faces the render camera while keeping the anchor's world position and scale, with the label's own z-rotation composed last. A pure function of the frame's camera (the FixedBackdrop idiom), so Verify passes cannot disagree the way a frame-loop billboard does. */
+export function chartBillboardMatrix(
+  anchorWorld: Matrix4,
+  cameraQuaternion: Quaternion,
+  rotationZ: number,
+  out: Matrix4,
+): Matrix4 {
+  const pos = new Vector3().setFromMatrixPosition(anchorWorld);
+  const scl = new Vector3().setFromMatrixScale(anchorWorld);
+  out.compose(pos, cameraQuaternion, scl);
+  if (rotationZ !== 0) out.multiply(new Matrix4().makeRotationZ(rotationZ));
+  return out;
 }
