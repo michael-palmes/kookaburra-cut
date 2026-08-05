@@ -55,6 +55,52 @@ import {
 
 /** The chart inspector: the `chart.edit` drill (Graph / Axis / Series, the Keynote split built from the app's own rows) and the `chart.position` placement drill for staged charts. Reads come from `resolveChart` so every control shows the value that renders; writes patch only the field touched, so an untouched default never lands in the sidecar. Live slider and scrub ticks write history-less from a drag-start snapshot and settle to ONE history entry (the video-window pattern). */
 
+/** Tiny stroke glyphs for the Dimension and Mount pills, the SegmentedOption icon slot. */
+function DimensionGlyph({ flat = false }: { flat?: boolean }) {
+  if (flat) {
+    return (
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="9" height="7" rx="1" stroke="currentColor" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path
+        d="M6 1.2 10.5 3.6v4.8L6 10.8 1.5 8.4V3.6L6 1.2Zm0 0v4.6m4.5-2.2L6 5.8M1.5 3.6 6 5.8"
+        stroke="currentColor"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MountGlyph({ mount }: { mount: ChartMount }) {
+  if (mount === "hero") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke="currentColor" />
+        <path d="M3.5 8.5v-3m2.5 3v-4.6m2.5 4.6v-2" stroke="currentColor" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (mount === "staged") {
+    return (
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+        <path d="M1.5 9.5h9" stroke="currentColor" strokeLinecap="round" />
+        <path d="M4 9.5v-4h4v4" stroke="currentColor" strokeLinejoin="round" />
+        <path d="M4 5.5 6 4l2 1.5" stroke="currentColor" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke="currentColor" />
+      <path d="M4.5 1.5v9" stroke="currentColor" />
+    </svg>
+  );
+}
+
 const CHART_STYLE_TIERS: { id: ChartStyleTier; label: string }[] = [
   { id: "classic", label: "Classic" },
   { id: "studio", label: "Studio" },
@@ -404,7 +450,7 @@ export function ChartDrillIn({
   if (selected) {
     const override = doc.chart.data.series.find((s) => s.id === selected.id)?.colour;
     return (
-      <div className="inspector-drill">
+      <div className="inspector-drill chart-drill">
         <DrillBack label="Chart" onClick={() => setSeriesId(null)} />
         <div className="inspector-drill-title">{selected.name}</div>
         <div className="inspector-drill-body inspector-section-body">
@@ -500,32 +546,14 @@ export function ChartDrillIn({
   // A block already mounted in a panel keeps the option even if the scene lost its overlay, so the pill always shows the live mount.
   const mountIds: ChartMount[] =
     hasPanel || chart.mount === "panel" ? ["hero", "staged", "panel"] : ["hero", "staged"];
-  const mountOptions = mountIds.map((value) => ({ value, label: MOUNT_LABELS[value] }));
+  const mountOptions = mountIds.map((value) => ({
+    value,
+    label: MOUNT_LABELS[value],
+    icon: <MountGlyph mount={value} />,
+  }));
 
   const graph = (
     <>
-      <DrillGroup
-        label="Appearance"
-        hint="A preset restyles the whole chart; the rows below still apply."
-      >
-        {CHART_STYLE_TIERS.map((tier) => (
-          <Fragment key={tier.id}>
-            <span className="chart-tier-label">{tier.label}</span>
-            <div className="option-grid three-up">
-              {styleIds(tier.id).map((id) => (
-                <OptionCard
-                  key={id}
-                  label={CHART_STYLE_PRESETS[id].label}
-                  image={optionPreviewStill(`chart-${id}`)}
-                  selected={chart.style.preset === id}
-                  onSelect={() => writeStyle({ preset: id }, "chart appearance")}
-                />
-              ))}
-            </div>
-          </Fragment>
-        ))}
-      </DrillGroup>
-
       <DrillGroup label="Chart type">
         <div className="bg-type-grid chart-type-grid">
           {CHART_TYPE_IDS.map((type) => (
@@ -557,8 +585,8 @@ export function ChartDrillIn({
         <DrillGroup label="Dimension">
           <SegmentedRow
             options={[
-              { value: "2d" as ChartDimension, label: "Flat" },
-              { value: "3d" as ChartDimension, label: "3D" },
+              { value: "2d" as ChartDimension, label: "Flat", icon: <DimensionGlyph flat /> },
+              { value: "3d" as ChartDimension, label: "3D", icon: <DimensionGlyph /> },
             ]}
             value={chart.dimension}
             onChange={(dimension) =>
@@ -596,6 +624,28 @@ export function ChartDrillIn({
         {chart.mount === "staged" && (
           <ActionRow label="Position" chevron onClick={onOpenPosition} />
         )}
+      </DrillGroup>
+
+      <DrillGroup
+        label="Appearance"
+        hint="A preset restyles the whole chart; the rows below still apply."
+      >
+        {CHART_STYLE_TIERS.map((tier) => (
+          <Fragment key={tier.id}>
+            <span className="chart-tier-label">{tier.label}</span>
+            <div className="option-grid three-up">
+              {styleIds(tier.id).map((id) => (
+                <OptionCard
+                  key={id}
+                  label={CHART_STYLE_PRESETS[id].label}
+                  image={optionPreviewStill(`chart-${id}`)}
+                  selected={chart.style.preset === id}
+                  onSelect={() => writeStyle({ preset: id }, "chart appearance")}
+                />
+              ))}
+            </div>
+          </Fragment>
+        ))}
       </DrillGroup>
 
       <DrillGroup label="Shape">
@@ -1176,7 +1226,7 @@ export function ChartDrillIn({
   );
 
   return (
-    <div className="inspector-drill">
+    <div className="inspector-drill chart-drill">
       <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Chart</div>
       <div className="inspector-drill-body">
@@ -1278,7 +1328,7 @@ export function ChartPlacementDrillIn({
   };
 
   return (
-    <div className="inspector-drill">
+    <div className="inspector-drill chart-drill">
       <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Position</div>
       <div className="inspector-drill-body inspector-section-body">

@@ -7396,3 +7396,31 @@ img.inspector-scene-thumb {
   justify-content: center;
   padding-top: 2px;
 }
+
+/* Chart drill layout: the fieldset gives up its horizontal padding for row room, slider rows flex inside the container instead of overflowing it (the deco-card rules, chart-scoped), and the value/text boxes stay compact. */
+.chart-drill .inspector-drill-body {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.chart-drill .toggle-fieldset {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.chart-drill .popover-row > .popover-inline:not(.slider-row-label) {
+  flex: 1;
+  min-width: 0;
+}
+.chart-drill .popover-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.chart-drill .range-value {
+  width: 44px;
+}
+.chart-drill .popover-row > input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: 110px;
+}
