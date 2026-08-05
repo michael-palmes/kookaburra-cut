@@ -1220,6 +1220,12 @@ rolling-gate project (`showcase-tour`):
 > itself. `ws:bg3d-spike` verified identical ×2 at `8f6fc517…` with frames
 > eyeballed; note the background-rethink worktree's interim `632ee44d…` record
 > is superseded when that branch rebases onto this.
+> **2026-08-05 correction:** the `#104` traverse also stamped GROUP nodes, and
+> three.js reads a group's `renderOrder` as `groupOrder` (which outranks
+> `renderOrder` in the painter sort), so the four opaque looks drew before the
+> backing quad and were painted over: `8f6fc517…` encodes those broken
+> (invisible) frames. Groups are now skipped; `ws:bg3d-spike` re-verified
+> identical ×2 at `4e0d3840…` with all four looks eyeballed restored.
 
 > **2026-07-29 (video window: stage removal, placement, recording crop):**
 > the backing stage was removed outright (Michael's call: the scene's own
