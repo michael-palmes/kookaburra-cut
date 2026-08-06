@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assertProjectRelative, assertUniqueSceneFiles, outgoingSceneTransitions } from "./project";
+import {
+  assertProjectRelative,
+  assertUniqueSceneFiles,
+  outgoingSceneTransitions,
+  sceneMountKey,
+} from "./project";
 import type { TransitionSpec } from "./sceneTimeline";
 
 describe("assertProjectRelative", () => {
@@ -60,6 +65,58 @@ describe("assertUniqueSceneFiles", () => {
         '"demo/project.json"',
       ),
     ).toThrow(/more than once/);
+  });
+});
+
+describe("sceneMountKey", () => {
+  // The duplicate-spike fixture: eleven scenes whose TSX ids collide (four share "panel-6", two share "starter-title-2").
+  const spikeFiles = [
+    "scenes/01-app-version.tsx",
+    "scenes/02-title.tsx",
+    "scenes/03-device-video.tsx",
+    "scenes/04-title-2.tsx",
+    "scenes/05-device-camera.tsx",
+    "scenes/06-app-version-end.tsx",
+    "scenes/07-title-2-copy.tsx",
+    "scenes/08-panel-6.tsx",
+    "scenes/09-panel-6-copy.tsx",
+    "scenes/10-panel-6-copy-copy.tsx",
+    "scenes/11-panel-6-copy-copy-copy.tsx",
+  ];
+  const spikeIds = [
+    "starter-app-version",
+    "starter-title",
+    "starter-device-video",
+    "starter-title-2",
+    "starter-device-camera",
+    "starter-app-version-end",
+    "starter-title-2",
+    "panel-6",
+    "panel-6",
+    "panel-6",
+    "panel-6",
+  ];
+
+  it("gives eleven colliding-id scenes eleven distinct keys", () => {
+    expect(new Set(spikeIds).size).toBeLessThan(spikeFiles.length);
+    const keys = spikeFiles.map((file) => sceneMountKey("ws:duplicate-spike", file));
+    expect(new Set(keys).size).toBe(spikeFiles.length);
+  });
+
+  it("collapses the ./-prefixed spelling onto the same key", () => {
+    expect(sceneMountKey("demo", "./scenes/x.tsx")).toBe(sceneMountKey("demo", "scenes/x.tsx"));
+  });
+
+  it("keys a file the same however the manifest orders it", () => {
+    const key = (files: string[]) => files.map((f) => sceneMountKey("ws:duplicate-spike", f));
+    const straight = key(spikeFiles);
+    const shuffled = key([...spikeFiles].reverse());
+    expect(shuffled).toEqual([...straight].reverse());
+  });
+
+  it("keeps one scene's base, side-B and panel mounts apart", () => {
+    const base = sceneMountKey("demo", "scenes/08-panel-6.tsx");
+    expect(new Set([base, `${base}:b`, `${base}:panel`]).size).toBe(3);
   });
 });
 

@@ -4,7 +4,7 @@
 export const FIXED_BG_DISTANCE = 50;
 /** Drawn first, under everything. */
 export const FIXED_BG_RENDER_ORDER = -100;
-/** Scene3d look geometry draws after the fixed layer but before all content (`Scene3dBackdrop` stamps it on every renderable): transparent look objects span huge bounds, so per-object distance sorting can flip them in front of the video window or cards at oblique angles. */
+/** Scene3d look geometry draws after the fixed layer but before all content (`Scene3dBackdrop` stamps it on renderables only, never groups: three.js reads a group's renderOrder as groupOrder, which outranks renderOrder in the sort, so a stamped group would put opaque look geometry before the backing quad and let the backing paint over it): transparent look objects span huge bounds, so per-object distance sorting can flip them in front of the video window or cards at oblique angles. */
 export const SCENE3D_RENDER_ORDER = -50;
 /** Parallax anchor displacement is clamped to ±this many NDC units (a full frame = 2). */
 export const FIXED_BG_NDC_CLAMP = 2;

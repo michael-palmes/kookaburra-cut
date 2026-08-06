@@ -21,6 +21,7 @@
       "stops": [["#3d4d7a", 0], ["#131a2c", 1]]
     }
   },
+  "chartColors": ["#3ad1c4", "#6b8afc", "#a9c6ff", "#c79bf5", "#e8b45e", "#ef8fa6"],
   "typography": {
     "headline": {
       "family": "Space Grotesk",

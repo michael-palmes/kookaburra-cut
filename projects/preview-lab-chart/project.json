@@ -1,0 +1,57 @@
+{
+  "id": "preview-lab-chart",
+  "name": "Preview Lab: chart appearance (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-default",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/chart-boardroom.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-print.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-paperCut.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-terminal.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-studio.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-gradientRise.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-glass.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-velvet.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-horizon.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-midnightGold.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-neonLedger.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-pulseGlass.tsx",
+      "durationMs": 2400
+    }
+  ]
+}

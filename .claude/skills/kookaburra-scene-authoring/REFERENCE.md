@@ -14,6 +14,7 @@ Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loa
 - [Text primitives](#text-primitives)
 - [Group lockups (AnimatedGroup)](#group-lockups-animatedgroup-v11--m5)
 - [Media + device primitives](#media--device-primitives)
+- [Charts](#charts-v14)
 - [Transition helpers](#transition-helpers)
 - [Design tokens](#design-tokens)
 - [Status by phase](#status-by-phase)
@@ -57,6 +58,8 @@ normally and simply shows no editing affordances.
     "titleSize": 1.25,                       //   Size: multiplier of the element's default (1 = as designed;
                                              //   multiplies, so portrait/landscape defaults survive)
     "titleOffsetX": 0.4, "titleOffsetY": -0.2, // OffsetX/Y: world-unit nudges from the scene's layout
+    "titleLineHeight": 1.4,                    //   LineHeight: line spacing as a multiple of the font
+                                               //   size (0.8..2); absent keeps the font's own spacing
     "subtitleColor": "#9aa4b5"
   },                                         // consumed by any text primitive given the matching
                                              // textKey (TitleBlock owns title/subtitle); inert
@@ -165,6 +168,9 @@ Worked example — settle in, hold, then a jump cut to a close-up:
 (`jump` holds the `from` pose for the segment's whole span and lands `to` exactly at the
 `to` key's time — a jump segment IS the hold before the cut, no extra keys needed.)
 
+To land keys or jump cuts on the soundtrack's beats, see `BEATS.md` beside this
+file: `scripts/beats.py` prints beat and key-moment times in scene-local ms.
+
 ## Camera rigs: free flight (`cameraRig`)
 
 Set `"cameraMode": "rig"` and author a `cameraRig` block for shots an orbit cannot
@@ -207,6 +213,36 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
   scene's camera stopped. A continuous path, not a continuous image.
 - Everything else matches the orbit track: half-open segments, hold outside, shared
   boundary keys, the same ease names, degrade-don't-crash validation.
+
+**Depth of field** rides a key's pose as a sparse `dof` block, in BOTH camera modes
+(orbit poses take it too). Fields carry forward from the last key that authored them:
+
+```jsonc
+"pose": { "position": [0.2, 0.15, 5.4],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "dof": { "blur": 0.7, "range": 0.6, "focus": 4.4 } }
+```
+
+- Depth mode (the default): `blur` 0..1, `range` (world units kept sharp around the
+  focus plane), `focus` (world units). Absent `focus` (or `"auto"`) autofocuses on the
+  pose's aim distance (orbit: distance to target) recomputed per frame, so the aimed
+  subject stays sharp through a whole move. A rack focus is two keys restating only
+  `focus`; `easeDof` shapes the pull per segment (the popover's Focus channel).
+- Tilt-shift: `"mode": "tilt"` with `band` (0..1 screen strip), `offset` (-1..1) and
+  `angleDeg`. The first authored `mode` is the scene's; blur animates, the family
+  does not swap mid-scene.
+- Style modes, all screen-space and animatable like any other field:
+  `"mode": "soft"` (Dream) adds `glow` 0..1 over the diffusion `blur`;
+  `"mode": "radial"` (Burst) streaks toward `centerX`/`centerY` (-1..1);
+  `"mode": "directional"` (Swipe) smears along `angleDeg`;
+  `"mode": "split"` holds depth's `focus` AND a second `focusB` sharp at once
+  across a divider (`offset` -1..1, `angleDeg`), the split-diopter shot.
+  Depth and split also take `squeeze` (1..2) for anamorphic oval bokeh.
+- Everything blurs by its true depth, text and device screens included: keep
+  legibility-critical text on or near the focus plane. In an effects-free project
+  dof blurs the FINISHED frame in place, so colours and contrast never shift when
+  dof turns on and `blur: 0` frames stay byte-identical; projects with effects
+  apply dof inside the effects composer instead.
 
 **`<DepthStage>`** gives a rig something to fly through: four named slots at pinned
 depths (`foreground` 1.8, `content` 0, `midground` -2.4, `backdrop` -5.5), each sizing
@@ -923,6 +959,26 @@ object in an export, it needs the double preload barrier (`useGLTF.preload` + an
 `GLTFLoader.loadAsync`) wired into the exporter preamble — the render primitive and
 preload plumbing land with the first shipped objects.
 
+## Charts (v14)
+
+One data visual per scene, sidecar-driven: eight types (column/bar/line/area, their
+stacked variants, pie) in 2D or 3D, three mounts (hero scene, staged beside devices,
+inside an overlay panel), 12 appearance presets, 19 build-in animation presets and
+keyframed data morphs on the shared track system. The TSX is one line:
+
+```tsx
+<Chart />   // reads the sidecar chart block; ChartFallback renders it even without this
+```
+
+Everything else lives in the `chart` sidecar block (data, style, axis, labels,
+animation, track). Series colours come from the theme (`chartColors`, then a derived
+accent ramp); never hard-code them. Scalar edits go through `sidecar.py` dotted paths;
+tabular data, keyframes and a readable summary go through `scripts/chart.py`.
+
+**Load `CHARTS.md` (beside this file) before authoring or editing any chart**: it
+carries the full block schema with resolved defaults, both preset catalogues with
+taste notes, the mount recipes, the data-track shape and the gotchas.
+
 ## Transition helpers
 
 Pure functions of `SceneTime`; apply the result to a `<group>` or material.
@@ -1008,6 +1064,11 @@ Every row of the app's Project tab maps to files you can edit directly:
   `file` is assets-relative (copy the track in first); the soundtrack auto-fades over the
   timeline's last second unless `fadeOutMs` says otherwise (`0` disables). One soundtrack
   per project; remove the block to remove the music.
+- **Background → Apply everywhere** → `project.json.appliedBackground`
+  `{ "background"?, "backdrop"? }`: the last background applied across the project,
+  recorded so NEW scenes scaffold with it (nothing on the render path reads it). Absent
+  means new scenes follow the theme, and clearing one scene's background in the inspector
+  leaves that scene reverted.
 - **Playback options** → app-side PREVIEW quality knobs only; they never touch exports
   and have no file to edit — leave them alone.
 

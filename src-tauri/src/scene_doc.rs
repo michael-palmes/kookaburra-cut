@@ -1,5 +1,6 @@
 //! Per-scene sidecar documents and the native scene scaffolder; a scene document is scenes/<stem>.json beside its TSX (the composition), holding the machine-editable half of a scene (name, text map, devices, camera track, duration mode) owned jointly by the app UI and Claude, with both writers sharing one atomic tmp+rename path and version guard so the frontend never touches files directly (see docs/decisions.md, "Project format & authoring").
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,9 @@ const SCENE_DOC_VERSION: u64 = 1;
 
 /// Wizard/scaffold default when the scene has no video media to follow.
 const DEFAULT_SCENE_DURATION_MS: u64 = 4000;
+
+/// Chart scenes start longer than the default: the build-in and its counters need room to land.
+const CHART_SCENE_DURATION_MS: u64 = 5000;
 
 /// Validate and resolve a `scenes/<stem>.json` path under the project, traversal-hardened: reject anything that isn't exactly one flat path segment under `scenes/` (the `resolve_asset` lesson).
 fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String> {
@@ -38,6 +42,18 @@ fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
     let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, text + "\n").map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+/// Atomic text write, the `atomic_write_json` guarantee for scene TSX: the bytes land whole or not at all.
+fn atomic_write_text(path: &Path, text: &str) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
@@ -291,7 +307,7 @@ pub fn move_project_scene(
     atomic_write_json(&path, &manifest)
 }
 
-/// Duplicate a scene: the TSX + sidecar copy verbatim to a freshly numbered stem (scene ids may collide by design, files are the identity), the manifest entry lands at `position` (omitted/out-of-range = append) with `durationMs` and `transition` riding along; files write before the manifest so a failed manifest write can never point at missing files.
+/// Duplicate a scene: the TSX + sidecar copy to a freshly numbered stem (files stay the identity, but the copy mints a fresh unique scene id so React keys and id-keyed UI stay one-to-one), the manifest entry lands at `position` (omitted/out-of-range = append) with `durationMs` and `transition` riding along; files write before the manifest so a failed manifest write can never point at missing files.
 #[tauri::command]
 pub fn duplicate_scene(
     app: AppHandle,
@@ -355,10 +371,15 @@ pub fn duplicate_scene(
     let new_file = format!("scenes/{stem}.tsx");
     let new_doc_file = format!("scenes/{stem}.json");
 
-    let tsx_path = scenes_dir.join(format!("{stem}.tsx"));
-    let tmp = tsx_path.with_extension("tsx.tmp");
-    std::fs::write(&tmp, tsx).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &tsx_path).map_err(|e| e.to_string())?;
+    let scene_id = free_scene_id(&base, &collect_scene_ids(&scenes_dir));
+    let tsx = match rewrite_define_scene_id(&tsx, &scene_id) {
+        Some(minted) => minted,
+        None => {
+            log::warn!("{file} has no readable defineScene id, the copy keeps the source's");
+            tsx
+        }
+    };
+    atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
 
     if let Some(mut doc) = doc {
         if let Some(name) = &source_name {
@@ -392,7 +413,7 @@ pub fn duplicate_scene(
     Ok(ScaffoldResult {
         file: new_file,
         doc_file: new_doc_file,
-        scene_id: base,
+        scene_id,
         duration_ms,
     })
 }
@@ -452,7 +473,7 @@ fn free_sibling_name(dir: &Path, name: &str) -> String {
     }
 }
 
-/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem, every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
+/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination, every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
 #[tauri::command]
 pub fn copy_scene_to_project(
     app: AppHandle,
@@ -567,10 +588,13 @@ pub fn copy_scene_to_project(
     let new_file = format!("scenes/{stem}.tsx");
     let new_doc_file = format!("scenes/{stem}.json");
 
-    let tsx_path = scenes_dir.join(format!("{stem}.tsx"));
-    let tmp = tsx_path.with_extension("tsx.tmp");
-    std::fs::write(&tmp, tsx).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &tsx_path).map_err(|e| e.to_string())?;
+    // Minted against the DESTINATION's ids, and after the asset re-point so the splice is the last edit.
+    let scene_id = free_scene_id(&base, &collect_scene_ids(&scenes_dir));
+    match rewrite_define_scene_id(&tsx, &scene_id) {
+        Some(minted) => tsx = minted,
+        None => log::warn!("{file} has no readable defineScene id, the copy keeps the source's"),
+    }
+    atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
     if let Some(doc) = &doc {
         atomic_write_json(&scene_doc_path(&root, &dest_slug, &new_doc_file)?, doc)?;
     }
@@ -598,7 +622,7 @@ pub fn copy_scene_to_project(
     Ok(ScaffoldResult {
         file: new_file,
         doc_file: new_doc_file,
-        scene_id: base,
+        scene_id,
         duration_ms,
     })
 }
@@ -656,6 +680,319 @@ pub fn set_project_audio(
     atomic_write_json(&path, &manifest)
 }
 
+// ── Scene identity ────────────────────────────────────────────────────────────
+
+/// How far past `defineScene({` the id scan reads; the id is the first key in every template, so a scene that buries it deeper simply keeps whatever id it has.
+const SCENE_ID_SCAN_BUDGET: usize = 4096;
+
+/// Bigger than any scene TSX (a few KiB): the id scan and the healer skip anything above it rather than read it into memory.
+const SCENE_TSX_MAX_BYTES: u64 = 512 * 1024;
+
+fn is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || matches!(b, b'_' | b'$')
+}
+
+/// Index of the next non-whitespace byte at or after `i`.
+fn skip_ws(bytes: &[u8], mut i: usize) -> Option<usize> {
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i < bytes.len() {
+        Some(i)
+    } else {
+        None
+    }
+}
+
+/// Content span of the string literal opening at `q`; a template literal carrying `${` is refused because an interpolated id isn't a stable identity.
+fn string_content(bytes: &[u8], q: usize) -> Option<(usize, usize)> {
+    let quote = *bytes.get(q)?;
+    if !matches!(quote, b'"' | b'\'' | b'`') {
+        return None;
+    }
+    let mut i = q + 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'$' if quote == b'`' && bytes.get(i + 1) == Some(&b'{') => return None,
+            c if c == quote => return Some((q + 1, i)),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Index just past the string literal opening at `q`.
+fn skip_string(bytes: &[u8], q: usize, end: usize) -> Option<usize> {
+    let quote = bytes[q];
+    let mut i = q + 1;
+    while i < end {
+        match bytes[i] {
+            b'\\' => i += 2,
+            c if c == quote => return Some(i + 1),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Walk the object literal opening at `open` and return the span of its top-level `id` string; comments and strings are opaque, and the key must sit in key position at depth 1 so `key={d.id}` and a nested device's `id` can never match.
+fn scan_scene_id(bytes: &[u8], open: usize) -> Option<(usize, usize)> {
+    let end = bytes.len().min(open.saturating_add(SCENE_ID_SCAN_BUDGET));
+    let mut i = open + 1;
+    let mut depth = 1usize;
+    let mut prev = b'{';
+    while i < end {
+        let c = bytes[i];
+        if c.is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        if c == b'/' && bytes.get(i + 1) == Some(&b'/') {
+            i += 2;
+            while i < end && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            i += 2;
+            while i + 1 < end && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = end.min(i + 2);
+            continue;
+        }
+        if matches!(c, b'"' | b'\'' | b'`') {
+            i = skip_string(bytes, i, end)?;
+            prev = c;
+            continue;
+        }
+        if depth == 1 && matches!(prev, b'{' | b',') && bytes[i..].starts_with(b"id") {
+            if let Some(colon) = skip_ws(bytes, i + 2).filter(|&j| bytes[j] == b':') {
+                return string_content(bytes, skip_ws(bytes, colon + 1)?);
+            }
+        }
+        match c {
+            b'{' | b'[' | b'(' => depth += 1,
+            b'}' | b']' | b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+        prev = c;
+        i += 1;
+    }
+    None
+}
+
+/// Byte span of a scene's `defineScene({ id: "…" })` literal CONTENT (quotes excluded); hand-rolled scanning in the `scan_asset_refs` style, since the shell carries no regex crate. The call is the token followed by `(` then `{`, which leaves the import line and a doc-comment mention behind.
+fn find_define_scene_id(src: &str) -> Option<(usize, usize)> {
+    let bytes = src.as_bytes();
+    let mut from = 0usize;
+    while from < src.len() {
+        let token = from + src[from..].find("defineScene")?;
+        from = token + "defineScene".len();
+        if token > 0 && is_ident_byte(bytes[token - 1]) {
+            continue;
+        }
+        let Some(paren) = skip_ws(bytes, from).filter(|&i| bytes[i] == b'(') else {
+            continue;
+        };
+        let Some(brace) = skip_ws(bytes, paren + 1).filter(|&i| bytes[i] == b'{') else {
+            continue;
+        };
+        if let Some(span) = scan_scene_id(bytes, brace) {
+            return Some(span);
+        }
+    }
+    None
+}
+
+/// Mint a new id into a scene's `defineScene` call: a pure byte splice, so every other byte of the file survives verbatim.
+fn rewrite_define_scene_id(src: &str, new_id: &str) -> Option<String> {
+    let (start, end) = find_define_scene_id(src)?;
+    let mut out = String::with_capacity(src.len() + new_id.len());
+    out.push_str(&src[..start]);
+    out.push_str(new_id);
+    out.push_str(&src[end..]);
+    Some(out)
+}
+
+/// First free scene id for `base`: base, base-2, base-3, … (the `free_sibling_name` shape).
+fn free_scene_id(base: &str, taken: &HashSet<String>) -> String {
+    if !taken.contains(base) {
+        return base.to_string();
+    }
+    let mut n = 1u32;
+    loop {
+        n += 1;
+        let candidate = format!("{base}-{n}");
+        if !taken.contains(&candidate) {
+            return candidate;
+        }
+    }
+}
+
+/// A scene's minted id and its text; `None` for a file that is missing, oversized, not UTF-8, or carries no `defineScene` id (persistent morph modules share `scenes/`).
+fn read_scene_id(path: &Path) -> Option<(String, String)> {
+    if std::fs::metadata(path).ok()?.len() > SCENE_TSX_MAX_BYTES {
+        return None;
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    let (start, end) = find_define_scene_id(&text)?;
+    Some((text[start..end].to_string(), text))
+}
+
+/// Every scene id currently minted under `scenes/`.
+fn collect_scene_ids(scenes_dir: &Path) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    let Ok(entries) = std::fs::read_dir(scenes_dir) else {
+        return ids;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
+            continue;
+        }
+        if let Some((id, _)) = read_scene_id(&path) {
+            ids.insert(id);
+        }
+    }
+    ids
+}
+
+/// A scene file's stem minus its numeric prefix, slugified: "09-panel-6-copy" gives "panel-6-copy".
+fn stem_base_id(stem: &str) -> String {
+    let base = match stem.split_once('-') {
+        Some((prefix, rest))
+            if !prefix.is_empty()
+                && !rest.is_empty()
+                && prefix.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            rest
+        }
+        _ => stem,
+    };
+    slugify(base)
+}
+
+/// One healed scene: the file, the id it shared and the id it now owns.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneIdRename {
+    pub file: String,
+    pub from: String,
+    pub to: String,
+}
+
+/// What a heal pass did: the scenes it re-minted, and the ones it could not read or parse (left untouched).
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneIdHeal {
+    pub renamed: Vec<SceneIdRename>,
+    pub unparsed: Vec<String>,
+}
+
+/// Heal a project's duplicate scene ids in place: first sighting keeps its id, every repeat gets a fresh one spliced into its own TSX, visiting the manifest's scenes in order and then any stray `scenes/*.tsx` by filename. Idempotent, writes only the files it changes, and never fails: a project.json it cannot read and a scene it cannot parse are both reported, not rewritten.
+pub(crate) fn heal_scene_ids(project_dir: &Path) -> SceneIdHeal {
+    let mut heal = SceneIdHeal::default();
+    let Some(manifest) = std::fs::read_to_string(project_dir.join(MANIFEST_FILENAME))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+    else {
+        return heal;
+    };
+
+    let mut order: Vec<String> = Vec::new();
+    if let Some(scenes) = manifest.get("scenes").and_then(Value::as_array) {
+        for entry in scenes {
+            let Some(file) = entry.get("file").and_then(Value::as_str) else {
+                continue;
+            };
+            if !file.starts_with("scenes/") || file.contains("..") {
+                continue;
+            }
+            if !order.iter().any(|f| f == file) {
+                order.push(file.to_string());
+            }
+        }
+    }
+    let mut strays: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(project_dir.join("scenes")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.ends_with(".tsx") {
+                continue;
+            }
+            let file = format!("scenes/{name}");
+            if !order.iter().any(|f| f == &file) {
+                strays.push(file);
+            }
+        }
+    }
+    strays.sort();
+    order.extend(strays);
+
+    let mut taken: HashSet<String> = HashSet::new();
+    let mut scanned: Vec<(String, Option<(String, String)>)> = Vec::new();
+    for file in order {
+        let found = read_scene_id(&project_dir.join(&file));
+        match &found {
+            Some((id, _)) => {
+                taken.insert(id.clone());
+            }
+            None => log::warn!("no readable scene id in {file}, leaving it alone"),
+        }
+        scanned.push((file, found));
+    }
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for (file, found) in scanned {
+        let Some((id, text)) = found else {
+            heal.unparsed.push(file);
+            continue;
+        };
+        if seen.insert(id.clone()) {
+            continue;
+        }
+        let stem = file
+            .rsplit_once('/')
+            .map_or(file.as_str(), |(_, name)| name)
+            .trim_end_matches(".tsx");
+        let to = free_scene_id(&stem_base_id(stem), &taken);
+        let Some(next) = rewrite_define_scene_id(&text, &to) else {
+            continue;
+        };
+        if next == text {
+            continue;
+        }
+        if let Err(e) = atomic_write_text(&project_dir.join(&file), &next) {
+            log::warn!("healing {file}: {e}");
+            continue;
+        }
+        seen.insert(to.clone());
+        taken.insert(to.clone());
+        heal.renamed.push(SceneIdRename { file, from: id, to });
+    }
+    heal
+}
+
+/// Give every scene in a project its own id, healing the collisions older duplicate/copy actions left behind (they copied the TSX verbatim); safe to call on load, it rewrites nothing when the ids are already unique.
+#[tauri::command]
+pub fn ensure_unique_scene_ids(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<SceneIdHeal, String> {
+    let root = workspace::require_root(&app, &state)?;
+    workspace::validate_slug(&slug)?;
+    Ok(heal_scene_ids(&root.join(&slug)))
+}
+
 // ── Scaffolder ────────────────────────────────────────────────────────────────
 
 // Scene TSX templates (compile-time baked, packaged-build safe); the same files are the single source for the `/new-scene` command, which reads them from the repo tree.
@@ -665,6 +1002,7 @@ const TSX_OVERLAY: &str = include_str!("../templates/scenes/overlay.tsx.tmpl");
 const TSX_BLANK: &str = include_str!("../templates/scenes/blank.tsx.tmpl");
 const TSX_APP_VERSION: &str = include_str!("../templates/scenes/appversion.tsx.tmpl");
 const TSX_LAYERED_SCREENSHOT: &str = include_str!("../templates/scenes/layeredscreenshot.tsx.tmpl");
+const TSX_CHART: &str = include_str!("../templates/scenes/chart.tsx.tmpl");
 const TSX_VIDEO: &str = include_str!("../templates/scenes/video.tsx.tmpl");
 const TSX_IMAGE: &str = include_str!("../templates/scenes/image.tsx.tmpl");
 const TSX_VIDEO_WINDOW: &str = include_str!("../templates/scenes/videowindow.tsx.tmpl");
@@ -676,7 +1014,7 @@ const SAMPLE_LAPTOP_VIDEO: &str = "assets/sample-laptop-recording.mp4";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScaffoldOptions {
-    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
+    /// "device" | "deviceonly" | "comparison" | "title" | "titleicon" | "appversion" | "layeredscreenshot" | "chart" | "video" | "image" | "videowindow" | "overlaystart" | "overlayend" | "overlaypanel" | "blank".
     pub kind: String,
     /// Human scene name, e.g. "Hero demo" (sidecar `name`; slugified for the file stem).
     pub name: String,
@@ -709,6 +1047,13 @@ pub struct ScaffoldOptions {
     /// Title-icon scenes: the sidecar `headerIcon` (emoji or asset path).
     #[serde(default)]
     pub header_icon: Option<String>,
+    /// Chart scenes: the wizard's type ("column", "bar", "pie"…), "2d"|"3d" and the starter dataset; each absent field keeps the chart arm's own default.
+    #[serde(default)]
+    pub chart_type: Option<String>,
+    #[serde(default)]
+    pub chart_dimension: Option<String>,
+    #[serde(default)]
+    pub chart_data: Option<ScaffoldChartData>,
     /// Video-window scenes: the picked clip looked like a raw macOS window recording (the wizard's poster detection; Rust can't see pixels).
     #[serde(default)]
     pub recording: Option<bool>,
@@ -722,6 +1067,22 @@ pub struct ScaffoldMediaSlot {
     pub rel: Option<String>,
     /// "video" | "image".
     pub kind: Option<String>,
+}
+
+/// One starter dataset for a chart scene: the block's `data`, rows aligned to `categories`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldChartData {
+    pub categories: Vec<String>,
+    pub series: Vec<ScaffoldChartSeries>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScaffoldChartSeries {
+    pub id: String,
+    pub name: Option<String>,
+    pub values: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -765,6 +1126,21 @@ fn next_prefix(scenes_dir: &Path) -> u32 {
     max + 1
 }
 
+/// Copy the project's `appliedBackground` stamp (what "Apply everywhere" last wrote) onto a fresh sidecar, so a new scene matches the deck: skipped whole when the kind staged its own background (video, and image with a pick), and never over an explicit backdrop (the video window keeps its cleared stage).
+fn inherit_applied_background(doc: &mut Value, stamp: Option<&Value>) {
+    let Some(stamp) = stamp.filter(|_| doc.get("background").is_none()) else {
+        return;
+    };
+    if let Some(background) = stamp.get("background") {
+        doc["background"] = background.clone();
+    }
+    if let Some(backdrop) = stamp.get("backdrop") {
+        if doc.get("backdrop").is_none() {
+            doc["backdrop"] = backdrop.clone();
+        }
+    }
+}
+
 /// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), everything else gets the 4000ms wizard default.
 #[tauri::command]
 pub async fn scaffold_scene(
@@ -779,6 +1155,13 @@ pub async fn scaffold_scene(
     if !project.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("project \"{slug}\" has no project.json"));
     }
+    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; read tolerantly (absent, or any non-object, means new scenes follow the theme).
+    let applied_background: Option<Value> =
+        std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|manifest| manifest.get("appliedBackground").cloned())
+            .filter(Value::is_object);
 
     let template = match options.kind.as_str() {
         "device" | "deviceonly" => TSX_DEVICE,
@@ -789,6 +1172,7 @@ pub async fn scaffold_scene(
         "blank" => TSX_BLANK,
         "appversion" => TSX_APP_VERSION,
         "layeredscreenshot" => TSX_LAYERED_SCREENSHOT,
+        "chart" => TSX_CHART,
         "video" => TSX_VIDEO,
         "image" => TSX_IMAGE,
         "videowindow" => TSX_VIDEO_WINDOW,
@@ -807,6 +1191,7 @@ pub async fn scaffold_scene(
     std::fs::create_dir_all(&scenes_dir).map_err(|e| e.to_string())?;
     let base = slugify(&options.name);
     let stem = format!("{:02}-{base}", next_prefix(&scenes_dir));
+    let scene_id = free_scene_id(&base, &collect_scene_ids(&scenes_dir));
     let file = format!("scenes/{stem}.tsx");
     let doc_file = format!("scenes/{stem}.json");
 
@@ -816,7 +1201,11 @@ pub async fn scaffold_scene(
         "device" | "deviceonly" | "video" | "videowindow"
     ) && options.media_kind.as_deref() == Some("video")
         && options.media_rel.is_some();
-    let mut duration_ms = DEFAULT_SCENE_DURATION_MS;
+    let mut duration_ms = if options.kind == "chart" {
+        CHART_SCENE_DURATION_MS
+    } else {
+        DEFAULT_SCENE_DURATION_MS
+    };
     let mut media_aspect: Option<f64> = None;
     if is_video {
         if let Some(rel) = &options.media_rel {
@@ -995,6 +1384,38 @@ pub async fn scaffold_scene(
             "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] },
         });
     }
+    if options.kind == "chart" {
+        // Starter data only: style, axis, labels and animation stay absent so `resolveChart` owns every default, and series carry no colour so the theme palette drives them.
+        let data = match &options.chart_data {
+            Some(picked) => json!({
+                "categories": picked.categories,
+                "series": picked
+                    .series
+                    .iter()
+                    .map(|s| json!({
+                        "id": s.id,
+                        "name": s.name.as_deref().unwrap_or(&s.id),
+                        "values": s.values,
+                    }))
+                    .collect::<Vec<_>>(),
+            }),
+            None => json!({
+                "categories": ["April", "May", "June", "July"],
+                "series": [
+                    { "id": "s1", "name": "Region 1", "values": [17, 26, 53, 96] },
+                    { "id": "s2", "name": "Region 2", "values": [55, 43, 70, 58] },
+                ],
+            }),
+        };
+        doc["chart"] = json!({
+            "type": options.chart_type.as_deref().unwrap_or("column"),
+            "dimension": options.chart_dimension.as_deref().unwrap_or("3d"),
+            "mount": "hero",
+            "data": data,
+        });
+        // The chart floats on the scene's own background; staged scenery boxes it in (toggle the backdrop back on in the inspector).
+        doc["backdrop"] = json!({ "type": "none" });
+    }
     if options.kind == "video" {
         if let Some(rel) = &options.media_rel {
             doc["background"] = json!({ "type": "video", "src": rel });
@@ -1037,6 +1458,20 @@ pub async fn scaffold_scene(
             device["media"] = json!({ "src": rel, "kind": kind });
         }
         doc["devices"] = json!([device]);
+        // Closer poses than the engine default (target origin, distance 5): the titled phone goes to 75% of frame height, and device-only (1.35 scale) stops at 4.5, the closest clip-safe distance (~94%).
+        doc["camera"] = json!({
+            "keys": [{
+                "id": "k1",
+                "tMs": 0,
+                "pose": {
+                    "target": [0, 0.1, 0],
+                    "azimuthDeg": 0,
+                    "elevationDeg": 0,
+                    "distance": if device_only { 4.5 } else { 4.2 },
+                },
+            }],
+            "segments": [],
+        });
     }
     if is_comparison {
         // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
@@ -1062,17 +1497,15 @@ pub async fn scaffold_scene(
         doc["devices"] = json!(list);
         doc["deviceLayout"] = json!({ "preset": "toe-in", "gap": 0.35 });
     }
+    inherit_applied_background(&mut doc, applied_background.as_ref());
 
     // TSX from the template; placeholders are dumb string replaces, keep them in sync with .claude/commands/new-scene.md, which interpolates the same files.
     let tsx = template
-        .replace("__SCENE_ID__", &base)
+        .replace("__SCENE_ID__", &scene_id)
         .replace("__STEM__", &stem)
         .replace("__NAME__", &options.name)
         .replace("__DURATION_MS__", &duration_ms.to_string());
-    let tsx_path = scenes_dir.join(format!("{stem}.tsx"));
-    let tmp = tsx_path.with_extension("tsx.tmp");
-    std::fs::write(&tmp, tsx).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &tsx_path).map_err(|e| e.to_string())?;
+    atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
 
     atomic_write_json(&scene_doc_path(&root, &slug, &doc_file)?, &doc)?;
 
@@ -1111,9 +1544,61 @@ pub async fn scaffold_scene(
     Ok(ScaffoldResult {
         file,
         doc_file,
-        scene_id: base,
+        scene_id,
         duration_ms,
     })
+}
+
+#[cfg(test)]
+mod applied_background_tests {
+    use super::inherit_applied_background;
+    use serde_json::json;
+
+    fn stamp() -> serde_json::Value {
+        json!({
+            "background": { "type": "color", "color": "#101820" },
+            "backdrop": { "type": "floor", "color": "#101820" },
+        })
+    }
+
+    #[test]
+    fn a_background_less_scene_takes_both_blocks() {
+        let mut doc = json!({ "version": 1 });
+        inherit_applied_background(&mut doc, Some(&stamp()));
+        assert_eq!(doc["background"]["color"], json!("#101820"));
+        assert_eq!(doc["backdrop"]["type"], json!("floor"));
+    }
+
+    #[test]
+    fn a_kind_that_staged_its_own_background_keeps_it_and_takes_nothing() {
+        let mut doc = json!({ "background": { "type": "video", "src": "assets/a.mp4" } });
+        inherit_applied_background(&mut doc, Some(&stamp()));
+        assert_eq!(doc["background"]["type"], json!("video"));
+        assert!(doc.get("backdrop").is_none());
+    }
+
+    #[test]
+    fn an_explicit_backdrop_survives_the_stamp() {
+        let mut doc = json!({ "backdrop": { "type": "none" } });
+        inherit_applied_background(&mut doc, Some(&stamp()));
+        assert_eq!(doc["background"]["type"], json!("color"));
+        assert_eq!(doc["backdrop"]["type"], json!("none"));
+    }
+
+    #[test]
+    fn no_stamp_leaves_the_doc_alone() {
+        let mut doc = json!({ "version": 1 });
+        inherit_applied_background(&mut doc, None);
+        assert_eq!(doc, json!({ "version": 1 }));
+    }
+
+    #[test]
+    fn a_backdrop_only_stamp_writes_only_the_backdrop() {
+        let mut doc = json!({ "version": 1 });
+        inherit_applied_background(&mut doc, Some(&json!({ "backdrop": { "type": "none" } })));
+        assert!(doc.get("background").is_none());
+        assert_eq!(doc["backdrop"]["type"], json!("none"));
+    }
 }
 
 #[cfg(test)]
@@ -1135,5 +1620,362 @@ mod asset_scan_tests {
     fn skips_traversal_dedupes_and_longer_segments() {
         let text = r#""assets/a.png" and again "assets/a.png"; "my-assets/no.png"; "assets/../x""#;
         assert_eq!(scan_asset_refs(text), vec!["assets/a.png"]);
+    }
+}
+
+#[cfg(test)]
+mod scene_id_tests {
+    use super::{find_define_scene_id, free_scene_id, rewrite_define_scene_id};
+    use std::collections::HashSet;
+
+    fn id_of(src: &str) -> Option<String> {
+        find_define_scene_id(src).map(|(start, end)| src[start..end].to_string())
+    }
+
+    #[test]
+    fn reads_every_quote_style() {
+        assert_eq!(
+            id_of(r#"defineScene({ id: "hero", durationMs: 4000 })"#).as_deref(),
+            Some("hero")
+        );
+        assert_eq!(
+            id_of("defineScene({ id: 'hero', durationMs: 4000 })").as_deref(),
+            Some("hero")
+        );
+        assert_eq!(
+            id_of("defineScene({ id: `hero`, durationMs: 4000 })").as_deref(),
+            Some("hero")
+        );
+        assert_eq!(
+            id_of(r#"defineScene({id:"hero"})"#).as_deref(),
+            Some("hero")
+        );
+    }
+
+    #[test]
+    fn only_the_call_s_own_key_position_matches() {
+        let src = r#"
+const devices = [{ id: "d1" }];
+export default defineScene({
+  id: "panel-6",
+  Scene() {
+    return <>{devices.map((d) => <Device key={d.id} id={d.id} />)}</>;
+  },
+});
+"#;
+        assert_eq!(id_of(src).as_deref(), Some("panel-6"));
+    }
+
+    #[test]
+    fn a_member_expression_id_is_never_a_key() {
+        let src =
+            r#"defineScene({ durationMs: 4000, Scene() { return <A key={d.id} x={d.id} />; } })"#;
+        assert_eq!(id_of(src), None);
+    }
+
+    #[test]
+    fn a_doc_comment_mention_skips_to_the_real_call() {
+        let src = r#"
+/** Every scene is one defineScene call, see the authoring skill. */
+export default defineScene({ id: "hero" });
+"#;
+        assert_eq!(id_of(src).as_deref(), Some("hero"));
+    }
+
+    #[test]
+    fn an_import_line_alone_has_no_id() {
+        let src = "import { defineScene } from \"@kookaburra/toolkit\";\n";
+        assert_eq!(id_of(src), None);
+    }
+
+    #[test]
+    fn a_const_id_is_not_a_literal() {
+        assert_eq!(id_of("defineScene({ id: SCENE_ID, durationMs: 10 })"), None);
+    }
+
+    #[test]
+    fn an_interpolated_template_is_refused() {
+        assert_eq!(id_of("defineScene({ id: `hero-${n}` })"), None);
+    }
+
+    #[test]
+    fn the_splice_keeps_every_other_byte() {
+        let src = "import { defineScene } from \"@kookaburra/toolkit\";\n\nexport default defineScene({\n  id: \"old-id\",\n  durationMs: 4000,\n});\n";
+        assert_eq!(
+            rewrite_define_scene_id(src, "new-id-2").as_deref(),
+            Some("import { defineScene } from \"@kookaburra/toolkit\";\n\nexport default defineScene({\n  id: \"new-id-2\",\n  durationMs: 4000,\n});\n")
+        );
+    }
+
+    #[test]
+    fn rewriting_to_the_same_id_still_returns_some() {
+        let src = r#"defineScene({ id: "hero" })"#;
+        assert_eq!(rewrite_define_scene_id(src, "hero").as_deref(), Some(src));
+    }
+
+    #[test]
+    fn free_ids_count_up_from_the_base() {
+        let mut taken = HashSet::new();
+        assert_eq!(free_scene_id("panel", &taken), "panel");
+        taken.insert("panel".to_string());
+        assert_eq!(free_scene_id("panel", &taken), "panel-2");
+        taken.insert("panel-2".to_string());
+        assert_eq!(free_scene_id("panel", &taken), "panel-3");
+    }
+}
+
+#[cfg(test)]
+mod scene_id_heal_tests {
+    use super::{find_define_scene_id, heal_scene_ids, SceneIdHeal, MANIFEST_FILENAME};
+    use serde_json::{json, Value};
+    use std::path::{Path, PathBuf};
+
+    // A unique scratch dir under the OS temp root (avoids a tempfile dev-dependency).
+    fn scratch_dir() -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "kc-scene-id-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("scenes")).unwrap();
+        dir
+    }
+
+    fn scene_tsx(id: &str) -> String {
+        format!(
+            "import {{ defineScene, SceneStage }} from \"@kookaburra/toolkit\";\n\nexport default defineScene({{\n  id: \"{id}\",\n  durationMs: 4000,\n  Scene() {{\n    return <SceneStage />;\n  }},\n}});\n"
+        )
+    }
+
+    fn write_scene(project: &Path, stem: &str, id: &str) {
+        std::fs::write(
+            project.join("scenes").join(format!("{stem}.tsx")),
+            scene_tsx(id),
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("scenes").join(format!("{stem}.json")),
+            format!("{{\n  \"version\": 1,\n  \"name\": \"{stem}\"\n}}\n"),
+        )
+        .unwrap();
+    }
+
+    fn write_manifest(project: &Path, stems: &[&str]) {
+        let scenes: Vec<Value> = stems
+            .iter()
+            .map(|stem| json!({ "file": format!("scenes/{stem}.tsx"), "durationMs": 4000 }))
+            .collect();
+        let manifest = json!({ "version": 2, "name": "Spike", "scenes": scenes });
+        std::fs::write(
+            project.join(MANIFEST_FILENAME),
+            serde_json::to_string_pretty(&manifest).unwrap() + "\n",
+        )
+        .unwrap();
+    }
+
+    fn id_on_disk(project: &Path, stem: &str) -> Option<String> {
+        let text =
+            std::fs::read_to_string(project.join("scenes").join(format!("{stem}.tsx"))).ok()?;
+        find_define_scene_id(&text).map(|(start, end)| text[start..end].to_string())
+    }
+
+    fn renames(heal: &SceneIdHeal) -> Vec<(String, String, String)> {
+        heal.renamed
+            .iter()
+            .map(|r| (r.file.clone(), r.from.clone(), r.to.clone()))
+            .collect()
+    }
+
+    fn stamps(project: &Path, stems: &[&str]) -> Vec<(std::time::SystemTime, u64)> {
+        stems
+            .iter()
+            .map(|stem| {
+                let meta =
+                    std::fs::metadata(project.join("scenes").join(format!("{stem}.tsx"))).unwrap();
+                (meta.modified().unwrap(), meta.len())
+            })
+            .collect()
+    }
+
+    // The duplicate spike: two title scenes and four panel scenes minted from the same two ids, registered out of lexical order.
+    const SPIKE_ORDER: [&str; 6] = [
+        "08-panel-6",
+        "04-title-2",
+        "09-panel-6-copy",
+        "11-panel-6-copy-3",
+        "07-title-2-copy",
+        "10-panel-6-copy-2",
+    ];
+
+    fn write_spike(project: &Path, creation_order: &[&str]) {
+        for stem in creation_order {
+            let id = if stem.contains("title") {
+                "starter-title-2"
+            } else {
+                "panel-6"
+            };
+            write_scene(project, stem, id);
+        }
+        write_manifest(project, &SPIKE_ORDER);
+    }
+
+    #[test]
+    fn the_duplicate_spike_heals_first_wins() {
+        let project = scratch_dir();
+        write_spike(&project, &SPIKE_ORDER);
+
+        let heal = heal_scene_ids(&project);
+        assert!(heal.unparsed.is_empty());
+        assert_eq!(
+            renames(&heal),
+            vec![
+                (
+                    "scenes/09-panel-6-copy.tsx".into(),
+                    "panel-6".into(),
+                    "panel-6-copy".into()
+                ),
+                (
+                    "scenes/11-panel-6-copy-3.tsx".into(),
+                    "panel-6".into(),
+                    "panel-6-copy-3".into()
+                ),
+                (
+                    "scenes/07-title-2-copy.tsx".into(),
+                    "starter-title-2".into(),
+                    "title-2-copy".into()
+                ),
+                (
+                    "scenes/10-panel-6-copy-2.tsx".into(),
+                    "panel-6".into(),
+                    "panel-6-copy-2".into()
+                ),
+            ]
+        );
+        assert_eq!(
+            id_on_disk(&project, "08-panel-6").as_deref(),
+            Some("panel-6")
+        );
+        assert_eq!(
+            id_on_disk(&project, "04-title-2").as_deref(),
+            Some("starter-title-2")
+        );
+        assert_eq!(
+            id_on_disk(&project, "09-panel-6-copy").as_deref(),
+            Some("panel-6-copy")
+        );
+        assert_eq!(
+            id_on_disk(&project, "07-title-2-copy").as_deref(),
+            Some("title-2-copy")
+        );
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn the_heal_is_machine_independent() {
+        let a = scratch_dir();
+        write_spike(&a, &SPIKE_ORDER);
+        let b = scratch_dir();
+        let mut reversed = SPIKE_ORDER;
+        reversed.reverse();
+        write_spike(&b, &reversed);
+
+        assert_eq!(renames(&heal_scene_ids(&a)), renames(&heal_scene_ids(&b)));
+
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
+    }
+
+    #[test]
+    fn a_second_pass_rewrites_nothing() {
+        let project = scratch_dir();
+        write_spike(&project, &SPIKE_ORDER);
+        assert_eq!(heal_scene_ids(&project).renamed.len(), 4);
+
+        let before = stamps(&project, &SPIKE_ORDER);
+        let heal = heal_scene_ids(&project);
+        assert!(heal.renamed.is_empty());
+        assert_eq!(stamps(&project, &SPIKE_ORDER), before);
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_duplicate_free_project_is_never_written() {
+        let project = scratch_dir();
+        write_scene(&project, "01-hero", "hero");
+        write_scene(&project, "02-panel", "panel");
+        write_manifest(&project, &["01-hero", "02-panel"]);
+
+        let before = stamps(&project, &["01-hero", "02-panel"]);
+        let heal = heal_scene_ids(&project);
+        assert!(heal.renamed.is_empty() && heal.unparsed.is_empty());
+        assert_eq!(stamps(&project, &["01-hero", "02-panel"]), before);
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn an_unparseable_scene_is_reported_not_rewritten() {
+        let project = scratch_dir();
+        write_scene(&project, "01-hero", "hero");
+        write_scene(&project, "02-hero-copy", "hero");
+        let odd = "export default defineScene({ id: SCENE_ID, durationMs: 4000 });\n";
+        std::fs::write(project.join("scenes").join("03-odd.tsx"), odd).unwrap();
+        write_manifest(&project, &["01-hero", "02-hero-copy", "03-odd"]);
+
+        let heal = heal_scene_ids(&project);
+        assert_eq!(heal.unparsed, vec!["scenes/03-odd.tsx".to_string()]);
+        assert_eq!(heal.renamed.len(), 1);
+        assert_eq!(
+            id_on_disk(&project, "02-hero-copy").as_deref(),
+            Some("hero-copy")
+        );
+        assert_eq!(
+            std::fs::read_to_string(project.join("scenes").join("03-odd.tsx")).unwrap(),
+            odd
+        );
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_stray_scene_never_steals_a_registered_id() {
+        let project = scratch_dir();
+        write_scene(&project, "01-hero", "hero");
+        write_scene(&project, "99-stray", "hero");
+        write_manifest(&project, &["01-hero"]);
+
+        let heal = heal_scene_ids(&project);
+        assert_eq!(
+            renames(&heal),
+            vec![("scenes/99-stray.tsx".into(), "hero".into(), "stray".into())]
+        );
+        assert_eq!(id_on_disk(&project, "01-hero").as_deref(), Some("hero"));
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn only_scene_tsx_bytes_ever_move() {
+        let project = scratch_dir();
+        write_spike(&project, &SPIKE_ORDER);
+        let manifest = std::fs::read(project.join(MANIFEST_FILENAME)).unwrap();
+        let sidecar = std::fs::read(project.join("scenes").join("09-panel-6-copy.json")).unwrap();
+
+        assert_eq!(heal_scene_ids(&project).renamed.len(), 4);
+        assert_eq!(
+            std::fs::read(project.join(MANIFEST_FILENAME)).unwrap(),
+            manifest
+        );
+        assert_eq!(
+            std::fs::read(project.join("scenes").join("09-panel-6-copy.json")).unwrap(),
+            sidecar
+        );
+
+        let _ = std::fs::remove_dir_all(&project);
     }
 }

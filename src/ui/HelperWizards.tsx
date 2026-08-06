@@ -108,8 +108,10 @@ export function HelperWizard({
   const [seconds, setSeconds] = useState(4);
   // Seeded after the scene under the playhead, the place a new scene usually belongs.
   const [placement, setPlacement] = useState(() => `after:${sceneIndexAtPlayhead(scenes)}`);
-  // "media" defaults to "a new scene" (empty id); the scene-targeted wizards default to the first real scene. One wizard mounts per open, so per-kind init is safe.
-  const [sceneId, setSceneId] = useState(kind === "media" ? "" : (scenes[0]?.id ?? ""));
+  // "media" defaults to "a new scene" (empty target, a file elsewhere); pacing targets a scene INDEX. One wizard mounts per open, so per-kind init is safe.
+  const [sceneTarget, setSceneTarget] = useState(
+    kind === "media" ? "" : scenes[0] ? String(scenes[0].index) : "",
+  );
   const [scope, setScope] = useState("video");
   const [transition, setTransition] = useState<string>("crossfade");
   const [mediaFiles, setMediaFiles] = useState<string[] | null>(null);
@@ -132,7 +134,11 @@ export function HelperWizard({
     };
   }, [kind, slug]);
 
-  const sceneName = (id: string) => `the "${id}" scene`;
+  // Named like the pickers, with the file as the unambiguous anchor: ids can repeat across scenes, files cannot.
+  const sceneName = (file: string) => {
+    const scene = scenes.find((s) => s.file === file);
+    return scene ? `the "${scene.name ?? scene.stem}" scene (${scene.file})` : `the ${file} scene`;
+  };
 
   function compose(): string | null {
     const desc = description.trim();
@@ -146,7 +152,7 @@ export function HelperWizard({
           placement === "start"
             ? "at the start"
             : afterScene
-              ? `after the "${afterScene.name ?? afterScene.id}" scene (${afterScene.file})`
+              ? `after the "${afterScene.name ?? afterScene.stem}" scene (${afterScene.file})`
               : "at the end";
         const enter =
           transition === "none"
@@ -155,10 +161,9 @@ export function HelperWizard({
         return `Add a new scene to this video: ${desc}. Place it ${where} in project.json, about ${seconds} seconds long, ${enter}.`;
       }
       case "pacing": {
-        if (!sceneId) return null;
-        const current = scenes.find((s) => s.id === sceneId);
-        const currentNote = current ? ` (it is currently ${secondsLabel(current.durationMs)})` : "";
-        return `Change the pacing: make ${sceneName(sceneId)} about ${seconds} seconds long${currentNote}. Update the durations in project.json and keep the transitions intact.`;
+        const current = scenes[Number(sceneTarget)];
+        if (!current) return null;
+        return `Change the pacing: make ${sceneName(current.file)} about ${seconds} seconds long (it is currently ${secondsLabel(current.durationMs)}). Update the durations in project.json and keep the transitions intact.`;
       }
       case "look": {
         if (!desc) return null;
@@ -167,7 +172,7 @@ export function HelperWizard({
       }
       case "media": {
         if (!mediaFile || !desc) return null;
-        const where = sceneId === "" ? "a new scene at the end" : sceneName(sceneId);
+        const where = sceneTarget === "" ? "a new scene at the end" : sceneName(sceneTarget);
         return `Use my file ${mediaFile} in ${where}: ${desc}. Reference it by its relative path.`;
       }
     }
@@ -231,12 +236,12 @@ export function HelperWizard({
             <Field label="Which scene?">
               <select
                 className="select"
-                value={sceneId}
-                onChange={(e) => setSceneId(e.target.value)}
+                value={sceneTarget}
+                onChange={(e) => setSceneTarget(e.target.value)}
               >
                 {scenes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.id} · {secondsLabel(s.durationMs)}
+                  <option key={s.stem} value={String(s.index)}>
+                    {s.name ?? s.stem} · {secondsLabel(s.durationMs)}
                   </option>
                 ))}
               </select>
@@ -253,8 +258,8 @@ export function HelperWizard({
               <select className="select" value={scope} onChange={(e) => setScope(e.target.value)}>
                 <option value="video">The whole video</option>
                 {scenes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    Only “{s.id}”
+                  <option key={s.stem} value={s.file}>
+                    Only “{s.name ?? s.stem}”
                   </option>
                 ))}
               </select>
@@ -298,13 +303,13 @@ export function HelperWizard({
             <Field label="Where?">
               <select
                 className="select"
-                value={sceneId}
-                onChange={(e) => setSceneId(e.target.value)}
+                value={sceneTarget}
+                onChange={(e) => setSceneTarget(e.target.value)}
               >
                 <option value="">In a new scene at the end</option>
                 {scenes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    In “{s.id}”
+                  <option key={s.stem} value={s.file}>
+                    In “{s.name ?? s.stem}”
                   </option>
                 ))}
               </select>

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "Chart appearance: Pulse glass",
+  "chart": {
+    "type": "column",
+    "dimension": "3d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Q1", "Q2", "Q3", "Q4"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Direct",
+          "values": [32, 41, 55, 68]
+        },
+        {
+          "id": "s2",
+          "name": "Partner",
+          "values": [18, 24, 29, 37]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "delivery": "all",
+      "staggerMs": 0,
+      "durationMs": 600,
+      "from": "start"
+    },
+    "style": {
+      "preset": "pulseGlass"
+    }
+  }
+}

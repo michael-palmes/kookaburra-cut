@@ -93,6 +93,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 - Skill `kookaburra-commit`: plan and create every commit (review, logical grouping, conventional messages).
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
+- Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
@@ -142,7 +143,7 @@ intuition before the probe settled it).
 
 - **Probe:** `pnpm kookaburra:run --action perf --project ws:<slug>` plays every
   scene under elimination passes (baseline / dpr-1 / no-shadows /
-  no-transmission / frozen-media / half-media / no-devices) and writes per-pass
+  no-transmission / frozen-media / half-media / no-devices / no-dof) and writes per-pass
   fps and frame-time stats to `~/Kookaburra Cut/_autorun/last-run.json`. Needs
   the app window visible (occluded WKWebView suspends rAF) and no other
   `pnpm tauri dev` holding port 1420. New suspect: add a pass, don't theorise.

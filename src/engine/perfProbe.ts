@@ -3,10 +3,11 @@ import { useClockStore } from "./clock";
 import { canvasHandle } from "./exportBridge";
 import {
   setPreviewClipStride,
+  setPreviewDofOff,
   setPreviewEnvironmentOff,
   setPreviewPlaybackActive,
 } from "./previewMedia";
-import type { LoadedProject } from "./project";
+import { type LoadedProject, sceneFileStem } from "./project";
 
 /** Playback performance probe (`kookaburra:run --action perf`): plays a window of every scene under a matrix of elimination passes and reports frame-time stats plus renderer counters per pass, so regressions and hotspots (device glass, screen media, shadows, fill rate) can be pinned as scenes grow. Preview-only diagnostics; the export path never reads any of this. Needs a visible window: WKWebView suspends rAF while occluded. */
 
@@ -148,6 +149,14 @@ const PASSES: PerfPass[] = [
       hidePass(scene, (obj) => (obj as { isRectAreaLight?: boolean }).isRectAreaLight === true),
   },
   {
+    // Depth-of-field cost: the compositor drops the dof union while the flag is on, so the dof/tilt passes leave the chain (dof-less scenes measure identical to baseline).
+    id: "no-dof",
+    apply: () => {
+      setPreviewDofOff(true);
+      return () => setPreviewDofOff(false);
+    },
+  },
+  {
     // IBL sampling cost: the compositor nulls scene.environment after the state plan while the flag is on.
     id: "env-off",
     apply: (_gl, scene) => {
@@ -247,7 +256,7 @@ export async function runPerfProbe(project: LoadedProject): Promise<PerfRow[]> {
   setPreviewPlaybackActive(true);
   try {
     for (const [i, slot] of project.slots.entries()) {
-      const name = project.sceneDocs[i]?.name ?? slot.id;
+      const name = project.sceneDocs[i]?.name ?? sceneFileStem(project.sceneFiles[i]);
       for (const pass of PASSES) {
         console.warn(`[autorun] perf ${name} · ${pass.id}`);
         const restore = pass.apply(gl, scene);

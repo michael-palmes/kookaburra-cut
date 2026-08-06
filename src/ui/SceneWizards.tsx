@@ -14,6 +14,7 @@ import { resyncFollowMediaDuration, writeSceneDoc } from "../engine/sceneDoc";
 import { parseSceneDoc, type SceneDoc } from "../engine/sceneDocSchema";
 import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
+import type { ChartDimension, ChartType } from "../toolkit/chart/types";
 import {
   CUSTOM_COLOUR_PREFIX,
   customColourHex,
@@ -24,6 +25,7 @@ import {
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
 import { ColourPicker } from "./colour/ColourPicker";
+import { ChartTypeIcon, SegmentedRow } from "./inspector/rows";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
@@ -37,7 +39,7 @@ import { detectWindowRecording } from "./windowRecordingDetect";
 
 export interface WizardSceneInfo {
   index: number;
-  /** Slot id (the TSX `defineScene` id). */
+  /** The TSX `defineScene` id: display only, not unique. Identify a scene by `file`, `stem` or `index`. */
   id: string;
   /** Manifest module path, e.g. `scenes/02-hero.tsx`. */
   file: string;
@@ -65,6 +67,7 @@ type SceneKind =
   | "titleicon"
   | "appversion"
   | "layeredscreenshot"
+  | "chart"
   | "video"
   | "image"
   | "videowindow"
@@ -81,6 +84,7 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "titleicon", label: "Title + icon", blurb: "A title with an icon above it" },
   { id: "appversion", label: "App version", blurb: "Your app icon, name and version" },
   { id: "layeredscreenshot", label: "Layered screenshot", blurb: "A 3D stack of app screens" },
+  { id: "chart", label: "Chart", blurb: "Your numbers as a 3D chart" },
   { id: "video", label: "Video", blurb: "A video filling the whole frame" },
   { id: "image", label: "Image", blurb: "An image filling the whole frame" },
   { id: "videowindow", label: "Video window", blurb: "A floating screen recording" },
@@ -112,6 +116,53 @@ const SUBTITLE_KINDS: SceneKind[] = [
 
 /** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
 const SAMPLE_LAPTOP_VIDEO = "assets/sample-laptop-recording.mp4";
+
+const CHART_TYPE_OPTIONS: { id: ChartType; label: string }[] = [
+  { id: "column", label: "Column" },
+  { id: "stackedColumn", label: "Stacked column" },
+  { id: "bar", label: "Bar" },
+  { id: "stackedBar", label: "Stacked bar" },
+  { id: "line", label: "Line" },
+  { id: "area", label: "Area" },
+  { id: "stackedArea", label: "Stacked area" },
+  { id: "pie", label: "Pie" },
+];
+
+interface ChartStarterData {
+  categories: string[];
+  series: { id: string; name: string; values: number[] }[];
+}
+
+/** The wizard's starter datasets: tiny, plausible numbers so a new chart scene opens on something worth looking at, threaded to the scaffolder as the block's `data`. */
+const CHART_STARTER_DATA: { id: string; label: string; data: ChartStarterData }[] = [
+  {
+    id: "revenue",
+    label: "Revenue quarters",
+    data: {
+      categories: ["Q1", "Q2", "Q3", "Q4"],
+      series: [
+        { id: "s1", name: "Last year", values: [42, 55, 61, 78] },
+        { id: "s2", name: "This year", values: [58, 64, 80, 96] },
+      ],
+    },
+  },
+  {
+    id: "growth",
+    label: "Growth weekly",
+    data: {
+      categories: ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"],
+      series: [{ id: "s1", name: "Signups", values: [120, 180, 260, 340, 470] }],
+    },
+  },
+  {
+    id: "share",
+    label: "Share split",
+    data: {
+      categories: ["Mobile", "Desktop", "Tablet", "Other"],
+      series: [{ id: "s1", name: "Share", values: [52, 31, 11, 6] }],
+    },
+  },
+];
 
 export const MOTION_OPTIONS: { id: string; label: string }[] = [
   { id: "none", label: "None" },
@@ -315,8 +366,8 @@ export function ScenePicker({
                 <span aria-hidden>·</span>
               )}
             </span>
-            <span className="scene-card-title" title={s.name ?? s.id}>
-              {s.name ?? s.id}
+            <span className="scene-card-title" title={s.name ?? s.stem}>
+              {s.name ?? s.stem}
             </span>
             <span className="muted">{secondsLabel(s.durationMs)}</span>
           </button>
@@ -358,8 +409,13 @@ export function NewSceneWizard({
   onCancel: () => void;
 }) {
   const titleId = useId();
-  const [step, setStep] = useState<"type" | "device" | "media" | "mediaB" | "details">("type");
+  const [step, setStep] = useState<"type" | "device" | "media" | "mediaB" | "chart" | "details">(
+    "type",
+  );
   const [kind, setKind] = useState<SceneKind>("device");
+  const [chartType, setChartType] = useState<ChartType>("column");
+  const [chartDimension, setChartDimension] = useState<ChartDimension>("3d");
+  const [chartData, setChartData] = useState(CHART_STARTER_DATA[0].id);
   const [model, setModel] = useState<DeviceId>("iphone-17-pro");
   const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
   const [media, setMedia] = useState<{
@@ -432,6 +488,7 @@ export function NewSceneWizard({
       titleicon: "Title",
       appversion: "App version",
       layeredscreenshot: "Layered screenshot",
+      chart: "Chart",
       video: "Video",
       image: "Image",
       videowindow: "Video window",
@@ -451,9 +508,11 @@ export function NewSceneWizard({
           ? "Optional, sits above the device"
           : kind === "comparison"
             ? "Optional, sits above the pair"
-            : kind.startsWith("overlay")
-              ? "The panel headline"
-              : "Optional";
+            : kind === "chart"
+              ? "Optional, sits above the chart"
+              : kind.startsWith("overlay")
+                ? "The panel headline"
+                : "Optional";
   // The lockup's hero line is the version; its label is muted, the reverse of a title scene.
   const isLockup = kind === "appversion";
 
@@ -493,6 +552,12 @@ export function NewSceneWizard({
               }))
             : null,
           headerIcon: kind === "titleicon" ? headerIcon.trim() || null : null,
+          chartType: kind === "chart" ? chartType : null,
+          chartDimension: kind === "chart" ? chartDimension : null,
+          chartData:
+            kind === "chart"
+              ? (CHART_STARTER_DATA.find((d) => d.id === chartData)?.data ?? null)
+              : null,
           recording,
           position: position ?? null,
         },
@@ -574,11 +639,13 @@ export function NewSceneWizard({
                   setStep(
                     isDeviceKind || isComparison
                       ? "device"
-                      : kind === "layeredscreenshot" ||
-                          kind === "image" ||
-                          VIDEO_MEDIA_KINDS.includes(kind)
-                        ? "media"
-                        : "details",
+                      : kind === "chart"
+                        ? "chart"
+                        : kind === "layeredscreenshot" ||
+                            kind === "image" ||
+                            VIDEO_MEDIA_KINDS.includes(kind)
+                          ? "media"
+                          : "details",
                   );
                 }}
               >
@@ -746,6 +813,52 @@ export function NewSceneWizard({
           </>
         )}
 
+        {step === "chart" && (
+          <>
+            <Field label="Chart type">
+              <div className="wizard-presets">
+                {CHART_TYPE_OPTIONS.map((t) => (
+                  <button
+                    type="button"
+                    key={t.id}
+                    className={`chip chart-type-chip${chartType === t.id ? " selected" : ""}`}
+                    aria-pressed={chartType === t.id}
+                    onClick={() => setChartType(t.id)}
+                  >
+                    <ChartTypeIcon id={t.id} size={14} />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label="Look">
+              <SegmentedRow<ChartDimension>
+                options={[
+                  { value: "2d", label: "2D", title: "A flat chart, drawn face on" },
+                  { value: "3d", label: "3D", title: "Extruded marks on a staged floor" },
+                ]}
+                value={chartDimension}
+                onChange={setChartDimension}
+              />
+            </Field>
+            <Field label="Starter data">
+              <SegmentedRow
+                options={CHART_STARTER_DATA.map((d) => ({ value: d.id, label: d.label }))}
+                value={chartData}
+                onChange={setChartData}
+              />
+            </Field>
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={() => setStep("type")}>
+                Back
+              </button>
+              <button type="button" className="btn primary" onClick={() => setStep("details")}>
+                Next
+              </button>
+            </div>
+          </>
+        )}
+
         {step === "details" && (
           <>
             <div className="wizard-scene-name">
@@ -871,7 +984,9 @@ export function NewSceneWizard({
                   setStep(
                     isDeviceKind || kind === "layeredscreenshot" || VIDEO_MEDIA_KINDS.includes(kind)
                       ? "media"
-                      : "type",
+                      : kind === "chart"
+                        ? "chart"
+                        : "type",
                   )
                 }
               >

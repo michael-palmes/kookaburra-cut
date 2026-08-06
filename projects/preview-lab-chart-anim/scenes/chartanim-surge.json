@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "Chart build-in: Surge",
+  "chart": {
+    "type": "area",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Volume",
+          "values": [24, 31, 28, 46, 52, 39, 58]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "preset": "surge",
+      "delivery": "all",
+      "staggerMs": 0,
+      "durationMs": 1500,
+      "from": "start"
+    },
+    "style": {
+      "preset": "studio"
+    }
+  }
+}

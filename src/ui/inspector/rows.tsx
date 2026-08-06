@@ -1,4 +1,6 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import type { ChartType } from "../../toolkit/chart/types";
+import { isTypingIn } from "../textEditFocus";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
 
@@ -113,9 +115,9 @@ export function NumberField({
     step,
     dragScale,
   });
-  // Mirror the prop unless the user is typing or mid-drag.
+  // Mirror the prop unless the user is typing or mid-drag; a field that merely holds focus (after a drag, or a committed edit) still tracks the value, so an undo shows.
   useEffect(() => {
-    if (!dragging && document.activeElement !== inputRef.current) setText(value.toFixed(decimals));
+    if (!dragging && !isTypingIn(inputRef.current)) setText(value.toFixed(decimals));
   }, [value, decimals, dragging]);
 
   const commit = () => {
@@ -245,6 +247,101 @@ export function RowIcon({ id }: { id: string }) {
     <svg
       width="17"
       height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** Chart-type glyphs, drawn from each type's own marks (bars, line, area, wedge) rather than art: ONE set shared by the chart inspector's type grid (18px) and the New-scene wizard's chips (14px), so a type never wears two faces. */
+export function ChartTypeIcon({ id, size = 18 }: { id: ChartType; size?: number }) {
+  const glyph = {
+    column: <path d="M4 16V9M10 16V5M16 16v-4M3 16.5h14" />,
+    stackedColumn: (
+      <>
+        <path d="M5 16v-4M5 12V8M13 16v-3M13 13V6" />
+        <path d="M3 16.5h14" opacity="0.6" />
+      </>
+    ),
+    bar: <path d="M4 4.5h7M4 9.5h11M4 14.5h5M3.5 3v13" />,
+    stackedBar: (
+      <>
+        <path d="M4 5.5h5M9 5.5h5M4 12.5h4M8 12.5h7" />
+        <path d="M3.5 3v13" opacity="0.6" />
+      </>
+    ),
+    line: (
+      <>
+        <path d="M3.5 13.5l3.5-4 3 2.5 6.5-7" />
+        <path d="M3 16.5h14" opacity="0.6" />
+      </>
+    ),
+    area: (
+      <>
+        <path d="M3.5 13l3.5-4 3 2.5 6.5-6.5V15h-13z" fill="currentColor" opacity="0.28" />
+        <path d="M3.5 13l3.5-4 3 2.5 6.5-6.5" />
+      </>
+    ),
+    stackedArea: (
+      <>
+        <path d="M3.5 14l4-2 3 1.5 5.5-3V16h-12.5z" fill="currentColor" opacity="0.28" />
+        <path d="M3.5 14l4-2 3 1.5 5.5-3" />
+        <path d="M3.5 9.5l4-3 3 2 5.5-4" />
+      </>
+    ),
+    pie: (
+      <>
+        <circle cx="10" cy="10" r="6.5" />
+        <path d="M10 3.5v6.5h6.5" />
+      </>
+    ),
+  }[id];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
+
+/** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size; shared by the object and chart placement drills. */
+export function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
+  const glyph = {
+    translate: (
+      <>
+        <path d="M10 3.5v13M3.5 10h13" />
+        <path d="M8 5.5l2-2 2 2M8 14.5l2 2 2-2M5.5 8l-2 2 2 2M14.5 8l2 2-2 2" />
+      </>
+    ),
+    rotate: (
+      <>
+        <path d="M16.2 10a6.2 6.2 0 11-1.9-4.5" />
+        <path d="M16.6 2.6v3.2h-3.2" />
+      </>
+    ),
+    scale: (
+      <>
+        <rect x="3.5" y="8.5" width="8" height="8" rx="1" />
+        <path d="M11.5 8.5L16.5 3.5M16.5 7V3.5H13" />
+      </>
+    ),
+  }[mode];
+  return (
+    <svg
+      width="13"
+      height="13"
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"

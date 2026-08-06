@@ -38,6 +38,7 @@ GPU/driver, not across fleets.)
 | A mid-run window resize retriggering r3f's size handling (corrupts the export's fixed drawing buffer for every remaining frame) | The frame loop re-asserts the export size/camera aspect if drifted, after the awaits and immediately before the (synchronous) render + readback. |
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
+| **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
@@ -1113,8 +1114,9 @@ and do not need their own verifies.**
   the changed path: `showcase-tour` for themes/staging/text/presets (the
   rolling gate project, six themes, devices, video, ImageCard, camera moves
   and bloom in one project), `ws:device-video-spike` for device/media/camera,
-  `ws:fx-spike` for effects, a hand-rolled workspace mini-project for anything
-  narrower. `pnpm gate` runs the showcase-tour leg (~2 min).
+  `ws:fx-spike` for effects, `ws:dof-spike` for depth of field, a hand-rolled
+  workspace mini-project for anything narrower. `pnpm gate` runs the
+  showcase-tour leg (~2 min).
 - **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
   merges (and at any rebase or phase close), `pnpm gate:merge` runs
   `showcase-tour` + `ws:launch-2026` Verify ×2 in ONE app boot (`--project`
@@ -1171,7 +1173,7 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `f304f1bd…` | stale | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `f304f1bd…` | `8cdb7481…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `8d293536…` | `ed66045e…` | `63dfb18b…` | `aa3cb9b1…` | — | — | — |
@@ -1180,6 +1182,91 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `c947c931…` | `eb2e9c72…` | `593d4561…` | `0375e77b…` | — | — | — |
+| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
+
+> **2026-08-06 (scene identity):** duplicated scenes used to copy their TSX
+> verbatim, so `defineScene` ids collided and the id-keyed React mounts
+> cross-wired sidecar docs between scenes (masked on cold loads, triggered by
+> any in-session insert, reorder or delete). Mount keys now derive from the
+> manifest file (`sceneMountKey`), all three Rust producers mint unique ids,
+> and workspace projects silently heal duplicates on load after the trust
+> gate. Ids never touch pixels, proven by `pnpm gate` EQUAL on the recorded
+> baseline and `ws:launch-2026` EQUAL and unwritten (mtimes untouched)
+> through a full load. Fixture `ws:duplicate-spike` is the healed snapshot of
+> the original broken project: every scene eyeballed showing its own sidecar
+> text before its baseline was recorded, and the heal proven idempotent
+> (five further boots, zero writes).
+
+> **2026-08-05 (charts):** scenes gained a sidecar `chart` block, laid out by a
+> pure core (d3-scale/shape/array) and drawn by flat or lit renderers across
+> three mounts (hero, staged beside a device, overlay panel). Everything the
+> export samples is a function of the timeline clock alone. Two traps were
+> designed out rather than tuned: label billboarding goes through
+> `chartBillboardMatrix`, because drei's `Billboard` re-aims in its own frame
+> callback and races the stepped export clock, and coplanar layers separate by
+> the fixed `CHART_2D_Z_STEP` world epsilon with explicit `renderOrder`, never
+> driver-dependent `polygonOffset`. Fixture `ws:chart-spike` verified identical
+> ×2 in all four aspects (16:9 re-verified on `main` at release time, still
+> `c947c931…`); null-for-legacy holds, since a project with no chart never
+> builds the chart path and both anchors came back EQUAL. Full contract:
+> `docs/charts.md`.
+
+> **2026-08-04 (depth of field):** camera poses gained a sparse `dof` block
+> (depth or tilt-shift family), resolved per frame through the camera plan and
+> applied by stock `postprocessing` effects at the composer chain's head, with
+> transition/compare sides dof-graded individually through a dof-only side
+> composer before the composite. Null-for-legacy holds: a project with no dof
+> anywhere resolves a null union and takes the pre-existing paths byte for
+> byte (`showcase-tour` re-verified EQUAL at `f304f1bd…`, `ws:fx-spike` frame
+> byte-identical to the pre-feature chain). Display constants
+> (`DOF_BOKEH_SCALE_MAX` 6, `DOF_INACTIVE_FOCUS` 100, `DOF_RESOLUTION_SCALE`
+> 0.5, `TILT_FEATHER` 0.3 in `engine/effects.ts`) are export-contract
+> constants: changing one is a deliberate rebase. Composer depth arrives via
+> postprocessing's stable-depth target, a per-frame fixed-function
+> `blitFramebuffer` alongside the gated MSAA resolve; proven EQUAL ×2 on
+> WKWebView/ANGLE Metal before anything else was built. Eyeball note: with
+> autofocus the aimed subject is SUPPOSED to be sharp, so judge dof frames
+> with the camera-to-subject distances in hand, not by "is anything blurry".
+
+> **2026-08-06 (dof blur styles):** the `dof` block gained four style modes
+> (soft "Dream", radial "Burst", directional "Swipe", split diopter) plus the
+> depth-family `squeeze` field. Burst and swipe share one convolution
+> `SmearEffect` (fixed `SMEAR_TAPS` 32, spatial-hash tap jitter, a pure
+> function of the pixel coordinate like the grain hash); Dream is
+> `SoftFocusEffect` (fixed `SOFT_FOCUS_KERNEL` 35 Gaussian + screen blend);
+> split and squeeze run on ALWAYS-PATCHED stock materials (a second focus
+> plane in the CoC, an X squeeze in the bokeh kernels; `mustPatch` anchors
+> throw on a postprocessing upgrade). New export-contract constants:
+> `SMEAR_TAPS`, `SOFT_FOCUS_KERNEL`, `SPLIT_FEATHER` 0.08,
+> `SMEAR_RADIAL_SPAN` 0.35, `SMEAR_DIR_SPAN` 0.25. The patched programs are
+> uniform-neutral for plain depth scenes but different PROGRAMS, so the
+> dof-active fixture was a DELIBERATE re-record: `ws:dof-spike` grew to ten
+> scenes (one per style, plus an anamorphic→split crossfade proving the
+> patched per-side path), every style eyeballed first. Null-for-legacy is
+> untouched: dof-less projects never build the patched materials.
+
+> **2026-08-06 (the dof-only lane):** toggling dof in an effects-free project
+> visibly regraded the scene (contrast drop, whites to light grey). Root
+> cause, pixel-probed A/B: the composer path decodes display-domain
+> exact-colour surfaces to linear and re-encodes them around its tone map, so
+> ANY real full-frame tone map bends the authored bytes the direct path shows
+> raw, and on this WKWebView/ANGLE Metal stack the canvas and render-target
+> program variants do not even tone-map identically (a probe pixel decoded
+> ACES-minus-its-matrices in a target pass; the macOS 27 translator family).
+> The fix removes the seam BY CONSTRUCTION instead of matching curves:
+> effects-free dof projects render every frame on the ORIGINAL byte-identical
+> paths, and an active pose is blurred IN PLACE (canvas copy or SDR-scratch
+> side, dof chain over the finished pixels with `encodeOutput` off, scene
+> depth from a dedicated pre-pass; `copyTexSubImage2D` forbids sRGB-tagged
+> destinations, so the canvas copy stays linear-tagged raw bytes). Probe
+> proof: a dof-less twin frame AND a sub-LSB-blur frame both came back
+> BYTE-IDENTICAL to the direct path (max diff 0 across 8.3M pixels); a strong
+> rack blurs by true depth with colours held. Effects projects keep composer
+> dof unchanged. `ws:dof-spike` re-recorded for the lane: 16:9 `a7a37eb0…`,
+> 9:16 `58d0ac28…`, both Verify ×2 EQUAL (the same-day `ae8b22f3…`/
+> `91680399…` pair and the original `cee2ab6f…`/`09f57c3c…` are STALE).
 
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so
@@ -1219,6 +1306,12 @@ rolling-gate project (`showcase-tour`):
 > itself. `ws:bg3d-spike` verified identical ×2 at `8f6fc517…` with frames
 > eyeballed; note the background-rethink worktree's interim `632ee44d…` record
 > is superseded when that branch rebases onto this.
+> **2026-08-05 correction:** the `#104` traverse also stamped GROUP nodes, and
+> three.js reads a group's `renderOrder` as `groupOrder` (which outranks
+> `renderOrder` in the painter sort), so the four opaque looks drew before the
+> backing quad and were painted over: `8f6fc517…` encodes those broken
+> (invisible) frames. Groups are now skipped; `ws:bg3d-spike` re-verified
+> identical ×2 at `4e0d3840…` with all four looks eyeballed restored.
 
 > **2026-07-29 (video window: stage removal, placement, recording crop):**
 > the backing stage was removed outright (Michael's call: the scene's own

@@ -16,6 +16,7 @@
       "stops": [["#0a0f00", 0], ["#1d2b06", 1]]
     }
   },
+  "chartColors": ["#a3e635", "#22d3ee", "#f472d0", "#8b5cf6", "#fb923c", "#5b8cff"],
   "typography": {
     "headline": {
       "family": "JetBrains Mono",

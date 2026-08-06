@@ -1,5 +1,6 @@
 import type { AspectName } from "../engine/format";
-import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
+import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
 
@@ -58,6 +59,27 @@ export function projectRows(input: {
     { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },
   ];
+}
+
+/** Chart-type vocabulary, in the schema's own order: the type grid's tile labels and the Chart row's value both read it, so one wording serves the whole inspector. */
+export const CHART_TYPE_LABELS: Record<ChartType, string> = {
+  column: "Column",
+  stackedColumn: "Stacked column",
+  bar: "Bar",
+  stackedBar: "Stacked bar",
+  line: "Line",
+  area: "Area",
+  stackedArea: "Stacked area",
+  pie: "Pie",
+};
+
+export const CHART_TYPE_IDS = Object.keys(CHART_TYPE_LABELS) as ChartType[];
+
+/** Scene-tab value for the Chart row: dimension then type, e.g. "3D column". A panel-mounted chart is always flat, whatever the block says (`resolveChart` coerces it). */
+export function chartRowValue(chart: SceneDocChart): string {
+  const dimension = chart.mount !== "panel" && chart.dimension === "3d" ? "3D" : "2D";
+  const label = CHART_TYPE_LABELS[chart.type] ?? CHART_TYPE_LABELS.column;
+  return `${dimension} ${label.toLowerCase()}`;
 }
 
 export type SceneSectionId =
@@ -216,4 +238,43 @@ export function sceneSections(input: {
   sections.push({ id: "motion", label: "Motion", rows: motionRows });
 
   return sections;
+}
+
+/** What a scene offers the open inspector screen, for `drillStackForScene`. */
+export interface SceneDrillCapability {
+  hasDoc: boolean;
+  /** Keys of the scene's `text` block: the fields the Text drill and its per-key font screens expose. */
+  textKeys: string[];
+  hasDevice: boolean;
+  hasObject: boolean;
+  /** The scene resolves an overlay to edit (the deck's, or its own cutout). */
+  hasOverlay: boolean;
+}
+
+/** True for the screens that FOLLOW the playhead across a scene change: sections and settings whose editor reads only the scene's own doc, so the same screen over a new scene simply shows the new scene's values. Detail screens carrying a scene-scoped selection or session (device, overlay, comparison and object editors, media pickers, the transition boundary) are deliberately absent, so they pop back to their section. */
+export function drillFollowsScene(id: string, scene: SceneDrillCapability): boolean {
+  if (id.startsWith("text.font:")) return scene.textKeys.includes(id.slice("text.font:".length));
+  switch (id) {
+    case "camera":
+      return true;
+    case "text":
+    case "lighting":
+    case "style.theme":
+    case "style.background":
+      return scene.hasDoc;
+    case "device":
+      return scene.hasDevice;
+    case "objects":
+      return scene.hasObject;
+    case "frame":
+      return scene.hasOverlay;
+    default:
+      return false;
+  }
+}
+
+/** The drill stack a scene change keeps: the longest leading run of screens the new scene still has. A detail screen pops to its section, a section the new scene lacks pops to the row list (`[]`). */
+export function drillStackForScene(stack: string[], scene: SceneDrillCapability): string[] {
+  const at = stack.findIndex((id) => !drillFollowsScene(id, scene));
+  return at < 0 ? stack : stack.slice(0, at);
 }

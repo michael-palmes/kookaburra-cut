@@ -1,5 +1,6 @@
 //! Kookaburra Cut native shell: registers Tauri plugins and the deterministic-export bridge; the exporter streams raw RGBA frames from the webview to a bundled ffmpeg sidecar, whose argv is built HERE from a typed `ExportOptions` (the frontend never controls the command line) and spawned via the shell plugin's Rust API, not webview IPC, so no `shell:allow-execute` capability is needed.
 
+mod beats;
 mod bridge;
 mod claude_update;
 mod concurrency;
@@ -1186,6 +1187,8 @@ pub fn run() {
             media::delete_media,
             media::rename_media,
             loudness::measure_loudness,
+            beats::beat_cache_load,
+            beats::beat_cache_store,
             media::import_app_icon,
             media::import_audio,
             push_frame,
@@ -1244,6 +1247,7 @@ pub fn run() {
             scene_doc::scaffold_scene,
             scene_doc::duplicate_scene,
             scene_doc::copy_scene_to_project,
+            scene_doc::ensure_unique_scene_ids,
             bridge::bridge_claim_request,
             bridge::bridge_write_response,
             bridge::begin_bridge_screenshot,
@@ -1281,6 +1285,7 @@ pub fn run() {
             claude_update::dismiss_claude_update,
             media::import_media,
             media::import_media_bytes,
+            media::import_chart_data,
             media::media_meta,
             media::read_media_thumb,
             global_screenshots::list_global_screenshots,

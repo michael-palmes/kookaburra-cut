@@ -469,3 +469,91 @@ describe("canonical helpers", () => {
     });
   });
 });
+
+describe("rig dof", () => {
+  it("a rig without dof normalises with no dof summary and samples none", () => {
+    const t = track({
+      keys: [{ id: "a", tMs: 0, pose: pose([0, 0, 5]) }],
+      segments: [],
+    });
+    expect(t.dof).toBeNull();
+    expect(sampleSceneRig(t, 0).dof).toBeUndefined();
+  });
+
+  it("the first authored mode wins and later conflicts warn and are ignored", () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose([0, 0, 5], { dof: { mode: "tilt", blur: 0.4 } }) },
+        { id: "b", tMs: 1000, pose: pose([0, 0, 4], { dof: { mode: "depth" } }) },
+      ],
+      segments: [],
+    });
+    expect(t.dof).toEqual({ mode: "tilt", active: true });
+  });
+
+  it("active is false while every keyed blur stays 0", () => {
+    const t = track({
+      keys: [{ id: "a", tMs: 0, pose: pose([0, 0, 5], { dof: { blur: 0 } }) }],
+      segments: [],
+    });
+    expect(t.dof).toEqual({ mode: "depth", active: false });
+  });
+
+  it("autofocus follows the held pose's aim distance", () => {
+    const t = track({
+      keys: [{ id: "a", tMs: 0, pose: pose([0, 0, 5], { dof: { blur: 0.6 } }) }],
+      segments: [],
+    });
+    const s = sampleSceneRig(t, 0);
+    expect(s.dof).toMatchObject({ mode: "depth", blur: 0.6, focus: 5 });
+  });
+
+  it("a manual rack mixes focus in log space along the segment", () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose([0, 0, 5], { dof: { blur: 0.6, focus: 2 } }) },
+        { id: "b", tMs: 1000, pose: pose([0, 0, 5], { dof: { focus: 8 } }) },
+      ],
+      segments: [{ from: "a", to: "b", ease: "linear", smooth: false }],
+    });
+    const s = sampleSceneRig(t, 500);
+    expect(s.dof?.focus).toBeCloseTo(4, 10);
+    expect(s.dof?.blur).toBeCloseTo(0.6, 12);
+  });
+
+  it("fields carry forward, so an unauthored later key holds the look", () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose([0, 0, 5], { dof: { blur: 0.6, focus: 3 } }) },
+        { id: "b", tMs: 1000, pose: pose([0, 0, 4]) },
+      ],
+      segments: [{ from: "a", to: "b", ease: "linear", smooth: false }],
+    });
+    expect(sampleSceneRig(t, 500).dof).toMatchObject({ blur: 0.6, focus: 3 });
+    expect(sampleSceneRig(t, 1000).dof).toMatchObject({ blur: 0.6, focus: 3 });
+  });
+
+  it("easeDof shapes the focus channel independently of position", () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose([0, 0, 6], { dof: { blur: 0.5, focus: 2 } }) },
+        { id: "b", tMs: 1000, pose: pose([0, 0, 2], { dof: { focus: 8 } }) },
+      ],
+      segments: [{ from: "a", to: "b", ease: "linear", easeDof: "jump", smooth: false }],
+    });
+    const s = sampleSceneRig(t, 500);
+    expect(s.position[2]).toBeCloseTo(4, 10);
+    expect(s.dof?.focus).toBe(2);
+  });
+
+  it('focus "auto" on a later key releases a manual hold back to the aim distance', () => {
+    const t = track({
+      keys: [
+        { id: "a", tMs: 0, pose: pose([0, 0, 5], { dof: { blur: 0.5, focus: 2 } }) },
+        { id: "b", tMs: 1000, pose: pose([0, 0, 5], { dof: { focus: "auto" } }) },
+      ],
+      segments: [{ from: "a", to: "b", ease: "linear", smooth: false }],
+    });
+    expect(sampleSceneRig(t, 1000).dof?.focus).toBe(5);
+  });
+});

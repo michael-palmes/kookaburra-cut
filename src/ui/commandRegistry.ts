@@ -20,6 +20,8 @@ export interface CommandContext {
   isWorkspace: boolean;
   /** The loaded project has a soundtrack (mute/remove-soundtrack). */
   hasAudio: boolean;
+  /** The scene under the playhead already has a chart block (add seeds one, edit-data needs one). */
+  hasChart: boolean;
   exporting: boolean;
   hasWorkspaceRoot: boolean;
   playing: boolean;
@@ -34,6 +36,8 @@ export interface CommandContext {
     openMedia: () => void;
     openTheme: () => void;
     editScreenshotStack: () => void;
+    addChart: () => void;
+    editChartData: () => void;
     setSoundtrack: () => void;
     removeSoundtrack: () => void;
     toggleRail: () => void;
@@ -119,6 +123,22 @@ export function buildCommands(ctx: CommandContext): Command[] {
       keywords: ["layered", "screenshot", "stack", "builder", "layers", "screens"],
       enabled: editor && ctx.isWorkspace && !ctx.exporting,
       run: a.editScreenshotStack,
+    },
+    {
+      id: "scene.addChart",
+      title: "Add chart",
+      group: "Project",
+      keywords: ["chart", "graph", "data", "column", "bar", "pie", "series", "numbers"],
+      enabled: editor && ctx.isWorkspace && !ctx.exporting && !ctx.hasChart,
+      run: a.addChart,
+    },
+    {
+      id: "scene.editChartData",
+      title: "Edit chart data…",
+      group: "Project",
+      keywords: ["chart", "data", "values", "series", "categories", "table", "grid", "csv"],
+      enabled: editor && ctx.isWorkspace && !ctx.exporting && ctx.hasChart,
+      run: a.editChartData,
     },
     {
       id: "project.soundtrack.set",

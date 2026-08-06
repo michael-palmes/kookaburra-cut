@@ -3,13 +3,21 @@ import { useContext, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { useChartRegistry } from "./chartRegistry";
 import { useDeviceRegistry } from "./deviceRegistry";
 import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { useObjectRegistry } from "./objectRegistry";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
+import {
+  isWorkspaceProjectId,
+  type LoadedProject,
+  type ProjectManifest,
+  workspaceSlug,
+} from "./project";
+import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
+import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
 import {
@@ -135,6 +143,18 @@ export function useSceneVideoWindow(): NormalizedVideoWindow | null {
   );
 }
 
+/** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneVideoWindow pattern). */
+export function useSceneChart(): ResolvedChart | null {
+  const doc = useSceneDoc();
+  const sceneIndex = useSceneContext()?.index;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined) return;
+    useChartRegistry.getState().register(sceneIndex);
+    return () => useChartRegistry.getState().unregister(sceneIndex);
+  }, [sceneIndex]);
+  return useMemo(() => resolveChart(doc ?? undefined), [doc]);
+}
+
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
 
 /** Atomic, version-guarded sidecar write via the native command. */
@@ -146,7 +166,7 @@ export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneD
   });
 }
 
-/** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene): one compound undo entry, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */
+/** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene) AND onto the manifest as `appliedBackground`, so new scenes scaffold with the same look: one compound undo entry covering both, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */
 export async function applyBackgroundToAllScenes(
   project: LoadedProject,
   sourceIndex: number,
@@ -156,6 +176,7 @@ export async function applyBackgroundToAllScenes(
   const slug = workspaceSlug(project.id);
   const source = project.sceneDocs[sourceIndex];
   const changes: HistoryChange[] = [];
+  let applied = 0;
   let failed = 0;
   for (let i = 0; i < project.sceneFiles.length; i++) {
     if (i === sourceIndex) continue;
@@ -168,6 +189,7 @@ export async function applyBackgroundToAllScenes(
     try {
       await writeSceneDoc(slug, file, next);
       onDocChanged(i, next);
+      applied++;
       changes.push({
         kind: "sceneDoc",
         slug,
@@ -181,10 +203,33 @@ export async function applyBackgroundToAllScenes(
       console.warn(`[sceneDoc] apply-background-to-all failed for scene ${i}:`, e);
     }
   }
+  try {
+    const before = await readProjectManifestSnapshot(slug);
+    const manifest = JSON.parse(before) as ProjectManifest;
+    const stamp: NonNullable<ProjectManifest["appliedBackground"]> = {};
+    if (source?.background) stamp.background = structuredClone(source.background);
+    if (source?.backdrop) stamp.backdrop = structuredClone(source.backdrop);
+    const stamped = stamp.background !== undefined || stamp.backdrop !== undefined;
+    // Applying a theme-default scene CLEARS the stamp, so new scenes go back to following the theme.
+    if (stamped || manifest.appliedBackground !== undefined) {
+      if (stamped) manifest.appliedBackground = stamp;
+      else delete manifest.appliedBackground;
+      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      changes.push({
+        kind: "manifest",
+        slug,
+        before,
+        after: await readProjectManifestSnapshot(slug),
+        reload: false,
+      });
+    }
+  } catch (e) {
+    console.warn("[sceneDoc] apply-background-to-all: manifest stamp failed:", e);
+  }
   if (changes.length > 0) {
     pushHistory({ label: "apply background to all scenes", changes });
   }
-  return { applied: changes.length, failed };
+  return { applied, failed };
 }
 
 /** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
@@ -267,7 +312,7 @@ export async function resyncFollowMediaDuration(
   return { wrote: false, clampedDoc: null };
 }
 
-/** Shrink-fit every keyed track (camera, the layered-screenshot animation and the compare divider) to a new duration; null when nothing overhangs, so callers can skip the write. */
+/** Shrink-fit every keyed track (camera, the layered-screenshot animation, the compare divider and the chart data) to a new duration; null when nothing overhangs, so callers can skip the write. */
 export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): SceneDoc | null {
   const cam = doc.camera
     ? clampTrackToDuration(doc.camera as KeyedTrack<unknown>, durationMs)
@@ -278,11 +323,15 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   const cmp = doc.compare?.track
     ? clampTrackToDuration(doc.compare.track as KeyedTrack<unknown>, durationMs)
     : null;
+  const chart = doc.chart?.track
+    ? clampTrackToDuration(doc.chart.track as KeyedTrack<unknown>, durationMs)
+    : null;
   const camChanged = cam !== null && cam !== (doc.camera as KeyedTrack<unknown>);
   const animChanged =
     anim !== null && anim !== (doc.layeredScreenshot?.animation as KeyedTrack<unknown>);
   const cmpChanged = cmp !== null && cmp !== (doc.compare?.track as KeyedTrack<unknown>);
-  if (!camChanged && !animChanged && !cmpChanged) return null;
+  const chartChanged = chart !== null && chart !== (doc.chart?.track as KeyedTrack<unknown>);
+  if (!camChanged && !animChanged && !cmpChanged && !chartChanged) return null;
   const next = structuredClone(doc);
   if (camChanged) next.camera = structuredClone(cam) as SceneDoc["camera"];
   if (animChanged && next.layeredScreenshot) {
@@ -292,6 +341,9 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   }
   if (cmpChanged && next.compare) {
     next.compare.track = structuredClone(cmp) as NonNullable<SceneDoc["compare"]>["track"];
+  }
+  if (chartChanged && next.chart) {
+    next.chart.track = structuredClone(chart) as NonNullable<SceneDoc["chart"]>["track"];
   }
   return next;
 }

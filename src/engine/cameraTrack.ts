@@ -1,5 +1,6 @@
 /** Per-project camera track: a keyframe list that drives the shared camera as a pure function of the global clock, applied at the one shared render seam (never a component useFrame, which wouldn't fire under frameloop="demand" during export). See docs/determinism.md. `applyCameraTrack` is a hard no-op with no track, so every existing project renders byte-identically. */
 import type { PerspectiveCamera } from "three";
+import type { ResolvedDof } from "./dof";
 import { CAMERA } from "./format";
 import { lerp, lerp3, sampleKeyProperty, sortKeys } from "./keyframes";
 
@@ -18,6 +19,8 @@ export interface CameraPose {
   lookAt: [number, number, number];
   /** Bank around the view axis in degrees, which `lookAt` can't express on its own (three's lookAt uses a fixed world up). Only the per-scene rig writes it; absent or zero applies no rotation at all. */
   rollDeg?: number;
+  /** Depth of field resolved for this frame; only scene tracks write it, and `applyCameraPose` never reads it (the compositor's effect seam does). */
+  dof?: ResolvedDof;
 }
 
 /** The base pose every property falls back to: the shared CAMERA config, which the preview `<Canvas>` mounts with and the safe-area math assumes. */

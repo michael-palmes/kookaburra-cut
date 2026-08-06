@@ -14,6 +14,8 @@ use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
 const SCRUB_FRAMES: u32 = 10;
 const POSTER_WIDTH: u32 = 640;
 const SCRUB_WIDTH: u32 = 320;
+/// Chart data files, the modal's picker accept list; deliberately absent from `MEDIA_EXTENSIONS`.
+const CHART_DATA_EXTENSIONS: &[&str] = &["csv", "tsv", "txt"];
 
 /// Everything the media library needs to draw one card and its hover-scrub.
 #[derive(Debug, Clone, Serialize)]
@@ -602,6 +604,25 @@ pub fn import_media(
     Ok(imported)
 }
 
+/// One string header off a byte-import request (the slug and file name the raw-body imports carry).
+fn request_header(request: &tauri::ipc::Request<'_>, name: &str) -> Result<String, String> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned)
+        .ok_or(format!("missing {name} header"))
+}
+
+/// The final component of an incoming file name; anything path-shaped is reduced to it (the `rename_media` rule).
+fn plain_file_name(name: &str) -> Result<String, String> {
+    Path::new(name)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_owned)
+        .ok_or_else(|| "the file name must be a plain name".into())
+}
+
 /// One file's bytes into the project's `assets/`: the editor window's HTML5 drops, where WKWebView exposes content but no real paths. Headers carry the slug and the dropped file's name, the body is the raw content (`write_snapshot` pattern). Returns the project-relative path, or None for a non-media extension (mirrors `import_media`'s skip).
 #[tauri::command]
 pub fn import_media_bytes(
@@ -609,23 +630,9 @@ pub fn import_media_bytes(
     state: State<'_, SettingsState>,
     request: tauri::ipc::Request,
 ) -> Result<Option<String>, String> {
-    let header = |name: &str| -> Result<String, String> {
-        request
-            .headers()
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_owned)
-            .ok_or(format!("missing {name} header"))
-    };
-    let slug = header("x-kookaburra-slug")?;
+    let slug = request_header(&request, "x-kookaburra-slug")?;
     workspace::validate_slug(&slug)?;
-    // Only the final component; anything path-shaped is refused (the rename_media rule).
-    let name = header("x-kookaburra-name")?;
-    let name = Path::new(&name)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or("the file name must be a plain name")?
-        .to_owned();
+    let name = plain_file_name(&request_header(&request, "x-kookaburra-name")?)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("import_media_bytes expects a raw binary body".into());
     };
@@ -638,6 +645,40 @@ pub fn import_media_bytes(
     let candidate = free_asset_name(&assets, &base, &ext);
     std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
     Ok(Some(format!("assets/{candidate}")))
+}
+
+/// One picked CSV's bytes into the project's `assets/`, for the chart data modal: the copy beside the project is what lets Re-import re-read the numbers silently. Same headers, raw body, slugged stem and collision suffixes as `import_media_bytes`, but the delimited types stay out of `MEDIA_EXTENSIONS` so the file never surfaces in a media browser. Returns the project-relative path.
+#[tauri::command]
+pub fn import_chart_data(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    request: tauri::ipc::Request,
+) -> Result<String, String> {
+    let slug = request_header(&request, "x-kookaburra-slug")?;
+    workspace::validate_slug(&slug)?;
+    let name = plain_file_name(&request_header(&request, "x-kookaburra-name")?)?;
+    let name = Path::new(&name);
+    let ext = extension_of(name);
+    if !CHART_DATA_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(format!(
+            "chart data must be one of: {}",
+            CHART_DATA_EXTENSIONS.join(", ")
+        ));
+    }
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("import_chart_data expects a raw binary body".into());
+    };
+    let stem = name.file_stem().and_then(|s| s.to_str()).unwrap_or("data");
+    let mut base = workspace::slugify(stem);
+    if base.is_empty() {
+        base = "data".into();
+    }
+    let root = workspace::require_root(&app, &state)?;
+    let assets = root.join(&slug).join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    let candidate = free_asset_name(&assets, &base, &ext);
+    std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
+    Ok(format!("assets/{candidate}"))
 }
 
 /// Metadata + thumbnails for one project asset, generated on first sight and cached by content hash; videos get a poster (25% in) and ~10 evenly-spaced scrub frames, images get a poster only.
@@ -854,5 +895,29 @@ fn hydrate(cached: CachedMeta, cache: &Path, rel: &str, sha: &str) -> MediaMeta 
         fps: cached.fps,
         duration_ms: cached.duration_ms,
         sha: sha.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_shaped_name_is_reduced_to_its_final_component() {
+        assert_eq!(plain_file_name("q3.csv").unwrap(), "q3.csv");
+        assert_eq!(
+            plain_file_name("../../etc/passwd.csv").unwrap(),
+            "passwd.csv"
+        );
+        assert!(plain_file_name("..").is_err());
+        assert!(plain_file_name("").is_err());
+    }
+
+    #[test]
+    fn chart_data_stays_out_of_the_media_types() {
+        assert!(media_stem_and_ext(Path::new("q3.csv")).is_none());
+        for ext in CHART_DATA_EXTENSIONS {
+            assert!(!workspace::MEDIA_EXTENSIONS.contains(ext));
+        }
     }
 }

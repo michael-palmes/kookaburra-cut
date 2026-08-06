@@ -11,6 +11,7 @@ import {
   VIDEO_WINDOW_AIM_ID,
 } from "../../engine/sceneRig";
 import { bakeRigBinding, brokenRigBindings } from "../../engine/sceneRigConvert";
+import { DofFields } from "./DofFields";
 import { NumberField, SegmentedRow } from "./rows";
 
 /** The Camera drill-in's FREE-mode body: position, a per-key aim (point, tangent or a bound object), and the shared lens and roll rows. Orbit's six-field grid lives in SceneTab and is untouched; this file exists so the drill-in gains a mode rather than a second personality. */
@@ -235,6 +236,38 @@ export function CameraRigFields({
         </button>
       )}
 
+      <DofFields
+        keys={rig.keys}
+        targetKeyId={targetKeyId}
+        authored={pose.dof}
+        autoDistance={aimDistanceOf(pose)}
+        autoLabel="the aim"
+        preview={(next) =>
+          previewPose((p) => {
+            if (next) p.dof = next;
+            else delete p.dof;
+          })
+        }
+        commit={(next) =>
+          commitPose((p) => {
+            if (next) p.dof = next;
+            else delete p.dof;
+          })
+        }
+        commitAll={(map) =>
+          commitRig({
+            ...rig,
+            keys: rig.keys.map((key) => {
+              const dof = map(key.pose.dof);
+              const nextPose = { ...key.pose };
+              if (dof) nextPose.dof = dof;
+              else delete nextPose.dof;
+              return { ...key, pose: nextPose };
+            }),
+          })
+        }
+      />
+
       {!bounds.ok && (
         <div className="inspector-note inspector-note-warn">
           {bounds.reason} The shot still renders; this is a framing note, not an error.
@@ -254,4 +287,12 @@ export function CameraRigFields({
 export function seedRig(rig: RigDoc, targetKeyId: string | null, pose: SceneDocRigPose): RigDoc {
   if (!targetKeyId) return { ...rig, keys: [{ id: "k1", tMs: 0, pose }], segments: [] };
   return (setKeyPose(rig, targetKeyId, pose) as RigDoc | null) ?? rig;
+}
+
+/** The pose's camera-to-aim distance: what autofocus resolves to (the DoF group's Auto hint). */
+function aimDistanceOf(pose: SceneDocRigPose): number {
+  const dx = pose.aim.at[0] - pose.position[0];
+  const dy = pose.aim.at[1] - pose.position[1];
+  const dz = pose.aim.at[2] - pose.position[2];
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }

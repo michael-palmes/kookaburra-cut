@@ -584,7 +584,7 @@ export function setSegmentEase<P, T extends KeyedTrack<P>>(
 }
 
 /** The rig's optional per-channel ease overrides. Kept off `setSegmentEase`'s shared signature deliberately: the layered-screenshot lane uses that one too and has no channels. */
-export type SegmentEaseChannel = "easePosition" | "easeRotation" | "easeLens";
+export type SegmentEaseChannel = "easePosition" | "easeRotation" | "easeLens" | "easeDof";
 
 /** Set or clear one channel's ease override. `undefined` DELETES the field rather than writing a copy of the segment's own ease, so "same as segment" leaves no churn in the sidecar. */
 export function setSegmentChannelEase<P, T extends KeyedTrack<P>>(

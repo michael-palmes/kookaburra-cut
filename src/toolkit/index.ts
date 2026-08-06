@@ -3,9 +3,12 @@
 export { useFormat } from "../engine/format";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
-// Scene-document hooks: the sidecar-driven text map, devices array and layered-screenshot block.
+// The resolved sidecar chart block: every default baked and the data track sorted.
+export type { ResolvedChart } from "../engine/sceneChart";
+// Scene-document hooks: the sidecar-driven text map, devices array, layered-screenshot and chart blocks.
 export {
   type SceneDeviceProps,
+  useSceneChart,
   useSceneDevices,
   useSceneDoc,
   useSceneLayeredScreenshot,
@@ -29,6 +32,28 @@ export {
 export { useTimeline } from "../engine/timeline";
 export { useTheme } from "../theme";
 export type { Theme } from "../theme/tokens";
+// Data charts: `<Chart />` draws the sidecar block, flat or as staged 3D solids; the fallback covers scenes that never mount it.
+export { Chart, type ChartProps } from "./chart/Chart";
+export { Chart2D, type Chart2DProps } from "./chart/Chart2D";
+export { Chart3D } from "./chart/Chart3D";
+export { ChartFallback } from "./chart/ChartFallback";
+export type {
+  ChartAnimationConfig,
+  ChartAxisConfig,
+  ChartConfig,
+  ChartData,
+  ChartDimension,
+  ChartLabelConfig,
+  ChartLayout,
+  ChartMount,
+  ChartRendererProps,
+  ChartReveal,
+  ChartRevealFn,
+  ChartSeries,
+  ChartStyle,
+  ChartType,
+  ChartValueFormat,
+} from "./chart/types";
 // Scene registration + types
 export { liftColour } from "./colour";
 export { defineScene } from "./defineScene";

@@ -588,6 +588,13 @@ body {
   height: var(--control-h-sm);
 }
 
+/* Chart-type chips: the type's own mark leads its label. */
+.chart-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* Live preview of the composed prompt, so "Insert" is never a surprise. */
 .wizard-preview {
   padding: var(--space-4);
@@ -1346,6 +1353,65 @@ body {
   margin-left: -1px;
   background: var(--text-primary);
   pointer-events: none;
+}
+
+/* ── Beat lane (batch 13): waveform, beat grid + key-beat diamonds above the
+   scene strip. Same grid column as .pb-track, so x positions align by
+   construction; times map through the shared span maths. Amber is the lane's
+   identity (camera = accent, compare = success). */
+.beat-lane {
+  --lane-accent: var(--warning);
+  position: relative;
+  height: 30px;
+}
+
+.beat-wave {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.beat-diamond {
+  position: absolute;
+  top: 50%;
+  width: calc(6px + var(--strength, 0.5) * 6px);
+  height: calc(6px + var(--strength, 0.5) * 6px);
+  padding: 0;
+  background: color-mix(in srgb, var(--lane-accent) 60%, var(--surface-panel));
+  border: 1px solid color-mix(in srgb, var(--lane-accent) 80%, var(--surface-panel));
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  cursor: pointer;
+}
+
+.beat-diamond:hover {
+  background: var(--lane-accent);
+}
+
+.beat-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
+  border: none;
+  border-radius: var(--radius-full);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+button.beat-status {
+  pointer-events: auto;
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+}
+
+.beat-error {
+  color: var(--warning);
 }
 
 /* Per-cell labels: same flex weights as the track so names sit under their cells. */
@@ -3191,7 +3257,7 @@ body {
   gap: var(--space-4);
 }
 
-/* The type step: fourteen presets sit four across (the last row runs short). */
+/* The type step: fifteen presets sit four across (the last row runs short). */
 .wizard-kind-wide {
   width: min(68rem, calc(100% - 2rem));
 }
@@ -4008,6 +4074,17 @@ body {
   background: var(--success);
   border-color: transparent;
 }
+.anim-lane.lane-chart {
+  --lane-accent: var(--warning);
+}
+.anim-lane.lane-chart .anim-seg {
+  border-color: rgba(217, 140, 43, 0.48);
+  background: rgba(217, 140, 43, 0.12);
+}
+.anim-lane.lane-chart .anim-lane-row > .btn.primary {
+  background: var(--warning);
+  border-color: transparent;
+}
 
 .anim-key {
   position: absolute;
@@ -4074,6 +4151,22 @@ body {
 }
 
 /* 2px playhead overshooting the track 4px top/bottom, with a 9×9 square cap. */
+/* Soundtrack guidance mirrored into the lane: faint beat ticks, stronger key-moment lines. */
+.anim-beat-tick {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
+  pointer-events: none;
+}
+
+.anim-beat-tick.strong {
+  width: 2px;
+  margin-left: -1px;
+  background: color-mix(in srgb, var(--warning) 55%, transparent);
+}
+
 .anim-playhead {
   position: absolute;
   top: -4px;
@@ -6546,6 +6639,26 @@ img.inspector-scene-thumb {
   align-self: flex-start;
 }
 
+/* Line spacing rides its own row under the font/size/offset grid: a range needs more width than
+   one 1fr cell of that grid, so the label column shrinks and the slider takes the rest. */
+.text-style-line-row {
+  padding: 0 6px;
+}
+
+.text-style-line-row .slider-row-label {
+  min-width: 76px;
+}
+
+.text-field-group > .text-style-line-row > .popover-inline:not(.slider-row-label) {
+  flex: 1;
+  min-width: 0;
+}
+
+.text-style-line-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
 /* The Duration row: label + state + inline seconds field. */
 .inspector-duration-row {
   display: flex;
@@ -7044,4 +7157,374 @@ img.inspector-scene-thumb {
   stroke-width: 1;
   stroke-dasharray: 3 5;
   opacity: 0.45;
+}
+
+/* ── Chart data modal (v14 · charts) ───────────────────────────────────────── */
+/* A sheet over the canvas, deliberately undimmed: the chart behind it keeps
+   redrawing as cells commit, which is the point of editing here. */
+
+.modal-overlay.chart-data-overlay {
+  background: none;
+  align-items: end;
+  justify-items: center;
+  padding-bottom: var(--space-8);
+  pointer-events: none;
+}
+
+.modal.chart-data-modal {
+  pointer-events: auto;
+  inline-size: min(60rem, calc(100vw - 4rem));
+  max-block-size: min(34rem, calc(100vh - 12rem));
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--border-default);
+}
+
+.chart-data-summary {
+  margin-inline: auto var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-data-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.chart-data-keys .chip {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The grid owns its own scrolling in both axes; wide tables never push the sheet out. */
+.chart-data-scroll {
+  flex: 1;
+  min-block-size: 0;
+  overflow: auto;
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.chart-data-grid {
+  border-collapse: collapse;
+  inline-size: 100%;
+}
+
+.chart-data-grid th,
+.chart-data-grid td {
+  padding: 0;
+  border-inline-end: 1px solid var(--border-subtle);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.chart-data-grid thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: var(--surface-panel);
+}
+
+.chart-data-grid tbody th,
+.chart-data-grid tfoot th {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background: var(--surface-panel);
+}
+
+.chart-data-corner {
+  inline-size: 10rem;
+  padding: 0 var(--space-4);
+  text-align: start;
+}
+
+.chart-data-corner-label {
+  font-size: var(--text-xs);
+  font-weight: 510;
+  color: var(--text-tertiary);
+}
+
+.chart-data-cell {
+  inline-size: 100%;
+  min-inline-size: 5rem;
+  height: var(--control-h-lg);
+  padding: 0 var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+
+.chart-data-cell:focus {
+  outline: 2px solid var(--accent-border);
+  outline-offset: -2px;
+  background: var(--accent-subtle);
+}
+
+.chart-data-head,
+.chart-data-name {
+  font-weight: 510;
+}
+
+.chart-data-name {
+  min-inline-size: 10rem;
+}
+
+.chart-data-value {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-data-value.negative {
+  color: var(--warning);
+}
+
+.chart-data-value.invalid {
+  color: var(--danger);
+  background: rgba(229, 101, 75, 0.12);
+}
+
+.chart-data-add {
+  height: var(--control-h-md);
+  padding: 0 var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.chart-data-add:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.chart-data-add-col {
+  inline-size: 2.5rem;
+}
+
+.chart-data-add-row {
+  inline-size: 100%;
+  text-align: start;
+}
+
+.chart-data-invalid {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--danger);
+}
+
+.chart-data-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.chart-data-warn {
+  font-size: var(--text-xs);
+  color: var(--warning);
+}
+
+.chart-data-actions {
+  align-items: center;
+  margin-top: 0;
+}
+
+.chart-data-source {
+  margin-inline-end: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-inline-size: 18rem;
+}
+
+/* The import file input is driven by the button beside it. */
+.chart-data-file {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Segmented rows sit flush in a wizard field, which owns the spacing (after the base
+   .inspector-subtabs rules so the override lands). */
+.wizard-field > .inspector-subtabs {
+  margin: 0;
+}
+
+/* ── Chart inspector (the chart.edit drill) ──────────────────────────────────
+   The type grid runs 4-up on the bg-type tiles; the rest is one tier caption,
+   a compact stepper, the series list and the read-only values table. */
+.chart-tier-label {
+  padding: var(--space-2) 8px 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.bg-type-grid.chart-type-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.chart-type-grid .bg-type-tile {
+  padding: var(--space-2) 2px;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.chart-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.chart-stepper button {
+  width: 22px;
+  height: 22px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.chart-stepper button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.chart-stepper-value {
+  min-width: 42px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.chart-series-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  margin: 0;
+  list-style: none;
+}
+
+.chart-series-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: 3px 0;
+}
+
+.chart-series-row.greyed {
+  opacity: 0.5;
+}
+
+.chart-series-name {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 var(--space-2);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.chart-series-name:hover {
+  border-color: var(--border-subtle);
+}
+
+.chart-series-name:focus {
+  background: var(--surface-recessed);
+  border-color: var(--border-default);
+  outline: none;
+}
+
+.chart-series-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.chart-series-tools button {
+  padding: 1px 5px;
+  font-size: 11px;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.chart-series-tools button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.chart-values-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+  margin: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chart-values-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The Axis tab's Value/Category pill: wrapped so the fieldset straddle rule leaves it in flow, sitting as its own row under the Graph/Axis/Series control. */
+.chart-axis-subtabs {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+}
+
+/* Chart drill layout: the fieldset gives up its horizontal padding for row room, slider rows flex inside the container instead of overflowing it (the deco-card rules, chart-scoped), and the value/text boxes stay compact. */
+.chart-drill .inspector-drill-body {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.chart-drill .toggle-fieldset {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.chart-drill .popover-row > .popover-inline:not(.slider-row-label) {
+  flex: 1;
+  min-width: 0;
+}
+.chart-drill .popover-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.chart-drill .range-value {
+  width: 44px;
+}
+.chart-drill .popover-row > input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: 110px;
 }

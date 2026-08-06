@@ -19,9 +19,18 @@ import {
   reportAutoRunError,
   runAutoRun,
 } from "./engine/autorun";
+import {
+  addKeyAtBeat,
+  appliedOrbitPoseAt,
+  buildSyncTrack,
+  pickSyncMoments,
+  sceneTrackContext,
+} from "./engine/beatCameraSync";
+import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { pollCaptureBridge } from "./engine/captureBridge";
+import { useChartTrackEditStore } from "./engine/chartTrackEditStore";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -67,6 +76,7 @@ import {
 import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
+  type AudioMarkersSpec,
   bumpWorkspaceReloadToken,
   isWorkspaceProjectId,
   type LoadedProject,
@@ -75,6 +85,7 @@ import {
   type ProjectListing,
   resolveAssetPath,
   sceneFileStem,
+  sceneMountKey,
   WORKSPACE_PROJECT_PREFIX,
   workspaceProjectPath,
   workspaceSlug,
@@ -91,6 +102,7 @@ import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
+import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
@@ -124,6 +136,7 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
+import { ChartFallback } from "./toolkit/chart/ChartFallback";
 import { CompareChips } from "./toolkit/compare/CompareChips";
 import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
@@ -136,11 +149,15 @@ import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
+import { ChartAnimationLane } from "./ui/ChartAnimationLane";
+import { ChartDataModal } from "./ui/ChartDataModal";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
+import { openChartDataModal } from "./ui/chartDataModalStore";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
+import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
@@ -160,6 +177,7 @@ import {
   TitlebarIdentity,
   TitlebarProjects,
 } from "./ui/Titlebar";
+import { hasPendingTextEdit } from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import { commitSceneDuration } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
@@ -209,6 +227,8 @@ function StageLoadingOverlay({
 /** A transient export/verify notification. `path` (success exports) enables Show in Finder. */
 type Toast = { kind: "success" | "error"; message: string; path?: string };
 
+const TOAST_AUTO_CLOSE_MS = 4000;
+
 /** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
 function PreviewClock() {
   const invalidate = useThree((s) => s.invalidate);
@@ -247,6 +267,12 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  // Plain confirmations self-dismiss (the corner-toast design); errors and toasts carrying a Show-in-Finder action wait for the user, and a new toast restarts the clock.
+  useEffect(() => {
+    if (toast?.kind !== "success" || toast.path) return;
+    const t = window.setTimeout(() => setToast(null), TOAST_AUTO_CLOSE_MS);
+    return () => window.clearTimeout(t);
+  }, [toast]);
   // The export modal resolves preset/custom to an EncodeSpec; the Titlebar codec select is subsumed, and Kookaburra Standard is the frozen path.
   const [showExport, setShowExport] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
@@ -789,6 +815,138 @@ export default function App() {
     [handleDocChanged, handleTimingChanged],
   );
 
+  // Beat-marker overlay writes: manifest snapshot + in-memory patch (no reload; a drag commit must not flash the preview). Undo replays through the manifest history path, which reloads.
+  const handleUpdateAudioMarkers = useCallback(async (markers: AudioMarkersSpec | null) => {
+    const current = loadedProjectRef.current;
+    if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
+    const slug = workspaceSlug(current.id);
+    try {
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      const manifest = JSON.parse(manifestBefore);
+      if (!manifest.audio) return;
+      if (markers) manifest.audio.markers = markers;
+      else delete manifest.audio.markers;
+      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      setProject((prev) =>
+        prev?.audio ? { ...prev, audio: { ...prev.audio, markers: markers ?? undefined } } : prev,
+      );
+      pushHistory({
+        label: "beat markers",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+    } catch (e) {
+      setToast({ kind: "error", message: `Beat markers failed: ${String(e)}` });
+    }
+  }, []);
+
+  /** Write a generated orbit camera track to a scene's sidecar (the beat-lane actions' commit; mirrors useCameraDoc.commitSlice without the lane's preview draft). */
+  const writeSceneCameraDoc = useCallback(
+    async (sceneIndex: number, nextCamera: CameraDoc, label: string) => {
+      const current = loadedProjectRef.current;
+      if (!current || !isWorkspaceProjectId(current.id)) return;
+      const slug = workspaceSlug(current.id);
+      const file = current.sceneFiles[sceneIndex];
+      if (!file) return;
+      const doc = current.sceneDocs[sceneIndex];
+      const written: SceneDoc = doc ? structuredClone(doc) : { version: 1 };
+      if (nextCamera.keys.length > 0) written.camera = nextCamera;
+      else delete written.camera;
+      try {
+        await writeSceneDoc(slug, file, written);
+        handleDocChanged(sceneIndex, written);
+        pushHistory({
+          label,
+          changes: [
+            {
+              kind: "sceneDoc",
+              slug,
+              file,
+              sceneIndex,
+              before: doc ? structuredClone(doc) : null,
+              after: structuredClone(written),
+            },
+          ],
+        });
+      } catch (e) {
+        setToast({ kind: "error", message: `${label} failed: ${String(e)}` });
+      }
+    },
+    [handleDocChanged],
+  );
+
+  const handleAddCameraKeyAtBeat = useCallback(
+    async (tMs: number) => {
+      const current = loadedProjectRef.current;
+      if (!current || !isWorkspaceProjectId(current.id)) return;
+      const sceneIndex =
+        tMs >= current.totalMs ? current.slots.length - 1 : activeSceneIndex(current.slots, tMs);
+      const doc = current.sceneDocs[sceneIndex];
+      if (doc?.cameraMode === "rig") return;
+      const slot = current.slots[sceneIndex];
+      const camera = (doc?.camera as CameraDoc | undefined) ?? { keys: [], segments: [] };
+      const ctx = sceneTrackContext(current, sceneIndex);
+      const local = Math.min(ctx.windowEndMs, Math.max(ctx.windowStartMs, tMs - slot.startMs));
+      const next = addKeyAtBeat(camera, ctx, local, (t) =>
+        appliedOrbitPoseAt(camera, current.cameraTrack, slot.startMs, t),
+      );
+      if (!next) {
+        setToast({ kind: "error", message: "No room for a camera keyframe at that beat" });
+        return;
+      }
+      await writeSceneCameraDoc(sceneIndex, next, "camera keyframe at beat");
+    },
+    [writeSceneCameraDoc],
+  );
+
+  const handleSyncCameraToBeats = useCallback(
+    async (tMs: number) => {
+      const current = loadedProjectRef.current;
+      if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
+      const sceneIndex =
+        tMs >= current.totalMs ? current.slots.length - 1 : activeSceneIndex(current.slots, tMs);
+      const doc = current.sceneDocs[sceneIndex];
+      if (doc?.cameraMode === "rig") return;
+      const slot = current.slots[sceneIndex];
+      const ctx = sceneTrackContext(current, sceneIndex);
+      const moments = effectiveKeyMoments(
+        useBeatStore.getState().analysis,
+        current.audio.markers,
+        current.audio.startOffsetMs ?? 0,
+        current.totalMs,
+      ).map((m) => ({ tMs: m.tMs - slot.startMs, strength: m.strength }));
+      const picked = pickSyncMoments(moments, ctx.transitionInMs, ctx.transitionOutStartMs);
+      if (picked.length === 0) {
+        setToast({ kind: "error", message: "No key beats inside this scene to cut on" });
+        return;
+      }
+      const camera = doc?.camera as CameraDoc | undefined;
+      const base = appliedOrbitPoseAt(
+        camera,
+        current.cameraTrack,
+        slot.startMs,
+        ctx.transitionInMs,
+      );
+      await writeSceneCameraDoc(
+        sceneIndex,
+        buildSyncTrack(base, picked, ctx.transitionInMs),
+        "sync camera to music",
+      );
+      setToast({
+        kind: "success",
+        message: `Camera synced to ${picked.length} beat${picked.length === 1 ? "" : "s"}`,
+      });
+    },
+    [writeSceneCameraDoc],
+  );
+
   const handlePasteBackground = useCallback(
     async (sceneIndex: number) => {
       const current = loadedProjectRef.current;
@@ -818,6 +976,43 @@ export default function App() {
     [handleDocChanged],
   );
 
+  /** Palette Add chart: seed the starter block on the playhead's scene when it has none (the inspector's add entry seeds the same one), then land on the chart drill. */
+  const handleAddChart = useCallback(async () => {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    const sceneIndex = activeSceneIndex(current.slots, useClockStore.getState().currentMs);
+    const existing = current.sceneDocs[sceneIndex];
+    const file = current.sceneFiles[sceneIndex];
+    const openDrill = () => {
+      // The drill is a Scene-tab screen; setInspectorTab clears the stack, so order matters.
+      const ui = useUiStore.getState();
+      ui.setInspectorTab("scene");
+      ui.jumpInspectorDrill(["chart.edit"]);
+    };
+    if (existing?.chart) {
+      openDrill();
+      return;
+    }
+    if (!file) return;
+    const slug = workspaceSlug(current.id);
+    try {
+      const before = existing ? structuredClone(existing) : null;
+      const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
+      next.chart = newChartBlock();
+      await writeSceneDoc(slug, file, next);
+      handleDocChanged(sceneIndex, next);
+      pushHistory({
+        label: "add chart",
+        changes: [
+          { kind: "sceneDoc", slug, file, sceneIndex, before, after: structuredClone(next) },
+        ],
+      });
+      openDrill();
+    } catch (e) {
+      setToast({ kind: "error", message: `Add chart failed: ${String(e)}` });
+    }
+  }, [handleDocChanged]);
+
   // Custom Edit-menu items emit here since native items would swallow ⌘Z before the DOM saw it; a focused text field routes back to WebKit's own undo manager. Replays go through the same writers as fresh edits.
   const applyHistoryChange = useCallback(
     async (change: HistoryChange, dir: "undo" | "redo") => {
@@ -841,12 +1036,9 @@ export default function App() {
   const historyBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
-    const isTextTarget = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return !!el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable);
-    };
     const run = async (dir: "undo" | "redo") => {
-      if (isTextTarget()) {
+      // Only a field mid-typing owns ⌘Z; one that merely holds focus (a drag-scrubbed number, a committed edit) must not swallow app undo.
+      if (hasPendingTextEdit()) {
         document.execCommand(dir); // the text field's own history
         return;
       }
@@ -1044,7 +1236,10 @@ export default function App() {
   const applyLoadedProject = useCallback(
     (loaded: LoadedProject) => {
       setProject(loaded);
-      if (!isAutoRun) setPreviewAudioProject(loaded);
+      if (!isAutoRun) {
+        setPreviewAudioProject(loaded);
+        setBeatProject(loaded);
+      }
       useEditorStore.getState().setTheme(loaded.theme);
       useEffectsStore
         .getState()
@@ -1177,6 +1372,10 @@ export default function App() {
       .then((loaded) => {
         if (cancelled) return;
         applyLoadedProject(loaded);
+        // The scene-id heal rewrote TSX on disk: adopt those bytes as the poll's baseline so it doesn't fire a redundant reload.
+        if (loaded.healedSceneIds?.length && isWorkspaceProjectId(loaded.id)) {
+          armPollBaseline(workspaceSlug(loaded.id));
+        }
         if (!isSwitch || isAutoRun) {
           // SWR reload (same project): nothing remounted, the stage never blanked.
           setProjectReady(true);
@@ -1212,7 +1411,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects]);
+  }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
 
   // Auto-open the Claude rail for workspace projects; close it where it can't work.
   useEffect(() => {
@@ -1249,6 +1448,10 @@ export default function App() {
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
   const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
   const compareLaneOpen = useCompareEditStore((s) => s.open);
+  // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
+  const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
+  const chartLaneOpen = useChartTrackEditStore((s) => s.open);
+  const stackedLanes = comparePresent || chartPresent;
 
   // The capture bridge: answer the embedded terminal's frame requests from the running app (engine/captureBridge.ts); mounts on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
@@ -1872,9 +2075,9 @@ export default function App() {
                           const SceneComponent = scene.Scene;
                           return (
                             <SceneHost
-                              key={`${project.id}:${slot.id}`}
+                              key={sceneMountKey(project.id, project.sceneFiles[i])}
                               index={i}
-                              id={slot.id}
+                              id={project.sceneFiles[i]}
                               startMs={slot.startMs}
                               durationMs={slot.durationMs}
                               doc={project.sceneDocs[i]}
@@ -1891,6 +2094,7 @@ export default function App() {
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
+                                <ChartFallback />
                                 <TextFallback />
                                 <CompareChips />
                               </AssetBoundary>
@@ -1905,10 +2109,10 @@ export default function App() {
                           const SceneComponent = scene.Scene;
                           return (
                             <SceneHost
-                              key={`${project.id}:${slot.id}:b`}
+                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:b`}
                               index={i}
                               side="b"
-                              id={slot.id}
+                              id={project.sceneFiles[i]}
                               startMs={slot.startMs}
                               durationMs={slot.durationMs}
                               doc={bDoc}
@@ -1922,6 +2126,7 @@ export default function App() {
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
+                                <ChartFallback />
                                 <TextFallback />
                                 <CompareChips />
                               </AssetBoundary>
@@ -1941,7 +2146,7 @@ export default function App() {
                           const slot = project.slots[i];
                           return (
                             <FramePanel
-                              key={`${project.id}:panel:${slot.id}`}
+                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
                               index={i}
                               startMs={slot.startMs}
                               durationMs={slot.durationMs}
@@ -2165,14 +2370,24 @@ export default function App() {
       {editorView && (
         <TimelineDock
           connectorActive={
-            (comparePresent && compareLaneOpen) || (lsActive ? lsLaneOpen : cameraEditOpen)
+            (comparePresent && compareLaneOpen) ||
+            (chartPresent && chartLaneOpen) ||
+            (lsActive ? lsLaneOpen : cameraEditOpen)
           }
           activeIndex={camSceneIndex}
           lane={
             project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-              <div className={comparePresent ? "anim-lane-stack" : undefined}>
+              <div className={stackedLanes ? "anim-lane-stack" : undefined}>
                 {comparePresent && (
                   <CompareAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {chartPresent && (
+                  <ChartAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
@@ -2185,7 +2400,7 @@ export default function App() {
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    label={comparePresent ? "Stack" : undefined}
+                    label={stackedLanes ? "Stack" : undefined}
                   />
                 ) : (
                   <AnimationLane
@@ -2193,8 +2408,8 @@ export default function App() {
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    label={comparePresent ? "Camera" : undefined}
-                    alwaysOpen={comparePresent}
+                    label={stackedLanes ? "Camera" : undefined}
+                    alwaysOpen={stackedLanes}
                   />
                 )}
               </div>
@@ -2230,6 +2445,9 @@ export default function App() {
             onDuplicateScene={handleDuplicateScene}
             onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
             onPasteBackground={(i) => void handlePasteBackground(i)}
+            onUpdateAudioMarkers={(m) => void handleUpdateAudioMarkers(m)}
+            onAddCameraKeyAtBeat={(ms) => void handleAddCameraKeyAtBeat(ms)}
+            onSyncCameraToBeats={(ms) => void handleSyncCameraToBeats(ms)}
           />
         </TimelineDock>
       )}
@@ -2301,6 +2519,7 @@ export default function App() {
             projectLoaded: !!project,
             isWorkspace: !!project && isWorkspaceProjectId(project.id),
             hasAudio: !!project?.audio,
+            hasChart: chartPresent,
             exporting,
             hasWorkspaceRoot: !!settings?.workspaceRoot,
             playing,
@@ -2319,6 +2538,13 @@ export default function App() {
                 const ui = useUiStore.getState();
                 ui.setInspectorTab("scene");
                 ui.jumpInspectorDrill(["layeredScreenshot.edit"]);
+              },
+              addChart: () => void handleAddChart(),
+              editChartData: () => {
+                const ui = useUiStore.getState();
+                ui.setInspectorTab("scene");
+                ui.jumpInspectorDrill(["chart.edit"]);
+                openChartDataModal();
               },
               setSoundtrack: () => void handleSetSoundtrack(),
               removeSoundtrack: () => void handleRemoveSoundtrack(),
@@ -2349,6 +2575,16 @@ export default function App() {
           project={project}
           currentAspect={format.name}
           onClose={() => setShowPresent(false)}
+        />
+      )}
+      {/* The chart data grid: self-gating (the store's open flag plus a chart on the scene), keyed to the scene so a playhead move can never commit one scene's grid into another. */}
+      {project && (
+        <ChartDataModal
+          key={camSceneIndex}
+          project={project}
+          sceneIndex={camSceneIndex}
+          onDocChanged={handleDocChanged}
+          onTimingChanged={handleTimingChanged}
         />
       )}
     </div>

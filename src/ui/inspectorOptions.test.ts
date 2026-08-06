@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { projectRows, sceneSections } from "./inspectorOptions";
+import {
+  CHART_TYPE_IDS,
+  CHART_TYPE_LABELS,
+  chartRowValue,
+  drillStackForScene,
+  projectRows,
+  sceneSections,
+} from "./inspectorOptions";
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {
@@ -321,5 +328,91 @@ describe("sceneSections Overlay section", () => {
     const rows = sections.find((s) => s.id === "frame")?.rows;
     expect(rows?.map((r) => r.id)).toEqual(["frame.enabled"]);
     expect(rows?.[0].chevron).toBe(false);
+  });
+});
+
+describe("the Chart row's value", () => {
+  const chartWith = (parts: Partial<SceneDocChart>): SceneDocChart => ({
+    type: "column",
+    data: { categories: ["A"], series: [{ id: "s1", values: [1] }] },
+    ...parts,
+  });
+
+  it("reads dimension then type", () => {
+    expect(chartRowValue(chartWith({ dimension: "3d" }))).toBe("3D column");
+    expect(chartRowValue(chartWith({ dimension: "2d", type: "line" }))).toBe("2D line");
+    expect(chartRowValue(chartWith({ type: "stackedBar" }))).toBe("2D stacked bar");
+  });
+
+  it("a panel mount is always flat, whatever the block says", () => {
+    expect(chartRowValue(chartWith({ dimension: "3d", mount: "panel" }))).toBe("2D column");
+  });
+
+  it("the type grid covers every schema type, in schema order", () => {
+    expect(CHART_TYPE_IDS).toEqual([
+      "column",
+      "stackedColumn",
+      "bar",
+      "stackedBar",
+      "line",
+      "area",
+      "stackedArea",
+      "pie",
+    ]);
+    expect(CHART_TYPE_IDS.every((id) => CHART_TYPE_LABELS[id].length > 0)).toBe(true);
+  });
+});
+
+describe("drillStackForScene (what the inspector keeps open across a scene change)", () => {
+  const full = {
+    hasDoc: true,
+    textKeys: ["title", "subtitle"],
+    hasDevice: true,
+    hasObject: true,
+    hasOverlay: true,
+  };
+
+  it("keeps a generic section the new scene also has", () => {
+    expect(drillStackForScene(["text"], full)).toEqual(["text"]);
+    expect(drillStackForScene(["style.background"], full)).toEqual(["style.background"]);
+    expect(drillStackForScene(["lighting"], full)).toEqual(["lighting"]);
+    expect(drillStackForScene(["style.theme"], full)).toEqual(["style.theme"]);
+    expect(drillStackForScene(["device"], full)).toEqual(["device"]);
+  });
+
+  it("Animations survives even a doc-less scene", () => {
+    expect(drillStackForScene(["camera"], { ...full, hasDoc: false, textKeys: [] })).toEqual([
+      "camera",
+    ]);
+  });
+
+  it("a font screen follows only while the new scene exposes that key", () => {
+    expect(drillStackForScene(["text", "text.font:title"], full)).toEqual([
+      "text",
+      "text.font:title",
+    ]);
+    expect(
+      drillStackForScene(["text", "text.font:title"], { ...full, textKeys: ["headline"] }),
+    ).toEqual(["text"]);
+  });
+
+  it("a scene the section is missing from drops to the row list", () => {
+    expect(drillStackForScene(["text"], { ...full, hasDoc: false, textKeys: [] })).toEqual([]);
+    expect(drillStackForScene(["style.background"], { ...full, hasDoc: false })).toEqual([]);
+    expect(drillStackForScene(["device"], { ...full, hasDevice: false })).toEqual([]);
+    expect(drillStackForScene(["objects"], { ...full, hasObject: false })).toEqual([]);
+    expect(drillStackForScene(["frame"], { ...full, hasOverlay: false })).toEqual([]);
+  });
+
+  it("scene-specific editors never survive, popping to their section", () => {
+    expect(drillStackForScene(["device", "device.position"], full)).toEqual(["device"]);
+    expect(drillStackForScene(["frame", "frame.cutout"], full)).toEqual(["frame"]);
+    expect(drillStackForScene(["objects", "objects.placement"], full)).toEqual(["objects"]);
+    expect(drillStackForScene(["style.background", "style.background.media"], full)).toEqual([
+      "style.background",
+    ]);
+    expect(drillStackForScene(["compare.edit"], full)).toEqual([]);
+    expect(drillStackForScene(["motion.transition"], full)).toEqual([]);
+    expect(drillStackForScene(["videoWindow.edit"], full)).toEqual([]);
   });
 });

@@ -123,6 +123,38 @@ describe("parseFrameSpec decorations", () => {
   });
 });
 
+describe("parseFrameSpec chart slot", () => {
+  it("takes a bare true as presence on the defaults", () => {
+    expect(parseFrameSpec({ ...valid, chart: true }, "t")?.chart).toEqual({});
+  });
+
+  it("takes false as the off switch, so a scene can drop an inherited slot", () => {
+    expect(parseFrameSpec({ ...valid, chart: false }, "t")?.chart).toEqual({ enabled: false });
+  });
+
+  it("keeps the layout options", () => {
+    const spec = parseFrameSpec({ ...valid, chart: { height: 0.4, position: "replace" } }, "t");
+    expect(spec?.chart).toEqual({ height: 0.4, position: "replace" });
+  });
+
+  it("drops a non-finite height and an unknown position, keeping the slot itself", () => {
+    const spec = parseFrameSpec(
+      { ...valid, chart: { height: Number.NaN, position: "beside" } },
+      "t",
+    );
+    expect(spec?.chart).toEqual({});
+  });
+
+  it("drops a slot that is neither a boolean nor an object", () => {
+    expect(parseFrameSpec({ ...valid, chart: "yes" }, "t")?.chart).toBeUndefined();
+    expect(parseFrameSpec({ ...valid, chart: [true] }, "t")?.chart).toBeUndefined();
+  });
+
+  it("leaves the slot absent when the frame doesn't ask for one", () => {
+    expect(parseFrameSpec(valid, "t")?.chart).toBeUndefined();
+  });
+});
+
 describe("parseFrameSpec flags", () => {
   it("records only an explicit opt-out, so absent means on", () => {
     expect(parseFrameSpec({ ...valid, enabled: false }, "t")?.enabled).toBe(false);
@@ -188,6 +220,19 @@ describe("mergeFrameSpec", () => {
     expect(mergeFrameSpec(undefined, parseFrameOverride(valid, "t"))?.cutout.shape).toBe(
       "rounded-rect",
     );
+  });
+
+  it("replaces an inherited chart slot outright rather than merging its options", () => {
+    const deck = parseFrameSpec({ ...valid, chart: { height: 0.3, position: "replace" } }, "t");
+    const merged = mergeFrameSpec(deck, parseFrameOverride({ chart: { height: 0.7 } }, "t"));
+    expect(merged?.chart).toEqual({ height: 0.7 });
+  });
+
+  it("lets a scene switch off a deck chart slot while keeping the panel", () => {
+    const deck = parseFrameSpec({ ...valid, chart: true }, "t");
+    const merged = mergeFrameSpec(deck, parseFrameOverride({ chart: false }, "t"));
+    expect(merged?.chart).toEqual({ enabled: false });
+    expect(merged?.cutout.shape).toBe("rounded-rect");
   });
 
   it("lets a scene opt out of an inherited deck frame", () => {

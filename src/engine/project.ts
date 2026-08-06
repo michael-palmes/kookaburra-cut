@@ -7,7 +7,15 @@ import { assetVersionSuffix } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
-import type { EffectsConfig, EffectsOverride, FontRef, LightingSpec, Theme } from "../theme/tokens";
+import type {
+  EffectsConfig,
+  EffectsOverride,
+  FontRef,
+  LightingSpec,
+  Theme,
+  ThemeBackdrop,
+  ThemeBackground,
+} from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
@@ -23,6 +31,7 @@ import { deriveCompareBDoc } from "./sceneCompare";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
+import { ensureUniqueSceneIds } from "./sceneIds";
 import { normalizeLighting } from "./sceneLighting";
 import {
   buildSceneTimeline,
@@ -66,6 +75,8 @@ export interface ProjectManifest {
   render?: unknown;
   /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
   lighting?: unknown;
+  /** The background "Apply everywhere" last stamped across the project, so NEW scenes scaffold with it (`scaffold_scene` reads it; nothing on the render path does). Absent means new scenes follow the theme, and clearing one scene's background in the inspector leaves that scene reverted. */
+  appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -86,6 +97,36 @@ export interface ProjectAudioSpec {
   /** Omitted → DEFAULT_AUDIO_FADE_OUT_MS at the timeline's end; an explicit 0 opts out. */
   fadeOutMs?: number;
   startOffsetMs?: number;
+  markers?: AudioMarkersSpec;
+}
+
+export const AUDIO_MARKERS_VERSION = 1;
+
+/** User-curated key moments (project-time ms) for the beat lane: a full replacement of the detected set once present; deleting the block returns to detection. Editor guidance only, the export mix never reads it. */
+export interface AudioMarkersSpec {
+  version: number;
+  keyMoments: number[];
+}
+
+/** Warn-and-drop validation for `audio.markers`; invalid shapes fall back to detection. */
+export function sanitiseAudioMarkers(
+  markers: AudioMarkersSpec | undefined,
+): AudioMarkersSpec | undefined {
+  if (markers === undefined) return undefined;
+  const ok =
+    typeof markers === "object" &&
+    markers !== null &&
+    markers.version === AUDIO_MARKERS_VERSION &&
+    Array.isArray(markers.keyMoments) &&
+    markers.keyMoments.every((t) => typeof t === "number" && Number.isFinite(t) && t >= 0);
+  if (!ok) {
+    console.warn("[project] audio.markers invalid, ignoring (detected key moments stand)");
+    return undefined;
+  }
+  const keyMoments = [...new Set(markers.keyMoments.map((t) => Math.round(t)))].sort(
+    (a, b) => a - b,
+  );
+  return { version: AUDIO_MARKERS_VERSION, keyMoments };
 }
 
 /** The loaded soundtrack: the spec plus the resolved path and probed stream facts. */
@@ -98,9 +139,15 @@ export interface ProjectAudio extends ProjectAudioSpec {
 /** Every soundtrack fades out smoothly over the last second of the TIMELINE unless project.json says otherwise (`fadeOutMs: 0` disables; any value overrides). Resolved here so preview and export read the same object and can never disagree. */
 export const DEFAULT_AUDIO_FADE_OUT_MS = 1000;
 
-/** The authored spec with house defaults applied (exported for tests). */
+/** The authored spec with house defaults applied and markers sanitised (exported for tests). */
 export function withAudioDefaults(spec: ProjectAudioSpec): ProjectAudioSpec {
-  return { ...spec, fadeOutMs: spec.fadeOutMs ?? DEFAULT_AUDIO_FADE_OUT_MS };
+  const { markers, ...rest } = spec;
+  const valid = sanitiseAudioMarkers(markers);
+  return {
+    ...rest,
+    fadeOutMs: spec.fadeOutMs ?? DEFAULT_AUDIO_FADE_OUT_MS,
+    ...(valid ? { markers: valid } : {}),
+  };
 }
 
 export interface LoadedProject {
@@ -122,7 +169,7 @@ export interface LoadedProject {
   persistent?: ComponentType;
   /** Per-scene sidecar documents, index-parallel to `scenes` and keyed off each manifest entry's FILE stem (`scenes/01-hero.tsx` → `scenes/01-hero.json`). Undefined entries are scenes without a sidecar, rendering as before with no editing affordances; the engine reads these directly, scene components via `SceneHost`'s `SceneDocContext`. */
   sceneDocs: (SceneDoc | undefined)[];
-  /** The manifest's per-scene module paths (`scenes/01-hero.tsx`), index-parallel to `scenes`; the stable file identity behind sidecar writes and thumb caching (scene ids are TSX-authored and free to collide/rename, files are unique). */
+  /** The manifest's per-scene module paths (`scenes/01-hero.tsx`), index-parallel to `scenes`; the stable file identity behind sidecar writes and thumb caching (scene ids are TSX-authored and free to collide/rename, files are unique), and mount keys derive from these. */
   sceneFiles: string[];
   /** Each scene's RESOLVED theme, index-parallel to `scenes`: the project theme unless the scene's sidecar overrides `themeId`. `SceneHost` provides it to the scene's tree; render seams read it for per-scene state (background/environment). */
   sceneThemes: Theme[];
@@ -144,11 +191,18 @@ export interface LoadedProject {
   compareBDocs: (SceneDoc | undefined)[];
   /** Side B's RESOLVED theme per comparison scene (its `compare.b.themeId`, else the scene's own theme), index-parallel; undefined exactly where `compareBDocs` is. */
   compareBThemes: (Theme | undefined)[];
+  /** Scene files whose TSX id the load rewrote to break a duplicate (`ensureUniqueSceneIds`); absent or empty when nothing was healed. */
+  healedSceneIds?: string[];
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
 export function sceneFileStem(file: string): string {
   return file.replace(/^scenes\//, "").replace(/\.tsx$/, "");
+}
+
+/** The React key for one scene's mounts, the identity `assertUniqueSceneFiles` guarantees unique; TSX `defineScene` ids are author-owned and free to collide, so they must never key a mount. */
+export function sceneMountKey(projectId: string, sceneFile: string): string {
+  return `${projectId}:${sceneFile.replace(/^\.?\//, "")}`;
 }
 
 // Vite resolves these globs from the repo root (the dev/build root). Manifests are small so they load on demand; scene modules are lazy and imported per project.
@@ -183,7 +237,7 @@ export function listProjectIds(): string[] {
     .filter((id) => !isHiddenProjectId(id));
 }
 
-/** The dev-only preview-lab projects (one per option-preview family: text, stage, one per background), in stable order. Discovery is the directory-prefix convention: adding a background means adding its `preview-lab-bg-<id>` project; a vitest guards the pairing. */
+/** The dev-only preview-lab projects (one per option-preview family: text, stage, chart appearance, chart build-ins, one per background), in stable order. Discovery is the directory-prefix convention: adding a background means adding its `preview-lab-bg-<id>` project; a vitest guards the pairing. */
 export function previewLabProjectIds(): string[] {
   return Object.keys(manifestGlob)
     .map((path) => path.split("/")[2])
@@ -554,9 +608,21 @@ export async function loadProject(
   const manifest = await loadManifest(id);
 
   // F-001 trust gate: no workspace scene code compiles until the user consents; bundled projects never gate. Reading the manifest above is inert (JSON only).
+  let healedSceneIds: string[] | undefined;
   if (isWorkspaceProjectId(id)) {
     const slug = workspaceSlug(id);
     await ensureProjectTrusted(slug, manifest.name || slug);
+    // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
+    const heal = await ensureUniqueSceneIds(slug);
+    if (heal?.renamed.length) {
+      healedSceneIds = heal.renamed.map((r) => r.file);
+      bumpWorkspaceReloadToken();
+      console.info(
+        `[scene-ids] healed duplicate scene ids in "${slug}": ${heal.renamed
+          .map((r) => `${r.file} ${r.from} → ${r.to}`)
+          .join(", ")}`,
+      );
+    }
     await ensureSampleAssets(slug);
     await refreshWorkspaceAssets(id);
     await refreshWorkspaceEnvironments(id);
@@ -585,6 +651,7 @@ export async function loadProject(
   const outgoing = outgoingSceneTransitions(manifest);
   const slots = buildSceneTimeline(
     manifest.scenes.map((_, i) => ({
+      // TSX-authored, so it may collide: never key a mount off it, files are the identity (`sceneMountKey`).
       id: scenes[i].id,
       durationMs: scenes[i].durationMs,
       transition: outgoing[i],
@@ -730,5 +797,6 @@ export async function loadProject(
     renderSettings,
     compareBDocs,
     compareBThemes,
+    healedSceneIds,
   };
 }

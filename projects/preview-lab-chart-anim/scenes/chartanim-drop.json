@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "Chart build-in: Drop",
+  "chart": {
+    "type": "column",
+    "dimension": "3d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Q1", "Q2", "Q3", "Q4"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Direct",
+          "values": [32, 41, 55, 68]
+        },
+        {
+          "id": "s2",
+          "name": "Partner",
+          "values": [18, 24, 29, 37]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "preset": "drop",
+      "delivery": "cascade",
+      "staggerMs": 90,
+      "durationMs": 700,
+      "from": "start"
+    },
+    "style": {
+      "preset": "studio"
+    }
+  }
+}

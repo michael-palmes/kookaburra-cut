@@ -26,6 +26,7 @@
       "stops": [["#eef2ff", 0], ["#ffffff", 1]]
     }
   },
+  "chartColors": ["#1333d4", "#0e7490", "#7e22ce", "#b91c1c", "#15803d", "#8f5000"],
   "typography": {
     "headline": {
       "family": "Inter",

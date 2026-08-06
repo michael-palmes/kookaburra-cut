@@ -8,19 +8,44 @@ import type {
   ThemeBackground,
 } from "../theme/tokens";
 import type {
+  ChartAnimationConfig,
+  ChartCategoryAxis,
+  ChartDimension,
+  ChartGridlines,
+  ChartLegend,
+  ChartMount,
+  ChartStyle,
+  ChartType,
+  ChartValueAxis,
+  ChartValueFormat,
+  ChartValueLabels,
+  ChartValuesPose,
+} from "../toolkit/chart/types";
+import type {
   DeviceMediaSpec,
   DeviceMotionSpec,
   DevicePlacement,
   DeviceShadowMode,
 } from "../toolkit/device/Device";
 import type { FrameOverrideSpec } from "../toolkit/frame/types";
+import type { SceneDocDof } from "./dof";
 import { parseFrameOverride } from "./frameSchema";
 import { normalizeLighting } from "./sceneLighting";
+
+export type { SceneDocDof } from "./dof";
 
 /** The per-scene sidecar schema (`scenes/<stem>.json` beside a scene's TSX): holds everything machine-editable (name, text, devices, camera, duration), written atomically via `write_scene_doc`; this module is pure (types + validation only) so it's unit-testable and safe to import anywhere, with IO and hooks living in `sceneDoc.ts`. Field docs: the kookaburra-scene-authoring skill; rationale: docs/decisions.md. */
 
 /** Newest sidecar schema this build understands (newer docs are ignored with a warning). */
 export const SCENE_DOC_VERSION = 1;
+
+/** Range for a `textStyle.<textKey>LineHeight` multiplier, shared with the inspector's slider. */
+export const TEXT_LINE_HEIGHT_MIN = 0.8;
+export const TEXT_LINE_HEIGHT_MAX = 2;
+
+export function clampLineHeight(value: number): number {
+  return Math.min(TEXT_LINE_HEIGHT_MAX, Math.max(TEXT_LINE_HEIGHT_MIN, value));
+}
 
 /** One device entry, deliberately shaped as `Device` props plus a stable id. */
 export interface SceneDocDeviceSpec {
@@ -80,6 +105,8 @@ export interface SceneDocCameraPose {
   azimuthDeg: number;
   elevationDeg: number;
   distance: number;
+  /** Depth of field; absent inherits the last keyed value along the track (see engine/dof.ts). */
+  dof?: SceneDocDof;
 }
 
 export interface SceneDocCameraKey {
@@ -94,6 +121,8 @@ export interface SceneDocCameraSegment {
   to: string;
   /** An `engine/ease.ts` name (anime.js v4 style) or `"jump"`. */
   ease: string;
+  /** Focus-channel ease override; absent means the segment's own `ease`. */
+  easeDof?: string;
 }
 
 /** Present-slideshow hold looping for the camera track: once the authored keys finish during a hold, smooth eases back to the first key over blendMs then replays, jump restarts each cycle. Never read by preview or export sampling. */
@@ -117,6 +146,8 @@ export interface SceneDocRigPose {
   fov?: number;
   /** Bank around the view axis; absent or zero applies no roll at all. */
   rollDeg?: number;
+  /** Depth of field; absent inherits the last keyed value along the track (see engine/dof.ts). */
+  dof?: SceneDocDof;
 }
 
 export interface SceneDocRigKey {
@@ -135,10 +166,11 @@ export interface SceneDocRigSegment {
   ease: string;
   /** ABSENT means smooth: rig paths curve out of the box, `false` is a deliberate straight dolly. */
   smooth?: boolean;
-  /** Per-channel ease overrides; absent means the segment's own `ease` (position covers position, rotation covers aim and roll, lens covers fov). */
+  /** Per-channel ease overrides; absent means the segment's own `ease` (position covers position, rotation covers aim and roll, lens covers fov, dof covers focus and blur). */
   easePosition?: string;
   easeRotation?: string;
   easeLens?: string;
+  easeDof?: string;
 }
 
 /** Troika's textAlign values, 1:1 (never localise these; UI labels may). */
@@ -286,7 +318,7 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged) and `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout) and `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal"); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead. */
   headerIcon?: string;
@@ -328,8 +360,10 @@ export interface SceneDoc {
   videoWindow?: SceneDocVideoWindow;
   /** The before/after comparison block: side B's overrides plus the shared mask and divider track; side A is this doc itself. Deep normalisation lives in `sceneCompare.ts`. */
   compare?: SceneDocCompare;
+  /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
+  chart?: SceneDocChart;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
-  animatedTrack?: "camera" | "layeredScreenshot" | "compare";
+  animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart";
 }
 
 /** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
@@ -377,6 +411,62 @@ export interface SceneDocCompare {
   chrome?: SceneDocCompareChrome;
 }
 
+/** One data series: `values` is one number per category (short rows read as 0), `colour` overrides the theme palette swatch for this series index. */
+export interface SceneDocChartSeries {
+  id: string;
+  name?: string;
+  values: number[];
+  colour?: string;
+}
+
+export interface SceneDocChartData {
+  categories: string[];
+  series: SceneDocChartSeries[];
+  /** Project-relative CSV the values were imported from; informational, nothing reads it at render or export time. */
+  source?: string;
+}
+
+/** The value axis as authored: every field optional, `sceneChart.ts` fills the defaults. */
+export interface SceneDocChartValueAxis
+  extends Omit<Partial<ChartValueAxis>, "format" | "gridlines"> {
+  format?: Partial<ChartValueFormat>;
+  gridlines?: Partial<ChartGridlines>;
+}
+
+export interface SceneDocChartValueLabels extends Omit<Partial<ChartValueLabels>, "format"> {
+  format?: Partial<ChartValueFormat>;
+}
+
+/** One data keyframe: a FULL value snapshot (the Magic Chart model), `[series][category]`, the same shape as `data`. Structure changes (adding a series or category) are edits to `data`, never keyframable. */
+export interface SceneDocChartKey {
+  id: string;
+  /** Scene-local time, ms. */
+  tMs: number;
+  pose: ChartValuesPose;
+}
+
+export interface SceneDocChartSegment {
+  from: string;
+  to: string;
+  /** An `engine/ease.ts` name (unknown names degrade at sample time). */
+  ease: string;
+}
+
+/** The chart block: one chart per scene, mounted as the scene's hero, staged among devices (`placement`) or inside an overlay panel. Absence is PRESERVED here (a missing field means "unauthored"); defaults, clamps and the resolved track live in `sceneChart.ts`. `track` keyframes the data: `data.series[].values` is the pose before the first key. */
+export interface SceneDocChart {
+  type: ChartType;
+  dimension?: ChartDimension;
+  mount?: ChartMount;
+  /** Staged mount only. */
+  placement?: DevicePlacement;
+  data: SceneDocChartData;
+  style?: Partial<ChartStyle>;
+  axis?: { value?: SceneDocChartValueAxis; category?: Partial<ChartCategoryAxis> };
+  labels?: { legend?: Partial<ChartLegend>; values?: SceneDocChartValueLabels };
+  animation?: Partial<ChartAnimationConfig>;
+  track?: { keys: SceneDocChartKey[]; segments: SceneDocChartSegment[] };
+}
+
 export function validLayeredScreenshotPose(raw: unknown): raw is LayeredScreenshotPose {
   const pose = raw as LayeredScreenshotPose | null;
   return (
@@ -420,6 +510,11 @@ function validVideoWindow(raw: unknown): raw is SceneDocVideoWindow {
 
 const finiteV3 = (v: unknown): v is [number, number, number] =>
   Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
 function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
@@ -622,6 +717,329 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
   return out;
 }
 
+const CHART_TYPES: ChartType[] = [
+  "column",
+  "stackedColumn",
+  "bar",
+  "stackedBar",
+  "line",
+  "area",
+  "stackedArea",
+  "pie",
+];
+
+/** Field-level parse for a `DevicePlacement` (the deviceLayout delta pattern): bad scalars drop alone, and the layout stamp `resolvedLayout` is never authored so it is not read here. */
+function parsePlacement(raw: unknown, source: string, label: string): DevicePlacement | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+    return undefined;
+  }
+  const out: DevicePlacement = {};
+  if (finiteV3(raw.position)) out.position = raw.position;
+  if (finiteV3(raw.rotationDeg)) out.rotationDeg = raw.rotationDeg;
+  if (finiteNum(raw.scale) && raw.scale > 0) out.scale = raw.scale;
+  if (typeof raw.ground === "boolean") out.ground = raw.ground;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Non-numeric cells read as 0 rather than dropping, so a row keeps its length and stays aligned with the categories. */
+function parseChartValues(raw: readonly unknown[], source: string, label: string): number[] {
+  let zeroed = 0;
+  const values = raw.map((v) => {
+    if (finiteNum(v)) return v;
+    zeroed++;
+    return 0;
+  });
+  if (zeroed > 0) {
+    console.warn(`[sceneDoc] ${source}: ${label} had ${zeroed} non-numeric value(s), zeroed`);
+  }
+  return values;
+}
+
+function parseChartFormat(
+  raw: unknown,
+  source: string,
+  label: string,
+): Partial<ChartValueFormat> | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: ${label} isn't an object, dropped`);
+    return undefined;
+  }
+  const out: Partial<ChartValueFormat> = {};
+  if (raw.decimals === null || finiteNum(raw.decimals)) out.decimals = raw.decimals;
+  if (typeof raw.separator === "boolean") out.separator = raw.separator;
+  if (typeof raw.prefix === "string") out.prefix = raw.prefix;
+  if (typeof raw.suffix === "string") out.suffix = raw.suffix;
+  if (typeof raw.compact === "boolean") out.compact = raw.compact;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** A `series` array is the one required shape: without it the block cannot chart anything and drops whole. */
+function parseChartData(raw: unknown, source: string): SceneDocChartData | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.series)) return undefined;
+  const categories = (Array.isArray(raw.categories) ? raw.categories : []).map((c, i) => {
+    if (typeof c === "string") return c;
+    console.warn(`[sceneDoc] ${source}: chart.data.categories[${i}] isn't a string, blanked`);
+    return "";
+  });
+  const series: SceneDocChartSeries[] = [];
+  for (const entry of raw.series as unknown[]) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || !Array.isArray(entry.values)) {
+      console.warn(
+        `[sceneDoc] ${source}: chart.data series entry needs string "id" + "values", dropped`,
+      );
+      continue;
+    }
+    const out: SceneDocChartSeries = {
+      id: entry.id,
+      values: parseChartValues(entry.values, source, `chart.data.series["${entry.id}"]`),
+    };
+    if (typeof entry.name === "string") out.name = entry.name;
+    if (typeof entry.colour === "string" && entry.colour.length > 0) out.colour = entry.colour;
+    series.push(out);
+  }
+  const data: SceneDocChartData = { categories, series };
+  if (typeof raw.source === "string" && raw.source.length > 0) data.source = raw.source;
+  return data;
+}
+
+function parseChartStyle(raw: unknown, source: string): Partial<ChartStyle> | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.style isn't an object, dropped`);
+    return undefined;
+  }
+  const out: Partial<ChartStyle> = {};
+  if (typeof raw.preset === "string" && raw.preset.length > 0) out.preset = raw.preset;
+  if (finiteNum(raw.depth)) out.depth = raw.depth;
+  if (finiteNum(raw.gap)) out.gap = raw.gap;
+  if (finiteNum(raw.cornerRadius)) out.cornerRadius = raw.cornerRadius;
+  if (finiteNum(raw.innerRadius)) out.innerRadius = raw.innerRadius;
+  const rotation = raw.rotation;
+  if (Array.isArray(rotation) && rotation.length === 2 && rotation.every(finiteNum)) {
+    out.rotation = [rotation[0], rotation[1]];
+  }
+  const offset = raw.offset;
+  if (Array.isArray(offset) && offset.length === 2 && offset.every(finiteNum)) {
+    out.offset = [offset[0], offset[1]];
+  }
+  if (finiteNum(raw.scale)) out.scale = raw.scale;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseChartValueAxis(raw: unknown, source: string): SceneDocChartValueAxis | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.axis.value isn't an object, dropped`);
+    return undefined;
+  }
+  const out: SceneDocChartValueAxis = {};
+  if (typeof raw.name === "string" || raw.name === null) out.name = raw.name;
+  if (raw.min === null || finiteNum(raw.min)) out.min = raw.min;
+  if (raw.max === null || finiteNum(raw.max)) out.max = raw.max;
+  if (finiteNum(raw.steps)) out.steps = raw.steps;
+  if (typeof raw.labels === "boolean") out.labels = raw.labels;
+  if (raw.format !== undefined) {
+    const format = parseChartFormat(raw.format, source, "chart.axis.value.format");
+    if (format) out.format = format;
+  }
+  if (isRecord(raw.gridlines)) {
+    const gridlines: Partial<ChartGridlines> = {};
+    const style = raw.gridlines.style;
+    if (typeof raw.gridlines.visible === "boolean") gridlines.visible = raw.gridlines.visible;
+    if (style === "hair" || style === "dashed" || style === "none") gridlines.style = style;
+    if (Object.keys(gridlines).length > 0) out.gridlines = gridlines;
+  } else if (raw.gridlines !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.axis.value.gridlines isn't an object, dropped`);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseChartAxis(raw: unknown, source: string): SceneDocChart["axis"] {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.axis isn't an object, dropped`);
+    return undefined;
+  }
+  const out: NonNullable<SceneDocChart["axis"]> = {};
+  if (raw.value !== undefined) {
+    const value = parseChartValueAxis(raw.value, source);
+    if (value) out.value = value;
+  }
+  if (isRecord(raw.category)) {
+    const category: Partial<ChartCategoryAxis> = {};
+    if (typeof raw.category.name === "string" || raw.category.name === null) {
+      category.name = raw.category.name;
+    }
+    if (typeof raw.category.labels === "boolean") category.labels = raw.category.labels;
+    if (Object.keys(category).length > 0) out.category = category;
+  } else if (raw.category !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.axis.category isn't an object, dropped`);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseChartLabels(raw: unknown, source: string): SceneDocChart["labels"] {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.labels isn't an object, dropped`);
+    return undefined;
+  }
+  const out: NonNullable<SceneDocChart["labels"]> = {};
+  if (isRecord(raw.legend)) {
+    const legend: Partial<ChartLegend> = {};
+    const position = raw.legend.position;
+    if (typeof raw.legend.visible === "boolean") legend.visible = raw.legend.visible;
+    if (position === "top" || position === "bottom" || position === "trailing") {
+      legend.position = position;
+    }
+    if (Object.keys(legend).length > 0) out.legend = legend;
+  } else if (raw.legend !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.labels.legend isn't an object, dropped`);
+  }
+  if (isRecord(raw.values)) {
+    const values: SceneDocChartValueLabels = {};
+    const location = raw.values.location;
+    if (typeof raw.values.visible === "boolean") values.visible = raw.values.visible;
+    if (location === "above" || location === "inside" || location === "below") {
+      values.location = location;
+    }
+    if (typeof raw.values.countUp === "boolean") values.countUp = raw.values.countUp;
+    if (raw.values.format !== undefined) {
+      const format = parseChartFormat(raw.values.format, source, "chart.labels.values.format");
+      if (format) values.format = format;
+    }
+    if (Object.keys(values).length > 0) out.values = values;
+  } else if (raw.values !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.labels.values isn't an object, dropped`);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseChartAnimation(
+  raw: unknown,
+  source: string,
+): Partial<ChartAnimationConfig> | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.animation isn't an object, dropped`);
+    return undefined;
+  }
+  const out: Partial<ChartAnimationConfig> = {};
+  const delivery = raw.delivery;
+  const from = raw.from;
+  if (typeof raw.preset === "string" && raw.preset.length > 0) out.preset = raw.preset;
+  if (delivery === "all" || delivery === "series" || delivery === "cascade")
+    out.delivery = delivery;
+  if (finiteNum(raw.staggerMs) && raw.staggerMs >= 0) out.staggerMs = raw.staggerMs;
+  if (finiteNum(raw.durationMs) && raw.durationMs >= 0) out.durationMs = raw.durationMs;
+  if (
+    from === "start" ||
+    from === "end" ||
+    from === "centre" ||
+    from === "edges" ||
+    from === "shuffle"
+  ) {
+    out.from = from;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** The data track, on the shared KeyedTrack model (the compare precedent): a key needs an id, a time and a `pose.values` matrix; with no key surviving there is no track at all. */
+function parseChartTrack(raw: unknown, source: string): SceneDocChart["track"] {
+  const track = isRecord(raw) ? raw : {};
+  const keys: SceneDocChartKey[] = [];
+  for (const entry of Array.isArray(track.keys) ? (track.keys as unknown[]) : []) {
+    const pose = isRecord(entry) && isRecord(entry.pose) ? entry.pose.values : undefined;
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== "string" ||
+      !finiteNum(entry.tMs) ||
+      !Array.isArray(pose) ||
+      !pose.every((row) => Array.isArray(row))
+    ) {
+      console.warn(`[sceneDoc] ${source}: chart.track key is malformed, dropped`);
+      continue;
+    }
+    const id = entry.id;
+    keys.push({
+      id,
+      tMs: entry.tMs,
+      pose: {
+        values: (pose as unknown[][]).map((row, s) =>
+          parseChartValues(row, source, `chart.track key "${id}" row ${s}`),
+        ),
+      },
+    });
+  }
+  const rawSegments = Array.isArray(track.segments) ? (track.segments as unknown[]) : [];
+  const segments = rawSegments.filter((s): s is SceneDocChartSegment => {
+    const seg = s as SceneDocChartSegment | null;
+    const ok =
+      !!seg &&
+      typeof seg === "object" &&
+      typeof seg.from === "string" &&
+      typeof seg.to === "string" &&
+      typeof seg.ease === "string";
+    if (!ok) console.warn(`[sceneDoc] ${source}: chart.track segment is malformed, dropped`);
+    return ok;
+  });
+  return keys.length > 0 ? { keys, segments } : undefined;
+}
+
+/** Field-level parse for the chart block (the degrade-not-throw rule): only a missing `data.series` array drops the block whole, an unknown `type` falls back to `column` (the deviceLayout precedent) and every other malformed field drops alone. Defaults are NOT applied here: `sceneChart.ts` owns them, so absence stays legible. A panel-mounted chart is always 2d, so a `3d` dimension coerces. */
+function parseChart(raw: unknown, source: string): SceneDocChart | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart isn't an object, dropped`);
+    return undefined;
+  }
+  const data = parseChartData(raw.data, source);
+  if (!data) {
+    console.warn(`[sceneDoc] ${source}: chart.data needs a "series" array, block dropped`);
+    return undefined;
+  }
+  let type: ChartType = "column";
+  if (CHART_TYPES.includes(raw.type as ChartType)) {
+    type = raw.type as ChartType;
+  } else {
+    console.warn(`[sceneDoc] ${source}: chart.type isn't known, using column`);
+  }
+  const out: SceneDocChart = { type, data };
+  if (raw.mount === "hero" || raw.mount === "staged" || raw.mount === "panel") {
+    out.mount = raw.mount;
+  } else if (raw.mount !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.mount isn't hero|staged|panel, dropped`);
+  }
+  if (raw.dimension === "2d" || raw.dimension === "3d") {
+    if (out.mount === "panel" && raw.dimension === "3d") {
+      console.warn(`[sceneDoc] ${source}: panel-mounted charts are 2d, dimension coerced`);
+    }
+    out.dimension = out.mount === "panel" ? "2d" : raw.dimension;
+  } else if (raw.dimension !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.dimension isn't 2d|3d, dropped`);
+  }
+  if (raw.placement !== undefined) {
+    const placement = parsePlacement(raw.placement, source, "chart.placement");
+    if (placement) out.placement = placement;
+  }
+  if (raw.style !== undefined) {
+    const style = parseChartStyle(raw.style, source);
+    if (style) out.style = style;
+  }
+  if (raw.axis !== undefined) {
+    const axis = parseChartAxis(raw.axis, source);
+    if (axis) out.axis = axis;
+  }
+  if (raw.labels !== undefined) {
+    const labels = parseChartLabels(raw.labels, source);
+    if (labels) out.labels = labels;
+  }
+  if (raw.animation !== undefined) {
+    const animation = parseChartAnimation(raw.animation, source);
+    if (animation) out.animation = animation;
+  }
+  if (raw.track !== undefined) {
+    const track = parseChartTrack(raw.track, source);
+    if (track) out.track = track;
+  }
+  return out;
+}
+
 function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
   const loop = raw as SceneDocCameraPresentLoop | null;
   if (!loop || typeof loop !== "object") return false;
@@ -697,9 +1115,15 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       } else if (key.endsWith("OffsetX") || key.endsWith("OffsetY")) {
         if (typeof value === "number" && Number.isFinite(value)) textStyle[key] = value;
         else console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+      } else if (key.endsWith("LineHeight")) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          textStyle[key] = clampLineHeight(value);
+        } else {
+          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+        }
       } else {
         console.warn(
-          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY key, dropped`,
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight key, dropped`,
         );
       }
     }
@@ -813,15 +1237,20 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     const compare = parseCompare(doc.compare, source);
     if (compare) out.compare = compare;
   }
+  if (doc.chart !== undefined) {
+    const chart = parseChart(doc.chart, source);
+    if (chart) out.chart = chart;
+  }
   if (
     doc.animatedTrack === "camera" ||
     doc.animatedTrack === "layeredScreenshot" ||
-    doc.animatedTrack === "compare"
+    doc.animatedTrack === "compare" ||
+    doc.animatedTrack === "chart"
   ) {
     out.animatedTrack = doc.animatedTrack;
   } else if (doc.animatedTrack !== undefined) {
     console.warn(
-      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare, dropped`,
+      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare|chart, dropped`,
     );
   }
   return out;

@@ -1,0 +1,85 @@
+{
+  "id": "preview-lab-chart-anim",
+  "name": "Preview Lab: chart build-ins (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-default",
+  "formats": ["16:9"],
+  "scenes": [
+    {
+      "file": "scenes/chartanim-rise.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-draw.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-sweep.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-fadeUp.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-wipe.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-pop.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-ticker.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-trace.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-assemble.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-bloom.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-drop.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-orbitBuild.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-wave.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-marketPulse.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-surge.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-momentum.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-ledger.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-allocation.tsx",
+      "durationMs": 2500
+    },
+    {
+      "file": "scenes/chartanim-breakout.tsx",
+      "durationMs": 2500
+    }
+  ]
+}

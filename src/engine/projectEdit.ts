@@ -22,7 +22,7 @@ export function moveProjectScene(slug: string, from: number, to: number): Promis
   return invoke("move_project_scene", { slug, from, to });
 }
 
-/** Duplicate a scene (TSX + sidecar copy to a freshly numbered stem); the new entry lands at `position` (omitted = append). A new TSX file, so callers must bump the module reload token. */
+/** Duplicate a scene (TSX + sidecar copy to a freshly numbered stem, with a fresh unique `defineScene` id); the new entry lands at `position` (omitted = append). A new TSX file, so callers must bump the module reload token. */
 export function duplicateProjectScene(
   slug: string,
   index: number,

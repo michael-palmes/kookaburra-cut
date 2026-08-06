@@ -17,6 +17,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     projectLoaded: true,
     isWorkspace: true,
     hasAudio: true,
+    hasChart: false,
     exporting: false,
     hasWorkspaceRoot: true,
     playing: false,
@@ -35,6 +36,8 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
       openMedia: noop,
       openTheme: noop,
       editScreenshotStack: noop,
+      addChart: noop,
+      editChartData: noop,
       setSoundtrack: noop,
       removeSoundtrack: noop,
       toggleRail: noop,
@@ -79,6 +82,22 @@ describe("buildCommands (the vocabulary pin)", () => {
     ]) {
       expect(ids, `missing command ${required}`).toContain(required);
     }
+  });
+
+  it("pairs the chart commands off the scene's chart block", () => {
+    const without = Object.fromEntries(buildCommands(ctx()).map((c) => [c.id, c.enabled] as const));
+    expect(without["scene.addChart"]).toBe(true);
+    expect(without["scene.editChartData"]).toBe(false);
+    const with_ = Object.fromEntries(
+      buildCommands(ctx({ hasChart: true })).map((c) => [c.id, c.enabled] as const),
+    );
+    expect(with_["scene.addChart"]).toBe(false);
+    expect(with_["scene.editChartData"]).toBe(true);
+    // Both are workspace-only edits (bundled projects have no native write path).
+    const bundled = Object.fromEntries(
+      buildCommands(ctx({ isWorkspace: false })).map((c) => [c.id, c.enabled] as const),
+    );
+    expect(bundled["scene.addChart"]).toBe(false);
   });
 
   it("never lists the CURRENT project as an open target", () => {

@@ -1,6 +1,8 @@
 /** Validation for the overlay ("frame") block, in `project.json` as the deck default and in a scene sidecar as the per-scene override. Same degrade-don't-crash contract as `parseSceneDoc`: a malformed optional field drops with a warning, a malformed `cutout` drops the whole block, nothing throws. PURE module (validation only). See docs/overlays.md. */
 
 import type {
+  FrameChartPosition,
+  FrameChartSlot,
   FrameChipSpec,
   FrameCutoutSpec,
   FrameDecorationLayer,
@@ -16,6 +18,7 @@ import type { SceneTextAlign } from "./sceneDocSchema";
 const SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule", "none"];
 const SIDES: FrameSide[] = ["start", "end"];
 const DECORATION_SHAPES: FrameDecorationShape[] = ["none", "circle"];
+const CHART_POSITIONS: FrameChartPosition[] = ["below", "replace"];
 const DECORATION_LAYERS: FrameDecorationLayer[] = ["above", "below"];
 const TEXT_ALIGNS: SceneTextAlign[] = ["left", "center", "right"];
 /** Theme colour tokens (`theme/schema.ts` requires exactly these four). */
@@ -50,6 +53,29 @@ function parseChip(raw: unknown, source: string): FrameChipSpec | undefined {
   }
   if (typeof raw.icon === "string" && raw.icon.length > 0) chip.icon = raw.icon;
   return chip;
+}
+
+/** The panel's chart slot. `true` is the whole authoring surface for the common case (host the scene's panel chart on the defaults), `false` switches an inherited deck slot off, and the object form carries the two layout options. Sizes are NOT clamped here: absence stays legible and `framePanelChartSlot` owns the defaults and bounds. */
+function parseChartSlot(raw: unknown, source: string): FrameChartSlot | undefined {
+  if (raw === true) return {};
+  if (raw === false) return { enabled: false };
+  if (!isRecord(raw)) {
+    console.warn(`[frame] ${source}: chart isn't a boolean or an object, dropped`);
+    return undefined;
+  }
+  const slot: FrameChartSlot = {};
+  if (raw.enabled === false) slot.enabled = false;
+  const height = num(raw.height);
+  if (height !== undefined) slot.height = height;
+  else if (raw.height !== undefined) {
+    console.warn(`[frame] ${source}: chart.height isn't a finite number, dropped`);
+  }
+  if (CHART_POSITIONS.includes(raw.position as FrameChartPosition)) {
+    slot.position = raw.position as FrameChartPosition;
+  } else if (raw.position !== undefined) {
+    console.warn(`[frame] ${source}: chart.position isn't below|replace, dropped`);
+  }
+  return slot;
 }
 
 function parseDecoration(
@@ -149,6 +175,10 @@ export function parseFrameOverride(raw: unknown, source: string): FrameOverrideS
   if (raw.chip !== undefined) {
     const chip = parseChip(raw.chip, source);
     if (chip) out.chip = chip;
+  }
+  if (raw.chart !== undefined) {
+    const chart = parseChartSlot(raw.chart, source);
+    if (chart) out.chart = chart;
   }
   if (raw.decorations !== undefined) {
     if (Array.isArray(raw.decorations)) {

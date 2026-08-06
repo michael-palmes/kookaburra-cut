@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
+import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
 import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
@@ -25,6 +26,8 @@ import {
   type SceneDocRigPose,
   type SceneDocVideoWindow,
   type SceneTextAlign,
+  TEXT_LINE_HEIGHT_MAX,
+  TEXT_LINE_HEIGHT_MIN,
   type VideoWindowMotionPreset,
 } from "../../engine/sceneDocSchema";
 import { defaultRigPose } from "../../engine/sceneRig";
@@ -91,8 +94,15 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
-import { objectRowLabel, type SceneSectionModel, sceneSections } from "../inspectorOptions";
+import {
+  chartRowValue,
+  drillStackForScene,
+  objectRowLabel,
+  type SceneSectionModel,
+  sceneSections,
+} from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
+import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
 import { LightingSectionBody } from "./LightingSection";
 
 /** Sideways step between devices: a phone auto-fits 2.6 world units tall (~1.26 wide at scale 1), a laptop width-fits to 3.4, so these clear one footprint with margin. */
@@ -111,6 +121,8 @@ const SCREEN_TITLES: Record<string, string> = {
   "style.background": "Background",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
+  "chart.edit": "Chart",
+  "chart.position": "Position",
   "device.position": "Position",
 };
 
@@ -201,16 +213,19 @@ import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
 import { TransitionModal } from "../TransitionPicker";
 import { describeSpec } from "../textAnimationOptions";
+import { isTypingIn } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { DeviceDrillIn } from "./DeviceDrillIn";
+import { DofFields } from "./DofFields";
 import {
   ActionRow,
   DrillBack,
   DrillGroup,
+  GizmoModeIcon,
   middleTruncate,
   NumberField,
   SegmentedRow,
@@ -377,6 +392,37 @@ function SceneRowIcon({ id }: { id: string }) {
           <rect x="3" y="4" width="14" height="12" rx="2" />
           <path d="M10 4v12" />
           <path d="M6 10h2M12 10h2" opacity="0.7" />
+        </svg>
+      );
+    case "chart.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M3 16.5h14" />
+          <path d="M5.5 16V9M10 16V4.5M14.5 16v-4" />
+        </svg>
+      );
+    case "chart.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M3 15.5h9" />
+          <path d="M5 15V9.5M9 15V5" />
+          <path d="M15 11v6M12 14h6" />
         </svg>
       );
     case "device.duplicate":
@@ -789,8 +835,7 @@ function DurationRow({
     onCommit: (seconds) => onCommit(Math.round(seconds * 1000)),
   });
   useEffect(() => {
-    if (!dragging && document.activeElement !== inputRef.current)
-      setText((durationMs / 1000).toFixed(2));
+    if (!dragging && !isTypingIn(inputRef.current)) setText((durationMs / 1000).toFixed(2));
   }, [durationMs, dragging]);
   const commit = () => {
     const seconds = Number(text);
@@ -865,43 +910,6 @@ function LidRow({
       />
       <span className="inspector-unit">{`${Math.round(v)}°`}</span>
     </div>
-  );
-}
-
-/** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size. */
-function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
-  const glyph = {
-    translate: (
-      <>
-        <path d="M10 3.5v13M3.5 10h13" />
-        <path d="M8 5.5l2-2 2 2M8 14.5l2 2 2-2M5.5 8l-2 2 2 2M14.5 8l2 2-2 2" />
-      </>
-    ),
-    rotate: (
-      <>
-        <path d="M16.2 10a6.2 6.2 0 11-1.9-4.5" />
-        <path d="M16.6 2.6v3.2h-3.2" />
-      </>
-    ),
-    scale: (
-      <>
-        <rect x="3.5" y="8.5" width="8" height="8" rx="1" />
-        <path d="M11.5 8.5L16.5 3.5M16.5 7V3.5H13" />
-      </>
-    ),
-  }[mode];
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      {glyph}
-    </svg>
   );
 }
 
@@ -1438,6 +1446,37 @@ function CameraSectionBody({
           onCommit={(n) => commitPose((p) => (p.target[2] = n))}
         />
       </div>
+      <DofFields
+        keys={camera.keys}
+        targetKeyId={targetKey?.id ?? null}
+        authored={pose.dof}
+        autoDistance={pose.distance}
+        autoLabel="the target"
+        preview={(next) =>
+          previewPose((p) => {
+            if (next) p.dof = next;
+            else delete p.dof;
+          })
+        }
+        commit={(next) =>
+          commitPose((p) => {
+            if (next) p.dof = next;
+            else delete p.dof;
+          })
+        }
+        commitAll={(map) =>
+          void commit({
+            ...camera,
+            keys: camera.keys.map((key) => {
+              const dof = map(key.pose.dof);
+              const nextPose = { ...key.pose };
+              if (dof) nextPose.dof = dof;
+              else delete nextPose.dof;
+              return { ...key, pose: nextPose };
+            }),
+          })
+        }
+      />
       <ActionRow
         icon={<SceneRowIcon id="camera.animate" />}
         label="Animate scene"
@@ -1595,6 +1634,9 @@ const ALIGN_OPTIONS: { id: SceneTextAlign; label: string }[] = [
   { id: "center", label: "Centre" },
   { id: "right", label: "Right" },
 ];
+
+/** Where the line-spacing slider parks for troika's own "normal" spacing; landing here clears the override, so an untouched field keeps rendering exactly as it always has. */
+const LINE_SPACING_NORMAL = 1.2;
 
 /** Background fill-type icons for the drill-in's tile grid; same 20-viewBox stroke style as SceneRowIcon. */
 function BgTypeIcon({ id }: { id: string }) {
@@ -1772,6 +1814,7 @@ export function SceneTab({
   const backLabel =
     drillStack.length > 1 ? (SCREEN_TITLES[drillStack[drillStack.length - 2]] ?? "Scene") : "Scene";
   const openDrill = useUiStore((s) => s.openInspectorDrill);
+  const jumpDrill = useUiStore((s) => s.jumpInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
@@ -1813,6 +1856,8 @@ export function SceneTab({
   const vwDragBaseline = useRef<SceneDoc | null>(null);
   // The Position drill's drag baseline (same pattern).
   const posDragBaseline = useRef<SceneDoc | null>(null);
+  // The Text drill's line-spacing drag baseline (same pattern).
+  const lineDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
@@ -1829,8 +1874,9 @@ export function SceneTab({
     setTextValues((v) => ({ ...v, [key]: value }));
     if (!textEditBaseline.current && doc) textEditBaseline.current = structuredClone(doc);
     if (textEditTimer.current !== null) window.clearTimeout(textEditTimer.current);
-    textEditTimer.current = window.setTimeout(() => {
-      textEditTimer.current = null;
+    // The handle check keeps a write detached by a scene change from clearing the new scene's own.
+    const id = window.setTimeout(() => {
+      if (textEditTimer.current === id) textEditTimer.current = null;
       void patchDoc(
         (next) => {
           next.text = { ...(next.text ?? {}), [key]: value };
@@ -1838,6 +1884,7 @@ export function SceneTab({
         { history: false },
       );
     }, 200);
+    textEditTimer.current = id;
   };
   const flushText = () => {
     if (textEditTimer.current !== null) {
@@ -1900,6 +1947,25 @@ export function SceneTab({
     }
     if (store.selected) store.select(null);
   }, [drillIn, sceneIndex, stagedObjectId]);
+  // The staged chart's gizmo, same contract: it posts finished drags here, and follows its own drill.
+  useEffect(() => {
+    return useChartEditStore.subscribe((s) => {
+      const commit = s.pendingCommit;
+      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      useChartEditStore.getState().clearCommit();
+      void patchDocRef.current((next) => {
+        if (next.chart) next.chart.placement = commit.placement;
+      });
+    });
+  }, [sceneIndex]);
+  useEffect(() => {
+    const store = useChartEditStore.getState();
+    if (drillIn === "chart.position") {
+      store.select({ sceneIndex });
+      return () => useChartEditStore.getState().select(null);
+    }
+    if (store.selected) store.select(null);
+  }, [drillIn, sceneIndex]);
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -1958,7 +2024,8 @@ export function SceneTab({
     [],
   );
 
-  // Collapse transient state when the playhead moves to another scene.
+  // Collapse transient state when the playhead moves to another scene. The open screen stays put
+  // where the new scene has it (its editor reads the new doc), else it pops back a level.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-scene
   useEffect(() => {
     setModal(null);
@@ -1969,14 +2036,35 @@ export function SceneTab({
     setConfirmRemoveCompare(false);
     setBgTarget("scene");
     setLightingTarget("scene");
-    resetDrill();
+    // Text drafts are keyed by field name, not by scene, so a leftover would shadow the new
+    // scene's text. A pending debounce is detached rather than cancelled: its closure holds the
+    // old scene's patchDoc, so unflushed typing still lands on the scene it was typed in.
+    setTextValues({});
+    textEditTimer.current = null;
+    textEditBaseline.current = null;
+    setIconDraft(null);
+    iconEditTimer.current = null;
+    iconEditBaseline.current = null;
+    setThemeDraft(doc?.themeId ?? "");
+    const kept = drillStackForScene(drillStack, {
+      hasDoc: !!doc,
+      textKeys: Object.keys(doc?.text ?? {}),
+      hasDevice: devices.length > 0,
+      hasObject: objects.length > 0,
+      hasOverlay: project.deckFrame !== undefined || doc?.frame?.cutout !== undefined,
+    });
+    if (kept.length !== drillStack.length) {
+      if (kept.length === 0) resetDrill();
+      else jumpDrill(kept);
+    }
     setRenaming(false);
     setBgTabOverride(null);
+    setBackingTabOverride(null);
     setLiveThumb((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
-  }, [sceneIndex, resetDrill]);
+  }, [sceneIndex, resetDrill, jumpDrill]);
 
   // The remove confirmation disarms itself (the EditBar pattern).
   useEffect(() => {
@@ -2129,6 +2217,12 @@ export function SceneTab({
       };
     });
     openDrill("compare.edit");
+  };
+  const addChart = () => {
+    void patchDoc((next) => {
+      next.chart = newChartBlock();
+    });
+    jumpDrill(["chart.edit"]);
   };
   const addOverlay = () =>
     void patchDoc((next) => {
@@ -4379,12 +4473,13 @@ export function SceneTab({
       setIconDraft(value);
       if (!iconEditBaseline.current) iconEditBaseline.current = structuredClone(doc);
       if (iconEditTimer.current !== null) window.clearTimeout(iconEditTimer.current);
-      iconEditTimer.current = window.setTimeout(() => {
-        iconEditTimer.current = null;
+      const id = window.setTimeout(() => {
+        if (iconEditTimer.current === id) iconEditTimer.current = null;
         void patchDoc((next) => writeHeaderIcon(next, value.trim() || undefined), {
           history: false,
         });
       }, 200);
+      iconEditTimer.current = id;
     };
     const flushHeaderIcon = () => {
       if (iconEditTimer.current !== null) {
@@ -4411,16 +4506,30 @@ export function SceneTab({
       const v = doc.textStyle?.[k];
       return typeof v === "number" ? v : undefined;
     };
+    const writeStyle = (k: string, value: string | number | undefined) => (next: SceneDoc) => {
+      const style = { ...(next.textStyle ?? {}) };
+      if (value === undefined) delete style[k];
+      else style[k] = value;
+      next.textStyle = Object.keys(style).length > 0 ? style : undefined;
+    };
     const patchStyle = (history: string, k: string, value: string | number | undefined) =>
-      void patchDoc(
-        (next) => {
-          const style = { ...(next.textStyle ?? {}) };
-          if (value === undefined) delete style[k];
-          else style[k] = value;
-          next.textStyle = Object.keys(style).length > 0 ? style : undefined;
-        },
-        { history },
-      );
+      void patchDoc(writeStyle(k, value), { history });
+    // Slider drags write live (history-less) and record ONE entry on release, the lighting/position drill pattern.
+    const liveStyle = (k: string, value: string | number | undefined) => {
+      if (!lineDragBaseline.current) lineDragBaseline.current = structuredClone(doc);
+      void patchDoc(writeStyle(k, value), { history: false });
+    };
+    const commitStyle = (history: string, k: string, value: string | number | undefined) => {
+      const baseline = lineDragBaseline.current;
+      lineDragBaseline.current = null;
+      if (baseline) void commitFromBaseline(baseline, writeStyle(k, value));
+      else patchStyle(history, k, value);
+    };
+    // Snap to the 0.05 grid so the slider's own float drift can't write 1.2000000000000002 (which would also miss the clear-at-Normal test).
+    const lineSpacing = (n: number): number | undefined => {
+      const v = Math.round(n * 20) / 20;
+      return v === LINE_SPACING_NORMAL ? undefined : v;
+    };
     const clearAllText = () => {
       // Drop pending live edits first so a focused field can't write itself back.
       if (textEditTimer.current !== null) {
@@ -4582,6 +4691,42 @@ export function SceneTab({
                         )
                       }
                     />
+                  </div>
+                )}
+                {styleCapable.has(key) && (
+                  <div className="popover-row text-style-line-row">
+                    <span className="popover-inline slider-row-label">Line spacing</span>
+                    <DebouncedRange
+                      label={`${label} line spacing`}
+                      value={styleNum(`${key}LineHeight`) ?? LINE_SPACING_NORMAL}
+                      min={TEXT_LINE_HEIGHT_MIN}
+                      max={TEXT_LINE_HEIGHT_MAX}
+                      step={0.05}
+                      onInput={(n) => liveStyle(`${key}LineHeight`, lineSpacing(n))}
+                      onCommit={(n) =>
+                        commitStyle(
+                          `${label.toLowerCase()} line spacing`,
+                          `${key}LineHeight`,
+                          lineSpacing(n),
+                        )
+                      }
+                    />
+                    {styleNum(`${key}LineHeight`) !== undefined && (
+                      <button
+                        type="button"
+                        className="inspector-reset-btn"
+                        title="Back to the font's normal line spacing"
+                        onClick={() =>
+                          patchStyle(
+                            `${label.toLowerCase()} line spacing`,
+                            `${key}LineHeight`,
+                            undefined,
+                          )
+                        }
+                      >
+                        Normal
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -5611,6 +5756,34 @@ export function SceneTab({
     );
   }
 
+  if (drillIn === "chart.edit" && doc?.chart) {
+    return (
+      <ChartDrillIn
+        doc={doc}
+        theme={sceneTheme ?? project.theme}
+        hasPanel={sceneFrame !== undefined}
+        panelHostsChart={!!sceneFrame?.chart && sceneFrame.chart.enabled !== false}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        onOpenPosition={() => openDrill("chart.position")}
+        patchDoc={patchDoc}
+        commitFromBaseline={commitFromBaseline}
+      />
+    );
+  }
+
+  if (drillIn === "chart.position" && doc?.chart?.mount === "staged") {
+    return (
+      <ChartPlacementDrillIn
+        doc={doc}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        patchDoc={patchDoc}
+        commitFromBaseline={commitFromBaseline}
+      />
+    );
+  }
+
   // ── The section list ──────────────────────────────────────────────────────
   const renderSectionRows = (section: SceneSectionModel) =>
     section.rows.map((row) => {
@@ -5954,6 +6127,22 @@ export function SceneTab({
       label: "Add comparison",
       icon: "compare.edit",
       onClick: addCompare,
+    });
+  if (doc?.chart)
+    contentEntries.push({
+      key: "chart",
+      label: "Chart",
+      icon: "chart.edit",
+      value: chartRowValue(doc.chart),
+      onClick: () => openDrill("chart.edit"),
+    });
+  else if (doc)
+    addEntries.push({
+      key: "chart.add",
+      label: "Add chart",
+      icon: "chart.add",
+      chevron: false,
+      onClick: addChart,
     });
   if (objects.length > 0)
     contentEntries.push({
