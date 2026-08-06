@@ -19,6 +19,7 @@ edge.
 | Scene text | Overlay claims it, scene headline auto-hides | Single source of truth stays the sidecar `text` record. |
 | Centring | Fit: the cutout becomes the design frame | Existing scenes compose correctly with no edits. |
 | Decorations | Draw above everything, may cross the cutout edge | The breakout is what makes the layout read as designed. |
+| Decoration content | An image or a line of text, the string on the spec | Positioned art, not body copy: several decorations each need their own string, and none belongs in the document's text map. |
 | Transitions | The whole frame transitions with the scene | Each slide carries its own title and chip, so the frame change *is* the slide change. |
 | Shapes | rect, rounded-rect, squircle, circle, capsule, none | Superellipse squircle is its own SDF, not a rounded rect. `none` removes the cutout: the panel fills the whole frame, no scene shows through, `side`/`size`/`inset`/`radius` are no-ops, and content centres by default. |
 | Colour | Theme tokens, with a custom override | Overlays restyle with the theme, one-off brand colours still possible. |
@@ -111,15 +112,22 @@ export interface FrameChipSpec {
   icon?: string;
 }
 
+/** One positioned mark: an image or a line of text, EXACTLY one of src/text. */
 export interface FrameDecorationSpec {
   id: string;
   /** Project-relative asset path. */
-  src: string;
+  src?: string;
+  /** The text decoration's line; lives here, not in the doc's `text` map. */
+  text?: string;
+  /** Text fill: theme token or hex. Text only. */
+  colour?: string;
+  /** Theme face for text; default "headline". */
+  face?: "headline" | "body";
   /** Frame-relative centre, -1..1 on both axes. */
   position: [number, number];
-  /** Width as a fraction of the frame width. */
+  /** An image's width, or text's font size, as a fraction of the frame width. */
   size: number;
-  /** "circle" crops to a disc, for avatars. */
+  /** "circle" crops to a disc, for avatars. Images only. */
   shape?: "none" | "circle";
   layer?: "above" | "below";
 }
@@ -238,17 +246,47 @@ resolve, degrades to the flat colour, never to nothing.
 
 ### Decorations
 
-Decorations are positioned images in the panel: `position` is frame-relative
-(-1..1 on both axes), `size` is a fraction of the frame width, `shape: "circle"`
-crops to a disc (an SDF alpha on the plane uv, expecting a roughly square source)
-and `layer` orders them. They draw in the panel's over-slide pass, so they always
-sit above the cutout scene: `above` (the default) draws over the editorial text
-and may cross the cutout edge (the breakout), `below` tucks behind the text as a
-panel flourish. True behind-the-cutout layering would need the slide pass split
-into panel-fill, below-decorations and an alpha scene key, and is deferred (the
-locked decision is "above everything"). Textures are drei-cached and never
-mutated (so sharing an asset across scenes is safe) and settle in the export
-preamble via `preloadProjectImages`.
+Decorations are positioned marks in the panel: `position` is frame-relative
+(-1..1 on both axes), `size` is a fraction of the frame width, and `layer` orders
+them. They draw in the panel's over-slide pass, so they always sit above the
+cutout scene: `above` (the default) draws over the editorial text and may cross
+the cutout edge (the breakout), `below` tucks behind the text as a panel
+flourish. True behind-the-cutout layering would need the slide pass split into
+panel-fill, below-decorations and an alpha scene key, and is deferred (the locked
+decision is "above everything").
+
+Each decoration carries exactly one of `src` or `text`, and `FrameDecoration`
+routes on that the way `FrameIcon` routes an icon:
+
+| Route | Render |
+| --- | --- |
+| `src` | A `MeshBasicMaterial` plane sized by the texture's natural aspect; `shape: "circle"` crops to a disc (an SDF alpha on the plane uv, expecting a roughly square source). Textures are drei-cached and never mutated (so sharing an asset across scenes is safe) and settle in the export preamble via `preloadProjectImages`. |
+| `text` | One `AnimatedHeadline` (troika, the theme's `face`, filled by `colour` or the text token), `size` being the FONT size as a fraction of the frame width. Shape does not apply. |
+
+Decoration text lives on the spec, not in the document's `text` map: it is
+positioned art, not body copy, and several decorations each need their own
+string. It carries no `textKey`, so no `textStyle.*` override touches it. Both
+routes honour `rotationDeg`; a text decoration's rotation and layer band ride a
+wrapping group, whose order is the render list's GROUP order, so a text
+decoration sits over an image one in the same band.
+
+The inspector's decoration gizmo boxes a text decoration from the panel's troika
+measurement cache (`measuredPanelTextBlock`), falling back to the advance
+estimate until the typeset lands. That measurement is DOM-side only: the render
+path needs none, since a text decoration's font size comes straight from `size`.
+
+### A fresh overlay
+
+`FramePanel` bails when the panel has no text, icon, chip, chart or decoration,
+but that only stands the CONTENT down: `renderFramedScene` still paints the panel
+fill and keys the scene through the cutout, so a scaffolded overlay reads as a
+slide from the first insert. Nothing is seeded to prop it up (the starter `"New"`
+chip is gone from all three scaffold sites: `scene_doc.rs`, the inspector's
+`addOverlay` and `.claude/commands/new-scene.md`).
+
+The one exception is the full-panel variant (`cutout: { shape: "none" }`), which
+has no window to read: with no copy it would be a flat fill and nothing else, so
+the scaffolder seeds `text.title` there when the author gave none.
 
 ## Determinism
 

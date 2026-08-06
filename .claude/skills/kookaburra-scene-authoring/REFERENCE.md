@@ -408,12 +408,17 @@ replaces the deck's outright (never deep-merges); other fields override field-by
                                   // { "type": "image", "src": "assets/panel.png" } (cover-cropped)
   "icon": "🚀",                   // emoji or project-relative asset path, drawn above the title
   "chip": { "label": "New", "icon": "circle-check", "colour": "accent" },
-  "decorations": [                // images placed on the panel (avatars, logos, illustrations)
+  "decorations": [                // marks placed on the panel: EXACTLY one of "src" or "text"
     { "id": "a1", "src": "assets/avatar.png", "position": [-0.62, 0.3],
-      "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" }
-  ],                              // position is frame-relative -1..1 both axes; size is a
-                                  // fraction of frame width; "above" draws OVER the cutout
-                                  // (the deliberate breakout), "below" tucks behind it
+      "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" },
+    { "id": "t1", "text": "Since 2019", "colour": "accent", "face": "body",
+      "position": [0.4, -0.55], "size": 0.05, "rotationDeg": -6, "layer": "above" }
+  ],                              // position is frame-relative -1..1 both axes; size is the
+                                  // image's WIDTH, or the text's FONT SIZE, as a fraction of
+                                  // the frame width; "above" draws OVER the cutout (the
+                                  // deliberate breakout), "below" tucks behind it; "shape"
+                                  // is image-only, and decoration text lives HERE, never in
+                                  // the doc's text map (it is positioned art, not body copy)
   "textAlign": "left",
   "claimsSceneText": true         // default true: the panel takes the sidecar's text.title /
                                   // text.subtitle / text.bullets and suppresses the in-world

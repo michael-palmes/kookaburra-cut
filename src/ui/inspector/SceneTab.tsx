@@ -52,9 +52,11 @@ import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
+import { isTextDecoration } from "../../toolkit/frame/icon";
 import type {
   FrameChipSpec,
   FrameCutoutSpec,
+  FrameDecorationFace,
   FrameDecorationLayer,
   FrameDecorationShape,
   FrameDecorationSpec,
@@ -1152,18 +1154,25 @@ const CHIP_PRESETS: { id: string; label: string; colour: string; icon: ChipIconI
   { id: "error", label: "Error", colour: "#e05656", icon: "circle-x" },
 ];
 
-/** A decoration's display name: its asset basename. */
-function decorationLabel(src: string): string {
+/** A decoration's display name: its first line of text, else its asset basename. */
+function decorationLabel(d: FrameDecorationSpec): string {
+  if (isTextDecoration(d)) return d.text?.split("\n")[0] || "Text";
+  const src = d.src ?? "";
   return src.split("/").pop() || src;
 }
 
-/** A unique decoration id from a picked asset's stem, deduped against the existing ids. */
-function nextDecorationId(src: string, taken: Set<string>): string {
-  const stem = decorationLabel(src).replace(/\.[^.]+$/, "") || "decoration";
+/** A unique decoration id from a stem, deduped against the existing ids. */
+function uniqueDecorationId(stem: string, taken: Set<string>): string {
   if (!taken.has(stem)) return stem;
   let n = 2;
   while (taken.has(`${stem}-${n}`)) n++;
   return `${stem}-${n}`;
+}
+
+/** A unique decoration id from a picked asset's stem. */
+function nextDecorationId(src: string, taken: Set<string>): string {
+  const base = src.split("/").pop() || src;
+  return uniqueDecorationId(base.replace(/\.[^.]+$/, "") || "decoration", taken);
 }
 
 /** The Animations section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
@@ -2429,8 +2438,13 @@ export function SceneTab({
     }
     const decos = sceneFrame?.decorations ?? [];
     const { replaceId } = mediaTarget;
+    // A pick always lands an IMAGE decoration, so a text one switching type drops its text fields.
     const nextDecos: FrameDecorationSpec[] = replaceId
-      ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+      ? decos.map((d) =>
+          d.id === replaceId
+            ? { ...d, src: rel, text: undefined, colour: undefined, face: undefined }
+            : d,
+        )
       : [
           ...decos,
           {
@@ -2899,9 +2913,34 @@ export function SceneTab({
       setMediaTarget({ kind: "decoration", replaceId });
       setModal("media");
     };
+    // Switching to text keeps the placement and drops the image-only fields; switching back rides the picker, since an image decoration needs a `src` to exist.
+    const makeText = (d: FrameDecorationSpec) =>
+      patchDeco(d.id, { text: d.text ?? "Text", src: undefined, shape: undefined });
+    const addText = () =>
+      writeDecos([
+        ...decos,
+        {
+          id: uniqueDecorationId("text", new Set(decos.map((d) => d.id))),
+          text: "Text",
+          position: [0.45, -0.5],
+          size: 0.05,
+          layer: "above",
+        },
+      ]);
+    const textColour = sceneTheme?.colors.text ?? "#ffffff";
+    const decoColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? textColour;
+    };
     const shapes: { id: FrameDecorationShape; label: string }[] = [
       { id: "none", label: "Natural" },
       { id: "circle", label: "Circle" },
+    ];
+    const faces: { id: FrameDecorationFace; label: string }[] = [
+      { id: "headline", label: "Headline" },
+      { id: "body", label: "Body" },
     ];
     const layers: { id: FrameDecorationLayer; label: string }[] = [
       { id: "below", label: "Behind" },
@@ -2914,115 +2953,181 @@ export function SceneTab({
         <div className="inspector-drill-body">
           {decos.length === 0 && (
             <p className="modal-hint">
-              Positioned images that break out of the panel, like a logo or avatar.
+              Positioned images and text that break out of the panel, like a logo, an avatar or a
+              hand-placed caption.
             </p>
           )}
-          {decos.map((d) => (
-            <div
-              key={d.id}
-              className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
-              onPointerDown={() => selectDeco(d.id)}
-            >
-              <div className="deco-card-head">
-                <span className="deco-card-name" title={d.src}>
-                  {decorationLabel(d.src)}
-                </span>
-                <button
-                  type="button"
-                  className="deco-remove"
-                  title="Remove decoration"
-                  aria-label="Remove decoration"
-                  onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
-                >
-                  Remove
-                </button>
-              </div>
-              <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
-                Replace image
-              </button>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Across</span>
-                <DebouncedRange
-                  value={d.position[0]}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  label="Horizontal position"
-                  onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Up/down</span>
-                <DebouncedRange
-                  value={d.position[1]}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  label="Vertical position"
-                  onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Size</span>
-                <DebouncedRange
-                  value={d.size}
-                  min={0.03}
-                  max={0.6}
-                  step={0.01}
-                  label="Size"
-                  onCommit={(v) => patchDeco(d.id, { size: v })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Rotation</span>
-                <DebouncedRange
-                  value={d.rotationDeg ?? 0}
-                  min={-180}
-                  max={180}
-                  step={1}
-                  label="Rotation"
-                  onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline">
-                  Shape
-                  <div className="wizard-presets">
-                    {shapes.map((s) => (
+          {decos.map((d) => {
+            const isText = isTextDecoration(d);
+            return (
+              <div
+                key={d.id}
+                className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
+                onPointerDown={() => selectDeco(d.id)}
+              >
+                <div className="deco-card-head">
+                  <span className="deco-card-name" title={isText ? d.text : d.src}>
+                    {decorationLabel(d)}
+                  </span>
+                  <button
+                    type="button"
+                    className="deco-remove"
+                    title="Remove decoration"
+                    aria-label="Remove decoration"
+                    onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline">
+                    Type
+                    <div className="wizard-presets">
                       <button
-                        key={s.id}
                         type="button"
-                        className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
-                        onClick={() => patchDeco(d.id, { shape: s.id })}
+                        className={`chip${isText ? "" : " selected"}`}
+                        onClick={() => openImagePicker(d.id)}
                       >
-                        {s.label}
+                        Image
                       </button>
-                    ))}
-                  </div>
-                </span>
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline">
-                  Layer
-                  <div className="wizard-presets">
-                    {layers.map((l) => (
                       <button
-                        key={l.id}
                         type="button"
-                        className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
-                        onClick={() => patchDeco(d.id, { layer: l.id })}
+                        className={`chip${isText ? " selected" : ""}`}
+                        onClick={() => makeText(d)}
                       >
-                        {l.label}
+                        Text
                       </button>
-                    ))}
+                    </div>
+                  </span>
+                </div>
+                {isText ? (
+                  <>
+                    <TextFieldRow
+                      label="Text"
+                      value={d.text ?? ""}
+                      placeholder="Your text"
+                      colour={{
+                        value: decoColour(d.colour),
+                        defaultValue: textColour,
+                        onCommit: (hex) => patchDeco(d.id, { colour: hex }),
+                        onReset: () => patchDeco(d.id, { colour: undefined }),
+                      }}
+                      onChange={(t) => patchDeco(d.id, { text: t })}
+                    />
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Face
+                        <div className="wizard-presets">
+                          {faces.map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className={`chip${(d.face ?? "headline") === f.id ? " selected" : ""}`}
+                              onClick={() => patchDeco(d.id, { face: f.id })}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
+                    Replace image
+                  </button>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Across</span>
+                  <DebouncedRange
+                    value={d.position[0]}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    label="Horizontal position"
+                    onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Up/down</span>
+                  <DebouncedRange
+                    value={d.position[1]}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    label="Vertical position"
+                    onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Size</span>
+                  <DebouncedRange
+                    value={d.size}
+                    min={isText ? 0.01 : 0.03}
+                    max={isText ? 0.25 : 0.6}
+                    step={isText ? 0.005 : 0.01}
+                    label="Size"
+                    onCommit={(v) => patchDeco(d.id, { size: v })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Rotation</span>
+                  <DebouncedRange
+                    value={d.rotationDeg ?? 0}
+                    min={-180}
+                    max={180}
+                    step={1}
+                    label="Rotation"
+                    onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
+                  />
+                </div>
+                {!isText && (
+                  <div className="popover-row">
+                    <span className="popover-inline">
+                      Shape
+                      <div className="wizard-presets">
+                        {shapes.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
+                            onClick={() => patchDeco(d.id, { shape: s.id })}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </span>
                   </div>
-                </span>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline">
+                    Layer
+                    <div className="wizard-presets">
+                      {layers.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
+                          onClick={() => patchDeco(d.id, { layer: l.id })}
+                        >
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-          <button type="button" className="btn" onClick={() => openImagePicker()}>
-            Add decoration
-          </button>
+            );
+          })}
+          <div className="inspector-drill-actions">
+            <button type="button" className="btn" onClick={() => openImagePicker()}>
+              Add image
+            </button>
+            <button type="button" className="btn" onClick={addText}>
+              Add text
+            </button>
+          </div>
         </div>
         {mediaModal}
       </div>

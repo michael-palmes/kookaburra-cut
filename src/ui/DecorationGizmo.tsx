@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useDecorationEditStore } from "../engine/decorationEditStore";
+import {
+  LINE_HEIGHT,
+  measuredPanelTextBlock,
+  type PanelTextBlock,
+  type PanelTextSpec,
+  panelMeasureVersion,
+  requestPanelTextMeasure,
+  subscribePanelMeasures,
+} from "../engine/framePanelMeasure";
+import { charAdvance } from "../engine/framePanelText";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { type LoadedProject, resolveAssetUrl, workspaceSlug } from "../engine/project";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { fontUrl } from "../theme/fonts";
+import type { Theme } from "../theme/tokens";
+import { isTextDecoration } from "../toolkit/frame/icon";
 import type { FrameDecorationSpec } from "../toolkit/frame/types";
+import { prepareEmojiText } from "../toolkit/text/emojiText";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 
 /** A direct-manipulation overlay for the active scene's panel decorations: a DOM layer over the letterboxed stage (the export can't see DOM, the CameraToolOverlay precedent) that draws a box per decoration and moves, resizes and rotates it. Pointer maths runs in stage PIXELS: world-to-screen is a uniform scale for the matched-aspect frame, so a world rotation is a true screen rotation (NDC is anisotropic and would skew it). Move/resize/rotate all write the sidecar `frame.decorations` override. See docs/overlays.md. */
@@ -60,6 +74,30 @@ function rotate(vx: number, vy: number, deg: number): [number, number] {
   return [vx * c - vy * s, vx * s + vy * c];
 }
 
+/** The troika measurement a text decoration's box needs: one em (fontSize 1), unwrapped, in the face the renderer types it in. Null for an image decoration. */
+function textSpec(d: FrameDecorationSpec, theme: Theme | undefined): PanelTextSpec | null {
+  if (!isTextDecoration(d) || !d.text || !theme) return null;
+  return {
+    text: prepareEmojiText(d.text).text,
+    font: fontUrl(theme.typography[d.face ?? "headline"]),
+    fontSize: 1,
+    maxWidth: Number.POSITIVE_INFINITY,
+    textAlign: "left",
+  };
+}
+
+/** Em box until the real typeset lands: the panel's advance classes, widest line by line count. */
+function estimateEm(text: string): PanelTextBlock {
+  const lines = text.split("\n");
+  let width = 0;
+  for (const line of lines) {
+    let em = 0;
+    for (const c of line) em += charAdvance(c);
+    width = Math.max(width, em);
+  }
+  return { width, height: lines.length * LINE_HEIGHT };
+}
+
 /** The nearest alignment line to any of the anchors, within the snap threshold, else null. */
 function nearestLine(anchors: number[], lines: number[]): { off: number; line: number } | null {
   let best: { off: number; line: number } | null = null;
@@ -84,10 +122,15 @@ export function DecorationGizmo({
 }: {
   project: LoadedProject;
   sceneIndex: number;
-  /** Frame aspect (width / height); a box's height fraction is `size · aspect / imageAspect`. */
+  /** Frame aspect (width / height); it turns a box's world proportions into frame fractions (see `boxFrac`). */
   aspect: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
+  const measureTick = useSyncExternalStore(
+    subscribePanelMeasures,
+    panelMeasureVersion,
+    panelMeasureVersion,
+  );
   const selectedId = useDecorationEditStore((s) => s.selectedId);
   const select = useDecorationEditStore((s) => s.select);
   const requestMedia = useDecorationEditStore((s) => s.requestMedia);
@@ -106,21 +149,36 @@ export function DecorationGizmo({
   const slug = workspaceSlug(project.id);
   const sceneFile = project.sceneFiles[sceneIndex];
   const doc = project.sceneDocs[sceneIndex] ?? null;
+  const theme = project.sceneThemes[sceneIndex];
 
-  /** A decoration's box height as a fraction of the frame height (also the NDC half-height). */
-  const heightFrac = useCallback(
-    (d: FrameDecorationSpec) =>
-      d.size * (aspect / (d.shape === "circle" ? 1 : (imgAspect[d.src] ?? 1))),
-    [aspect, imgAspect],
+  /** A decoration's box, as fractions of the frame width and height (also the NDC half-extents). An image sizes by its natural aspect (circle crops square); text sizes by its measured em box, both axes scaling with `size` so a corner drag stays a uniform scale. */
+  const boxFrac = useCallback(
+    (d: FrameDecorationSpec): [number, number] => {
+      if (isTextDecoration(d)) {
+        void measureTick;
+        const spec = textSpec(d, theme);
+        const em = (spec && measuredPanelTextBlock(spec)) || estimateEm(d.text ?? "");
+        // An empty (or unmeasured, zero-width) text still needs a grabbable box.
+        return [
+          Math.max(MIN_SIZE, d.size * em.width),
+          Math.max(MIN_SIZE, d.size * em.height) * aspect,
+        ];
+      }
+      return [
+        d.size,
+        d.size * (aspect / (d.shape === "circle" ? 1 : (imgAspect[d.src ?? ""] ?? 1))),
+      ];
+    },
+    [aspect, imgAspect, theme, measureTick],
   );
 
   // Each decoration image's natural aspect, for the box height (shape "none"); circle stays square.
-  const srcKey = decorations.map((d) => d.src).join("|");
+  const srcKey = decorations.map((d) => d.src ?? "").join("|");
   // biome-ignore lint/correctness/useExhaustiveDependencies: srcKey stands in for decorations; the array itself is a fresh identity each render
   useEffect(() => {
     let alive = true;
     for (const d of decorations) {
-      if (requested.current.has(d.src)) continue;
+      if (!d.src || requested.current.has(d.src)) continue;
       requested.current.add(d.src);
       let url: string;
       try {
@@ -129,9 +187,10 @@ export function DecorationGizmo({
         continue;
       }
       const img = new Image();
+      const src = d.src;
       img.onload = () => {
         if (alive && img.naturalHeight > 0) {
-          setImgAspect((m) => ({ ...m, [d.src]: img.naturalWidth / img.naturalHeight }));
+          setImgAspect((m) => ({ ...m, [src]: img.naturalWidth / img.naturalHeight }));
         }
       };
       img.src = url;
@@ -140,6 +199,16 @@ export function DecorationGizmo({
       alive = false;
     };
   }, [srcKey, project.id]);
+
+  // Text decoration boxes come from the panel's troika measurement cache; the estimate stands in until each lands.
+  const textKey = decorations.map((d) => `${d.text ?? ""} ${d.face ?? ""}`).join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: textKey stands in for decorations; the array itself is a fresh identity each render
+  useEffect(() => {
+    for (const d of decorations) {
+      const spec = textSpec(d, theme);
+      if (spec) requestPanelTextMeasure(spec);
+    }
+  }, [textKey, theme]);
 
   // Drop the selection when the gizmo unmounts (drill-in closed).
   useEffect(() => () => select(null), [select]);
@@ -211,8 +280,9 @@ export function DecorationGizmo({
 
   /** Half-extents (px) of a decoration's axis-aligned bounding box, accounting for its rotation. */
   const extents = (d: FrameDecorationSpec, rect: DOMRect): [number, number] => {
-    const hw = (d.size * rect.width) / 2;
-    const hh = (heightFrac(d) * rect.height) / 2;
+    const [wFrac, hFrac] = boxFrac(d);
+    const hw = (wFrac * rect.width) / 2;
+    const hh = (hFrac * rect.height) / 2;
     const r = ((d.rotationDeg ?? 0) * Math.PI) / 180;
     const c = Math.abs(Math.cos(r));
     const s = Math.abs(Math.sin(r));
@@ -240,8 +310,9 @@ export function DecorationGizmo({
     }
     const corner = HANDLES.find((h) => h.id === target.dataset.corner);
     if (corner) {
-      const hwPx = (d.size * rect.width) / 2;
-      const hhPx = (heightFrac(d) * rect.height) / 2;
+      const [wFrac, hFrac] = boxFrac(d);
+      const hwPx = (wFrac * rect.width) / 2;
+      const hhPx = (hFrac * rect.height) / 2;
       const rot = d.rotationDeg ?? 0;
       // Corner offsets in the box's screen-local frame (NDC +y is screen up), rotated into stage pixels.
       const [fx, fy] = rotate(-corner.cx * hwPx, corner.cy * hhPx, rot);
@@ -408,7 +479,9 @@ export function DecorationGizmo({
             select(copyId);
           },
         },
-        { id: "media", label: "Change media…", onSelect: () => requestMedia(id) },
+        ...(isTextDecoration(d)
+          ? []
+          : [{ id: "media", label: "Change media…", onSelect: () => requestMedia(id) }]),
         "separator",
         {
           id: "front",
@@ -448,6 +521,7 @@ export function DecorationGizmo({
       >
         {decorations.map((d) => {
           const selected = d.id === selectedId;
+          const [wFrac, hFrac] = boxFrac(d);
           return (
             <div
               key={d.id}
@@ -456,8 +530,8 @@ export function DecorationGizmo({
               style={{
                 left: `${((d.position[0] + 1) / 2) * 100}%`,
                 top: `${((1 - d.position[1]) / 2) * 100}%`,
-                width: `${d.size * 100}%`,
-                height: `${heightFrac(d) * 100}%`,
+                width: `${wFrac * 100}%`,
+                height: `${hFrac * 100}%`,
                 transform: `translate(-50%, -50%) rotate(${d.rotationDeg ?? 0}deg)`,
               }}
             >

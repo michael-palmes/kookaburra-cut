@@ -52,20 +52,31 @@ function specKey(spec: PanelTextSpec): string {
   return `${spec.font}|${spec.fontSize}|${spec.maxWidth}|${spec.textAlign}|${spec.lineHeight ?? ""}|${spec.text}`;
 }
 
-const heights = new Map<string, number>();
+/** A measured block's world size at the spec's font size. */
+export interface PanelTextBlock {
+  width: number;
+  height: number;
+}
+
+const blocks = new Map<string, PanelTextBlock>();
 const inflight = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let version = 0;
 
 /** Measured block height in world units at the spec's size, or null until the typeset lands. */
 export function measuredPanelTextHeight(spec: PanelTextSpec): number | null {
-  return heights.get(specKey(spec)) ?? null;
+  return blocks.get(specKey(spec))?.height ?? null;
 }
 
-/** Kick a measurement (idempotent); listeners fire when the height lands. */
+/** Measured block width AND height, for callers that need the box rather than the stack budget (the decoration gizmo). Null until the typeset lands. */
+export function measuredPanelTextBlock(spec: PanelTextSpec): PanelTextBlock | null {
+  return blocks.get(specKey(spec)) ?? null;
+}
+
+/** Kick a measurement (idempotent); listeners fire when the block lands. */
 export function requestPanelTextMeasure(spec: PanelTextSpec): void {
   const key = specKey(spec);
-  if (heights.has(key) || inflight.has(key)) return;
+  if (blocks.has(key) || inflight.has(key)) return;
   const job = new Promise<void>((resolve) => {
     const t = new Text();
     t.text = spec.text;
@@ -76,7 +87,7 @@ export function requestPanelTextMeasure(spec: PanelTextSpec): void {
     if (spec.lineHeight !== undefined) t.lineHeight = spec.lineHeight;
     t.sync(() => {
       const b = t.textRenderInfo?.blockBounds;
-      heights.set(key, b ? b[3] - b[1] : 0);
+      blocks.set(key, b ? { width: b[2] - b[0], height: b[3] - b[1] } : { width: 0, height: 0 });
       t.dispose();
       inflight.delete(key);
       version++;

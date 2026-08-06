@@ -45,16 +45,27 @@ export interface FrameChartSlot {
   position?: FrameChartPosition;
 }
 
+/** Which theme face a text decoration types in. */
+export type FrameDecorationFace = "headline" | "body";
+
+/** One positioned mark on the panel: an image or a line of text, EXACTLY one of `src`/`text`. Decoration text lives here rather than in the document's `text` map because it is positioned art, not body copy, and several decorations each need their own string. */
 export interface FrameDecorationSpec {
   id: string;
-  /** Project-relative asset path. */
-  src: string;
+  /** Project-relative asset path; the image decoration. */
+  src?: string;
+  /** The text decoration's line (troika, theme fonts); `\n` is the only break. */
+  text?: string;
+  /** Text fill: a theme token id ("accent", "muted", "text", "background") or a hex override. Text decorations only. */
+  colour?: string;
+  /** Theme face for a text decoration; default "headline". */
+  face?: FrameDecorationFace;
   /** Centre in frame-relative coords, -1..1 on both axes. */
   position: [number, number];
-  /** Width as a fraction of the frame width. */
+  /** An image's width, or a text decoration's font size, as a fraction of the frame width. */
   size: number;
   /** Clockwise rotation in degrees about the decoration's centre; absent (or 0) is upright. */
   rotationDeg?: number;
+  /** Images only: `circle` crops the plane to a disc. */
   shape?: FrameDecorationShape;
   layer?: FrameDecorationLayer;
 }

@@ -181,6 +181,59 @@ describe("parseFrameSpec decorations", () => {
   it("drops a non-array decorations field", () => {
     expect(parseFrameSpec({ ...valid, decorations: {} }, "t")?.decorations).toBeUndefined();
   });
+
+  it("keeps a text decoration with its colour and face", () => {
+    const text = { id: "t1", text: "Since 2019", position: [0.4, -0.5], size: 0.05 };
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, colour: "accent", face: "body" }] }, "t")
+        ?.decorations,
+    ).toEqual([{ ...text, colour: "accent", face: "body" }]);
+  });
+
+  it("keeps an empty text decoration (the inspector's cleared field)", () => {
+    const text = { id: "t1", text: "", position: [0, 0], size: 0.05 };
+    expect(parseFrameSpec({ ...valid, decorations: [text] }, "t")?.decorations).toEqual([text]);
+  });
+
+  it("drops a text decoration's bad colour and face, keeping the decoration", () => {
+    const text = { id: "t1", text: "Hi", position: [0, 0], size: 0.05 };
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, colour: "nope", face: "mono" }] }, "t")
+        ?.decorations,
+    ).toEqual([text]);
+  });
+
+  it("ignores shape on a text decoration and colour/face on an image one", () => {
+    const spec = parseFrameSpec(
+      {
+        ...valid,
+        decorations: [
+          { id: "t1", text: "Hi", position: [0, 0], size: 0.05, shape: "circle" },
+          { ...deco, colour: "accent", face: "body" },
+        ],
+      },
+      "t",
+    );
+    expect(spec?.decorations).toEqual([
+      { id: "t1", text: "Hi", position: [0, 0], size: 0.05 },
+      deco,
+    ]);
+  });
+
+  it("drops a decoration carrying both src and text, or neither", () => {
+    const spec = parseFrameSpec(
+      {
+        ...valid,
+        decorations: [
+          { ...deco, text: "both" },
+          { id: "empty", position: [0, 0], size: 0.1 },
+          deco,
+        ],
+      },
+      "t",
+    );
+    expect(spec?.decorations).toEqual([deco]);
+  });
 });
 
 describe("parseFrameSpec chart slot", () => {

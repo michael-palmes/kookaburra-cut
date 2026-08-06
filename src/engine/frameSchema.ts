@@ -6,6 +6,7 @@ import type {
   FrameChartSlot,
   FrameChipSpec,
   FrameCutoutSpec,
+  FrameDecorationFace,
   FrameDecorationLayer,
   FrameDecorationShape,
   FrameDecorationSpec,
@@ -20,6 +21,7 @@ import type { SceneTextAlign } from "./sceneDocSchema";
 const SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule", "none"];
 const SIDES: FrameSide[] = ["start", "end"];
 const DECORATION_SHAPES: FrameDecorationShape[] = ["none", "circle"];
+const DECORATION_FACES: FrameDecorationFace[] = ["headline", "body"];
 const CHART_POSITIONS: FrameChartPosition[] = ["below", "replace"];
 const DECORATION_LAYERS: FrameDecorationLayer[] = ["above", "below"];
 const TEXT_ALIGNS: SceneTextAlign[] = ["left", "center", "right"];
@@ -129,6 +131,7 @@ function parseChartSlot(raw: unknown, source: string): FrameChartSlot | undefine
   return slot;
 }
 
+/** One decoration: an image (`src`) or a line of text (`text`), never both and never neither. */
 function parseDecoration(
   raw: unknown,
   source: string,
@@ -139,8 +142,15 @@ function parseDecoration(
     console.warn(`[frame] ${source}: ${where} isn't an object — dropped`);
     return undefined;
   }
-  if (typeof raw.id !== "string" || typeof raw.src !== "string") {
-    console.warn(`[frame] ${source}: ${where} needs string "id" + "src" — dropped`);
+  if (typeof raw.id !== "string") {
+    console.warn(`[frame] ${source}: ${where} needs a string "id", dropped`);
+    return undefined;
+  }
+  const src = typeof raw.src === "string" && raw.src.length > 0 ? raw.src : undefined;
+  // An EMPTY text survives (the inspector's cleared field stays an editable text decoration); an empty src does not, since there is nothing to load.
+  const text = typeof raw.text === "string" ? raw.text : undefined;
+  if ((src === undefined) === (text === undefined)) {
+    console.warn(`[frame] ${source}: ${where} needs exactly one of "src" or "text", dropped`);
     return undefined;
   }
   const position = raw.position;
@@ -161,11 +171,22 @@ function parseDecoration(
   }
   const decoration: FrameDecorationSpec = {
     id: raw.id,
-    src: raw.src,
+    ...(src !== undefined ? { src } : { text }),
     position: [px, py],
     size,
   };
-  if (DECORATION_SHAPES.includes(raw.shape as FrameDecorationShape)) {
+  if (text !== undefined) {
+    if (raw.colour !== undefined) {
+      if (isColour(raw.colour)) decoration.colour = raw.colour;
+      else console.warn(`[frame] ${source}: ${where}.colour isn't a theme token or hex, dropped`);
+    }
+    if (DECORATION_FACES.includes(raw.face as FrameDecorationFace)) {
+      decoration.face = raw.face as FrameDecorationFace;
+    } else if (raw.face !== undefined) {
+      console.warn(`[frame] ${source}: ${where}.face isn't headline|body, dropped`);
+    }
+  }
+  if (src !== undefined && DECORATION_SHAPES.includes(raw.shape as FrameDecorationShape)) {
     decoration.shape = raw.shape as FrameDecorationShape;
   }
   if (DECORATION_LAYERS.includes(raw.layer as FrameDecorationLayer)) {
