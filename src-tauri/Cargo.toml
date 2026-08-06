@@ -63,3 +63,8 @@ objc2-app-kit = { version = "0.3", features = [
   "NSColor",
 ] }
 objc2-foundation = "0.3"
+
+# macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
+[profile.release.build-override]
+opt-level = 0
+debug = true
