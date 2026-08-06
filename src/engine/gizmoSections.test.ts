@@ -12,8 +12,24 @@ describe("gizmoDomainForDrill", () => {
     expect(gizmoDomainForDrill("chart.position")).toBe("chart");
   });
 
+  it("maps the two 2D families to their domains", () => {
+    expect(gizmoDomainForDrill("text")).toBe("text");
+    expect(gizmoDomainForDrill("text.font:title")).toBe("text");
+    expect(gizmoDomainForDrill("frame.decorations")).toBe("decorations");
+  });
+
   it("maps everything else to null", () => {
-    for (const id of [null, undefined, "", "text", "frame.decorations", "camera", "lighting"]) {
+    for (const id of [
+      null,
+      undefined,
+      "",
+      "camera",
+      "lighting",
+      "frame",
+      "frame.text",
+      "frame.cutout",
+      "textAnimation",
+    ]) {
       expect(gizmoDomainForDrill(id)).toBeNull();
     }
   });

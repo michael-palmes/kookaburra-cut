@@ -1,10 +1,11 @@
 import { type ThreeEvent, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DoubleSide, type LineSegments, type Mesh, type Object3D } from "three";
+import { DoubleSide, type LineSegments, type Mesh } from "three";
 import { outlineBracketSegments } from "./gizmoOutline";
 import { type GizmoDomain, gizmoHandleAt } from "./gizmoRegistry";
 import { useGizmoSectionOpen } from "./gizmoSections";
 import { GIZMO_COLOURS, GIZMO_OUTLINE_OPACITY } from "./gizmoTokens";
+import { nodeDrawn } from "./gizmoVisibility";
 import { HELPER_LAYER } from "./lightEditStore";
 
 /** The section-scoped selection outline every 3D gizmo host mounts: corner brackets around an item while its inspector section is open, plus an invisible hit box that makes the item click-to-select. Editor-only by the light-helper contract: the brackets sit on HELPER_LAYER (disabled on the export camera for the whole run) and the hit box is `visible={false}`, which `WebGLRenderer.projectObject` returns on, so it is never in a render list at all. */
@@ -56,15 +57,14 @@ export function SceneOutline({
 
   // Only a drawn box claims the shared cursor, and only the box that claimed it hands it back: an off-playhead scene's box is raycastable too, so it would otherwise advertise a click that pointer-down refuses, and clear the cursor out from under the box you are actually over.
   const onPointerOver = () => {
-    if (drawn(hitRef.current)) setCursor(true);
+    if (nodeDrawn(hitRef.current)) setCursor(true);
   };
   const onPointerOut = () => {
     if (hover) setCursor(false);
   };
 
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
-    // Every scene mounts at once and the compositor gates them by group visibility, which three's raycaster ignores.
-    if (!drawn(hitRef.current)) return;
+    if (!nodeDrawn(hitRef.current)) return;
     if (gizmoHandleAt(e.pointer.x, e.pointer.y)) return;
     e.stopPropagation();
     onSelect();
@@ -99,11 +99,4 @@ export function SceneOutline({
       </mesh>
     </>
   );
-}
-
-/** True while every ancestor is visible: an off-playhead scene is still raycastable, so without this a click on empty space could select an item from another scene. */
-function drawn(object: Object3D | null): boolean {
-  if (!object) return false;
-  for (let o = object.parent; o; o = o.parent) if (!o.visible) return false;
-  return true;
 }

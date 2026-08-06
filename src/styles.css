@@ -4706,14 +4706,8 @@ button.beat-status {
   pointer-events: none;
 }
 
-/* The decoration drag surface over the stage: a box per decoration, centred on its position, dragged to move. */
-.decoration-gizmo-layer {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-stage-tool);
-  touch-action: none;
-}
-.deco-gizmo-box {
+/* One box per item, centred on its position, dragged to move; shared by every 2D gizmo host. */
+.gizmo-box {
   position: absolute;
   transform: translate(-50%, -50%);
   cursor: move;
@@ -4721,14 +4715,14 @@ button.beat-status {
   border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
-.deco-gizmo-box:hover {
+.gizmo-box:hover {
   border-color: var(--gizmo-outline-hover);
 }
-.deco-gizmo-box.selected {
+.gizmo-box.selected {
   border: 1.5px solid var(--gizmo-selected);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
-.deco-gizmo-handle {
+.gizmo-handle {
   position: absolute;
   width: 11px;
   height: 11px;
@@ -4737,7 +4731,7 @@ button.beat-status {
   border: 1px solid var(--gizmo-handle-edge);
   border-radius: 2px;
 }
-.deco-gizmo-rotate {
+.gizmo-rotate {
   position: absolute;
   left: 50%;
   top: 0;
@@ -4748,30 +4742,35 @@ button.beat-status {
   border: 1px solid var(--gizmo-handle-edge);
   border-radius: 50%;
 }
+/* The layer stands up only while a rotate drag is live: a captured pointer does not carry its
+   cursor, so the layer has to be hit-testable for the rule below to hold for the whole gesture. */
+.gizmo-layer.dragging-rotate {
+  pointer-events: auto;
+}
+
 /* A circular-arrow (rotate) cursor: dark underlay + white overlay so it reads on any background.
-   Applied to the handle on hover and to the layer during a rotate drag (pointer capture is on the
-   layer, so the handle's own cursor would otherwise revert once the drag starts). */
-.deco-gizmo-rotate,
-.decoration-gizmo-layer.dragging-rotate {
+   On the knob, and on the layer for the rest of a rotate drag once the pointer leaves the knob. */
+.gizmo-rotate,
+.gizmo-layer.dragging-rotate {
   cursor:
     url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cg%20stroke='%23000'%20stroke-width='3.75'%3E%3Cpath%20d='M21%2012a9%209%200%201%201-3.34-7'/%3E%3Cpath%20d='M21%203v6h-6'/%3E%3C/g%3E%3Cg%20stroke='%23fff'%20stroke-width='1.75'%3E%3Cpath%20d='M21%2012a9%209%200%201%201-3.34-7'/%3E%3Cpath%20d='M21%203v6h-6'/%3E%3C/g%3E%3C/svg%3E")
     12 12,
     grab;
 }
-/* Smart-alignment guides (Keynote yellow) while a decoration snaps to the frame centre or another decoration. */
-.deco-gizmo-guide {
+/* Smart-alignment guides (Keynote yellow) while an item snaps to the frame centre, a safe edge or another item. */
+.gizmo-guide {
   position: absolute;
   pointer-events: none;
   background: var(--gizmo-guide);
   box-shadow: 0 0 5px var(--gizmo-guide-glow);
 }
-.deco-gizmo-guide.v {
+.gizmo-guide.v {
   top: 0;
   bottom: 0;
   width: 1px;
   transform: translateX(-0.5px);
 }
-.deco-gizmo-guide.h {
+.gizmo-guide.h {
   left: 0;
   right: 0;
   height: 1px;
@@ -6610,15 +6609,28 @@ img.inspector-scene-thumb {
   border-radius: 1px;
 }
 
+/* The left rule marks the key whose gizmo handles are showing; it is reserved on every group and
+   only coloured on the selected one, so selecting never shifts the fields. The -8px eats exactly
+   the rule plus its gap out of the drill body's 16px gutter. */
 .text-field-group {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  margin-left: -8px;
+  padding-left: 6px;
+  border-left: 2px solid transparent;
 }
 
+.text-field-group.selected {
+  border-left-color: var(--gizmo-selected);
+}
+
+/* Four equal numeric columns (Size %, X, Y, Rotate °) with the font button on its own line above:
+   at 342px of inspector four columns read wider than the old three, which shared the row with the
+   font button. */
 .text-style-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-2);
   align-items: end;
   padding: 0 6px;
@@ -6629,6 +6641,7 @@ img.inspector-scene-thumb {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  grid-column: 1 / -1;
 }
 
 .text-style-fontfield .inspector-pose-caption {

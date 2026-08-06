@@ -8,6 +8,8 @@ const PREFIXES: ReadonlyArray<readonly [string, GizmoDomain]> = [
   ["device", "devices"],
   ["objects", "objects"],
   ["chart", "chart"],
+  ["text", "text"],
+  ["frame.decorations", "decorations"],
 ];
 
 export function gizmoDomainForDrill(id: string | null | undefined): GizmoDomain | null {
