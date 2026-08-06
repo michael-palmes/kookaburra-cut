@@ -9,6 +9,9 @@ import type {
   SceneDocChartValueAxis,
   SceneDocChartValueLabels,
 } from "../../engine/sceneDocSchema";
+import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import { formatFontString, parseFontString } from "../../theme/fontRef";
+import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme } from "../../theme/tokens";
 import {
   CHART_ANIMATION_PRESET_IDS,
@@ -42,6 +45,7 @@ import type { DevicePlacement } from "../../toolkit/device/Device";
 import type { V3 } from "../../toolkit/types";
 import { closeChartDataModal, openChartDataModal } from "../chartDataModalStore";
 import { ColourPicker } from "../colour/ColourPicker";
+import { FontPicker } from "../FontPicker";
 import { CHART_TYPE_IDS, CHART_TYPE_LABELS } from "../inspectorOptions";
 import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
@@ -403,6 +407,7 @@ export function ChartDrillIn({
   const [tab, setTab] = useState<ChartTab>("graph");
   const [axisTab, setAxisTab] = useState<"value" | "category">("value");
   const [seriesId, setSeriesId] = useState<string | null>(null);
+  const [fontOpen, setFontOpen] = useState(false);
   const [hoverCard, setHoverCard] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -574,6 +579,56 @@ export function ChartDrillIn({
     );
   }
 
+  // The block's own face, then the project's chart font, then the theme faces the labels take today.
+  const fontOverride = doc.chart.font;
+  const projectFont = theme.typography.chart;
+  const fontLabel = fontOverride
+    ? parseFontString(fontOverride).family
+    : (projectFont?.family ?? "Theme font");
+
+  // The font screen, the series-detail idiom: a full screen inside the drill with its own back bar.
+  if (fontOpen) {
+    return (
+      <div className="inspector-drill chart-drill">
+        <DrillBack label="Chart" onClick={() => setFontOpen(false)} />
+        <div className="inspector-drill-title">Chart font</div>
+        <div className="inspector-drill-body">
+          {fontOverride && (
+            <button
+              type="button"
+              className="btn text-font-reset"
+              onClick={() =>
+                write((c) => {
+                  delete c.font;
+                }, "chart font")
+              }
+            >
+              {projectFont ? "Use the project font" : "Use theme fonts"}
+            </button>
+          )}
+          <FontPicker
+            value={
+              fontOverride ? parseFontString(fontOverride) : (projectFont ?? theme.typography.body)
+            }
+            onPick={(ref) => {
+              // Pin + preload before the sidecar write so the face renders the moment the patch lands (the text-font pattern).
+              void (async () => {
+                await ensureFontRefsPinned([ref]);
+                await preloadAppFonts([ref]);
+                write((c) => {
+                  c.font = formatFontString(ref);
+                }, "chart font");
+              })();
+            }}
+          />
+          <p className="modal-hint">
+            One face for every label, value, axis name and legend entry in this chart.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const styleIds = (tier: ChartStyleTier) =>
     CHART_STYLE_PRESET_IDS.filter((id) => CHART_STYLE_PRESETS[id].tier === tier);
   const animationIds = (tier: ChartPresetTier) =>
@@ -722,6 +777,32 @@ export function ChartDrillIn({
               }
             />
           ))}
+        </div>
+      </DrillGroup>
+
+      <DrillGroup
+        label="Font"
+        hint={
+          fontOverride
+            ? undefined
+            : projectFont
+              ? "This project's chart font. Pick one here for this chart alone."
+              : "Chart text follows the theme. Pick one face for this chart alone."
+        }
+      >
+        <div className="popover-row">
+          <span className="popover-inline slider-row-label">Chart font</span>
+          <button
+            type="button"
+            className={`text-style-font${fontOverride ? " overridden" : ""}`}
+            title="Chart font"
+            onClick={() => setFontOpen(true)}
+          >
+            <span className="text-style-font-name">{fontLabel}</span>
+            <span className="text-style-font-chevron" aria-hidden>
+              ›
+            </span>
+          </button>
         </div>
       </DrillGroup>
 

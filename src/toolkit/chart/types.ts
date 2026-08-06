@@ -148,6 +148,8 @@ export interface ChartConfig {
   data: ChartData;
   /** Named colour scheme id (`paletteSchemes.ts`); null takes the theme's palette, which is the pre-scheme behaviour. */
   palette: string | null;
+  /** Font string ("Family" or "Family@weight") for EVERY label in the chart, replacing both theme faces; null takes the project's chart font, then the theme faces. */
+  font: string | null;
   style: ChartStyle;
   axis: ChartAxisConfig;
   labels: ChartLabelConfig;

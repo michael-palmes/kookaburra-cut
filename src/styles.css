@@ -1851,8 +1851,10 @@ button.beat-status {
 
 /* ── Font picker (v8 · M5) ─────────────────────────────────────────────────── */
 
+/* Three slots (headline, body, chart) never fit the 312px panel on one line, so they wrap. */
 .font-slot-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
@@ -7575,4 +7577,8 @@ img.inspector-scene-thumb {
   min-width: 0;
   width: auto;
   max-width: 110px;
+}
+.chart-drill .popover-row > .text-style-font {
+  flex: 1;
+  min-width: 0;
 }

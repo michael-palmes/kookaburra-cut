@@ -34,6 +34,9 @@ is enough. One chart per scene.
 
   "palette": null,              // optional named colour scheme id (list below);
                                 // absent takes the theme's chartColors
+  "font": null,                 // optional face for ALL text in this chart
+                                // ("Family" or "Family@weight"); absent takes the
+                                // project's typography.chart, then the theme faces
 
   "style": {
     "preset": "boardroom",      // appearance preset, table below
@@ -130,6 +133,24 @@ Scheme ids: `reef`, `sunrise`, `eucalypt`, `outback`, `harbour`, `orchid`, `citr
 `vivid` (high chroma), `muted` (low chroma), `slate` (cool neutrals). Every scheme is
 six mid-tone swatches that hold on light AND dark theme backgrounds, so a scheme never
 needs re-picking when the scene's theme changes. An unknown id falls back to the theme.
+
+## Chart font
+
+Precedence: the block's `chart.font`, then the project's `typography.chart` (in
+`project.json`, edited in the inspector's Project ▸ Typography drill), then the theme
+faces (body, or headline where the appearance preset emphasises). One face covers ALL
+chart text (ticks, categories, axis names, value labels, legend), so emphasis stops
+changing the family; sizes are always the chart's own.
+
+```bash
+python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 03-results set chart.font "IBM Plex Mono@500"
+```
+
+Reach for it when the numerals want their own voice (a mono for a ledger, a grotesk
+for a launch chart). Keep it to families the theme or the machine actually has:
+anything else falls back to Inter with a console warning. Both sources join the export
+font preload set, so a chart font is deterministic, but a `.kbpack` does NOT yet carry
+a system face named this way (bundled families are fine).
 
 ## Keyframed data (the track)
 

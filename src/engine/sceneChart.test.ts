@@ -40,6 +40,7 @@ describe("resolveChart", () => {
     expect(chart.mount).toBe("hero");
     expect(chart.placement).toBeUndefined();
     expect(chart.palette).toBeNull();
+    expect(chart.font).toBeNull();
     expect(chart.style).toEqual(CHART_STYLE_DEFAULTS);
     expect(chart.style.rotation).not.toBe(CHART_STYLE_DEFAULTS.rotation);
     expect(chart.axis.value).toEqual({
@@ -93,6 +94,13 @@ describe("resolveChart", () => {
   it("carries an authored colour scheme and leaves it null when unset", () => {
     expect(resolved({ type: "column", data: data(), palette: "reef" }).palette).toBe("reef");
     expect(resolved({ type: "column", data: data() }).palette).toBeNull();
+  });
+
+  it("carries an authored font and leaves it null when unset (the theme faces then apply)", () => {
+    expect(resolved({ type: "column", data: data(), font: "Georgia@600" }).font).toBe(
+      "Georgia@600",
+    );
+    expect(resolved({ type: "column", data: data() }).font).toBeNull();
   });
 
   it("keeps an explicitly null decimals as auto, and absence as the field default", () => {

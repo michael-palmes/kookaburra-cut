@@ -100,13 +100,14 @@ export function setProjectGroup(slug: string, group: string | null): Promise<voi
   return invoke("set_project_group", { slug, group });
 }
 
-/** Set or clear the project's typography override ("Family@weight" strings; both null clears). */
+/** Set or clear the project's typography override ("Family@weight" strings; all null clears). `chart` is the project's default chart face. */
 export function setProjectTypography(
   slug: string,
   headline: string | null,
   body: string | null,
+  chart: string | null,
 ): Promise<void> {
-  return invoke("set_project_typography", { slug, headline, body });
+  return invoke("set_project_typography", { slug, headline, body, chart });
 }
 
 export function listProjects(): Promise<WorkspaceProjectInfo[]> {

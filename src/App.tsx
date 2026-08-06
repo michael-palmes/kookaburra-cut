@@ -650,13 +650,17 @@ export default function App() {
     }
   }
 
-  async function handleSetTypography(headline: string | null, body: string | null) {
+  async function handleSetTypography(
+    headline: string | null,
+    body: string | null,
+    chart: string | null,
+  ) {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
       const slug = workspaceSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
-      await setProjectTypography(slug, headline, body);
+      await setProjectTypography(slug, headline, body, chart);
       pushHistory({
         label: "project fonts",
         changes: [
@@ -2361,7 +2365,9 @@ export default function App() {
               onPasteBackground={(i) => void handlePasteBackground(i)}
               onDuplicateSceneAt={handleDuplicateScene}
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
-              onSetTypography={(headline, body) => void handleSetTypography(headline, body)}
+              onSetTypography={(headline, body, chart) =>
+                void handleSetTypography(headline, body, chart)
+              }
             />
           )}
         </div>

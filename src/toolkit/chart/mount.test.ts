@@ -12,6 +12,8 @@ import {
   CHART_STAGED_SIZE,
   chartColours,
   chartEnterOffset,
+  chartFace,
+  chartFontRef,
   chartGroundY,
   chartHeroPose,
   chartHeroRect,
@@ -127,6 +129,32 @@ describe("chartColours", () => {
       },
     });
     expect(chartColours(chart, theme)).toEqual(CHART_PALETTE_SCHEMES.harbour.swatches.slice(0, 3));
+  });
+});
+
+describe("chartFace", () => {
+  const projectFont = { family: "IBM Plex Mono", weight: 500 };
+
+  it("takes the theme's own faces when nothing overrides them", () => {
+    expect(chartFontRef(columns())).toBeNull();
+    expect(chartFace(null, theme, false)).toEqual(theme.typography.body);
+    expect(chartFace(null, theme, true)).toEqual(theme.typography.headline);
+  });
+
+  it("takes the project's chart font over both theme faces", () => {
+    const withProject = { ...theme, typography: { ...theme.typography, chart: projectFont } };
+    expect(chartFace(null, withProject, false)).toEqual(projectFont);
+    expect(chartFace(null, withProject, true)).toEqual(projectFont);
+  });
+
+  it("lets the block's own font outrank the project font and both theme faces", () => {
+    const chart = columns();
+    chart.font = "Georgia@600";
+    const own = chartFontRef(chart);
+    expect(own).toEqual({ family: "Georgia", weight: 600 });
+    const withProject = { ...theme, typography: { ...theme.typography, chart: projectFont } };
+    expect(chartFace(own, withProject, false)).toEqual({ family: "Georgia", weight: 600 });
+    expect(chartFace(own, withProject, true)).toEqual({ family: "Georgia", weight: 600 });
   });
 });
 

@@ -19,6 +19,7 @@ slideware.
 | Data editing | Grid, paste and CSV import | The sidecar owns the numbers; import is an edit-time act. |
 | Data motion | Keyframed value snapshots on the shared KeyedTrack | The Magic Chart idea on the app's own timeline, with the same lane semantics as camera and compare. |
 | Series colours | Per-series override, else one of 10 named schemes, else theme `chartColors`, else a derived OKLCH ramp | A chart often wants its own colours without restyling the whole scene; user themes without a curated palette still read on light and dark. |
+| Chart type (typeface) | One face for the WHOLE chart: block `chart.font`, else the project's `typography.chart`, else the theme faces | Data wants a numerals face (often a mono or a grotesk) that the rest of the deck does not; splitting it per label would only invite a chart that disagrees with itself. |
 | Number formatting | Hand-rolled, no `Intl` | Locale data varies across macOS versions, which would break byte-identical export. |
 | Appearance | 12 presets in three tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
 | Build-in | 19 presets in three tiers, sampled per element | A preset is a row of channel parameters, never bespoke motion code. |
@@ -90,6 +91,8 @@ them.
   },
 
   "palette": "reef",            // optional named colour scheme; absent takes the theme's
+  "font": "IBM Plex Mono@500",  // optional face for ALL text in this chart; absent takes
+                                // the project's chart font, then the theme faces
 
   "style": {
     "preset": "boardroom",      // appearance preset id
@@ -315,6 +318,41 @@ pre-scheme one exactly, hex for hex, which is what keeps the gate EQUAL.
 - `seriesLightnessStep` (the `paperCut` treatment) steps each successive series away
   from the background in OKLCH lightness, applied in `chartColours` at mount time.
 
+## Typography
+
+Precedence, resolved in `chartFace` (`mount.ts`) and applied by `ChartLabel`:
+
+1. The block's own `chart.font` ("Family" or "Family@weight", the sidecar font-string
+   format `textStyle.<key>Font` uses).
+2. The project's chart font, `typography.chart` in `project.json`.
+3. The theme's `typography.body`, or `typography.headline` where the appearance
+   preset's `fontEmphasis` is `headline`.
+
+A chart font replaces BOTH theme faces, so it covers tick labels, category labels,
+axis names, value labels and legend entries at once, and emphasis stops changing the
+family. Only the family and weight change: sizes stay the chart's own metrics.
+
+The project default rides the existing typography merge: `parseProjectTypography`
+folds `typography.chart` onto every resolved theme (project and per-scene alike), so
+`theme.typography.chart` is what the renderer reads. That slot is injected by the
+project load, never parsed out of a `theme.json`.
+
+**The preload seam.** The export preamble preloads exactly the refs the project
+declares, and a face first typeset mid-run claims cells in the shared SDF atlas late
+(docs/determinism.md, "Fonts"), so both new sources must join that set:
+`collectThemeFontRefs` now takes `typography.chart` beside headline and body (which
+covers the project default), and `collectSceneDocFontRefs` takes `chart.font` beside
+the `textStyle.<key>Font` overrides. Both collectors feed `ensureFontRefsPinned` +
+`preloadAppFonts` in `project.ts` AND `exportPreamble` in `exporter.ts`; a chart font
+that skipped them would export a fallback face nondeterministically. The inspector
+pins and preloads the picked face before it writes the sidecar, so the preview lands
+the same face immediately.
+
+**Not carried by packs.** Pack font closure reads theme typography and sidecar
+`textStyle.<key>Font` only, so a `.kbpack` does not yet carry a system font named by
+`chart.font` or `typography.chart` (`src-tauri/src/pack/deps.rs`). A bundled family is
+unaffected; a system face falls back on the receiving machine.
+
 ## Number formatting
 
 `format.ts` is hand-rolled and deliberately free of `Intl`: locale data varies across
@@ -377,10 +415,16 @@ hands the host a world rect. See `docs/overlays.md` for the panel itself.
   so an untouched default never lands in the sidecar. Live slider and scrub ticks
   write history-less from a drag-start snapshot and settle to one history entry.
 - **Graph tab order.** Edit data leads (the row a chart is opened for), then Chart
-  type, Dimension, Mount, Appearance, Colours, Shape, Placement, Legend, Build in.
-  The Colours group is a plain 2-up grid of CSS swatch tiles: a Theme tile first,
-  showing what this scene's theme resolves, then the ten schemes. Nothing here is a
-  captured preview, so the catalogue can grow without regenerating thumbnails.
+  type, Dimension, Mount, Appearance, Colours, Font, Shape, Placement, Legend,
+  Build in. The Colours group is a plain 2-up grid of CSS swatch tiles: a Theme tile
+  first, showing what this scene's theme resolves, then the ten schemes. Nothing here
+  is a captured preview, so the catalogue can grow without regenerating thumbnails.
+- **Font.** One row in the text-field font idiom (the family when the block overrides,
+  otherwise the project's chart family or "Theme font", with the `overridden` class
+  only on a real override). It opens a font screen inside the drill, the series-detail
+  pattern: the `FontPicker`, and a reset button back to the project font (or the theme
+  faces) whenever the block sets one. The project default lives in the Project tab's
+  Typography drill as a third slot beside Headline and Body.
 - **Placement.** `chart.position` is the staged mount's drill (Move / Rotate / Scale
   pills plus scrub fields); the gizmo attaches to the posed group while it is open and
   posts its commit through `chartEditStore`.
@@ -446,11 +490,15 @@ This is an export-path feature and gates through `docs/determinism.md`.
 - **Instancing is imperative.** Per-instance matrices, colours, alphas and shine are
   written in layout effects, never through r3f JSX prop diffing (per-instance colour
   through the reconciler is a known upstream bug).
-- **The bold-face rule.** Chart text takes only faces the THEME declares:
-  `typography.body`, or `typography.headline` when the preset's `fontEmphasis` is
-  `headline`. Never a synthesised weight. The export preamble preloads exactly the
-  declared refs (`collectThemeFontRefs`), and a face first typeset mid-run would claim
-  cells in the shared SDF atlas late. The same caution applies to affixes: the glyph
+- **The declared-face rule.** Chart text takes only faces something DECLARES: the
+  block's `chart.font`, the project's `typography.chart`, or the theme's
+  `typography.body` / `typography.headline` (the latter when the preset's
+  `fontEmphasis` is `headline`). Never a synthesised weight. The export preamble
+  preloads exactly the declared refs (`collectThemeFontRefs` +
+  `collectSceneDocFontRefs`, both of which now take the chart sources), and a face
+  first typeset mid-run would claim cells in the shared SDF atlas late. An unset
+  `font` resolves through the pre-font ladder exactly, which keeps the gate EQUAL.
+  The same caution applies to affixes: the glyph
   preload set covers Latin, digits and common punctuation, so an unusual prefix (a
   currency mark, for instance) is first typeset during the run; extend
   `PRELOAD_CHARACTERS` in `theme/fonts.ts` if a project needs it. Chart labels are

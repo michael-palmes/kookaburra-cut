@@ -462,6 +462,8 @@ export interface SceneDocChart {
   data: SceneDocChartData;
   /** Named colour scheme id; absent takes the theme's chart palette. */
   palette?: string;
+  /** Font string ("Family" or "Family@weight") for every label in the chart; absent takes the project's chart font, then the theme faces. */
+  font?: string;
   style?: Partial<ChartStyle>;
   axis?: { value?: SceneDocChartValueAxis; category?: Partial<ChartCategoryAxis> };
   labels?: { legend?: Partial<ChartLegend>; values?: SceneDocChartValueLabels };
@@ -1024,6 +1026,11 @@ function parseChart(raw: unknown, source: string): SceneDocChart | undefined {
   } else if (raw.palette !== undefined) {
     console.warn(`[sceneDoc] ${source}: chart.palette isn't a scheme id, dropped`);
   }
+  if (typeof raw.font === "string" && raw.font.trim().length > 0) {
+    out.font = raw.font.trim();
+  } else if (raw.font !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.font isn't a font string, dropped`);
+  }
   if (raw.style !== undefined) {
     const style = parseChartStyle(raw.style, source);
     if (style) out.style = style;
@@ -1263,16 +1270,18 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   return out;
 }
 
-/** The distinct font refs the docs' `textStyle.<key>Font` overrides reference; feeds the pin/preload pipeline beside the theme collector. */
+/** The distinct font refs the docs' `textStyle.<key>Font` overrides and `chart.font` reference; feeds the pin/preload pipeline beside the theme collector, so a face a doc names is generated before frame 0 rather than mid-run (docs/determinism.md, "Fonts"). */
 export function collectSceneDocFontRefs(docs: readonly (SceneDoc | undefined)[]): FontRef[] {
   const seen = new Map<string, FontRef>();
+  const take = (value: string) => {
+    const ref = parseFontString(value);
+    seen.set(`${ref.family}:${ref.weight}`, ref);
+  };
   for (const doc of docs) {
     for (const [key, value] of Object.entries(doc?.textStyle ?? {})) {
-      if (key.endsWith("Font") && typeof value === "string") {
-        const ref = parseFontString(value);
-        seen.set(`${ref.family}:${ref.weight}`, ref);
-      }
+      if (key.endsWith("Font") && typeof value === "string") take(value);
     }
+    if (typeof doc?.chart?.font === "string") take(doc.chart.font);
   }
   return [...seen.values()];
 }

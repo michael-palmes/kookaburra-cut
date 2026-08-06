@@ -203,6 +203,30 @@ describe("parseSceneDoc", () => {
     ]);
   });
 
+  it("collects a chart font into the preload set, so exported chart text can't fall back", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data: { categories: ["a"], series: [{ id: "s1", values: [1] }] },
+          font: "IBM Plex Mono@500",
+        },
+      },
+      "test",
+    );
+    expect(doc?.chart?.font).toBe("IBM Plex Mono@500");
+    expect(collectSceneDocFontRefs([doc])).toEqual([{ family: "IBM Plex Mono", weight: 500 }]);
+    const plain = parseSceneDoc(
+      {
+        version: 1,
+        chart: { type: "column", data: { categories: ["a"], series: [{ id: "s1", values: [1] }] } },
+      },
+      "test",
+    );
+    expect(collectSceneDocFontRefs([plain])).toEqual([]);
+  });
+
   it("keeps a camera track only when keys AND segments are arrays", () => {
     const good = parseSceneDoc({ version: 1, camera: { keys: [], segments: [] } }, "test");
     expect(good?.camera).toEqual({ keys: [], segments: [] });
@@ -600,6 +624,24 @@ describe("parseSceneDoc", () => {
         ?.palette,
     ).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.palette"));
+    vi.restoreAllMocks();
+  });
+
+  it("keeps a chart font string and drops anything that isn't one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, font: " Georgia " } }, "test")
+        ?.chart?.font,
+    ).toBe("Georgia");
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, font: 7 } }, "test")?.chart?.font,
+    ).toBeUndefined();
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, font: "  " } }, "test")?.chart
+        ?.font,
+    ).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.font"));
     vi.restoreAllMocks();
   });
 

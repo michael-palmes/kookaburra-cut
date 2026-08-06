@@ -546,8 +546,10 @@ Staging toggle writes `backdrop: {type:"none"}` to reveal image/video fills):
 
 Typography is `FontRef {family, weight}` resolved through the bundled OFL registry →
 workspace-pinned system fonts (auto-pinned by copy on first project load) → Inter. ANY
-family installed in Font Book works, at the theme level (`typography.headline`/`body`) or
-per text element (sidecar `<textKey>Font`): the first reference copies the exact face into
+family installed in Font Book works, at the theme level (`typography.headline`/`body`), at
+the project level (`project.json` `typography.headline`/`body`, plus `typography.chart` for
+all chart text), per chart (sidecar `chart.font`) or per text element (sidecar
+`<textKey>Font`): the first reference copies the exact face into
 `~/Kookaburra Cut/fonts/` (variable fonts instanced static), so projects stay portable and
 exports never follow a macOS font update; if a pinned file goes missing it re-pins by
 installed name, and an uninstalled family warns and falls back to Inter. Theme
@@ -978,10 +980,12 @@ keyframed data morphs on the shared track system. The TSX is one line:
 <Chart />   // reads the sidecar chart block; ChartFallback renders it even without this
 ```
 
-Everything else lives in the `chart` sidecar block (data, palette, style, axis, labels,
-animation, track). Series colours come from the theme (`chartColors`, then a derived
-accent ramp) unless the block names one of the 10 colour schemes in `palette`; never
-hard-code them. Scalar edits go through `sidecar.py` dotted paths;
+Everything else lives in the `chart` sidecar block (data, palette, font, style, axis,
+labels, animation, track). Series colours come from the theme (`chartColors`, then a
+derived accent ramp) unless the block names one of the 10 colour schemes in `palette`;
+never hard-code them. Chart text takes the theme faces unless the project sets
+`typography.chart` or the block sets `font`. Scalar edits go through `sidecar.py`
+dotted paths;
 tabular data, keyframes and a readable summary go through `scripts/chart.py`.
 
 **Load `CHARTS.md` (beside this file) before authoring or editing any chart**: it

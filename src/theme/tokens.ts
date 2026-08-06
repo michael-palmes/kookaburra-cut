@@ -345,6 +345,8 @@ export interface Theme {
     body: FontRef;
     /** Modular scale ratio between type steps. */
     scale: number;
+    /** One face for ALL chart text, replacing both of the above there. Injected by the project's `typography.chart` override (`engine/project.ts`), never parsed from theme.json; absent means charts take headline/body as before. */
+    chart?: FontRef;
   };
   motion: {
     /** Milliseconds. */

@@ -6,7 +6,8 @@ import {
   maxAcrossTrack,
   type ResolvedChart,
 } from "../../engine/sceneChart";
-import type { Theme } from "../../theme/tokens";
+import { parseFontString } from "../../theme/fontRef";
+import type { FontRef, Theme } from "../../theme/tokens";
 import type { DevicePlacement } from "../device/Device";
 import type { FormatInfo, V3 } from "../types";
 import {
@@ -122,6 +123,17 @@ export function chartColours(chart: ChartConfig, theme: Theme, lightnessStep = 0
     );
   }
   return chart.data.series.map((s, i) => tint(resolveSeriesColour(theme, i, s.colour, scheme), i));
+}
+
+/** The face the block itself names (`chart.font`), or null for the theme path. */
+export function chartFontRef(chart: ChartConfig): FontRef | null {
+  return chart.font ? parseFontString(chart.font) : null;
+}
+
+/** The face a chart label takes: the block's own font, then the project's chart font (`typography.chart`, merged onto every resolved theme), then the theme's headline for emphasised labels and body for the rest. A chart font replaces BOTH faces, so `bold` stops changing the family. Every result is a ref something DECLARES, which is exactly what the export preamble preloads (docs/determinism.md, "Fonts"). */
+export function chartFace(font: FontRef | null, theme: Theme, bold: boolean): FontRef {
+  if (font) return font;
+  return theme.typography.chart ?? (bold ? theme.typography.headline : theme.typography.body);
 }
 
 export interface ChartValueBounds {

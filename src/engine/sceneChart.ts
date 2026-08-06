@@ -254,6 +254,7 @@ export function resolveChart(doc: SceneDoc | undefined): ResolvedChart | null {
     mount,
     data,
     palette: raw.palette ?? null,
+    font: raw.font ?? null,
     style: resolveStyle(raw.style),
     axis,
     labels,

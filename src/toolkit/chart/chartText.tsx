@@ -1,7 +1,7 @@
-/** Chart typography: the two label primitives the 2D and 3D renderers share. Text is troika SDF through the theme's `typography` (the `AnimatedHeadline`/`FrameChip` font resolution), never HTML, and every position is a plain prop, so a label is a pure function of its inputs. Billboarding is opt-in for orbiting 3D charts; flat charts keep their labels in the chart plane, where billboarding would be waste. */
+/** Chart typography: the two label primitives the 2D and 3D renderers share. Text is troika SDF through the face `chartFace` resolves (the block's `chart.font`, the project's chart font, then the theme's own, the `AnimatedHeadline`/`FrameChip` resolution), never HTML, and every position is a plain prop, so a label is a pure function of its inputs. Billboarding is opt-in for orbiting 3D charts; flat charts keep their labels in the chart plane, where billboarding would be waste. */
 
 import { Text } from "@react-three/drei";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
   type Camera,
   Color,
@@ -33,6 +33,7 @@ import {
   packLegendRows,
   type WorldRect,
 } from "./chart2dMath";
+import { chartFace } from "./mount";
 import type { ChartLegendChrome } from "./types";
 
 /** Swatch circle segments; fixed, so the geometry is identical every run. */
@@ -47,6 +48,9 @@ const _matrix = new Matrix4();
 const _position = new Vector3();
 const _scale = new Vector3();
 const _colour = new Color();
+
+/** The mounted chart's own face (`chart.font`, parsed), replacing BOTH theme faces for every label under it; null everywhere else, where labels resolve exactly as they did before the field existed. `MountedChart` is its only provider. */
+export const ChartFontContext = createContext<FontRef | null>(null);
 
 /** The chip a value label or legend entry sits on, under `labelPill` and `legendChrome: "chips"`. */
 export const chartPillColour = (theme: Theme): string =>
@@ -162,6 +166,7 @@ export function ChartLabel(props: ChartLabelProps) {
     renderOrder = CHART_2D_ORDER.label,
   } = props;
   const theme = useTheme();
+  const chartFont = useContext(ChartFontContext);
   const anchorRef = useRef<Group>(null);
   const labelRef = useRef<Mesh>(null);
   // Rewrites the label's matrixWorld from the render camera after the graph's updateMatrixWorld (the FixedBackdrop idiom): orientation is a pure function of the frame's camera, never frame-loop state, so Verify passes agree.
@@ -175,8 +180,8 @@ export function ChartLabel(props: ChartLabelProps) {
     [rotation],
   );
   if (!text || alpha <= 0) return null;
-  // Both faces are refs the theme DECLARES, never a synthesised weight: the export preamble preloads exactly the declared refs, and a face first typeset mid-run claims cells in the shared SDF atlas late (docs/determinism.md, "Fonts").
-  const face: FontRef = bold ? theme.typography.headline : theme.typography.body;
+  // Every face here is a ref something DECLARES (the block's `chart.font`, the project's chart font, or the theme's own), never a synthesised weight: the export preamble preloads exactly the declared refs, and a face first typeset mid-run claims cells in the shared SDF atlas late (docs/determinism.md, "Fonts").
+  const face: FontRef = chartFace(chartFont, theme, bold);
   if (billboard) {
     return (
       <group ref={anchorRef} position={position}>

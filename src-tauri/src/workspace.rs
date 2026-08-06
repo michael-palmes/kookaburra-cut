@@ -857,7 +857,7 @@ pub fn set_project_group(
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
-/// Set or clear the project's typography override ("Family" or "Family@weight" per slot); both slots empty clears the whole block.
+/// Set or clear the project's typography override ("Family" or "Family@weight" per slot, `chart` being the project's default chart face); every slot empty clears the whole block.
 #[tauri::command]
 pub fn set_project_typography(
     app: AppHandle,
@@ -865,18 +865,20 @@ pub fn set_project_typography(
     slug: String,
     headline: Option<String>,
     body: Option<String>,
+    chart: Option<String>,
 ) -> Result<(), String> {
     validate_slug(&slug)?;
     let headline = headline
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty());
     let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+    let chart = chart.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
     let root = require_root(&app, &state)?;
     let path = root.join(&slug).join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
-    if headline.is_none() && body.is_none() {
+    if headline.is_none() && body.is_none() && chart.is_none() {
         if let Some(obj) = manifest.as_object_mut() {
             obj.remove("typography");
         }
@@ -887,6 +889,9 @@ pub fn set_project_typography(
         }
         if let Some(b) = body {
             block.insert("body".into(), serde_json::Value::String(b));
+        }
+        if let Some(c) = chart {
+            block.insert("chart".into(), serde_json::Value::String(c));
         }
         manifest["typography"] = serde_json::Value::Object(block);
     }
