@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Known issues",
+  "text": {
+    "title": "Known issues",
+    "subtitle": "",
+    "bullets": "iPad widget lag\nDark mode charts"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "none"
+    },
+    "chip": {
+      "label": "Known",
+      "icon": "triangle-alert"
+    }
+  },
+  "backdrop": {
+    "type": "none"
+  }
+}

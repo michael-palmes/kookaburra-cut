@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "name": "The wipe",
+  "themeId": "kookaburra-default",
+  "text": {
+    "beforeLabel": "Before",
+    "afterLabel": "After"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "color",
+    "color": "#12171d"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/home-old-sample.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0, -0.3, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "compare": {
+    "b": {
+      "themeId": "kookaburra-neon",
+      "background": {
+        "type": "shader",
+        "shader": "warp",
+        "preset": "p6",
+        "speed": 0.4,
+        "colors": ["#140d07", "#6c4925", "#2b1c0f", "#865727"],
+        "params": {
+          "proportion": 0.5,
+          "softness": 1,
+          "distortion": 0.2,
+          "swirl": 0.6
+        }
+      },
+      "media": {
+        "d1": {
+          "src": "assets/home-new-sample.jpg",
+          "kind": "image"
+        }
+      }
+    },
+    "mask": {
+      "type": "linear",
+      "angleDeg": 75,
+      "softness": 0.03
+    },
+    "value": 1,
+    "track": {
+      "keys": [
+        {
+          "id": "k1",
+          "tMs": 700,
+          "pose": {
+            "value": 1
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 1500,
+          "pose": {
+            "value": 0.56
+          }
+        },
+        {
+          "id": "k3",
+          "tMs": 2300,
+          "pose": {
+            "value": 0.44
+          }
+        },
+        {
+          "id": "k4",
+          "tMs": 3100,
+          "pose": {
+            "value": 0.06
+          }
+        }
+      ],
+      "segments": [
+        {
+          "from": "k1",
+          "to": "k2",
+          "ease": "inOutQuad"
+        },
+        {
+          "from": "k2",
+          "to": "k3",
+          "ease": "inOutSine"
+        },
+        {
+          "from": "k3",
+          "to": "k4",
+          "ease": "inOutQuad"
+        }
+      ]
+    },
+    "chrome": {
+      "line": {
+        "width": 4,
+        "colour": "text",
+        "softness": 0
+      },
+      "grip": true,
+      "chips": true
+    }
+  },
+  "animatedTrack": "compare"
+}

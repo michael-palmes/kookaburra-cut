@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "name": "Cold start",
+  "text": {
+    "title": "Cold start"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#eef5f6", "#e8f2f2", "#e1efef", "#ecf3f3"],
+    "speed": 0.25,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.4,
+      "highlightWidth": 0.35,
+      "fillDensity": 0.18,
+      "cadence": 0.25
+    },
+    "preset": "p1"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "chart": {
+    "type": "column",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["2.1", "2.2", "2.3", "2.4"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Cold start",
+          "values": [2.9, 2.6, 2.4, 1.4]
+        }
+      ]
+    },
+    "style": {
+      "preset": "boardroom",
+      "scale": 0.94
+    },
+    "axis": {
+      "value": {
+        "name": "Cold start in seconds, lower is better",
+        "min": 0,
+        "max": 3,
+        "steps": 3,
+        "format": {
+          "decimals": 1,
+          "suffix": "s"
+        },
+        "gridlines": {
+          "visible": true,
+          "style": "hair"
+        }
+      },
+      "category": {
+        "name": "Release"
+      }
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": true,
+        "location": "above",
+        "countUp": true,
+        "format": {
+          "decimals": 1,
+          "suffix": "s"
+        }
+      }
+    },
+    "animation": {
+      "preset": "rise",
+      "delivery": "cascade",
+      "staggerMs": 90,
+      "durationMs": 900,
+      "from": "start"
+    }
+  }
+}

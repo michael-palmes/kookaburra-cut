@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Flow one",
+  "duration": { "mode": "manual" },
+  "text": {
+    "title": "Plan by dragging"
+  },
+  "textStyle": {
+    "titleSize": 1.35,
+    "titleOffsetY": -0.32
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "frame": {
+    "cutout": { "shape": "rect", "size": 0.74, "side": "end", "inset": 0 },
+    "textAlign": "center"
+  },
+  "background": {
+    "type": "video",
+    "src": "assets/kooka-feed-loop-sample.mp4"
+  }
+}

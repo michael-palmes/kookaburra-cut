@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Onboarding Refresh",
+  "tagline": "The new first run in three steps, shown as real screens rather than a tutorial.",
+  "category": "app-updates",
+  "tags": ["onboarding", "first run", "setup", "activation", "screens", "app update"],
+  "personas": ["pm", "marketer"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": ["layered-screenshot", "device", "text-motion", "background"],
+  "highlights": [
+    "Three onboarding screens as one 3D stack",
+    "A live screen recording on a real device",
+    "Closes on an activation counter"
+  ],
+  "preview": {
+    "poster": 1,
+    "frames": [
+      { "scene": 0, "atMs": 1600 },
+      { "scene": 1, "atMs": 2600 },
+      { "scene": 3, "atMs": 2800 },
+      { "scene": 4, "atMs": 2400 }
+    ]
+  },
+  "order": 7,
+  "status": "stable"
+}

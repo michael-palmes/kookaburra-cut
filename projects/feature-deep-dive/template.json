@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Feature Deep Dive",
+  "tagline": "One feature, the whole runtime: the problem, the flow, the detail, the payoff.",
+  "category": "app-updates",
+  "tags": [
+    "feature",
+    "deep dive",
+    "release",
+    "demo",
+    "camera rig",
+    "screenshots",
+    "product launch"
+  ],
+  "personas": ["marketer", "co-founder"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": ["device", "camera-rig", "layered-screenshot", "text-motion", "background"],
+  "highlights": [
+    "A rig fly-through cuts straight out of the orbit push, no transition",
+    "Screen stack expands to isometric on its own animated track",
+    "Ember payoff scene, warm against the graphite the rest of the film runs on"
+  ],
+  "preview": {
+    "poster": 2,
+    "frames": [
+      { "scene": 1, "atMs": 1400 },
+      { "scene": 2, "atMs": 3000 },
+      { "scene": 4, "atMs": 2400 },
+      { "scene": 5, "atMs": 2600 }
+    ]
+  },
+  "order": 4,
+  "status": "stable"
+}

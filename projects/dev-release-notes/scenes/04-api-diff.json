@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "name": "API diff",
+  "text": {
+    "title": "API changes",
+    "subtitle": "Two signatures moved in 4.2.0",
+    "code": "- send(msg)\n+ send(msg, { region })\n- onDone(value)\n+ onDone(result.value)"
+  },
+  "textStyle": {
+    "codeFont": "JetBrains Mono"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "none",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "rect",
+      "side": "end",
+      "size": 0.46,
+      "inset": 0.05
+    },
+    "textAlign": "left"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 0.25,
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

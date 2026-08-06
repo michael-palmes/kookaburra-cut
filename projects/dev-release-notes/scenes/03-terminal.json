@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "name": "Terminal",
+  "text": {},
+  "videoWindow": {
+    "media": {
+      "src": "assets/sample-laptop-recording.mp4",
+      "startMs": 0,
+      "loop": true,
+      "aspect": 1.5468277945619335
+    },
+    "radius": "macos",
+    "recording": true,
+    "scale": 0.86,
+    "motion": {
+      "preset": "none"
+    }
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 0.25,
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

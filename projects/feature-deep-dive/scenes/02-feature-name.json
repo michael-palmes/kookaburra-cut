@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Feature name",
+  "text": {
+    "title": "Instant\nsearch",
+    "subtitle": ""
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "titleSize": 1.15
+  },
+  "textAnimation": {
+    "in": "twist-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "direction": "from-left",
+    "delivery": "all-at-once"
+  }
+}

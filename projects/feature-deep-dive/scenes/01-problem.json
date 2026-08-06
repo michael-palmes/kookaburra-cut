@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "The problem",
+  "text": {
+    "title": "Finding it\ntook too long",
+    "subtitle": "Until now"
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "titleSize": 0.75,
+    "subtitleSize": 1.4
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

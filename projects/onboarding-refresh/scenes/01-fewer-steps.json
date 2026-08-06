@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Fewer steps",
+  "text": {
+    "title": "Set up in\n30 seconds",
+    "subtitle": "Three steps, not seven"
+  },
+  "textStyle": {
+    "subtitleSize": 1.6
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "preset": "p1",
+    "colors": ["#f6e9e4", "#eed7cf", "#e9cec7", "#f4e3da"],
+    "speed": 0.4,
+    "params": { "distortion": 0.5, "swirl": 0.08 }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "name": "Who gets it",
+  "text": {
+    "title": "Who gets it",
+    "subtitle": "",
+    "bullets": "Pro and Team\nRolling out this week\nNo extra cost"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "squircle",
+      "side": "start",
+      "size": 0.42,
+      "inset": 0.06
+    },
+    "chip": {
+      "label": "Pro",
+      "icon": "circle-check",
+      "colour": "accent"
+    },
+    "textAlign": "left"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "orb-field",
+    "preset": "p8",
+    "speed": 0.9,
+    "colors": ["#273234", "#30473f"],
+    "params": {
+      "count": 18,
+      "spread": 3,
+      "depth": 24,
+      "size": 0.5,
+      "drift": 1.25
+    },
+    "backing": {
+      "type": "gradient",
+      "parallax": 0.03,
+      "spec": {
+        "type": "linear",
+        "angleDeg": 180,
+        "space": "oklch",
+        "stops": [
+          ["#2E1F05", 0],
+          ["#322306", 0.25],
+          ["#352507", 0.5],
+          ["#382807", 0.75],
+          ["#3A2A08", 1]
+        ]
+      }
+    }
+  }
+}

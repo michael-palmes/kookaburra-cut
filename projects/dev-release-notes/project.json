@@ -1,0 +1,61 @@
+{
+  "id": "dev-release-notes",
+  "name": "Dev Release Notes",
+  "version": 2,
+  "themeId": "kookaburra-abyss",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-version-chip.tsx",
+      "durationMs": 2600,
+      "transition": {
+        "type": "dip",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/02-breaking.tsx",
+      "durationMs": 4400,
+      "transition": {
+        "type": "dip",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/03-terminal.tsx",
+      "durationMs": 5000,
+      "transition": {
+        "type": "dip",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/04-api-diff.tsx",
+      "durationMs": 4800,
+      "transition": {
+        "type": "dip",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/05-migration.tsx",
+      "durationMs": 4600,
+      "transition": {
+        "type": "dip",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/06-adoption-chart.tsx",
+      "durationMs": 4400,
+      "transition": {
+        "type": "dip",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/07-docs-cta.tsx",
+      "durationMs": 3600
+    }
+  ]
+}

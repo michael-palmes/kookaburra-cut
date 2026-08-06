@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Redesign Reveal",
+  "tagline": "Show the old app, wipe to the new, then earn it across three screens.",
+  "category": "app-updates",
+  "tags": ["redesign", "before and after", "compare", "refresh", "relaunch", "app update"],
+  "personas": ["co-founder", "marketer"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": ["device", "multi-device", "compare", "camera-rig", "text-motion", "background"],
+  "highlights": [
+    "An animated wipe from the old design to the new",
+    "One rig fly-through, one orbit push, nothing else",
+    "Three handsets on an arc for the wider tour"
+  ],
+  "preview": {
+    "poster": 1,
+    "frames": [
+      { "scene": 0, "atMs": 1600 },
+      { "scene": 1, "atMs": 2200 },
+      { "scene": 3, "atMs": 3400 },
+      { "scene": 4, "atMs": 2400 }
+    ]
+  },
+  "order": 6,
+  "status": "stable"
+}

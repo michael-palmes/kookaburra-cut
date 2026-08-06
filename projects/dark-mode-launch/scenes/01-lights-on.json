@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Lights on",
+  "themeId": "kookaburra-studio-white",
+  "text": {
+    "title": "You asked for it",
+    "subtitle": ""
+  },
+  "textStyle": {
+    "titleSize": 0.7
+  },
+  "textAnimation": {
+    "in": "blur-in",
+    "out": "fade",
+    "staggerMs": 35,
+    "stagger": "char"
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#ECEAE4", 0],
+        ["#E8E7E3", 0.25],
+        ["#E3E3E1", 0.5],
+        ["#DEDFE0", 0.75],
+        ["#DADCE0", 1]
+      ]
+    },
+    "parallax": 0.03
+  }
+}

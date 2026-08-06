@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "name": "Feature two",
+  "text": {
+    "title": "Share any list",
+    "subtitle": ""
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word",
+    "startScale": 0.9
+  },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#0B1220", 0],
+        ["#0E1523", 0.25],
+        ["#101827", 0.5],
+        ["#12192A", 0.75],
+        ["#141C2E", 1]
+      ]
+    },
+    "parallax": 0.03
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "kind": "video",
+        "startMs": 0
+      },
+      "placement": {
+        "position": [0, -0.3, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "push-in"
+      },
+      "shadow": "long"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 900,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": -14, "elevationDeg": 4, "distance": 6.2 }
+      },
+      {
+        "id": "k2",
+        "tMs": 3200,
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 2, "elevationDeg": 0, "distance": 5.2 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
+  }
+}

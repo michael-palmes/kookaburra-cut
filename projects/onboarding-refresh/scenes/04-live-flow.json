@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "name": "The first run",
+  "duration": { "mode": "follow-media", "sourceDeviceId": "hero" },
+  "text": {
+    "title": "The first run",
+    "subtitle": ""
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "kind": "video",
+        "startMs": 0
+      },
+      "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
+      "motion": { "preset": "none" },
+      "shadow": "soft"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": { "target": [0, -0.1, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 6 }
+      },
+      {
+        "id": "k2",
+        "tMs": 3600,
+        "pose": { "target": [0, -0.1, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": 5.3 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "inOutSine" }]
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "preset": "p1",
+    "colors": ["#f6e9e4", "#eed7cf", "#e9cec7", "#f4e3da"],
+    "speed": 0.4,
+    "parallax": 0.12,
+    "params": { "distortion": 0.5, "swirl": 0.08 }
+  }
+}

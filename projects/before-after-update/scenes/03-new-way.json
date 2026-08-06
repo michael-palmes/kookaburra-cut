@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "name": "Now",
+  "text": {
+    "title": "Now"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "preset": "p6",
+    "speed": 0.4,
+    "colors": ["#140d07", "#6c4925", "#2b1c0f", "#865727"],
+    "params": {
+      "proportion": 0.5,
+      "softness": 1,
+      "distortion": 0.2,
+      "swirl": 0.6
+    }
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "lighting": {
+    "preset": "hard-keynote",
+    "environment": {
+      "source": "kookaburra:monochrome-studio",
+      "intensity": 0.4,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": 50,
+      "elevationDeg": 55,
+      "intensity": 3.2,
+      "kelvin": 5200,
+      "angularDeg": 1
+    },
+    "ambient": 0.15,
+    "lights": [
+      {
+        "id": "rim",
+        "type": "spot",
+        "intensity": 60,
+        "kelvin": 5000,
+        "angleDeg": 40,
+        "penumbra": 0.5,
+        "placement": {
+          "mode": "orbit",
+          "azimuthDeg": 180,
+          "elevationDeg": 35,
+          "distance": 7
+        }
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.3,
+      "opacity": 0.45,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "kind": "video",
+        "startMs": 0
+      },
+      "placement": {
+        "position": [0, -0.35, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, -0.15, 0],
+          "azimuthDeg": 8,
+          "elevationDeg": 5,
+          "distance": 6.2,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.5,
+            "range": 0.9,
+            "squeeze": 1.4,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2100,
+        "pose": {
+          "target": [0, -0.15, 0],
+          "azimuthDeg": 0,
+          "elevationDeg": 2,
+          "distance": 5.1
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "The payoff",
+  "themeId": "kookaburra-ember",
+  "text": {
+    "headline": "Now it takes",
+    "unit": "seconds"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "gradient",
+    "gradient": "brand",
+    "parallax": 0.03
+  }
+}

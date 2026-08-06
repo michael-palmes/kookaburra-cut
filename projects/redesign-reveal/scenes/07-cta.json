@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Update to see it",
+  "text": {
+    "title": "Kestrel 2.4",
+    "subtitle": "Update to see it"
+  },
+  "textStyle": { "titleFont": "JetBrains Mono" },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#EDE0CF", 0],
+        ["#EAD9C5", 0.25],
+        ["#E7D3BD", 0.5],
+        ["#E5CEB8", 0.75],
+        ["#E3C9B4", 1]
+      ]
+    },
+    "parallax": 0.03
+  }
+}

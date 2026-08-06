@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "name": "Adoption",
+  "text": {
+    "title": "Adoption of 4.x"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "none",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "chart": {
+    "type": "area",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Apps on 4.x",
+          "values": [120, 460, 980, 1740, 2600, 3410]
+        }
+      ]
+    },
+    "style": {
+      "preset": "terminal"
+    },
+    "axis": {
+      "value": {
+        "steps": 4,
+        "gridlines": { "visible": true, "style": "hair" }
+      }
+    },
+    "labels": {
+      "legend": { "visible": true, "position": "bottom" },
+      "values": { "visible": false }
+    },
+    "animation": {
+      "preset": "sweep",
+      "delivery": "series",
+      "staggerMs": 120,
+      "durationMs": 1400
+    }
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 0.25,
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

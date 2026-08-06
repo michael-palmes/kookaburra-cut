@@ -1,0 +1,45 @@
+{
+  "id": "quality-release-notes",
+  "name": "Quality Release (bug fixes)",
+  "version": 2,
+  "themeId": "kookaburra-gallery",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-quiet-header.tsx",
+      "durationMs": 2600,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/02-fixed-list.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/03-crash-chart.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/04-faster.tsx",
+      "durationMs": 2800,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/05-thanks.tsx",
+      "durationMs": 2600
+    }
+  ]
+}

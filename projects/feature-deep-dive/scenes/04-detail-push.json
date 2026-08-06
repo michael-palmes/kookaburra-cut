@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "name": "Detail push",
+  "text": {
+    "title": "As you type"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "deep-blue",
+      "media": {
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "kind": "video",
+        "startMs": 0
+      },
+      "placement": {
+        "position": [0, -0.25, 0],
+        "rotationDeg": [0, -8, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [0.18, 0.17, 5.2],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.1, 0]
+          },
+          "fov": 46,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.5,
+            "range": 1,
+            "squeeze": 1.4,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 1600,
+        "pose": {
+          "position": [-0.85, 0.55, 4.4],
+          "aim": {
+            "mode": "tangent",
+            "at": [-0.2, 0.25, 4]
+          },
+          "fov": 44,
+          "rollDeg": -4
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 4000,
+        "pose": {
+          "position": [0.2, 0, 3.7],
+          "aim": {
+            "mode": "point",
+            "at": [0, -0.15, 0]
+          },
+          "fov": 38
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutSine"
+      },
+      {
+        "from": "k2",
+        "to": "k3",
+        "ease": "inOutCubic",
+        "easeLens": "inCubic"
+      }
+    ]
+  },
+  "lighting": {
+    "preset": "hard-keynote",
+    "environment": {
+      "source": "kookaburra:monochrome-studio",
+      "intensity": 0.4,
+      "rotationDeg": 0
+    },
+    "sun": {
+      "azimuthDeg": 50,
+      "elevationDeg": 55,
+      "intensity": 3.2,
+      "kelvin": 5200,
+      "angularDeg": 1
+    },
+    "ambient": 0.15,
+    "lights": [
+      {
+        "id": "rim",
+        "type": "spot",
+        "intensity": 60,
+        "kelvin": 5000,
+        "angleDeg": 40,
+        "penumbra": 0.5,
+        "placement": {
+          "mode": "orbit",
+          "azimuthDeg": 180,
+          "elevationDeg": 35,
+          "distance": 7
+        }
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "softness": 0.3,
+      "opacity": 0.45,
+      "mapSize": 2048,
+      "bias": -0.0005
+    }
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "preset": "p6",
+    "colors": ["#496489", "#72612f"],
+    "speed": 0.6,
+    "params": {
+      "count": 900,
+      "innerRadius": 10,
+      "outerRadius": 26,
+      "twinkle": 0.6,
+      "pointSize": 0.09,
+      "drift": 1,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "gradient",
+      "spec": {
+        "type": "linear",
+        "angleDeg": 180,
+        "space": "oklch",
+        "stops": [
+          ["#16181C", 0],
+          ["#191C21", 0.25],
+          ["#1C2025", 0.5],
+          ["#1F2329", 0.75],
+          ["#22262C", 1]
+        ]
+      },
+      "parallax": 0.03
+    }
+  }
+}

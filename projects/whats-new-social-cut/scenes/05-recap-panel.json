@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Recap panel",
+  "text": {
+    "title": "In this update",
+    "subtitle": "",
+    "bullets": "Weekly planner\nShared lists\nOffline sync"
+  },
+  "textAnimation": {
+    "in": "scatter-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "none"
+    },
+    "chip": {
+      "label": "New",
+      "icon": "circle-check",
+      "colour": "accent"
+    },
+    "textAlign": "center"
+  }
+}

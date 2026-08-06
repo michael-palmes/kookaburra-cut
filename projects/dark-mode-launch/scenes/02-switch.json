@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "name": "The switch",
+  "themeId": "kookaburra-studio-white",
+  "text": {
+    "title": "",
+    "subtitle": "",
+    "beforeLabel": "Light",
+    "afterLabel": "Dark"
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/home-light-sample.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0, -0.3, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ],
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#ECEAE4", 0],
+        ["#E8E7E3", 0.25],
+        ["#E3E3E1", 0.5],
+        ["#DEDFE0", 0.75],
+        ["#DADCE0", 1]
+      ]
+    },
+    "parallax": 0.03
+  },
+  "compare": {
+    "b": {
+      "themeId": "kookaburra-abyss",
+      "media": {
+        "d1": {
+          "src": "assets/home-dark-sample.jpg",
+          "kind": "image"
+        }
+      },
+      "background": {
+        "type": "gradient",
+        "spec": {
+          "type": "linear",
+          "angleDeg": 180,
+          "space": "oklch",
+          "stops": [
+            ["#08262B", 0],
+            ["#092A2F", 0.25],
+            ["#092D32", 0.5],
+            ["#0A2F34", 0.75],
+            ["#0A3236", 1]
+          ]
+        },
+        "parallax": 0.03
+      }
+    },
+    "mask": {
+      "type": "linear",
+      "angleDeg": 180,
+      "softness": 0.01
+    },
+    "value": 1,
+    "chrome": {
+      "line": { "width": 3, "colour": "accent", "softness": 0.35 },
+      "chips": true
+    },
+    "track": {
+      "keys": [
+        { "id": "k1", "tMs": 500, "pose": { "value": 1 } },
+        { "id": "k2", "tMs": 2300, "pose": { "value": 0 } }
+      ],
+      "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
+    }
+  },
+  "animatedTrack": "compare"
+}

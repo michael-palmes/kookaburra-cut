@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Docs",
+  "text": {
+    "title": "Full notes at example.com",
+    "subtitle": "v4.2.0"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 0.25,
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

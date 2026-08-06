@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "name": "One tap, anywhere",
+  "text": {
+    "title": "One tap, anywhere",
+    "subtitle": ""
+  },
+  "textStyle": { "subtitleSize": 1.9 },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "backdrop": { "type": "floor", "color": "#e8e0d2", "filletRadius": 3 },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#EDE0CF", 0],
+        ["#EAD9C5", 0.25],
+        ["#E7D3BD", 0.5],
+        ["#E5CEB8", 0.75],
+        ["#E3C9B4", 1]
+      ]
+    },
+    "parallax": 0.03
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/kooka-feed-loop-sample.mp4", "kind": "video", "startMs": 1800 },
+      "placement": { "position": [0, -0.35, 0], "rotationDeg": [0, -10, 0], "scale": 1 },
+      "motion": { "preset": "none" },
+      "shadow": "long"
+    }
+  ],
+  "cameraMode": "rig",
+  "cameraRig": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "position": [-2.15, 0.4, 4.9],
+          "aim": { "mode": "point", "at": [0, 0.12, 0] },
+          "fov": 46
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2100,
+        "pose": {
+          "position": [-1.2, 0.45, 5.45],
+          "aim": { "mode": "point", "at": [0, 0.14, 0] },
+          "fov": 42
+        }
+      },
+      {
+        "id": "k3",
+        "tMs": 4200,
+        "pose": {
+          "position": [-0.1, 0.5, 5.95],
+          "aim": { "mode": "point", "at": [0, 0.15, 0] },
+          "fov": 38
+        }
+      }
+    ],
+    "segments": [
+      { "from": "k1", "to": "k2", "ease": "inOutSine" },
+      { "from": "k2", "to": "k3", "ease": "inOutQuad", "easeLens": "inCubic" }
+    ]
+  },
+  "lighting": {
+    "preset": "golden-hour",
+    "environment": { "source": "kookaburra:sunset", "intensity": 0.9, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": -60,
+      "elevationDeg": 26,
+      "intensity": 2.6,
+      "kelvin": 2900,
+      "angularDeg": 1.2
+    },
+    "ambient": 0.3,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.35,
+      "opacity": 0.4,
+      "mapSize": 4096,
+      "bias": -0.0018,
+      "color": "#3a2a18"
+    }
+  }
+}

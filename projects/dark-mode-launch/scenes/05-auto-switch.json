@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "name": "Automatic",
+  "themeId": "kookaburra-abyss",
+  "text": {
+    "title": "Automatic",
+    "subtitle": "",
+    "bullets": "Follows your system\nPer-app override\nScheduled"
+  },
+  "frame": {
+    "cutout": { "shape": "capsule", "side": "start", "size": 0.3, "inset": 0.08 },
+    "chip": { "label": "Auto", "icon": "circle-check", "colour": "accent" },
+    "textAlign": "left"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#332e3c", "#503b55"],
+    "speed": 0.9,
+    "params": { "count": 5, "spread": 2.5, "depth": 14, "size": 1.05, "tube": 0.18, "drift": 0.9 },
+    "backing": {
+      "type": "gradient",
+      "spec": {
+        "type": "linear",
+        "angleDeg": 180,
+        "space": "oklch",
+        "stops": [
+          ["#08262B", 0],
+          ["#092A2F", 0.25],
+          ["#092D32", 0.5],
+          ["#0A2F34", 0.75],
+          ["#0A3236", 1]
+        ]
+      }
+    },
+    "preset": "p9"
+  }
+}

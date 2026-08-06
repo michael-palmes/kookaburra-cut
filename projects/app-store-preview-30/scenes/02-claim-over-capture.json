@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "The claim",
+  "duration": { "mode": "manual" },
+  "text": {
+    "title": "Plan a week\nin a minute"
+  },
+  "textStyle": {
+    "titleSize": 1.7,
+    "titleOffsetY": -0.12
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "frame": {
+    "cutout": { "shape": "rect", "size": 0.74, "side": "end", "inset": 0 },
+    "textAlign": "center"
+  },
+  "background": {
+    "type": "video",
+    "src": "assets/kooka-dark-loop-sample.mp4"
+  }
+}

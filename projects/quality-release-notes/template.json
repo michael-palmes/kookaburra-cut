@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Quality Release (bug fixes)",
+  "tagline": "The unglamorous release said well: what broke, what is fixed, how much faster it feels.",
+  "category": "app-updates",
+  "tags": ["release notes", "bug fixes", "changelog", "stability", "patch", "quality"],
+  "personas": ["pm", "developer"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": ["overlay", "chart", "text-motion", "background"],
+  "highlights": [
+    "Fix list as an editable overlay panel",
+    "Crash-rate chart on a full axis from zero",
+    "Cold-start counter for the payoff"
+  ],
+  "preview": {
+    "poster": 2,
+    "frames": [
+      { "scene": 0, "atMs": 1600 },
+      { "scene": 1, "atMs": 2600 },
+      { "scene": 2, "atMs": 2800 },
+      { "scene": 4, "atMs": 1700 }
+    ]
+  },
+  "order": 5,
+  "status": "stable"
+}

@@ -1,0 +1,61 @@
+{
+  "id": "changelog-rundown",
+  "name": "Changelog Rundown",
+  "version": 2,
+  "themeId": "kookaburra-abyss",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-release-header.tsx",
+      "durationMs": 2600,
+      "transition": {
+        "type": "dip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/02-added.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 350
+      }
+    },
+    {
+      "file": "scenes/03-added-demo.tsx",
+      "durationMs": 3200,
+      "transition": {
+        "type": "dip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/04-changed.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "dip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/05-fixed.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "dip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/06-known-issues.tsx",
+      "durationMs": 3400,
+      "transition": {
+        "type": "dip",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/07-read-full.tsx",
+      "durationMs": 2600
+    }
+  ]
+}

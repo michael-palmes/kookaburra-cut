@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "name": "Three screens",
+  "backdrop": { "type": "floor", "color": "#e8e0d2", "filletRadius": 3 },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#EDE0CF", 0],
+        ["#EAD9C5", 0.25],
+        ["#E7D3BD", 0.5],
+        ["#E5CEB8", 0.75],
+        ["#E3C9B4", 1]
+      ]
+    },
+    "parallax": 0.03
+  },
+  "devices": [
+    {
+      "id": "left",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/shot-b-sample.jpg", "kind": "image" },
+      "motion": { "preset": "none" },
+      "shadow": "long"
+    },
+    {
+      "id": "centre",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/shot-a-sample.jpg", "kind": "image" },
+      "motion": { "preset": "none" },
+      "shadow": "long"
+    },
+    {
+      "id": "right",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/shot-c-sample.jpg", "kind": "image" },
+      "motion": { "preset": "none" },
+      "shadow": "long"
+    }
+  ],
+  "deviceLayout": { "preset": "arc", "gap": 1.1 },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": { "target": [0, -0.1, 0], "azimuthDeg": 10, "elevationDeg": 5, "distance": 6.6 }
+      },
+      {
+        "id": "k2",
+        "tMs": 2800,
+        "pose": { "target": [0, -0.1, 0], "azimuthDeg": -4, "elevationDeg": 3, "distance": 6.2 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
+  },
+  "lighting": {
+    "preset": "golden-hour",
+    "environment": { "source": "kookaburra:sunset", "intensity": 0.9, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": -60,
+      "elevationDeg": 26,
+      "intensity": 2.6,
+      "kelvin": 2900,
+      "angularDeg": 1.2
+    },
+    "ambient": 0.3,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.35,
+      "opacity": 0.4,
+      "mapSize": 4096,
+      "bias": -0.0018,
+      "color": "#3a2a18"
+    }
+  }
+}

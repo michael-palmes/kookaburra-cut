@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "Try it now",
+  "text": {
+    "title": "v2.4",
+    "subtitle": "Try it now"
+  },
+  "textStyle": {
+    "titleFont": "JetBrains Mono"
+  }
+}

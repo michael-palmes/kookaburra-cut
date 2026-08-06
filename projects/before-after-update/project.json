@@ -1,0 +1,41 @@
+{
+  "id": "before-after-update",
+  "name": "Before / After Update",
+  "version": 2,
+  "themeId": "kookaburra-neon",
+  "formats": ["9:16", "16:9", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-old-way.tsx",
+      "durationMs": 2600,
+      "transition": {
+        "type": "wipe",
+        "durationMs": 300
+      }
+    },
+    {
+      "file": "scenes/02-wipe.tsx",
+      "durationMs": 3600
+    },
+    {
+      "file": "scenes/03-new-way.tsx",
+      "durationMs": 3000,
+      "transition": {
+        "type": "whip",
+        "durationMs": 260
+      }
+    },
+    {
+      "file": "scenes/04-delta.tsx",
+      "durationMs": 2400,
+      "transition": {
+        "type": "dip",
+        "durationMs": 460
+      }
+    },
+    {
+      "file": "scenes/05-cta.tsx",
+      "durationMs": 2400
+    }
+  ]
+}

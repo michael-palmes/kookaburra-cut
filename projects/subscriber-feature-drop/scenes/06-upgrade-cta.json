@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Upgrade CTA",
+  "text": {
+    "title": "Kooka Pro 4.2",
+    "subtitle": "Upgrade"
+  },
+  "textStyle": {
+    "titleFont": "JetBrains Mono"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "gradient",
+    "parallax": 0.03,
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#2E1F05", 0],
+        ["#322306", 0.25],
+        ["#352507", 0.5],
+        ["#382807", 0.75],
+        ["#3A2A08", 1]
+      ]
+    }
+  }
+}

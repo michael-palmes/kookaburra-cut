@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "Nine taps to three",
+  "text": {
+    "headline": "Same job",
+    "unit": "taps"
+  },
+  "textStyle": {
+    "headlineColor": "text",
+    "unitColor": "text"
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "startScale": 0.85,
+    "shine": true,
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "preset": "p6",
+    "speed": 0.4,
+    "colors": ["#140d07", "#6c4925", "#2b1c0f", "#865727"],
+    "params": {
+      "proportion": 0.5,
+      "softness": 1,
+      "distortion": 0.2,
+      "swirl": 0.6
+    }
+  },
+  "backdrop": {
+    "type": "none"
+  }
+}

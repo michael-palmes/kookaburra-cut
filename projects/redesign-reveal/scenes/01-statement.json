@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "We rebuilt it",
+  "text": {
+    "title": "We rebuilt it",
+    "subtitle": "Every screen"
+  },
+  "textLayout": { "align": "center" },
+  "textStyle": { "titleSize": 0.75, "subtitleSize": 1.3 },
+  "textAnimation": {
+    "in": "mask-reveal",
+    "out": "fade",
+    "staggerMs": 60,
+    "stagger": "word"
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#f8f4ea", "#dcc9a0"],
+    "speed": 0.3,
+    "params": {
+      "thickness": 0.85,
+      "radius": 0.2,
+      "innerShape": 0.4,
+      "noiseScale": 3.8
+    },
+    "preset": "p5"
+  }
+}

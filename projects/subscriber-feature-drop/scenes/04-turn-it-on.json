@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "name": "Turn it on",
+  "text": {
+    "ls-caption": "Settings\n→ Labs"
+  },
+  "layeredScreenshot": {
+    "layers": [
+      {
+        "id": "l1",
+        "name": "Toggle off",
+        "visible": true,
+        "z": 0,
+        "items": [
+          {
+            "id": "off",
+            "kind": "screen",
+            "src": "assets/settings-off-sample.jpg",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      },
+      {
+        "id": "l2",
+        "name": "Toggle on",
+        "visible": true,
+        "z": 1,
+        "items": [
+          {
+            "id": "on",
+            "kind": "screen",
+            "src": "assets/settings-on-sample.jpg",
+            "media": "image",
+            "attach": null
+          },
+          {
+            "id": "caption",
+            "kind": "text",
+            "width": 2.2,
+            "attach": { "to": "on", "side": "bottom" },
+            "gap": 0.24
+          }
+        ]
+      }
+    ],
+    "pose": {
+      "spread": 0.2,
+      "azimuthDeg": 18,
+      "elevationDeg": 12,
+      "zoom": 0.92,
+      "pan": [0, 0]
+    },
+    "animation": {
+      "keys": [
+        {
+          "id": "k1",
+          "tMs": 0,
+          "pose": {
+            "spread": 0.2,
+            "azimuthDeg": 18,
+            "elevationDeg": 12,
+            "zoom": 0.92,
+            "pan": [0, 0]
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 3200,
+          "pose": {
+            "spread": 0.6,
+            "azimuthDeg": 18,
+            "elevationDeg": 12,
+            "zoom": 0.92,
+            "pan": [0, 0]
+          }
+        }
+      ],
+      "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }],
+      "presentLoop": { "mode": "smooth" }
+    }
+  },
+  "animatedTrack": "layeredScreenshot",
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "gradient",
+    "parallax": 0.03,
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#2E1F05", 0],
+        ["#322306", 0.25],
+        ["#352507", 0.5],
+        ["#382807", 0.75],
+        ["#3A2A08", 1]
+      ]
+    }
+  }
+}

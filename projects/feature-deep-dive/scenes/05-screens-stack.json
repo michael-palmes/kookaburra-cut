@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "name": "Every screen it touches",
+  "layeredScreenshot": {
+    "layers": [
+      {
+        "id": "l1",
+        "name": "Home",
+        "visible": true,
+        "z": 0,
+        "items": [
+          {
+            "id": "home",
+            "kind": "screen",
+            "src": "assets/shot-a-sample.jpg",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      },
+      {
+        "id": "l2",
+        "name": "Detail",
+        "visible": true,
+        "z": 1,
+        "items": [
+          {
+            "id": "detail",
+            "kind": "screen",
+            "src": "assets/shot-b-sample.jpg",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      },
+      {
+        "id": "l3",
+        "name": "Settings",
+        "visible": true,
+        "z": 2,
+        "items": [
+          {
+            "id": "settings",
+            "kind": "screen",
+            "src": "assets/shot-c-sample.jpg",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      }
+    ],
+    "pose": {
+      "spread": 0.15,
+      "azimuthDeg": 0,
+      "elevationDeg": 0,
+      "zoom": 0.67,
+      "pan": [0, 0]
+    },
+    "animation": {
+      "keys": [
+        {
+          "id": "k1",
+          "tMs": 200,
+          "pose": {
+            "spread": 0.15,
+            "azimuthDeg": 0,
+            "elevationDeg": 0,
+            "zoom": 0.67,
+            "pan": [0, 0]
+          }
+        },
+        {
+          "id": "k2",
+          "tMs": 1800,
+          "pose": {
+            "spread": 0.75,
+            "azimuthDeg": 18,
+            "elevationDeg": 12,
+            "zoom": 0.67,
+            "pan": [0.1, 0]
+          }
+        }
+      ],
+      "segments": [
+        {
+          "from": "k1",
+          "to": "k2",
+          "ease": "inOutCubic"
+        }
+      ]
+    }
+  },
+  "animatedTrack": "layeredScreenshot"
+}
