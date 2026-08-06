@@ -253,6 +253,7 @@ export function resolveChart(doc: SceneDoc | undefined): ResolvedChart | null {
     dimension: mount === "panel" ? "2d" : (raw.dimension ?? "2d"),
     mount,
     data,
+    palette: raw.palette ?? null,
     style: resolveStyle(raw.style),
     axis,
     labels,

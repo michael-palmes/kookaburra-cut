@@ -25,6 +25,7 @@ import {
   fitChart2d,
   fitChart3d,
 } from "./mount";
+import { CHART_PALETTE_SCHEMES } from "./paletteSchemes";
 import { chart3dSpace } from "./space3d";
 import type { ChartLayout } from "./types";
 
@@ -103,6 +104,29 @@ describe("chartColours", () => {
       },
     });
     expect(chartColours(chart, theme)).toHaveLength(4);
+  });
+
+  it("paints a named scheme where the block asks for one, series overrides aside", () => {
+    const chart = columns();
+    chart.palette = "reef";
+    expect(chartColours(chart, theme)).toEqual([
+      CHART_PALETTE_SCHEMES.reef.swatches[0],
+      CHART_PALETTE_SCHEMES.reef.swatches[1],
+    ]);
+    chart.data.series[1].colour = "#ff0000";
+    expect(chartColours(chart, theme)[1]).toBe("#ff0000");
+  });
+
+  it("keys a scheme on CATEGORY for pie, like the theme palette", () => {
+    const chart = resolve({
+      type: "pie",
+      palette: "harbour",
+      data: {
+        categories: ["a", "b", "c"],
+        series: [{ id: "s", name: "Share", values: [1, 2, 3] }],
+      },
+    });
+    expect(chartColours(chart, theme)).toEqual(CHART_PALETTE_SCHEMES.harbour.swatches.slice(0, 3));
   });
 });
 

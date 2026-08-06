@@ -39,6 +39,7 @@ describe("resolveChart", () => {
     expect(chart.dimension).toBe("2d");
     expect(chart.mount).toBe("hero");
     expect(chart.placement).toBeUndefined();
+    expect(chart.palette).toBeNull();
     expect(chart.style).toEqual(CHART_STYLE_DEFAULTS);
     expect(chart.style.rotation).not.toBe(CHART_STYLE_DEFAULTS.rotation);
     expect(chart.axis.value).toEqual({
@@ -87,6 +88,11 @@ describe("resolveChart", () => {
     expect(chart.animation.preset).toBe("sweep");
     expect(chart.animation.staggerMs).toBe(0);
     expect(chart.animation.durationMs).toBe(1200);
+  });
+
+  it("carries an authored colour scheme and leaves it null when unset", () => {
+    expect(resolved({ type: "column", data: data(), palette: "reef" }).palette).toBe("reef");
+    expect(resolved({ type: "column", data: data() }).palette).toBeNull();
   });
 
   it("keeps an explicitly null decimals as auto, and absence as the field default", () => {

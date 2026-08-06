@@ -111,14 +111,17 @@ export function chartHeroRect(
   };
 }
 
-/** One colour per series, or per CATEGORY for pie (the `ChartRendererProps` contract): an authored series override wins, then the theme palette, then the preset's own lightness stepping (0 for every preset that leaves the palette alone). */
+/** One colour per series, or per CATEGORY for pie (the `ChartRendererProps` contract): an authored series override wins, then the block's named colour scheme, then the theme palette, then the preset's own lightness stepping (0 for every preset that leaves the palette alone). */
 export function chartColours(chart: ChartConfig, theme: Theme, lightnessStep = 0): string[] {
   const tint = (colour: string, i: number): string =>
     chartSeriesTint(colour, theme.colors.background, i, lightnessStep);
+  const scheme = chart.palette;
   if (chart.type === "pie") {
-    return chart.data.categories.map((_, i) => tint(resolveSeriesColour(theme, i), i));
+    return chart.data.categories.map((_, i) =>
+      tint(resolveSeriesColour(theme, i, null, scheme), i),
+    );
   }
-  return chart.data.series.map((s, i) => tint(resolveSeriesColour(theme, i, s.colour), i));
+  return chart.data.series.map((s, i) => tint(resolveSeriesColour(theme, i, s.colour, scheme), i));
 }
 
 export interface ChartValueBounds {

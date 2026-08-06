@@ -17,7 +17,11 @@ import {
   chartPresetFor,
 } from "../../toolkit/chart/animation";
 import { CHART_DECIMALS_MAX, formatChartValue } from "../../toolkit/chart/format";
-import { resolveSeriesColour } from "../../toolkit/chart/palette";
+import { CHART_PALETTE_SIZE, resolveSeriesColour } from "../../toolkit/chart/palette";
+import {
+  CHART_PALETTE_SCHEME_IDS,
+  CHART_PALETTE_SCHEMES,
+} from "../../toolkit/chart/paletteSchemes";
 import {
   CHART_STYLE_PRESET_IDS,
   CHART_STYLE_PRESETS,
@@ -98,6 +102,37 @@ function MountGlyph({ mount }: { mount: ChartMount }) {
       <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke="currentColor" />
       <path d="M4.5 1.5v9" stroke="currentColor" />
     </svg>
+  );
+}
+
+/** One colour-scheme tile: the six swatches it paints with, over its name. Plain CSS dots, so the picker needs no captured previews. */
+function PaletteTile({
+  label,
+  swatches,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  swatches: readonly string[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={`chart-palette-tile${selected ? " selected" : ""}`}
+      title={label}
+      onClick={onSelect}
+    >
+      <span className="chart-palette-swatches" aria-hidden="true">
+        {swatches.map((hex, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: six fixed slots that never reorder, and a short theme palette repeats a hex.
+          <span key={i} style={{ background: hex }} />
+        ))}
+      </span>
+      {label}
+    </button>
   );
 }
 
@@ -466,14 +501,14 @@ export function ChartDrillIn({
           />
           <DrillGroup
             label="Colour"
-            hint="Without an override the theme's chart palette drives it."
+            hint="Without an override the chart's colour scheme drives it."
           >
             <div className="popover-row">
               <span className="popover-inline slider-row-label">Series colour</span>
               <ColourPicker
-                value={resolveSeriesColour(theme, selectedIndex, override)}
+                value={resolveSeriesColour(theme, selectedIndex, override, chart.palette)}
                 label={`${selected.name} colour`}
-                defaultValue={resolveSeriesColour(theme, selectedIndex)}
+                defaultValue={resolveSeriesColour(theme, selectedIndex, null, chart.palette)}
                 onReset={
                   override
                     ? () =>
@@ -551,9 +586,20 @@ export function ChartDrillIn({
     label: MOUNT_LABELS[value],
     icon: <MountGlyph mount={value} />,
   }));
+  // What the "Theme" tile paints: the swatches this scene's theme resolves, scheme aside.
+  const themeSwatches = Array.from({ length: CHART_PALETTE_SIZE }, (_, i) =>
+    resolveSeriesColour(theme, i),
+  );
 
   const graph = (
     <>
+      <ActionRow
+        label="Edit data"
+        value={dataSummary}
+        chevron
+        onClick={() => openChartDataModal()}
+      />
+
       <DrillGroup label="Chart type">
         <div className="bg-type-grid chart-type-grid">
           {CHART_TYPE_IDS.map((type) => (
@@ -646,6 +692,37 @@ export function ChartDrillIn({
             </div>
           </Fragment>
         ))}
+      </DrillGroup>
+
+      <DrillGroup
+        label="Colours"
+        hint="A scheme replaces the theme's chart palette; a per-series colour still wins."
+      >
+        <div className="chart-palette-grid">
+          <PaletteTile
+            label="Theme"
+            swatches={themeSwatches}
+            selected={!chart.palette}
+            onSelect={() =>
+              write((c) => {
+                delete c.palette;
+              }, "chart colours")
+            }
+          />
+          {CHART_PALETTE_SCHEME_IDS.map((id) => (
+            <PaletteTile
+              key={id}
+              label={CHART_PALETTE_SCHEMES[id].label}
+              swatches={CHART_PALETTE_SCHEMES[id].swatches}
+              selected={chart.palette === id}
+              onSelect={() =>
+                write((c) => {
+                  c.palette = id;
+                }, "chart colours")
+              }
+            />
+          ))}
+        </div>
       </DrillGroup>
 
       <DrillGroup label="Shape">
@@ -895,13 +972,6 @@ export function ChartDrillIn({
           />
         </div>
       </DrillGroup>
-
-      <ActionRow
-        label="Edit data"
-        value={dataSummary}
-        chevron
-        onClick={() => openChartDataModal()}
-      />
     </>
   );
 
@@ -1069,9 +1139,9 @@ export function ChartDrillIn({
             return (
               <li key={s.id} className={`chart-series-row${greyed ? " greyed" : ""}`}>
                 <ColourPicker
-                  value={resolveSeriesColour(theme, i, override)}
+                  value={resolveSeriesColour(theme, i, override, chart.palette)}
                   label={`${s.name} colour`}
-                  defaultValue={resolveSeriesColour(theme, i)}
+                  defaultValue={resolveSeriesColour(theme, i, null, chart.palette)}
                   onReset={
                     override
                       ? () =>

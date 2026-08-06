@@ -146,6 +146,8 @@ export interface ChartConfig {
   /** Staged mount only. */
   placement?: DevicePlacement;
   data: ChartData;
+  /** Named colour scheme id (`paletteSchemes.ts`); null takes the theme's palette, which is the pre-scheme behaviour. */
+  palette: string | null;
   style: ChartStyle;
   axis: ChartAxisConfig;
   labels: ChartLabelConfig;

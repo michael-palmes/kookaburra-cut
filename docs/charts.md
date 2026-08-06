@@ -18,7 +18,7 @@ slideware.
 | Coverage | All eight types in 2D and 3D | Taste is enforced by presets, not by withholding types. |
 | Data editing | Grid, paste and CSV import | The sidecar owns the numbers; import is an edit-time act. |
 | Data motion | Keyframed value snapshots on the shared KeyedTrack | The Magic Chart idea on the app's own timeline, with the same lane semantics as camera and compare. |
-| Series colours | Theme `chartColors`, else a derived OKLCH ramp, with per-series overrides | User themes without a curated palette still read on light and dark. |
+| Series colours | Per-series override, else one of 10 named schemes, else theme `chartColors`, else a derived OKLCH ramp | A chart often wants its own colours without restyling the whole scene; user themes without a curated palette still read on light and dark. |
 | Number formatting | Hand-rolled, no `Intl` | Locale data varies across macOS versions, which would break byte-identical export. |
 | Appearance | 12 presets in three tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
 | Build-in | 19 presets in three tiers, sampled per element | A preset is a row of channel parameters, never bespoke motion code. |
@@ -32,7 +32,8 @@ slideware.
 src/toolkit/chart/
   layout.ts        pure layout maths        -> ChartLayout (0..1 plot rect, x right, y up)
   format.ts        number presentation      -> one formatter for axes, values, counters
-  palette.ts       series colours           -> override > theme chartColors > derived ramp
+  palette.ts       series colours           -> override > scheme > theme chartColors > ramp
+  paletteSchemes.ts colour scheme catalogue -> 10 named six-swatch sets
   stylePresets.ts  appearance catalogue     -> one ChartStyleSurface (2D facet, 3D facet, shared)
   animation.ts     build-in catalogue       -> ChartRevealSampler (per element, per series)
   mount.ts         placement maths          -> hero / staged / panel rects, fixed scale
@@ -87,6 +88,8 @@ them.
     ],
     "source": "assets/q3.csv"   // informational: nothing reads it at render time
   },
+
+  "palette": "reef",            // optional named colour scheme; absent takes the theme's
 
   "style": {
     "preset": "boardroom",      // appearance preset id
@@ -280,10 +283,25 @@ has finished" means.
 
 ## Palette
 
-Precedence: per-series `colour` override, then the theme's curated `chartColors`
-swatch at that index, then a derived ramp. Indices wrap at every step, and a
-malformed hex falls through to the next source rather than painting a broken mark.
+Precedence: per-series `colour` override, then the block's named `palette` scheme,
+then the theme's curated `chartColors` swatch at that index, then a derived ramp.
+Indices wrap at every step, and a malformed hex falls through to the next source
+rather than painting a broken mark. With no `palette` the resolution is the
+pre-scheme one exactly, hex for hex, which is what keeps the gate EQUAL.
 
+- **Named schemes** (`paletteSchemes.ts`) are ten hand-tuned six-swatch sets:
+  Reef, Sunrise, Eucalypt, Outback, Harbour, Orchid, Citrus, Vivid, Muted, Slate.
+  A scheme is background-agnostic, unlike a theme palette curated against one
+  background, so every swatch has to hold on the darkest and the lightest bundled
+  theme at once. That pins them all into a mid-tone luminance band: the schemes
+  differ by hue family and chroma rather than tone, and none runs to neon-bright or
+  pastel-pale (Vivid and Muted are the high and low chroma ends of that band, not
+  light and dark ones). The contract, pinned by `paletteSchemes.test.ts`: 3:1
+  against every bundled theme background, neighbouring swatches separated in OKLab
+  (the two-series case), every pair in a set tellable apart, and no two schemes
+  collapsing onto each other.
+- An unknown scheme id warns once and falls through to the theme, the same degrade
+  an unknown appearance preset takes.
 - `chartColors` is an optional theme field (hex strings, six by convention). Every
   bundled theme ships a hand-picked palette; a malformed entry drops alone.
 - The derived ramp (`derivedChartPalette`) is seeded from `colors.accent`: hue rotates
@@ -358,6 +376,11 @@ hands the host a world rect. See `docs/overlays.md` for the panel itself.
   so every control shows the value that renders; writes patch only the field touched,
   so an untouched default never lands in the sidecar. Live slider and scrub ticks
   write history-less from a drag-start snapshot and settle to one history entry.
+- **Graph tab order.** Edit data leads (the row a chart is opened for), then Chart
+  type, Dimension, Mount, Appearance, Colours, Shape, Placement, Legend, Build in.
+  The Colours group is a plain 2-up grid of CSS swatch tiles: a Theme tile first,
+  showing what this scene's theme resolves, then the ten schemes. Nothing here is a
+  captured preview, so the catalogue can grow without regenerating thumbnails.
 - **Placement.** `chart.position` is the staged mount's drill (Move / Rotate / Scale
   pills plus scrub fields); the gizmo attaches to the posed group while it is open and
   posts its commit through `chartEditStore`.
@@ -407,6 +430,9 @@ This is an export-path feature and gates through `docs/determinism.md`.
 
 - **Null-for-legacy.** A scene with no `chart` block resolves to `null`, the fallback
   renders nothing, and no chart code runs. `ws:launch-2026` 16:9 must stay EQUAL.
+- **Opt-in colour.** An absent `palette` resolves through exactly the pre-scheme
+  ladder, so every existing chart keeps its hexes; the schemes are pinned data, so a
+  chart that does name one is the same colours on every machine.
 - **Purity.** Layout, formatting, palette derivation, style resolution and the build
   sampler read no clock, no `Math.random` and no `Intl`. The sampler is rebuilt every
   frame from the scene-local clock and is deliberately NOT memoised: it must be a new
@@ -440,8 +466,9 @@ This is an export-path feature and gates through `docs/determinism.md`.
   `--action screenshot` frame before recording any baseline.
 
 Fixture: `ws:chart-spike`. Unit tests pin the pure halves (layout and ticks, stacking,
-pie angles, 2D metrics, 3D geometry, formatting, palette derivation, style resolution,
-the animation sampler, mount fitting, CSV round trips, track sampling).
+pie angles, 2D metrics, 3D geometry, formatting, palette derivation and the scheme
+catalogue, style resolution, the animation sampler, mount fitting, CSV round trips,
+track sampling).
 
 ## Preview-lab thumbnails
 

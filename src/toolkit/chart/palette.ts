@@ -1,7 +1,8 @@
-/** Chart series colours: an authored override wins, then the theme's curated `chartColors` swatch, then a deterministic OKLCH ramp derived from the theme's accent. The ramp rotates hue in fixed steps and clamps lightness for contrast against the theme background, so a user theme with no curated palette still reads on light and dark alike. Pure: same theme in, same hexes out, on every machine (docs/determinism.md). */
+/** Chart series colours: an authored override wins, then the chart's named colour scheme, then the theme's curated `chartColors` swatch, then a deterministic OKLCH ramp derived from the theme's accent. The ramp rotates hue in fixed steps and clamps lightness for contrast against the theme background, so a user theme with no curated palette still reads on light and dark alike. Pure: same theme in, same hexes out, on every machine (docs/determinism.md). */
 
 import { bytesToHex, hexToOklch, type Oklch, oklchToBytes } from "../../theme/oklch";
 import type { Theme } from "../../theme/tokens";
+import { chartPaletteSwatches } from "./paletteSchemes";
 
 /** The curated palette size the theme schema documents; the derived ramp matches it and series indices wrap. */
 export const CHART_PALETTE_SIZE = 6;
@@ -81,10 +82,20 @@ export function chartColourAt(colours: readonly string[], index: number, fallbac
   return colours[wrap(index, colours.length)] ?? fallback;
 }
 
-/** The colour for one series: per-series `colour` override, else the theme swatch at that index, else the derived ramp. Indices wrap in every case, and a malformed hex falls through to the next source rather than painting a broken mark. */
-export function resolveSeriesColour(theme: Theme, index: number, override?: string | null): string {
+/** The colour for one series: per-series `colour` override, else the chart's named scheme, else the theme swatch at that index, else the derived ramp. Indices wrap at every step, and a malformed hex falls through to the next source rather than painting a broken mark. An absent `scheme` is the pre-scheme path exactly, byte for byte. */
+export function resolveSeriesColour(
+  theme: Theme,
+  index: number,
+  override?: string | null,
+  scheme?: string | null,
+): string {
   const authored = hex(override);
   if (authored) return authored;
+  const named = chartPaletteSwatches(scheme);
+  if (named) {
+    const picked = hex(named[wrap(index, named.length)]);
+    if (picked) return picked;
+  }
   const swatches = theme.chartColors;
   if (Array.isArray(swatches) && swatches.length > 0) {
     const themed = hex(swatches[wrap(index, swatches.length)]);

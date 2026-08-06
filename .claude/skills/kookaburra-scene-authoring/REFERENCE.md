@@ -970,9 +970,10 @@ keyframed data morphs on the shared track system. The TSX is one line:
 <Chart />   // reads the sidecar chart block; ChartFallback renders it even without this
 ```
 
-Everything else lives in the `chart` sidecar block (data, style, axis, labels,
+Everything else lives in the `chart` sidecar block (data, palette, style, axis, labels,
 animation, track). Series colours come from the theme (`chartColors`, then a derived
-accent ramp); never hard-code them. Scalar edits go through `sidecar.py` dotted paths;
+accent ramp) unless the block names one of the 10 colour schemes in `palette`; never
+hard-code them. Scalar edits go through `sidecar.py` dotted paths;
 tabular data, keyframes and a readable summary go through `scripts/chart.py`.
 
 **Load `CHARTS.md` (beside this file) before authoring or editing any chart**: it

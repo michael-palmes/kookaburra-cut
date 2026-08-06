@@ -32,6 +32,9 @@ is enough. One chart per scene.
     ]
   },
 
+  "palette": null,              // optional named colour scheme id (list below);
+                                // absent takes the theme's chartColors
+
   "style": {
     "preset": "boardroom",      // appearance preset, table below
     "depth": 0.5,               // 3D extrusion, 0..1
@@ -117,10 +120,16 @@ on a type it does not cover degrades to that family's default (never an error).
 
 ## Series colours
 
-Precedence: per-series `colour` override, then the theme's `chartColors` (all bundled
-themes carry six curated swatches), then a derived ramp off the theme accent. DO NOT
-hard-code series colours in scenes for design reasons; the override exists for brand
-data (for example a competitor's brand colour) only.
+Precedence: per-series `colour` override, then the block's `palette` scheme, then the
+theme's `chartColors` (all bundled themes carry six curated swatches), then a derived
+ramp off the theme accent. DO NOT hard-code series colours in scenes for design
+reasons; the override exists for brand data (for example a competitor's brand colour)
+only. Reach for a `palette` scheme instead when a chart wants its own colours.
+
+Scheme ids: `reef`, `sunrise`, `eucalypt`, `outback`, `harbour`, `orchid`, `citrus`,
+`vivid` (high chroma), `muted` (low chroma), `slate` (cool neutrals). Every scheme is
+six mid-tone swatches that hold on light AND dark theme backgrounds, so a scheme never
+needs re-picking when the scene's theme changes. An unknown id falls back to the theme.
 
 ## Keyframed data (the track)
 

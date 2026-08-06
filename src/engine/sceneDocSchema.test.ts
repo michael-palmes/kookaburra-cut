@@ -584,6 +584,25 @@ describe("parseSceneDoc", () => {
     });
   });
 
+  it("keeps a chart colour scheme id and drops anything that isn't one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, palette: "reef" } }, "test")?.chart
+        ?.palette,
+    ).toBe("reef");
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, palette: 7 } }, "test")?.chart
+        ?.palette,
+    ).toBeUndefined();
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, palette: "  " } }, "test")?.chart
+        ?.palette,
+    ).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.palette"));
+    vi.restoreAllMocks();
+  });
+
   it("keeps a chart block absent from legacy docs (null-for-legacy)", () => {
     expect(parseSceneDoc({ version: 1, text: { headline: "hi" } }, "test")?.chart).toBeUndefined();
   });

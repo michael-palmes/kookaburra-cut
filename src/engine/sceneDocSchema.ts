@@ -460,6 +460,8 @@ export interface SceneDocChart {
   /** Staged mount only. */
   placement?: DevicePlacement;
   data: SceneDocChartData;
+  /** Named colour scheme id; absent takes the theme's chart palette. */
+  palette?: string;
   style?: Partial<ChartStyle>;
   axis?: { value?: SceneDocChartValueAxis; category?: Partial<ChartCategoryAxis> };
   labels?: { legend?: Partial<ChartLegend>; values?: SceneDocChartValueLabels };
@@ -1016,6 +1018,11 @@ function parseChart(raw: unknown, source: string): SceneDocChart | undefined {
   if (raw.placement !== undefined) {
     const placement = parsePlacement(raw.placement, source, "chart.placement");
     if (placement) out.placement = placement;
+  }
+  if (typeof raw.palette === "string" && raw.palette.trim().length > 0) {
+    out.palette = raw.palette;
+  } else if (raw.palette !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.palette isn't a scheme id, dropped`);
   }
   if (raw.style !== undefined) {
     const style = parseChartStyle(raw.style, source);
