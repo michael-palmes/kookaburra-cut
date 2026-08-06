@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from "react";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
-import { useCompareEditStore } from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
 import {
@@ -10,6 +9,7 @@ import {
 } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { useCameraDoc } from "./cameraDoc";
+import { clearOtherLaneSelections } from "./laneSelection";
 import { type SegmentExtras, TrackLane } from "./TrackLane";
 
 /** The per-scene camera timeline lane: a thin wrapper binding the generic `TrackLane` to the camera edit store, doc funnel and the mode's tool keys, O/P/Z in Orbit and M/F/L/T in Free (the lane body itself was extracted verbatim to TrackLane.tsx for the layered-screenshot lane). Neither set collides: the studio window binds no other bare letters, and the video editor's S/F/T live in a separate window. Free mode drives the RIG track and opts the popover into the rig's smoothing and channel-ease rows; the layered-screenshot lane passes neither, so it is unchanged. */
@@ -35,8 +35,7 @@ const onEscape = () => {
 
 const select = (keyId: string | null, segment: number | null) => {
   useCameraEditStore.getState().select(keyId, segment);
-  // Stacked lanes each bind window-level key handlers; only one selection may be live.
-  if (keyId !== null || segment !== null) useCompareEditStore.getState().select(null, null);
+  if (keyId !== null || segment !== null) clearOtherLaneSelections("camera");
 };
 
 export function AnimationLane({
