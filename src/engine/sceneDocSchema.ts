@@ -1282,6 +1282,9 @@ export function collectSceneDocFontRefs(docs: readonly (SceneDoc | undefined)[])
       if (key.endsWith("Font") && typeof value === "string") take(value);
     }
     if (typeof doc?.chart?.font === "string") take(doc.chart.font);
+    for (const deco of doc?.frame?.decorations ?? []) {
+      if (typeof deco.font === "string") take(deco.font);
+    }
   }
   return [...seen.values()];
 }

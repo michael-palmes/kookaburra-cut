@@ -3028,6 +3028,51 @@ export function SceneTab({
                         </div>
                       </span>
                     </div>
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Font
+                        <button
+                          type="button"
+                          className={`text-style-font${d.font ? " overridden" : ""}`}
+                          title="Decoration font"
+                          onClick={() => openDrill(`deco.font:${d.id}`)}
+                        >
+                          <span className="text-style-font-name">
+                            {d.font ? parseFontString(d.font).family : "Theme font"}
+                          </span>
+                          <span className="text-style-font-chevron" aria-hidden>
+                            ›
+                          </span>
+                        </button>
+                      </span>
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Line spacing</span>
+                      <DebouncedRange
+                        value={d.lineHeight ?? LINE_SPACING_NORMAL}
+                        min={TEXT_LINE_HEIGHT_MIN}
+                        max={TEXT_LINE_HEIGHT_MAX}
+                        step={0.05}
+                        label="Line spacing"
+                        onCommit={(v) => {
+                          // The text drill's snap: the 0.05 grid, cleared at Normal.
+                          const snapped = Math.round(v * 20) / 20;
+                          patchDeco(d.id, {
+                            lineHeight: snapped === LINE_SPACING_NORMAL ? undefined : snapped,
+                          });
+                        }}
+                      />
+                      {d.lineHeight !== undefined && (
+                        <button
+                          type="button"
+                          className="inspector-reset-btn"
+                          title="Back to the font's normal line spacing"
+                          onClick={() => patchDeco(d.id, { lineHeight: undefined })}
+                        >
+                          Normal
+                        </button>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
@@ -4655,6 +4700,56 @@ export function SceneTab({
                 await preloadAppFonts([ref]);
                 commitFont(formatFontString(ref));
                 // A recent chip is a committed choice, so step straight back to Edit text.
+                if (opts?.fromRecent) closeDrill();
+              })();
+            }}
+          />
+          <p className="modal-hint">
+            System fonts are pinned into your workspace on first use, so exports never drift with
+            macOS updates.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (drillIn?.startsWith("deco.font:") && sceneFrame) {
+    const decoId = drillIn.slice("deco.font:".length);
+    const decos = sceneFrame.decorations ?? [];
+    const deco = decos.find((x) => x.id === decoId);
+    const themeFace = (sceneTheme ?? project.theme).typography[deco?.face ?? "headline"];
+    const currentRef = deco?.font ? parseFontString(deco.font) : themeFace;
+    const commitFont = (value: string | undefined) =>
+      void patchDoc(
+        (next) => {
+          next.frame = {
+            ...(next.frame ?? {}),
+            decorations: decos.map((x) => (x.id === decoId ? { ...x, font: value } : x)),
+          };
+        },
+        { history: "decoration font" },
+      );
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Decoration font</div>
+        <div className="inspector-drill-body">
+          {deco?.font !== undefined && (
+            <button
+              type="button"
+              className="btn text-font-reset"
+              onClick={() => commitFont(undefined)}
+            >
+              Use theme font
+            </button>
+          )}
+          <FontPicker
+            value={currentRef}
+            onPick={(ref, opts) => {
+              // Pin + preload before the sidecar write so the face renders the moment the doc patch lands.
+              void (async () => {
+                await ensureFontRefsPinned([ref]);
+                await preloadAppFonts([ref]);
+                commitFont(formatFontString(ref));
                 if (opts?.fromRecent) closeDrill();
               })();
             }}

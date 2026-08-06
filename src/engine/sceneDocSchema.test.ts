@@ -227,6 +227,23 @@ describe("parseSceneDoc", () => {
     expect(collectSceneDocFontRefs([plain])).toEqual([]);
   });
 
+  it("collects a text decoration's font into the preload set", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        frame: {
+          cutout: { shape: "rounded-rect", side: "start" },
+          decorations: [
+            { id: "t1", text: "Since 2019", position: [0.4, -0.5], size: 0.05, font: "Avenir@700" },
+          ],
+        },
+      },
+      "test",
+    );
+    expect(doc?.frame?.decorations?.[0]?.font).toBe("Avenir@700");
+    expect(collectSceneDocFontRefs([doc])).toEqual([{ family: "Avenir", weight: 700 }]);
+  });
+
   it("keeps a camera track only when keys AND segments are arrays", () => {
     const good = parseSceneDoc({ version: 1, camera: { keys: [], segments: [] } }, "test");
     expect(good?.camera).toEqual({ keys: [], segments: [] });

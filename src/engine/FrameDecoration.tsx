@@ -2,6 +2,7 @@ import { useTexture } from "@react-three/drei";
 import { useContext, useLayoutEffect, useMemo } from "react";
 import { MeshBasicMaterial, SRGBColorSpace, type Texture } from "three";
 import { useEditorStore } from "../store/editorStore";
+import { parseFontString } from "../theme/fontRef";
 import { isTextDecoration } from "../toolkit/frame/icon";
 import type { FrameDecorationSpec } from "../toolkit/frame/types";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
@@ -173,6 +174,8 @@ function TextDecoration({
         {...(from !== undefined ? { from } : {})}
         {...(to !== undefined ? { to } : {})}
         {...(decoration.colour !== undefined ? { color: decoration.colour } : {})}
+        {...(decoration.font !== undefined ? { fontRef: parseFontString(decoration.font) } : {})}
+        {...(decoration.lineHeight !== undefined ? { lineHeight: decoration.lineHeight } : {})}
       />
     </group>
   );

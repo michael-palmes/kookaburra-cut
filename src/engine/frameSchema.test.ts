@@ -203,6 +203,23 @@ describe("parseFrameSpec decorations", () => {
     ).toEqual([text]);
   });
 
+  it("keeps a text decoration's font and clamps its line spacing", () => {
+    const text = { id: "t1", text: "Hi", position: [0, 0], size: 0.05 };
+    expect(
+      parseFrameSpec(
+        { ...valid, decorations: [{ ...text, font: "Georgia@600", lineHeight: 1.4 }] },
+        "t",
+      )?.decorations,
+    ).toEqual([{ ...text, font: "Georgia@600", lineHeight: 1.4 }]);
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, lineHeight: 9 }] }, "t")?.decorations,
+    ).toEqual([{ ...text, lineHeight: 2 }]);
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, font: "", lineHeight: "x" }] }, "t")
+        ?.decorations,
+    ).toEqual([text]);
+  });
+
   it("ignores shape on a text decoration and colour/face on an image one", () => {
     const spec = parseFrameSpec(
       {

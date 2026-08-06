@@ -123,6 +123,10 @@ export interface FrameDecorationSpec {
   colour?: string;
   /** Theme face for text; default "headline". */
   face?: "headline" | "body";
+  /** Explicit font ("Family" or "Family@weight") replacing the face. Text only; joins the export font preload like `chart.font`. */
+  font?: string;
+  /** Line spacing as a multiple of the font size (0.8..2); absent means the font's normal. Text only. */
+  lineHeight?: number;
   /** Frame-relative centre, -1..1 on both axes. */
   position: [number, number];
   /** An image's width, or text's font size, as a fraction of the frame width. */
@@ -275,7 +279,7 @@ routes on that the way `FrameIcon` routes an icon:
 | Route | Render |
 | --- | --- |
 | `src` | A `MeshBasicMaterial` plane sized by the texture's natural aspect; `shape: "circle"` crops to a disc (an SDF alpha on the plane uv, expecting a roughly square source). Textures are drei-cached and never mutated (so sharing an asset across scenes is safe) and settle in the export preamble via `preloadProjectImages`. |
-| `text` | One `AnimatedHeadline` (troika, the theme's `face`, filled by `colour` or the text token), `size` being the FONT size as a fraction of the frame width. Shape does not apply. |
+| `text` | One `AnimatedHeadline` (troika, the theme's `face` or an explicit `font`, filled by `colour` or the text token), `size` being the FONT size as a fraction of the frame width, `lineHeight` spacing multi-line text (0.8..2, absent = the font's normal). Shape does not apply. A `font` naming a system face joins the export preload set but, like `chart.font`, is not carried by packs. |
 
 Decoration text lives on the spec, not in the document's `text` map: it is
 positioned art, not body copy, and several decorations each need their own

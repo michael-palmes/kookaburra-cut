@@ -59,6 +59,10 @@ export interface FrameDecorationSpec {
   colour?: string;
   /** Theme face for a text decoration; default "headline". */
   face?: FrameDecorationFace;
+  /** Explicit font ("Family" or "Family@weight") replacing the face for a text decoration. */
+  font?: string;
+  /** Line spacing as a multiple of the font size (0.8..2); absent means the font's normal. Text decorations only. */
+  lineHeight?: number;
   /** Centre in frame-relative coords, -1..1 on both axes. */
   position: [number, number];
   /** An image's width, or a text decoration's font size, as a fraction of the frame width. */

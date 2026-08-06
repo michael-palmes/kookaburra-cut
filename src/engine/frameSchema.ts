@@ -185,6 +185,18 @@ function parseDecoration(
     } else if (raw.face !== undefined) {
       console.warn(`[frame] ${source}: ${where}.face isn't headline|body, dropped`);
     }
+    if (typeof raw.font === "string" && raw.font.length > 0) {
+      decoration.font = raw.font;
+    } else if (raw.font !== undefined) {
+      console.warn(`[frame] ${source}: ${where}.font needs a font string, dropped`);
+    }
+    const lineHeight = num(raw.lineHeight);
+    if (lineHeight !== undefined) {
+      // The textStyle <key>LineHeight range, inlined (a value import of sceneDocSchema here would cycle).
+      decoration.lineHeight = Math.min(2, Math.max(0.8, lineHeight));
+    } else if (raw.lineHeight !== undefined) {
+      console.warn(`[frame] ${source}: ${where}.lineHeight needs a finite number, dropped`);
+    }
   }
   if (src !== undefined && DECORATION_SHAPES.includes(raw.shape as FrameDecorationShape)) {
     decoration.shape = raw.shape as FrameDecorationShape;

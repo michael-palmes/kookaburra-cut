@@ -412,6 +412,8 @@ replaces the deck's outright (never deep-merges); other fields override field-by
     { "id": "a1", "src": "assets/avatar.png", "position": [-0.62, 0.3],
       "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" },
     { "id": "t1", "text": "Since 2019", "colour": "accent", "face": "body",
+      "font": "Georgia@600",         // optional: replaces the face; "Family" or "Family@weight"
+      "lineHeight": 1.3,             // optional: line spacing multiple (0.8..2) for multi-line text
       "position": [0.4, -0.55], "size": 0.05, "rotationDeg": -6, "layer": "above" }
   ],                              // position is frame-relative -1..1 both axes; size is the
                                   // image's WIDTH, or the text's FONT SIZE, as a fraction of

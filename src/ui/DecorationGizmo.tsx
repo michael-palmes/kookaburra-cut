@@ -14,6 +14,7 @@ import { type HistoryChange, pushHistory } from "../engine/history";
 import { type LoadedProject, resolveAssetUrl, workspaceSlug } from "../engine/project";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { parseFontString } from "../theme/fontRef";
 import { fontUrl } from "../theme/fonts";
 import type { Theme } from "../theme/tokens";
 import { isTextDecoration } from "../toolkit/frame/icon";
@@ -79,10 +80,11 @@ function textSpec(d: FrameDecorationSpec, theme: Theme | undefined): PanelTextSp
   if (!isTextDecoration(d) || !d.text || !theme) return null;
   return {
     text: prepareEmojiText(d.text).text,
-    font: fontUrl(theme.typography[d.face ?? "headline"]),
+    font: fontUrl(d.font ? parseFontString(d.font) : theme.typography[d.face ?? "headline"]),
     fontSize: 1,
     maxWidth: Number.POSITIVE_INFINITY,
     textAlign: "left",
+    ...(d.lineHeight !== undefined ? { lineHeight: d.lineHeight } : {}),
   };
 }
 
