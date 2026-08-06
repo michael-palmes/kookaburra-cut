@@ -1,4 +1,4 @@
-//! Media library backend: imports files into a project's `assets/` and maintains a content-hash-keyed thumbnail/metadata cache (probe JSON via the ffprobe sidecar, a poster and ~10 hover-scrub frames via the ffmpeg sidecar), stored APP-GLOBALLY in `$APPDATA/cache/media/<sha>/` (beside `cache/clips`) so identical files dedupe across projects and Settings can clear it in one shot; entries are guarded by a `.done` marker, and a by-path stamp (size+mtime → sha) keeps warm views hash-free and regenerates automatically when a file changes.
+//! Media library backend: imports files into a project's `assets/` and maintains a content-hash-keyed thumbnail/metadata cache (probe JSON via the ffprobe sidecar, a poster and ~10 hover-scrub frames via the ffmpeg sidecar), stored APP-GLOBALLY in `$APPDATA/cache/media/<sha>/` (beside `cache/clips`) so identical files dedupe across projects and Settings can clear it in one shot; entries are guarded by a `.done` marker plus a `POSTER_VERSION` stamp (image posters regenerate when the pipeline changes), and a by-path stamp (size+mtime → sha) keeps warm views hash-free and regenerates automatically when a file changes.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,8 @@ use crate::workspace::{self, SettingsState, MANIFEST_FILENAME};
 const SCRUB_FRAMES: u32 = 10;
 const POSTER_WIDTH: u32 = 640;
 const SCRUB_WIDTH: u32 = 320;
+/// Bumped whenever the IMAGE poster pipeline changes in a way that invalidates cached posters; entries stamped below it regenerate on next sight. 1: the JPG to PNG switch. 2: the alpha-preserving rgba encode.
+const POSTER_VERSION: u32 = 2;
 /// Chart data files, the modal's picker accept list; deliberately absent from `MEDIA_EXTENSIONS`.
 const CHART_DATA_EXTENSIONS: &[&str] = &["csv", "tsv", "txt"];
 
@@ -43,6 +45,9 @@ struct CachedMeta {
     fps: f64,
     duration_ms: u64,
     scrub_count: u32,
+    /// Absent in entries written before the marker existed, which read as 0 and so count as stale.
+    #[serde(default)]
+    poster_version: u32,
 }
 
 /// App-global media-preview cache root (`$APPDATA/cache/media`).
@@ -743,8 +748,7 @@ pub(crate) async fn ensure_media_cache(
     if done.exists() {
         if let Ok(text) = std::fs::read_to_string(&meta_path) {
             if let Ok(cached) = serde_json::from_str::<CachedMeta>(&text) {
-                // Image entries cached before the alpha-preserving PNG poster regenerate in place.
-                if cache.join(poster_name(&cached.kind)).is_file() {
+                if !poster_is_stale(&cached) && cache.join(poster_name(&cached.kind)).is_file() {
                     return Ok(hydrate(cached, &cache, rel, &sha));
                 }
             }
@@ -783,8 +787,12 @@ pub(crate) async fn ensure_media_cache(
         "1".into(),
         "-vf".into(),
         format!("scale={POSTER_WIDTH}:-2"),
-        poster.to_string_lossy().into_owned(),
     ]);
+    if !video {
+        // Left to negotiate, a pal8 source encodes a pal8 poster: swscale requantises into a fixed palette and drops tRNS, baking an opaque green matte over everything transparent. rgba also normalises ya8/rgba64 sources to one PNG colour type, and costs ~8% file size on opaque ones.
+        poster_args.extend(["-pix_fmt".into(), "rgba".into()]);
+    }
+    poster_args.push(poster.to_string_lossy().into_owned());
     run_sidecar(app, "ffmpeg", poster_args, SidecarPriority::Background).await?;
 
     // Hover-scrub frames, evenly across the clip (videos only).
@@ -823,6 +831,7 @@ pub(crate) async fn ensure_media_cache(
         fps,
         duration_ms: (duration_s * 1000.0).round().max(0.0) as u64,
         scrub_count,
+        poster_version: POSTER_VERSION,
     };
     std::fs::write(
         &meta_path,
@@ -873,6 +882,11 @@ fn poster_name(kind: &str) -> &'static str {
     }
 }
 
+/// Whether a warm entry predates the current image-poster pipeline. Only IMAGE posters ever changed, so video entries (a poster plus ~10 scrub frames, the expensive ones) stay warm across a bump.
+fn poster_is_stale(cached: &CachedMeta) -> bool {
+    cached.kind == "image" && cached.poster_version < POSTER_VERSION
+}
+
 /// Rebuild the absolute-path view of a cache entry (ffmpeg's %02d numbering is 1-based).
 fn hydrate(cached: CachedMeta, cache: &Path, rel: &str, sha: &str) -> MediaMeta {
     MediaMeta {
@@ -911,6 +925,37 @@ mod tests {
         );
         assert!(plain_file_name("..").is_err());
         assert!(plain_file_name("").is_err());
+    }
+
+    fn cached(kind: &str, poster_version: u32) -> CachedMeta {
+        CachedMeta {
+            kind: kind.into(),
+            width: 512,
+            height: 512,
+            fps: 0.0,
+            duration_ms: 0,
+            scrub_count: 0,
+            poster_version,
+        }
+    }
+
+    #[test]
+    fn pre_alpha_image_posters_are_stale_but_video_entries_are_not() {
+        assert!(poster_is_stale(&cached("image", 0)));
+        // 1 is the JPG-to-PNG era: a PNG poster, but still the pal8-baking encode.
+        assert!(poster_is_stale(&cached("image", 1)));
+        assert!(!poster_is_stale(&cached("image", POSTER_VERSION)));
+        // Video posters/scrub frames never changed, so a bump must not throw them away.
+        assert!(!poster_is_stale(&cached("video", 0)));
+    }
+
+    #[test]
+    fn an_entry_written_before_the_marker_reads_as_version_zero() {
+        let legacy =
+            r#"{"kind":"image","width":512,"height":512,"fps":0.0,"durationMs":0,"scrubCount":0}"#;
+        let parsed: CachedMeta = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.poster_version, 0);
+        assert!(poster_is_stale(&parsed));
     }
 
     #[test]

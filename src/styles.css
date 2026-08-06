@@ -963,13 +963,16 @@ body {
   border: 0;
 }
 
+/* Only images reach this <img> branch, so the thumb's transparency checkerboard belongs here too. */
 .media-preview img {
   position: relative;
   z-index: 1;
   max-width: 90vw;
   max-height: 85vh;
+  background:
+    repeating-conic-gradient(var(--surface-panel-alt) 0% 25%, var(--surface-recessed) 0% 50%) 50% /
+    16px 16px;
   border-radius: var(--radius-md);
-  background: #000;
 }
 
 /* ── Minimal video player (shared: fullscreen previews in both windows) ─────── */
