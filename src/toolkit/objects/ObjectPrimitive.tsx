@@ -1,8 +1,8 @@
-import { TransformControls } from "@react-three/drei";
 import { useContext, useMemo, useRef } from "react";
 import { Box3, type Group, type Object3D, Vector3 } from "three";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { useSceneConsumesObjects } from "../../engine/objectRegistry";
+import { SceneGizmo } from "../../engine/SceneGizmo";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocObjectSpec } from "../../engine/sceneDocSchema";
 import { useStageFloorY } from "../stage/context";
@@ -116,11 +116,13 @@ function LoadedObject({
       <group ref={groupRef} position={groupPosition} rotation={rotation} scale={scale * fit}>
         <primitive object={root} />
       </group>
-      {isSelected && (
-        <TransformControls
-          object={groupRef as React.RefObject<Group>}
+      {isSelected && sceneIndex !== undefined && (
+        <SceneGizmo
+          object={groupRef}
           mode={gizmoMode}
-          size={1.8}
+          domain="objects"
+          itemId={spec.id}
+          sceneIndex={sceneIndex}
           onObjectChange={uniformiseScale}
           onMouseUp={commitDrag}
         />

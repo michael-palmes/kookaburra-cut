@@ -1,10 +1,10 @@
 /** The chart host: one primitive a scene mounts bare (`<Chart />`) to draw its sidecar `chart` block, or with overrides to retype/restage it. It owns everything the renderers deliberately do not: the series palette, the fixed-scale layout composition (the track's upper envelope pins the value axis, the current scene-local sample supplies the marks), the build-in sampler (rebuilt every frame from the scene-local clock, so the instanced writers see a fresh identity and rewrite) and placement, which is the only thing that differs between the hero, staged and panel mounts. Flat charts lay out against `useFormat()`'s safe frame minus the bands their furniture needs (and minus the title band when the scene draws a headline); 3D charts stand at the content depth band under the presentation tilt, scaled so the tilted footprint still fits. Sidecar-driven, so a chart block renders with no scene TSX at all (`ChartFallback`). */
 
-import { TransformControls } from "@react-three/drei";
 import { useMemo, useRef } from "react";
 import type { Group } from "three";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useFormat } from "../../engine/format";
+import { SceneGizmo } from "../../engine/SceneGizmo";
 import type { ResolvedChart } from "../../engine/sceneChart";
 import { useSceneContext } from "../../engine/sceneContext";
 import { useSceneChart, useSceneDoc } from "../../engine/sceneDoc";
@@ -352,11 +352,13 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
 
   return (
     <>
-      {gizmo && (
-        <TransformControls
-          object={groupRef as React.RefObject<Group>}
+      {gizmo && sceneIndex !== undefined && (
+        <SceneGizmo
+          object={groupRef}
           mode={gizmoMode}
-          size={1.8}
+          domain="chart"
+          itemId="chart"
+          sceneIndex={sceneIndex}
           onObjectChange={uniformiseScale}
           onMouseUp={commitDrag}
         />
