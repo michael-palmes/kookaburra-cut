@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Loop: home",
+  "background": {
+    "type": "image",
+    "src": "assets/shot-a-sample.jpg"
+  }
+}
