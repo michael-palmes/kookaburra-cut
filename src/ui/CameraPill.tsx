@@ -90,7 +90,7 @@ export function CameraPill({
       const cam = setKeyPose(camera, orbitKey.id, next);
       if (cam) void commit(cam);
     } else {
-      // Empty track: a lone key at 0 = static reframe (the overlay's seed).
+      // Empty track: a lone key at 0 = static reframe (the overlay's seed), so it holds at every time and the playhead stays put.
       void commit({ keys: [{ id: "k1", tMs: 0, pose: next }], segments: [] });
       useCameraEditStore.getState().select("k1", null);
     }

@@ -4,6 +4,7 @@ import { DEFAULT_EASE, EASE_FAMILIES, ease } from "../engine/ease";
 import { FPS } from "../engine/format";
 import {
   addAnimationAuto,
+  addedKey,
   deleteKeyMerged,
   duplicateKey,
   duplicateKeyBefore,
@@ -31,6 +32,7 @@ import {
 import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { ToggleRow } from "./inspector/rows";
+import { seekSceneLocal } from "./laneSeek";
 import { ResizeAnimationModal } from "./ResizeAnimationModal";
 
 /** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16). Animations are CONNECTED: one diamond per key, so a shared junction is ONE handle, keys attached to no segment draw nothing, and the pixel-derived `minLenMs` (24px, 10px in the Detailed view) rather than MIN_KEY_GAP_MS is what drags and the connected engine ops clamp against. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
@@ -205,12 +207,18 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   const xOf = (tMs: number) =>
     PAD + (Math.min(windowEndMs, Math.max(windowStartMs, tMs)) - windowStartMs) * pxPerMs;
 
-  /** Every lane seek clamps inside this scene's attribution window, one ms short of the next scene's boundary, so dragging the lane can never retarget the chrome to a neighbouring scene. The window-start floor wins on a degenerate (zero-width) window, so the cap can never undershoot into the PREVIOUS scene either. */
+  /** Every lane seek clamps inside this scene's attribution window, so dragging the lane can never retarget the chrome to a neighbouring scene. */
   function seekLocal(tMs: number) {
-    const max = Math.max(windowStartMs, lastScene ? windowEndMs : windowEndMs - 1);
-    const capped = Math.min(max, Math.max(windowStartMs, tMs));
-    const clock = useClockStore.getState();
-    clock.setCurrentMs(Math.min(clock.durationMs, slotStartMs + capped));
+    seekSceneLocal(slotStartMs, tMs, { windowStartMs, windowEndMs, lastScene });
+  }
+
+  /** Every add path lands the same way: commit, select the new diamond, then scrub the playhead onto it, so the edit you just made is the one on screen. */
+  function commitAdded(next: T) {
+    const added = addedKey(track, next);
+    void commit(next);
+    if (!added) return;
+    select(added.id, null);
+    seekLocal(added.tMs);
   }
 
   /** Seek to the 25% point of the containing animation when the playhead sits mid-span, where an edit is hard to see. */
@@ -435,7 +443,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             ? "Hold this pose, then run the animation after it from halfway"
             : "No room after this keyframe for a hold",
           onSelect: () => {
-            if (after) void commit(after);
+            if (after) commitAdded(after);
           },
         },
         {
@@ -446,7 +454,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             ? "Hold this pose, arriving halfway through the animation before it"
             : "No room before this keyframe for a hold",
           onSelect: () => {
-            if (before) void commit(before);
+            if (before) commitAdded(before);
           },
         },
         {
@@ -480,8 +488,6 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
       clickedT === null
         ? null
         : splitSegmentAt(track, docIndex, clickedT, poseAt(clickedT), minLenMs);
-    const splitKeyId =
-      splitNext?.keys.find((k) => !track.keys.some((o) => o.id === k.id))?.id ?? null;
     setMenu({
       x: e.clientX,
       y: e.clientY,
@@ -509,10 +515,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             ? "Splits the animation here; the camera keeps its position at this point"
             : "Too close to a keyframe to split here",
           onSelect: () => {
-            if (splitNext) {
-              select(splitKeyId, null);
-              void commit(splitNext);
-            }
+            if (splitNext) commitAdded(splitNext);
           },
         },
         {
@@ -570,7 +573,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           title={addNext ? addTitle : "No room left in this scene for another animation"}
           disabled={!addNext}
           onClick={() => {
-            if (addNext) void commit(addNext);
+            if (addNext) commitAdded(addNext);
           }}
         >
           ＋ {label ?? "Animation"}
