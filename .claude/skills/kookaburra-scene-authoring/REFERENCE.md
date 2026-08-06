@@ -440,6 +440,10 @@ Rules:
 - **A transparent panel ignores the cutout.** With no fill there is no hole to cut, so the
   scene renders full-bleed and the panel keeps only its content (text, chip, decorations).
 - **Bullets** are one sidecar string split on newlines: `text.bullets = "First\nSecond"`.
+  Left-aligned bullets hang, so a wrapped line clears the marker instead of running under it.
+- **Header icon size** rides the generic style map: `textStyle.iconSize = 1.5` draws the
+  header icon (the sidecar's `headerIcon`, or an overlay's `frame.icon`) at 150%, and the
+  layout reserves the bigger box. The app writes it from Size % beside the icon picker.
 - Decoration and icon assets follow the media rules above: project-relative, copied into
   `assets/` first, path checked before writing.
 - Terminal edits ride the sidecar helper, e.g.

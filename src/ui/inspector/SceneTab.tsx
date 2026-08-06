@@ -4988,6 +4988,22 @@ export function SceneTab({
             onBlur={flushHeaderIcon}
             onPick={setHeaderIcon}
           />
+          {(iconDraft ?? headerIcon).trim() !== "" && (
+            <div className="text-style-row text-style-icon">
+              <NumberField
+                label="Size %"
+                value={Math.round((styleNum("iconSize") ?? 1) * 100)}
+                decimals={0}
+                onCommit={(n) =>
+                  patchStyle(
+                    "header icon size",
+                    "iconSize",
+                    n === 100 || n <= 0 ? undefined : Math.min(1000, n) / 100,
+                  )
+                }
+              />
+            </div>
+          )}
           <TextMotionPanel
             current={doc.textAnimation}
             theme={sceneTheme}

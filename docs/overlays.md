@@ -209,7 +209,21 @@ reference decks; a very long title is capped and shrunk by the fit scale rather
 than measured.
 
 Bullets are the sidecar `bullets` string split on newlines, one reveal-staggered
-line each, sized well under the title as small body copy. The chip is a rounded
+line each, sized well under the title as small body copy. Left-aligned bullets
+hang: the marker draws as its own node at the column edge and the text wraps
+inside `col.width - indent`, so continuation lines clear the marker. The indent
+is the measured advance of the old `"•  "` prefix (marker + gap + marker, less
+one marker, since troika drops a line's trailing whitespace from its width), so
+an unwrapped bullet keeps its geometry to the pixel. Centre and right alignment
+keep the single string, markers riding with the text.
+
+The header icon takes the sidecar's `textStyle.iconSize` multiplier (the app's
+Size % field beside the icon picker): `FrameIcon` applies it to the drawn mark,
+and both the panel budget and the in-world `TitleBlock` stack scale with it.
+`TitleBlock`'s no-subtitle recentre counts that stack, so an icon scene centres
+on the whole block rather than on the title alone.
+
+The chip is a rounded
 rectangle (an SDF injected into a `MeshBasicMaterial`, the `ImageCard` precedent)
 sized to its measured label at a fixed reference height (about 64px on a 1080p
 frame: a 30px label, a 10px corner), filled with the chip colour (a theme token, a
