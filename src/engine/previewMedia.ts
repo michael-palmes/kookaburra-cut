@@ -39,3 +39,12 @@ export function setPreviewEnvironmentOff(value: boolean): void {
 export function previewEnvironmentOff(): boolean {
   return environmentOff;
 }
+
+/** Perf-probe no-dof pass (same contract as env-off): the compositor drops the frame's dof union while this is on, so the dof/tilt passes leave the chain entirely. Never set outside the probe; ignored while `isExporting()`. */
+let dofOff = false;
+export function setPreviewDofOff(value: boolean): void {
+  dofOff = value;
+}
+export function previewDofOff(): boolean {
+  return dofOff;
+}

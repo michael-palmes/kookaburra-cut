@@ -214,6 +214,36 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
 - Everything else matches the orbit track: half-open segments, hold outside, shared
   boundary keys, the same ease names, degrade-don't-crash validation.
 
+**Depth of field** rides a key's pose as a sparse `dof` block, in BOTH camera modes
+(orbit poses take it too). Fields carry forward from the last key that authored them:
+
+```jsonc
+"pose": { "position": [0.2, 0.15, 5.4],
+          "aim": { "mode": "point", "at": [0, -0.1, 0] },
+          "dof": { "blur": 0.7, "range": 0.6, "focus": 4.4 } }
+```
+
+- Depth mode (the default): `blur` 0..1, `range` (world units kept sharp around the
+  focus plane), `focus` (world units). Absent `focus` (or `"auto"`) autofocuses on the
+  pose's aim distance (orbit: distance to target) recomputed per frame, so the aimed
+  subject stays sharp through a whole move. A rack focus is two keys restating only
+  `focus`; `easeDof` shapes the pull per segment (the popover's Focus channel).
+- Tilt-shift: `"mode": "tilt"` with `band` (0..1 screen strip), `offset` (-1..1) and
+  `angleDeg`. The first authored `mode` is the scene's; blur animates, the family
+  does not swap mid-scene.
+- Style modes, all screen-space and animatable like any other field:
+  `"mode": "soft"` (Dream) adds `glow` 0..1 over the diffusion `blur`;
+  `"mode": "radial"` (Burst) streaks toward `centerX`/`centerY` (-1..1);
+  `"mode": "directional"` (Swipe) smears along `angleDeg`;
+  `"mode": "split"` holds depth's `focus` AND a second `focusB` sharp at once
+  across a divider (`offset` -1..1, `angleDeg`), the split-diopter shot.
+  Depth and split also take `squeeze` (1..2) for anamorphic oval bokeh.
+- Everything blurs by its true depth, text and device screens included: keep
+  legibility-critical text on or near the focus plane. In an effects-free project
+  dof blurs the FINISHED frame in place, so colours and contrast never shift when
+  dof turns on and `blur: 0` frames stay byte-identical; projects with effects
+  apply dof inside the effects composer instead.
+
 **`<DepthStage>`** gives a rig something to fly through: four named slots at pinned
 depths (`foreground` 1.8, `content` 0, `midground` -2.4, `backdrop` -5.5), each sizing
 itself from the scene's camera travel so full-bleed layers stay full-bleed.

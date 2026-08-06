@@ -1114,8 +1114,9 @@ and do not need their own verifies.**
   the changed path: `showcase-tour` for themes/staging/text/presets (the
   rolling gate project, six themes, devices, video, ImageCard, camera moves
   and bloom in one project), `ws:device-video-spike` for device/media/camera,
-  `ws:fx-spike` for effects, a hand-rolled workspace mini-project for anything
-  narrower. `pnpm gate` runs the showcase-tour leg (~2 min).
+  `ws:fx-spike` for effects, `ws:dof-spike` for depth of field, a hand-rolled
+  workspace mini-project for anything narrower. `pnpm gate` runs the
+  showcase-tour leg (~2 min).
 - **Pre-merge: the sentinel pair (2026-07-25 tier change):** before a PR
   merges (and at any rebase or phase close), `pnpm gate:merge` runs
   `showcase-tour` + `ws:launch-2026` Verify ×2 in ONE app boot (`--project`
@@ -1181,6 +1182,62 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
+
+> **2026-08-04 (depth of field):** camera poses gained a sparse `dof` block
+> (depth or tilt-shift family), resolved per frame through the camera plan and
+> applied by stock `postprocessing` effects at the composer chain's head, with
+> transition/compare sides dof-graded individually through a dof-only side
+> composer before the composite. Null-for-legacy holds: a project with no dof
+> anywhere resolves a null union and takes the pre-existing paths byte for
+> byte (`showcase-tour` re-verified EQUAL at `f304f1bd…`, `ws:fx-spike` frame
+> byte-identical to the pre-feature chain). Display constants
+> (`DOF_BOKEH_SCALE_MAX` 6, `DOF_INACTIVE_FOCUS` 100, `DOF_RESOLUTION_SCALE`
+> 0.5, `TILT_FEATHER` 0.3 in `engine/effects.ts`) are export-contract
+> constants: changing one is a deliberate rebase. Composer depth arrives via
+> postprocessing's stable-depth target, a per-frame fixed-function
+> `blitFramebuffer` alongside the gated MSAA resolve; proven EQUAL ×2 on
+> WKWebView/ANGLE Metal before anything else was built. Eyeball note: with
+> autofocus the aimed subject is SUPPOSED to be sharp, so judge dof frames
+> with the camera-to-subject distances in hand, not by "is anything blurry".
+
+> **2026-08-06 (dof blur styles):** the `dof` block gained four style modes
+> (soft "Dream", radial "Burst", directional "Swipe", split diopter) plus the
+> depth-family `squeeze` field. Burst and swipe share one convolution
+> `SmearEffect` (fixed `SMEAR_TAPS` 32, spatial-hash tap jitter, a pure
+> function of the pixel coordinate like the grain hash); Dream is
+> `SoftFocusEffect` (fixed `SOFT_FOCUS_KERNEL` 35 Gaussian + screen blend);
+> split and squeeze run on ALWAYS-PATCHED stock materials (a second focus
+> plane in the CoC, an X squeeze in the bokeh kernels; `mustPatch` anchors
+> throw on a postprocessing upgrade). New export-contract constants:
+> `SMEAR_TAPS`, `SOFT_FOCUS_KERNEL`, `SPLIT_FEATHER` 0.08,
+> `SMEAR_RADIAL_SPAN` 0.35, `SMEAR_DIR_SPAN` 0.25. The patched programs are
+> uniform-neutral for plain depth scenes but different PROGRAMS, so the
+> dof-active fixture was a DELIBERATE re-record: `ws:dof-spike` grew to ten
+> scenes (one per style, plus an anamorphic→split crossfade proving the
+> patched per-side path), every style eyeballed first. Null-for-legacy is
+> untouched: dof-less projects never build the patched materials.
+
+> **2026-08-06 (the dof-only lane):** toggling dof in an effects-free project
+> visibly regraded the scene (contrast drop, whites to light grey). Root
+> cause, pixel-probed A/B: the composer path decodes display-domain
+> exact-colour surfaces to linear and re-encodes them around its tone map, so
+> ANY real full-frame tone map bends the authored bytes the direct path shows
+> raw, and on this WKWebView/ANGLE Metal stack the canvas and render-target
+> program variants do not even tone-map identically (a probe pixel decoded
+> ACES-minus-its-matrices in a target pass; the macOS 27 translator family).
+> The fix removes the seam BY CONSTRUCTION instead of matching curves:
+> effects-free dof projects render every frame on the ORIGINAL byte-identical
+> paths, and an active pose is blurred IN PLACE (canvas copy or SDR-scratch
+> side, dof chain over the finished pixels with `encodeOutput` off, scene
+> depth from a dedicated pre-pass; `copyTexSubImage2D` forbids sRGB-tagged
+> destinations, so the canvas copy stays linear-tagged raw bytes). Probe
+> proof: a dof-less twin frame AND a sub-LSB-blur frame both came back
+> BYTE-IDENTICAL to the direct path (max diff 0 across 8.3M pixels); a strong
+> rack blurs by true depth with colours held. Effects projects keep composer
+> dof unchanged. `ws:dof-spike` re-recorded for the lane: 16:9 `a7a37eb0…`,
+> 9:16 `58d0ac28…`, both Verify ×2 EQUAL (the same-day `ae8b22f3…`/
+> `91680399…` pair and the original `cee2ab6f…`/`09f57c3c…` are STALE).
 
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so

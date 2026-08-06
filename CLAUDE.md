@@ -143,7 +143,7 @@ intuition before the probe settled it).
 
 - **Probe:** `pnpm kookaburra:run --action perf --project ws:<slug>` plays every
   scene under elimination passes (baseline / dpr-1 / no-shadows /
-  no-transmission / frozen-media / half-media / no-devices) and writes per-pass
+  no-transmission / frozen-media / half-media / no-devices / no-dof) and writes per-pass
   fps and frame-time stats to `~/Kookaburra Cut/_autorun/last-run.json`. Needs
   the app window visible (occluded WKWebView suspends rAF) and no other
   `pnpm tauri dev` holding port 1420. New suspect: add a pass, don't theorise.

@@ -752,6 +752,7 @@ const CHANNELS: { channel: SegmentEaseChannel; label: string; hint: string }[] =
   { channel: "easePosition", label: "Position", hint: "How the camera's travel is paced" },
   { channel: "easeRotation", label: "Rotation", hint: "How the aim and roll are paced" },
   { channel: "easeLens", label: "Lens", hint: "How the field of view is paced" },
+  { channel: "easeDof", label: "Focus", hint: "How the depth-of-field focus and blur are paced" },
 ];
 
 const CURVE_SAMPLES = 12;

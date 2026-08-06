@@ -3,6 +3,7 @@ import { useClockStore } from "./clock";
 import { canvasHandle } from "./exportBridge";
 import {
   setPreviewClipStride,
+  setPreviewDofOff,
   setPreviewEnvironmentOff,
   setPreviewPlaybackActive,
 } from "./previewMedia";
@@ -146,6 +147,14 @@ const PASSES: PerfPass[] = [
     id: "no-area-lights",
     apply: (_gl, scene) =>
       hidePass(scene, (obj) => (obj as { isRectAreaLight?: boolean }).isRectAreaLight === true),
+  },
+  {
+    // Depth-of-field cost: the compositor drops the dof union while the flag is on, so the dof/tilt passes leave the chain (dof-less scenes measure identical to baseline).
+    id: "no-dof",
+    apply: () => {
+      setPreviewDofOff(true);
+      return () => setPreviewDofOff(false);
+    },
   },
   {
     // IBL sampling cost: the compositor nulls scene.environment after the state plan while the flag is on.

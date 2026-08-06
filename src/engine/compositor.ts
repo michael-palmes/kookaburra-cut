@@ -22,15 +22,20 @@ import {
   type WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import type { EffectsConfig } from "../theme/tokens";
 import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame/frameLayout";
 import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
 import { grainSeed } from "./effectParams";
 import {
+  dofSideScratch,
   drawingBufferSize,
   ensureComposer,
   releaseComposer,
+  renderDofOverCanvas,
+  renderDofOverTarget,
+  renderSideWithDof,
   renderThroughComposer,
   resolveFrameEffects,
 } from "./effects";
@@ -49,7 +54,7 @@ import {
   overlayVertexShader,
 } from "./overlayShader";
 import { getPersistentLayers } from "./persistentLayerRegistry";
-import { previewEnvironmentOff } from "./previewMedia";
+import { previewDofOff, previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
 import { COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
 import type { SceneHostHandle } from "./sceneHostRegistry";
@@ -577,8 +582,12 @@ export function renderComposited(
   const tr = resolved.transition;
   const prevTarget = gl.getRenderTarget();
 
-  // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer.
-  const fx = resolveFrameEffects(resolved);
+  // Resolves the frame's effect stack: `null` means the project declares no effects, so the original byte-identical paths below run unchanged; non-null routes through the gated composer. A dof-active project with no other effects still routes fx (empty config) but on the DOF-ONLY lane: scenes render through the direct path's display transform (tone mapping on, SDR targets) and the composer applies dof alone, so toggling dof never regrades the frame; declared-effects projects keep the linear-HDR lane (`hdrLane`) and its composer-owned tone map. The probe's no-dof pass drops the union preview-only (never during export).
+  const dofUnion = previewDofOff() && !isExporting() ? null : (cameras?.dofUnion ?? null);
+  const declaredFx = resolveFrameEffects(resolved);
+  const dofOnly = !declaredFx && !!dofUnion;
+  const fx = declaredFx ?? (dofUnion ? {} : null);
+  const hdrLane = !!fx && !dofOnly;
   const seed = fx ? grainSeed(useClockStore.getState().currentMs, FPS) : 0;
 
   // Comparison path: the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep), overlays are not composed here (a framed comparison renders full-bleed, the v1 rule), and transition frames never reach this branch (resolveCompareFrame yields null, the transition below blends side A only).
@@ -589,32 +598,50 @@ export function renderComposited(
     const prevAutoClear = gl.autoClear;
     gl.autoClear = true;
     const prevToneMapping = gl.toneMapping;
-    if (fx) {
+    if (hdrLane) {
       gl.toneMapping = NoToneMapping;
       ensureHdrTargets(st);
     } else {
       ensureSdrTargets(st);
     }
-    const tgtA = fx ? (st.targetAHdr as WebGLRenderTarget) : (st.targetA as WebGLRenderTarget);
-    const tgtB = fx ? (st.targetBHdr as WebGLRenderTarget) : (st.targetB as WebGLRenderTarget);
+    const tgtA = hdrLane ? (st.targetAHdr as WebGLRenderTarget) : (st.targetA as WebGLRenderTarget);
+    const tgtB = hdrLane ? (st.targetBHdr as WebGLRenderTarget) : (st.targetB as WebGLRenderTarget);
 
     // Persistent layers draw exactly once over the composite, never into the side targets (the transition ghosting rule).
     for (const g of persistent) g.visible = false;
 
+    // One camera pose (and so one dof) serves both comparison sides; each side renders through the dof side composer when the pose carries dof, so the divider blends two focus-graded halves.
+    const sideDof = dofUnion && cameras?.solo?.dof ? cameras.solo.dof : null;
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     showOnly(idx);
     if (compare.stateA) applyState(compare.stateA);
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     applyFrameLighting(scene, lighting?.solo);
-    gl.setRenderTarget(tgtA);
-    gl.render(scene, camera);
+    if (hdrLane && sideDof && dofUnion) {
+      renderSideWithDof(gl, scene, camera, sideDof, tgtA, size.x, size.y, dofUnion);
+    } else if (dofOnly && dofUnion && sideDof && sideDof.blur > 0) {
+      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+      gl.render(scene, camera);
+      renderDofOverTarget(gl, scene, camera, sideDof, dofUnion, tgtA, size.x, size.y);
+    } else {
+      gl.setRenderTarget(tgtA);
+      gl.render(scene, camera);
+    }
 
     showOnly(idx, "b");
     if (compare.stateB) applyState(compare.stateB);
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     applyFrameLighting(scene, lighting?.solo);
-    gl.setRenderTarget(tgtB);
-    gl.render(scene, camera);
+    if (hdrLane && sideDof && dofUnion) {
+      renderSideWithDof(gl, scene, camera, sideDof, tgtB, size.x, size.y, dofUnion);
+    } else if (dofOnly && dofUnion && sideDof && sideDof.blur > 0) {
+      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+      gl.render(scene, camera);
+      renderDofOverTarget(gl, scene, camera, sideDof, dofUnion, tgtB, size.x, size.y);
+    } else {
+      gl.setRenderTarget(tgtB);
+      gl.render(scene, camera);
+    }
 
     // The dominant side's state backs the persistent-overlay draw (the transition dominance rule).
     const domState = compare.value >= 0.5 ? compare.stateA : compare.stateB;
@@ -622,7 +649,7 @@ export function renderComposited(
 
     gl.toneMapping = prevToneMapping;
 
-    const activeMaterial = fx ? st.compareMaterialHdr : st.compareMaterial;
+    const activeMaterial = hdrLane ? st.compareMaterialHdr : st.compareMaterial;
     st.mesh.material = activeMaterial;
     const spec = compare.spec;
     const u = activeMaterial.uniforms;
@@ -648,15 +675,17 @@ export function renderComposited(
       for (const h of hosts) h.group.visible = false;
       for (const g of persistent) g.visible = true;
     }
-    if (fx) {
+    if (hdrLane) {
+      // The sides already carry their dof; the main chain's dof stays zeroed (null) so the composite is never double-focused.
       renderThroughComposer(
         gl,
-        ensureComposer(gl, size.x, size.y),
+        ensureComposer(gl, size.x, size.y, dofUnion),
         st.quadScene,
         st.quadCamera,
-        fx,
+        fx as EffectsConfig,
         seed,
         hasOverlay ? { scene, camera } : undefined,
+        null,
       );
     } else {
       gl.setRenderTarget(null);
@@ -672,7 +701,7 @@ export function renderComposited(
     }
     gl.autoClear = prevAutoClear;
     gl.setRenderTarget(prevTarget);
-    releaseIdlePools({ sdr: !fx, hdr: !!fx, composer: !!fx });
+    releaseIdlePools({ sdr: !hdrLane, hdr: hdrLane, composer: !!fx });
     restoreSceneState();
     restoreVisible();
     return;
@@ -697,12 +726,27 @@ export function renderComposited(
       renderFramedScene(gl, scene, camera, st, overlay, size.x, size.y, null);
       const panel = panelFor(idx);
       if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
-    } else if (fx) {
+    } else if (hdrLane) {
       const size = drawingBufferSize(gl);
-      renderThroughComposer(gl, ensureComposer(gl, size.x, size.y), scene, camera, fx, seed);
+      renderThroughComposer(
+        gl,
+        ensureComposer(gl, size.x, size.y, dofUnion),
+        scene,
+        camera,
+        fx as EffectsConfig,
+        seed,
+        undefined,
+        cameras?.solo?.dof ?? null,
+      );
     } else {
+      // Direct render, v0-identical; the dof-only lane then blurs the FINISHED frame in place, so an inactive pose leaves the canvas untouched by construction.
       gl.setRenderTarget(null);
       gl.render(scene, camera);
+      const soloDof = cameras?.solo?.dof;
+      if (dofOnly && dofUnion && soloDof && soloDof.blur > 0) {
+        const size = drawingBufferSize(gl);
+        renderDofOverCanvas(gl, scene, camera, soloDof, dofUnion, size.x, size.y);
+      }
     }
     gl.setRenderTarget(prevTarget);
     releaseIdlePools({
@@ -720,23 +764,23 @@ export function renderComposited(
   const prevAutoClear = gl.autoClear;
   gl.autoClear = true;
 
-  // Effects: the composer owns the project's single ACES tone-map, so scenes must reach the targets un-tone-mapped, otherwise transition frames get three's ACES here plus the composer's ACES (a double tone-map that pops at the seam); those un-tone-mapped HDR values need the HalfFloat/linear pair, since old 8-bit fx targets clamped >1.0 before the composer's ACES (the highlight dim). No effects: the r3f pipeline tone-maps here exactly once into the hardware-sRGB SDR pair.
+  // Effects (hdr lane): the composer owns the project's single ACES tone-map, so scenes must reach the targets un-tone-mapped, otherwise transition frames get three's ACES here plus the composer's ACES (a double tone-map that pops at the seam); those un-tone-mapped HDR values need the HalfFloat/linear pair, since old 8-bit fx targets clamped >1.0 before the composer's ACES (the highlight dim). No effects AND the dof-only lane: the r3f pipeline tone-maps here exactly once into the hardware-sRGB SDR pair (dof-only sides route through the side composer on the way in).
   const prevToneMapping = gl.toneMapping;
-  if (fx) {
+  if (hdrLane) {
     gl.toneMapping = NoToneMapping;
     ensureHdrTargets(st);
   } else {
     ensureSdrTargets(st);
   }
-  const tgtA = fx ? (st.targetAHdr as WebGLRenderTarget) : (st.targetA as WebGLRenderTarget);
-  const tgtB = fx ? (st.targetBHdr as WebGLRenderTarget) : (st.targetB as WebGLRenderTarget);
+  const tgtA = hdrLane ? (st.targetAHdr as WebGLRenderTarget) : (st.targetA as WebGLRenderTarget);
+  const tgtB = hdrLane ? (st.targetBHdr as WebGLRenderTarget) : (st.targetB as WebGLRenderTarget);
 
   // Persistent layers must not bake into the A/B targets, they'd render into both and cross-fade against themselves (ghosting); hidden here, drawn exactly once over the composite below.
   for (const g of persistent) g.visible = false;
 
-  // The whole slide (panel + cutout) goes into each target, so a transition crossfades framed slides exactly as it does full-bleed scenes. Overlays don't compose through the fx (HDR) targets yet, so a framed scene under effects falls back to the plain scene render here.
-  const overlayA = !fx ? (overlays?.[tr.fromIndex] ?? null) : null;
-  const overlayB = !fx ? (overlays?.[tr.toIndex] ?? null) : null;
+  // The whole slide (panel + cutout) goes into each target, so a transition crossfades framed slides exactly as it does full-bleed scenes. Overlays don't compose through the fx (HDR) targets yet, so a framed scene under effects falls back to the plain scene render here; the dof-only lane keeps SDR targets, so framed scenes compose exactly as they do with no effects.
+  const overlayA = !hdrLane ? (overlays?.[tr.fromIndex] ?? null) : null;
+  const overlayB = !hdrLane ? (overlays?.[tr.toIndex] ?? null) : null;
 
   showOnly(tr.fromIndex);
   if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
@@ -748,6 +792,14 @@ export function renderComposited(
     renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
     const panelA = panelFor(tr.fromIndex);
     if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+  } else if (hdrLane && dofUnion && cameras?.a?.dof) {
+    // Per-side dof: the side renders through the dof composer into its target, so a rack focus rides INTO the transition instead of releasing at the cut.
+    renderSideWithDof(gl, scene, camera, cameras.a.dof, tgtA, size.x, size.y, dofUnion);
+  } else if (dofOnly && dofUnion && cameras?.a?.dof && cameras.a.dof.blur > 0) {
+    // Dof-only lane: the side renders on the plain SDR contract into the scratch, then the dof chain writes the blurred side into the real target.
+    gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+    gl.render(scene, camera);
+    renderDofOverTarget(gl, scene, camera, cameras.a.dof, dofUnion, tgtA, size.x, size.y);
   } else {
     gl.setRenderTarget(tgtA);
     gl.render(scene, camera);
@@ -762,6 +814,12 @@ export function renderComposited(
     renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
     const panelB = panelFor(tr.toIndex);
     if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
+  } else if (hdrLane && dofUnion && cameras?.b?.dof) {
+    renderSideWithDof(gl, scene, camera, cameras.b.dof, tgtB, size.x, size.y, dofUnion);
+  } else if (dofOnly && dofUnion && cameras?.b?.dof && cameras.b.dof.blur > 0) {
+    gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+    gl.render(scene, camera);
+    renderDofOverTarget(gl, scene, camera, cameras.b.dof, dofUnion, tgtB, size.x, size.y);
   } else {
     gl.setRenderTarget(tgtB);
     gl.render(scene, camera);
@@ -779,14 +837,14 @@ export function renderComposited(
   const id = TYPE_ID[tr.type];
   const activeMaterial =
     id >= EXT2_MIN_TYPE
-      ? fx
+      ? hdrLane
         ? st.materialExt2Hdr
         : st.materialExt2
       : id >= EXTENDED_MIN_TYPE
-        ? fx
+        ? hdrLane
           ? st.materialExtHdr
           : st.materialExt
-        : fx
+        : hdrLane
           ? st.materialHdr
           : st.material;
   st.mesh.material = activeMaterial;
@@ -806,16 +864,17 @@ export function renderComposited(
     for (const g of persistent) g.visible = true;
   }
 
-  if (fx) {
-    // Effects: the overlay is layered into the composer's pre-effect input buffer, so bloom/grade/grain apply to the morph exactly as they do to the scenes.
+  if (hdrLane) {
+    // Effects: the overlay is layered into the composer's pre-effect input buffer, so bloom/grade/grain apply to the morph exactly as they do to the scenes. The sides already carry their dof, so the main chain's stays zeroed (null).
     renderThroughComposer(
       gl,
-      ensureComposer(gl, size.x, size.y),
+      ensureComposer(gl, size.x, size.y, dofUnion),
       st.quadScene,
       st.quadCamera,
-      fx,
+      fx as EffectsConfig,
       seed,
       hasOverlay ? { scene, camera } : undefined,
+      null,
     );
   } else {
     gl.setRenderTarget(null);
@@ -834,8 +893,8 @@ export function renderComposited(
   gl.autoClear = prevAutoClear;
   gl.setRenderTarget(prevTarget);
   releaseIdlePools({
-    sdr: !fx,
-    hdr: !!fx,
+    sdr: !hdrLane,
+    hdr: hdrLane,
     sceneTarget:
       (!!overlayA && overlayA.frame.cutout.shape !== "none") ||
       (!!overlayB && overlayB.frame.cutout.shape !== "none"),
