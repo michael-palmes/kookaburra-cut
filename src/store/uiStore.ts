@@ -9,6 +9,7 @@ export type PreviewQuality = "full" | "balanced" | "performance";
 
 const QUALITY_KEY = "kookaburra:preview-quality";
 const DETAILED_LANE_KEY = "kookaburra:detailed-animation-view";
+const FREE_CAMERA_WARNING_KEY = "kookaburra:free-camera-warning-dismissed";
 
 function loadPreviewQuality(): PreviewQuality {
   try {
@@ -22,6 +23,14 @@ function loadPreviewQuality(): PreviewQuality {
 function loadDetailedAnimationView(): boolean {
   try {
     return localStorage.getItem(DETAILED_LANE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function loadFreeCameraWarningDismissed(): boolean {
+  try {
+    return localStorage.getItem(FREE_CAMERA_WARNING_KEY) === "1";
   } catch {
     return false;
   }
@@ -50,6 +59,8 @@ interface UiState {
   previewQuality: PreviewQuality;
   /** Animation lanes draw keyframes as narrow lines instead of diamonds (finer editing); chrome-only. */
   detailedAnimationView: boolean;
+  /** The Free-camera warning stays hidden once the user ticks "Don't show this again". */
+  freeCameraWarningDismissed: boolean;
   inspector: InspectorState;
   /** A pending "open this wizard" request for the Claude rail (consumed by TerminalPanel). */
   railWizardRequest: "new-scene" | "edit-scene" | null;
@@ -62,6 +73,7 @@ interface UiState {
   setAudioMuted: (muted: boolean) => void;
   setPreviewQuality: (quality: PreviewQuality) => void;
   setDetailedAnimationView: (detailed: boolean) => void;
+  setFreeCameraWarningDismissed: (dismissed: boolean) => void;
   setInspectorTab: (tab: InspectorTab) => void;
   /** Push a screen (forward navigation): row list to a group, or a group to a detail. */
   openInspectorDrill: (id: string) => void;
@@ -81,6 +93,7 @@ export const useUiStore = create<UiState>((set) => ({
   audioMuted: false,
   previewQuality: loadPreviewQuality(),
   detailedAnimationView: loadDetailedAnimationView(),
+  freeCameraWarningDismissed: loadFreeCameraWarningDismissed(),
   // Scene is the default tab: it's where editing happens; bundled projects heal back to Project.
   inspector: { tab: "scene", drillStack: [], drillIn: null },
   railWizardRequest: null,
@@ -104,6 +117,14 @@ export const useUiStore = create<UiState>((set) => ({
       // Storage unavailable: the choice still applies for this session.
     }
     set({ detailedAnimationView });
+  },
+  setFreeCameraWarningDismissed: (freeCameraWarningDismissed) => {
+    try {
+      localStorage.setItem(FREE_CAMERA_WARNING_KEY, freeCameraWarningDismissed ? "1" : "0");
+    } catch {
+      // Storage unavailable: the choice still applies for this session.
+    }
+    set({ freeCameraWarningDismissed });
   },
   setInspectorTab: (tab) =>
     set((s) => ({ inspector: { ...s.inspector, tab, drillStack: [], drillIn: null } })),
