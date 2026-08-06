@@ -85,6 +85,7 @@ import {
   type ProjectListing,
   resolveAssetPath,
   sceneFileStem,
+  sceneMountKey,
   WORKSPACE_PROJECT_PREFIX,
   workspaceProjectPath,
   workspaceSlug,
@@ -1371,6 +1372,10 @@ export default function App() {
       .then((loaded) => {
         if (cancelled) return;
         applyLoadedProject(loaded);
+        // The scene-id heal rewrote TSX on disk: adopt those bytes as the poll's baseline so it doesn't fire a redundant reload.
+        if (loaded.healedSceneIds?.length && isWorkspaceProjectId(loaded.id)) {
+          armPollBaseline(workspaceSlug(loaded.id));
+        }
         if (!isSwitch || isAutoRun) {
           // SWR reload (same project): nothing remounted, the stage never blanked.
           setProjectReady(true);
@@ -1406,7 +1411,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects]);
+  }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
 
   // Auto-open the Claude rail for workspace projects; close it where it can't work.
   useEffect(() => {
@@ -2070,9 +2075,9 @@ export default function App() {
                           const SceneComponent = scene.Scene;
                           return (
                             <SceneHost
-                              key={`${project.id}:${slot.id}`}
+                              key={sceneMountKey(project.id, project.sceneFiles[i])}
                               index={i}
-                              id={slot.id}
+                              id={project.sceneFiles[i]}
                               startMs={slot.startMs}
                               durationMs={slot.durationMs}
                               doc={project.sceneDocs[i]}
@@ -2104,10 +2109,10 @@ export default function App() {
                           const SceneComponent = scene.Scene;
                           return (
                             <SceneHost
-                              key={`${project.id}:${slot.id}:b`}
+                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:b`}
                               index={i}
                               side="b"
-                              id={slot.id}
+                              id={project.sceneFiles[i]}
                               startMs={slot.startMs}
                               durationMs={slot.durationMs}
                               doc={bDoc}
@@ -2141,7 +2146,7 @@ export default function App() {
                           const slot = project.slots[i];
                           return (
                             <FramePanel
-                              key={`${project.id}:panel:${slot.id}`}
+                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
                               index={i}
                               startMs={slot.startMs}
                               durationMs={slot.durationMs}

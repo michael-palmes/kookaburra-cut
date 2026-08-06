@@ -1173,7 +1173,7 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `f304f1bd…` | stale | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `f304f1bd…` | `8cdb7481…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `8d293536…` | `ed66045e…` | `63dfb18b…` | `aa3cb9b1…` | — | — | — |
@@ -1184,6 +1184,20 @@ rolling-gate project (`showcase-tour`):
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `c947c931…` | `eb2e9c72…` | `593d4561…` | `0375e77b…` | — | — | — |
+| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
+
+> **2026-08-06 (scene identity):** duplicated scenes used to copy their TSX
+> verbatim, so `defineScene` ids collided and the id-keyed React mounts
+> cross-wired sidecar docs between scenes (masked on cold loads, triggered by
+> any in-session insert, reorder or delete). Mount keys now derive from the
+> manifest file (`sceneMountKey`), all three Rust producers mint unique ids,
+> and workspace projects silently heal duplicates on load after the trust
+> gate. Ids never touch pixels, proven by `pnpm gate` EQUAL on the recorded
+> baseline and `ws:launch-2026` EQUAL and unwritten (mtimes untouched)
+> through a full load. Fixture `ws:duplicate-spike` is the healed snapshot of
+> the original broken project: every scene eyeballed showing its own sidecar
+> text before its baseline was recorded, and the heal proven idempotent
+> (five further boots, zero writes).
 
 > **2026-08-05 (charts):** scenes gained a sidecar `chart` block, laid out by a
 > pure core (d3-scale/shape/array) and drawn by flat or lit renderers across
