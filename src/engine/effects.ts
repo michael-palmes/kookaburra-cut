@@ -14,16 +14,21 @@ import {
   VignetteEffect,
 } from "postprocessing";
 import {
+  BasicDepthPacking,
   Camera,
   ClampToEdgeWrapping,
   Data3DTexture,
+  DepthTexture,
+  FramebufferTexture,
   HalfFloatType,
   LinearFilter,
+  NearestFilter,
   NoToneMapping,
   PerspectiveCamera,
   RGBAFormat,
   Scene,
   type ShaderMaterial,
+  SRGBColorSpace,
   Uniform,
   UnsignedByteType,
   Vector2,
@@ -100,9 +105,11 @@ interface DofSideState extends DofEffects {
 let composerState: ComposerState | null = null;
 let dofSideState: DofSideState | null = null;
 const _size = new Vector2();
+const _copyOrigin = new Vector2(0, 0);
 
-/** Dispose the composer chains (export frames with no fx, and the autorun between legs of a multi-project run); the LUT texture cache stays, so the next ensureComposer rebuild is still synchronous. The dof side composer only lives while the main one does. */
+/** Dispose the composer chains (export frames with no fx, and the autorun between legs of a multi-project run); the LUT texture cache stays, so the next ensureComposer rebuild is still synchronous. The dof side composer and the dof-only overlay only live while the main one does. */
 export function releaseComposer(): void {
+  releaseDofOverlay();
   if (dofSideState) {
     dofSideState.copyPass.renderTarget = dofSideState.copyPlaceholder;
     dofSideState.composer.dispose();
@@ -602,6 +609,183 @@ export function renderSideWithDof(
 /** Drawing-buffer size helper for callers that need the composer size before `ensureComposer`. */
 export function drawingBufferSize(gl: WebGLRenderer): Vector2 {
   return gl.getDrawingBufferSize(_size);
+}
+
+// ---------------------------------------------------------------------------
+// The dof-only lane: dof over the FINISHED frame. When a project declares no
+// effects, the composer-owned tone map must not exist at all, or toggling dof
+// regrades the scene (the direct path renders exact-colour surfaces raw while
+// any full-frame transform bends them, and canvas/target program variants do
+// not even tone-map identically on this stack). So dof-only projects render
+// every frame on the ORIGINAL byte-identical paths, and a frame whose pose
+// carries ACTIVE dof is then blurred in place: the finished pixels are copied,
+// the dof chain runs over them (depth from a dedicated pre-pass for the CoC
+// modes), and the result lands back where it came from. Inactive frames are
+// untouched by construction. See docs/determinism.md.
+// ---------------------------------------------------------------------------
+
+interface DofOverlayState extends DofEffects {
+  pass: EffectPass;
+  /** Wraps the canvas copy (or nothing in target mode) as the pass's input protocol. */
+  inputShim: WebGLRenderTarget;
+  /** The canvas bytes, copied via copyFramebufferToTexture (sRGB-tagged, hardware-decoded on sample). */
+  frameTexture: FramebufferTexture | null;
+  /** Target mode: the side renders here first, the pass reads it and writes the real target. */
+  scratch: WebGLRenderTarget | null;
+  /** Scene depth for the CoC modes, rendered by a dedicated pre-pass. */
+  depthTarget: WebGLRenderTarget | null;
+  size: Vector2;
+  key: string;
+}
+
+let dofOverlayState: DofOverlayState | null = null;
+
+export function releaseDofOverlay(): void {
+  if (!dofOverlayState) return;
+  dofOverlayState.pass.dispose();
+  dofOverlayState.frameTexture?.dispose();
+  dofOverlayState.scratch?.dispose();
+  dofOverlayState.depthTarget?.dispose();
+  dofOverlayState = null;
+}
+
+function ensureDofOverlay(gl: WebGLRenderer, w: number, h: number, u: DofUnion): DofOverlayState {
+  const key = dofKeyOf(u);
+  if (
+    dofOverlayState &&
+    dofOverlayState.size.x === w &&
+    dofOverlayState.size.y === h &&
+    dofOverlayState.key === key
+  ) {
+    return dofOverlayState;
+  }
+  releaseDofOverlay();
+
+  const effects = buildDofChain(u);
+  const chain = [effects.dof, effects.tilt, effects.smear, effects.soft].filter(
+    (e): e is NonNullable<typeof e> => e !== null,
+  );
+  const pass = new EffectPass(undefined, ...chain);
+  pass.initialize(gl, false, UnsignedByteType);
+  pass.setSize(w, h);
+  const needsDepth = u.depth || u.split;
+  let depthTarget: WebGLRenderTarget | null = null;
+  if (needsDepth) {
+    // A real scene draw fills this (never an override material, which would let the depth-immune fixed quads write depth); no MSAA, depth textures resolve nowhere.
+    const depthTexture = new DepthTexture(w, h);
+    depthTarget = new WebGLRenderTarget(w, h, {
+      depthBuffer: true,
+      depthTexture,
+      generateMipmaps: false,
+    });
+    pass.setDepthTexture(depthTexture, BasicDepthPacking);
+  }
+
+  dofOverlayState = {
+    ...effects,
+    pass,
+    inputShim: new WebGLRenderTarget(1, 1, { depthBuffer: false }),
+    frameTexture: null,
+    scratch: null,
+    depthTarget,
+    size: new Vector2(w, h),
+    key,
+  };
+  return dofOverlayState;
+}
+
+/** Renders the scene's true depth for the CoC modes (a plain scene draw whose colour is discarded, so depthWrite flags behave exactly as they did for the frame itself). */
+function renderDofDepth(
+  gl: WebGLRenderer,
+  st: DofOverlayState,
+  scene: Scene,
+  camera: Camera,
+): void {
+  if (!st.depthTarget) return;
+  const prevTarget = gl.getRenderTarget();
+  gl.setRenderTarget(st.depthTarget);
+  gl.render(scene, camera);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** Blurs the CANVAS in place: copies the finished frame, runs the dof chain over the copy and draws the result back to the canvas. Call only for an ACTIVE dof pose; inactive frames must never come here (the untouched canvas IS the output). */
+export function renderDofOverCanvas(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  dof: ResolvedDof,
+  dofUnion: DofUnion,
+  w: number,
+  h: number,
+): void {
+  const st = ensureDofOverlay(gl, w, h, dofUnion);
+  if (!st.frameTexture || st.frameTexture.image.width !== w || st.frameTexture.image.height !== h) {
+    st.frameTexture?.dispose();
+    // Linear-tagged on purpose: copyTexSubImage2D from the RGBA8 canvas into an sRGB-tagged texture is an invalid-operation no-op, and the raw display bytes are exactly what the pass should sample (encodeOutput is off, so untouched pixels round-trip byte for byte).
+    st.frameTexture = new FramebufferTexture(w, h);
+  }
+  const prevTarget = gl.getRenderTarget();
+  gl.setRenderTarget(null);
+  gl.copyFramebufferToTexture(st.frameTexture, _copyOrigin);
+  renderDofDepth(gl, st, scene, camera);
+  st.pass.mainCamera = camera;
+  applyDofUniforms(st, dof);
+  st.inputShim.texture = st.frameTexture;
+  st.pass.renderToScreen = true;
+  st.pass.encodeOutput = false;
+  gl.setRenderTarget(null);
+  st.pass.render(gl, st.inputShim, null);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** Target-mode side blur: the caller has rendered the side into `dofSideScratch()` instead of `target`; this runs the dof chain from the scratch into `target`. The scratch shares the SDR pair's semantics (hardware sRGB, MSAA), so an inactive side rendered straight to `target` and an active side routed through here carry the same pixel contract. */
+export function renderDofOverTarget(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  dof: ResolvedDof,
+  dofUnion: DofUnion,
+  target: WebGLRenderTarget,
+  w: number,
+  h: number,
+): void {
+  const st = ensureDofOverlay(gl, w, h, dofUnion);
+  const prevTarget = gl.getRenderTarget();
+  renderDofDepth(gl, st, scene, camera);
+  st.pass.mainCamera = camera;
+  applyDofUniforms(st, dof);
+  st.pass.renderToScreen = false;
+  // The scratch samples hardware-decoded (linear) and the sRGB target re-encodes on store; the shader must not encode again.
+  st.pass.encodeOutput = false;
+  st.pass.render(gl, st.scratch as WebGLRenderTarget, target);
+  gl.setRenderTarget(prevTarget);
+}
+
+/** The scratch the compositor renders an ACTIVE dof side into before renderDofOverTarget copies it, blurred, into the real side target. Same contract as the SDR pair (hardware sRGB store, MSAA). */
+export function dofSideScratch(
+  gl: WebGLRenderer,
+  w: number,
+  h: number,
+  u: DofUnion,
+): WebGLRenderTarget {
+  const st = ensureDofOverlay(gl, w, h, u);
+  if (!st.scratch) {
+    const t = new WebGLRenderTarget(w, h, {
+      minFilter: NearestFilter,
+      magFilter: NearestFilter,
+      format: RGBAFormat,
+      type: UnsignedByteType,
+      depthBuffer: true,
+      stencilBuffer: false,
+      generateMipmaps: false,
+      samples: MSAA_SAMPLES,
+    });
+    t.texture.colorSpace = SRGBColorSpace;
+    t.texture.wrapS = ClampToEdgeWrapping;
+    t.texture.wrapT = ClampToEdgeWrapping;
+    st.scratch = t;
+  }
+  return st.scratch;
 }
 
 /** Loads + parses every LUT the project could bind (project default + per-scene overrides) before frame 0, mirroring preloadDeviceModels/preloadProjectImages, since the capture loop must never race an async effect-asset decode and a mid-run swap must find its texture already cached. The project loader awaits this before publishing effects to the store so the composer chain never builds against a missing texture; the export preamble awaits it again (a cached no-op) with `gl` so every texture is uploaded before frame 0, never a lazy first-use upload mid-run. See docs/determinism.md. Enforces that all of a project's LUTs share one LUT_3D_SIZE, since mid-project swaps write the `lut` uniform directly, so the pass's compiled size defines must fit every texture. */
