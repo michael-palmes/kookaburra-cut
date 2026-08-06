@@ -1328,7 +1328,7 @@ pub fn create_project(
         let dest = dir.join("assets").join(name);
         if !dest.exists() {
             std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
-            touch_ancient(&dest, (SAMPLE_ASSET_FILES.len() + i) as u64);
+            touch_ancient(&dest, SAMPLE_SCREENSHOT_STAMP_OFFSET + i as u64);
         }
     }
 
@@ -1429,22 +1429,45 @@ pub fn provision_project(
     stamp_claude_provisioning(&app, &dir)
 }
 
-/// The shared sample files seeded into every new project (see `projects/_samples/`); templates reference them by name without shipping a copy each.
-const SAMPLE_ASSET_FILES: [&str; 3] = [
-    "sample-phone-recording.mp4",
-    "sample-laptop-recording.mp4",
-    "app-icon.png",
-];
+/// Media the pool seeds; anything else in `_samples` (README, dotfiles) stays put.
+const SAMPLE_MEDIA_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "webp", "mp4", "mov", "m4a"];
+
+/// The screenshots' ancient-stamp indices start here so a growing pool never reorders them.
+const SAMPLE_SCREENSHOT_STAMP_OFFSET: u64 = 100;
 
 /// The shared sample pool inside the bundled tree (`projects/_samples/`), the one source both creation and the backfill seed from.
 fn samples_root(app: &AppHandle) -> PathBuf {
     templates_root(app).join(SAMPLES_DIR_NAME)
 }
 
-/// Copy each sample file into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
+/// Every seedable media file in the pool, sorted so ancient-stamp indices stay stable.
+fn pool_sample_names(source_assets: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(source_assets)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().is_file())
+                .filter_map(|e| e.file_name().to_str().map(str::to_owned))
+                .filter(|name| {
+                    !name.starts_with('.')
+                        && Path::new(name)
+                            .extension()
+                            .and_then(|x| x.to_str())
+                            .is_some_and(|x| {
+                                SAMPLE_MEDIA_EXTENSIONS.contains(&x.to_ascii_lowercase().as_str())
+                            })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// Copy each pool sample into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
 fn copy_missing_sample_assets(source_assets: &Path, project_assets: &Path) -> Result<(), String> {
     std::fs::create_dir_all(project_assets).map_err(|e| e.to_string())?;
-    for (i, name) in SAMPLE_ASSET_FILES.iter().enumerate() {
+    for (i, name) in pool_sample_names(source_assets).iter().enumerate() {
         let dst = project_assets.join(name);
         let src = source_assets.join(name);
         if dst.exists() {
@@ -1482,7 +1505,7 @@ pub fn ensure_sample_assets(
     for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
         let dst = project_assets.join(name);
         if dst.is_file() && !is_ancient(&dst) {
-            heal_seeded_stamp(&dst, bytes, (SAMPLE_ASSET_FILES.len() + i) as u64);
+            heal_seeded_stamp(&dst, bytes, SAMPLE_SCREENSHOT_STAMP_OFFSET + i as u64);
         }
     }
     Ok(())
@@ -1973,6 +1996,31 @@ mod tests {
         // A missing source file is skipped, not an error (sample-laptop-recording.mp4 here).
         assert!(!dest.join("sample-laptop-recording.mp4").exists());
 
+        let _ = std::fs::remove_dir_all(&source);
+        let _ = std::fs::remove_dir_all(&dest_root);
+    }
+
+    #[test]
+    fn pool_seeding_enumerates_media_and_skips_notes() {
+        let source = scratch_dir();
+        std::fs::write(source.join("README.md"), b"notes").unwrap();
+        std::fs::write(source.join(".DS_Store"), b"junk").unwrap();
+        std::fs::write(source.join("home-light-sample.jpg"), b"jpg").unwrap();
+        std::fs::write(source.join("app-icon.png"), b"png").unwrap();
+        let dest_root = scratch_dir();
+        let dest = dest_root.join("assets");
+        copy_missing_sample_assets(&source, &dest).unwrap();
+        assert!(dest.join("home-light-sample.jpg").is_file());
+        assert!(dest.join("app-icon.png").is_file());
+        assert!(!dest.join("README.md").exists());
+        assert!(!dest.join(".DS_Store").exists());
+        assert_eq!(
+            pool_sample_names(&source),
+            vec![
+                "app-icon.png".to_string(),
+                "home-light-sample.jpg".to_string()
+            ]
+        );
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&dest_root);
     }
