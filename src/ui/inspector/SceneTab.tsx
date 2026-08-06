@@ -2256,11 +2256,8 @@ export function SceneTab({
   };
   const addOverlay = () =>
     void patchDoc((next) => {
-      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger.
-      next.frame = {
-        cutout: { shape: "rounded-rect", side: "start" },
-        chip: { label: "New", icon: "circle-check", colour: "accent" },
-      };
+      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger. No starter chip: the slide pass paints the panel and its cutout whether or not the panel carries content.
+      next.frame = { cutout: { shape: "rounded-rect", side: "start" } };
     });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));

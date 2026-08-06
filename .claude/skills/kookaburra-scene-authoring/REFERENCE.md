@@ -428,12 +428,15 @@ replaces the deck's outright (never deep-merges); other fields override field-by
 
 Rules:
 
-- **A full panel (no visible scene window) is a collapsed cutout, not a missing one.**
-  `cutout` is required, so the Overlay panel preset ships `size: 0.1, inset: 0.2` — a
-  sliver that reads as full-frame at every aspect. Never omit `cutout` hoping for a panel.
-- **An empty panel renders nothing.** `FramePanel` bails without text, an icon or a chip;
-  that is why scaffolded overlays carry the starter `"New"` chip. Keep at least one of the
-  three or the panel silently disappears.
+- **A full panel (no visible scene window) is a shape, not a missing cutout.**
+  `cutout` is required, so the Overlay panel preset ships `"shape": "none"`: the panel
+  owns the whole frame and `side`/`size`/`inset`/`radius` are no-ops. Never omit `cutout`
+  hoping for a panel.
+- **An empty panel still renders the slide.** `FramePanel` bails without text, an icon, a
+  chip, a chart or a decoration, but that only stands the CONTENT down: the panel fill and
+  the cutout still paint, so a fresh overlay reads as a slide (no starter chip is seeded).
+  The exception is `"shape": "none"`, which has no window to read: give it copy, or it is a
+  flat fill and nothing else.
 - **A transparent panel ignores the cutout.** With no fill there is no hole to cut, so the
   scene renders full-bleed and the panel keeps only its content (text, chip, decorations).
 - **Bullets** are one sidecar string split on newlines: `text.bullets = "First\nSecond"`.
