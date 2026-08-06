@@ -372,6 +372,10 @@ the printed static value.
   crossing zero does not flicker a sign.
 - Non-finite input prints as zero, matching how the layout reads broken cells.
 
+Two editors write two DIFFERENT fields and never share one object: the Axis tab's
+Tick labels group formats the numbers along the axis (`axis.value.format`), the Series
+tab's Value labels group formats the numbers riding the marks (`labels.values.format`).
+
 ## The data track
 
 Keyframed data is the Magic Chart model on the shared `KeyedTrack`: each key holds a

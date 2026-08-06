@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ChartValueFormat } from "../toolkit/chart/types";
 import {
   CHART_ANIMATION_DEFAULTS,
   CHART_AXIS_FORMAT_DEFAULTS,
@@ -9,7 +10,7 @@ import {
   maxAcrossTrack,
   resolveChart,
 } from "./sceneChart";
-import type { SceneDoc, SceneDocChart } from "./sceneDocSchema";
+import { parseSceneDoc, type SceneDoc, type SceneDocChart } from "./sceneDocSchema";
 
 const chartDoc = (chart: SceneDocChart): SceneDoc => ({ version: 1, chart });
 
@@ -359,5 +360,73 @@ describe("hero placement style", () => {
     );
     expect(chart?.style.offset).toEqual([20, -20]);
     expect(chart?.style.scale).toBe(3);
+  });
+});
+
+/** The two number-format editors write different fields of the same block, so an edit to one must never resolve into the other, and both must survive the sidecar round trip. `editAxisFormat`/`editValueLabelFormat` mirror the inspector's own writers (`writeValueAxis` + `FormatRows`, `writeValueLabels` + `FormatRows` in `ChartSection.tsx`). */
+describe("number-format edits", () => {
+  const editAxisFormat = (
+    chart: SceneDocChart,
+    patch: Partial<ChartValueFormat>,
+  ): SceneDocChart => {
+    const next = structuredClone(chart);
+    const value = { ...(next.axis?.value ?? {}) };
+    value.format = { ...value.format, ...patch };
+    next.axis = { ...next.axis, value };
+    return next;
+  };
+  const editValueLabelFormat = (
+    chart: SceneDocChart,
+    patch: Partial<ChartValueFormat>,
+  ): SceneDocChart => {
+    const next = structuredClone(chart);
+    const values = { ...(next.labels?.values ?? {}) };
+    values.format = { ...values.format, ...patch };
+    next.labels = { ...next.labels, values };
+    return next;
+  };
+  /** The sidecar write and the reload that follows it: JSON out, parser in. */
+  const roundTrip = (chart: SceneDocChart) => {
+    const doc = parseSceneDoc(JSON.parse(JSON.stringify(chartDoc(chart))), "test");
+    const out = resolveChart(doc);
+    if (!out) throw new Error("expected a resolved chart");
+    return out;
+  };
+
+  it("lands an axis separator and prefix edit, through the sidecar round trip", () => {
+    const edited = editAxisFormat(
+      editAxisFormat({ type: "column", data: data() }, { separator: false }),
+      { prefix: "$" },
+    );
+    const chart = roundTrip(edited);
+    expect(chart.axis.value.format.separator).toBe(false);
+    expect(chart.axis.value.format.prefix).toBe("$");
+  });
+
+  it("keeps the axis and value-label formats independent in both directions", () => {
+    const axisEdit = roundTrip(
+      editAxisFormat({ type: "column", data: data() }, { separator: false, prefix: "$" }),
+    );
+    expect(axisEdit.labels.values.format).toEqual(CHART_VALUE_FORMAT_DEFAULTS);
+    const labelEdit = roundTrip(
+      editValueLabelFormat({ type: "column", data: data() }, { separator: false, prefix: "€" }),
+    );
+    expect(labelEdit.axis.value.format).toEqual(CHART_AXIS_FORMAT_DEFAULTS);
+  });
+
+  it("resolves a fresh format object per field, never the shared defaults", () => {
+    const chart = resolved({ type: "column", data: data() });
+    expect(chart.axis.value.format).not.toBe(chart.labels.values.format);
+    expect(chart.axis.value.format).not.toBe(CHART_AXIS_FORMAT_DEFAULTS);
+    expect(chart.labels.values.format).not.toBe(CHART_VALUE_FORMAT_DEFAULTS);
+  });
+
+  it("an empty prefix clears an authored one rather than dropping the edit", () => {
+    const chart = roundTrip(
+      editAxisFormat(editAxisFormat({ type: "column", data: data() }, { prefix: "$" }), {
+        prefix: "",
+      }),
+    );
+    expect(chart.axis.value.format.prefix).toBe("");
   });
 });

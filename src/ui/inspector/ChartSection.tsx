@@ -1129,9 +1129,9 @@ export function ChartDrillIn({
               }
             />
           </DrillGroup>
-          <DrillGroup label="Value labels">
+          <DrillGroup label="Tick labels" hint="The numbers along the axis itself.">
             <ToggleRow
-              label="Tick labels"
+              label="Show tick labels"
               checked={valueAxis.labels}
               onChange={(labels) =>
                 writeValueAxis((a) => {
@@ -1334,7 +1334,7 @@ export function ChartDrillIn({
           </span>
         )}
       </DrillGroup>
-      <DrillGroup label="Value labels">
+      <DrillGroup label="Value labels" hint="The numbers riding the marks themselves.">
         <ToggleRow
           label="Show values"
           checked={values.visible}
