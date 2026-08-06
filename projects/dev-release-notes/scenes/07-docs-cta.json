@@ -3,7 +3,7 @@
   "name": "Docs",
   "text": {
     "title": "Full notes",
-    "subtitle": "docs.example.com/4.2.0"
+    "subtitle": "docs.example.com"
   },
   "backdrop": {
     "type": "none"
@@ -22,5 +22,8 @@
       "driftAngle": 70
     },
     "preset": "p6"
+  },
+  "textStyle": {
+    "subtitleSize": 0.6
   }
 }

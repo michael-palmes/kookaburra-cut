@@ -1,13 +1,15 @@
 {
   "version": 1,
   "name": "The claim",
-  "duration": { "mode": "manual" },
+  "duration": {
+    "mode": "manual"
+  },
   "text": {
     "title": "Plan a week\nin a minute"
   },
   "textStyle": {
     "titleSize": 1.05,
-    "titleOffsetY": -0.66,
+    "titleOffsetY": 0.62,
     "titleLineHeight": 1.1,
     "titleColor": "#1b1512"
   },
@@ -19,6 +21,6 @@
   },
   "background": {
     "type": "video",
-    "src": "assets/kooka-feed-loop-sample.mp4"
+    "src": "assets/kooka-onboard-loop-sample.mp4"
   }
 }
