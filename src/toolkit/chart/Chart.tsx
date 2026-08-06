@@ -1,10 +1,13 @@
 /** The chart host: one primitive a scene mounts bare (`<Chart />`) to draw its sidecar `chart` block, or with overrides to retype/restage it. It owns everything the renderers deliberately do not: the series palette, the fixed-scale layout composition (the track's upper envelope pins the value axis, the current scene-local sample supplies the marks), the build-in sampler (rebuilt every frame from the scene-local clock, so the instanced writers see a fresh identity and rewrite) and placement, which is the only thing that differs between the hero, staged and panel mounts. Flat charts lay out against `useFormat()`'s safe frame minus the bands their furniture needs (and minus the title band when the scene draws a headline); 3D charts stand at the content depth band under the presentation tilt, scaled so the tilted footprint still fits. Sidecar-driven, so a chart block renders with no scene TSX at all (`ChartFallback`). */
 
-import { TransformControls } from "@react-three/drei";
-import { useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import type { Group } from "three";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useFormat } from "../../engine/format";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
+import { SceneGizmo } from "../../engine/SceneGizmo";
+import { SceneOutline } from "../../engine/SceneOutline";
 import type { ResolvedChart } from "../../engine/sceneChart";
 import { useSceneContext } from "../../engine/sceneContext";
 import { useSceneChart, useSceneDoc } from "../../engine/sceneDoc";
@@ -181,6 +184,35 @@ function mergeChart(base: ResolvedChart, o: ChartProps): ResolvedChart {
   return chart;
 }
 
+/** Publish the hero chart's posed group and plot rect to the 2D gizmo registry, so the DOM layer can draw a box around it and a drag can invert through the live camera. A comparison's B side registers nothing: a write from there would land on the A doc. */
+function useHeroGizmoTarget(
+  group: { current: Group | null },
+  size: { width: number; height: number },
+  /** Plot centre in the posed group's own space, for a mount that lifts the plot below that group. */
+  centreY = 0,
+) {
+  const ctx = useSceneContext();
+  const sceneIndex = ctx?.index;
+  const side = ctx?.side;
+  const key = useId();
+  const latest = useRef({ size, centreY });
+  latest.current = { size, centreY };
+  useEffect(() => {
+    if (sceneIndex === undefined || side !== undefined) return;
+    registerGizmoTarget(key, {
+      domain: "chart",
+      sceneIndex,
+      itemId: "chart",
+      node: () => group.current,
+      localRect: () => {
+        const { size: s, centreY: cy } = latest.current;
+        return [-s.width / 2, cy - s.height / 2, s.width / 2, cy + s.height / 2];
+      },
+    });
+    return () => unregisterGizmoTarget(key);
+  }, [key, sceneIndex, side, group]);
+}
+
 /** Flat and frame-filling: the plot takes the safe frame minus the title band and the bands its own furniture reserves, and sits on the content plane so it reads as graphic design over whatever the scene stages. */
 function Hero2D({
   chart,
@@ -202,8 +234,11 @@ function Hero2D({
     () => fitChart2d(chart, layout, available, appearance),
     [chart, layout, available, appearance],
   );
+  const groupRef = useRef<Group>(null);
+  useHeroGizmoTarget(groupRef, fit.size);
   return (
     <group
+      ref={groupRef}
       position={[
         fit.centre[0] + chart.style.offset[0],
         fit.centre[1] + chart.style.offset[1] + enter * fit.size.height,
@@ -240,8 +275,11 @@ function Hero3D({ chart, layout, colours, surface, reveal, enter, title, opacity
     });
   }, [chart, layout, surface.legendChrome, available]);
   const ground = chartHeroPose(fit, chart.style.scale, available);
+  const groupRef = useRef<Group>(null);
+  useHeroGizmoTarget(groupRef, fit.size, enter * fit.size.height);
   return (
     <group
+      ref={groupRef}
       position={[
         available.x + chart.style.offset[0],
         ground.y + chart.style.offset[1],
@@ -301,17 +339,29 @@ function PanelChart({
 /** Placed among the scene's devices and text: a fixed world-space plot under the block's `placement`, so a chart poses exactly like a `Device` does. While the inspector's position drill is open the staged-object gizmo attaches to the posed group (`chartEditStore`), and `exportPreamble` clears that selection, so exports render the bare transform. */
 function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opacity }: MountArgs) {
   const floorY = useStageFloorY();
-  const sceneIndex = useSceneContext()?.index;
+  const ctx = useSceneContext();
+  const sceneIndex = ctx?.index;
+  // What a click selects, or null on a comparison's B side: it mounts the same chart at the same index, so a write from here would land on the A doc.
+  const editTarget = sceneIndex !== undefined && ctx?.side === undefined ? { sceneIndex } : null;
   const selected = useChartEditStore((s) => s.selected);
   const gizmoMode = useChartEditStore((s) => s.gizmoMode);
+  const sectionOpen = useGizmoSectionOpen("chart");
   const groupRef = useRef<Group>(null);
   const pose = chartPose(chart.placement);
   const y = chartGroundY(pose, floorY);
   const lift = enter * CHART_STAGED_SIZE.height;
-  const gizmo = selected !== null && selected.sceneIndex === sceneIndex;
+  const gizmo =
+    editTarget !== null &&
+    sectionOpen &&
+    selected !== null &&
+    selected.sceneIndex === editTarget.sceneIndex;
 
   // The control mutates the group live; the commit reads it back, so the doc lands exactly what is on screen. A drag pins an explicit y, so `ground` drops.
+  const dragging = useRef(false);
   const commitDrag = () => {
+    // A press that never moved a handle is not an edit, so it costs no write or history entry.
+    if (!dragging.current) return;
+    dragging.current = false;
     const group = groupRef.current;
     if (!group || sceneIndex === undefined) return;
     useChartEditStore.getState().requestCommit({
@@ -349,15 +399,21 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
     const next = Math.max(0.01 * pose.scale, Math.abs(u) * pose.scale);
     group.scale.set(next, next, next);
   };
+  const change = () => {
+    dragging.current = true;
+    uniformiseScale();
+  };
 
   return (
     <>
-      {gizmo && (
-        <TransformControls
-          object={groupRef as React.RefObject<Group>}
+      {gizmo && sceneIndex !== undefined && (
+        <SceneGizmo
+          object={groupRef}
           mode={gizmoMode}
-          size={1.8}
-          onObjectChange={uniformiseScale}
+          domain="chart"
+          itemId="chart"
+          sceneIndex={sceneIndex}
+          onObjectChange={change}
           onMouseUp={commitDrag}
         />
       )}
@@ -393,6 +449,14 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
               opacity={opacity}
             />
           </group>
+        )}
+        {editTarget && (
+          <SceneOutline
+            size={[CHART_STAGED_SIZE.width, CHART_STAGED_SIZE.height, 0]}
+            domain="chart"
+            selected={gizmo}
+            onSelect={() => useChartEditStore.getState().select(editTarget)}
+          />
         )}
       </group>
     </>
