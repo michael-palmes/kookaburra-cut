@@ -48,6 +48,7 @@ import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import { useSceneStageBackdrop } from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import { useTextEditStore } from "../../engine/textEditStore";
 import {
   textKeyColorDefaults,
   textKeyStyleCapable,
@@ -104,6 +105,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
+import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
   chartRowValue,
   drillStackForScene,
@@ -1860,6 +1862,18 @@ export function SceneTab({
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
+  // The text gizmo's selection, reflected both ways: touching a key's fields shows its handles, and a canvas click scrolls the drill to that key.
+  const selectedTextKey = useTextEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.key : null,
+  );
+  const textFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  useEffect(() => {
+    if (!selectedTextKey) return;
+    const el = textFieldRefs.current[selectedTextKey];
+    // Skip when the selection came from focusing a field, so typing never scrolls the panel.
+    if (!el || el.contains(document.activeElement)) return;
+    el.scrollIntoView({ block: "nearest" });
+  }, [selectedTextKey]);
   const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
   const requestDecoMedia = useDecorationEditStore((s) => s.requestMedia);
   // The gizmo's "Change media" action routes through here to reuse the scene media picker.
@@ -4723,7 +4737,18 @@ export function SceneTab({
                 : undefined;
             const fontOverride = styleStr(`${key}Font`);
             return (
-              <div key={key} className="text-field-group">
+              <div
+                key={key}
+                ref={(el) => {
+                  textFieldRefs.current[key] = el;
+                }}
+                className={`text-field-group${selectedTextKey === key ? " selected" : ""}`}
+                onFocusCapture={() => {
+                  if (selectedTextKey !== key) {
+                    useTextEditStore.getState().select({ sceneIndex, key });
+                  }
+                }}
+              >
                 <TextFieldRow
                   label={label}
                   value={textValues[key] ?? doc.text?.[key] ?? ""}
@@ -4794,6 +4819,18 @@ export function SceneTab({
                           `${label.toLowerCase()} position`,
                           `${key}OffsetY`,
                           n === 0 ? undefined : n,
+                        )
+                      }
+                    />
+                    <NumberField
+                      label="Rotate °"
+                      value={styleNum(`${key}RotationDeg`) ?? 0}
+                      decimals={1}
+                      onCommit={(n) =>
+                        patchStyle(
+                          `${label.toLowerCase()} rotation`,
+                          `${key}RotationDeg`,
+                          textRotationWrite(n),
                         )
                       }
                     />
