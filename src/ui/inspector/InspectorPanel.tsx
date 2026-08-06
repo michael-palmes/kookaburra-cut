@@ -4,6 +4,7 @@ import { type AspectName, FORMATS } from "../../engine/format";
 import {
   isWorkspaceProjectId,
   type LoadedProject,
+  sceneFileStem,
   workspaceProjectPath,
   workspaceSlug,
 } from "../../engine/project";
@@ -474,7 +475,7 @@ export function InspectorPanel({
           <ScenesDrillIn
             scenes={project.slots.map((slot, i) => ({
               index: i,
-              name: project.sceneDocs[i]?.name ?? slot.id,
+              name: project.sceneDocs[i]?.name ?? sceneFileStem(project.sceneFiles[i]),
               durationMs: slot.durationMs,
               hasDoc: !!project.sceneDocs[i],
             }))}
@@ -506,7 +507,10 @@ export function InspectorPanel({
             <DuplicateSceneDialog
               project={project}
               index={duplicating}
-              sourceName={project.sceneDocs[duplicating]?.name ?? project.slots[duplicating]?.id}
+              sourceName={
+                project.sceneDocs[duplicating]?.name ??
+                sceneFileStem(project.sceneFiles[duplicating])
+              }
               onClose={() => setDuplicating(null)}
               onDuplicate={onDuplicateSceneAt}
             />
@@ -520,8 +524,7 @@ export function InspectorPanel({
                   ? `${copyingScenes.length} scenes`
                   : `“${
                       project.sceneDocs[copyingScenes[0]]?.name ??
-                      project.slots[copyingScenes[0]]?.id ??
-                      "scene"
+                      sceneFileStem(project.sceneFiles[copyingScenes[0]])
                     }”`
               }
               onDone={() => setCopyingScenes(null)}

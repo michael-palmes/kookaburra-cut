@@ -39,7 +39,7 @@ import { detectWindowRecording } from "./windowRecordingDetect";
 
 export interface WizardSceneInfo {
   index: number;
-  /** Slot id (the TSX `defineScene` id). */
+  /** The TSX `defineScene` id: display only, not unique. Identify a scene by `file`, `stem` or `index`. */
   id: string;
   /** Manifest module path, e.g. `scenes/02-hero.tsx`. */
   file: string;
@@ -366,8 +366,8 @@ export function ScenePicker({
                 <span aria-hidden>·</span>
               )}
             </span>
-            <span className="scene-card-title" title={s.name ?? s.id}>
-              {s.name ?? s.id}
+            <span className="scene-card-title" title={s.name ?? s.stem}>
+              {s.name ?? s.stem}
             </span>
             <span className="muted">{secondsLabel(s.durationMs)}</span>
           </button>

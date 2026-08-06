@@ -7,7 +7,7 @@ import {
   setPreviewEnvironmentOff,
   setPreviewPlaybackActive,
 } from "./previewMedia";
-import type { LoadedProject } from "./project";
+import { type LoadedProject, sceneFileStem } from "./project";
 
 /** Playback performance probe (`kookaburra:run --action perf`): plays a window of every scene under a matrix of elimination passes and reports frame-time stats plus renderer counters per pass, so regressions and hotspots (device glass, screen media, shadows, fill rate) can be pinned as scenes grow. Preview-only diagnostics; the export path never reads any of this. Needs a visible window: WKWebView suspends rAF while occluded. */
 
@@ -256,7 +256,7 @@ export async function runPerfProbe(project: LoadedProject): Promise<PerfRow[]> {
   setPreviewPlaybackActive(true);
   try {
     for (const [i, slot] of project.slots.entries()) {
-      const name = project.sceneDocs[i]?.name ?? slot.id;
+      const name = project.sceneDocs[i]?.name ?? sceneFileStem(project.sceneFiles[i]);
       for (const pass of PASSES) {
         console.warn(`[autorun] perf ${name} · ${pass.id}`);
         const restore = pass.apply(gl, scene);
