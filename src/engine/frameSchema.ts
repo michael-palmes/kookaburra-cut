@@ -1,5 +1,6 @@
 /** Validation for the overlay ("frame") block, in `project.json` as the deck default and in a scene sidecar as the per-scene override. Same degrade-don't-crash contract as `parseSceneDoc`: a malformed optional field drops with a warning, a malformed `cutout` drops the whole block, nothing throws. PURE module (validation only). See docs/overlays.md. */
 
+import { parseGradient } from "../theme/schema";
 import type {
   FrameChartPosition,
   FrameChartSlot,
@@ -9,6 +10,7 @@ import type {
   FrameDecorationShape,
   FrameDecorationSpec,
   FrameOverrideSpec,
+  FramePanelBackground,
   FrameShape,
   FrameSide,
   FrameSpec,
@@ -35,6 +37,55 @@ function isColour(value: unknown): value is string {
 
 function num(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** The panel fill. A plain string stays a colour (the v1 shape every existing sidecar carries), an object picks one of the four fill types, and anything malformed drops the field so the panel falls back to the theme's neutral surface. */
+function parsePanelBackground(
+  raw: unknown,
+  source: string,
+): string | FramePanelBackground | undefined {
+  if (typeof raw === "string") {
+    if (isColour(raw)) return raw;
+    console.warn(`[frame] ${source}: background isn't a theme token or hex, dropped`);
+    return undefined;
+  }
+  if (!isRecord(raw)) {
+    console.warn(`[frame] ${source}: background isn't a colour or a fill object, dropped`);
+    return undefined;
+  }
+  switch (raw.type) {
+    case "transparent":
+      return { type: "transparent" };
+    case "color":
+      if (isColour(raw.color)) return { type: "color", color: raw.color };
+      console.warn(`[frame] ${source}: background.color isn't a theme token or hex, dropped`);
+      return undefined;
+    case "gradient": {
+      const gradient: Extract<FramePanelBackground, { type: "gradient" }> = { type: "gradient" };
+      if (typeof raw.gradient === "string" && raw.gradient.length > 0) {
+        gradient.gradient = raw.gradient;
+      }
+      if (raw.spec !== undefined) {
+        const spec = parseGradient(raw.spec);
+        if (spec) gradient.spec = spec;
+        else console.warn(`[frame] ${source}: background.spec isn't a gradient, dropped`);
+      }
+      if (!gradient.gradient && !gradient.spec) {
+        console.warn(`[frame] ${source}: background gradient needs a name or a spec, dropped`);
+        return undefined;
+      }
+      return gradient;
+    }
+    case "image":
+      if (typeof raw.src === "string" && raw.src.length > 0) return { type: "image", src: raw.src };
+      console.warn(`[frame] ${source}: background.src needs an asset path, dropped`);
+      return undefined;
+    default:
+      console.warn(
+        `[frame] ${source}: background.type isn't transparent|color|gradient|image, dropped`,
+      );
+      return undefined;
+  }
 }
 
 function parseChip(raw: unknown, source: string): FrameChipSpec | undefined {
@@ -165,8 +216,8 @@ export function parseFrameOverride(raw: unknown, source: string): FrameOverrideS
   if (raw.enabled === false) out.enabled = false;
   if (raw.claimsSceneText === false) out.claimsSceneText = false;
   if (raw.background !== undefined) {
-    if (isColour(raw.background)) out.background = raw.background;
-    else console.warn(`[frame] ${source}: background isn't a theme token or hex — dropped`);
+    const background = parsePanelBackground(raw.background, source);
+    if (background !== undefined) out.background = background;
   }
   if (typeof raw.icon === "string" && raw.icon.length > 0) out.icon = raw.icon;
   if (TEXT_ALIGNS.includes(raw.textAlign as SceneTextAlign)) {

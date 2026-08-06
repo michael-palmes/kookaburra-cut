@@ -399,7 +399,13 @@ replaces the deck's outright (never deep-merges); other fields override field-by
                                   // the aspect, so ONE config serves landscape and portrait
     "inset": 0.06                 // margin to the frame edge, fraction of the shorter frame edge
   },
-  "background": "accent",         // panel fill: theme token or "#hex"; absent = the panel default
+  "background": "accent",         // panel fill: theme token or "#hex"; absent = the panel default.
+                                  // Or an object: { "type": "transparent" } (no fill: the scene
+                                  // fills the frame behind the panel's content),
+                                  // { "type": "color", "color": "accent" },
+                                  // { "type": "gradient", "spec": { ...GradientSpec } } (or
+                                  // "gradient": "<theme gradient name>"), or
+                                  // { "type": "image", "src": "assets/panel.png" } (cover-cropped)
   "icon": "🚀",                   // emoji or project-relative asset path, drawn above the title
   "chip": { "label": "New", "icon": "circle-check", "colour": "accent" },
   "decorations": [                // images placed on the panel (avatars, logos, illustrations)
@@ -423,6 +429,8 @@ Rules:
 - **An empty panel renders nothing.** `FramePanel` bails without text, an icon or a chip;
   that is why scaffolded overlays carry the starter `"New"` chip. Keep at least one of the
   three or the panel silently disappears.
+- **A transparent panel ignores the cutout.** With no fill there is no hole to cut, so the
+  scene renders full-bleed and the panel keeps only its content (text, chip, decorations).
 - **Bullets** are one sidecar string split on newlines: `text.bullets = "First\nSecond"`.
 - Decoration and icon assets follow the media rules above: project-relative, copied into
   `assets/` first, path checked before writing.

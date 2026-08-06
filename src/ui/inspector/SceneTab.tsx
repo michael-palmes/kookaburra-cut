@@ -60,6 +60,7 @@ import type {
   FrameDecorationSpec,
   FrameShape,
   FrameSide,
+  FrameSpec,
 } from "../../toolkit/frame/types";
 import {
   besideDevicePlacement,
@@ -119,6 +120,7 @@ const SCREEN_TITLES: Record<string, string> = {
   motion: "Timing",
   "text.edit": "Edit text",
   "style.background": "Background",
+  "frame.panel": "Panel",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
   "chart.edit": "Chart",
@@ -252,6 +254,22 @@ const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
   capsule: "Capsule",
   none: "Full panel",
 };
+
+/** The Panel row's value: the colour itself for the flat fills (token or hex, the v1 shape included), the fill type otherwise. */
+function panelFillLabel(background: FrameSpec["background"]): string {
+  if (background === undefined) return "Default";
+  if (typeof background === "string") return background;
+  switch (background.type) {
+    case "color":
+      return background.color;
+    case "gradient":
+      return "Gradient";
+    case "image":
+      return middleTruncate(background.src.split("/").pop() ?? "Image");
+    default:
+      return "Transparent";
+  }
+}
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
@@ -1908,6 +1926,8 @@ export function SceneTab({
   const [bgTabOverride, setBgTabOverride] = useState<
     "gradient" | "image" | "video" | "shader" | "scene3d" | null
   >(null);
+  /** Overlay panel drill: viewing the Gradient/Image tab before anything is committed (the background drill's idiom). */
+  const [panelTabOverride, setPanelTabOverride] = useState<"gradient" | "image" | null>(null);
   /** Which animated-fill card is hovered (its clip preview plays). */
   const [bgHover, setBgHover] = useState<string | null>(null);
   /** Which 3D-backing editor is open when it doesn't match the stored backing type. */
@@ -2059,6 +2079,7 @@ export function SceneTab({
     }
     setRenaming(false);
     setBgTabOverride(null);
+    setPanelTabOverride(null);
     setBackingTabOverride(null);
     setLiveThumb((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -2605,35 +2626,154 @@ export function SceneTab({
     );
   }
   if (drillIn === "frame.panel" && sceneFrame) {
+    const panelBg = sceneFrame.background;
+    const panelObj = typeof panelBg === "object" ? panelBg : undefined;
+    const panelTab = panelTabOverride ?? panelObj?.type ?? "color";
     const resolveColour = (c: string | undefined): string => {
       if (c === "background" || c === "text" || c === "accent" || c === "muted") {
         return sceneTheme?.colors[c] ?? c;
       }
       return c ?? sceneTheme?.colors.background ?? "#1e2226";
     };
+    const commitPanel = (value: FrameSpec["background"] | undefined) => {
+      setPanelTabOverride(null);
+      void patchDoc((next) => {
+        if (value === undefined) {
+          if (next.frame) delete next.frame.background;
+          return;
+        }
+        next.frame = { ...(next.frame ?? {}), background: value };
+      });
+    };
+    const types: { id: typeof panelTab; label: string; icon: string }[] = [
+      { id: "transparent", label: "Transparent", icon: "none" },
+      { id: "color", label: "Colour", icon: "color" },
+      { id: "gradient", label: "Gradient", icon: "gradient" },
+      { id: "image", label: "Image", icon: "image" },
+    ];
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Panel colour</div>
+        <div className="inspector-drill-title">Panel background</div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Colour</span>
-            <ColourPicker
-              value={resolveColour(sceneFrame.background)}
-              label="Panel colour"
-              onCommit={(hex) =>
-                void patchDoc((next) => {
-                  next.frame = { ...(next.frame ?? {}), background: hex };
-                })
-              }
-              onReset={() =>
-                void patchDoc((next) => {
-                  if (next.frame) delete next.frame.background;
-                })
+          <div className="bg-type-grid" role="tablist" aria-label="Panel fill type">
+            {types.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={panelTab === t.id}
+                className={`bg-type-tile${panelTab === t.id ? " selected" : ""}`}
+                onClick={() => {
+                  if (t.id === "transparent") commitPanel({ type: "transparent" });
+                  // Colour is the unset default's home too: leaving a sampled fill drops back to it.
+                  else if (t.id === "color") {
+                    if (panelObj) commitPanel(undefined);
+                    else setPanelTabOverride(null);
+                  } else setPanelTabOverride(t.id);
+                }}
+              >
+                <BgTypeIcon id={t.icon} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {panelTab === "color" && (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Colour</span>
+                <ColourPicker
+                  value={resolveColour(
+                    typeof panelBg === "string"
+                      ? panelBg
+                      : panelObj?.type === "color"
+                        ? panelObj.color
+                        : undefined,
+                  )}
+                  label="Panel colour"
+                  onCommit={(hex) => commitPanel(hex)}
+                  onReset={() => commitPanel(undefined)}
+                />
+              </div>
+              <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
+            </>
+          )}
+          {panelTab === "gradient" && (
+            <GradientPickerModal
+              embedded
+              current={panelObj?.type === "gradient" ? panelObj : undefined}
+              theme={sceneTheme}
+              onCancel={() => setPanelTabOverride(null)}
+              onApply={(value) =>
+                commitPanel(
+                  value.spec
+                    ? { type: "gradient", spec: value.spec }
+                    : { type: "gradient", gradient: value.gradient },
+                )
               }
             />
+          )}
+          {panelTab === "image" && (
+            <>
+              <p className="modal-hint">
+                Fills the panel behind the overlay's content; it cover-crops per aspect, so pick an
+                image with a safe centre.
+              </p>
+              <ActionRow
+                icon={<SceneRowIcon id="frame.panel" />}
+                label={panelObj?.type === "image" ? "Change image" : "Choose an image"}
+                value={
+                  panelObj?.type === "image"
+                    ? middleTruncate(panelObj.src.split("/").pop() ?? "")
+                    : undefined
+                }
+                onClick={() => openDrill("frame.panel.media")}
+              />
+            </>
+          )}
+          {panelTab === "transparent" && (
+            <p className="modal-hint">
+              No panel fill: the scene fills the whole frame and the overlay's text, chip and
+              decorations sit over it.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.panel.media" && sceneFrame) {
+    const panelBg = sceneFrame.background;
+    const selectedSrc =
+      typeof panelBg === "object" && panelBg.type === "image" ? panelBg.src : null;
+    const selectPanelImage = (rel: string) => {
+      setPanelTabOverride(null);
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), background: { type: "image", src: rel } };
+      });
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Panel image</div>
+        <div className="inspector-drill-body">
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={["image"]}
+              globalToggle
+              refreshKey={mediaRefreshKey + mediaRefresh}
+              selectedRel={selectedSrc}
+              onPick={selectPanelImage}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: selectPanelImage,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
+            />
           </div>
-          <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
         </div>
       </div>
     );
@@ -5934,7 +6074,7 @@ export function SceneTab({
           ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
           : undefined,
         "frame.cutout": sceneFrame ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape] : undefined,
-        "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
+        "frame.panel": sceneFrame ? panelFillLabel(sceneFrame.background) : undefined,
         "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
         "frame.decorations": sceneFrame
           ? sceneFrame.decorations?.length

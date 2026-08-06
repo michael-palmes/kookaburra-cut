@@ -44,7 +44,8 @@ import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
 import { HELPER_LAYER } from "./lightEditStore";
 import { useObjectEditStore } from "./objectEditStore";
-import { resolveOverlays } from "./overlayPlan";
+import { preloadOverlayPanelImages } from "./overlayPanelTexture";
+import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
 import {
   isWorkspaceProjectId,
   type ProjectAudio,
@@ -369,8 +370,12 @@ async function exportPreamble(
   await preloadChipIcons();
   // Colour-emoji rasters for every sidecar string settle before frame 0 (write-once per-project cache; docs/determinism.md "Emoji").
   await preloadEmojiRasters(opts.projectId, opts.sceneDocs ?? []);
-  // Overlay panel title/subtitle measurements settle before frame 0, so the panel lays out from real troika blocks on every frame (framePanelMeasure.ts).
+  // Overlay panel title/subtitle measurements settle before frame 0, so the panel lays out from real troika blocks on every frame (framePanelMeasure.ts); image panel fills settle in the same block, since the compositor samples them at the render seam with no way to suspend.
   if (opts.sceneFrames?.some(Boolean)) {
+    await preloadOverlayPanelImages(
+      opts.projectId,
+      overlayPanelImageSources(opts.sceneFrames ?? []),
+    );
     const panelThemes = (opts.sceneFrames ?? []).map((_, i) => opts.sceneThemes?.[i] ?? opts.theme);
     await preloadPanelMeasures(
       computeFormat(opts.format),
@@ -493,7 +498,12 @@ export async function exportProject(
 
   // Per-scene overlays, resolved once; null unless some scene declares a frame (mirrored in CompositorDriver).
   const overlays = opts.sceneThemes
-    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes, opts.sceneDocs ?? [])
+    ? resolveOverlays(
+        opts.sceneFrames ?? [],
+        opts.sceneThemes,
+        opts.sceneDocs ?? [],
+        opts.projectId,
+      )
     : null;
 
   // Stale-pose healing: a fully trackless project never writes the camera inside the loop, and the shared camera persists across project switches, so heal it once before frame 0. Pristine case writes identical floats (fov unchanged, no projection update), so the gated no-track paths stay byte-identical. Mirrored in CompositorDriver.
@@ -617,7 +627,12 @@ export async function captureScreenshot(
         })
       : null;
   const overlays = opts.sceneThemes
-    ? resolveOverlays(opts.sceneFrames ?? [], opts.sceneThemes, opts.sceneDocs ?? [])
+    ? resolveOverlays(
+        opts.sceneFrames ?? [],
+        opts.sceneThemes,
+        opts.sceneDocs ?? [],
+        opts.projectId,
+      )
     : null;
   // Comparison plan inputs, mirroring the export loop exactly (a screenshot must show the frame the export would).
   const compareSpecs = (opts.sceneDocs ?? []).map((d, i) =>

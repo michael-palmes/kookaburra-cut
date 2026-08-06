@@ -22,6 +22,7 @@ edge.
 | Transitions | The whole frame transitions with the scene | Each slide carries its own title and chip, so the frame change *is* the slide change. |
 | Shapes | rect, rounded-rect, squircle, circle, capsule, none | Superellipse squircle is its own SDF, not a rounded rect. `none` removes the cutout: the panel fills the whole frame, no scene shows through, `side`/`size`/`inset`/`radius` are no-ops, and content centres by default. |
 | Colour | Theme tokens, with a custom override | Overlays restyle with the theme, one-off brand colours still possible. |
+| Panel fill | Colour, gradient, image, transparent | The panel is the slide's surface, so it needs the stage's fill vocabulary; animated shaders and 3D looks need extra render-target passes and are deferred. |
 
 ## Architecture
 
@@ -123,11 +124,20 @@ export interface FrameDecorationSpec {
   layer?: "above" | "below";
 }
 
+/** The panel fill beyond a flat colour; a plain string is still a colour. */
+export type FramePanelBackground =
+  | { type: "transparent" }
+  | { type: "color"; color: string }
+  /** `gradient` names a theme gradient, `spec` is an inline one; `spec` wins. */
+  | { type: "gradient"; gradient?: string; spec?: GradientSpec }
+  /** Project-relative asset path, cover-cropped to the frame. */
+  | { type: "image"; src: string };
+
 export interface FrameSpec {
   enabled?: boolean;
   cutout: FrameCutoutSpec;
-  /** Theme token id, or a hex override. */
-  background?: string;
+  /** Theme token id, a hex override, or a fill object. */
+  background?: string | FramePanelBackground;
   /** Emoji or asset path, sits above the title. */
   icon?: string;
   chip?: FrameChipSpec;
@@ -196,12 +206,35 @@ rectangle (an SDF injected into a `MeshBasicMaterial`, the `ImageCard` precedent
 sized to its measured label at a fixed reference height (about 64px on a 1080p
 frame: a 30px label, a 10px corner), filled with the chip colour (a theme token, a
 hex, or the accent default) and labelled in whichever of the theme's
-text/background reads better on that fill. The chip's mark is a drawn SDF
-`checkmark.circle` lookalike (a lighter ring plus a full check, one colour at two
-alphas, so it reads hierarchical) for a `✓`/`checkmark` icon; any other icon and
-the panel icon route by `isAssetReference`, a project asset path (`assets/...` or
-an image extension) drawing through `ImageCard` and anything else (an emoji) as
-text.
+text/background reads better on that fill. The chip's mark comes from a curated
+bundled icon set (Lucide designs pre-rasterised to white-on-transparent PNGs,
+`chipIcons.ts`): `resolveChipIconId` maps the set ids (plus the legacy `✓` /
+`checkmark` aliases) to a texture that `FrameSymbol` draws as a tinted quad, so
+no SVG is rasterised at runtime and the export stays byte-identical. Anything
+else, and the panel icon, route by `isAssetReference`: a project asset path
+(`assets/...` or an image extension) draws through `ImageCard`, anything else (an
+emoji) as text.
+
+### Panel fill
+
+`background` carries the panel's surface. A plain string is a colour (theme token
+or hex, the shape every existing sidecar uses); the object form adds three more
+routes, all resolved on the CPU in `overlayPlan.ts` and painted by the one slide
+pass:
+
+| Fill | Render |
+| --- | --- |
+| `color` (or a plain string) | `panelColor` uniform, the flat fill. Unset = the neutral surface lifted off the scene's backdrop. |
+| `gradient` | Baked once by the stage's `gradientTexture` (same pixels as a background gradient), cached in `overlayPanelTexture.ts` and stretched over the frame, so the effective angle is per-aspect exactly as `FixedGradient`'s is. |
+| `image` | The project asset, cover-cropped per aspect (`fixedCoverCrop`), so one asset serves all four formats. Settled before frame 0 by `preloadOverlayPanelImages`. |
+| `transparent` | No slide pass at all: the scene renders full-bleed (the legacy path, byte for byte) and only the panel's content draws over it. The cutout has nothing to cut, so shape is a no-op. |
+
+The sampled routes ride one `panelMode` branch in `overlayShader.ts`; mode 0 is
+the flat colour path, arithmetically untouched, so every existing frame keeps its
+bytes. Fill textures are hardware-sRGB uploads sampled through `sampleDisplay`,
+which recovers their stored bytes exactly (the stage's exact-colour discipline).
+A gradient that names a theme gradient the theme lacks, or an image that cannot
+resolve, degrades to the flat colour, never to nothing.
 
 ### Decorations
 
@@ -228,7 +261,9 @@ This is an export-path change and gates through `docs/determinism.md`.
 - **GLSL3.** The cutout shader is a `ShaderMaterial` and needs its own
   `out vec4 fragColor` declaration.
 - **Assets.** Decoration and icon images must be preloaded in the export
-  preamble, alongside `preloadCatalogModels`, or the first frames race.
+  preamble, alongside `preloadCatalogModels`, or the first frames race. Image
+  panel fills ride the same rule through `preloadOverlayPanelImages`, since the
+  compositor samples them at the render seam and cannot suspend.
 - **Emoji.** The existing write-once raster cache is already the determinism
   source, no change needed.
 - **Eyeball first.** Verify proves determinism, not correctness. Check a

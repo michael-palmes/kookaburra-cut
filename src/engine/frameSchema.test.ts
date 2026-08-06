@@ -66,6 +66,66 @@ describe("parseFrameSpec colour", () => {
   });
 });
 
+describe("parseFrameSpec panel fill", () => {
+  const gradient = {
+    type: "linear",
+    angleDeg: 180,
+    stops: [
+      ["#000000", 0],
+      ["#ffffff", 1],
+    ],
+  };
+
+  it("keeps the four fill types", () => {
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "transparent" } }, "t")?.background,
+    ).toEqual({ type: "transparent" });
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "color", color: "accent" } }, "t")?.background,
+    ).toEqual({ type: "color", color: "accent" });
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "gradient", spec: gradient } }, "t")
+        ?.background,
+    ).toEqual({ type: "gradient", spec: gradient });
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "image", src: "assets/panel.png" } }, "t")
+        ?.background,
+    ).toEqual({ type: "image", src: "assets/panel.png" });
+  });
+
+  it("keeps a named theme gradient, with or without an inline spec", () => {
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "gradient", gradient: "backdrop" } }, "t")
+        ?.background,
+    ).toEqual({ type: "gradient", gradient: "backdrop" });
+    expect(
+      parseFrameSpec(
+        { ...valid, background: { type: "gradient", gradient: "backdrop", spec: gradient } },
+        "t",
+      )?.background,
+    ).toEqual({ type: "gradient", gradient: "backdrop", spec: gradient });
+  });
+
+  it("drops a fill that names nothing usable, keeping the rest of the block", () => {
+    const drops = [
+      { type: "gradient" },
+      { type: "gradient", spec: { type: "wobble" } },
+      { type: "color", color: "rebeccapurple" },
+      { type: "color" },
+      { type: "image", src: "" },
+      { type: "image" },
+      { type: "video", src: "assets/a.mp4" },
+      { type: 3 },
+      [],
+    ];
+    for (const background of drops) {
+      const spec = parseFrameSpec({ ...valid, background }, "t");
+      expect(spec?.background).toBeUndefined();
+      expect(spec?.cutout.shape).toBe("rounded-rect");
+    }
+  });
+});
+
 describe("parseFrameSpec chip", () => {
   it("keeps a full chip", () => {
     const spec = parseFrameSpec(
