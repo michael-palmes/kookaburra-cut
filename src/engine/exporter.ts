@@ -31,6 +31,7 @@ import {
 } from "./clips";
 import { useClockStore } from "./clock";
 import { renderComposited } from "./compositor";
+import { useDeviceEditStore } from "./deviceEditStore";
 import { preloadEffectLuts } from "./effects";
 import {
   collectEnvironmentSources,
@@ -299,9 +300,10 @@ async function exportPreamble(
   onStep?: (step: number) => void,
 ): Promise<void> {
   configureDeterministicEngine();
-  // Explicit, not incidental: an object or chart gizmo selected when an export starts must never reach a frame.
+  // Explicit, not incidental: an object, chart or device gizmo selected when an export starts must never reach a frame.
   useObjectEditStore.getState().select(null);
   useChartEditStore.getState().select(null);
+  useDeviceEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme

@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
@@ -6,6 +13,7 @@ import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
+import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useFormat } from "../../engine/format";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
@@ -1834,8 +1842,16 @@ export function SceneTab({
   const [mediaTarget, setMediaTarget] = useState<
     { kind: "device"; deviceId?: string } | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
-  // Which device the device rows act on; null (or a stale id) falls back to the first device.
-  const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // Which device the device rows act on; null (or a stale id) falls back to the first device. Store-held (the objectEditStore idiom) so a preview gizmo can attach to the same selection.
+  const pickedDeviceId = useDeviceEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.deviceId : null,
+  );
+  const pickDevice = useCallback(
+    (id: string | null) =>
+      useDeviceEditStore.getState().select(id ? { sceneIndex, deviceId: id } : null),
+    [sceneIndex],
+  );
+  useEffect(() => () => useDeviceEditStore.getState().select(null), []);
   // Which staged object the placement drill targets, plus the library picker modal.
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
   const [objectPickerOpen, setObjectPickerOpen] = useState(false);
@@ -2030,7 +2046,7 @@ export function SceneTab({
   useEffect(() => {
     setModal(null);
     setConfirmRemove(false);
-    setPickedDeviceId(null);
+    pickDevice(null);
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
@@ -2158,7 +2174,7 @@ export function SceneTab({
         },
       ];
     });
-    setPickedDeviceId(id);
+    pickDevice(id);
   };
   const duplicateDevice = () => {
     if (!deviceId) return;
@@ -2180,7 +2196,7 @@ export function SceneTab({
       };
       next.devices = [...(next.devices ?? []), copy];
     });
-    setPickedDeviceId(id);
+    pickDevice(id);
   };
   const freshObjectId = () => {
     const used = new Set(objects.map((o) => o.id));
@@ -5876,7 +5892,7 @@ export function SceneTab({
             return;
           }
           setConfirmRemove(false);
-          setPickedDeviceId(null);
+          pickDevice(null);
           void patchDoc((next) => {
             next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
           });
@@ -6016,7 +6032,7 @@ export function SceneTab({
                   .name,
             }))}
             value={deviceId ?? devices[0].id}
-            onChange={(id) => setPickedDeviceId(id)}
+            onChange={pickDevice}
           />
         )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
