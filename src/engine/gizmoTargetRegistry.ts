@@ -1,6 +1,6 @@
 import type { Object3D } from "three";
 
-/** Live handles onto each mounted 2D-editable item's node and local rect, published from effects by the text and chart primitives (the `sceneHostRegistry` idiom: a module Map, plain functions, no store). The DOM gizmo layer projects these per frame; the export path never imports it. `sceneTextRegistry` deliberately stays as it is: it is a re-rendering store keyed by an anonymous mount id, with no text key and no node. */
+/** Live handles onto each mounted 2D-editable item's node and local rect, published from effects by the text and chart primitives (the `sceneHostRegistry` idiom: a module Map, plain functions, no store). The DOM gizmo layer projects these per frame; the export path registers into it but never reads it. `sceneTextRegistry` deliberately stays as it is: it is a re-rendering store keyed by an anonymous mount id, with no text key and no node. */
 
 export type Gizmo2DDomain = "text" | "chart";
 

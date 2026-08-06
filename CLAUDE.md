@@ -94,6 +94,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 - Skill `kookaburra-pr-descriptions`: the fixed PR title/description standard; use for every PR opened in this repo.
 - Docs `docs/packs.md`: the `.kbpack` format (archive layout, manifest, signing and TOFU, the extraction checklist, the conflict table). Read it before touching `src-tauri/src/pack/`.
 - Docs `docs/charts.md`: the chart subsystem (the sidecar `chart` block, the three mounts, the appearance and build-in preset catalogues, palette and number-formatting rules, the keyframed data track). Read it before touching `src/toolkit/chart/` or `src/engine/sceneChart.ts`.
+- Docs `docs/gizmos.md`: the gizmo subsystem (the 3D and 2D families, section-scoped outlines and click-to-select, the pointer-routing contract, the registries and coordinate spaces, what each drag writes, the export guards). Read it before touching `src/engine/gizmo*`, `src/engine/SceneGizmo.tsx`/`SceneOutline.tsx`, `src/ui/gizmo/`, or any gizmo host (`src/ui/TextGizmo.tsx`, `ChartHeroGizmo.tsx`, `DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx`).
 - Commands `/new-scene <project> <name>`, `/preview [project]`, `/export <project> <format> <aspect>`.
 
 ## Committing
