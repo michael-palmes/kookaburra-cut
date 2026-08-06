@@ -169,7 +169,7 @@ export function LayeredScreenshotToolOverlay({
         origTrack.keys.find((k) => k.id === state.selectedKeyId) ??
         nearestKey(origTrack, playheadLocal);
       if (!key) {
-        // Empty track: a lone key at 0 seeded from the applied pose = static reframe.
+        // Empty track: a lone key at 0 seeded from the applied pose = static reframe, so it holds at every time and the playhead stays put.
         key = { id: "k1", tMs: 0, pose: appliedPoseAt(playheadLocal) };
         origTrack = { keys: [key], segments: [] };
       }

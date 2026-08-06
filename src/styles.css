@@ -1672,6 +1672,15 @@ button.beat-status {
   font-variant-numeric: tabular-nums;
 }
 
+/* Opt-out checkbox row inside a modal (the Free-camera warning's "Don't show this again"). */
+.modal-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

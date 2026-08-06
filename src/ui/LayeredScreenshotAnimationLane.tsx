@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import type { LayeredScreenshotAnimationDoc } from "../engine/layeredScreenshotAnimationEdit";
 import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
 import type { LoadedProject } from "../engine/project";
@@ -8,6 +7,7 @@ import type {
   SceneDoc,
   SceneDocLayeredScreenshot,
 } from "../engine/sceneDocSchema";
+import { clearOtherLaneSelections } from "./laneSelection";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 import { TrackLane } from "./TrackLane";
 
@@ -42,8 +42,7 @@ const onEscape = () => {
 
 const selectKey = (keyId: string | null, segment: number | null) => {
   useLayeredScreenshotEditStore.getState().selectKey(keyId, segment);
-  // Stacked lanes each bind window-level key handlers; only one selection may be live.
-  if (keyId !== null || segment !== null) useChartTrackEditStore.getState().select(null, null);
+  if (keyId !== null || segment !== null) clearOtherLaneSelections("layeredScreenshot");
 };
 
 /** The block with `track` as its animation; an emptied track drops the field so the sidecar stays clean. */

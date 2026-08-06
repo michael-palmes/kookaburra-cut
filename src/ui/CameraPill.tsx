@@ -10,6 +10,7 @@ import { nearestKey, setKeyPose } from "../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { defaultRigPose, RIG_FOV_MAX, RIG_FOV_MIN } from "../engine/sceneRig";
 import { useCameraDoc } from "./cameraDoc";
+import { useFreeCameraWarning } from "./freeCameraWarning";
 import { seedRig } from "./inspector/CameraRigFields";
 import { SegmentedRow } from "./inspector/rows";
 
@@ -52,6 +53,7 @@ export function CameraPill({
     inheritedFov,
   } = useCameraDoc(project, sceneIndex, onDocChanged);
   const format = useFormat();
+  const { requestFreeMode, freeCameraWarning } = useFreeCameraWarning(project, sceneIndex);
   const free = mode === "rig";
   const keyCount = free ? rig.keys.length : camera.keys.length;
 
@@ -90,7 +92,7 @@ export function CameraPill({
       const cam = setKeyPose(camera, orbitKey.id, next);
       if (cam) void commit(cam);
     } else {
-      // Empty track: a lone key at 0 = static reframe (the overlay's seed).
+      // Empty track: a lone key at 0 = static reframe (the overlay's seed), so it holds at every time and the playhead stays put.
       void commit({ keys: [{ id: "k1", tMs: 0, pose: next }], segments: [] });
       useCameraEditStore.getState().select("k1", null);
     }
@@ -233,12 +235,12 @@ export function CameraPill({
             options={MODE_OPTIONS}
             value={free ? "free" : "orbit"}
             onChange={(next) => {
-              const local = Math.min(
-                slot.durationMs,
-                Math.max(0, useClockStore.getState().currentMs - slot.startMs),
-              );
-              void setMode(next === "free" ? "rig" : "orbit", local);
-              useCameraEditStore.getState().armTool(next === "free" ? "move" : "rotate");
+              const switchMode = () => {
+                void setMode(next === "free" ? "rig" : "orbit", playheadLocalNow());
+                useCameraEditStore.getState().armTool(next === "free" ? "move" : "rotate");
+              };
+              if (next === "free") requestFreeMode(switchMode);
+              else switchMode();
             }}
           />
           {free ? (
@@ -447,6 +449,7 @@ export function CameraPill({
           ? "M · F · L · T switch tools · hold ⌘ move · ⌃ forward · ⌥ look"
           : "O · P · Z switch tools · hold ⌘ pan · ⌃ zoom · ⌥ orbit"}
       </div>
+      {freeCameraWarning}
     </div>
   );
 }

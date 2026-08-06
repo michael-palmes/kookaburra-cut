@@ -92,6 +92,7 @@ import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
+import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
 import {
   chartRowValue,
@@ -1178,6 +1179,7 @@ function CameraSectionBody({
   } = useCameraDoc(project, sceneIndex, onDocChanged);
   const free = mode === "rig";
   const format = useFormat();
+  const { requestFreeMode, freeCameraWarning } = useFreeCameraWarning(project, sceneIndex);
   const aspect = format.width / format.height;
   const banded = useSceneIsBanded(sceneIndex);
   const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
@@ -1274,17 +1276,22 @@ function CameraSectionBody({
           },
         ]}
         value={mode}
-        onChange={(next) => void setMode(next, coarseLocal)}
+        onChange={(next) => {
+          if (next === "rig") requestFreeMode(() => void setMode("rig", coarseLocal));
+          else void setMode("orbit", coarseLocal);
+        }}
       />
       {!free && camera.keys.length > 0 && (
         <button
           type="button"
           className="inspector-reset-btn"
           title="Rewrite every orbit key as a free pose; the shot does not move"
-          onClick={() => {
-            void commitRig(orbitToRig(camera));
-            void setMode("rig", coarseLocal);
-          }}
+          onClick={() =>
+            requestFreeMode(() => {
+              void commitRig(orbitToRig(camera));
+              void setMode("rig", coarseLocal);
+            })
+          }
         >
           Convert to free
         </button>
@@ -1616,6 +1623,7 @@ function CameraSectionBody({
           cameraOptions
         )}
       </div>
+      {freeCameraWarning}
     </div>
   );
 }

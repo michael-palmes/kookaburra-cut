@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_EASE } from "./ease";
 import {
   addAnimationAuto,
+  addedKey,
   clampTrackToDuration,
   deleteKeyMerged,
   duplicateKey,
@@ -577,6 +578,37 @@ describe("splitSegmentAt", () => {
 
   it("refuses an unknown doc index", () => {
     expect(splitSegmentAt(base(), 5, 400, { d: 9 })).toBeNull();
+  });
+});
+
+describe("addedKey", () => {
+  it("hands back the endpoint of a whole animation seeded on an empty track", () => {
+    const next = addAnimationAuto({ keys: [], segments: [] }, ctx(), 0, poseAt, 200);
+    expect(next && addedKey({ keys: [], segments: [] }, next)).toEqual({
+      id: "k2",
+      tMs: 1000,
+      pose: { d: 1000 },
+    });
+  });
+
+  it("still finds the endpoint when the absorbed lone key's id is reused", () => {
+    const statik: KeyedTrack<Pose> = { keys: [K("k1", 0, 9)], segments: [] };
+    const next = addAnimationAuto(statik, ctx(), 0, poseAt, 200);
+    expect(next && addedKey(statik, next)?.id).toBe("k2");
+  });
+
+  it("finds the duplicate, the earlier duplicate and the split key", () => {
+    const after = duplicateKey(chain(), ctx(), "k2", 200);
+    expect(after && addedKey(chain(), after)).toMatchObject({ tMs: 2000, pose: { d: 2 } });
+    const before = duplicateKeyBefore(chain(), ctx(), "k2", 200);
+    expect(before && addedKey(chain(), before)).toMatchObject({ tMs: 500, pose: { d: 2 } });
+    const split = splitSegmentAt(chain(), 0, 400, { d: 9 }, 200);
+    expect(split && addedKey(chain(), split)).toMatchObject({ tMs: 400, pose: { d: 9 } });
+  });
+
+  it("is null when the op added nothing", () => {
+    expect(addedKey(chain(), chain())).toBeNull();
+    expect(addedKey(chain(), { keys: [], segments: [] })).toBeNull();
   });
 });
 

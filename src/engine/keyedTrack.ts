@@ -675,6 +675,16 @@ export function playheadDriftTarget<P>(track: KeyedTrack<P>, tMs: number): numbe
   return null;
 }
 
+/** The key an add op created, diffed against the track it was handed: the LAST new one, so an op seeding a whole animation hands back the endpoint the edit lands on. Null when nothing was added. */
+export function addedKey<P>(before: KeyedTrack<P>, after: KeyedTrack<P>): KeyedTrackKey<P> | null {
+  const had = new Set(before.keys.map((k) => k.id));
+  let added: KeyedTrackKey<P> | null = null;
+  for (const key of after.keys) {
+    if (!had.has(key.id)) added = key;
+  }
+  return added;
+}
+
 /** The key nearest to `tMs` (the move tools' default target), or null on an empty track. */
 export function nearestKey<P>(track: KeyedTrack<P>, tMs: number): KeyedTrackKey<P> | null {
   let best: KeyedTrackKey<P> | null = null;

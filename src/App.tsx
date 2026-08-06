@@ -1728,13 +1728,13 @@ export default function App() {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (document.querySelector(".modal-overlay")) return;
       if (e.code === "Space" && !e.repeat) {
         if (target === playBtnRef.current) return;
         e.preventDefault();
         togglePlay();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         if (!project || exporting || isExporting()) return;
-        if (document.querySelector(".modal-overlay")) return;
         const cam = useCameraEditStore.getState();
         if (cam.open && cam.selectedKeyId) return; // the camera strip owns arrows now
         e.preventDefault();

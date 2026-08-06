@@ -91,6 +91,52 @@ export function TrustGateModal({
   );
 }
 
+/** Plain-English warning before the camera switches to Free, shown until the user ticks it away. Escape is Cancel, and the tick only sticks when the switch is confirmed. */
+export function FreeCameraWarningModal({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: (dontShowAgain: boolean) => void;
+  onCancel: () => void;
+}) {
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  useEscapeClose(onCancel);
+  return (
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Switch to Free camera?"
+    >
+      <div className="modal">
+        <h2>Switch to Free camera?</h2>
+        <p className="muted">
+          Free mode unlocks the camera so you can fly it anywhere, like piloting a drone: you choose
+          where it sits and where it looks. It is more powerful than Orbit, but it is easier to lose
+          your framing.
+        </p>
+        <p className="muted">Your Orbit settings are kept, so you can switch back at any time.</p>
+        <label className="modal-check">
+          <input
+            type="checkbox"
+            checked={dontShowAgain}
+            onChange={(e) => setDontShowAgain(e.target.checked)}
+          />
+          Don't show this again
+        </label>
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="btn primary" onClick={() => onConfirm(dontShowAgain)}>
+            Switch to Free
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Create-project dialog: name + template, then the theme grid with hover-cycled previews. The theme applies to the new project's `project.json` after the template copy (`set_project_theme`). */
 export function NewProjectDialog({
   initialGroup,

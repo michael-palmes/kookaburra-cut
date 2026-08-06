@@ -1,13 +1,11 @@
 import { useCallback, useEffect } from "react";
-import { useCameraEditStore } from "../engine/cameraEditStore";
 import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/chartTrackEditStore";
-import { useCompareEditStore } from "../engine/compareEditStore";
-import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import type { ChartValuesPose } from "../toolkit/chart/types";
 import { openChartDataModal } from "./chartDataModalStore";
 import { useChartTrackDoc } from "./chartTrackDoc";
+import { clearOtherLaneSelections } from "./laneSelection";
 import { TrackLane } from "./TrackLane";
 
 /** The chart's data lane: a thin wrapper binding the generic `TrackLane` to the chart edit store and doc funnel (the CompareAnimationLane pattern). No armed tools (a key IS a data snapshot, edited in the modal), so bare keys pass through; the lane mounts for every scene with a chart block, stacked above the camera or stack lane, and double-clicking a diamond opens the data modal on that key. */
@@ -21,12 +19,7 @@ const onEscape = () => useChartTrackEditStore.getState().select(null, null);
 
 const select = (keyId: string | null, segment: number | null) => {
   useChartTrackEditStore.getState().select(keyId, segment);
-  // Stacked lanes each bind window-level key handlers; only one selection may be live.
-  if (keyId !== null || segment !== null) {
-    useCameraEditStore.getState().select(null, null);
-    useCompareEditStore.getState().select(null, null);
-    useLayeredScreenshotEditStore.getState().selectKey(null, null);
-  }
+  if (keyId !== null || segment !== null) clearOtherLaneSelections("chart");
 };
 
 const onToolKey = () => false;
