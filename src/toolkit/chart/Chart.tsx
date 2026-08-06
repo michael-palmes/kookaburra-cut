@@ -357,7 +357,11 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
     selected.sceneIndex === editTarget.sceneIndex;
 
   // The control mutates the group live; the commit reads it back, so the doc lands exactly what is on screen. A drag pins an explicit y, so `ground` drops.
+  const dragging = useRef(false);
   const commitDrag = () => {
+    // A press that never moved a handle is not an edit, so it costs no write or history entry.
+    if (!dragging.current) return;
+    dragging.current = false;
     const group = groupRef.current;
     if (!group || sceneIndex === undefined) return;
     useChartEditStore.getState().requestCommit({
@@ -395,6 +399,10 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
     const next = Math.max(0.01 * pose.scale, Math.abs(u) * pose.scale);
     group.scale.set(next, next, next);
   };
+  const change = () => {
+    dragging.current = true;
+    uniformiseScale();
+  };
 
   return (
     <>
@@ -405,7 +413,7 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
           domain="chart"
           itemId="chart"
           sceneIndex={sceneIndex}
-          onObjectChange={uniformiseScale}
+          onObjectChange={change}
           onMouseUp={commitDrag}
         />
       )}

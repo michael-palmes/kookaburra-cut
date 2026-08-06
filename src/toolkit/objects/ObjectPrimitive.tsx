@@ -89,7 +89,15 @@ function LoadedObject({
     selected.objectId === editTarget.objectId;
 
   // The control mutates the group live; the commit reads the group back, so the doc lands exactly what is on screen and nothing snaps. A drag pins an explicit transform, so `ground` drops (the y just chosen wins).
+  const dragging = useRef(false);
+  const change = () => {
+    dragging.current = true;
+    uniformiseScale();
+  };
   const commitDrag = () => {
+    // A press that never moved a handle is not an edit, so it costs no write or history entry.
+    if (!dragging.current) return;
+    dragging.current = false;
     const group = groupRef.current;
     if (!group || sceneIndex === undefined) return;
     useObjectEditStore.getState().requestCommit({
@@ -147,7 +155,7 @@ function LoadedObject({
           domain="objects"
           itemId={spec.id}
           sceneIndex={sceneIndex}
-          onObjectChange={uniformiseScale}
+          onObjectChange={change}
           onMouseUp={commitDrag}
         />
       )}
