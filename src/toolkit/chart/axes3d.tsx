@@ -378,6 +378,7 @@ function ChartValues3D(props: ChartValues3DProps) {
   }
 
   if (layout.bars.length > 0) {
+    const inside = location === "inside";
     return (
       <>
         {layout.bars.map((mark) => {
@@ -390,6 +391,8 @@ function ChartValues3D(props: ChartValues3DProps) {
             outward,
             build.drop,
           );
+          // The flat renderer's anchor rule: an outside label hangs off the growing end rather than straddling it.
+          const away = spot.direction > 0;
           return (
             <ChartLabel
               key={`${mark.seriesIndex}-${mark.categoryIndex}`}
@@ -405,8 +408,8 @@ function ChartValues3D(props: ChartValues3DProps) {
               ]}
               fontSize={fontSize}
               colour={colour}
-              anchorX="center"
-              anchorY="middle"
+              anchorX={vertical || inside ? "center" : away ? "left" : "right"}
+              anchorY={!vertical || inside ? "middle" : away ? "bottom" : "top"}
               billboard
               bold={bold}
               alpha={build.alpha * opacity}

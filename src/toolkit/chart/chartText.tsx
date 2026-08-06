@@ -3,7 +3,6 @@
 import { Text } from "@react-three/drei";
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
-  type Camera,
   Color,
   DynamicDrawUsage,
   type Group,
@@ -19,10 +18,10 @@ import { useTheme } from "../../theme";
 import { fontUrl } from "../../theme/fonts";
 import type { FontRef, Theme } from "../../theme/tokens";
 import { liftColour } from "../colour";
+import { chartLabelBeforeRender } from "./billboardLabel";
 import {
   CHART_2D_ORDER,
   CHART_LINE_HEIGHT,
-  chartBillboardMatrix,
   LABEL_PILL,
   LEGEND_ENTRY_GAP,
   LEGEND_SWATCH,
@@ -169,14 +168,14 @@ export function ChartLabel(props: ChartLabelProps) {
   const chartFont = useContext(ChartFontContext);
   const anchorRef = useRef<Group>(null);
   const labelRef = useRef<Mesh>(null);
-  // Rewrites the label's matrixWorld from the render camera after the graph's updateMatrixWorld (the FixedBackdrop idiom): orientation is a pure function of the frame's camera, never frame-loop state, so Verify passes agree.
+  // Rewrites the label's matrixWorld from the render camera after the graph's updateMatrixWorld (the FixedBackdrop idiom), delegating to troika's own handler first (see `billboardLabel.ts`).
   const faceCamera = useMemo(
-    () => (_renderer: unknown, _scene: unknown, camera: Camera) => {
-      const anchor = anchorRef.current;
-      const mesh = labelRef.current;
-      if (!anchor || !mesh) return;
-      chartBillboardMatrix(anchor.matrixWorld, camera.quaternion, rotation, mesh.matrixWorld);
-    },
+    () =>
+      chartLabelBeforeRender(
+        () => anchorRef.current,
+        () => labelRef.current,
+        rotation,
+      ),
     [rotation],
   );
   if (!text || alpha <= 0) return null;

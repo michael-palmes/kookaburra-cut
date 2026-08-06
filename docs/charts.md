@@ -505,6 +505,12 @@ This is an export-path feature and gates through `docs/determinism.md`.
   plain troika text with no emoji substitution.
 - **Coplanar layers** step apart by a fixed world epsilon (`CHART_2D_Z_STEP`) with
   explicit `renderOrder`, never `polygonOffset` (driver-dependent).
+- **Billboarded labels** (3D ticks, bar values and pie values) recompose their
+  `matrixWorld` from the render camera in `onBeforeRender`, a pure function of that
+  frame's camera rather than a frame-loop billboard. TRAP: setting the prop shadows
+  troika's OWN `onBeforeRender` on the instance (glyph sync plus binding the SDF atlas
+  into the derived material), so `billboardLabel.ts` calls the inherited handler first.
+  A bare handler leaves every billboarded label invisible while the flat ones draw.
 - **Fat lines** take their `resolution` uniform once from the format's fixed pixel
   dimensions, never from a resize listener, so a stroke is the same fraction of the
   frame in preview and in export.
