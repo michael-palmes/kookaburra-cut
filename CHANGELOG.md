@@ -4,6 +4,44 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-06
+
+### Added
+
+- Charts. Eight types (column, bar, line, area, their stacked variants and
+  pie) render in 2D or lit 3D, as a hero scene, staged beside a device or in
+  an overlay panel. Twelve appearance presets and nineteen build-in
+  animations, colours drawn from the theme, data edited in the app or
+  imported from CSV, and data changes keyframed on their own timeline lane
+  so one chart can morph through several readings.
+- Depth of field. Focus distance, range and blur strength are animatable
+  camera pose fields in both camera modes, with autofocus holding the aimed
+  subject sharp. Seven blur styles: plain depth, tilt-shift, soft diffusion,
+  radial burst, directional swipe, split diopter and an anamorphic bokeh
+  squeeze. Transitions and comparison sides carry their own focus.
+- A beat lane above the timeline for projects with a soundtrack: waveform,
+  beat grid and detected key moments, with a right-click to drop a camera
+  keyframe on a beat or sync a whole scene's camera to the music. Markers can
+  be dragged and travel with the project. It guides authoring only, and the
+  export path never reads it.
+- Line spacing sliders for titles and subtitles, and multi-line titles that
+  cascade from measured heights instead of a fixed step.
+
+### Changed
+
+- New scenes inherit the last background applied everywhere, and device
+  scene kinds scaffold with closer camera poses.
+- The inspector follows the playhead: the open drill stays open and its text
+  stays current as scenes change.
+
+### Fixed
+
+- The four opaque scene3d backgrounds render again. Their backing quad was
+  painting over every opaque look, because render order was stamped on the
+  group rather than on the renderables inside it.
+- Cmd-Z reaches the app's undo unless a field is mid-edit, success toasts
+  dismiss themselves, and clicking a timeline menu no longer scrubs.
+
 ## [0.10.0] - 2026-08-02
 
 ### Added
