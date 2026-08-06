@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import {
   BLANK_TEMPLATE_ID,
   formatTemplateDuration,
@@ -9,7 +9,6 @@ import {
   TEMPLATE_USE_LABELS,
   type TemplateCategoryId,
   type TemplateEntry,
-  type TemplateTier,
   templateCategoryCounts,
 } from "../engine/templates";
 import { listProjects, slugifyName } from "../engine/workspace";
@@ -151,6 +150,72 @@ export function FreeCameraWarningModal({
   );
 }
 
+/** Inline stroked glyphs (the exportIcons idiom: pure UI chrome, CSP allows no remote assets). */
+function railIcon(children: ReactElement): ReactElement {
+  return (
+    <svg
+      className="template-rail-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+const CATEGORY_ICONS: Record<string, ReactElement> = {
+  all: railIcon(
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </>,
+  ),
+  "app-updates": railIcon(
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 16V8m0 0l-3.5 3.5M12 8l3.5 3.5" />
+    </>,
+  ),
+  "product-launch": railIcon(
+    <>
+      <path d="M12 3c3 2 4.2 6 3 9.5L12 15.5 9 12.5C7.8 9 9 5 12 3z" />
+      <path d="M9.5 12.5l-3 2.5 1 2.5 3-1.2M14.5 12.5l3 2.5-1 2.5-3-1.2M12 16v4" />
+      <circle cx="12" cy="8.4" r="1.2" />
+    </>,
+  ),
+  "marketing-social": railIcon(
+    <>
+      <path d="M18 5v14l-8-3.2H6.5A2.5 2.5 0 0 1 4 13.3v-2.6a2.5 2.5 0 0 1 2.5-2.5H10L18 5z" />
+      <path d="M8 16v3.5" />
+    </>,
+  ),
+  presentations: railIcon(
+    <>
+      <rect x="4" y="4.5" width="16" height="10.5" rx="1.5" />
+      <path d="M12 15v3m-3.5 2l3.5-2 3.5 2" />
+    </>,
+  ),
+  "finance-crypto": railIcon(
+    <>
+      <path d="M4 17l5-5 3 3 8-8" />
+      <path d="M16 7h4v4" />
+    </>,
+  ),
+  "ai-developer": railIcon(
+    <>
+      <path d="M5 7l5 5-5 5" />
+      <path d="M12 17h7" />
+    </>,
+  ),
+};
+
 /** The chips a card flags itself with, in reading order. */
 function cardFlags(entry: TemplateEntry): string[] {
   const flags: string[] = [];
@@ -259,17 +324,13 @@ function TemplateGallery({
   const entries = useMemo(() => listTemplates(), []);
   const [category, setCategory] = useState<TemplateCategoryId | null>(null);
   const [stashedCategory, setStashedCategory] = useState<TemplateCategoryId | null>(null);
-  const [tier, setTier] = useState<TemplateTier | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const railRef = useRef<HTMLFieldSetElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
-  const counts = useMemo(
-    () => templateCategoryCounts(entries, { query, tier }),
-    [entries, query, tier],
-  );
+  const counts = useMemo(() => templateCategoryCounts(entries, { query }), [entries, query]);
   const visible = useMemo(
-    () => searchTemplates(entries, { query, category, tier }),
-    [entries, query, category, tier],
+    () => searchTemplates(entries, { query, category }),
+    [entries, query, category],
   );
   const tabStopId = visible.some((entry) => entry.id === value) ? value : visible[0]?.id;
 
@@ -302,7 +363,6 @@ function TemplateGallery({
     onQueryChange("");
     setCategory(null);
     setStashedCategory(null);
-    setTier(null);
   };
   const pickCategory = (next: TemplateCategoryId | null) => {
     setCategory(next);
@@ -407,19 +467,6 @@ function TemplateGallery({
           value={query}
           onChange={(e) => onQuery(e.target.value)}
         />
-        <fieldset className="template-gallery-facets" aria-label="Motion tier">
-          {(["safe", "bold"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`template-facet${tier === t ? " selected" : ""}`}
-              aria-pressed={tier === t}
-              onClick={() => setTier(tier === t ? null : t)}
-            >
-              {t === "safe" ? "Safe" : "Bold"}
-            </button>
-          ))}
-        </fieldset>
         <span className="template-gallery-count" aria-live="polite">
           {`${visible.length} ${visible.length === 1 ? "template" : "templates"}`}
         </span>
@@ -441,7 +488,8 @@ function TemplateGallery({
               disabled={row.id !== null && row.count === 0}
               onClick={() => pickCategory(row.id)}
             >
-              <span>{row.label}</span>
+              {CATEGORY_ICONS[row.id ?? "all"]}
+              <span className="template-rail-label">{row.label}</span>
               <span className="template-rail-count">{row.count}</span>
             </button>
           ))}
@@ -579,44 +627,58 @@ export function NewProjectDialog({
               query={templateQuery}
               onQueryChange={setTemplateQuery}
             />
-            <input
-              className="modal-input"
-              type="text"
-              placeholder="Project name"
-              value={name}
-              // biome-ignore lint/a11y/noAutofocus: naming is the one thing the dialog always needs typed; "/" reaches the template search
-              autoFocus
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") next();
-              }}
-            />
-            <p className="modal-hint">
-              {slug ? `Saved as ${slug}` : "Pick a template, then name your project."}
-            </p>
-            <div className="wizard-field">
-              <span className="wizard-label">Group (optional)</span>
-              {groups.length > 0 && (
-                <fieldset className="group-chips" aria-label="Existing groups">
-                  {groups.map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      className={`group-chip${group.trim() === g ? " selected" : ""}`}
-                      onClick={() => setGroup(group.trim() === g ? "" : g)}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </fieldset>
-              )}
+            <div className="wizard-detail-card">
               <input
-                className="modal-input"
+                className="modal-input wizard-name-input"
                 type="text"
-                placeholder="No group"
-                value={group}
-                onChange={(e) => setGroup(e.target.value)}
+                placeholder="Project name"
+                value={name}
+                // biome-ignore lint/a11y/noAutofocus: naming is the one thing the dialog always needs typed; "/" reaches the template search
+                autoFocus
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") next();
+                }}
               />
+              <p className="modal-hint">
+                {slug ? `Saved as ${slug}` : "Pick a template, then name your project."}
+              </p>
+              <div className="wizard-group-row">
+                <svg
+                  className="template-rail-icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17V7z" />
+                </svg>
+                <span className="wizard-label">Group</span>
+                {groups.length > 0 && (
+                  <fieldset className="group-chips" aria-label="Existing groups">
+                    {groups.map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        className={`group-chip${group.trim() === g ? " selected" : ""}`}
+                        onClick={() => setGroup(group.trim() === g ? "" : g)}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </fieldset>
+                )}
+                <input
+                  className="modal-input wizard-group-input"
+                  type="text"
+                  placeholder="No group"
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                />
+              </div>
             </div>
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">

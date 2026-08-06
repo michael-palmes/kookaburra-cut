@@ -1727,7 +1727,7 @@ button.beat-status {
    baseline whether or not its art or copy has landed. Selected reuses the
    accent-border + accent-subtle pair every other picker uses. */
 .wizard-template-wide {
-  width: min(60rem, calc(100% - 2rem));
+  width: min(78rem, calc(100% - 3rem));
 }
 
 .template-gallery {
@@ -1746,16 +1746,6 @@ button.beat-status {
 
 .template-gallery-search {
   inline-size: min(320px, 100%);
-}
-
-/* Fieldsets for a11y grouping (the group-chips precedent), hence the UA resets. */
-.template-gallery-facets {
-  display: flex;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
 }
 
 .template-facet {
@@ -1789,7 +1779,7 @@ button.beat-status {
 
 .template-gallery-body {
   display: grid;
-  grid-template-columns: 10rem minmax(0, 1fr);
+  grid-template-columns: 12rem minmax(0, 1fr);
   gap: var(--space-6);
   min-width: 0;
 }
@@ -1808,10 +1798,9 @@ button.beat-status {
 .template-rail-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-3);
   height: var(--row-h-list);
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-3);
   font: inherit;
   font-size: var(--text-sm);
   text-align: left;
@@ -1820,6 +1809,21 @@ button.beat-status {
   border: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+.template-rail-icon {
+  inline-size: 15px;
+  block-size: 15px;
+  flex: none;
+  opacity: 0.85;
+}
+
+.template-rail-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* All sits apart from the six categories. */
@@ -1857,10 +1861,10 @@ button.beat-status {
 
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-content: start;
   gap: var(--space-5);
-  max-height: 46vh;
+  max-height: 52vh;
   overflow-y: auto;
   padding: var(--space-1);
   min-width: 0;
@@ -1984,6 +1988,46 @@ button.beat-status {
   gap: var(--space-4);
   padding: var(--space-7) 0;
   color: var(--text-tertiary);
+}
+
+/* The create fields as one container: the name is the headline act, the group a quiet folder row. */
+.wizard-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.wizard-name-input {
+  font-size: var(--text-lg);
+  padding: 0.65rem 0.9rem;
+}
+
+.wizard-group-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  color: var(--text-tertiary);
+}
+
+.wizard-group-row .group-chips {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.wizard-group-input {
+  inline-size: 11rem;
+  font-size: var(--text-sm);
+  padding: 0.35rem 0.6rem;
 }
 
 /* ── Theme picker (v8 · M5) — hover-cycled preview cards ───────────────────── */
