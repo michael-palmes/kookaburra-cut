@@ -20,6 +20,8 @@ interface DeviceEditState {
   clearCommit: () => void;
 }
 
+export type DeviceEditCommit = NonNullable<DeviceEditState["pendingCommit"]>;
+
 export const useDeviceEditStore = create<DeviceEditState>((set) => ({
   selected: null,
   gizmoMode: "translate",
