@@ -22,6 +22,14 @@ import { normalizeLighting } from "./sceneLighting";
 /** Newest sidecar schema this build understands (newer docs are ignored with a warning). */
 export const SCENE_DOC_VERSION = 1;
 
+/** Range for a `textStyle.<textKey>LineHeight` multiplier, shared with the inspector's slider. */
+export const TEXT_LINE_HEIGHT_MIN = 0.8;
+export const TEXT_LINE_HEIGHT_MAX = 2;
+
+export function clampLineHeight(value: number): number {
+  return Math.min(TEXT_LINE_HEIGHT_MAX, Math.max(TEXT_LINE_HEIGHT_MIN, value));
+}
+
 /** One device entry, deliberately shaped as `Device` props plus a stable id. */
 export interface SceneDocDeviceSpec {
   id: string;
@@ -286,7 +294,7 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged) and `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout) and `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal"); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead. */
   headerIcon?: string;
@@ -697,9 +705,15 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       } else if (key.endsWith("OffsetX") || key.endsWith("OffsetY")) {
         if (typeof value === "number" && Number.isFinite(value)) textStyle[key] = value;
         else console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+      } else if (key.endsWith("LineHeight")) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          textStyle[key] = clampLineHeight(value);
+        } else {
+          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+        }
       } else {
         console.warn(
-          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY key, dropped`,
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight key, dropped`,
         );
       }
     }

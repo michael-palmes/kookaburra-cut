@@ -195,6 +195,8 @@ export function PlaybackBar({
       onPointerDown={(e) => {
         // isExporting() also guards autorun exports, not just the UI-disabled state; a right-click opens the scene menu instead of scrubbing.
         if (e.button !== 0 || exporting || isExporting() || !project) return;
+        // The scene menu and its dialogs float above the bar but are DOM descendants: their clicks are never scrub input (preventDefault + pointer capture here would eat every menu item).
+        if ((e.target as HTMLElement).closest(".context-menu, .modal-overlay")) return;
         const label = (e.target as HTMLElement).closest<HTMLElement>(".pb-label");
         // A drag must never start a native text selection; labels keep their default, and capture on the label itself, so the click/double-click pair still targets it (rename) instead of the capturing bar.
         if (!label) e.preventDefault();

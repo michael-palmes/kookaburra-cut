@@ -170,6 +170,7 @@ import {
   TitlebarIdentity,
   TitlebarProjects,
 } from "./ui/Titlebar";
+import { hasPendingTextEdit } from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import { commitSceneDuration } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
@@ -219,6 +220,8 @@ function StageLoadingOverlay({
 /** A transient export/verify notification. `path` (success exports) enables Show in Finder. */
 type Toast = { kind: "success" | "error"; message: string; path?: string };
 
+const TOAST_AUTO_CLOSE_MS = 4000;
+
 /** Re-renders one frame per scrub change; the export path (exporter.ts) has its own frameloop controller reading the same clock store. */
 function PreviewClock() {
   const invalidate = useThree((s) => s.invalidate);
@@ -257,6 +260,12 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  // Plain confirmations self-dismiss (the corner-toast design); errors and toasts carrying a Show-in-Finder action wait for the user, and a new toast restarts the clock.
+  useEffect(() => {
+    if (toast?.kind !== "success" || toast.path) return;
+    const t = window.setTimeout(() => setToast(null), TOAST_AUTO_CLOSE_MS);
+    return () => window.clearTimeout(t);
+  }, [toast]);
   // The export modal resolves preset/custom to an EncodeSpec; the Titlebar codec select is subsumed, and Kookaburra Standard is the frozen path.
   const [showExport, setShowExport] = useState(false);
   const [showPresent, setShowPresent] = useState(false);
@@ -983,12 +992,9 @@ export default function App() {
   const historyBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
-    const isTextTarget = () => {
-      const el = document.activeElement as HTMLElement | null;
-      return !!el && (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable);
-    };
     const run = async (dir: "undo" | "redo") => {
-      if (isTextTarget()) {
+      // Only a field mid-typing owns ⌘Z; one that merely holds focus (a drag-scrubbed number, a committed edit) must not swallow app undo.
+      if (hasPendingTextEdit()) {
         document.execCommand(dir); // the text field's own history
         return;
       }

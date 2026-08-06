@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // media_meta serves scripted lengths per rel; update_project_scene records what the resync wrote.
 const lengths = new Map<string, number>();
 const written: Array<{ index: number; durationMs: number }> = [];
+// The fake workspace the apply-to-all tests write into: sidecars by file, plus the manifest text.
+const sidecars = new Map<string, string>();
+let manifestText = "";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
@@ -13,11 +16,27 @@ vi.mock("@tauri-apps/api/core", () => ({
       written.push({ index: args?.index as number, durationMs: args?.durationMs as number });
       return null;
     }
+    if (cmd === "write_scene_doc") {
+      sidecars.set(args?.file as string, args?.text as string);
+      return null;
+    }
+    if (cmd === "read_project_manifest_snapshot") return manifestText;
+    if (cmd === "write_project_manifest_snapshot") {
+      manifestText = args?.text as string;
+      return null;
+    }
     throw new Error(`unexpected command ${cmd}`);
   }),
 }));
 
-import { applyEditRepoint, followMediaSources, resyncFollowMediaDuration } from "./sceneDoc";
+import { bindHistory, peekUndo } from "./history";
+import type { LoadedProject, ProjectManifest } from "./project";
+import {
+  applyBackgroundToAllScenes,
+  applyEditRepoint,
+  followMediaSources,
+  resyncFollowMediaDuration,
+} from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
@@ -250,5 +269,56 @@ describe("resyncFollowMediaDuration follows the longest qualifying video", () =>
     const result = await resyncFollowMediaDuration("proj", 0, doc, 4200);
     expect(result.wrote).toBe(false);
     expect(written).toEqual([]);
+  });
+});
+
+describe("applyBackgroundToAllScenes records the project-wide stamp", () => {
+  const background = { type: "color", color: "#101820" } as SceneDoc["background"];
+  const backdrop = { type: "floor", color: "#101820" } as SceneDoc["backdrop"];
+
+  const projectWith = (docs: (SceneDoc | undefined)[]): LoadedProject =>
+    ({
+      id: "ws:demo",
+      sceneFiles: docs.map((_, i) => `scenes/0${i + 1}-scene.tsx`),
+      sceneDocs: docs,
+    }) as unknown as LoadedProject;
+
+  const stamp = () => (JSON.parse(manifestText) as ProjectManifest).appliedBackground;
+
+  beforeEach(() => {
+    sidecars.clear();
+    manifestText = JSON.stringify({ id: "demo", scenes: [{}, {}] }, null, 2);
+    bindHistory(null);
+    bindHistory("ws:demo");
+  });
+
+  it("stamps the source's blocks and rides one history entry with the scene writes", async () => {
+    const source = docWith({ background, backdrop });
+    const result = await applyBackgroundToAllScenes(projectWith([source, undefined]), 0, () => {});
+    expect(result).toEqual({ applied: 1, failed: 0 });
+    expect(stamp()).toEqual({ background, backdrop });
+    expect(JSON.parse(sidecars.get("scenes/02-scene.json") as string).background).toEqual(
+      background,
+    );
+    const entry = peekUndo();
+    expect(entry?.changes.map((c) => c.kind)).toEqual(["sceneDoc", "manifest"]);
+  });
+
+  it("applying a theme-default scene clears an existing stamp", async () => {
+    manifestText = JSON.stringify(
+      { id: "demo", scenes: [{}, {}], appliedBackground: { background } },
+      null,
+      2,
+    );
+    await applyBackgroundToAllScenes(projectWith([docWith({}), undefined]), 0, () => {});
+    expect(stamp()).toBeUndefined();
+    expect(peekUndo()?.changes.map((c) => c.kind)).toEqual(["sceneDoc", "manifest"]);
+  });
+
+  it("a theme-default source with no stamp leaves the manifest untouched", async () => {
+    const before = manifestText;
+    await applyBackgroundToAllScenes(projectWith([docWith({}), undefined]), 0, () => {});
+    expect(manifestText).toBe(before);
+    expect(peekUndo()?.changes.map((c) => c.kind)).toEqual(["sceneDoc"]);
   });
 });

@@ -38,6 +38,7 @@ GPU/driver, not across fleets.)
 | A mid-run window resize retriggering r3f's size handling (corrupts the export's fixed drawing buffer for every remaining frame) | The frame loop re-asserts the export size/camera aspect if drifted, after the awaits and immediately before the (synchronous) render + readback. |
 | Non-preloaded textures/assets | Await all asset loads before frame 0. |
 | **A cold-mount suspense holding EVERY scene out of the canvas**: all scenes share one `<Suspense fallback={null}>` (App.tsx); a suspending primitive (`ImageCard`'s `useTexture`) keeps the whole boundary uncommitted until React's retry render lands, and that retry races the export preamble on the wall clock. Frame 0 rendered first captures a scene-less (white) frame. `awaitCanvasClockCommit` cannot catch it: the clock is already committed at its initial 0. | `awaitSceneHostsCommitted(slots.length)`: the preamble's LAST barrier spins until every scene's host has registered (registration is a `useEffect`, which only runs once the boundary's content commits). The preceding asset preloads resolve whatever the suspense was waiting on, so the wait is a few ticks. |
+| **A layout that depends on a measurement only the mounted tree can request**: `TitleBlock` cascades its header icon and subtitle off the title's MEASURED block height, but its props exist only once the scene is in the tree, so the preamble cannot pre-warm them the way `preloadPanelMeasures` does for overlay panels. A cold pass would render frame 0 pre-measure while a warm second pass renders it cascaded. | `awaitTitleMeasuresSettled()`, the barrier after `awaitSceneHostsCommitted`: mounted TitleBlocks report their outstanding typesets, and the spin exits only once they have landed AND the tree has re-rendered with them (`engine/titleBlockMeasure.ts`). Single-line text solves to a hard 0 growth, so standing layouts keep their authored constants bit-for-bit either way. |
 | **Preview frames interleaving a Verify ×2**: between the two passes the preview driver rendered a wall-clock-varying number of frames (restored clock, preview size), leaking GPU/render state into pass B's first frames | `verifyDeterminism` holds the preview stand-down across BOTH passes; `engine/exportState` is depth-counted so the whole-run hold nests over each pass's own. Pass B starts from exactly the state pass A ended in. |
 | **Parallel font preload**: troika claims shared-atlas cells at preload COMPLETION, i.e. fetch-race order, shifting multi-font projects' glyph cells per BOOT (a per-session hash lottery: every run internally consistent, every boot different) | `preloadAppFonts` preloads SEQUENTIALLY in canonical order (Inter Regular, then declaration/ref order), and `loadProject` pre-generates every project face's glyphs BEFORE the scenes mount. See "Fonts". |
 | Muxer writing a wall-clock `creation_time` / encoder version tag | ffmpeg `-flags:v +bitexact -fflags +bitexact -map_metadata -1` (set in `start_export`) so the container is reproducible. |
@@ -1219,6 +1220,12 @@ rolling-gate project (`showcase-tour`):
 > itself. `ws:bg3d-spike` verified identical ×2 at `8f6fc517…` with frames
 > eyeballed; note the background-rethink worktree's interim `632ee44d…` record
 > is superseded when that branch rebases onto this.
+> **2026-08-05 correction:** the `#104` traverse also stamped GROUP nodes, and
+> three.js reads a group's `renderOrder` as `groupOrder` (which outranks
+> `renderOrder` in the painter sort), so the four opaque looks drew before the
+> backing quad and were painted over: `8f6fc517…` encodes those broken
+> (invisible) frames. Groups are now skipped; `ws:bg3d-spike` re-verified
+> identical ×2 at `4e0d3840…` with all four looks eyeballed restored.
 
 > **2026-07-29 (video window: stage removal, placement, recording crop):**
 > the backing stage was removed outright (Michael's call: the scene's own

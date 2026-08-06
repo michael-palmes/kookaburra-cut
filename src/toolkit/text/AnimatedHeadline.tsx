@@ -89,6 +89,8 @@ export interface AnimatedHeadlineProps {
   anchorY?: "top" | "middle" | "bottom";
   /** Wrap width in world units; unset means no wrapping, `\n` is the only line break. */
   maxWidth?: number;
+  /** Line spacing as a multiple of the font size; unset means troika's own "normal" (the font's metrics), which is also how the dispatcher applies a sidecar `<textKey>LineHeight`. */
+  lineHeight?: number;
 }
 
 /** Layout props forwarded to troika; spread-conditional so an unset prop can never disturb troika's own defaults (the legacy byte contract). */
@@ -97,6 +99,7 @@ function layoutProps(props: AnimatedHeadlineProps) {
     ...(props.textAlign ? { textAlign: props.textAlign } : {}),
     ...(props.maxWidth !== undefined ? { maxWidth: props.maxWidth } : {}),
     ...(props.anchorY ? { anchorY: props.anchorY } : {}),
+    ...(props.lineHeight !== undefined ? { lineHeight: props.lineHeight } : {}),
   };
 }
 
@@ -137,23 +140,26 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const styleOf = (suffix: string) =>
     textKey ? doc?.textStyle?.[`${textKey}${suffix}`] : undefined;
   const fill = props.color ?? (styleOf("Color") as string | undefined) ?? defaultColor;
-  // Sidecar font/size/offset overrides fold into the dispatched props; absent overrides pass the originals through untouched (null-for-legacy).
+  // Sidecar font/size/offset/line-height overrides fold into the dispatched props; absent overrides pass the originals through untouched (null-for-legacy).
   const fontValue = styleOf("Font");
   const sizeMul = styleOf("Size");
   const offX = styleOf("OffsetX");
   const offY = styleOf("OffsetY");
+  const lineHeight = styleOf("LineHeight");
   let styled = props;
   if (
     typeof fontValue === "string" ||
     typeof sizeMul === "number" ||
     typeof offX === "number" ||
-    typeof offY === "number"
+    typeof offY === "number" ||
+    typeof lineHeight === "number"
   ) {
     const base = props.position ?? [0, 0, 0];
     styled = {
       ...props,
       ...(typeof fontValue === "string" ? { fontRef: parseFontString(fontValue) } : {}),
       ...(typeof sizeMul === "number" ? { fontSize: (props.fontSize ?? 0.6) * sizeMul } : {}),
+      ...(typeof lineHeight === "number" ? { lineHeight } : {}),
       ...(typeof offX === "number" || typeof offY === "number"
         ? {
             position: [

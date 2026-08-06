@@ -6612,6 +6612,26 @@ img.inspector-scene-thumb {
   align-self: flex-start;
 }
 
+/* Line spacing rides its own row under the font/size/offset grid: a range needs more width than
+   one 1fr cell of that grid, so the label column shrinks and the slider takes the rest. */
+.text-style-line-row {
+  padding: 0 6px;
+}
+
+.text-style-line-row .slider-row-label {
+  min-width: 76px;
+}
+
+.text-field-group > .text-style-line-row > .popover-inline:not(.slider-row-label) {
+  flex: 1;
+  min-width: 0;
+}
+
+.text-style-line-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
 /* The Duration row: label + state + inline seconds field. */
 .inspector-duration-row {
   display: flex;

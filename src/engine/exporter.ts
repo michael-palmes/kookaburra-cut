@@ -60,6 +60,7 @@ import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { configureDeterministicEngine } from "./timeline";
+import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
 
 /** Export encoder: libx264 is deterministic (the v0 default), videotoolbox is hardware-fast, prores_ks is software ProRes 422 HQ (10-bit 4:2:2, .mov container). */
 export type Codec = "libx264" | "h264_videotoolbox" | "prores_ks";
@@ -379,6 +380,8 @@ async function exportPreamble(
   onStep?.(3);
   // Last barrier: the scenes must actually be in the canvas tree. A cold-load suspense (shared boundary) can still be holding every scene out of the graph at this point, but the preloads above have resolved its assets so the retry commit is imminent; wait for it or frame 0 captures a scene-less frame. See awaitSceneHostsCommitted.
   await awaitSceneHostsCommitted(opts.slots.length);
+  // In-world TitleBlocks measure their own title/subtitle blocks, and their props only exist once the scenes are in the tree, so this barrier runs last: settle those typesets and let the tree re-render with them, or frame 0 captures the pre-measure layout (engine/titleBlockMeasure).
+  await awaitTitleMeasuresSettled();
 }
 
 export async function exportProject(

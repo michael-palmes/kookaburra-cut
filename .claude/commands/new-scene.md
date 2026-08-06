@@ -45,6 +45,11 @@ Steps:
      floating). device: `placement` position `[0, -0.3, 0]`, `rotationDeg: [0, 0, 0]`,
      `scale: 1`. deviceonly: position `[0, 0, 0]` (no title to clear), `scale: 1.35`
      (dominant framing), `ground: true` (rests on a staged floor when the theme has one).
+     Both kinds get a `camera` block `{ "keys": [{ "id": "k1", "tMs": 0, "pose": {
+     "target": [0, 0.1, 0], "azimuthDeg": 0, "elevationDeg": 0, "distance": <d> } }],
+     "segments": [] }` framing the phone larger than the engine default pose (the empty
+     `segments` array is required): `<d>` is `4.2` for device and `4.5` for deviceonly,
+     the closest clip-safe distance at its 1.35 scale.
    - comparison: seeds EMPTY `text.beforeLabel` and `text.afterLabel` (the chips appear
      only when copy is typed), 2-4 device entries (`d1`..`dn`, default 2) sharing the
      catalog `model`/`colour` with per-device media in order, `motion: { "preset":
@@ -82,6 +87,10 @@ Steps:
      <width/height when known> }, "stage": { "type": "color", "color": <the theme's
      background hex> }, "radius": "macos" }` (media defaults to the bundled laptop
      sample; omit `border`/`shadow`/`motion`/`scale` so engine defaults apply).
+   Then, when the kind wrote NO `background` of its own (every kind but video, and image
+   with a pick), copy `project.json`'s `appliedBackground` blocks into the sidecar: its
+   `background`, and its `backdrop` unless the kind already wrote one. Absent stamp = the
+   scene follows the theme.
 5. Duration: video media → follow-media and `durationMs` = the video's length
    (`ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 <file>`,
    seconds → ms, rounded): `{ "mode": "follow-media", "sourceDeviceId": "d1" }` for the
