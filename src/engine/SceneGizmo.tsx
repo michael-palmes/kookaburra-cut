@@ -39,6 +39,7 @@ export function SceneGizmo({
       itemId,
       sceneIndex,
       pickers: () => transformControlsPicker(ref.current, mode),
+      root: () => ref.current,
       claim,
     });
     return () => unregisterGizmoPicker(key);

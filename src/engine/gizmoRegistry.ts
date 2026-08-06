@@ -22,6 +22,8 @@ export interface GizmoPickerHandle {
   sceneIndex: number;
   /** Raycast targets for the ACTIVE mode only: three's Raycaster ignores `visible`, so the idle modes' pickers would hit too. */
   pickers: () => Object3D[];
+  /** The control itself, so a preview capture can drop the handles for its one frame; they draw on layer 0, which no camera filter reaches. */
+  root?: () => Object3D | null;
   /** Called once when the router hands a pointer-down to this gizmo. */
   claim?: () => void;
 }
@@ -52,6 +54,22 @@ export function subscribeGizmoPickers(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+  };
+}
+
+/** Hides every mounted gizmo and returns the restore, so a preview capture (scene thumbs, welcome snapshots) renders its frame without editor chrome. The control manages its own `visible`, so the previous value goes back rather than a blanket true. */
+export function hideGizmoHandles(): () => void {
+  const roots: Object3D[] = [];
+  for (const handle of handles.values()) {
+    const root = handle.root?.();
+    if (root) roots.push(root);
+  }
+  const was = roots.map((o) => o.visible);
+  for (const root of roots) root.visible = false;
+  return () => {
+    roots.forEach((root, i) => {
+      root.visible = was[i];
+    });
   };
 }
 

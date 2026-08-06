@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useClockStore } from "./clock";
-import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
+import { canvasCommittedClockMs, canvasHandle, setCapturingPreview } from "./exportBridge";
 import { awaitTextSync } from "./exporter";
 import { isExporting } from "./exportState";
+import { hideGizmoHandles } from "./gizmoRegistry";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
 
 /** Preview-frame capture off the live canvas, used by welcome snapshots and scene thumbs. UI niceties, not part of the export path: nothing here runs during an export/autorun, every failure is silent (cards keep their placeholders), and the determinism contract is untouched (the preview clock is borrowed and restored). */
@@ -69,7 +70,15 @@ async function paintAndReadCanvas(
   format: "png" | "jpeg",
 ): Promise<Uint8Array | null> {
   if (!canvasHandle.current) return null;
-  canvasHandle.current.advance(performance.now());
+  // Editor chrome must not bake into a cached thumb or welcome card: the outlines and light helpers ride HELPER_LAYER (dropped from the camera for this frame), the gizmo handles draw on layer 0 and are hidden outright.
+  const restoreGizmos = hideGizmoHandles();
+  setCapturingPreview(true);
+  try {
+    canvasHandle.current.advance(performance.now());
+  } finally {
+    setCapturingPreview(false);
+    restoreGizmos();
+  }
 
   const source = canvasHandle.current.gl.domElement;
   const scale = Math.min(1, width / Math.max(1, source.width));

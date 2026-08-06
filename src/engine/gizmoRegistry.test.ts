@@ -1,7 +1,9 @@
+import { Object3D } from "three";
 import { describe, expect, it } from "vitest";
 import {
   type GizmoPickerHandle,
   gizmoPickerHandles,
+  hideGizmoHandles,
   registerGizmoPicker,
   subscribeGizmoPickers,
   unregisterGizmoPicker,
@@ -36,5 +38,21 @@ describe("subscribeGizmoPickers", () => {
     registerGizmoPicker("k2", handle("o2"));
     unregisterGizmoPicker("k2");
     expect(fired).toBe(0);
+  });
+});
+
+describe("hideGizmoHandles", () => {
+  it("drops every mounted control for a capture frame and gives back what each one had", () => {
+    const attached = new Object3D();
+    const detached = new Object3D();
+    detached.visible = false;
+    registerGizmoPicker("k3", { ...handle("o3"), root: () => attached });
+    registerGizmoPicker("k4", { ...handle("o4"), root: () => detached });
+    const restore = hideGizmoHandles();
+    expect([attached.visible, detached.visible]).toEqual([false, false]);
+    restore();
+    expect([attached.visible, detached.visible]).toEqual([true, false]);
+    unregisterGizmoPicker("k3");
+    unregisterGizmoPicker("k4");
   });
 });
