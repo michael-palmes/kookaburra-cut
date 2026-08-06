@@ -18,6 +18,7 @@ import type {
   ChartType,
   ChartValueAxis,
   ChartValueFormat,
+  ChartValueLabelBackground,
   ChartValueLabels,
   ChartValuesPose,
 } from "../toolkit/chart/types";
@@ -442,8 +443,11 @@ export interface SceneDocChartValueAxis
   gridlines?: Partial<ChartGridlines>;
 }
 
-export interface SceneDocChartValueLabels extends Omit<Partial<ChartValueLabels>, "format"> {
+export interface SceneDocChartValueLabels
+  extends Omit<Partial<ChartValueLabels>, "format" | "background"> {
   format?: Partial<ChartValueFormat>;
+  /** PRESENT (even bare) forces a chip behind every value label; absent leaves the appearance preset's own pill maths. */
+  background?: Partial<ChartValueLabelBackground>;
 }
 
 /** One data keyframe: a FULL value snapshot (the Magic Chart model), `[series][category]`, the same shape as `data`. Structure changes (adding a series or category) are edits to `data`, never keyframable. */
@@ -528,6 +532,13 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+const CHART_COLOUR_TOKENS = ["background", "text", "accent", "muted"];
+const CHART_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/** A chart colour as authored: one of the four theme tokens by name, or a hex (the FrameChip rule). */
+const isChartColour = (v: unknown): v is string =>
+  typeof v === "string" && (CHART_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
 
 /** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
 function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
@@ -788,6 +799,28 @@ function parseChartFormat(
 }
 
 /** A `series` array is the one required shape: without it the block cannot chart anything and drops whole. */
+/** The chip behind the value labels. An empty object SURVIVES: presence is the semantic (it forces the chip on), so only junk fields drop. */
+function parseChartValueBackground(
+  raw: unknown,
+  source: string,
+): Partial<ChartValueLabelBackground> | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.labels.values.background isn't an object, dropped`);
+    return undefined;
+  }
+  const out: Partial<ChartValueLabelBackground> = {};
+  if (raw.colour === null || isChartColour(raw.colour)) {
+    out.colour = raw.colour as string | null;
+  } else if (raw.colour !== undefined) {
+    console.warn(
+      `[sceneDoc] ${source}: chart.labels.values.background.colour isn't a theme token or hex, dropped`,
+    );
+  }
+  if (finiteNum(raw.opacity)) out.opacity = raw.opacity;
+  if (finiteNum(raw.radius)) out.radius = raw.radius;
+  return out;
+}
+
 function parseChartData(raw: unknown, source: string): SceneDocChartData | undefined {
   if (!isRecord(raw) || !Array.isArray(raw.series)) return undefined;
   const categories = (Array.isArray(raw.categories) ? raw.categories : []).map((c, i) => {
@@ -914,9 +947,14 @@ function parseChartLabels(raw: unknown, source: string): SceneDocChart["labels"]
       values.location = location;
     }
     if (typeof raw.values.countUp === "boolean") values.countUp = raw.values.countUp;
+    if (finiteNum(raw.values.offsetY)) values.offsetY = raw.values.offsetY;
     if (raw.values.format !== undefined) {
       const format = parseChartFormat(raw.values.format, source, "chart.labels.values.format");
       if (format) values.format = format;
+    }
+    if (raw.values.background !== undefined) {
+      const background = parseChartValueBackground(raw.values.background, source);
+      if (background) values.background = background;
     }
     if (Object.keys(values).length > 0) out.values = values;
   } else if (raw.values !== undefined) {

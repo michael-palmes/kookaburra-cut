@@ -1,7 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
-import { resolveChart } from "../../engine/sceneChart";
+import {
+  CHART_VALUE_BACKGROUND_DEFAULTS,
+  CHART_VALUE_OFFSET_MAX,
+  resolveChart,
+} from "../../engine/sceneChart";
 import type {
   SceneDoc,
   SceneDocChart,
@@ -19,6 +23,7 @@ import {
   type ChartPresetTier,
   chartPresetFor,
 } from "../../toolkit/chart/animation";
+import { chartPillColour, chartTokenColour } from "../../toolkit/chart/chartText";
 import { CHART_DECIMALS_MAX, formatChartValue } from "../../toolkit/chart/format";
 import { CHART_PALETTE_SIZE, resolveSeriesColour } from "../../toolkit/chart/palette";
 import {
@@ -465,12 +470,14 @@ export function ChartDrillIn({
       mutate(category);
       c.axis = { ...c.axis, category };
     }, "chart axis");
-  const writeValueLabels = (mutate: (l: SceneDocChartValueLabels) => void) =>
-    write((c) => {
+  const patchValueLabels =
+    (mutate: (l: SceneDocChartValueLabels) => void) => (c: SceneDocChart) => {
       const values = { ...(c.labels?.values ?? {}) };
       mutate(values);
       c.labels = { ...c.labels, values };
-    }, "chart labels");
+    };
+  const writeValueLabels = (mutate: (l: SceneDocChartValueLabels) => void) =>
+    write(patchValueLabels(mutate), "chart labels");
   const writeSeries = (mutate: (series: SceneDocChartSeries[]) => void, history?: string) =>
     write((c) => {
       const series = structuredClone(c.data.series);
@@ -1210,6 +1217,8 @@ export function ChartDrillIn({
   );
 
   const values = chart.labels.values;
+  const background = values.background;
+  const derivedPill = chartPillColour(theme);
   const seriesTab = (
     <>
       <DrillGroup label="Series">
@@ -1372,6 +1381,139 @@ export function ChartDrillIn({
             })
           }
         />
+        <div className="popover-row">
+          <span className="popover-inline slider-row-label">Nudge</span>
+          <DebouncedRange
+            value={values.offsetY}
+            min={-CHART_VALUE_OFFSET_MAX / 2}
+            max={CHART_VALUE_OFFSET_MAX / 2}
+            step={0.05}
+            label="Nudge"
+            onInput={(v) =>
+              live(
+                patchValueLabels((l) => {
+                  l.offsetY = v;
+                }),
+              )
+            }
+            onCommit={(v) =>
+              commit(
+                patchValueLabels((l) => {
+                  l.offsetY = v;
+                }),
+                "chart labels",
+              )
+            }
+          />
+        </div>
+        <ActionRow
+          label="Reset nudge"
+          chevron={false}
+          disabled={values.offsetY === 0}
+          onClick={() =>
+            writeValueLabels((l) => {
+              delete l.offsetY;
+            })
+          }
+        />
+        {chart.dimension === "3d" ? (
+          <span className="drill-group-hint">
+            Label backgrounds are flat charts only; 3D value labels face the camera.
+          </span>
+        ) : (
+          <>
+            <ToggleRow
+              label="Background"
+              description="A chip behind every number, for legibility over a mark."
+              checked={background !== null}
+              onChange={(on) =>
+                writeValueLabels((l) => {
+                  if (on) {
+                    l.background = {
+                      opacity: CHART_VALUE_BACKGROUND_DEFAULTS.opacity,
+                      radius: CHART_VALUE_BACKGROUND_DEFAULTS.radius,
+                    };
+                  } else delete l.background;
+                })
+              }
+            />
+            {background && (
+              <>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Colour</span>
+                  <ColourPicker
+                    value={chartTokenColour(theme, background.colour) ?? derivedPill}
+                    label="Value label background"
+                    defaultValue={derivedPill}
+                    onReset={
+                      background.colour
+                        ? () =>
+                            writeValueLabels((l) => {
+                              if (l.background) delete l.background.colour;
+                            })
+                        : undefined
+                    }
+                    onCommit={(hex) =>
+                      writeValueLabels((l) => {
+                        l.background = { ...l.background, colour: hex };
+                      })
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Opacity</span>
+                  <DebouncedRange
+                    value={background.opacity}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    label="Background opacity"
+                    onInput={(v) =>
+                      live(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, opacity: v };
+                        }),
+                      )
+                    }
+                    onCommit={(v) =>
+                      commit(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, opacity: v };
+                        }),
+                        "chart labels",
+                      )
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Corner radius</span>
+                  <DebouncedRange
+                    value={background.radius}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    label="Background corner radius"
+                    onInput={(v) =>
+                      live(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, radius: v };
+                        }),
+                      )
+                    }
+                    onCommit={(v) =>
+                      commit(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, radius: v };
+                        }),
+                        "chart labels",
+                      )
+                    }
+                  />
+                </div>
+              </>
+            )}
+          </>
+        )}
       </DrillGroup>
     </>
   );

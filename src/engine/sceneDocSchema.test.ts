@@ -708,6 +708,82 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("keeps a value-label nudge and a background block, dropping only the junk fields", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    const authored = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data,
+          labels: {
+            values: {
+              offsetY: 1.2,
+              background: { colour: "#1b2733", opacity: 0.85, radius: 0.4 },
+            },
+          },
+        },
+      },
+      "test",
+    );
+    expect(authored?.chart?.labels?.values).toEqual({
+      offsetY: 1.2,
+      background: { colour: "#1b2733", opacity: 0.85, radius: 0.4 },
+    });
+    const degraded = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data,
+          labels: {
+            values: {
+              offsetY: "up",
+              background: { colour: "chartreuse", opacity: "half", radius: null },
+            },
+          },
+        },
+      },
+      "test",
+    );
+    // The block survives bare, because its PRESENCE is what forces the chip on.
+    expect(degraded?.chart?.labels?.values).toEqual({ background: {} });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("chart.labels.values.background.colour"),
+    );
+    const token = parseSceneDoc(
+      { version: 1, chart: { type: "column", data, labels: { values: { background: "solid" } } } },
+      "test",
+    );
+    expect(token?.chart?.labels?.values).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.labels.values.background"));
+    const named = parseSceneDoc(
+      {
+        version: 1,
+        chart: { type: "column", data, labels: { values: { background: { colour: "accent" } } } },
+      },
+      "test",
+    );
+    expect(named?.chart?.labels?.values?.background).toEqual({ colour: "accent" });
+    warn.mockRestore();
+  });
+
+  it("leaves the value-label nudge and background absent when nothing authors them", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data: { categories: ["a"], series: [{ id: "s1", values: [1] }] },
+          labels: { values: { visible: true } },
+        },
+      },
+      "test",
+    );
+    expect(doc?.chart?.labels?.values).toEqual({ visible: true });
+  });
+
   it("coerces a panel-mounted chart to 2d and leaves other mounts alone", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const data = { categories: [], series: [] };

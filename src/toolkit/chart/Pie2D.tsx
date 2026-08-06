@@ -7,8 +7,8 @@ import {
   CHART_2D_ORDER,
   CHART_2D_Z_STEP,
   type Chart2DMetrics,
+  type ChartValuePill,
   contrastPick,
-  LABEL_PILL,
   labelPillRect,
   PIE_CURVE_SEGMENTS,
   pieRadial,
@@ -37,8 +37,8 @@ export interface Pie2DProps {
   metrics: Chart2DMetrics;
   look: ChartStyleSurface2D;
   labels: ChartValueLabels;
-  /** Chip fill behind every value label under `labelPill`; null draws them bare. */
-  pill: string | null;
+  /** The chip behind every value label (the preset's pill or the block's background); null draws them bare. */
+  pill: ChartValuePill | null;
   /** Value labels take the family's semibold face. */
   bold: boolean;
   reveal?: ChartRevealSource;
@@ -81,6 +81,7 @@ export function Pie2D(props: Pie2DProps) {
     [geometries],
   );
 
+  const lift = labels.offsetY * metrics.value;
   const pills: WorldRect[] = [];
   const values = labels.visible
     ? slices.map((slice) => {
@@ -92,7 +93,9 @@ export function Pie2D(props: Pie2DProps) {
         const radius = outer * LABEL_RADIUS[labels.location];
         const [x, y] = pieRadial(slice.midAngle, radius);
         if (pill) {
-          pills.push(labelPillRect(text, metrics.value, x, y, sliceAnchorX(x, radius), "middle"));
+          pills.push(
+            labelPillRect(text, metrics.value, x, y + lift, sliceAnchorX(x, radius), "middle"),
+          );
         }
         return { slice, text, alpha: build.alpha };
       })
@@ -145,8 +148,9 @@ export function Pie2D(props: Pie2DProps) {
       {pill && (
         <ChartPills
           rects={pills}
-          radiusFraction={LABEL_PILL.radius}
-          colour={pill}
+          radiusFraction={pill.radius}
+          colour={pill.colour}
+          weight={pill.opacity}
           opacity={opacity}
           alphas={values.map((value) => value.alpha)}
           feather={feather}
@@ -159,6 +163,7 @@ export function Pie2D(props: Pie2DProps) {
           slice={value.slice}
           text={value.text}
           radius={outer * LABEL_RADIUS[labels.location]}
+          lift={lift}
           fontSize={metrics.value}
           colour={
             labels.location === "inside" && !pill
@@ -191,15 +196,17 @@ function SliceLabel(props: {
   colour: string;
   alpha: number;
   bold?: boolean;
+  /** Vertical nudge, world units; the value labels' own, never the category ring's. */
+  lift?: number;
   z: number;
 }) {
-  const { slice, text, radius, fontSize, colour, alpha, bold = false, z } = props;
+  const { slice, text, radius, fontSize, colour, alpha, bold = false, lift = 0, z } = props;
   if (slice.fraction <= 0) return null;
   const [x, y] = pieRadial(slice.midAngle, radius);
   return (
     <ChartLabel
       text={text}
-      position={[x, y, z]}
+      position={[x, y + lift, z]}
       fontSize={fontSize}
       colour={colour}
       anchorX={sliceAnchorX(x, radius)}

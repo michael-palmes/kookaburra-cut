@@ -121,7 +121,9 @@ them.
     "values": { "visible": true, "location": "above",      // above | inside | below
                 "format": { "decimals": 0, "separator": true, "prefix": "",
                             "suffix": "", "compact": false },
-                "countUp": true }
+                "countUp": true,
+                "offsetY": 0,                              // nudge, in value font sizes, + is up
+                "background": null }                       // absent = the preset's own pill
   },
 
   "animation": {
@@ -146,7 +148,8 @@ Every value above is the resolved default (`CHART_STYLE_DEFAULTS`,
 `CHART_ANIMATION_DEFAULTS` in `sceneChart.ts`), except `type` and `data`, which are
 required, and `mount`, which defaults to `hero`. Value-label decimals default to 0,
 so a counting label lands on exactly the printed value; axis labels default to auto
-decimals.
+decimals. `background` is the one field whose ABSENCE is load-bearing (see
+"Value labels").
 
 Resolution rules worth knowing:
 
@@ -376,6 +379,39 @@ Two editors write two DIFFERENT fields and never share one object: the Axis tab'
 Tick labels group formats the numbers along the axis (`axis.value.format`), the Series
 tab's Value labels group formats the numbers riding the marks (`labels.values.format`).
 
+## Value labels
+
+The numbers riding the marks, `labels.values`. `visible`, `location` and `countUp`
+place them; two more fields dress them, and neither touches axis tick labels.
+
+- **`offsetY`, the nudge.** A vertical shift in VALUE FONT SIZES, positive lifting,
+  clamped to ±`CHART_VALUE_OFFSET_MAX` (4). Font sizes rather than world units, so one
+  authored nudge reads the same on a hero chart and a panel chart, in 2D and in 3D. The
+  chip (below) moves with the number: 2D places the pill from the nudged anchor. 0
+  places labels exactly where they always sat, in every family (bars, lines and areas,
+  pie rims, and all three 3D families).
+- **`background`, the chip.** Absent (the default) nothing changes: the appearance
+  preset's `labelPill` alone decides whether a chip is drawn, in the colour
+  `chartPillColour` derives from the theme. PRESENT, even bare (`{}`), it FORCES the
+  chip on whatever the preset says, and each field overrides the derived pill:
+  `colour` (theme token or hex, absent takes the derived one), `opacity` (0..1) and
+  `radius` (fraction of the chip height, capped at the capsule 0.5). A bare block
+  renders exactly like the preset's own pill, which
+  `CHART_VALUE_BACKGROUND_DEFAULTS` pins by test.
+
+`valueLabelPill` (`chart2dMath.ts`) is the one resolver, and `ChartPills` draws the
+chips it returns: still ONE instanced mesh per run of labels, with the block's opacity
+as the chip weight the shared default otherwise supplies.
+
+**Flat charts only, for now.** A 3D chart takes the nudge but ignores `background`,
+and the inspector hides the background controls for one. 3D value labels billboard by
+rewriting `matrixWorld` in `onBeforeRender` (`billboardLabel.ts`), and an instanced
+chip cannot ride that: three uploads `instanceMatrix` during `projectObject`, BEFORE
+any `onBeforeRender` runs, so camera-composed instance matrices would land a frame
+late. A per-label chip mesh would work but is a new render seam (a draw call per label,
+per-chip geometry, its own depth and transparency ordering against the marks), so it
+waits for its own change.
+
 ## The data track
 
 Keyframed data is the Magic Chart model on the shared `KeyedTrack`: each key holds a
@@ -429,6 +465,12 @@ hands the host a world rect. See `docs/overlays.md` for the panel itself.
   pattern: the `FontPicker`, and a reset button back to the project font (or the theme
   faces) whenever the block sets one. The project default lives in the Project tab's
   Typography drill as a third slot beside Headline and Body.
+- **Series tab.** The series list and its detail screen, then the Value labels group:
+  visibility, location, format, count up, the Nudge slider (with Reset nudge, which
+  DELETES the field rather than writing a zero), and the Background toggle whose ON
+  writes the block with the shipped pill's own opacity and radius and whose OFF deletes
+  it. Its colour row resets to the derived pill by clearing `colour` alone. A 3D chart
+  shows a hint in place of the background rows.
 - **Placement.** `chart.position` is the staged mount's drill (Move / Rotate / Scale
   pills plus scrub fields); the gizmo attaches to the posed group while it is open and
   posts its commit through `chartEditStore`.

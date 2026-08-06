@@ -93,11 +93,23 @@ export interface ChartLegend {
   position: ChartLegendPosition;
 }
 
+/** The chip behind every value label. Its PRESENCE forces a chip on whatever the appearance preset says, and each field overrides the derived pill; null (absent) leaves the preset's own pill maths untouched. Flat charts only: 3D value labels billboard and their chips cannot ride that transform yet. */
+export interface ChartValueLabelBackground {
+  /** Theme token or hex; null takes the derived pill colour. */
+  colour: string | null;
+  opacity: number;
+  /** Corner radius as a fraction of the chip height, capped at the capsule 0.5. */
+  radius: number;
+}
+
 export interface ChartValueLabels {
   visible: boolean;
   location: ChartValueLabelLocation;
   format: ChartValueFormat;
   countUp: boolean;
+  /** Vertical nudge in VALUE FONT SIZES, positive lifting: uniform across chart sizes and both dimensions. 0 places labels exactly where they always sat. */
+  offsetY: number;
+  background: ChartValueLabelBackground | null;
 }
 
 export interface ChartLabelConfig {

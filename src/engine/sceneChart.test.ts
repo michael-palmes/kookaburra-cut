@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { LABEL_PILL, PILL_ALPHA } from "../toolkit/chart/chart2dMath";
 import type { ChartValueFormat } from "../toolkit/chart/types";
 import {
   CHART_ANIMATION_DEFAULTS,
   CHART_AXIS_FORMAT_DEFAULTS,
   CHART_STYLE_DEFAULTS,
+  CHART_VALUE_BACKGROUND_DEFAULTS,
   CHART_VALUE_FORMAT_DEFAULTS,
+  CHART_VALUE_OFFSET_MAX,
   chartDataWithValues,
   chartValuesAt,
   maxAcrossTrack,
@@ -60,6 +63,8 @@ describe("resolveChart", () => {
       location: "above",
       format: CHART_VALUE_FORMAT_DEFAULTS,
       countUp: true,
+      offsetY: 0,
+      background: null,
     });
     expect(chart.animation).toEqual(CHART_ANIMATION_DEFAULTS);
     expect(chart.track).toEqual({ keys: [], segments: [] });
@@ -112,6 +117,48 @@ describe("resolveChart", () => {
     });
     expect(auto.labels.values.format.decimals).toBeNull();
     expect(auto.axis.value.format.decimals).toBeNull();
+  });
+
+  it("clamps the value-label nudge and leaves an unauthored one at zero", () => {
+    expect(resolved({ type: "column", data: data() }).labels.values.offsetY).toBe(0);
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { offsetY: 1.25 } } }).labels
+        .values.offsetY,
+    ).toBe(1.25);
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { offsetY: 40 } } }).labels.values
+        .offsetY,
+    ).toBe(CHART_VALUE_OFFSET_MAX);
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { offsetY: -40 } } }).labels.values
+        .offsetY,
+    ).toBe(-CHART_VALUE_OFFSET_MAX);
+  });
+
+  it("defaults a bare value-label background to the shipped pill and clamps its fields", () => {
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { background: {} } } }).labels
+        .values.background,
+    ).toEqual(CHART_VALUE_BACKGROUND_DEFAULTS);
+    expect(
+      resolved({
+        type: "column",
+        data: data(),
+        labels: { values: { background: { colour: "accent", opacity: 4, radius: 9 } } },
+      }).labels.values.background,
+    ).toEqual({ colour: "accent", opacity: 1, radius: 0.5 });
+    expect(
+      resolved({
+        type: "column",
+        data: data(),
+        labels: { values: { background: { opacity: -2, radius: -1 } } },
+      }).labels.values.background,
+    ).toEqual({ colour: null, opacity: 0, radius: 0 });
+  });
+
+  it("keeps the pill defaults the renderers ship with, so a bare background matches the preset's own", () => {
+    expect(CHART_VALUE_BACKGROUND_DEFAULTS.opacity).toBe(PILL_ALPHA);
+    expect(CHART_VALUE_BACKGROUND_DEFAULTS.radius).toBe(LABEL_PILL.radius);
   });
 
   it("forces 2d on a panel mount and keeps placement for the staged mount only", () => {

@@ -61,7 +61,12 @@ is enough. One chart per scene.
     "legend": { "visible": true, "position": "bottom" },   // top | bottom | trailing
     "values": { "visible": true, "location": "above",      // above | inside | below
       "format": { "decimals": 0, "separator": true, "prefix": "", "suffix": "", "compact": false },
-      "countUp": true }
+      "countUp": true,
+      "offsetY": 0,                                        // nudge in value font sizes, + is up, ±4
+      "background": null }                                 // absent = the preset's own pill;
+                                                           // present (even {}) FORCES a chip on:
+                                                           // { "colour": "#1b2733" | "accent" | null,
+                                                           //   "opacity": 0.86, "radius": 0.5 }
   },
 
   "animation": {
@@ -77,6 +82,11 @@ is enough. One chart per scene.
 
 Null means auto (axis min/max nice themselves; `decimals: null` trims to at most 2).
 `compact: true` prints 1.2k / 3.4M / 1.2B, the finance default for big values.
+`labels.values.offsetY` lifts or drops the numbers riding the marks (font sizes, so it
+reads the same at any chart size), and `labels.values.background` puts a chip behind
+them when they sit over a busy mark. The chip is FLAT charts only: a 3D chart takes the
+nudge and ignores the background (its labels billboard). Neither field touches axis
+tick labels.
 A pie charts the FIRST series only; categories become slices; extra series stay dormant
 so switching types keeps data.
 

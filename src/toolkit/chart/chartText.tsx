@@ -29,6 +29,7 @@ import {
   legendChipRect,
   legendEntryWidth,
   makeChartRectMaterial,
+  PILL_ALPHA,
   packLegendRows,
   type WorldRect,
 } from "./chart2dMath";
@@ -38,9 +39,12 @@ import type { ChartLegendChrome } from "./types";
 /** Swatch circle segments; fixed, so the geometry is identical every run. */
 const SWATCH_SEGMENTS = 24;
 
-/** How far a pill lifts off the theme background toward its text colour, and how solid it sits: a chip that reads on a light or a dark stage without ever competing with the mark it labels. */
+/** How far a pill lifts off the theme background toward its text colour (its weight lives beside the pill proportions, in `chart2dMath`). */
 const PILL_LIFT = 0.13;
-const PILL_ALPHA = 0.86;
+
+/** The four theme colour tokens a sidecar may name in place of a hex. */
+const COLOUR_TOKENS = ["background", "text", "accent", "muted"] as const;
+type ColourToken = (typeof COLOUR_TOKENS)[number];
 
 const IDENTITY = new Quaternion();
 const _matrix = new Matrix4();
@@ -55,12 +59,22 @@ export const ChartFontContext = createContext<FontRef | null>(null);
 export const chartPillColour = (theme: Theme): string =>
   liftColour(theme.colors.background, theme.colors.text, PILL_LIFT);
 
+/** An authored chart colour: a theme token by name, a hex as written, null when unauthored. */
+export const chartTokenColour = (theme: Theme, colour: string | null): string | null => {
+  if (colour === null) return null;
+  return COLOUR_TOKENS.includes(colour as ColourToken)
+    ? theme.colors[colour as ColourToken]
+    : colour;
+};
+
 export interface ChartPillsProps {
   rects: readonly WorldRect[];
   /** Corner radius as a fraction of the pill's height; 0.5 is a capsule. */
   radiusFraction: number;
   colour: string;
   opacity: number;
+  /** The chip's own translucency; absent takes the shared default, so every caller lands on the same weight. */
+  weight?: number;
   /** Per-pill build alpha, index for index with `rects`; absent leaves every pill at `opacity`. */
   alphas?: readonly number[];
   /** SDF edge softening, world units. */
@@ -68,9 +82,9 @@ export interface ChartPillsProps {
   z: number;
 }
 
-/** The rounded chips behind a run of labels: ONE instanced mesh behind the shared SDF rect material (the bar family's own), so a chart's pills never cost more than a draw call whatever the label count. The chip's own translucency is baked in here, so every caller lands on the same weight. */
+/** The rounded chips behind a run of labels: ONE instanced mesh behind the shared SDF rect material (the bar family's own), so a chart's pills never cost more than a draw call whatever the label count. */
 export function ChartPills(props: ChartPillsProps) {
-  const { rects, radiusFraction, colour, opacity, alphas, feather, z } = props;
+  const { rects, radiusFraction, colour, opacity, weight = PILL_ALPHA, alphas, feather, z } = props;
   const count = rects.length;
   const mesh = useRef<InstancedMesh>(null);
 
@@ -111,13 +125,13 @@ export function ChartPills(props: ChartPillsProps) {
       target.setMatrixAt(i, _matrix);
       half.setXY(i, width / 2, height / 2);
       radii.setX(i, Math.min(height, width) * radiusFraction);
-      tint.setXYZW(i, _colour.r, _colour.g, _colour.b, opacity * PILL_ALPHA * (alphas?.[i] ?? 1));
+      tint.setXYZW(i, _colour.r, _colour.g, _colour.b, opacity * weight * (alphas?.[i] ?? 1));
     }
     target.instanceMatrix.needsUpdate = true;
     half.needsUpdate = true;
     radii.needsUpdate = true;
     tint.needsUpdate = true;
-  }, [alphas, colour, geometry, opacity, radiusFraction, rects, z]);
+  }, [alphas, colour, geometry, opacity, radiusFraction, rects, weight, z]);
 
   if (count === 0 || opacity <= 0) return null;
   return (

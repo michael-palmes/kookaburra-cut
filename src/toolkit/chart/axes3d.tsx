@@ -341,9 +341,11 @@ interface ChartValues3DProps {
 /** Value labels for whichever family the layout populated: riding the growing end of a bar, riding a line/area point up out of its baseline, or beyond the rim of a pie slice. The flat renderer places them by the same rules and the same helpers, so a chart's labels never sit differently between dimensions; every counting label prints against the CLAMPED `count` channel, so it can never run past its true value while a mark overshoots. */
 function ChartValues3D(props: ChartValues3DProps) {
   const { chart, layout, space, colour, fontSize, bold, reveal, opacity } = props;
-  const { format, countUp, location } = chart.labels.values;
+  const { format, countUp, location, offsetY } = chart.labels.values;
   const at = chartRevealFn(reveal);
   const outward = fontSize * 0.75;
+  // The flat renderer's unit: value font sizes, so one authored nudge reads the same in both dimensions.
+  const lift = offsetY * fontSize;
   const vertical = layout.valueAxis === "y";
   const z = space.frontZ;
 
@@ -360,7 +362,7 @@ function ChartValues3D(props: ChartValues3DProps) {
               text={formatChartValue(countUp ? slice.value * build.count : slice.value, format)}
               position={[
                 radius * Math.sin(slice.midAngle),
-                centreY + radius * Math.cos(slice.midAngle),
+                centreY + radius * Math.cos(slice.midAngle) + lift,
                 z,
               ]}
               fontSize={fontSize}
@@ -401,9 +403,9 @@ function ChartValues3D(props: ChartValues3DProps) {
                 vertical
                   ? chartWorldX(space, spot.across)
                   : chartWorldX(space, spot.along) + spot.nudge,
-                vertical
+                (vertical
                   ? chartWorldY(space, spot.along) + spot.nudge
-                  : chartWorldY(space, spot.across),
+                  : chartWorldY(space, spot.across)) + lift,
                 z,
               ]}
               fontSize={fontSize}
@@ -432,7 +434,7 @@ function ChartValues3D(props: ChartValues3DProps) {
               text={formatChartValue(countUp ? point.value * build.count : point.value, format)}
               position={[
                 chartWorldX(space, rode.x),
-                chartWorldY(space, rode.y) + fontSize * 0.9,
+                chartWorldY(space, rode.y) + fontSize * 0.9 + lift,
                 z,
               ]}
               fontSize={fontSize}
