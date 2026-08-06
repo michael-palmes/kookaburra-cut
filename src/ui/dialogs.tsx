@@ -1,5 +1,19 @@
-import { useEffect, useState } from "react";
-import { listProjects, PROJECT_TEMPLATES, slugifyName } from "../engine/workspace";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BLANK_TEMPLATE_ID,
+  formatTemplateDuration,
+  listTemplates,
+  searchTemplates,
+  TEMPLATE_CATEGORIES,
+  TEMPLATE_PREVIEW_COUNT,
+  TEMPLATE_USE_LABELS,
+  type TemplateCategoryId,
+  type TemplateEntry,
+  type TemplateTier,
+  templateCategoryCounts,
+} from "../engine/templates";
+import { listProjects, slugifyName } from "../engine/workspace";
+import { builtinThemes, defaultTheme } from "../theme/registry";
 import { listThemeChoices, type ThemeChoice, ThemeGrid } from "./ThemePicker";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -137,7 +151,351 @@ export function FreeCameraWarningModal({
   );
 }
 
-/** Create-project dialog: name + template, then the theme grid with hover-cycled previews. The theme applies to the new project's `project.json` after the template copy (`set_project_theme`). */
+/** The chips a card flags itself with, in reading order. */
+function cardFlags(entry: TemplateEntry): string[] {
+  const flags: string[] = [];
+  if (entry.status === "beta") flags.push("Beta");
+  if (entry.level === "showcase") flags.push("Showcase");
+  if (entry.storeLegal) flags.push("Store legal");
+  return flags;
+}
+
+/** One template card: a `div role="radio"`, not a `<button>`, since WKWebView won't reliably paint an `<img>` child inside a real button (the MediaBrowser lesson, same as ThemeCard). Mouse X across the poster cycles the four committed stills; with none rendered yet the card falls back to the template theme's swatch at the same 16:9 box, so the grid never reflows when the art lands. */
+function TemplateCard({
+  entry,
+  selected,
+  tabStop,
+  onSelect,
+}: {
+  entry: TemplateEntry;
+  selected: boolean;
+  /** The grid's single tab stop: the selection, or the first card when a filter hides it. */
+  tabStop: boolean;
+  onSelect: () => void;
+}) {
+  const [frame, setFrame] = useState(0);
+  const thumbRef = useRef<HTMLDivElement>(null);
+  const previews = entry.previews;
+  const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
+  const theme = builtinThemes[entry.themeId] ?? defaultTheme;
+  const flags = cardFlags(entry);
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a real <button> drops the img in WKWebView
+    <div
+      role="radio"
+      data-template-id={entry.id}
+      tabIndex={tabStop ? 0 : -1}
+      aria-checked={selected}
+      className={`template-card${selected ? " selected" : ""}`}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+    >
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-only preview cycling, the parent card carries the interactive semantics */}
+      <div
+        ref={thumbRef}
+        className="template-card-thumb"
+        onMouseMove={(e) => {
+          if (!previews || !thumbRef.current) return;
+          const rect = thumbRef.current.getBoundingClientRect();
+          const t = (e.clientX - rect.left) / Math.max(1, rect.width);
+          setFrame(
+            Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, Math.floor(t * previews.length))),
+          );
+        }}
+        onMouseLeave={() => setFrame(0)}
+      >
+        {src ? (
+          <img src={src} alt="" loading="lazy" decoding="async" draggable={false} />
+        ) : (
+          <div className="template-card-swatch" style={{ background: theme.colors.background }}>
+            <span style={{ color: theme.colors.text }}>Aa</span>
+            <span className="template-card-accent" style={{ background: theme.colors.accent }} />
+          </div>
+        )}
+      </div>
+      <div className="template-card-body">
+        <span className="template-card-name">{entry.name}</span>
+        <p className="template-card-tagline">{entry.tagline}</p>
+        <span className="template-card-meta">
+          {`${entry.sceneCount} ${entry.sceneCount === 1 ? "scene" : "scenes"} · ${formatTemplateDuration(entry.durationMs)} · ${entry.primaryAspect}`}
+        </span>
+        {(entry.uses.length > 0 || flags.length > 0) && (
+          <span className="template-card-chips">
+            {entry.uses.slice(0, 2).map((use) => (
+              <span key={use} className="template-chip">
+                {TEMPLATE_USE_LABELS[use]}
+              </span>
+            ))}
+            {flags.map((flag) => (
+              <span key={flag} className="template-chip flag">
+                {flag}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The template browser: a category rail with live counts, a global search, the one v1 facet chip (tier) and a scrolling card grid. Blank is pinned first in every view rather than sitting in a category, and is the default selection so Enter-to-create still works. Filtering is `searchTemplates`, a pure function in the registry, so the rules are unit-tested without rendering. */
+function TemplateGallery({
+  value,
+  onChange,
+  query,
+  onQueryChange,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  /** Owned by the dialog so Escape can clear the search before it closes the modal. */
+  query: string;
+  onQueryChange: (query: string) => void;
+}) {
+  const entries = useMemo(() => listTemplates(), []);
+  const [category, setCategory] = useState<TemplateCategoryId | null>(null);
+  const [stashedCategory, setStashedCategory] = useState<TemplateCategoryId | null>(null);
+  const [tier, setTier] = useState<TemplateTier | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const railRef = useRef<HTMLFieldSetElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const counts = useMemo(
+    () => templateCategoryCounts(entries, { query, tier }),
+    [entries, query, tier],
+  );
+  const visible = useMemo(
+    () => searchTemplates(entries, { query, category, tier }),
+    [entries, query, category, tier],
+  );
+  const tabStopId = visible.some((entry) => entry.id === value) ? value : visible[0]?.id;
+
+  // "/" reaches the search from anywhere in the dialog, the Welcome-search precedent, unless the user is already typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Search is global: it switches the rail to All and offers the category back as a chip.
+  const onQuery = (next: string) => {
+    if (next && category) {
+      setStashedCategory(category);
+      setCategory(null);
+    }
+    onQueryChange(next);
+  };
+  useEffect(() => {
+    if (!query) setStashedCategory(null);
+  }, [query]);
+  const clearFilters = () => {
+    onQueryChange("");
+    setCategory(null);
+    setStashedCategory(null);
+    setTier(null);
+  };
+  const pickCategory = (next: TemplateCategoryId | null) => {
+    setCategory(next);
+    setStashedCategory(null);
+  };
+
+  const cards = () =>
+    Array.from(gridRef.current?.querySelectorAll<HTMLElement>(".template-card") ?? []);
+  const columnCount = () => {
+    const all = cards();
+    if (all.length === 0) return 1;
+    const top = all[0].offsetTop;
+    let columns = 0;
+    for (const card of all) {
+      if (card.offsetTop !== top) break;
+      columns += 1;
+    }
+    return Math.max(1, columns);
+  };
+  const moveTo = (index: number) => {
+    const entry = visible[Math.min(visible.length - 1, Math.max(0, index))];
+    if (!entry) return;
+    onChange(entry.id);
+    const el = gridRef.current?.querySelector<HTMLElement>(`[data-template-id="${entry.id}"]`);
+    el?.focus();
+    el?.scrollIntoView({ block: "nearest" });
+  };
+  const NAV_KEYS = [
+    "ArrowRight",
+    "ArrowLeft",
+    "ArrowDown",
+    "ArrowUp",
+    "Home",
+    "End",
+    "PageDown",
+    "PageUp",
+  ];
+  const onGridKeyDown = (e: React.KeyboardEvent) => {
+    if (!NAV_KEYS.includes(e.key)) return;
+    e.preventDefault();
+    // A filter can hide the selection, in which case every move starts at the first card.
+    const anchor = visible.findIndex((entry) => entry.id === value);
+    if (anchor < 0) {
+      moveTo(0);
+      return;
+    }
+    const columns = columnCount();
+    const row = Math.floor(anchor / columns);
+    if (e.key === "ArrowRight") moveTo(anchor + 1);
+    else if (e.key === "ArrowLeft") moveTo(anchor - 1);
+    else if (e.key === "ArrowDown") moveTo(anchor + columns);
+    else if (e.key === "ArrowUp") moveTo(anchor - columns);
+    else if (e.key === "Home") moveTo(e.metaKey ? 0 : row * columns);
+    else if (e.key === "End") moveTo(e.metaKey ? visible.length - 1 : row * columns + columns - 1);
+    else {
+      const card = cards()[0];
+      const page = card
+        ? Math.max(1, Math.floor((gridRef.current?.clientHeight ?? 0) / card.offsetHeight))
+        : 1;
+      moveTo(anchor + (e.key === "PageDown" ? 1 : -1) * page * columns);
+    }
+  };
+
+  const railRows: { id: TemplateCategoryId | null; label: string; count: number }[] = [
+    { id: null, label: "All", count: counts.all },
+    ...TEMPLATE_CATEGORIES.map((c) => ({
+      id: c.id as TemplateCategoryId,
+      label: c.label,
+      count: counts.byCategory[c.id],
+    })),
+  ];
+  const onRailKeyDown = (e: React.KeyboardEvent) => {
+    const enabled = railRows.filter((r) => r.id === null || r.count > 0);
+    if (enabled.length === 0) return;
+    const current = Math.max(
+      0,
+      enabled.findIndex((r) => r.id === category),
+    );
+    let next = current;
+    if (e.key === "ArrowDown") next = Math.min(enabled.length - 1, current + 1);
+    else if (e.key === "ArrowUp") next = Math.max(0, current - 1);
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = enabled.length - 1;
+    else return;
+    e.preventDefault();
+    const row = enabled[next];
+    pickCategory(row.id);
+    railRef.current
+      ?.querySelectorAll<HTMLElement>(".template-rail-row")
+      [railRows.findIndex((r) => r.id === row.id)]?.focus();
+  };
+
+  return (
+    <div className="template-gallery">
+      <div className="template-gallery-bar">
+        <input
+          ref={searchRef}
+          className="modal-input template-gallery-search"
+          type="search"
+          placeholder="Search templates…"
+          aria-label="Search templates"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+        />
+        <fieldset className="template-gallery-facets" aria-label="Motion tier">
+          {(["safe", "bold"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`template-facet${tier === t ? " selected" : ""}`}
+              aria-pressed={tier === t}
+              onClick={() => setTier(tier === t ? null : t)}
+            >
+              {t === "safe" ? "Safe" : "Bold"}
+            </button>
+          ))}
+        </fieldset>
+        <span className="template-gallery-count" aria-live="polite">
+          {`${visible.length} ${visible.length === 1 ? "template" : "templates"}`}
+        </span>
+      </div>
+      <div className="template-gallery-body">
+        <fieldset
+          ref={railRef}
+          className="template-rail"
+          aria-label="Template categories"
+          onKeyDown={onRailKeyDown}
+        >
+          {railRows.map((row) => (
+            <button
+              key={row.id ?? "all"}
+              type="button"
+              className={`template-rail-row${category === row.id ? " selected" : ""}`}
+              aria-pressed={category === row.id}
+              tabIndex={category === row.id ? 0 : -1}
+              disabled={row.id !== null && row.count === 0}
+              onClick={() => pickCategory(row.id)}
+            >
+              <span>{row.label}</span>
+              <span className="template-rail-count">{row.count}</span>
+            </button>
+          ))}
+        </fieldset>
+        <div className="template-gallery-results">
+          {stashedCategory && (
+            <div className="template-gallery-restore">
+              <button
+                type="button"
+                className="template-facet"
+                onClick={() => {
+                  pickCategory(stashedCategory);
+                  onQueryChange("");
+                }}
+              >
+                {`Back to ${TEMPLATE_CATEGORIES.find((c) => c.id === stashedCategory)?.label}`}
+              </button>
+            </div>
+          )}
+          {visible.length === 0 ? (
+            <div className="template-empty">
+              <p>
+                {query ? `No templates match “${query}”.` : "No templates match these filters."}
+              </p>
+              <button type="button" className="btn" onClick={clearFilters}>
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div
+              ref={gridRef}
+              className="template-grid"
+              role="radiogroup"
+              aria-label="Starting template"
+              onKeyDown={onGridKeyDown}
+            >
+              {visible.map((entry) => (
+                <TemplateCard
+                  key={entry.id}
+                  entry={entry}
+                  selected={value === entry.id}
+                  tabStop={entry.id === tabStopId}
+                  onSelect={() => onChange(entry.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Create-project dialog: the template browser + name, then the theme grid with hover-cycled previews. The theme applies to the new project's `project.json` after the template copy (`set_project_theme`). */
 export function NewProjectDialog({
   initialGroup,
   onCreate,
@@ -155,15 +513,23 @@ export function NewProjectDialog({
 }) {
   const [step, setStep] = useState<"details" | "theme">("details");
   const [name, setName] = useState("");
-  const [templateId, setTemplateId] = useState<string>(PROJECT_TEMPLATES[0].id);
+  const [templateId, setTemplateId] = useState<string>(BLANK_TEMPLATE_ID);
   const [themeId, setThemeId] = useState("kookaburra-studio-white");
   const [themes, setThemes] = useState<ThemeChoice[]>([]);
   const [group, setGroup] = useState(initialGroup ?? "");
   const [groups, setGroups] = useState<string[]>([]);
+  const [templateQuery, setTemplateQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const slug = slugifyName(name);
-  useEscapeClose(onCancel, !busy);
+  // Escape clears an active template search first, then closes.
+  useEscapeClose(() => {
+    if (step === "details" && templateQuery) {
+      setTemplateQuery("");
+      return;
+    }
+    onCancel();
+  }, !busy);
   // Bundled choices resolve synchronously inside; workspace themes join when listed.
   useEffect(() => {
     let cancelled = false;
@@ -203,16 +569,22 @@ export function NewProjectDialog({
   };
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="New project">
-      <div className={`modal${step === "theme" ? " wizard-wide" : ""}`}>
+      <div className={`modal wizard-wide${step === "details" ? " wizard-template-wide" : ""}`}>
         <h2>New project</h2>
         {step === "details" && (
           <>
+            <TemplateGallery
+              value={templateId}
+              onChange={setTemplateId}
+              query={templateQuery}
+              onQueryChange={setTemplateQuery}
+            />
             <input
               className="modal-input"
               type="text"
               placeholder="Project name"
               value={name}
-              // biome-ignore lint/a11y/noAutofocus: the dialog exists solely to type a name
+              // biome-ignore lint/a11y/noAutofocus: naming is the one thing the dialog always needs typed; "/" reaches the template search
               autoFocus
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -222,20 +594,6 @@ export function NewProjectDialog({
             <p className="modal-hint">
               {slug ? `Saved as ${slug}` : "Pick a template, then name your project."}
             </p>
-            <fieldset className="template-grid" aria-label="Starting template">
-              {PROJECT_TEMPLATES.map((t) => (
-                <button
-                  type="button"
-                  key={t.id}
-                  aria-pressed={templateId === t.id}
-                  className={`template-option${templateId === t.id ? " selected" : ""}`}
-                  onClick={() => setTemplateId(t.id)}
-                >
-                  <img src={t.thumb} alt="" />
-                  <span>{t.name}</span>
-                </button>
-              ))}
-            </fieldset>
             <div className="wizard-field">
               <span className="wizard-label">Group (optional)</span>
               {groups.length > 0 && (
