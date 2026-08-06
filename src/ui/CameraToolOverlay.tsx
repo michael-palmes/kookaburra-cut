@@ -28,6 +28,8 @@ interface ToolDrag {
   tool: CameraTool;
   origPose: SceneDocCameraPose;
   origCamera: CameraDoc;
+  /** The key exists only in this drag until a move previews it. */
+  seeded: boolean;
   startX: number;
   startY: number;
 }
@@ -38,6 +40,7 @@ interface RigDrag {
   origPose: SceneDocRigPose;
   origRig: RigDoc;
   fov: number;
+  seeded: boolean;
   startX: number;
   startY: number;
 }
@@ -146,6 +149,7 @@ export function CameraToolOverlay({
       let track = rig;
       let key =
         track.keys.find((k) => k.id === state.selectedKeyId) ?? nearestKey(track, playheadLocal);
+      const seeded = !key;
       if (!key) {
         key = { id: "k1", tMs: 0, pose: appliedRigAt(playheadLocal) };
         track = { keys: [key], segments: [] };
@@ -156,15 +160,17 @@ export function CameraToolOverlay({
         origPose: { ...key.pose, position: [...key.pose.position], aim: { ...key.pose.aim } },
         origRig: track,
         fov: key.pose.fov ?? inheritedFov(playheadLocal),
+        seeded,
         startX: e.clientX,
         startY: e.clientY,
       });
-      state.select(key.id, null);
+      if (!seeded) state.select(key.id, null);
       return;
     }
     const playheadLocal = anchorPlayhead(camera);
     let cam = camera;
     let key = cam.keys.find((k) => k.id === state.selectedKeyId) ?? nearestKey(cam, playheadLocal);
+    const seeded = !key;
     if (!key) {
       // Empty track: a lone key at 0 seeded from the applied pose = static reframe.
       key = { id: "k1", tMs: 0, pose: appliedPoseAt(playheadLocal) };
@@ -175,10 +181,11 @@ export function CameraToolOverlay({
       tool: modifierTool(e, false) ?? armedTool,
       origPose: { ...key.pose, target: [...key.pose.target] },
       origCamera: cam,
+      seeded,
       startX: e.clientX,
       startY: e.clientY,
     });
-    state.select(key.id, null);
+    if (!seeded) state.select(key.id, null);
   }
 
   function onPointerMove(e: React.PointerEvent) {
@@ -247,15 +254,23 @@ export function CameraToolOverlay({
     if (next) preview(next, false);
   }
 
+  /** Whether a finished drag has anything to write: a seed no move ever previewed exists nowhere, so it writes nothing and selects nothing. */
+  function landed(seeded: boolean, keyId: string, track: { keys: { id: string }[] }): boolean {
+    if (!seeded) return true;
+    if (!track.keys.some((k) => k.id === keyId)) return false;
+    useCameraEditStore.getState().select(keyId, null);
+    return true;
+  }
+
   function onPointerUp() {
     if (rigDrag) {
-      void commitRig(rig);
+      if (landed(rigDrag.seeded, rigDrag.keyId, rig)) void commitRig(rig);
       setRigDrag(null);
       return;
     }
     if (!drag) return;
     setGuideState(false, false);
-    void commit(camera);
+    if (landed(drag.seeded, drag.keyId, camera)) void commit(camera);
     setDrag(null);
   }
 
