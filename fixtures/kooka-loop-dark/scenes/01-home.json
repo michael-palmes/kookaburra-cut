@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "name": "Loop: dark home",
-  "background": {
-    "type": "image",
-    "src": "assets/home-dark-sample.jpg"
-  }
-}
