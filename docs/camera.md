@@ -105,10 +105,14 @@ scene's; blur can animate, the family cannot swap mid-flight.
 - Everything blurs by its true depth, device screens and SDF text included
   (the exact-colour contract holds AT the focal plane, and whatever you focus
   on stays exact). Keep legibility-critical text on or near the focus plane.
-- A scene whose keys never exceed `blur: 0` stays on the composer-free path
-  byte for byte; any active dof routes the project through the effects
-  composer, the same switch bloom makes. Transition and comparison frames
-  render each side with its OWN dof before the composite, so a rack rides
+- In a project with NO declared effects, dof never regrades the frame: every
+  frame renders on the original byte-identical paths, and a pose with active
+  blur is then blurred IN PLACE (the finished pixels are copied, the dof
+  chain runs over them, depth comes from a dedicated pre-pass). A zero-blur
+  frame is bit-identical to the composer-free path, so toggling dof can
+  never shift colour or contrast. Projects WITH effects keep composer dof
+  (the accepted effects look). Transition and comparison frames render each
+  side with its OWN dof before the composite either way, so a rack rides
   into a crossfade instead of releasing at the cut.
 
 The inspector's Depth-of-field group (both camera modes) shows the key's

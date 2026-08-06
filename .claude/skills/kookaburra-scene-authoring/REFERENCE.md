@@ -233,9 +233,10 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
   across a divider (`offset` -1..1, `angleDeg`), the split-diopter shot.
   Depth and split also take `squeeze` (1..2) for anamorphic oval bokeh.
 - Everything blurs by its true depth, text and device screens included: keep
-  legibility-critical text on or near the focus plane. Any active dof routes the
-  project through the effects composer (like bloom); `blur: 0` everywhere keeps the
-  composer-free path byte for byte.
+  legibility-critical text on or near the focus plane. In an effects-free project
+  dof blurs the FINISHED frame in place, so colours and contrast never shift when
+  dof turns on and `blur: 0` frames stay byte-identical; projects with effects
+  apply dof inside the effects composer instead.
 
 **`<DepthStage>`** gives a rig something to fly through: four named slots at pinned
 depths (`foreground` 1.8, `content` 0, `midground` -2.4, `backdrop` -5.5), each sizing

@@ -1181,7 +1181,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `ae8b22f3…` | `91680399…` | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
 
 > **2026-08-04 (depth of field):** camera poses gained a sparse `dof` block
 > (depth or tilt-shift family), resolved per frame through the camera plan and
@@ -1214,10 +1214,29 @@ rolling-gate project (`showcase-tour`):
 > uniform-neutral for plain depth scenes but different PROGRAMS, so the
 > dof-active fixture was a DELIBERATE re-record: `ws:dof-spike` grew to ten
 > scenes (one per style, plus an anamorphic→split crossfade proving the
-> patched per-side path) and moved `cee2ab6f…`→`ae8b22f3…` (16:9) and
-> `09f57c3c…`→`91680399…` (9:16), both Verify ×2 EQUAL, every style eyeballed
-> first. Null-for-legacy is untouched: dof-less projects never build the
-> patched materials.
+> patched per-side path), every style eyeballed first. Null-for-legacy is
+> untouched: dof-less projects never build the patched materials.
+
+> **2026-08-06 (the dof-only lane):** toggling dof in an effects-free project
+> visibly regraded the scene (contrast drop, whites to light grey). Root
+> cause, pixel-probed A/B: the composer path decodes display-domain
+> exact-colour surfaces to linear and re-encodes them around its tone map, so
+> ANY real full-frame tone map bends the authored bytes the direct path shows
+> raw, and on this WKWebView/ANGLE Metal stack the canvas and render-target
+> program variants do not even tone-map identically (a probe pixel decoded
+> ACES-minus-its-matrices in a target pass; the macOS 27 translator family).
+> The fix removes the seam BY CONSTRUCTION instead of matching curves:
+> effects-free dof projects render every frame on the ORIGINAL byte-identical
+> paths, and an active pose is blurred IN PLACE (canvas copy or SDR-scratch
+> side, dof chain over the finished pixels with `encodeOutput` off, scene
+> depth from a dedicated pre-pass; `copyTexSubImage2D` forbids sRGB-tagged
+> destinations, so the canvas copy stays linear-tagged raw bytes). Probe
+> proof: a dof-less twin frame AND a sub-LSB-blur frame both came back
+> BYTE-IDENTICAL to the direct path (max diff 0 across 8.3M pixels); a strong
+> rack blurs by true depth with colours held. Effects projects keep composer
+> dof unchanged. `ws:dof-spike` re-recorded for the lane: 16:9 `a7a37eb0…`,
+> 9:16 `58d0ac28…`, both Verify ×2 EQUAL (the same-day `ae8b22f3…`/
+> `91680399…` pair and the original `cee2ab6f…`/`09f57c3c…` are STALE).
 
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so
