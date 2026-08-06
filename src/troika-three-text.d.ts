@@ -22,6 +22,8 @@ declare module "troika-three-text" {
     fontSize: number;
     maxWidth: number;
     textAlign: string;
+    /** Multiplier of the font's own line height, or "normal" (the default). */
+    lineHeight: number | "normal";
     textRenderInfo?: { blockBounds: [number, number, number, number] };
     sync(callback?: () => void): void;
     dispose(): void;

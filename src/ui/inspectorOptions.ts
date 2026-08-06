@@ -239,3 +239,42 @@ export function sceneSections(input: {
 
   return sections;
 }
+
+/** What a scene offers the open inspector screen, for `drillStackForScene`. */
+export interface SceneDrillCapability {
+  hasDoc: boolean;
+  /** Keys of the scene's `text` block: the fields the Text drill and its per-key font screens expose. */
+  textKeys: string[];
+  hasDevice: boolean;
+  hasObject: boolean;
+  /** The scene resolves an overlay to edit (the deck's, or its own cutout). */
+  hasOverlay: boolean;
+}
+
+/** True for the screens that FOLLOW the playhead across a scene change: sections and settings whose editor reads only the scene's own doc, so the same screen over a new scene simply shows the new scene's values. Detail screens carrying a scene-scoped selection or session (device, overlay, comparison and object editors, media pickers, the transition boundary) are deliberately absent, so they pop back to their section. */
+export function drillFollowsScene(id: string, scene: SceneDrillCapability): boolean {
+  if (id.startsWith("text.font:")) return scene.textKeys.includes(id.slice("text.font:".length));
+  switch (id) {
+    case "camera":
+      return true;
+    case "text":
+    case "lighting":
+    case "style.theme":
+    case "style.background":
+      return scene.hasDoc;
+    case "device":
+      return scene.hasDevice;
+    case "objects":
+      return scene.hasObject;
+    case "frame":
+      return scene.hasOverlay;
+    default:
+      return false;
+  }
+}
+
+/** The drill stack a scene change keeps: the longest leading run of screens the new scene still has. A detail screen pops to its section, a section the new scene lacks pops to the row list (`[]`). */
+export function drillStackForScene(stack: string[], scene: SceneDrillCapability): string[] {
+  const at = stack.findIndex((id) => !drillFollowsScene(id, scene));
+  return at < 0 ? stack : stack.slice(0, at);
+}

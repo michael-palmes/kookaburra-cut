@@ -792,6 +792,21 @@ fn next_prefix(scenes_dir: &Path) -> u32 {
     max + 1
 }
 
+/// Copy the project's `appliedBackground` stamp (what "Apply everywhere" last wrote) onto a fresh sidecar, so a new scene matches the deck: skipped whole when the kind staged its own background (video, and image with a pick), and never over an explicit backdrop (the video window keeps its cleared stage).
+fn inherit_applied_background(doc: &mut Value, stamp: Option<&Value>) {
+    let Some(stamp) = stamp.filter(|_| doc.get("background").is_none()) else {
+        return;
+    };
+    if let Some(background) = stamp.get("background") {
+        doc["background"] = background.clone();
+    }
+    if let Some(backdrop) = stamp.get("backdrop") {
+        if doc.get("backdrop").is_none() {
+            doc["backdrop"] = backdrop.clone();
+        }
+    }
+}
+
 /// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), everything else gets the 4000ms wizard default.
 #[tauri::command]
 pub async fn scaffold_scene(
@@ -806,6 +821,13 @@ pub async fn scaffold_scene(
     if !project.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("project \"{slug}\" has no project.json"));
     }
+    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; read tolerantly (absent, or any non-object, means new scenes follow the theme).
+    let applied_background: Option<Value> =
+        std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .and_then(|manifest| manifest.get("appliedBackground").cloned())
+            .filter(Value::is_object);
 
     let template = match options.kind.as_str() {
         "device" | "deviceonly" => TSX_DEVICE,
@@ -1101,6 +1123,20 @@ pub async fn scaffold_scene(
             device["media"] = json!({ "src": rel, "kind": kind });
         }
         doc["devices"] = json!([device]);
+        // Closer poses than the engine default (target origin, distance 5): the titled phone goes to 75% of frame height, and device-only (1.35 scale) stops at 4.5, the closest clip-safe distance (~94%).
+        doc["camera"] = json!({
+            "keys": [{
+                "id": "k1",
+                "tMs": 0,
+                "pose": {
+                    "target": [0, 0.1, 0],
+                    "azimuthDeg": 0,
+                    "elevationDeg": 0,
+                    "distance": if device_only { 4.5 } else { 4.2 },
+                },
+            }],
+            "segments": [],
+        });
     }
     if is_comparison {
         // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
@@ -1126,6 +1162,7 @@ pub async fn scaffold_scene(
         doc["devices"] = json!(list);
         doc["deviceLayout"] = json!({ "preset": "toe-in", "gap": 0.35 });
     }
+    inherit_applied_background(&mut doc, applied_background.as_ref());
 
     // TSX from the template; placeholders are dumb string replaces, keep them in sync with .claude/commands/new-scene.md, which interpolates the same files.
     let tsx = template
@@ -1178,6 +1215,58 @@ pub async fn scaffold_scene(
         scene_id: base,
         duration_ms,
     })
+}
+
+#[cfg(test)]
+mod applied_background_tests {
+    use super::inherit_applied_background;
+    use serde_json::json;
+
+    fn stamp() -> serde_json::Value {
+        json!({
+            "background": { "type": "color", "color": "#101820" },
+            "backdrop": { "type": "floor", "color": "#101820" },
+        })
+    }
+
+    #[test]
+    fn a_background_less_scene_takes_both_blocks() {
+        let mut doc = json!({ "version": 1 });
+        inherit_applied_background(&mut doc, Some(&stamp()));
+        assert_eq!(doc["background"]["color"], json!("#101820"));
+        assert_eq!(doc["backdrop"]["type"], json!("floor"));
+    }
+
+    #[test]
+    fn a_kind_that_staged_its_own_background_keeps_it_and_takes_nothing() {
+        let mut doc = json!({ "background": { "type": "video", "src": "assets/a.mp4" } });
+        inherit_applied_background(&mut doc, Some(&stamp()));
+        assert_eq!(doc["background"]["type"], json!("video"));
+        assert!(doc.get("backdrop").is_none());
+    }
+
+    #[test]
+    fn an_explicit_backdrop_survives_the_stamp() {
+        let mut doc = json!({ "backdrop": { "type": "none" } });
+        inherit_applied_background(&mut doc, Some(&stamp()));
+        assert_eq!(doc["background"]["type"], json!("color"));
+        assert_eq!(doc["backdrop"]["type"], json!("none"));
+    }
+
+    #[test]
+    fn no_stamp_leaves_the_doc_alone() {
+        let mut doc = json!({ "version": 1 });
+        inherit_applied_background(&mut doc, None);
+        assert_eq!(doc, json!({ "version": 1 }));
+    }
+
+    #[test]
+    fn a_backdrop_only_stamp_writes_only_the_backdrop() {
+        let mut doc = json!({ "version": 1 });
+        inherit_applied_background(&mut doc, Some(&json!({ "backdrop": { "type": "none" } })));
+        assert!(doc.get("background").is_none());
+        assert_eq!(doc["backdrop"]["type"], json!("none"));
+    }
 }
 
 #[cfg(test)]

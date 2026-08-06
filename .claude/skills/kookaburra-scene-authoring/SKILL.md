@@ -1,6 +1,6 @@
 ---
 name: kookaburra-scene-authoring
-description: Authoring rules for Kookaburra Cut video scenes. Use when creating or editing a scene (.tsx in projects/<project>/scenes/), editing a scene document (scenes/*.json sidecar), adding a project, editing a theme (theme.json), or using toolkit primitives (Device, AnimatedHeadline, AnimatedCounter, VideoClip, ImageCard, LayeredScreenshot, SceneStage, DeviceMockup). Also use whenever the user refers to what is ON SCREEN or IN A SCENE ("what's in this scene", "what does it look like", "can you see", "check the video", "why does it look wrong"), or you need to see a rendered frame: the capture script under "Seeing your work" is how you look. Triggers on "chart", "graph", "bar chart", "column chart", "pie chart", "donut", "line chart", "area chart", "chart data", "chart style", "animate the chart", "keyframe the data", "new scene", "add a scene", "edit scene", "animate text", "build a project", "Kookaburra Cut scene", "device scene", "change the text", "scene document", "theme", "backdrop", "staging", "font", "screenshot stack", "layered screenshot", "stack of screens", "add media", "app screenshots", "overlay", "cutout", "panel", "chip", "slide", "slide deck", "slides", "screenshot", "capture", "what's on screen", "look at the scene".
+description: Authoring rules for Kookaburra Cut video scenes. Use when creating or editing a scene (.tsx in projects/<project>/scenes/), editing a scene document (scenes/*.json sidecar), adding a project, editing a theme (theme.json), or using toolkit primitives (Device, AnimatedHeadline, AnimatedCounter, VideoClip, ImageCard, LayeredScreenshot, SceneStage, DeviceMockup). Also use whenever the user refers to what is ON SCREEN or IN A SCENE ("what's in this scene", "what does it look like", "can you see", "check the video", "why does it look wrong"), or you need to see a rendered frame: the capture script under "Seeing your work" is how you look. Also use when animation should follow the project's soundtrack: beat data access and beat-matched authoring live in BEATS.md beside this file. Triggers on "chart", "graph", "bar chart", "column chart", "pie chart", "donut", "line chart", "area chart", "chart data", "chart style", "animate the chart", "keyframe the data", "new scene", "add a scene", "edit scene", "animate text", "build a project", "Kookaburra Cut scene", "device scene", "change the text", "scene document", "theme", "backdrop", "staging", "font", "screenshot stack", "layered screenshot", "stack of screens", "add media", "app screenshots", "overlay", "cutout", "panel", "chip", "slide", "slide deck", "slides", "screenshot", "capture", "what's on screen", "look at the scene", "beat", "beats", "sync to music", "cut on the beat", "match the music", "soundtrack", "bpm", "beat markers".
 ---
 
 # kookaburra-scene-authoring
@@ -54,6 +54,8 @@ python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py --scene 2 -
     # a rendered frame from the RUNNING app (see "Seeing your work")
 python3 .claude/skills/kookaburra-scene-authoring/scripts/chart.py 03-results show
     # chart block at a glance; also `seed`, `set-data <csv>`, `add-key <tMs>` (see CHARTS.md)
+python3 .claude/skills/kookaburra-scene-authoring/scripts/beats.py --scene 2
+    # soundtrack beat times in scene-local ms (see "Matching the soundtrack")
 ```
 
 ## Seeing your work
@@ -71,6 +73,14 @@ path, so what you see is what exports) and prints the PNG path. It captures the
 project currently open in the app window; if that is a different project than
 this folder, ask the user to open this one first. If the app is exporting, the
 script retries briefly on its own.
+
+## Matching the soundtrack
+
+When a project has a soundtrack and the ask involves beats, rhythm or "sync to
+the music", read `BEATS.md` beside this file BEFORE authoring: it covers getting
+beat times via `scripts/beats.py` (bpm, key moments and the beat grid in
+scene-local ms), hard cuts on beats (`"jump"` camera segments) versus smooth
+moves that land on beats, spacing rules, and the `audio.markers` override block.
 
 ## Validation loop
 

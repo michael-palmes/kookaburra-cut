@@ -58,6 +58,8 @@ normally and simply shows no editing affordances.
     "titleSize": 1.25,                       //   Size: multiplier of the element's default (1 = as designed;
                                              //   multiplies, so portrait/landscape defaults survive)
     "titleOffsetX": 0.4, "titleOffsetY": -0.2, // OffsetX/Y: world-unit nudges from the scene's layout
+    "titleLineHeight": 1.4,                    //   LineHeight: line spacing as a multiple of the font
+                                               //   size (0.8..2); absent keeps the font's own spacing
     "subtitleColor": "#9aa4b5"
   },                                         // consumed by any text primitive given the matching
                                              // textKey (TitleBlock owns title/subtitle); inert
@@ -165,6 +167,9 @@ Worked example — settle in, hold, then a jump cut to a close-up:
 
 (`jump` holds the `from` pose for the segment's whole span and lands `to` exactly at the
 `to` key's time — a jump segment IS the hold before the cut, no extra keys needed.)
+
+To land keys or jump cuts on the soundtrack's beats, see `BEATS.md` beside this
+file: `scripts/beats.py` prints beat and key-moment times in scene-local ms.
 
 ## Camera rigs: free flight (`cameraRig`)
 
@@ -1029,6 +1034,11 @@ Every row of the app's Project tab maps to files you can edit directly:
   `file` is assets-relative (copy the track in first); the soundtrack auto-fades over the
   timeline's last second unless `fadeOutMs` says otherwise (`0` disables). One soundtrack
   per project; remove the block to remove the music.
+- **Background → Apply everywhere** → `project.json.appliedBackground`
+  `{ "background"?, "backdrop"? }`: the last background applied across the project,
+  recorded so NEW scenes scaffold with it (nothing on the render path reads it). Absent
+  means new scenes follow the theme, and clearing one scene's background in the inspector
+  leaves that scene reverted.
 - **Playback options** → app-side PREVIEW quality knobs only; they never touch exports
   and have no file to edit — leave them alone.
 

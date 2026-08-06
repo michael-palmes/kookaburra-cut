@@ -74,6 +74,20 @@ describe("solvePanelLayout bullets", () => {
     expect(sizeOf(scaled)).toBeCloseTo(sizeOf(plain) * 0.5, 10);
   });
 
+  it("honours the sidecar LineHeight override in the measured spec, like the renderer", () => {
+    const plain = solvePanelLayout(wide, frame, docWith({ text: { title: "Hello" } }), theme);
+    const spaced = solvePanelLayout(
+      wide,
+      frame,
+      docWith({ text: { title: "Hello" }, textStyle: { titleLineHeight: 1.6 } }),
+      theme,
+    );
+    const specOf = (s: typeof plain) => s.pending.find((p) => p.text === "Hello");
+    expect(specOf(plain)?.lineHeight).toBeUndefined();
+    expect(specOf(spaced)?.lineHeight).toBe(1.6);
+    expect(spaced.titleH).toBeGreaterThan(plain.titleH);
+  });
+
   it("ignores bullets when the frame does not claim the scene text", () => {
     const doc = docWith({ text: { bullets: "one\ntwo" } });
     const unclaimed = { ...frame, claimsSceneText: false } as FrameSpec;

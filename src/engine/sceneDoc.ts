@@ -10,7 +10,13 @@ import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { useObjectRegistry } from "./objectRegistry";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
+import {
+  isWorkspaceProjectId,
+  type LoadedProject,
+  type ProjectManifest,
+  workspaceSlug,
+} from "./project";
+import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
@@ -160,7 +166,7 @@ export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneD
   });
 }
 
-/** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene): one compound undo entry, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */
+/** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene) AND onto the manifest as `appliedBackground`, so new scenes scaffold with the same look: one compound undo entry covering both, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */
 export async function applyBackgroundToAllScenes(
   project: LoadedProject,
   sourceIndex: number,
@@ -170,6 +176,7 @@ export async function applyBackgroundToAllScenes(
   const slug = workspaceSlug(project.id);
   const source = project.sceneDocs[sourceIndex];
   const changes: HistoryChange[] = [];
+  let applied = 0;
   let failed = 0;
   for (let i = 0; i < project.sceneFiles.length; i++) {
     if (i === sourceIndex) continue;
@@ -182,6 +189,7 @@ export async function applyBackgroundToAllScenes(
     try {
       await writeSceneDoc(slug, file, next);
       onDocChanged(i, next);
+      applied++;
       changes.push({
         kind: "sceneDoc",
         slug,
@@ -195,10 +203,33 @@ export async function applyBackgroundToAllScenes(
       console.warn(`[sceneDoc] apply-background-to-all failed for scene ${i}:`, e);
     }
   }
+  try {
+    const before = await readProjectManifestSnapshot(slug);
+    const manifest = JSON.parse(before) as ProjectManifest;
+    const stamp: NonNullable<ProjectManifest["appliedBackground"]> = {};
+    if (source?.background) stamp.background = structuredClone(source.background);
+    if (source?.backdrop) stamp.backdrop = structuredClone(source.backdrop);
+    const stamped = stamp.background !== undefined || stamp.backdrop !== undefined;
+    // Applying a theme-default scene CLEARS the stamp, so new scenes go back to following the theme.
+    if (stamped || manifest.appliedBackground !== undefined) {
+      if (stamped) manifest.appliedBackground = stamp;
+      else delete manifest.appliedBackground;
+      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      changes.push({
+        kind: "manifest",
+        slug,
+        before,
+        after: await readProjectManifestSnapshot(slug),
+        reload: false,
+      });
+    }
+  } catch (e) {
+    console.warn("[sceneDoc] apply-background-to-all: manifest stamp failed:", e);
+  }
   if (changes.length > 0) {
     pushHistory({ label: "apply background to all scenes", changes });
   }
-  return { applied: changes.length, failed };
+  return { applied, failed };
 }
 
 /** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */

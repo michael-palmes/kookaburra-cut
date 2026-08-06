@@ -44,10 +44,12 @@ export interface PanelTextSpec {
   fontSize: number;
   maxWidth: number;
   textAlign: "left" | "center" | "right";
+  /** Line-height multiplier when the caller pins one; unset leaves troika's own "normal". */
+  lineHeight?: number;
 }
 
 function specKey(spec: PanelTextSpec): string {
-  return `${spec.font}|${spec.fontSize}|${spec.maxWidth}|${spec.textAlign}|${spec.text}`;
+  return `${spec.font}|${spec.fontSize}|${spec.maxWidth}|${spec.textAlign}|${spec.lineHeight ?? ""}|${spec.text}`;
 }
 
 const heights = new Map<string, number>();
@@ -71,6 +73,7 @@ export function requestPanelTextMeasure(spec: PanelTextSpec): void {
     t.fontSize = spec.fontSize;
     t.maxWidth = spec.maxWidth;
     t.textAlign = spec.textAlign;
+    if (spec.lineHeight !== undefined) t.lineHeight = spec.lineHeight;
     t.sync(() => {
       const b = t.textRenderInfo?.blockBounds;
       heights.set(key, b ? b[3] - b[1] : 0);
@@ -116,6 +119,7 @@ interface PanelTextInput {
   baseSize: number;
   maxWidth: number;
   textAlign: "left" | "center" | "right";
+  lineHeight?: number;
 }
 
 export interface PanelLayoutSolution {
@@ -139,9 +143,10 @@ function textInput(
   doc: SceneDoc | undefined,
   key: string,
 ): PanelTextInput {
-  // Mirror AnimatedHeadline's sidecar dispatch for the overrides that change layout (font + size), so reserved and rendered heights agree.
+  // Mirror AnimatedHeadline's sidecar dispatch for the overrides that change layout (font, size, line height), so reserved and rendered heights agree.
   const fontValue = doc?.textStyle?.[`${key}Font`];
   const sizeMul = doc?.textStyle?.[`${key}Size`];
+  const lineHeight = doc?.textStyle?.[`${key}LineHeight`];
   return {
     text: prepareEmojiText(text).text,
     font: fontUrl(
@@ -150,6 +155,7 @@ function textInput(
     baseSize: typeof sizeMul === "number" ? baseSize * sizeMul : baseSize,
     maxWidth,
     textAlign,
+    ...(typeof lineHeight === "number" ? { lineHeight } : {}),
   };
 }
 
@@ -163,11 +169,13 @@ function heightAt(input: PanelTextInput | null, fit: number, pending: PanelTextS
     fontSize,
     maxWidth: input.maxWidth,
     textAlign: input.textAlign,
+    ...(input.lineHeight !== undefined ? { lineHeight: input.lineHeight } : {}),
   };
   const measured = measuredPanelTextHeight(spec);
   if (measured !== null) return measured;
   pending.push(spec);
-  return estimateTitleLines(input.text, fontSize, input.maxWidth) * LINE_HEIGHT * fontSize;
+  const line = input.lineHeight ?? LINE_HEIGHT;
+  return estimateTitleLines(input.text, fontSize, input.maxWidth) * line * fontSize;
 }
 
 /** Solve the panel's fit-to-column fixpoint for one scene: title/subtitle heights at the candidate size feed the fit, which feeds the next candidate size, until the stack fits (or the iteration cap). Pure given a warm cache, so the live panel and the export pre-warm walk the same sequence. */

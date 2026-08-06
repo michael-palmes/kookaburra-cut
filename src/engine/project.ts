@@ -7,7 +7,15 @@ import { assetVersionSuffix } from "../store/assetVersionStore";
 import { parseFontString } from "../theme/fontRef";
 import { collectThemeFontRefs, preloadAppFonts } from "../theme/fonts";
 import { resolveTheme } from "../theme/registry";
-import type { EffectsConfig, EffectsOverride, FontRef, LightingSpec, Theme } from "../theme/tokens";
+import type {
+  EffectsConfig,
+  EffectsOverride,
+  FontRef,
+  LightingSpec,
+  Theme,
+  ThemeBackdrop,
+  ThemeBackground,
+} from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { preloadEmojiRasters } from "../toolkit/text/emojiRaster";
 import type { SceneModule } from "../toolkit/types";
@@ -66,6 +74,8 @@ export interface ProjectManifest {
   render?: unknown;
   /** Project-default lighting, the middle layer of theme -> project -> scene (see `mergeLighting`). Raw here (manifests are plain JSON.parse); validated on load with the usual degrade guard. Absent means the layer contributes nothing. */
   lighting?: unknown;
+  /** The background "Apply everywhere" last stamped across the project, so NEW scenes scaffold with it (`scaffold_scene` reads it; nothing on the render path does). Absent means new scenes follow the theme, and clearing one scene's background in the inspector leaves that scene reverted. */
+  appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -86,6 +96,36 @@ export interface ProjectAudioSpec {
   /** Omitted → DEFAULT_AUDIO_FADE_OUT_MS at the timeline's end; an explicit 0 opts out. */
   fadeOutMs?: number;
   startOffsetMs?: number;
+  markers?: AudioMarkersSpec;
+}
+
+export const AUDIO_MARKERS_VERSION = 1;
+
+/** User-curated key moments (project-time ms) for the beat lane: a full replacement of the detected set once present; deleting the block returns to detection. Editor guidance only, the export mix never reads it. */
+export interface AudioMarkersSpec {
+  version: number;
+  keyMoments: number[];
+}
+
+/** Warn-and-drop validation for `audio.markers`; invalid shapes fall back to detection. */
+export function sanitiseAudioMarkers(
+  markers: AudioMarkersSpec | undefined,
+): AudioMarkersSpec | undefined {
+  if (markers === undefined) return undefined;
+  const ok =
+    typeof markers === "object" &&
+    markers !== null &&
+    markers.version === AUDIO_MARKERS_VERSION &&
+    Array.isArray(markers.keyMoments) &&
+    markers.keyMoments.every((t) => typeof t === "number" && Number.isFinite(t) && t >= 0);
+  if (!ok) {
+    console.warn("[project] audio.markers invalid, ignoring (detected key moments stand)");
+    return undefined;
+  }
+  const keyMoments = [...new Set(markers.keyMoments.map((t) => Math.round(t)))].sort(
+    (a, b) => a - b,
+  );
+  return { version: AUDIO_MARKERS_VERSION, keyMoments };
 }
 
 /** The loaded soundtrack: the spec plus the resolved path and probed stream facts. */
@@ -98,9 +138,15 @@ export interface ProjectAudio extends ProjectAudioSpec {
 /** Every soundtrack fades out smoothly over the last second of the TIMELINE unless project.json says otherwise (`fadeOutMs: 0` disables; any value overrides). Resolved here so preview and export read the same object and can never disagree. */
 export const DEFAULT_AUDIO_FADE_OUT_MS = 1000;
 
-/** The authored spec with house defaults applied (exported for tests). */
+/** The authored spec with house defaults applied and markers sanitised (exported for tests). */
 export function withAudioDefaults(spec: ProjectAudioSpec): ProjectAudioSpec {
-  return { ...spec, fadeOutMs: spec.fadeOutMs ?? DEFAULT_AUDIO_FADE_OUT_MS };
+  const { markers, ...rest } = spec;
+  const valid = sanitiseAudioMarkers(markers);
+  return {
+    ...rest,
+    fadeOutMs: spec.fadeOutMs ?? DEFAULT_AUDIO_FADE_OUT_MS,
+    ...(valid ? { markers: valid } : {}),
+  };
 }
 
 export interface LoadedProject {

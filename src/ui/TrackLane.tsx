@@ -123,6 +123,8 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   onKeyActivate?: (keyId: string) => void;
   /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) drops the popover's Advanced group; the lane NEVER branches on track type to decide this. */
   segmentExtras?: SegmentExtras;
+  /** Soundtrack guidance (scene-local ms): faint beat ticks and stronger key-moment lines behind the keys, both joining the snap candidates. Absent keeps the lane byte for byte. */
+  beatMarkers?: { beats: number[]; keyMoments: number[] };
 }
 
 /** The rig's per-segment controls, passed in rather than detected: smoothing and the three optional channel eases. */
@@ -162,6 +164,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   laneClassName,
   onKeyActivate,
   segmentExtras,
+  beatMarkers,
 }: TrackLaneProps<P, T>) {
   const currentMs = useClockStore((s) => s.currentMs);
   const detailed = useUiStore((s) => s.detailedAnimationView);
@@ -211,6 +214,12 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
 
   const xOf = (tMs: number) =>
     PAD + (Math.min(windowEndMs, Math.max(windowStartMs, tMs)) - windowStartMs) * pxPerMs;
+
+  const beatSnapTimes = beatMarkers
+    ? [...beatMarkers.beats, ...beatMarkers.keyMoments].filter(
+        (t) => t >= windowStartMs && t <= windowEndMs,
+      )
+    : [];
 
   /** Every lane seek clamps inside this scene's attribution window, one ms short of the next scene's boundary, so dragging the lane can never retarget the chrome to a neighbouring scene. The window-start floor wins on a degenerate (zero-width) window, so the cap can never undershoot into the PREVIOUS scene either. */
   function seekLocal(tMs: number) {
@@ -322,6 +331,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     for (const target of [
       windowStartMs,
       windowEndMs,
+      ...beatSnapTimes,
       ...shown.keys.map((k) => Math.min(windowEndMs, Math.max(windowStartMs, k.tMs))),
     ]) {
       if (Math.abs(local - target) <= snapRadius) local = target;
@@ -347,9 +357,18 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
       const origKey = drag.orig.keys.find((k) => k.id === drag.id);
       if (!origKey) return;
       let target = origKey.tMs + dx / pxPerMs;
-      // Snap to the playhead within radius, then to the frame grid.
+      // Snap to the nearest of beats + playhead within radius (playhead wins ties), then to the frame grid.
       const snapRadius = SNAP_PX / pxPerMs;
-      if (Math.abs(target - playheadLocal) <= snapRadius) target = playheadLocal;
+      let snapped: number | null = null;
+      let bestD = snapRadius;
+      for (const cand of [...beatSnapTimes, playheadLocal]) {
+        const d = Math.abs(target - cand);
+        if (d <= bestD) {
+          bestD = d;
+          snapped = cand;
+        }
+      }
+      if (snapped !== null) target = snapped;
       const next = moveKey(drag.orig, drag.id, snapToFrame(target), durationMs, minLenMs);
       if (!next) return;
       const moved = next.keys.find((k) => k.id === drag.id);
@@ -597,6 +616,20 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         >
+          {beatMarkers?.beats.map((t) =>
+            t >= windowStartMs && t <= windowEndMs ? (
+              <span key={`beat-${t}`} className="anim-beat-tick" style={{ left: xOf(t) }} />
+            ) : null,
+          )}
+          {beatMarkers?.keyMoments.map((t) =>
+            t >= windowStartMs && t <= windowEndMs ? (
+              <span
+                key={`moment-${t}`}
+                className="anim-beat-tick strong"
+                style={{ left: xOf(t) }}
+              />
+            ) : null,
+          )}
           {layout.segments.map((seg) => {
             const left = xOf(seg.fromTMs);
             const width = Math.max(innerW * MIN_SEGMENT_VISUAL, xOf(seg.toTMs) - left);

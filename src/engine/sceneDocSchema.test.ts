@@ -170,6 +170,27 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("parses textStyle line heights, clamps them and drops non-numbers", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const good = parseSceneDoc(
+      { version: 1, textStyle: { titleLineHeight: 1.45, subtitleLineHeight: 0.8 } },
+      "test",
+    );
+    expect(good?.textStyle).toEqual({ titleLineHeight: 1.45, subtitleLineHeight: 0.8 });
+    const clamped = parseSceneDoc(
+      { version: 1, textStyle: { titleLineHeight: 9, subtitleLineHeight: 0.1 } },
+      "test",
+    );
+    expect(clamped?.textStyle).toEqual({ titleLineHeight: 2, subtitleLineHeight: 0.8 });
+    const bad = parseSceneDoc(
+      { version: 1, textStyle: { titleLineHeight: "tall", subtitleLineHeight: Number.NaN } },
+      "test",
+    );
+    expect(bad?.textStyle).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("textStyle.titleLineHeight"));
+    warn.mockRestore();
+  });
+
   it("collects distinct sidecar font refs across docs", () => {
     const a = parseSceneDoc(
       { version: 1, textStyle: { titleFont: "Avenir Next@600", subtitleFont: "Georgia" } },

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { effectiveKeyMoments, projectBeatGrid, useBeatStore } from "../engine/beatState";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
 import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import { useCompareEditStore } from "../engine/compareEditStore";
@@ -109,14 +110,33 @@ export function AnimationLane({
 
   // The lane's visible window: mid incoming transition to mid outgoing transition (project ends excepted), matching the chrome's attribution boundaries. The transition bounds inside it are where auto-placed animations start and stop.
   const nextSlot = project.slots[sceneIndex + 1];
+  const windowStartMs = (slot.transitionIn?.durationMs ?? 0) / 2;
   const windowEndMs = slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2;
+
+  // Soundtrack guidance mirrored into this scene's window (project time -> scene-local); absent without audio/analysis, keeping the lane unchanged.
+  const analysis = useBeatStore((s) => s.analysis);
+  const beatMarkers = useMemo(() => {
+    const audio = project.audio;
+    if (!audio || (!analysis && !audio.markers)) return undefined;
+    const offset = audio.startOffsetMs ?? 0;
+    const inWindow = (t: number) => t >= windowStartMs && t <= windowEndMs;
+    const beats = projectBeatGrid(analysis, offset, project.totalMs)
+      .map((t) => t - slot.startMs)
+      .filter(inWindow);
+    const keyMoments = effectiveKeyMoments(analysis, audio.markers, offset, project.totalMs)
+      .map((m) => m.tMs - slot.startMs)
+      .filter(inWindow);
+    return beats.length || keyMoments.length ? { beats, keyMoments } : undefined;
+  }, [analysis, project, slot, windowStartMs, windowEndMs]);
+
   const shared = {
     open,
     label,
     slotStartMs: slot.startMs,
     durationMs: slot.durationMs,
-    windowStartMs: (slot.transitionIn?.durationMs ?? 0) / 2,
+    windowStartMs,
     windowEndMs,
+    beatMarkers,
     transitionInMs: slot.transitionIn?.durationMs ?? 0,
     transitionOutStartMs: nextSlot?.transitionIn
       ? slot.durationMs - nextSlot.transitionIn.durationMs
