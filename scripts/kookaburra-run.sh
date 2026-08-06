@@ -13,7 +13,7 @@
 #
 # Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
-#                  theme-starter, option-previews → the preview-lab-* projects (incremental
+#                  preview-lab-theme, option-previews → the preview-lab-* fixtures (incremental
 #                  via the src/assets/option-previews/manifest.json diff; --all re-records
 #                  everything); verify/export accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
@@ -26,6 +26,9 @@
 #         --encode-json <path>  a fully-resolved EncodeSpec JSON (custom encodes)
 #         --app    <path/to/Kookaburra Cut.app>  run the PACKAGED app instead of `pnpm tauri dev`
 #                  (v9 · M2 — the packaged determinism gate; no dev server, no port 1420)
+#
+#   pnpm kookaburra:run --action create --project blank   # create-from-template smoke in a
+#                  throwaway workspace root; pass --app to prove the packaged resource layout
 # Env:    KOOKABURRA_RUN_TIMEOUT  seconds to wait for a result (default 1200)
 #
 # Exit codes: 0 = ok · 1 = ran but not ok (non-deterministic / run error) · 2 = setup/timeout.
@@ -59,8 +62,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot' or 'packroundtrip'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip' or 'create'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -79,12 +82,14 @@ elif [[ ! -x "$SIDECAR" ]]; then
 fi
 # Workspace projects (v6, "ws:<slug>") resolve inside the app against the configured
 # workspace — only bundled projects can be pre-validated against the repo tree here.
+# Bundled projects ship from projects/; the dev-only gate spikes and preview labs live in
+# fixtures/ and load by the same bare id (dev builds only, see engine/project.ts).
 if [[ -n "$PROJECT" ]]; then
   IFS=',' read -ra PROJECT_LIST <<<"$PROJECT"
   for P in "${PROJECT_LIST[@]}"; do
-    if [[ -n "$P" && "$P" != ws:* && ! -f "$ROOT/projects/$P/project.json" ]]; then
-      echo "kookaburra:run: project '$P' not found at projects/$P/project.json" >&2
-      echo "            available: $(ls -1 "$ROOT/projects" 2>/dev/null | tr '\n' ' ')" >&2
+    if [[ -n "$P" && "$P" != ws:* && ! -f "$ROOT/projects/$P/project.json" && ! -f "$ROOT/fixtures/$P/project.json" ]]; then
+      echo "kookaburra:run: project '$P' not found at projects/$P/project.json or fixtures/$P/project.json" >&2
+      echo "            available: $( (ls -1 "$ROOT/projects"; ls -1 "$ROOT/fixtures") 2>/dev/null | tr '\n' ' ')" >&2
       exit 2
     fi
   done
@@ -151,6 +156,24 @@ if [[ "$ACTION" == "packroundtrip" ]]; then
   mkdir -p "$RT_ROOT/_autorun/roundtrip"
   export KOOKABURRA_WORKSPACE_ROOT="$RT_ROOT"
   echo "kookaburra:run: round trip in $RT_ROOT"
+fi
+
+# The create smoke lands its project in a THROWAWAY workspace root, so the user's
+# workspace is never written to and the seeded _samples are provably fresh.
+if [[ "$ACTION" == "create" ]]; then
+  if [[ -z "$PROJECT" || "$PROJECT" == ws:* || "$PROJECT" == *,* ]]; then
+    echo "kookaburra:run: --action create needs one bundled template id (e.g. --project blank)" >&2
+    exit 2
+  fi
+  if [[ ! -f "$ROOT/projects/$PROJECT/template.json" && -z "$APP" ]]; then
+    echo "kookaburra:run: '$PROJECT' has no projects/$PROJECT/template.json, so it is not a template" >&2
+    exit 2
+  fi
+  CREATE_ROOT="$RESULT_DIR/create-root"
+  rm -rf "$CREATE_ROOT"
+  mkdir -p "$CREATE_ROOT"
+  export KOOKABURRA_WORKSPACE_ROOT="$CREATE_ROOT"
+  echo "kookaburra:run: create smoke in $CREATE_ROOT"
 fi
 
 # KOOKABURRA_* is the canonical runtime channel (v9 · M2 — read by the native

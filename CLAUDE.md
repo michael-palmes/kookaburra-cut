@@ -36,6 +36,10 @@ pnpm kookaburra:run --action packroundtrip --project ws:launch-2026
 # (path printed + in last-run.json; --scene takes an index or file stem, --at seconds).
 pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 
+# Create-from-template smoke: create_project + a full load in a throwaway workspace root.
+# Required per template batch; with --app it proves the packaged resource layout.
+pnpm kookaburra:run --action create --project blank
+
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
 pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG

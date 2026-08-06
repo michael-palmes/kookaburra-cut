@@ -31,8 +31,10 @@ import type { RenderStateFingerprint } from "./renderFingerprint";
 import {
   awaitProjectCommitted,
   captureThemePreviewFrames,
+  THEME_PREVIEW_PROJECT_ID,
   writeThemePreviews,
 } from "./themePreviews";
+import { createProject } from "./workspace";
 
 /** Headless auto-run: `pnpm kookaburra:run` sets `KOOKABURRA_*` env vars read via native `get_autorun_config` (process env, not `import.meta.env`, which is baked at build time and unreadable in a packaged app); drives the store then calls the same `verifyDeterminism`/`exportProject` the UI buttons call, so it never bypasses the real WebGL/ffmpeg export path. See docs/determinism.md. */
 
@@ -43,7 +45,8 @@ export type AutoRunAction =
   | "option-previews"
   | "perf"
   | "screenshot"
-  | "packroundtrip";
+  | "packroundtrip"
+  | "create";
 
 export interface AutoRunConfig {
   action: AutoRunAction;
@@ -85,6 +88,8 @@ interface AutoRunResult {
   /** Render-state snapshot from verify's pass A; always present on verify rows, diffing it across builds/machines localizes hash divergence to a named value. */
   fingerprint?: RenderStateFingerprint;
   path?: string;
+  /** create: slot count of the created project after a full load-and-commit. */
+  scenes?: number;
   /** perf rows: one per scene × elimination pass (see engine/perfProbe.ts). */
   scene?: string;
   pass?: string;
@@ -200,10 +205,11 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "option-previews" &&
     action !== "perf" &&
     action !== "screenshot" &&
-    action !== "packroundtrip"
+    action !== "packroundtrip" &&
+    action !== "create"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot | packroundtrip)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot | packroundtrip | create)`,
     );
   }
   const at = env.at?.trim();
@@ -229,7 +235,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
   const projects = (
     env.project?.trim() ||
     (action === "theme-previews"
-      ? "theme-starter"
+      ? THEME_PREVIEW_PROJECT_ID
       : action === "option-previews"
         ? (previewLabProjectIds()[0] ?? "preview-lab-text")
         : useEditorStore.getState().projectId)
@@ -494,6 +500,41 @@ export async function runAutoRun(
         name,
       );
       results.push({ aspect: format.name, path });
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "create") {
+    // The create smoke: the same native create_project the dialog calls, then a full load-and-commit so a missing scene, seeded asset or theme fails here, not in a user's hands. Works packaged via --app, where templates_root() takes the resource_dir() branch.
+    try {
+      const templateId = config.projects[0];
+      if (!applyProject) throw new Error("the create action needs the applyProject hook");
+      const info = await createProject(`Create smoke ${templateId}`, templateId, null);
+      releaseCompositorPools();
+      releaseComposer();
+      const created = await loadProject(`ws:${info.slug}`);
+      applyProject(created);
+      await nextCommit();
+      await awaitProjectCommitted(created);
+      await awaitSceneHostsCommitted(created.slots.length);
+      results.push({
+        aspect: config.aspects[0]?.name ?? "16:9",
+        project: created.id,
+        path: info.path,
+        scenes: created.slots.length,
+      });
     } catch (e) {
       ok = false;
       error = String(e);
