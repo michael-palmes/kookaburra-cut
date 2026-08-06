@@ -102,6 +102,19 @@
   --hit-min: 28px;
   --titlebar-h: 46px; /* v13 · M2 (approved §15 amendment — was 40px) */
 
+  /* ── Gizmos ────────────────────────────────────────────────── */
+  /* One palette for every gizmo, 2D and 3D. The canvas-side mirror is src/engine/gizmoTokens.ts. */
+  --gizmo-outline: rgba(255, 255, 255, 0.35);
+  --gizmo-outline-hover: rgba(255, 255, 255, 0.6);
+  --gizmo-selected: var(--accent);
+  --gizmo-handle: var(--accent);
+  --gizmo-handle-edge: rgba(0, 0, 0, 0.45);
+  --gizmo-guide: #ffd60a;
+  --gizmo-guide-glow: rgba(255, 214, 10, 0.5);
+  /* Stage tiers inside .stage-frame: tool surfaces claim the whole frame, gizmo layers only their handles. */
+  --z-stage-tool: 6;
+  --z-stage-gizmo: 7;
+
   color-scheme: dark;
   font-family: var(--font-ui);
   font-size: var(--text-base);
@@ -4668,29 +4681,51 @@ button.beat-status {
 .camera-tool-overlay {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  z-index: var(--z-stage-tool);
+}
+
+/* Stands down while a 3D gizmo handle is under the pointer, so the canvas below sees the drag. */
+.camera-tool-overlay.is-inert {
+  pointer-events: none;
+}
+
+/* Gizmo layers: the container never claims the pointer, only its outlines and handles do, so an
+   empty-area drag falls through to the tool surface below (the .camera-path-overlay precedent). */
+.gizmo-layer {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-stage-gizmo);
+  pointer-events: none;
+  touch-action: none;
+}
+.gizmo-hit {
+  pointer-events: auto;
+}
+/* Camera override held: handles stand down so the drag reaches the tool surface. */
+.gizmo-layer.camera-override .gizmo-hit {
+  pointer-events: none;
 }
 
 /* The decoration drag surface over the stage: a box per decoration, centred on its position, dragged to move. */
 .decoration-gizmo-layer {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  z-index: var(--z-stage-tool);
   touch-action: none;
 }
 .deco-gizmo-box {
   position: absolute;
   transform: translate(-50%, -50%);
   cursor: move;
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  border: 1px solid var(--gizmo-outline);
   border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 .deco-gizmo-box:hover {
-  border-color: rgba(255, 255, 255, 0.6);
+  border-color: var(--gizmo-outline-hover);
 }
 .deco-gizmo-box.selected {
-  border: 1.5px solid var(--accent);
+  border: 1.5px solid var(--gizmo-selected);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 .deco-gizmo-handle {
@@ -4698,8 +4733,8 @@ button.beat-status {
   width: 11px;
   height: 11px;
   transform: translate(-50%, -50%);
-  background: var(--accent);
-  border: 1px solid rgba(0, 0, 0, 0.45);
+  background: var(--gizmo-handle);
+  border: 1px solid var(--gizmo-handle-edge);
   border-radius: 2px;
 }
 .deco-gizmo-rotate {
@@ -4709,8 +4744,8 @@ button.beat-status {
   width: 12px;
   height: 12px;
   transform: translate(-50%, calc(-50% - 16px));
-  background: var(--accent);
-  border: 1px solid rgba(0, 0, 0, 0.45);
+  background: var(--gizmo-handle);
+  border: 1px solid var(--gizmo-handle-edge);
   border-radius: 50%;
 }
 /* A circular-arrow (rotate) cursor: dark underlay + white overlay so it reads on any background.
@@ -4727,8 +4762,8 @@ button.beat-status {
 .deco-gizmo-guide {
   position: absolute;
   pointer-events: none;
-  background: #ffd60a;
-  box-shadow: 0 0 5px rgba(255, 214, 10, 0.5);
+  background: var(--gizmo-guide);
+  box-shadow: 0 0 5px var(--gizmo-guide-glow);
 }
 .deco-gizmo-guide.v {
   top: 0;
@@ -4747,8 +4782,8 @@ button.beat-status {
 .camera-centre-guide {
   position: absolute;
   pointer-events: none;
-  background: #ffd60a;
-  box-shadow: 0 0 6px rgba(255, 214, 10, 0.55);
+  background: var(--gizmo-guide);
+  box-shadow: 0 0 6px var(--gizmo-guide-glow);
   animation: centre-guide-in var(--dur-base) var(--ease-standard);
 }
 
@@ -4821,7 +4856,7 @@ button.beat-status {
 .camera-path-overlay {
   position: absolute;
   inset: 0;
-  z-index: 7;
+  z-index: var(--z-stage-gizmo);
   pointer-events: none;
 }
 
