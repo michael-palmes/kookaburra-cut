@@ -165,6 +165,9 @@ Worked example — settle in, hold, then a jump cut to a close-up:
 (`jump` holds the `from` pose for the segment's whole span and lands `to` exactly at the
 `to` key's time — a jump segment IS the hold before the cut, no extra keys needed.)
 
+To land keys or jump cuts on the soundtrack's beats, see `BEATS.md` beside this
+file: `scripts/beats.py` prints beat and key-moment times in scene-local ms.
+
 ## Camera rigs: free flight (`cameraRig`)
 
 Set `"cameraMode": "rig"` and author a `cameraRig` block for shots an orbit cannot

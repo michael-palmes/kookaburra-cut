@@ -7,10 +7,16 @@ import {
   useState,
 } from "react";
 import { isExporting } from "../engine/exportState";
-import { type LoadedProject, sceneFileStem, workspaceSlug } from "../engine/project";
+import {
+  type AudioMarkersSpec,
+  type LoadedProject,
+  sceneFileStem,
+  workspaceSlug,
+} from "../engine/project";
 import { ensureSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
+import { BeatLane } from "./BeatLane";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { CopySceneModal } from "./CopySceneModal";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
@@ -40,6 +46,9 @@ export function PlaybackBar({
   onDuplicateScene,
   onSceneDuration,
   onPasteBackground,
+  onUpdateAudioMarkers,
+  onAddCameraKeyAtBeat,
+  onSyncCameraToBeats,
 }: {
   project: LoadedProject | null;
   playing: boolean;
@@ -68,9 +77,16 @@ export function PlaybackBar({
   onSceneDuration: (index: number, ms: number) => void;
   /** Write the copied background + staging onto a scene (the host owns the write + history). */
   onPasteBackground: (index: number) => void;
+  /** Write (or null to clear) the manifest's `audio.markers` (the host owns the write + history). */
+  onUpdateAudioMarkers: (markers: AudioMarkersSpec | null) => void;
+  /** Add one camera keyframe landing on the beat at project-time ms (the host resolves the scene). */
+  onAddCameraKeyAtBeat: (ms: number) => void;
+  /** Generate the owning scene's camera track from its key beats (the host resolves the scene). */
+  onSyncCameraToBeats: (ms: number) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const scrubbing = useRef(false);
+  const beatLaneHidden = useUiStore((s) => s.beatLaneHidden);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [copying, setCopying] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
@@ -263,9 +279,44 @@ export function PlaybackBar({
             </svg>
           </button>
         )}
+        {hasAudio && (
+          <button
+            type="button"
+            className={`pb-mute pb-beats${beatLaneHidden ? " muted" : ""}`}
+            aria-pressed={!beatLaneHidden}
+            title={beatLaneHidden ? "Show the beat lane" : "Hide the beat lane"}
+            onPointerDown={holdPointer}
+            onClick={() => useUiStore.getState().setBeatLaneHidden(!beatLaneHidden)}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+              <rect
+                x="4.2"
+                y="4.2"
+                width="5.6"
+                height="5.6"
+                rx="1"
+                transform="rotate(45 7 7)"
+                fill={beatLaneHidden ? "none" : "currentColor"}
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
+            </svg>
+          </button>
+        )}
       </div>
 
       <div className="pb-center">
+        {hasAudio && project && !beatLaneHidden && (
+          <BeatLane
+            project={project}
+            durationMs={durationMs}
+            isWorkspace={isWorkspace}
+            onSeek={onScrub}
+            onUpdateMarkers={onUpdateAudioMarkers}
+            onAddCameraKey={onAddCameraKeyAtBeat}
+            onSyncCamera={onSyncCameraToBeats}
+          />
+        )}
         {/* The scrub handlers live on the whole bar (they map against this rect); keyboard access rides the app-wide transport keydown (←/→ frame-step). */}
         <div
           ref={trackRef}

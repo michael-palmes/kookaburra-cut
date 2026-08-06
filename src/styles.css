@@ -1348,6 +1348,65 @@ body {
   pointer-events: none;
 }
 
+/* ── Beat lane (batch 13): waveform, beat grid + key-beat diamonds above the
+   scene strip. Same grid column as .pb-track, so x positions align by
+   construction; times map through the shared span maths. Amber is the lane's
+   identity (camera = accent, compare = success). */
+.beat-lane {
+  --lane-accent: var(--warning);
+  position: relative;
+  height: 30px;
+}
+
+.beat-wave {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.beat-diamond {
+  position: absolute;
+  top: 50%;
+  width: calc(6px + var(--strength, 0.5) * 6px);
+  height: calc(6px + var(--strength, 0.5) * 6px);
+  padding: 0;
+  background: color-mix(in srgb, var(--lane-accent) 60%, var(--surface-panel));
+  border: 1px solid color-mix(in srgb, var(--lane-accent) 80%, var(--surface-panel));
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  cursor: pointer;
+}
+
+.beat-diamond:hover {
+  background: var(--lane-accent);
+}
+
+.beat-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
+  border: none;
+  border-radius: var(--radius-full);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+button.beat-status {
+  pointer-events: auto;
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+}
+
+.beat-error {
+  color: var(--warning);
+}
+
 /* Per-cell labels: same flex weights as the track so names sit under their cells. */
 .pb-labels {
   display: flex;
@@ -4065,6 +4124,22 @@ body {
 }
 
 /* 2px playhead overshooting the track 4px top/bottom, with a 9×9 square cap. */
+/* Soundtrack guidance mirrored into the lane: faint beat ticks, stronger key-moment lines. */
+.anim-beat-tick {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
+  pointer-events: none;
+}
+
+.anim-beat-tick.strong {
+  width: 2px;
+  margin-left: -1px;
+  background: color-mix(in srgb, var(--warning) 55%, transparent);
+}
+
 .anim-playhead {
   position: absolute;
   top: -4px;

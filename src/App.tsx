@@ -19,6 +19,14 @@ import {
   reportAutoRunError,
   runAutoRun,
 } from "./engine/autorun";
+import {
+  addKeyAtBeat,
+  appliedOrbitPoseAt,
+  buildSyncTrack,
+  pickSyncMoments,
+  sceneTrackContext,
+} from "./engine/beatCameraSync";
+import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { pollCaptureBridge } from "./engine/captureBridge";
@@ -67,6 +75,7 @@ import {
 import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
+  type AudioMarkersSpec,
   bumpWorkspaceReloadToken,
   isWorkspaceProjectId,
   type LoadedProject,
@@ -91,6 +100,7 @@ import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
 import { SceneHost } from "./engine/SceneHost";
+import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
@@ -789,6 +799,138 @@ export default function App() {
     [handleDocChanged, handleTimingChanged],
   );
 
+  // Beat-marker overlay writes: manifest snapshot + in-memory patch (no reload; a drag commit must not flash the preview). Undo replays through the manifest history path, which reloads.
+  const handleUpdateAudioMarkers = useCallback(async (markers: AudioMarkersSpec | null) => {
+    const current = loadedProjectRef.current;
+    if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
+    const slug = workspaceSlug(current.id);
+    try {
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      const manifest = JSON.parse(manifestBefore);
+      if (!manifest.audio) return;
+      if (markers) manifest.audio.markers = markers;
+      else delete manifest.audio.markers;
+      await writeProjectManifestSnapshot(slug, JSON.stringify(manifest, null, 2));
+      setProject((prev) =>
+        prev?.audio ? { ...prev, audio: { ...prev.audio, markers: markers ?? undefined } } : prev,
+      );
+      pushHistory({
+        label: "beat markers",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+    } catch (e) {
+      setToast({ kind: "error", message: `Beat markers failed: ${String(e)}` });
+    }
+  }, []);
+
+  /** Write a generated orbit camera track to a scene's sidecar (the beat-lane actions' commit; mirrors useCameraDoc.commitSlice without the lane's preview draft). */
+  const writeSceneCameraDoc = useCallback(
+    async (sceneIndex: number, nextCamera: CameraDoc, label: string) => {
+      const current = loadedProjectRef.current;
+      if (!current || !isWorkspaceProjectId(current.id)) return;
+      const slug = workspaceSlug(current.id);
+      const file = current.sceneFiles[sceneIndex];
+      if (!file) return;
+      const doc = current.sceneDocs[sceneIndex];
+      const written: SceneDoc = doc ? structuredClone(doc) : { version: 1 };
+      if (nextCamera.keys.length > 0) written.camera = nextCamera;
+      else delete written.camera;
+      try {
+        await writeSceneDoc(slug, file, written);
+        handleDocChanged(sceneIndex, written);
+        pushHistory({
+          label,
+          changes: [
+            {
+              kind: "sceneDoc",
+              slug,
+              file,
+              sceneIndex,
+              before: doc ? structuredClone(doc) : null,
+              after: structuredClone(written),
+            },
+          ],
+        });
+      } catch (e) {
+        setToast({ kind: "error", message: `${label} failed: ${String(e)}` });
+      }
+    },
+    [handleDocChanged],
+  );
+
+  const handleAddCameraKeyAtBeat = useCallback(
+    async (tMs: number) => {
+      const current = loadedProjectRef.current;
+      if (!current || !isWorkspaceProjectId(current.id)) return;
+      const sceneIndex =
+        tMs >= current.totalMs ? current.slots.length - 1 : activeSceneIndex(current.slots, tMs);
+      const doc = current.sceneDocs[sceneIndex];
+      if (doc?.cameraMode === "rig") return;
+      const slot = current.slots[sceneIndex];
+      const camera = (doc?.camera as CameraDoc | undefined) ?? { keys: [], segments: [] };
+      const ctx = sceneTrackContext(current, sceneIndex);
+      const local = Math.min(ctx.windowEndMs, Math.max(ctx.windowStartMs, tMs - slot.startMs));
+      const next = addKeyAtBeat(camera, ctx, local, (t) =>
+        appliedOrbitPoseAt(camera, current.cameraTrack, slot.startMs, t),
+      );
+      if (!next) {
+        setToast({ kind: "error", message: "No room for a camera keyframe at that beat" });
+        return;
+      }
+      await writeSceneCameraDoc(sceneIndex, next, "camera keyframe at beat");
+    },
+    [writeSceneCameraDoc],
+  );
+
+  const handleSyncCameraToBeats = useCallback(
+    async (tMs: number) => {
+      const current = loadedProjectRef.current;
+      if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
+      const sceneIndex =
+        tMs >= current.totalMs ? current.slots.length - 1 : activeSceneIndex(current.slots, tMs);
+      const doc = current.sceneDocs[sceneIndex];
+      if (doc?.cameraMode === "rig") return;
+      const slot = current.slots[sceneIndex];
+      const ctx = sceneTrackContext(current, sceneIndex);
+      const moments = effectiveKeyMoments(
+        useBeatStore.getState().analysis,
+        current.audio.markers,
+        current.audio.startOffsetMs ?? 0,
+        current.totalMs,
+      ).map((m) => ({ tMs: m.tMs - slot.startMs, strength: m.strength }));
+      const picked = pickSyncMoments(moments, ctx.transitionInMs, ctx.transitionOutStartMs);
+      if (picked.length === 0) {
+        setToast({ kind: "error", message: "No key beats inside this scene to cut on" });
+        return;
+      }
+      const camera = doc?.camera as CameraDoc | undefined;
+      const base = appliedOrbitPoseAt(
+        camera,
+        current.cameraTrack,
+        slot.startMs,
+        ctx.transitionInMs,
+      );
+      await writeSceneCameraDoc(
+        sceneIndex,
+        buildSyncTrack(base, picked, ctx.transitionInMs),
+        "sync camera to music",
+      );
+      setToast({
+        kind: "success",
+        message: `Camera synced to ${picked.length} beat${picked.length === 1 ? "" : "s"}`,
+      });
+    },
+    [writeSceneCameraDoc],
+  );
+
   const handlePasteBackground = useCallback(
     async (sceneIndex: number) => {
       const current = loadedProjectRef.current;
@@ -1044,7 +1186,10 @@ export default function App() {
   const applyLoadedProject = useCallback(
     (loaded: LoadedProject) => {
       setProject(loaded);
-      if (!isAutoRun) setPreviewAudioProject(loaded);
+      if (!isAutoRun) {
+        setPreviewAudioProject(loaded);
+        setBeatProject(loaded);
+      }
       useEditorStore.getState().setTheme(loaded.theme);
       useEffectsStore
         .getState()
@@ -2230,6 +2375,9 @@ export default function App() {
             onDuplicateScene={handleDuplicateScene}
             onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
             onPasteBackground={(i) => void handlePasteBackground(i)}
+            onUpdateAudioMarkers={(m) => void handleUpdateAudioMarkers(m)}
+            onAddCameraKeyAtBeat={(ms) => void handleAddCameraKeyAtBeat(ms)}
+            onSyncCameraToBeats={(ms) => void handleSyncCameraToBeats(ms)}
           />
         </TimelineDock>
       )}
