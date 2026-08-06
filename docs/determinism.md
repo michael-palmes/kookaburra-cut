@@ -1183,6 +1183,21 @@ rolling-gate project (`showcase-tour`):
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `c947c931…` | `eb2e9c72…` | `593d4561…` | `0375e77b…` | — | — | — |
+
+> **2026-08-05 (charts):** scenes gained a sidecar `chart` block, laid out by a
+> pure core (d3-scale/shape/array) and drawn by flat or lit renderers across
+> three mounts (hero, staged beside a device, overlay panel). Everything the
+> export samples is a function of the timeline clock alone. Two traps were
+> designed out rather than tuned: label billboarding goes through
+> `chartBillboardMatrix`, because drei's `Billboard` re-aims in its own frame
+> callback and races the stepped export clock, and coplanar layers separate by
+> the fixed `CHART_2D_Z_STEP` world epsilon with explicit `renderOrder`, never
+> driver-dependent `polygonOffset`. Fixture `ws:chart-spike` verified identical
+> ×2 in all four aspects (16:9 re-verified on `main` at release time, still
+> `c947c931…`); null-for-legacy holds, since a project with no chart never
+> builds the chart path and both anchors came back EQUAL. Full contract:
+> `docs/charts.md`.
 
 > **2026-08-04 (depth of field):** camera poses gained a sparse `dof` block
 > (depth or tilt-shift family), resolved per frame through the camera plan and
