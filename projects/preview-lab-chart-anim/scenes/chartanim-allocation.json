@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "name": "Chart build-in: Allocation",
+  "chart": {
+    "type": "pie",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Ops", "Growth", "Reserve", "Grants"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Treasury",
+          "values": [38, 27, 24, 11]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "format": {
+          "suffix": "%"
+        }
+      }
+    },
+    "animation": {
+      "preset": "allocation",
+      "delivery": "cascade",
+      "staggerMs": 100,
+      "durationMs": 700,
+      "from": "start"
+    },
+    "style": {
+      "preset": "studio",
+      "innerRadius": 0.55
+    }
+  }
+}

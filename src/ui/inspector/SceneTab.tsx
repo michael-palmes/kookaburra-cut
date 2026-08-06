@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
+import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
 import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
@@ -93,12 +94,14 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { GradientPickerModal } from "../GradientPicker";
 import {
+  chartRowValue,
   drillStackForScene,
   objectRowLabel,
   type SceneSectionModel,
   sceneSections,
 } from "../inspectorOptions";
 import { detectWindowRecording } from "../windowRecordingDetect";
+import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
 import { LightingSectionBody } from "./LightingSection";
 
 /** Sideways step between devices: a phone auto-fits 2.6 world units tall (~1.26 wide at scale 1), a laptop width-fits to 3.4, so these clear one footprint with margin. */
@@ -117,6 +120,8 @@ const SCREEN_TITLES: Record<string, string> = {
   "style.background": "Background",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
+  "chart.edit": "Chart",
+  "chart.position": "Position",
   "device.position": "Position",
 };
 
@@ -218,6 +223,7 @@ import {
   ActionRow,
   DrillBack,
   DrillGroup,
+  GizmoModeIcon,
   middleTruncate,
   NumberField,
   SegmentedRow,
@@ -384,6 +390,37 @@ function SceneRowIcon({ id }: { id: string }) {
           <rect x="3" y="4" width="14" height="12" rx="2" />
           <path d="M10 4v12" />
           <path d="M6 10h2M12 10h2" opacity="0.7" />
+        </svg>
+      );
+    case "chart.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M3 16.5h14" />
+          <path d="M5.5 16V9M10 16V4.5M14.5 16v-4" />
+        </svg>
+      );
+    case "chart.add":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <path d="M3 15.5h9" />
+          <path d="M5 15V9.5M9 15V5" />
+          <path d="M15 11v6M12 14h6" />
         </svg>
       );
     case "device.duplicate":
@@ -871,43 +908,6 @@ function LidRow({
       />
       <span className="inspector-unit">{`${Math.round(v)}°`}</span>
     </div>
-  );
-}
-
-/** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size. */
-function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
-  const glyph = {
-    translate: (
-      <>
-        <path d="M10 3.5v13M3.5 10h13" />
-        <path d="M8 5.5l2-2 2 2M8 14.5l2 2 2-2M5.5 8l-2 2 2 2M14.5 8l2 2-2 2" />
-      </>
-    ),
-    rotate: (
-      <>
-        <path d="M16.2 10a6.2 6.2 0 11-1.9-4.5" />
-        <path d="M16.6 2.6v3.2h-3.2" />
-      </>
-    ),
-    scale: (
-      <>
-        <rect x="3.5" y="8.5" width="8" height="8" rx="1" />
-        <path d="M11.5 8.5L16.5 3.5M16.5 7V3.5H13" />
-      </>
-    ),
-  }[mode];
-  return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      {glyph}
-    </svg>
   );
 }
 
@@ -1774,9 +1774,9 @@ export function SceneTab({
   const backLabel =
     drillStack.length > 1 ? (SCREEN_TITLES[drillStack[drillStack.length - 2]] ?? "Scene") : "Scene";
   const openDrill = useUiStore((s) => s.openInspectorDrill);
+  const jumpDrill = useUiStore((s) => s.jumpInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
-  const jumpDrill = useUiStore((s) => s.jumpInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
   const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
@@ -1907,6 +1907,25 @@ export function SceneTab({
     }
     if (store.selected) store.select(null);
   }, [drillIn, sceneIndex, stagedObjectId]);
+  // The staged chart's gizmo, same contract: it posts finished drags here, and follows its own drill.
+  useEffect(() => {
+    return useChartEditStore.subscribe((s) => {
+      const commit = s.pendingCommit;
+      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      useChartEditStore.getState().clearCommit();
+      void patchDocRef.current((next) => {
+        if (next.chart) next.chart.placement = commit.placement;
+      });
+    });
+  }, [sceneIndex]);
+  useEffect(() => {
+    const store = useChartEditStore.getState();
+    if (drillIn === "chart.position") {
+      store.select({ sceneIndex });
+      return () => useChartEditStore.getState().select(null);
+    }
+    if (store.selected) store.select(null);
+  }, [drillIn, sceneIndex]);
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -2158,6 +2177,12 @@ export function SceneTab({
       };
     });
     openDrill("compare.edit");
+  };
+  const addChart = () => {
+    void patchDoc((next) => {
+      next.chart = newChartBlock();
+    });
+    jumpDrill(["chart.edit"]);
   };
   const addOverlay = () =>
     void patchDoc((next) => {
@@ -5691,6 +5716,34 @@ export function SceneTab({
     );
   }
 
+  if (drillIn === "chart.edit" && doc?.chart) {
+    return (
+      <ChartDrillIn
+        doc={doc}
+        theme={sceneTheme ?? project.theme}
+        hasPanel={sceneFrame !== undefined}
+        panelHostsChart={!!sceneFrame?.chart && sceneFrame.chart.enabled !== false}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        onOpenPosition={() => openDrill("chart.position")}
+        patchDoc={patchDoc}
+        commitFromBaseline={commitFromBaseline}
+      />
+    );
+  }
+
+  if (drillIn === "chart.position" && doc?.chart?.mount === "staged") {
+    return (
+      <ChartPlacementDrillIn
+        doc={doc}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        patchDoc={patchDoc}
+        commitFromBaseline={commitFromBaseline}
+      />
+    );
+  }
+
   // ── The section list ──────────────────────────────────────────────────────
   const renderSectionRows = (section: SceneSectionModel) =>
     section.rows.map((row) => {
@@ -6034,6 +6087,22 @@ export function SceneTab({
       label: "Add comparison",
       icon: "compare.edit",
       onClick: addCompare,
+    });
+  if (doc?.chart)
+    contentEntries.push({
+      key: "chart",
+      label: "Chart",
+      icon: "chart.edit",
+      value: chartRowValue(doc.chart),
+      onClick: () => openDrill("chart.edit"),
+    });
+  else if (doc)
+    addEntries.push({
+      key: "chart.add",
+      label: "Add chart",
+      icon: "chart.add",
+      chevron: false,
+      onClick: addChart,
     });
   if (objects.length > 0)
     contentEntries.push({

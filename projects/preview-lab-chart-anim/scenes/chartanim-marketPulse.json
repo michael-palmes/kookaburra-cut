@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "name": "Chart build-in: Market pulse",
+  "chart": {
+    "type": "line",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["W1", "W2", "W3", "W4", "W5", "W6"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "This year",
+          "values": [22, 28, 26, 36, 42, 54]
+        },
+        {
+          "id": "s2",
+          "name": "Last year",
+          "values": [18, 20, 23, 25, 28, 31]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "preset": "marketPulse",
+      "delivery": "series",
+      "staggerMs": 250,
+      "durationMs": 1150,
+      "from": "start"
+    },
+    "style": {
+      "preset": "studio"
+    }
+  }
+}

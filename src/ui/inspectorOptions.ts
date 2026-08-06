@@ -1,5 +1,6 @@
 import type { AspectName } from "../engine/format";
-import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
+import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
 
@@ -58,6 +59,27 @@ export function projectRows(input: {
     { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },
   ];
+}
+
+/** Chart-type vocabulary, in the schema's own order: the type grid's tile labels and the Chart row's value both read it, so one wording serves the whole inspector. */
+export const CHART_TYPE_LABELS: Record<ChartType, string> = {
+  column: "Column",
+  stackedColumn: "Stacked column",
+  bar: "Bar",
+  stackedBar: "Stacked bar",
+  line: "Line",
+  area: "Area",
+  stackedArea: "Stacked area",
+  pie: "Pie",
+};
+
+export const CHART_TYPE_IDS = Object.keys(CHART_TYPE_LABELS) as ChartType[];
+
+/** Scene-tab value for the Chart row: dimension then type, e.g. "3D column". A panel-mounted chart is always flat, whatever the block says (`resolveChart` coerces it). */
+export function chartRowValue(chart: SceneDocChart): string {
+  const dimension = chart.mount !== "panel" && chart.dimension === "3d" ? "3D" : "2D";
+  const label = CHART_TYPE_LABELS[chart.type] ?? CHART_TYPE_LABELS.column;
+  return `${dimension} ${label.toLowerCase()}`;
 }
 
 export type SceneSectionId =

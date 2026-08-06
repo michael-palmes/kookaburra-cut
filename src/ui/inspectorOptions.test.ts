@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { SceneDoc } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { drillStackForScene, projectRows, sceneSections } from "./inspectorOptions";
+import {
+  CHART_TYPE_IDS,
+  CHART_TYPE_LABELS,
+  chartRowValue,
+  drillStackForScene,
+  projectRows,
+  sceneSections,
+} from "./inspectorOptions";
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {
@@ -321,6 +328,38 @@ describe("sceneSections Overlay section", () => {
     const rows = sections.find((s) => s.id === "frame")?.rows;
     expect(rows?.map((r) => r.id)).toEqual(["frame.enabled"]);
     expect(rows?.[0].chevron).toBe(false);
+  });
+});
+
+describe("the Chart row's value", () => {
+  const chartWith = (parts: Partial<SceneDocChart>): SceneDocChart => ({
+    type: "column",
+    data: { categories: ["A"], series: [{ id: "s1", values: [1] }] },
+    ...parts,
+  });
+
+  it("reads dimension then type", () => {
+    expect(chartRowValue(chartWith({ dimension: "3d" }))).toBe("3D column");
+    expect(chartRowValue(chartWith({ dimension: "2d", type: "line" }))).toBe("2D line");
+    expect(chartRowValue(chartWith({ type: "stackedBar" }))).toBe("2D stacked bar");
+  });
+
+  it("a panel mount is always flat, whatever the block says", () => {
+    expect(chartRowValue(chartWith({ dimension: "3d", mount: "panel" }))).toBe("2D column");
+  });
+
+  it("the type grid covers every schema type, in schema order", () => {
+    expect(CHART_TYPE_IDS).toEqual([
+      "column",
+      "stackedColumn",
+      "bar",
+      "stackedBar",
+      "line",
+      "area",
+      "stackedArea",
+      "pie",
+    ]);
+    expect(CHART_TYPE_IDS.every((id) => CHART_TYPE_LABELS[id].length > 0)).toBe(true);
   });
 });
 

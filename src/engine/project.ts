@@ -229,7 +229,7 @@ export function listProjectIds(): string[] {
     .filter((id) => !isHiddenProjectId(id));
 }
 
-/** The dev-only preview-lab projects (one per option-preview family: text, stage, one per background), in stable order. Discovery is the directory-prefix convention: adding a background means adding its `preview-lab-bg-<id>` project; a vitest guards the pairing. */
+/** The dev-only preview-lab projects (one per option-preview family: text, stage, chart appearance, chart build-ins, one per background), in stable order. Discovery is the directory-prefix convention: adding a background means adding its `preview-lab-bg-<id>` project; a vitest guards the pairing. */
 export function previewLabProjectIds(): string[] {
   return Object.keys(manifestGlob)
     .map((path) => path.split("/")[2])

@@ -58,6 +58,10 @@
       "durationMs": 3000
     },
     {
+      "file": "scenes/kind-chart.tsx",
+      "durationMs": 3000
+    },
+    {
       "file": "scenes/kind-video.tsx",
       "durationMs": 3650
     },

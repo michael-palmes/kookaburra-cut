@@ -338,6 +338,8 @@ export interface Theme {
     muted: string;
   };
   gradients?: Record<string, GradientSpec>;
+  /** Chart series swatches (sRGB hexes, six in the bundled themes), taken in order and wrapped when a chart has more series. Optional and additive: a theme without it derives its ramp from `accent` instead (toolkit/chart/palette.ts), and parses exactly as before. */
+  chartColors?: string[];
   typography: {
     headline: FontRef;
     body: FontRef;

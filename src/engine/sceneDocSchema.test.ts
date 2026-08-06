@@ -262,14 +262,13 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
-  it("keeps only the two known animatedTrack values", () => {
+  it("keeps only the known animatedTrack values", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(parseSceneDoc({ version: 1, animatedTrack: "camera" }, "test")?.animatedTrack).toBe(
-      "camera",
-    );
-    expect(
-      parseSceneDoc({ version: 1, animatedTrack: "layeredScreenshot" }, "test")?.animatedTrack,
-    ).toBe("layeredScreenshot");
+    for (const track of ["camera", "layeredScreenshot", "compare", "chart"]) {
+      expect(parseSceneDoc({ version: 1, animatedTrack: track }, "test")?.animatedTrack).toBe(
+        track,
+      );
+    }
     expect(
       parseSceneDoc({ version: 1, animatedTrack: "both" }, "test")?.animatedTrack,
     ).toBeUndefined();
@@ -495,5 +494,265 @@ describe("parseSceneDoc", () => {
     expect(degraded?.deviceLayout).toEqual({ preset: "row", devices: { d3: { scale: 2 } } });
     expect(parseSceneDoc({ version: 1, deviceLayout: 7 }, "test")?.deviceLayout).toBeUndefined();
     vi.restoreAllMocks();
+  });
+
+  it("round-trips a full chart block, dropping only the null series colour", () => {
+    const block = {
+      type: "stackedColumn",
+      dimension: "3d",
+      mount: "hero",
+      data: {
+        categories: ["April", "May"],
+        series: [
+          { id: "s1", name: "Region 1", values: [17, 26], colour: null },
+          { id: "s2", name: "Region 2", values: [55, 43], colour: "#f0a848" },
+        ],
+        source: "assets/q3.csv",
+      },
+      style: {
+        preset: "boardroom",
+        depth: 0.5,
+        gap: 1,
+        cornerRadius: 0.25,
+        rotation: [18.5, -18.1],
+        innerRadius: 0,
+      },
+      axis: {
+        value: {
+          name: null,
+          min: null,
+          max: null,
+          steps: 4,
+          format: { decimals: null, separator: true, prefix: "$", suffix: "", compact: false },
+          gridlines: { visible: true, style: "hair" },
+          labels: true,
+        },
+        category: { name: null, labels: true },
+      },
+      labels: {
+        legend: { visible: true, position: "bottom" },
+        values: {
+          visible: true,
+          location: "above",
+          format: { decimals: 0, separator: true, prefix: "", suffix: "" },
+          countUp: true,
+        },
+      },
+      animation: {
+        preset: "rise",
+        delivery: "cascade",
+        staggerMs: 60,
+        durationMs: 900,
+        from: "start",
+      },
+      track: {
+        keys: [
+          {
+            id: "k1",
+            tMs: 0,
+            pose: {
+              values: [
+                [17, 26],
+                [55, 43],
+              ],
+            },
+          },
+          {
+            id: "k2",
+            tMs: 3000,
+            pose: {
+              values: [
+                [24, 31],
+                [48, 50],
+              ],
+            },
+          },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "inOutQuad" }],
+      },
+    };
+    const doc = parseSceneDoc({ version: 1, chart: block }, "test");
+    expect(doc?.chart).toEqual({
+      ...block,
+      data: {
+        ...block.data,
+        series: [
+          { id: "s1", name: "Region 1", values: [17, 26] },
+          { id: "s2", name: "Region 2", values: [55, 43], colour: "#f0a848" },
+        ],
+      },
+    });
+  });
+
+  it("keeps a chart block absent from legacy docs (null-for-legacy)", () => {
+    expect(parseSceneDoc({ version: 1, text: { headline: "hi" } }, "test")?.chart).toBeUndefined();
+  });
+
+  it("drops the chart block whole without a data.series array, and warns", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const noData = parseSceneDoc({ version: 1, chart: { type: "column" } }, "test");
+    expect(noData).toBeDefined();
+    expect(noData?.chart).toBeUndefined();
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "pie", data: {} } }, "test")?.chart,
+    ).toBeUndefined();
+    expect(parseSceneDoc({ version: 1, chart: "nope" }, "test")?.chart).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart"));
+    warn.mockRestore();
+  });
+
+  it("falls back to a column for an unknown chart type, keeping the data", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      { version: 1, chart: { type: "donut", data: { categories: ["a"], series: [] } } },
+      "test",
+    );
+    expect(doc?.chart?.type).toBe("column");
+    expect(doc?.chart?.data).toEqual({ categories: ["a"], series: [] });
+    warn.mockRestore();
+  });
+
+  it("coerces a panel-mounted chart to 2d and leaves other mounts alone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: [], series: [] };
+    const panel = parseSceneDoc(
+      { version: 1, chart: { type: "line", mount: "panel", dimension: "3d", data } },
+      "test",
+    );
+    expect(panel?.chart?.dimension).toBe("2d");
+    const staged = parseSceneDoc(
+      { version: 1, chart: { type: "line", mount: "staged", dimension: "3d", data } },
+      "test",
+    );
+    expect(staged?.chart?.dimension).toBe("3d");
+    // Absence is preserved: sceneChart.ts owns the default.
+    const bare = parseSceneDoc(
+      { version: 1, chart: { type: "line", mount: "panel", data } },
+      "test",
+    );
+    expect(bare?.chart?.dimension).toBeUndefined();
+    const badMount = parseSceneDoc(
+      { version: 1, chart: { type: "line", mount: "wall", dimension: "flat", data } },
+      "test",
+    );
+    expect(badMount?.chart?.mount).toBeUndefined();
+    expect(badMount?.chart?.dimension).toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it("blanks non-string categories and drops malformed series, zeroing bad cells", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data: {
+            categories: ["April", 7, "June"],
+            series: [
+              { id: "s1", values: [1, "two", null] },
+              { name: "no id", values: [1] },
+              { id: "s3", values: "nope" },
+              "not-an-object",
+            ],
+            source: "",
+          },
+        },
+      },
+      "test",
+    );
+    // A blanked category keeps its slot so the remaining labels stay aligned.
+    expect(doc?.chart?.data.categories).toEqual(["April", "", "June"]);
+    expect(doc?.chart?.data.series).toEqual([{ id: "s1", values: [1, 0, 0] }]);
+    expect(doc?.chart?.data.source).toBeUndefined();
+    warn.mockRestore();
+  });
+
+  it("degrades malformed chart placement, style, axis, labels and animation fields alone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "bar",
+          mount: "staged",
+          placement: { position: [0, 1, 0], rotationDeg: [0, "x", 0], scale: 0, ground: true },
+          data: { categories: ["a"], series: [{ id: "s1", values: [1] }] },
+          style: { preset: "", depth: "deep", gap: 2, cornerRadius: 0.4, rotation: [1] },
+          axis: {
+            value: {
+              name: 7,
+              min: "auto",
+              max: 100,
+              steps: Number.NaN,
+              format: { decimals: 2, separator: "yes", prefix: "$" },
+              gridlines: { visible: false, style: "dotted" },
+              labels: "on",
+            },
+            category: { name: "Month", labels: false },
+          },
+          labels: {
+            legend: { visible: false, position: "left" },
+            values: { location: "middle", countUp: false, format: 7 },
+          },
+          animation: { preset: "rise", delivery: "waterfall", staggerMs: -5, durationMs: 400 },
+        },
+      },
+      "test",
+    );
+    expect(doc?.chart?.placement).toEqual({ position: [0, 1, 0], ground: true });
+    expect(doc?.chart?.style).toEqual({ gap: 2, cornerRadius: 0.4 });
+    expect(doc?.chart?.axis).toEqual({
+      value: {
+        max: 100,
+        format: { decimals: 2, prefix: "$" },
+        gridlines: { visible: false },
+      },
+      category: { name: "Month", labels: false },
+    });
+    expect(doc?.chart?.labels).toEqual({
+      legend: { visible: false },
+      values: { countUp: false },
+    });
+    expect(doc?.chart?.animation).toEqual({ preset: "rise", durationMs: 400 });
+    warn.mockRestore();
+  });
+
+  it("keeps a chart track only while a key survives, dropping malformed keys and segments", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data,
+          track: {
+            keys: [
+              { id: "k1", tMs: 0, pose: { values: [[1, "x"]] } },
+              { id: "k2", tMs: "later", pose: { values: [[2]] } },
+              { id: "k3", tMs: 500, pose: { values: 3 } },
+              { tMs: 900, pose: { values: [[4]] } },
+            ],
+            segments: [
+              { from: "k1", to: "k2", ease: "linear" },
+              { from: "k1", to: 7 },
+            ],
+          },
+        },
+      },
+      "test",
+    );
+    expect(doc?.chart?.track).toEqual({
+      keys: [{ id: "k1", tMs: 0, pose: { values: [[1, 0]] } }],
+      segments: [{ from: "k1", to: "k2", ease: "linear" }],
+    });
+    const empty = parseSceneDoc(
+      { version: 1, chart: { type: "column", data, track: { keys: [], segments: [] } } },
+      "test",
+    );
+    expect(empty?.chart?.track).toBeUndefined();
+    expect(empty?.chart?.data).toEqual(data);
+    warn.mockRestore();
   });
 });

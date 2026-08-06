@@ -32,6 +32,18 @@ export interface FrameChipSpec {
   icon?: string;
 }
 
+/** Where a hosted chart sits in the panel column: in the band under the text, or in place of it (the panel then draws no editorial content at all). */
+export type FrameChartPosition = "below" | "replace";
+
+/** The panel's chart slot: presence and layout only. The chart DEFINITION stays in the scene document's `chart` block (with `mount: "panel"`), so one chart is authored, edited and animated the same way wherever it lands. */
+export interface FrameChartSlot {
+  /** `false` switches an inherited deck slot off for this scene (the `FrameSpec.enabled` idiom). */
+  enabled?: boolean;
+  /** Band the chart takes off the column, as a fraction of its height (clamped 0.1..1); defaults to 0.55 under text, the whole column when it replaces it. */
+  height?: number;
+  position?: FrameChartPosition;
+}
+
 export interface FrameDecorationSpec {
   id: string;
   /** Project-relative asset path. */
@@ -54,6 +66,8 @@ export interface FrameSpec {
   /** Emoji or asset path, drawn above the title. */
   icon?: string;
   chip?: FrameChipSpec;
+  /** Hosts the scene's panel-mounted chart in the column; absent means the panel is text only. */
+  chart?: FrameChartSlot;
   decorations?: FrameDecorationSpec[];
   textAlign?: SceneTextAlign;
   /** Overlay claims the scene's title/subtitle/bullets and suppresses the in-world headline. */

@@ -1,12 +1,13 @@
 ---
 description: Scaffold a new Kookaburra Cut scene (TSX + sidecar doc) and register it in its project.json
-argument-hint: <project> <scene-name> [device|deviceonly|comparison|title|titleicon|appversion|layeredscreenshot|video|image|videowindow|overlaystart|overlayend|overlaypanel|rig|blank]
+argument-hint: <project> <scene-name> [device|deviceonly|comparison|title|titleicon|appversion|layeredscreenshot|chart|video|image|videowindow|overlaystart|overlayend|overlaypanel|rig|blank]
 ---
 
 Create a new scene for the Kookaburra Cut project `$1` named `$2`, of kind `$3` (default `device` if the
 user mentions a device/media (`deviceonly` when they want no title copy), `comparison`
 for a labelled before/after pair of devices with two screen recordings, `appversion` for
-an app icon + version lockup, `layeredscreenshot` for a 3D stack of app screens, `video`
+an app icon + version lockup, `layeredscreenshot` for a 3D stack of app screens, `chart`
+for data as the scene's hero, `video`
 for a full-frame background video, `image` for a full-frame background image,
 `videowindow` for a floating screen recording on a backing stage, `titleicon` for a title
 with an icon above it, `overlaystart`/`overlayend` for a panel beside a scene cutout
@@ -70,6 +71,19 @@ Steps:
      "kind": "screen", "src": "assets/<file>", "media": "image"|"video", "attach": null }`
      when media was given, else an empty items array) and the default pose `{ "spread": 0,
      "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] }`.
+   - chart: a `chart` block seeded `{ "type": "column", "dimension": "3d", "mount": "hero",
+     "data": { "categories": ["April", "May", "June", "July"], "series": [{ "id": "s1",
+     "name": "Region 1", "values": [17, 26, 53, 96] }, { "id": "s2", "name": "Region 2",
+     "values": [55, 43, 70, 58] }] } }`. `type` takes the chart the user asked for
+     (`column`, `stackedColumn`, `bar`, `stackedBar`, `line`, `area`, `stackedArea`, `pie`),
+     `dimension` is `"2d"` when they want a flat chart, and their own numbers replace the
+     starter `data` (the app's wizard offers three starter sets: revenue quarters, weekly
+     growth, share split). `style`, `axis`, `labels`, `animation` and `track`
+     stay ABSENT so `resolveChart` owns every default, and series carry no `colour` so the
+     theme palette drives them. The sidecar also seeds `backdrop: { "type": "none" }`:
+     the chart floats on the scene background rather than boxed by staged scenery
+     (toggle the backdrop back on in the inspector). Text: `title` only, and only when
+     the user gave copy.
    - video: no text keys and a `background` block `{ "type": "video", "src":
      "assets/<file>" }` (the media the user gave, else the bundled
      `assets/sample-laptop-recording.mp4`).
@@ -99,7 +113,8 @@ Steps:
    video slot and set `durationMs` to the longest; the sidecar stays UNPINNED
    (`{ "mode": "follow-media" }`, no `sourceDeviceId`) because the engine's rule is
    longest-wins; no videos at all → manual.
-   Otherwise `{ "mode": "manual" }` and **4000ms**.
+   Otherwise `{ "mode": "manual" }` and **4000ms**, except the chart kind, which takes
+   **5000ms** (its build-in and value counters need room to land).
 6. Register the scene in `projects/$1/project.json` under `scenes` with its `file` and
    `durationMs`, in order. The `file` must not already appear in `scenes` (the loader
    hard-errors on duplicates: copy the TSX and sidecar to a fresh stem instead of

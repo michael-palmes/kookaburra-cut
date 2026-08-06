@@ -43,6 +43,8 @@ const MIN_SEGMENT_VISUAL = 0.04; // of the track's inner width, visual floor onl
 /** The visible minimum length of an animation, in px of lane (decision 1); the Detailed view trades legibility for finer packing. */
 const MIN_LEN_PX = 24;
 const MIN_LEN_PX_DETAILED = 10;
+/** Gap between two clicks on one diamond that still counts as a double-click. */
+const DOUBLE_CLICK_MS = 400;
 
 /** Round to the export frame grid, then to whole ms (sidecar times stay integers). */
 function snapToFrame(ms: number): number {
@@ -117,6 +119,8 @@ export interface TrackLaneProps<P, T extends KeyedTrack<P>> {
   label?: string;
   /** Extra root class for per-lane theming (`lane-compare` recolours diamonds and segments via --lane-accent). */
   laneClassName?: string;
+  /** Double-clicking a diamond activates it (the chart lane opens the data modal on that key); absent leaves the second click a plain select. */
+  onKeyActivate?: (keyId: string) => void;
   /** Segment extras the camera rig opts into. Absent (the layered-screenshot lane) drops the popover's Advanced group; the lane NEVER branches on track type to decide this. */
   segmentExtras?: SegmentExtras;
   /** Soundtrack guidance (scene-local ms): faint beat ticks and stronger key-moment lines behind the keys, both joining the snap candidates. Absent keeps the lane byte for byte. */
@@ -158,6 +162,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   writeErrorPrefix,
   label,
   laneClassName,
+  onKeyActivate,
   segmentExtras,
   beatMarkers,
 }: TrackLaneProps<P, T>) {
@@ -171,6 +176,8 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
   const [durEdit, setDurEdit] = useState<string | null>(null);
   /** The gap neighbour the dragged key would merge into on release (decision 2). */
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+  // Diamonds capture the pointer and preventDefault, so no native dblclick reaches them: the pair is counted here off the event's own timestamp.
+  const lastKeyClickRef = useRef<{ id: string; at: number } | null>(null);
   /** The animation the easing popover is open for; only the context menu opens it. */
   const [easingSegment, setEasingSegment] = useState<number | null>(null);
   const [resizeSegIndex, setResizeSegIndex] = useState<number | null>(null);
@@ -396,7 +403,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     return mergeGap(base, keyId, target.id) ? target.id : null;
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: React.PointerEvent) {
     if (!drag) return;
     if (drag.kind === "scrub") {
       setDrag(null);
@@ -413,6 +420,13 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         select(drag.id, null);
         const key = track.keys.find((k) => k.id === drag.id);
         if (key) seekLocal(key.tMs);
+        const last = lastKeyClickRef.current;
+        if (onKeyActivate && last?.id === drag.id && e.timeStamp - last.at <= DOUBLE_CLICK_MS) {
+          lastKeyClickRef.current = null;
+          onKeyActivate(drag.id);
+        } else {
+          lastKeyClickRef.current = { id: drag.id, at: e.timeStamp };
+        }
       }
     } else {
       if (drag.moved) void commit(track);

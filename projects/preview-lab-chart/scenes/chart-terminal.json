@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "name": "Chart appearance: Terminal",
+  "chart": {
+    "type": "stackedColumn",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Apr", "May", "Jun", "Jul"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Organic",
+          "values": [32, 41, 53, 66]
+        },
+        {
+          "id": "s2",
+          "name": "Referral",
+          "values": [14, 17, 21, 24]
+        },
+        {
+          "id": "s3",
+          "name": "Paid",
+          "values": [9, 12, 16, 20]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "delivery": "all",
+      "staggerMs": 0,
+      "durationMs": 600,
+      "from": "start"
+    },
+    "style": {
+      "preset": "terminal"
+    }
+  }
+}

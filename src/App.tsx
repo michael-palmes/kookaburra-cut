@@ -30,6 +30,7 @@ import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beat
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { pollCaptureBridge } from "./engine/captureBridge";
+import { useChartTrackEditStore } from "./engine/chartTrackEditStore";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -134,6 +135,7 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
+import { ChartFallback } from "./toolkit/chart/ChartFallback";
 import { CompareChips } from "./toolkit/compare/CompareChips";
 import { DevicesFallback } from "./toolkit/device/Device";
 import { AssetBoundary } from "./toolkit/media/AssetBoundary";
@@ -146,11 +148,15 @@ import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
+import { ChartAnimationLane } from "./ui/ChartAnimationLane";
+import { ChartDataModal } from "./ui/ChartDataModal";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
+import { openChartDataModal } from "./ui/chartDataModalStore";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
+import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
@@ -969,6 +975,43 @@ export default function App() {
     [handleDocChanged],
   );
 
+  /** Palette Add chart: seed the starter block on the playhead's scene when it has none (the inspector's add entry seeds the same one), then land on the chart drill. */
+  const handleAddChart = useCallback(async () => {
+    const current = loadedProjectRef.current;
+    if (!current || !isWorkspaceProjectId(current.id)) return;
+    const sceneIndex = activeSceneIndex(current.slots, useClockStore.getState().currentMs);
+    const existing = current.sceneDocs[sceneIndex];
+    const file = current.sceneFiles[sceneIndex];
+    const openDrill = () => {
+      // The drill is a Scene-tab screen; setInspectorTab clears the stack, so order matters.
+      const ui = useUiStore.getState();
+      ui.setInspectorTab("scene");
+      ui.jumpInspectorDrill(["chart.edit"]);
+    };
+    if (existing?.chart) {
+      openDrill();
+      return;
+    }
+    if (!file) return;
+    const slug = workspaceSlug(current.id);
+    try {
+      const before = existing ? structuredClone(existing) : null;
+      const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
+      next.chart = newChartBlock();
+      await writeSceneDoc(slug, file, next);
+      handleDocChanged(sceneIndex, next);
+      pushHistory({
+        label: "add chart",
+        changes: [
+          { kind: "sceneDoc", slug, file, sceneIndex, before, after: structuredClone(next) },
+        ],
+      });
+      openDrill();
+    } catch (e) {
+      setToast({ kind: "error", message: `Add chart failed: ${String(e)}` });
+    }
+  }, [handleDocChanged]);
+
   // Custom Edit-menu items emit here since native items would swallow ⌘Z before the DOM saw it; a focused text field routes back to WebKit's own undo manager. Replays go through the same writers as fresh edits.
   const applyHistoryChange = useCallback(
     async (change: HistoryChange, dir: "undo" | "redo") => {
@@ -1400,6 +1443,10 @@ export default function App() {
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
   const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
   const compareLaneOpen = useCompareEditStore((s) => s.open);
+  // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
+  const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
+  const chartLaneOpen = useChartTrackEditStore((s) => s.open);
+  const stackedLanes = comparePresent || chartPresent;
 
   // The capture bridge: answer the embedded terminal's frame requests from the running app (engine/captureBridge.ts); mounts on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
@@ -2042,6 +2089,7 @@ export default function App() {
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
+                                <ChartFallback />
                                 <TextFallback />
                                 <CompareChips />
                               </AssetBoundary>
@@ -2073,6 +2121,7 @@ export default function App() {
                                 <ObjectsFallback />
                                 <LayeredScreenshotFallback />
                                 <VideoWindowFallback />
+                                <ChartFallback />
                                 <TextFallback />
                                 <CompareChips />
                               </AssetBoundary>
@@ -2316,14 +2365,24 @@ export default function App() {
       {editorView && (
         <TimelineDock
           connectorActive={
-            (comparePresent && compareLaneOpen) || (lsActive ? lsLaneOpen : cameraEditOpen)
+            (comparePresent && compareLaneOpen) ||
+            (chartPresent && chartLaneOpen) ||
+            (lsActive ? lsLaneOpen : cameraEditOpen)
           }
           activeIndex={camSceneIndex}
           lane={
             project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
-              <div className={comparePresent ? "anim-lane-stack" : undefined}>
+              <div className={stackedLanes ? "anim-lane-stack" : undefined}>
                 {comparePresent && (
                   <CompareAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {chartPresent && (
+                  <ChartAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
@@ -2336,7 +2395,7 @@ export default function App() {
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    label={comparePresent ? "Stack" : undefined}
+                    label={stackedLanes ? "Stack" : undefined}
                   />
                 ) : (
                   <AnimationLane
@@ -2344,8 +2403,8 @@ export default function App() {
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
-                    label={comparePresent ? "Camera" : undefined}
-                    alwaysOpen={comparePresent}
+                    label={stackedLanes ? "Camera" : undefined}
+                    alwaysOpen={stackedLanes}
                   />
                 )}
               </div>
@@ -2455,6 +2514,7 @@ export default function App() {
             projectLoaded: !!project,
             isWorkspace: !!project && isWorkspaceProjectId(project.id),
             hasAudio: !!project?.audio,
+            hasChart: chartPresent,
             exporting,
             hasWorkspaceRoot: !!settings?.workspaceRoot,
             playing,
@@ -2473,6 +2533,13 @@ export default function App() {
                 const ui = useUiStore.getState();
                 ui.setInspectorTab("scene");
                 ui.jumpInspectorDrill(["layeredScreenshot.edit"]);
+              },
+              addChart: () => void handleAddChart(),
+              editChartData: () => {
+                const ui = useUiStore.getState();
+                ui.setInspectorTab("scene");
+                ui.jumpInspectorDrill(["chart.edit"]);
+                openChartDataModal();
               },
               setSoundtrack: () => void handleSetSoundtrack(),
               removeSoundtrack: () => void handleRemoveSoundtrack(),
@@ -2503,6 +2570,16 @@ export default function App() {
           project={project}
           currentAspect={format.name}
           onClose={() => setShowPresent(false)}
+        />
+      )}
+      {/* The chart data grid: self-gating (the store's open flag plus a chart on the scene), keyed to the scene so a playhead move can never commit one scene's grid into another. */}
+      {project && (
+        <ChartDataModal
+          key={camSceneIndex}
+          project={project}
+          sceneIndex={camSceneIndex}
+          onDocChanged={handleDocChanged}
+          onTimingChanged={handleTimingChanged}
         />
       )}
     </div>

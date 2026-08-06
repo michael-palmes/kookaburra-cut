@@ -14,6 +14,7 @@ Full catalogue of `@kookaburra/toolkit` primitives, hooks and design tokens. Loa
 - [Text primitives](#text-primitives)
 - [Group lockups (AnimatedGroup)](#group-lockups-animatedgroup-v11--m5)
 - [Media + device primitives](#media--device-primitives)
+- [Charts](#charts-v14)
 - [Transition helpers](#transition-helpers)
 - [Design tokens](#design-tokens)
 - [Status by phase](#status-by-phase)
@@ -927,6 +928,26 @@ binaries stay gitignored (the licensed phone-glb precedent). Before any scene US
 object in an export, it needs the double preload barrier (`useGLTF.preload` + an awaited
 `GLTFLoader.loadAsync`) wired into the exporter preamble — the render primitive and
 preload plumbing land with the first shipped objects.
+
+## Charts (v14)
+
+One data visual per scene, sidecar-driven: eight types (column/bar/line/area, their
+stacked variants, pie) in 2D or 3D, three mounts (hero scene, staged beside devices,
+inside an overlay panel), 12 appearance presets, 19 build-in animation presets and
+keyframed data morphs on the shared track system. The TSX is one line:
+
+```tsx
+<Chart />   // reads the sidecar chart block; ChartFallback renders it even without this
+```
+
+Everything else lives in the `chart` sidecar block (data, style, axis, labels,
+animation, track). Series colours come from the theme (`chartColors`, then a derived
+accent ramp); never hard-code them. Scalar edits go through `sidecar.py` dotted paths;
+tabular data, keyframes and a readable summary go through `scripts/chart.py`.
+
+**Load `CHARTS.md` (beside this file) before authoring or editing any chart**: it
+carries the full block schema with resolved defaults, both preset catalogues with
+taste notes, the mount recipes, the data-track shape and the gotchas.
 
 ## Transition helpers
 

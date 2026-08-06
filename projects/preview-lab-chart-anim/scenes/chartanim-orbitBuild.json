@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "Chart build-in: Orbit build",
+  "chart": {
+    "type": "bar",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["Search", "Social", "Email"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Q1",
+          "values": [46, 32, 18]
+        },
+        {
+          "id": "s2",
+          "name": "Q2",
+          "values": [58, 39, 24]
+        },
+        {
+          "id": "s3",
+          "name": "Q3",
+          "values": [71, 48, 29]
+        }
+      ]
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": false
+      }
+    },
+    "animation": {
+      "preset": "orbitBuild",
+      "delivery": "cascade",
+      "staggerMs": 70,
+      "durationMs": 700,
+      "from": "start"
+    },
+    "style": {
+      "preset": "studio"
+    }
+  }
+}

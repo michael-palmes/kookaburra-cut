@@ -3,6 +3,7 @@ import { useContext, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { useChartRegistry } from "./chartRegistry";
 import { useDeviceRegistry } from "./deviceRegistry";
 import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
@@ -16,6 +17,7 @@ import {
   workspaceSlug,
 } from "./project";
 import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
+import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
 import {
@@ -139,6 +141,18 @@ export function useSceneVideoWindow(): NormalizedVideoWindow | null {
     () => normalizeVideoWindow(block, `scene ${sceneIndex ?? "?"}`),
     [block, sceneIndex],
   );
+}
+
+/** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneVideoWindow pattern). */
+export function useSceneChart(): ResolvedChart | null {
+  const doc = useSceneDoc();
+  const sceneIndex = useSceneContext()?.index;
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined) return;
+    useChartRegistry.getState().register(sceneIndex);
+    return () => useChartRegistry.getState().unregister(sceneIndex);
+  }, [sceneIndex]);
+  return useMemo(() => resolveChart(doc ?? undefined), [doc]);
 }
 
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
@@ -298,7 +312,7 @@ export async function resyncFollowMediaDuration(
   return { wrote: false, clampedDoc: null };
 }
 
-/** Shrink-fit every keyed track (camera, the layered-screenshot animation and the compare divider) to a new duration; null when nothing overhangs, so callers can skip the write. */
+/** Shrink-fit every keyed track (camera, the layered-screenshot animation, the compare divider and the chart data) to a new duration; null when nothing overhangs, so callers can skip the write. */
 export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): SceneDoc | null {
   const cam = doc.camera
     ? clampTrackToDuration(doc.camera as KeyedTrack<unknown>, durationMs)
@@ -309,11 +323,15 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   const cmp = doc.compare?.track
     ? clampTrackToDuration(doc.compare.track as KeyedTrack<unknown>, durationMs)
     : null;
+  const chart = doc.chart?.track
+    ? clampTrackToDuration(doc.chart.track as KeyedTrack<unknown>, durationMs)
+    : null;
   const camChanged = cam !== null && cam !== (doc.camera as KeyedTrack<unknown>);
   const animChanged =
     anim !== null && anim !== (doc.layeredScreenshot?.animation as KeyedTrack<unknown>);
   const cmpChanged = cmp !== null && cmp !== (doc.compare?.track as KeyedTrack<unknown>);
-  if (!camChanged && !animChanged && !cmpChanged) return null;
+  const chartChanged = chart !== null && chart !== (doc.chart?.track as KeyedTrack<unknown>);
+  if (!camChanged && !animChanged && !cmpChanged && !chartChanged) return null;
   const next = structuredClone(doc);
   if (camChanged) next.camera = structuredClone(cam) as SceneDoc["camera"];
   if (animChanged && next.layeredScreenshot) {
@@ -323,6 +341,9 @@ export function clampDocTracksToDuration(doc: SceneDoc, durationMs: number): Sce
   }
   if (cmpChanged && next.compare) {
     next.compare.track = structuredClone(cmp) as NonNullable<SceneDoc["compare"]>["track"];
+  }
+  if (chartChanged && next.chart) {
+    next.chart.track = structuredClone(chart) as NonNullable<SceneDoc["chart"]>["track"];
   }
   return next;
 }
