@@ -113,7 +113,7 @@ import {
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { planMoves } from "./engine/sceneOrder";
-import { ensureSceneThumbs } from "./engine/sceneThumbs";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
 import { getLiveSession } from "./engine/terminal";
@@ -2004,7 +2004,8 @@ export default function App() {
                   doc: project.sceneDocs[i],
                 }))}
                 theme={project.theme}
-                getThumbs={() => ensureSceneThumbs(project)}
+                readThumbs={() => listCachedSceneThumbs(project)}
+                captureThumbs={() => ensureSceneThumbs(project)}
                 onProjectChanged={(focusSceneFile) => {
                   if (focusSceneFile) focusSceneFileRef.current = focusSceneFile;
                   bumpWorkspaceReloadToken();

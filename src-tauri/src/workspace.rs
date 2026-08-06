@@ -1050,22 +1050,58 @@ pub fn write_snapshot(
 }
 
 // ── Scene thumbnails ──────────────────────────────────────────────────────
-// Centre-frame picker thumbs, cached per project under the workspace state dir and invalidated as a SET by the project fingerprint (the `.stamp` file); purely UI, the frontend captures lazily when a picker opens, never during export/autorun.
+// Centre-frame picker thumbs, cached per project under the workspace state dir and stamped PER SCENE (`<stem>.stamp` beside `<stem>.png`), so editing or adding one scene recaptures one thumb instead of the whole set; purely UI, the frontend captures lazily when a thumb grid mounts, never during export/autorun.
 
 fn scene_thumbs_dir(root: &Path, slug: &str) -> PathBuf {
     root.join(STATE_DIR_NAME).join("scene-thumbs").join(slug)
 }
 
+/// Content stamp for one scene's thumb: its module plus its sidecar. Deliberately narrower than `project_fingerprint`, which moves on every insert (project.json) and so invalidated every thumb at once.
+fn scene_source_stamp(scenes: &Path, stem: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    for ext in ["tsx", "json"] {
+        std::fs::read(scenes.join(format!("{stem}.{ext}")))
+            .unwrap_or_default()
+            .hash(&mut hasher);
+    }
+    format!("{:016x}", hasher.finish())
+}
+
+/// Live source stamps for every scene module in a project, stem → stamp.
+fn scene_source_stamps(project: &Path) -> HashMap<String, String> {
+    let scenes = project.join("scenes");
+    let mut stamps = HashMap::new();
+    if let Ok(read) = std::fs::read_dir(&scenes) {
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                stamps.insert(stem.to_owned(), scene_source_stamp(&scenes, stem));
+            }
+        }
+    }
+    stamps
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SceneThumbs {
-    /// The `project_fingerprint` value the set was captured under (None = no cache).
+    /// The `project_fingerprint` a pre-per-scene cache was captured under; superseded by `stamps`, still reported so an older frontend keeps working.
     pub stamp: Option<String>,
     /// Scene file stem → absolute PNG path.
-    pub thumbs: std::collections::HashMap<String, String>,
+    pub thumbs: HashMap<String, String>,
+    /// Scene file stem → the source stamp its cached thumb was captured under.
+    pub stamps: HashMap<String, String>,
+    /// Scene file stem → its CURRENT source stamp; a thumb is fresh when the two agree.
+    pub source_stamps: HashMap<String, String>,
 }
 
-/// The cached thumb set for a project (the frontend compares `stamp` to the live fingerprint and recaptures when they differ).
+/// The cached thumb set for a project, plus both sides of the freshness comparison (read together so the two can't skew).
 #[tauri::command]
 pub fn list_scene_thumbs(
     app: AppHandle,
@@ -1078,21 +1114,36 @@ pub fn list_scene_thumbs(
     let stamp = std::fs::read_to_string(dir.join(".stamp"))
         .ok()
         .map(|s| s.trim().to_owned());
-    let mut thumbs = std::collections::HashMap::new();
+    let mut thumbs = HashMap::new();
+    let mut stamps = HashMap::new();
     if let Ok(read) = std::fs::read_dir(&dir) {
         for entry in read.flatten() {
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("png") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            match path.extension().and_then(|e| e.to_str()) {
+                Some("png") => {
                     thumbs.insert(stem.to_owned(), path.to_string_lossy().into_owned());
                 }
+                Some("stamp") => {
+                    if let Ok(text) = std::fs::read_to_string(&path) {
+                        stamps.insert(stem.to_owned(), text.trim().to_owned());
+                    }
+                }
+                _ => {}
             }
         }
     }
-    Ok(SceneThumbs { stamp, thumbs })
+    Ok(SceneThumbs {
+        stamp,
+        thumbs,
+        stamps,
+        source_stamps: scene_source_stamps(&root.join(&slug)),
+    })
 }
 
-/// Persist one scene thumb (raw PNG body, `write_snapshot` pattern); headers: `x-kookaburra-slug`, `x-kookaburra-stem` (the scene FILE stem), `x-kookaburra-stamp` (the fingerprint the capture ran under, rewritten per write since the whole set shares it).
+/// Persist one scene thumb (raw PNG body, `write_snapshot` pattern); headers: `x-kookaburra-slug`, `x-kookaburra-stem` (the scene FILE stem), `x-kookaburra-stamp` (that scene's source stamp at capture time).
 #[tauri::command]
 pub fn write_scene_thumb(
     app: AppHandle,
@@ -1126,7 +1177,7 @@ pub fn write_scene_thumb(
     let dir = scene_thumbs_dir(&root, &slug);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(format!("{stem}.png")), bytes).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(".stamp"), stamp).map_err(|e| e.to_string())
+    std::fs::write(dir.join(format!("{stem}.stamp")), stamp).map_err(|e| e.to_string())
 }
 
 /// Persist one colour-emoji raster into the project's own `assets/.emoji-cache/` (raw PNG body, the `write_scene_thumb` pattern). Write-once: an existing file is NEVER overwritten, so the first-rasterised bytes stay the determinism source even across macOS emoji-artwork updates (the system-font pinning contract).
@@ -1888,6 +1939,57 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&dest_root);
+    }
+
+    #[test]
+    fn scene_thumb_stamps_move_per_scene_not_per_project() {
+        let project = scratch_dir();
+        let scenes = project.join("scenes");
+        std::fs::create_dir_all(&scenes).unwrap();
+        std::fs::write(scenes.join("01-intro.tsx"), b"intro").unwrap();
+        std::fs::write(scenes.join("01-intro.json"), b"{}").unwrap();
+        std::fs::write(scenes.join("02-outro.tsx"), b"outro").unwrap();
+
+        let before = scene_source_stamps(&project);
+        assert_eq!(before.len(), 2);
+        assert!(before.contains_key("01-intro"));
+
+        // Adding a scene leaves every existing stamp alone (project.json is deliberately not hashed).
+        std::fs::write(project.join(MANIFEST_FILENAME), b"{}").unwrap();
+        std::fs::write(scenes.join("03-new.tsx"), b"new").unwrap();
+        let added = scene_source_stamps(&project);
+        assert_eq!(added["01-intro"], before["01-intro"]);
+        assert_eq!(added["02-outro"], before["02-outro"]);
+        assert_eq!(added.len(), 3);
+
+        // Editing a sidecar moves only that scene's stamp.
+        std::fs::write(scenes.join("01-intro.json"), b"{\"name\":\"Intro\"}").unwrap();
+        let edited = scene_source_stamps(&project);
+        assert_ne!(edited["01-intro"], before["01-intro"]);
+        assert_eq!(edited["02-outro"], before["02-outro"]);
+
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_scene_stamp_separates_its_module_from_its_sidecar() {
+        let project = scratch_dir();
+        let scenes = project.join("scenes");
+        std::fs::create_dir_all(&scenes).unwrap();
+        std::fs::write(scenes.join("a.tsx"), b"ab").unwrap();
+        std::fs::write(scenes.join("a.json"), b"c").unwrap();
+        let split_one = scene_source_stamp(&scenes, "a");
+        std::fs::write(scenes.join("a.tsx"), b"a").unwrap();
+        std::fs::write(scenes.join("a.json"), b"bc").unwrap();
+        assert_ne!(split_one, scene_source_stamp(&scenes, "a"));
+
+        // A missing sidecar reads as empty, so writing an empty one is not a change.
+        std::fs::write(scenes.join("b.tsx"), b"a").unwrap();
+        let bare = scene_source_stamp(&scenes, "b");
+        std::fs::write(scenes.join("b.json"), b"").unwrap();
+        assert_eq!(bare, scene_source_stamp(&scenes, "b"));
+
+        let _ = std::fs::remove_dir_all(&project);
     }
 
     #[test]

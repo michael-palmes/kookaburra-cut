@@ -394,6 +394,7 @@ export function NewSceneWizard({
   projectPath,
   scenes,
   thumbs,
+  onNeedThumbs,
   theme,
   onDone,
   onCancel,
@@ -401,8 +402,10 @@ export function NewSceneWizard({
   slug: string;
   projectPath: string;
   scenes: WizardSceneInfo[];
-  /** Scene-thumb paths by stem (host loads them lazily on open). */
+  /** Scene-thumb paths by stem (the host paints its cache on open). */
   thumbs: Record<string, string>;
+  /** Ask the host to capture missing/stale thumbs; fired when the placement strip mounts, never on open (capture scrubs the playhead). */
+  onNeedThumbs: () => void;
   /** The project's theme, for the text-colour swatch defaults. */
   theme: Theme;
   onDone: (result: ScaffoldedScene) => void;
@@ -451,6 +454,10 @@ export function NewSceneWizard({
       void unlisten.then((fn) => fn());
     };
   }, []);
+  // The placement strip is the only step with scene cards, so it is where the capture belongs.
+  useEffect(() => {
+    if (step === "details") onNeedThumbs();
+  }, [step, onNeedThumbs]);
   const advanceMediaStep = () => {
     if (mediaIndex < deviceCount - 1) {
       setMediaIndex(mediaIndex + 1);
@@ -1018,6 +1025,7 @@ export function EditSceneWizard({
   projectPath,
   scenes,
   thumbs,
+  onNeedThumbs,
   onSaved,
   onCancel,
 }: {
@@ -1025,6 +1033,8 @@ export function EditSceneWizard({
   projectPath: string;
   scenes: WizardSceneInfo[];
   thumbs: Record<string, string>;
+  /** Ask the host to capture missing/stale thumbs; fired when the scene picker mounts. */
+  onNeedThumbs: () => void;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -1060,6 +1070,10 @@ export function EditSceneWizard({
       void unlisten.then((fn) => fn());
     };
   }, []);
+  // The picker step is the only one with scene cards; it is also step one, so this reads as "on open".
+  useEffect(() => {
+    if (step === "pick") onNeedThumbs();
+  }, [step, onNeedThumbs]);
   const pickEditMedia = (rel: string, meta: MediaMeta | null) => {
     setMedia({ rel, kind: meta?.kind === "image" ? "image" : "video", meta });
     setStep("form");
