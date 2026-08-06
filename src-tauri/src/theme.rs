@@ -10,7 +10,7 @@ use crate::workspace::{require_root, validate_slug, SettingsState, WORKSPACE_DIR
 /// Newest theme-document version this build can rewrite (mirrors `THEME_DOC_VERSION` in `src/theme/schema.ts`).
 const THEME_DOC_VERSION: u64 = 2;
 
-/// Previews per theme, the 4 standard `theme-starter` scenes' middle frames.
+/// Previews per theme, the 4 standard `preview-lab-theme` scenes' middle frames.
 const PREVIEWS_PER_THEME: u32 = 4;
 
 /// The themes folder inside the workspace root; reserved as a project slug in `create_project` (a project named "themes" would shadow it).

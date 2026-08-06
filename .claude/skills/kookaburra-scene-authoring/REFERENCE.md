@@ -669,7 +669,7 @@ safe-area alignment. Prefer it over hand-positioning two `AnimatedHeadline`s.
 
 The app-icon + text hero: icon left, small muted title over a large hero subtitle to its
 right, revealed as ONE unit (fade-scale + a single shine sweep, the `AnimatedGroup`
-mechanism). Scales itself down for square and portrait frames. The theme-starter
+mechanism). Scales itself down for square and portrait frames. The preview-lab-theme
 app-version slide is the worked example.
 
 ```ts
@@ -1017,7 +1017,7 @@ applied CPU-side to progress with endpoints preserved.
 | `dissolve` | mask | `intensity` 0.35 (noise scale) · `softness` 0.08 | organic value-noise threshold, soft edge |
 | `warp` | mix | `intensity` 0.2 · `center` [0.5,0.5] | lens pull toward centre, restrained RGB split at mid |
 
-`direction` is one of the four unit axes. Gate project: `projects/transition-spike` (every
+`direction` is one of the four unit axes. Gate project: `fixtures/transition-spike` (every
 non-slide/wipe seam incl. the v14 pack + eased boundaries); `ws:launch-2026` keeps
 slide/wipe coverage.
 

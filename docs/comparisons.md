@@ -120,7 +120,7 @@ drift.
 
 ## Gate fixture
 
-`projects/compare-spike` (bundled, no prefix): a null-control plain scene,
+`fixtures/compare-spike` (bundled, no prefix): a null-control plain scene,
 a static two-theme split with shader backgrounds on both sides, a feathered
 60-degree eased sweep, a circle window, a ghost blend and a full-chrome
 scene. Baselines live in docs/determinism.md; the null control pins the

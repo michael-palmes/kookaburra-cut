@@ -18,6 +18,12 @@ const EXDEV: i32 = 18;
 /// Current on-disk project manifest filename.
 pub(crate) const MANIFEST_FILENAME: &str = "project.json";
 
+/// The template manifest a bundled project must carry to be creatable from; the frontend registry (`src/engine/templates.ts`) globs the same file. Spikes and preview labs never carry one, so they self-exclude from both.
+const TEMPLATE_FILENAME: &str = "template.json";
+
+/// The shared sample media pool inside the bundled tree, seeded into every new project's assets/ rather than copied into every template.
+const SAMPLES_DIR_NAME: &str = "_samples";
+
 /// Per-project provisioning, embedded so a packaged app needs no extra resources.
 const PROJECT_CLAUDE_MD: &str = include_str!("../templates/project-CLAUDE.md");
 const PROJECT_CLAUDE_SETTINGS: &str = include_str!("../templates/project-claude-settings.json");
@@ -353,13 +359,16 @@ pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     }
 }
 
-/// The roots a frontend-supplied absolute path is allowed to resolve inside: the configured workspace (ws: assets + their exports/), the bundled projects tree (VideoClip/device media), and the default ~/Kookaburra Cut (where bundled-project exports land); any may be absent since a missing root simply can't contain the file, best-effort so an unconfigured workspace still permits bundled assets.
+/// The roots a frontend-supplied absolute path is allowed to resolve inside: the configured workspace (ws: assets + their exports/), the bundled projects tree (VideoClip/device media), the dev-only fixtures tree (gate spikes and preview labs, debug builds only) and the default ~/Kookaburra Cut (where bundled-project exports land); any may be absent since a missing root simply can't contain the file, best-effort so an unconfigured workspace still permits bundled assets.
 pub fn allowed_read_roots(app: &AppHandle, state: &State<'_, SettingsState>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(root) = require_root(app, state) {
         roots.push(root);
     }
     roots.push(templates_root(app));
+    if let Some(fixtures) = dev_fixtures_root() {
+        roots.push(fixtures);
+    }
     if let Ok(home) = app.path().home_dir() {
         roots.push(home.join(WORKSPACE_DIR_NAME));
     }
@@ -403,6 +412,12 @@ fn templates_root(app: &AppHandle) -> PathBuf {
         }
     }
     dev
+}
+
+/// The repo's dev-only fixture tree (`fixtures/`: gate spikes and preview labs), which is never bundled: DEBUG binaries read its clips like any bundled project, release binaries never see one (the frontend's fixture globs are dev-gated too).
+fn dev_fixtures_root() -> Option<PathBuf> {
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../fixtures");
+    (cfg!(debug_assertions) && dev.is_dir()).then_some(dev)
 }
 
 /// Where the shipped project skills live (same debug-tree-first / release-resource-first split as `templates_root`; bundled as the `claude-skills` resource so packaged apps provision projects exactly like dev).
@@ -1178,6 +1193,18 @@ pub fn write_emoji_raster(
     std::fs::write(&file, bytes).map_err(|e| e.to_string())
 }
 
+/// A bundled folder is a TEMPLATE only when it carries a project manifest AND declares itself with a readable `template.json`, so gate fixtures, preview labs and the sample pool can never be created from. Presence plus valid JSON is the whole native contract; the manifest's schema is validated in TS (`engine/templates.ts`).
+fn require_template(template: &Path, template_id: &str) -> Result<(), String> {
+    if !template.join(MANIFEST_FILENAME).is_file() {
+        return Err(format!("template \"{template_id}\" not found"));
+    }
+    let declared = std::fs::read_to_string(template.join(TEMPLATE_FILENAME))
+        .map_err(|_| format!("template \"{template_id}\" not found"))?;
+    serde_json::from_str::<serde_json::Value>(&declared)
+        .map_err(|e| format!("template \"{template_id}\" has an unreadable template.json: {e}"))?;
+    Ok(())
+}
+
 /// Create a project from a bundled template: copy `project.json` + `scenes/` + `assets/`, rewrite the manifest id/name, add `exports/`/`edits/`, stamp the Claude Code provisioning (CLAUDE.md, `.claude/settings.json`, the scene-authoring skill), and `git init` (best-effort, since Claude Code only persists folder trust for git repos).
 #[tauri::command]
 pub fn create_project(
@@ -1205,9 +1232,7 @@ pub fn create_project(
     }
 
     let template = templates_root(&app).join(&template_id);
-    if !template.join(MANIFEST_FILENAME).is_file() {
-        return Err(format!("template \"{template_id}\" not found"));
-    }
+    require_template(&template, &template_id)?;
 
     let dir = root.join(&slug);
     if dir.join(MANIFEST_FILENAME).is_file() {
@@ -1241,6 +1266,8 @@ pub fn create_project(
     // Always present even when the template ships none (e.g. "blank", since empty dirs don't survive git): media import and relative asset references expect the folder.
     std::fs::create_dir_all(dir.join("assets")).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir.join("edits")).map_err(|e| e.to_string())?;
+    // Templates reference the shared samples by name without shipping them, so seed the pool here (same ancient stamping as the backfill, so they sort below the user's own media).
+    copy_missing_sample_assets(&samples_root(&app), &dir.join("assets"))?;
     for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
         let dest = dir.join("assets").join(name);
         if !dest.exists() {
@@ -1346,12 +1373,17 @@ pub fn provision_project(
     stamp_claude_provisioning(&app, &dir)
 }
 
-/// The bundled sample files every project template ships (see `projects/*/assets/`).
+/// The shared sample files seeded into every new project (see `projects/_samples/`); templates reference them by name without shipping a copy each.
 const SAMPLE_ASSET_FILES: [&str; 3] = [
     "sample-phone-recording.mp4",
     "sample-laptop-recording.mp4",
     "app-icon.png",
 ];
+
+/// The shared sample pool inside the bundled tree (`projects/_samples/`), the one source both creation and the backfill seed from.
+fn samples_root(app: &AppHandle) -> PathBuf {
+    templates_root(app).join(SAMPLES_DIR_NAME)
+}
 
 /// Copy each sample file into the project's assets/ only when missing; never clobbers. Fresh copies and existing untouched copies are ancient-stamped so they sit below the user's own media; a user-replaced file never matches the bundled bytes and keeps its own dates.
 fn copy_missing_sample_assets(source_assets: &Path, project_assets: &Path) -> Result<(), String> {
@@ -1388,9 +1420,8 @@ pub fn ensure_sample_assets(
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
     }
-    let source_assets = templates_root(&app).join("theme-starter").join("assets");
     let project_assets = dir.join("assets");
-    copy_missing_sample_assets(&source_assets, &project_assets)?;
+    copy_missing_sample_assets(&samples_root(&app), &project_assets)?;
     // The creation-seeded screenshots heal the same way (their bundled bytes are embedded).
     for (i, (name, bytes)) in SAMPLE_SCREENSHOTS.iter().enumerate() {
         let dst = project_assets.join(name);
@@ -1888,6 +1919,27 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&dest_root);
+    }
+
+    #[test]
+    fn require_template_needs_a_readable_declaration() {
+        let root = scratch_dir();
+        let fixture = root.join("transition-spike");
+        std::fs::create_dir_all(&fixture).unwrap();
+        std::fs::write(fixture.join(MANIFEST_FILENAME), b"{}").unwrap();
+        // A spike carries a project manifest but declares no template, so it is not creatable from.
+        assert!(require_template(&fixture, "transition-spike").is_err());
+        assert!(require_template(&root.join("missing"), "missing").is_err());
+
+        let template = root.join("blank");
+        std::fs::create_dir_all(&template).unwrap();
+        std::fs::write(template.join(MANIFEST_FILENAME), b"{}").unwrap();
+        std::fs::write(template.join(TEMPLATE_FILENAME), b"not json").unwrap();
+        assert!(require_template(&template, "blank").is_err());
+        std::fs::write(template.join(TEMPLATE_FILENAME), br#"{"version":1}"#).unwrap();
+        assert!(require_template(&template, "blank").is_ok());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

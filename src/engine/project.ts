@@ -206,40 +206,92 @@ export function sceneMountKey(projectId: string, sceneFile: string): string {
 }
 
 // Vite resolves these globs from the repo root (the dev/build root). Manifests are small so they load on demand; scene modules are lazy and imported per project.
-const manifestGlob = import.meta.glob<{ default: ProjectManifest }>("/projects/*/project.json");
-const sceneGlob = import.meta.glob<{ default: SceneModule }>("/projects/*/scenes/*.tsx");
+// Two bundled trees: `projects/` ships (tauri.conf.json maps it into the .app), `fixtures/` holds the dev-only gate spikes and preview labs and ships NOWHERE, so every fixture half is behind `import.meta.env.DEV` (folded away in a release build, which then enumerates nothing it cannot open).
+type LazyGlob<T> = Record<string, () => Promise<T>>;
+
+const manifestGlob: LazyGlob<{ default: ProjectManifest }> = {
+  ...import.meta.glob<{ default: ProjectManifest }>("/projects/*/project.json"),
+  ...(import.meta.env.DEV
+    ? import.meta.glob<{ default: ProjectManifest }>("/fixtures/*/project.json")
+    : {}),
+};
+const sceneGlob: LazyGlob<{ default: SceneModule }> = {
+  ...import.meta.glob<{ default: SceneModule }>("/projects/*/scenes/*.tsx"),
+  ...(import.meta.env.DEV
+    ? import.meta.glob<{ default: SceneModule }>("/fixtures/*/scenes/*.tsx")
+    : {}),
+};
 // Persistent (hoisted morph) modules share the scenes/ folder but default-export a plain component rather than a defineScene, hence the separately-typed glob over the same files.
-const persistentGlob = import.meta.glob<{ default: ComponentType }>("/projects/*/scenes/*.tsx");
+const persistentGlob: LazyGlob<{ default: ComponentType }> = {
+  ...import.meta.glob<{ default: ComponentType }>("/projects/*/scenes/*.tsx"),
+  ...(import.meta.env.DEV
+    ? import.meta.glob<{ default: ComponentType }>("/fixtures/*/scenes/*.tsx")
+    : {}),
+};
 // Scene sidecar documents live beside their TSX as `scenes/<stem>.json`.
-const sceneDocGlob = import.meta.glob<{ default: unknown }>("/projects/*/scenes/*.json");
+const sceneDocGlob: LazyGlob<{ default: unknown }> = {
+  ...import.meta.glob<{ default: unknown }>("/projects/*/scenes/*.json"),
+  ...(import.meta.env.DEV
+    ? import.meta.glob<{ default: unknown }>("/fixtures/*/scenes/*.json")
+    : {}),
+};
+
+// A fixture's assets are served straight off the repo root by the dev server, so its glob key IS its URL. Lazy (never imported), because an EAGER fixture glob emits its files into `dist/` even from a branch the release build folds away, and fixtures ship nowhere. The key set is what keeps a missing fixture asset throwing at resolve time.
+const fixtureAssetUrls = (glob: Record<string, unknown>): Record<string, string> =>
+  Object.fromEntries(Object.keys(glob).map((key) => [key, key]));
 
 // Project-relative IMAGE assets, resolved to Vite-fingerprinted URLs that load inside the webview (textures for DeviceMockup screens, etc.); eager so the map is available synchronously during render. Scoped to images: video sources resolve to an absolute path (`resolveAssetPath`) for ffmpeg pre-extraction, not fetched as URLs.
-const assetUrlGlob = import.meta.glob<string>("/projects/*/assets/**/*.{png,jpg,jpeg,webp}", {
-  query: "?url",
-  import: "default",
-  eager: true,
-});
+const assetUrlGlob: Record<string, string> = {
+  ...import.meta.glob<string>("/projects/*/assets/**/*.{png,jpg,jpeg,webp}", {
+    query: "?url",
+    import: "default",
+    eager: true,
+  }),
+  ...fixtureAssetUrls(
+    import.meta.env.DEV
+      ? import.meta.glob("/fixtures/*/assets/**/*.{png,jpg,jpeg,webp}", { query: "?url" })
+      : {},
+  ),
+};
 
 // Project-relative environment maps (v9 lighting: user `.hdr`/`.exr` IBL sources). A separate glob from images so `preloadProjectImages` never routes an HDR through TextureLoader.
-const assetHdrGlob = import.meta.glob<string>("/projects/*/assets/**/*.{hdr,exr}", {
-  query: "?url",
-  import: "default",
-  eager: true,
-});
+const assetHdrGlob: Record<string, string> = {
+  ...import.meta.glob<string>("/projects/*/assets/**/*.{hdr,exr}", {
+    query: "?url",
+    import: "default",
+    eager: true,
+  }),
+  ...fixtureAssetUrls(
+    import.meta.env.DEV
+      ? import.meta.glob("/fixtures/*/assets/**/*.{hdr,exr}", { query: "?url" })
+      : {},
+  ),
+};
 
-/** Dev-only lab projects stay out of every picker; `loadProject` still resolves them by id (the option-preview generator iterates `previewLabProjectIds()`). */
+/** True for a bundled project living in the dev-only `fixtures/` tree; always false in a release build, where those globs are empty. */
+function isFixtureProjectId(id: string): boolean {
+  return `/fixtures/${id}/project.json` in manifestGlob;
+}
+
+/** A bundled project's root-absolute folder, the prefix its glob keys share. */
+function bundledProjectDir(id: string): string {
+  return isFixtureProjectId(id) ? `/fixtures/${id}` : `/projects/${id}`;
+}
+
+/** Dev-only lab projects stay out of every picker; `loadProject` still resolves them by id (the option-preview generator iterates `previewLabProjectIds()`). `preview-lab-theme` is the theme-preview fixture: it ships (themePreviews.ts renders every user theme from it) but the prefix keeps it hidden. */
 const isHiddenProjectId = (id: string) => id.startsWith("preview-lab");
 
-/** Project ids discoverable under `projects/`. */
+/** Project ids discoverable under `projects/` (plus `fixtures/` in dev). */
 export function listProjectIds(): string[] {
   return Object.keys(manifestGlob)
     .map((path) => path.split("/")[2])
     .filter((id) => !isHiddenProjectId(id));
 }
 
-/** The dev-only preview-lab projects (one per option-preview family: text, stage, chart appearance, chart build-ins, one per background), in stable order. Discovery is the directory-prefix convention: adding a background means adding its `preview-lab-bg-<id>` project; a vitest guards the pairing. */
+/** The dev-only preview-lab projects (one per option-preview family: text, stage, chart appearance, chart build-ins, one per background), in stable order. Discovery is the `fixtures/` tree plus the directory-prefix convention: adding a background means adding its `fixtures/preview-lab-bg-<id>` project; a vitest guards the pairing. The shipped `preview-lab-theme` is not one of them (it maps no option stems). */
 export function previewLabProjectIds(): string[] {
   return Object.keys(manifestGlob)
+    .filter((path) => path.startsWith("/fixtures/"))
     .map((path) => path.split("/")[2])
     .filter((id) => id.startsWith("preview-lab-"))
     .sort();
@@ -331,6 +383,9 @@ export async function listAllProjects(): Promise<ProjectListing[]> {
 // The absolute projects root the native side reads assets from. Dev: the repo tree, baked in by Vite (vite.config.ts). Packaged: resolved once from the .app's bundled resources (`bundle.resources` in tauri.conf.json maps ../projects → Resources/projects).
 let projectsRoot: string | null = import.meta.env.DEV ? __PROJECTS_DIR__ : null;
 
+// The sibling fixtures tree, dev-only in every sense: it is never bundled, and no packaged build ever resolves a fixture id (the globs above are empty there).
+const fixturesRoot: string | null = import.meta.env.DEV ? __FIXTURES_DIR__ : null;
+
 /** Resolve the projects root exactly once. A no-op in dev; in a packaged app it asks Tauri for the resource dir. `loadProject` awaits this before returning, so every consumer of `resolveAssetPath` (clip extraction, hashing) runs after the root is known. */
 async function ensureProjectsRoot(): Promise<void> {
   if (projectsRoot) return;
@@ -356,10 +411,11 @@ export function resolveAssetPath(projectId: string, relPath: string): string {
   if (isWorkspaceProjectId(projectId)) {
     return `${requireWorkspaceProject(workspaceSlug(projectId)).path}/${clean}`;
   }
-  if (!projectsRoot) {
+  const root = isFixtureProjectId(projectId) ? fixturesRoot : projectsRoot;
+  if (!root) {
     throw new Error("Projects root not resolved yet — load a project before resolving assets.");
   }
-  return `${projectsRoot}/${projectId}/${clean}`;
+  return `${root}/${projectId}/${clean}`;
 }
 
 /** The URL key a project-relative asset loads under: bundled projects use their `import.meta.glob` key (the project-root-absolute path); workspace projects use an asset-protocol URL (one seam for dev and packaged). */
@@ -368,7 +424,7 @@ function projectAssetKey(projectId: string, relPath: string): string {
   if (isWorkspaceProjectId(projectId)) {
     return fsUrl(`${requireWorkspaceProject(workspaceSlug(projectId)).path}/${clean}`);
   }
-  return `/projects/${projectId}/${clean}`;
+  return `${bundledProjectDir(projectId)}/${clean}`;
 }
 
 /** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). */
@@ -412,7 +468,7 @@ export function resolveProjectHdrUrl(projectId: string, relPath: string): string
     }
     return projectAssetKey(projectId, clean);
   }
-  const url = assetHdrGlob[`/projects/${projectId}/${clean}`];
+  const url = assetHdrGlob[`${bundledProjectDir(projectId)}/${clean}`];
   if (!url) {
     throw new Error(
       `Environment map "${relPath}" not found for project "${projectId}". ` +
@@ -455,7 +511,7 @@ export async function listProjectEnvironmentAssets(projectId: string): Promise<s
       return [];
     }
   }
-  const prefix = `/projects/${projectId}/`;
+  const prefix = `${bundledProjectDir(projectId)}/`;
   return Object.keys(assetHdrGlob)
     .filter((key) => key.startsWith(prefix))
     .map((key) => key.slice(prefix.length))
@@ -472,7 +528,7 @@ export async function preloadProjectImages(projectId: string): Promise<void> {
     // Match ImageCard's cache-bust suffix so a re-imported icon warms the URL it will request.
     urls = rels.map((rel) => projectAssetKey(projectId, rel) + assetVersionSuffix(projectId, rel));
   } else {
-    const prefix = `/projects/${projectId}/`;
+    const prefix = `${bundledProjectDir(projectId)}/`;
     urls = Object.entries(assetUrlGlob)
       .filter(([key]) => key.startsWith(prefix))
       .map(([, url]) => url);
@@ -522,7 +578,7 @@ async function importProjectModule<T>(
     const project = requireWorkspaceProject(workspaceSlug(projectId));
     return importCompiledWorkspaceModule<T>(project.slug, file.replace(/^\.?\//, ""));
   }
-  const path = `/projects/${projectId}/${file}`;
+  const path = `${bundledProjectDir(projectId)}/${file}`;
   const load = glob[path];
   if (!load) {
     throw new Error(`${what} "${path}" not found (referenced by ${projectId}/project.json).`);
@@ -564,7 +620,7 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
     assertUniqueSceneFiles(manifest.scenes, `"${slug}/project.json"`);
     return manifest;
   }
-  const manifestPath = `/projects/${id}/project.json`;
+  const manifestPath = `${bundledProjectDir(id)}/project.json`;
   const load = manifestGlob[manifestPath];
   if (!load) {
     throw new Error(
@@ -599,7 +655,7 @@ function parseProjectTypography(
   return out.headline || out.body ? out : null;
 }
 
-/** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `theme-starter` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */
+/** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `preview-lab-theme` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */
 export async function loadProject(
   id: string,
   options?: { themeId?: string },

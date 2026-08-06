@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-// Every bundled project's scene source, read raw so the ids can be read without importing (and running) the modules.
-const sceneSources = import.meta.glob<string>("../../projects/*/scenes/*.tsx", {
+// Every bundled scene source, read raw so the ids can be read without importing (and running) the modules.
+const projectSources = import.meta.glob<string>("../../projects/*/scenes/*.tsx", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+});
+// The dev-only tree (preview labs, spikes) ships nowhere but shares the id space while it loads as a project.
+const fixtureSources = import.meta.glob<string>("../../fixtures/**/scenes/*.tsx", {
   eager: true,
   query: "?raw",
   import: "default",
@@ -14,14 +20,16 @@ function defineSceneId(source: string): string | null {
 }
 
 const byProject = new Map<string, { file: string; id: string }[]>();
-for (const [path, source] of Object.entries(sceneSources)) {
+for (const [path, source] of Object.entries({ ...projectSources, ...fixtureSources })) {
   const id = defineSceneId(source);
   if (!id) continue;
-  const [, project, file] = path.match(/projects\/([^/]+)\/(scenes\/.+\.tsx)$/) ?? [];
+  const [, tree, project, file] =
+    path.match(/(projects|fixtures)\/(.+?)\/(scenes\/[^/]+\.tsx)$/) ?? [];
   if (!project) continue;
-  const scenes = byProject.get(project) ?? [];
+  const key = `${tree}/${project}`;
+  const scenes = byProject.get(key) ?? [];
   scenes.push({ file, id });
-  byProject.set(project, scenes);
+  byProject.set(key, scenes);
 }
 
 describe("bundled scene ids", () => {
@@ -43,4 +51,19 @@ describe("bundled scene ids", () => {
       expect(clashes).toEqual([]);
     },
   );
+
+  // Templates are copied verbatim into user projects, so ids clash across projects unless they carry their slug.
+  it("keeps every defineScene id unique across every bundled project", () => {
+    const seen = new Map<string, string>();
+    const clashes: string[] = [];
+    for (const [project, scenes] of byProject) {
+      for (const scene of scenes) {
+        const where = `${project}/${scene.file}`;
+        const first = seen.get(scene.id);
+        if (first) clashes.push(`"${scene.id}" in ${first} and ${where}`);
+        else seen.set(scene.id, where);
+      }
+    }
+    expect(clashes.sort()).toEqual([]);
+  });
 });

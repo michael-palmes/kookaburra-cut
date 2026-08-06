@@ -53,7 +53,7 @@ file live in this skill's `REFERENCE.md`.
    preset's darkest and lightest stop (flatter than that and the motion disappears) and give
    every preset its own parameter personality, not just a hue swap. Set the def's
    `colorSlots[].fallback` to the `p6` colours; a vitest pins the match.
-7. **Add the preview fixtures** in a NEW `projects/preview-lab-bg-<shader>/` project (the
+7. **Add the preview fixtures** in a NEW `fixtures/preview-lab-bg-<shader>/` project (the
    option-previews action discovers lab projects by directory prefix; a vitest guards the
    pairing): one `bg-<shader>` pair (the type
    card's motion clip), one `bg-<shader>-light` pair (the light-theme card, mirroring p1) and
