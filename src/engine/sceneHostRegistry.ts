@@ -3,6 +3,7 @@ import type { Group } from "three";
 /** Live handles onto each mounted scene's `<group>`, published by `<SceneHost>`; the compositor reads these to gate per-frame visibility for both preview and export, mirroring the single `canvasHandle` in `exportBridge.tsx` but as a keyed collection since all scenes mount at once. */
 export interface SceneHostHandle {
   index: number;
+  /** The manifest FILE, the unique scene identity (TSX ids may collide); write-only here, the compositor gates on index/side and never reads it. */
   id: string;
   startMs: number;
   durationMs: number;

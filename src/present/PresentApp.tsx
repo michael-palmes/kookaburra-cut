@@ -11,7 +11,7 @@ import { PersistentLayer } from "../engine/PersistentLayer";
 import { setPresentSlideshowActive } from "../engine/presentMode";
 import { setPreviewAudioProject, syncPreviewAudioPlaying } from "../engine/previewAudio";
 import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previewMedia";
-import { type LoadedProject, loadProject } from "../engine/project";
+import { type LoadedProject, loadProject, sceneMountKey } from "../engine/project";
 import { revealApp } from "../engine/reveal";
 import { SceneHost } from "../engine/SceneHost";
 import { ProjectIdContext } from "../engine/sceneContext";
@@ -344,9 +344,9 @@ export function PresentApp() {
                   const active = mode === "slideshow" && deck.sceneIndex === i;
                   return (
                     <SceneHost
-                      key={`${project.id}:${slot.id}`}
+                      key={sceneMountKey(project.id, project.sceneFiles[i])}
                       index={i}
-                      id={slot.id}
+                      id={project.sceneFiles[i]}
                       startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
                       durationMs={
                         active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
@@ -381,7 +381,7 @@ export function PresentApp() {
                   const active = mode === "slideshow" && deck.sceneIndex === i;
                   return (
                     <FramePanel
-                      key={`${project.id}:panel:${slot.id}`}
+                      key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
                       index={i}
                       startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
                       durationMs={

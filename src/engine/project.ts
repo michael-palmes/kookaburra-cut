@@ -31,6 +31,7 @@ import { deriveCompareBDoc } from "./sceneCompare";
 import { compileSceneModule } from "./sceneCompiler";
 import { loadSceneDoc } from "./sceneDoc";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
+import { ensureUniqueSceneIds } from "./sceneIds";
 import { normalizeLighting } from "./sceneLighting";
 import {
   buildSceneTimeline,
@@ -168,7 +169,7 @@ export interface LoadedProject {
   persistent?: ComponentType;
   /** Per-scene sidecar documents, index-parallel to `scenes` and keyed off each manifest entry's FILE stem (`scenes/01-hero.tsx` → `scenes/01-hero.json`). Undefined entries are scenes without a sidecar, rendering as before with no editing affordances; the engine reads these directly, scene components via `SceneHost`'s `SceneDocContext`. */
   sceneDocs: (SceneDoc | undefined)[];
-  /** The manifest's per-scene module paths (`scenes/01-hero.tsx`), index-parallel to `scenes`; the stable file identity behind sidecar writes and thumb caching (scene ids are TSX-authored and free to collide/rename, files are unique). */
+  /** The manifest's per-scene module paths (`scenes/01-hero.tsx`), index-parallel to `scenes`; the stable file identity behind sidecar writes and thumb caching (scene ids are TSX-authored and free to collide/rename, files are unique), and mount keys derive from these. */
   sceneFiles: string[];
   /** Each scene's RESOLVED theme, index-parallel to `scenes`: the project theme unless the scene's sidecar overrides `themeId`. `SceneHost` provides it to the scene's tree; render seams read it for per-scene state (background/environment). */
   sceneThemes: Theme[];
@@ -190,11 +191,18 @@ export interface LoadedProject {
   compareBDocs: (SceneDoc | undefined)[];
   /** Side B's RESOLVED theme per comparison scene (its `compare.b.themeId`, else the scene's own theme), index-parallel; undefined exactly where `compareBDocs` is. */
   compareBThemes: (Theme | undefined)[];
+  /** Scene files whose TSX id the load rewrote to break a duplicate (`ensureUniqueSceneIds`); absent or empty when nothing was healed. */
+  healedSceneIds?: string[];
 }
 
 /** A scene file's stem; the sidecar/thumb cache key (`scenes/01-hero.tsx` → `01-hero`). */
 export function sceneFileStem(file: string): string {
   return file.replace(/^scenes\//, "").replace(/\.tsx$/, "");
+}
+
+/** The React key for one scene's mounts, the identity `assertUniqueSceneFiles` guarantees unique; TSX `defineScene` ids are author-owned and free to collide, so they must never key a mount. */
+export function sceneMountKey(projectId: string, sceneFile: string): string {
+  return `${projectId}:${sceneFile.replace(/^\.?\//, "")}`;
 }
 
 // Vite resolves these globs from the repo root (the dev/build root). Manifests are small so they load on demand; scene modules are lazy and imported per project.
@@ -600,9 +608,21 @@ export async function loadProject(
   const manifest = await loadManifest(id);
 
   // F-001 trust gate: no workspace scene code compiles until the user consents; bundled projects never gate. Reading the manifest above is inert (JSON only).
+  let healedSceneIds: string[] | undefined;
   if (isWorkspaceProjectId(id)) {
     const slug = workspaceSlug(id);
     await ensureProjectTrusted(slug, manifest.name || slug);
+    // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
+    const heal = await ensureUniqueSceneIds(slug);
+    if (heal?.renamed.length) {
+      healedSceneIds = heal.renamed.map((r) => r.file);
+      bumpWorkspaceReloadToken();
+      console.info(
+        `[scene-ids] healed duplicate scene ids in "${slug}": ${heal.renamed
+          .map((r) => `${r.file} ${r.from} → ${r.to}`)
+          .join(", ")}`,
+      );
+    }
     await ensureSampleAssets(slug);
     await refreshWorkspaceAssets(id);
     await refreshWorkspaceEnvironments(id);
@@ -631,6 +651,7 @@ export async function loadProject(
   const outgoing = outgoingSceneTransitions(manifest);
   const slots = buildSceneTimeline(
     manifest.scenes.map((_, i) => ({
+      // TSX-authored, so it may collide: never key a mount off it, files are the identity (`sceneMountKey`).
       id: scenes[i].id,
       durationMs: scenes[i].durationMs,
       transition: outgoing[i],
@@ -776,5 +797,6 @@ export async function loadProject(
     renderSettings,
     compareBDocs,
     compareBThemes,
+    healedSceneIds,
   };
 }
