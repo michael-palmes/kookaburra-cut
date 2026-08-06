@@ -60,6 +60,8 @@ normally and simply shows no editing affordances.
     "titleOffsetX": 0.4, "titleOffsetY": -0.2, // OffsetX/Y: world-unit nudges from the scene's layout
     "titleLineHeight": 1.4,                    //   LineHeight: line spacing as a multiple of the font
                                                //   size (0.8..2); absent keeps the font's own spacing
+    "titleRotationDeg": -4,                    //   RotationDeg: clockwise tilt about the block's anchor,
+                                               //   folded into (-180, 180]; absent or 0 is upright
     "subtitleColor": "#9aa4b5"
   },                                         // consumed by any text primitive given the matching
                                              // textKey (TitleBlock owns title/subtitle); inert

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { type CameraTool, useCameraEditStore } from "../engine/cameraEditStore";
 import { useClockStore } from "../engine/clock";
 import { CAMERA } from "../engine/format";
@@ -17,8 +17,10 @@ import { forwardRigPose, lookRigPose, moveRigPose, tiltRigPose } from "../engine
 import { toolMatchesMode } from "./CameraPill";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { useCameraDoc } from "./cameraDoc";
+import { useModifierKeys } from "./gizmo/modifierKeys";
+import { useGizmoYield } from "./gizmo/useGizmoYield";
 
-/** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held swap the cursor while hovering and rebase mid-drag from the current pose so the tool switch never jumps (⌘/⌃/⌥ map to the current mode's equivalents: pan/zoom/orbit in Orbit, move/forward/look in Free); ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. Pan drags snap gently to the scene centre (guide lines flash while captured). */
+/** Drag surface mounted over the preview canvas while a tool is armed (DOM above the canvas, so the export can't see it by construction); edits the selected key, else the one nearest the playhead, seeding a lone key at t=0 on an empty track. Modifiers held swap the cursor while hovering and rebase mid-drag from the current pose so the tool switch never jumps (⌘/⌃/⌥ map to the current mode's equivalents: pan/zoom/orbit in Orbit, move/forward/look in Free); ⌃-click is macOS's secondary click, so the overlay also swallows contextmenu. Pan drags snap gently to the scene centre (guide lines flash while captured). It claims the WHOLE frame, so it stands down (`is-inert`) while a registered 3D gizmo handle sits under the pointer, unless a modifier is held or a drag is already in flight (`useGizmoYield`). */
 
 /** Pointer distance within which a pan drag captures onto the scene centre, per axis. */
 const CENTRE_SNAP_PX = 8;
@@ -99,26 +101,17 @@ export function CameraToolOverlay({
   const [drag, setDrag] = useState<ToolDrag | null>(null);
   const [rigDrag, setRigDrag] = useState<RigDrag | null>(null);
   const [guides, setGuides] = useState({ v: false, h: false });
-  const [heldTool, setHeldTool] = useState<CameraTool | null>(null);
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-
+  const mods = useModifierKeys();
   // Cursor feedback while a modifier is held, before any drag starts.
-  useEffect(() => {
-    const update = (e: KeyboardEvent) => setHeldTool(modifierTool(e, free));
-    const clear = () => setHeldTool(null);
-    window.addEventListener("keydown", update);
-    window.addEventListener("keyup", update);
-    window.addEventListener("blur", clear);
-    return () => {
-      window.removeEventListener("keydown", update);
-      window.removeEventListener("keyup", update);
-      window.removeEventListener("blur", clear);
-    };
-  }, [free]);
-
+  const heldTool = modifierTool(mods, free);
   // An armed tool from the other mode (a mode switch mid-session) drags nothing rather than mangling the pose.
-  if (!armedTool || !toolMatchesMode(armedTool, mode)) return null;
+  const armed = !!armedTool && toolMatchesMode(armedTool, mode);
+  // 3D gizmo handles win the pointer: this surface claims the whole frame, and drei's controls listen on the canvas below it.
+  const { inert, gizmoClaimedPointer } = useGizmoYield(armed, drag !== null || rigDrag !== null);
+
+  if (!armed || !armedTool) return null;
 
   function setGuideState(v: boolean, h: boolean) {
     setGuides((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
@@ -142,6 +135,8 @@ export function CameraToolOverlay({
 
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0 || !armedTool) return;
+    // The router latches a handle on the window capture phase, i.e. before this fires, so a hover miss can't fly the camera on top of a gizmo drag.
+    if (gizmoClaimedPointer()) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const state = useCameraEditStore.getState();
     if (free) {
@@ -332,7 +327,7 @@ export function CameraToolOverlay({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: a pure drag surface over the canvas — contextmenu opens the camera menu (⌃-left-click stays swallowed as the zoom modifier) */}
       <div
         ref={overlayRef}
-        className={`camera-tool-overlay tool-${rigDrag?.tool ?? drag?.tool ?? heldTool ?? armedTool}`}
+        className={`camera-tool-overlay tool-${rigDrag?.tool ?? drag?.tool ?? heldTool ?? armedTool}${inert ? " is-inert" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

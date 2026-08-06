@@ -1,5 +1,13 @@
 import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Box3,
   type BufferAttribute,
@@ -20,13 +28,16 @@ import {
   Vector3,
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
+import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { presentSlideshowActive } from "../../engine/presentMode";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
+import { SceneOutline } from "../../engine/SceneOutline";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
@@ -37,6 +48,8 @@ import { preparingVideoTexture } from "../media/preparingTexture";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
 import { DEVICE_CATALOG, type DeviceId, deviceColour } from "./catalog";
+import { DeviceGizmo } from "./DeviceGizmo";
+import type { DevicePose } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
 
@@ -80,6 +93,8 @@ export interface DevicePlacement {
 export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
 
 export interface DeviceProps {
+  /** Scene-document id: sidecar devices carry it (it is what the inspector and the gizmo select on), hand-authored ones do not. */
+  id?: string;
   /** Catalog id, e.g. `"iphone-15-pro"`. */
   model: DeviceId;
   /** Colour id from the catalog (default: the model's default colour). */
@@ -453,6 +468,7 @@ function SunShadow({
 /** The pillar device primitive: the export preamble awaits `preloadCatalogModels` / `preextractClips` / `preloadProjectImages` so every frame renders synchronously after load; see docs/determinism.md and docs/decisions.md. */
 export function Device(props: DeviceProps) {
   const {
+    id,
     model,
     colour,
     media,
@@ -474,7 +490,32 @@ export function Device(props: DeviceProps) {
   const projectId = contextProjectId ?? storeProjectId;
   const groupRef = useRef<Group>(null);
 
-  const sceneIndex = useSceneContext()?.index;
+  const ctx = useSceneContext();
+  const sceneIndex = ctx?.index;
+  // The gizmo drives the pose through state, not the group directly: the clock re-renders this component every frame, which would stomp a mutated group. Never reaches an export (the gizmo unmounts when `exportPreamble` clears the selection, and `isExporting` is the belt to that brace).
+  const [drag, setDrag] = useState<DevicePose | null>(null);
+  const selected = useDeviceEditStore((s) => s.selected);
+  const sectionOpen = useGizmoSectionOpen("devices");
+  // What a click selects, or null for a hand-authored device and for a comparison's B side (which edits through the compare drill, so a write would land on the wrong doc).
+  const editTarget =
+    id !== undefined && sceneIndex !== undefined && ctx?.side === undefined
+      ? { sceneIndex, deviceId: id }
+      : null;
+  const gizmoOn =
+    editTarget !== null &&
+    sectionOpen &&
+    selected?.sceneIndex === editTarget.sceneIndex &&
+    selected.deviceId === editTarget.deviceId;
+  const dragged = drag && !isExporting() ? drag : null;
+  const committed: DevicePose = { position, rotationDeg, scale };
+  const raw = dragged ?? committed;
+  // `patchDoc` is async, so the drag pose holds until the COMMITTED placement changes (a commit, a slider, a preset or an undo), never on pointer-up.
+  const poseKey = `${position.join()}|${rotationDeg.join()}|${scale}`;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the committed pose IS the clear signal
+  useEffect(() => setDrag(null), [poseKey]);
+  useEffect(() => {
+    if (!gizmoOn) setDrag(null);
+  }, [gizmoOn]);
   const introMs =
     motion.preset === "tilt-reveal"
       ? (motion.durationMs ?? 1000)
@@ -512,7 +553,7 @@ export function Device(props: DeviceProps) {
   useLayoutEffect(() => () => screenMaterial.dispose(), [screenMaterial]);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, aspect, fittedHeight, lidNode, lidBaseX } = useMemo(() => {
+  const { root, fit, screens, aspect, fittedHeight, lidNode, lidBaseX, bodySize } = useMemo(() => {
     const clone = scene.clone(true);
     const screens: Mesh[] = [];
     const hide: Object3D[] = [];
@@ -573,7 +614,16 @@ export function Device(props: DeviceProps) {
     const lidBaseX = lidNode ? (lidNode as Object3D).rotation.x : 0;
     // Perf-probe marker: the no-devices elimination pass hides these roots.
     clone.userData.kookaburraDevice = true;
-    return { root: clone, fit, screens, aspect, fittedHeight, lidNode, lidBaseX };
+    return {
+      root: clone,
+      fit,
+      screens,
+      aspect,
+      fittedHeight,
+      lidNode,
+      lidBaseX,
+      bodySize: [size.x, size.y, size.z] as V3,
+    };
   }, [scene, activeSpec, colourSpec, screenMaterial]);
 
   // Lid angle: a static pose from the doc (pure data, no clock), applied pre-paint.
@@ -632,68 +682,91 @@ export function Device(props: DeviceProps) {
       break;
   }
 
-  const groundY = -(fittedHeight / 2) * scale - GROUND_EPSILON;
+  const groundY = -(fittedHeight / 2) * raw.scale - GROUND_EPSILON;
   // Grounded placement: the fitted base rests on the staged floor; no floor leaves the authored position byte-identical.
-  const groupPosition: V3 =
-    ground && stageFloorY !== null
-      ? [position[0], stageFloorY + (fittedHeight / 2) * scale, position[2]]
-      : position;
+  const floorTop = ground && stageFloorY !== null ? stageFloorY : null;
+  const grounded = (pose: DevicePose): V3 =>
+    floorTop === null
+      ? pose.position
+      : [pose.position[0], floorTop + (fittedHeight / 2) * pose.scale, pose.position[2]];
+  const groupPosition = grounded(raw);
 
   return (
-    <group ref={groupRef} position={groupPosition}>
-      {isLit && (
-        <>
-          <ambientLight intensity={0.7} />
-          <directionalLight position={[4, 6, 5]} intensity={2.4} />
-          <directionalLight position={[-5, 2, -3]} intensity={0.9} />
-          {/* Procedural, offline environment (rendered once) so the titanium reads as metal; the DeviceMockup set. */}
-          <Environment resolution={256} frames={1}>
-            <Lightformer form="rect" intensity={2} position={[0, 3, 4]} scale={8} />
-            <Lightformer form="rect" intensity={1.2} position={[-4, 1, 2]} scale={5} />
-            <Lightformer form="rect" intensity={1} position={[4, -1, 3]} scale={5} />
-          </Environment>
-        </>
-      )}
-      {shadowMode === "sun" ? (
-        <SunShadow scale={scale} aspect={aspect} fittedHeight={fittedHeight} />
-      ) : (
-        shadowMode !== "none" && <DeviceShadow mode={shadowMode} scale={scale} groundY={groundY} />
-      )}
-      {/* Float rides an inner group so the ground shadow stays put. */}
-      <group
-        position={[0, floatY, 0]}
-        rotation={[
-          rotationDeg[0] * DEG2RAD + introRotX,
-          rotationDeg[1] * DEG2RAD + spinY + introRotY,
-          rotationDeg[2] * DEG2RAD,
-        ]}
-        scale={introScale}
-      >
-        <group scale={scale * fit}>
-          <primitive object={root} />
+    <>
+      <group ref={groupRef} position={groupPosition}>
+        {isLit && (
+          <>
+            <ambientLight intensity={0.7} />
+            <directionalLight position={[4, 6, 5]} intensity={2.4} />
+            <directionalLight position={[-5, 2, -3]} intensity={0.9} />
+            {/* Procedural, offline environment (rendered once) so the titanium reads as metal; the DeviceMockup set. */}
+            <Environment resolution={256} frames={1}>
+              <Lightformer form="rect" intensity={2} position={[0, 3, 4]} scale={8} />
+              <Lightformer form="rect" intensity={1.2} position={[-4, 1, 2]} scale={5} />
+              <Lightformer form="rect" intensity={1} position={[4, -1, 3]} scale={5} />
+            </Environment>
+          </>
+        )}
+        {shadowMode === "sun" ? (
+          <SunShadow scale={raw.scale} aspect={aspect} fittedHeight={fittedHeight} />
+        ) : (
+          shadowMode !== "none" && (
+            <DeviceShadow mode={shadowMode} scale={raw.scale} groundY={groundY} />
+          )
+        )}
+        {/* Float rides an inner group so the ground shadow stays put. */}
+        <group
+          position={[0, floatY, 0]}
+          rotation={[
+            raw.rotationDeg[0] * DEG2RAD + introRotX,
+            raw.rotationDeg[1] * DEG2RAD + spinY + introRotY,
+            raw.rotationDeg[2] * DEG2RAD,
+          ]}
+          scale={introScale}
+        >
+          <group scale={raw.scale * fit}>
+            <primitive object={root} />
+            {editTarget && (
+              <SceneOutline
+                size={bodySize}
+                domain="devices"
+                selected={gizmoOn}
+                onSelect={() => useDeviceEditStore.getState().select(editTarget)}
+              />
+            )}
+          </group>
         </group>
-      </group>
-      {media?.kind === "video" && (
-        <ScreenVideo
-          src={media.src}
-          startMs={media.startMs ?? 0}
-          material={screenMaterial}
-          screens={screens}
-          screenAspect={activeSpec.screen.aspect}
-        />
-      )}
-      {media?.kind === "image" && (
-        <AssetBoundary key={media.src} label={media.src}>
-          <ScreenImage
+        {media?.kind === "video" && (
+          <ScreenVideo
             src={media.src}
+            startMs={media.startMs ?? 0}
             material={screenMaterial}
             screens={screens}
             screenAspect={activeSpec.screen.aspect}
-            projectId={projectId}
           />
-        </AssetBoundary>
+        )}
+        {media?.kind === "image" && (
+          <AssetBoundary key={media.src} label={media.src}>
+            <ScreenImage
+              src={media.src}
+              material={screenMaterial}
+              screens={screens}
+              screenAspect={activeSpec.screen.aspect}
+              projectId={projectId}
+            />
+          </AssetBoundary>
+        )}
+      </group>
+      {editTarget && gizmoOn && (
+        <DeviceGizmo
+          deviceId={editTarget.deviceId}
+          sceneIndex={editTarget.sceneIndex}
+          committed={committed}
+          rendered={{ ...committed, position: grounded(committed) }}
+          onDrag={setDrag}
+        />
       )}
-    </group>
+    </>
   );
 }
 

@@ -1,5 +1,16 @@
 import { Text } from "@react-three/drei";
-import { useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import {
+  type RefObject,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { Object3D } from "three";
+import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
 import { useHeldLocalMs } from "../../engine/presentHold";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -121,7 +132,8 @@ function textStyle(theme: Theme, props: AnimatedHeadlineProps) {
 export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
-  const sceneIndex = useSceneContext()?.index;
+  const ctx = useSceneContext();
+  const sceneIndex = ctx?.index;
   // Report coded motion to the registry; the Text-motion panel warns and offers the sidecar force override instead of silently losing the user's pick.
   const coded = hasOwnAnimationProps(props);
   useEffect(() => {
@@ -146,6 +158,9 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const offX = styleOf("OffsetX");
   const offY = styleOf("OffsetY");
   const lineHeight = styleOf("LineHeight");
+  // Rotation is deliberately NOT folded into `styled`: it changes no layout input, so the title cascade and the panel column never reflow around a tilt.
+  const rotRaw = styleOf("RotationDeg");
+  const rotZ = typeof rotRaw === "number" && rotRaw !== 0 ? (-rotRaw * Math.PI) / 180 : 0;
   let styled = props;
   if (
     typeof fontValue === "string" ||
@@ -171,6 +186,25 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
         : {}),
     };
   }
+  // Publish the mounted mesh and its measured block to the 2D gizmo registry; DOM-only readers, never the render path.
+  const meshRef = useRef<Object3D | null>(null);
+  const targetKey = useId();
+  const side = ctx?.side;
+  useEffect(() => {
+    if (sceneIndex === undefined || !textKey) return;
+    registerGizmoTarget(targetKey, {
+      domain: "text",
+      sceneIndex,
+      itemId: textKey,
+      side,
+      node: () => meshRef.current,
+      localRect: () => {
+        const b = (meshRef.current as (Object3D & CaretInfo) | null)?.textRenderInfo?.blockBounds;
+        return b && b.length === 4 ? [b[0], b[1], b[2], b[3]] : null;
+      },
+    });
+    return () => unregisterGizmoTarget(targetKey);
+  }, [targetKey, sceneIndex, textKey, side]);
   // Report the text + resolved size; the Scene tab derives its default scene name from the scene's largest mounted text. UI-only, an effect.
   const registeredText = props.text;
   const registeredSize = styled.fontSize ?? 0.6;
@@ -191,24 +225,63 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
     return registerPresentTiming(sceneIndex, { kind: "text", toMs: holdToMs, outAtMs: holdOutMs });
   }, [sceneIndex, holdToMs, holdOutMs]);
   if (anim === null || (anim.preset === "none" && !hasOut)) {
-    return <LegacyHeadline {...styled} color={fill} theme={theme} prepared={prepared} />;
+    return (
+      <LegacyHeadline
+        {...styled}
+        color={fill}
+        theme={theme}
+        prepared={prepared}
+        meshRef={meshRef}
+        rotZ={rotZ}
+      />
+    );
   }
   if (anim.granularity && anim.staggerMs > 0) {
     return (
-      <StaggeredHeadline {...styled} color={fill} theme={theme} anim={anim} prepared={prepared} />
+      <StaggeredHeadline
+        {...styled}
+        color={fill}
+        theme={theme}
+        anim={anim}
+        prepared={prepared}
+        meshRef={meshRef}
+        rotZ={rotZ}
+      />
     );
   }
-  return <BlockHeadline {...styled} color={fill} theme={theme} anim={anim} prepared={prepared} />;
+  return (
+    <BlockHeadline
+      {...styled}
+      color={fill}
+      theme={theme}
+      anim={anim}
+      prepared={prepared}
+      meshRef={meshRef}
+      rotZ={rotZ}
+    />
+  );
 }
 
 /** Shared caret capture: quads only mount once the first typeset reports positions. */
 type CaretInfo = { textRenderInfo?: { caretPositions?: Float32Array; blockBounds?: number[] } };
 
+/** What every render path needs from the host: the mesh handle the gizmo registry publishes, and the sidecar tilt (0 means no rotation prop is passed at all, so an untouched project's tree is unchanged). */
+type HeadlineHost = { meshRef: RefObject<Object3D | null>; rotZ: number };
+
 /** The v0 path, verbatim, the null-for-legacy contract for every pre-v8 project (role/color default to the original headline-face/text-token resolution, so pixels cannot move); inside an `AnimatedGroup` the group's alpha multiplies in (× 1 is fp-exact outside groups) and shine-capable groups mount the band material, both structurally inert when there is no group, so legacy bytes stay safe. Emoji quads (and their caret capture) mount only when the text actually contains emoji. */
 function LegacyHeadline(
-  props: AnimatedHeadlineProps & { theme: Theme; prepared: PreparedEmojiText },
+  props: AnimatedHeadlineProps & HeadlineHost & { theme: Theme; prepared: PreparedEmojiText },
 ) {
-  const { from = 0, to = 600, position = [0, 0, 0], fontSize = 0.6, theme, prepared } = props;
+  const {
+    from = 0,
+    to = 600,
+    position = [0, 0, 0],
+    fontSize = 0.6,
+    theme,
+    prepared,
+    meshRef,
+    rotZ,
+  } = props;
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
   const group = useContext(GroupAnimationContext);
@@ -251,6 +324,7 @@ function LegacyHeadline(
   return (
     <>
       <Text
+        ref={meshRef}
         font={font}
         position={position}
         fontSize={fontSize}
@@ -259,6 +333,7 @@ function LegacyHeadline(
         anchorY="middle"
         fillOpacity={alpha}
         {...layoutProps(props)}
+        {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         {...(holder ? { material: holder.material } : {})}
         onSync={
           hasEmoji
@@ -272,7 +347,7 @@ function LegacyHeadline(
         {prepared.text}
       </Text>
       {hasEmoji && (
-        <group position={position}>
+        <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />
         </group>
       )}
@@ -283,11 +358,12 @@ function LegacyHeadline(
 type Bounds = readonly [number, number, number, number];
 
 function BlockHeadline(
-  props: AnimatedHeadlineProps & {
-    theme: Theme;
-    anim: ResolvedTextAnimation;
-    prepared: PreparedEmojiText;
-  },
+  props: AnimatedHeadlineProps &
+    HeadlineHost & {
+      theme: Theme;
+      anim: ResolvedTextAnimation;
+      prepared: PreparedEmojiText;
+    },
 ) {
   const {
     from = 0,
@@ -298,6 +374,8 @@ function BlockHeadline(
     theme,
     anim,
     prepared,
+    meshRef,
+    rotZ,
   } = props;
   const { localMs: rawLocalMs } = useTimeline();
   const localMs = useHeldLocalMs(rawLocalMs);
@@ -376,10 +454,11 @@ function BlockHeadline(
         position[1] + sample.dyEm * fontSize,
         position[2] + sample.dzEm * fontSize,
       ]}
-      rotation={[0, sample.rotYRad, sample.rotZRad]}
+      rotation={[0, sample.rotYRad, rotZ ? sample.rotZRad + rotZ : sample.rotZRad]}
       scale={sample.scale}
     >
       <Text
+        ref={meshRef}
         font={font}
         fontSize={fontSize}
         color={fill}
@@ -424,11 +503,12 @@ function sweepToClipRect(
 }
 
 function StaggeredHeadline(
-  props: AnimatedHeadlineProps & {
-    theme: Theme;
-    anim: ResolvedTextAnimation;
-    prepared: PreparedEmojiText;
-  },
+  props: AnimatedHeadlineProps &
+    HeadlineHost & {
+      theme: Theme;
+      anim: ResolvedTextAnimation;
+      prepared: PreparedEmojiText;
+    },
 ) {
   const {
     from = 0,
@@ -439,6 +519,8 @@ function StaggeredHeadline(
     theme,
     anim,
     prepared,
+    meshRef,
+    rotZ,
   } = props;
   const text = prepared.text;
   const hasEmoji = prepared.clusters.length > 0;
@@ -545,6 +627,7 @@ function StaggeredHeadline(
   return (
     <>
       <Text
+        ref={meshRef}
         font={font}
         position={position}
         fontSize={fontSize}
@@ -552,6 +635,7 @@ function StaggeredHeadline(
         anchorX={props.anchorX ?? "center"}
         anchorY="middle"
         {...layoutProps(props)}
+        {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}
         material={holder.material}
         onSync={(troika: CaretInfo) => {
           const info = troika.textRenderInfo;
@@ -567,7 +651,7 @@ function StaggeredHeadline(
         {text}
       </Text>
       {hasEmoji && (
-        <group position={position}>
+        <group position={position} {...(rotZ ? { rotation: [0, 0, rotZ] as V3 } : {})}>
           <EmojiQuads clusters={prepared.clusters} states={states} fontSize={fontSize} />
         </group>
       )}

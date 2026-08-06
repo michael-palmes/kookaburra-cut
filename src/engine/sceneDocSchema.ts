@@ -47,6 +47,15 @@ export function clampLineHeight(value: number): number {
   return Math.min(TEXT_LINE_HEIGHT_MAX, Math.max(TEXT_LINE_HEIGHT_MIN, value));
 }
 
+/** Fold degrees into (-180, 180] so a wrapped drag and a hand-typed 400 land on the same value. */
+export function normaliseDeg(deg: number): number {
+  if (!Number.isFinite(deg)) return 0;
+  let d = deg % 360;
+  if (d <= -180) d += 360;
+  else if (d > 180) d -= 360;
+  return d === 0 ? 0 : d;
+}
+
 /** One device entry, deliberately shaped as `Device` props plus a stable id. */
 export interface SceneDocDeviceSpec {
   id: string;
@@ -318,7 +327,7 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout) and `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal"); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") and `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
@@ -1135,9 +1144,15 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         } else {
           console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
         }
+      } else if (key.endsWith("RotationDeg")) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          textStyle[key] = normaliseDeg(value);
+        } else {
+          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+        }
       } else {
         console.warn(
-          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight key, dropped`,
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight|RotationDeg key, dropped`,
         );
       }
     }

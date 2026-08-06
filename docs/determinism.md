@@ -1205,6 +1205,16 @@ rolling-gate project (`showcase-tour`):
 > the whole batch, and `ws:overlay-polish-spike` Verify ×2 proves the deeper
 > preamble (indent probes → wrap width → fit, passes raised 4 → 8) converges.
 
+> **2026-08-06 (gizmos):** the unified-gizmo batch added one sidecar render
+> input, `textStyle.<key>RotationDeg` (clockwise tilt about the block's anchor,
+> folded into (-180, 180] at parse). Null-for-legacy is structural: absent or 0
+> adds NO rotation prop on `AnimatedHeadline`'s legacy and staggered paths, and
+> leaves the block path's existing `rotation` array bit-identical. Rotation is
+> not a layout input either, so no cascade reflows around it. Everything
+> else in the batch is editor chrome, gated out of exports five ways
+> (`docs/gizmos.md`, "Export safety"). No baseline moved: `showcase-tour` came
+> back EQUAL at `f304f1bd…` with the full diff in the tree.
+
 > **2026-08-06 (scene identity):** duplicated scenes used to copy their TSX
 > verbatim, so `defineScene` ids collided and the id-keyed React mounts
 > cross-wired sidecar docs between scenes (masked on cold loads, triggered by

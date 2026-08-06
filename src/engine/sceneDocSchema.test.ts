@@ -191,6 +191,24 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("parses textStyle rotations, folds them into (-180, 180] and drops non-numbers", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const good = parseSceneDoc(
+      { version: 1, textStyle: { titleRotationDeg: 12.5, subtitleRotationDeg: 400 } },
+      "test",
+    );
+    expect(good?.textStyle).toEqual({ titleRotationDeg: 12.5, subtitleRotationDeg: 40 });
+    const wrapped = parseSceneDoc(
+      { version: 1, textStyle: { titleRotationDeg: -190, subtitleRotationDeg: -180 } },
+      "test",
+    );
+    expect(wrapped?.textStyle).toEqual({ titleRotationDeg: 170, subtitleRotationDeg: 180 });
+    const bad = parseSceneDoc({ version: 1, textStyle: { titleRotationDeg: Number.NaN } }, "test");
+    expect(bad?.textStyle).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("textStyle.titleRotationDeg"));
+    warn.mockRestore();
+  });
+
   it("collects distinct sidecar font refs across docs", () => {
     const a = parseSceneDoc(
       { version: 1, textStyle: { titleFont: "Avenir Next@600", subtitleFont: "Georgia" } },

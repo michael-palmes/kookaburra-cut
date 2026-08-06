@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
@@ -6,7 +13,10 @@ import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
+import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useFormat } from "../../engine/format";
+import type { GizmoMode } from "../../engine/gizmoMode";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -38,6 +48,7 @@ import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import { useSceneStageBackdrop } from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import { useTextEditStore } from "../../engine/textEditStore";
 import {
   textKeyColorDefaults,
   textKeyStyleCapable,
@@ -97,6 +108,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
+import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
   chartRowValue,
   drillStackForScene,
@@ -148,6 +160,29 @@ const ROTATION_PRESETS: { id: string; label: string; value: V3 }[] = [
 ];
 
 const ROTATION_AXIS_LABELS = ["tilt x °", "turn y °", "roll z °"] as const;
+
+/** The Position drill's two write branches, module-scoped so the sliders and the preview gizmo share one write path: with a `deviceLayout` block an edit lands on that device's DELTA (0 = on the preset), without one on its raw placement. */
+function mutateDelta(
+  next: SceneDoc,
+  id: string,
+  fn: (delta: SceneDocDeviceLayoutDelta) => void,
+): void {
+  if (!next.deviceLayout) return;
+  next.deviceLayout.devices ??= {};
+  next.deviceLayout.devices[id] ??= {};
+  fn(next.deviceLayout.devices[id]);
+}
+
+function mutatePlacement(
+  next: SceneDoc,
+  id: string,
+  fn: (p: NonNullable<NonNullable<SceneDoc["devices"]>[number]["placement"]>) => void,
+): void {
+  const d = next.devices?.find((x) => x.id === id);
+  if (!d) return;
+  d.placement ??= {};
+  fn(d.placement);
+}
 
 /** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
 function DevicePillIcon({ model }: { model: string }) {
@@ -232,6 +267,7 @@ import {
   GizmoModeIcon,
   middleTruncate,
   NumberField,
+  type SegmentedOption,
   SegmentedRow,
   ToggleFieldset,
   ToggleRow,
@@ -239,6 +275,13 @@ import {
 } from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
+
+/** The Move/Rotate/Scale pills every gizmo drill shows. */
+const GIZMO_MODE_OPTIONS: SegmentedOption<GizmoMode>[] = [
+  { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
+  { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
+  { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
+];
 
 const FRAME_SHAPES: FrameShape[] = [
   "rect",
@@ -1846,6 +1889,18 @@ export function SceneTab({
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
+  // The text gizmo's selection, reflected both ways: touching a key's fields shows its handles, and a canvas click scrolls the drill to that key.
+  const selectedTextKey = useTextEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.key : null,
+  );
+  const textFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  useEffect(() => {
+    if (!selectedTextKey) return;
+    const el = textFieldRefs.current[selectedTextKey];
+    // Skip when the selection came from focusing a field, so typing never scrolls the panel.
+    if (!el || el.contains(document.activeElement)) return;
+    el.scrollIntoView({ block: "nearest" });
+  }, [selectedTextKey]);
   const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
   const requestDecoMedia = useDecorationEditStore((s) => s.requestMedia);
   // The gizmo's "Change media" action routes through here to reuse the scene media picker.
@@ -1861,8 +1916,20 @@ export function SceneTab({
   const [mediaTarget, setMediaTarget] = useState<
     { kind: "device"; deviceId?: string } | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
-  // Which device the device rows act on; null (or a stale id) falls back to the first device.
-  const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // Which device the device rows act on; null (or a stale id) falls back to the first device. Store-held (the objectEditStore idiom) so a preview gizmo can attach to the same selection.
+  const pickedDeviceId = useDeviceEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.deviceId : null,
+  );
+  const pickDevice = useCallback(
+    (id: string | null) =>
+      useDeviceEditStore.getState().select(id ? { sceneIndex, deviceId: id } : null),
+    [sceneIndex],
+  );
+  const deviceGizmoMode = useDeviceEditStore((s) => s.gizmoMode);
+  // Outlines, click-to-select and the handles all follow the open section, not one deep drill.
+  const devicesSectionOpen = useGizmoSectionOpen("devices");
+  const objectsSectionOpen = useGizmoSectionOpen("objects");
+  const chartSectionOpen = useGizmoSectionOpen("chart");
   // Which staged object the placement drill targets, plus the library picker modal.
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
   const [objectPickerOpen, setObjectPickerOpen] = useState(false);
@@ -1950,6 +2017,15 @@ export function SceneTab({
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
   const deviceId = device?.id;
+  // Read by the ensure-select subscription below, which fires on store writes rather than renders.
+  const deviceIdsRef = useRef<string[]>([]);
+  deviceIdsRef.current = devices.map((d) => d.id);
+  const devicePillOptions = devices.map((d, i) => ({
+    value: d.id,
+    label: `${i + 1}`,
+    icon: <DevicePillIcon model={d.model} />,
+    title: DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId].name,
+  }));
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
   // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
@@ -1958,30 +2034,40 @@ export function SceneTab({
   useEffect(() => {
     return useObjectEditStore.subscribe((s) => {
       const commit = s.pendingCommit;
-      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      if (!commit) return;
+      // Cleared even for another scene (a click during a transition can select one): only the dominant scene has a doc to write here, so an unclaimed drag is dropped, never left to land later.
       useObjectEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
       void patchDocRef.current((next) => {
         const o = next.objects?.find((x) => x.id === commit.objectId);
         if (o) o.placement = commit.placement;
       });
     });
   }, [sceneIndex]);
-  // The preview gizmo follows the placement drill; leaving it (or the scene) deselects.
+  // The preview gizmo follows the open Objects section; leaving it (or the scene) deselects.
   const stagedObjectId = stagedObject?.id;
   useEffect(() => {
     const store = useObjectEditStore.getState();
-    if (drillIn === "objects.placement" && stagedObjectId !== undefined) {
+    if (objectsSectionOpen && stagedObjectId !== undefined) {
       store.select({ sceneIndex, objectId: stagedObjectId });
       return () => useObjectEditStore.getState().select(null);
     }
     if (store.selected) store.select(null);
-  }, [drillIn, sceneIndex, stagedObjectId]);
+  }, [objectsSectionOpen, sceneIndex, stagedObjectId]);
+  // A canvas click selects in the store, so the drill rows follow it (the mirror only writes non-null ids, so the deselect above cannot bounce back).
+  const selectedObjectId = useObjectEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.objectId : null,
+  );
+  useEffect(() => {
+    if (selectedObjectId) setPickedObjectId(selectedObjectId);
+  }, [selectedObjectId]);
   // The staged chart's gizmo, same contract: it posts finished drags here, and follows its own drill.
   useEffect(() => {
     return useChartEditStore.subscribe((s) => {
       const commit = s.pendingCommit;
-      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      if (!commit) return;
       useChartEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
       void patchDocRef.current((next) => {
         if (next.chart) next.chart.placement = commit.placement;
       });
@@ -1989,12 +2075,46 @@ export function SceneTab({
   }, [sceneIndex]);
   useEffect(() => {
     const store = useChartEditStore.getState();
-    if (drillIn === "chart.position") {
+    if (chartSectionOpen) {
       store.select({ sceneIndex });
       return () => useChartEditStore.getState().select(null);
     }
     if (store.selected) store.select(null);
-  }, [drillIn, sceneIndex]);
+  }, [chartSectionOpen, sceneIndex]);
+  // The device gizmo's finished drags, through the Position drill's own write paths so a laid-out scene keeps editing its delta.
+  useEffect(() => {
+    return useDeviceEditStore.subscribe((s) => {
+      const commit = s.pendingCommit;
+      if (!commit) return;
+      useDeviceEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
+      void patchDocRef.current((next) => {
+        if (commit.kind === "delta") {
+          mutateDelta(next, commit.deviceId, (d) => Object.assign(d, commit.delta));
+        } else {
+          mutatePlacement(next, commit.deviceId, (p) => Object.assign(p, commit.placement));
+        }
+      });
+    });
+  }, [sceneIndex]);
+  // The device pills fall back to the first device implicitly; the canvas cannot, since a cleared store MUST mean no gizmo. The subscription (not just the body) is what re-selects after an export clears the store mid-session.
+  useEffect(() => {
+    if (!devicesSectionOpen || deviceId === undefined) return;
+    const ensure = () => {
+      const store = useDeviceEditStore.getState();
+      const sel = store.selected;
+      // A removed device leaves a selection nothing else repairs (no gizmo, and with one device left no pill to click back), so an id this scene no longer has counts as empty.
+      const stale =
+        sel !== null &&
+        sel.sceneIndex === sceneIndex &&
+        !deviceIdsRef.current.includes(sel.deviceId);
+      if (sel === null || stale) store.select({ sceneIndex, deviceId });
+    };
+    ensure();
+    return useDeviceEditStore.subscribe(ensure);
+  }, [devicesSectionOpen, deviceId, sceneIndex]);
+  // Declared after the ensure effect on purpose: cleanups run in declaration order, so the subscription is gone before this clears.
+  useEffect(() => () => useDeviceEditStore.getState().select(null), []);
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -2059,7 +2179,7 @@ export function SceneTab({
   useEffect(() => {
     setModal(null);
     setConfirmRemove(false);
-    setPickedDeviceId(null);
+    pickDevice(null);
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
@@ -2188,7 +2308,7 @@ export function SceneTab({
         },
       ];
     });
-    setPickedDeviceId(id);
+    pickDevice(id);
   };
   const duplicateDevice = () => {
     if (!deviceId) return;
@@ -2210,7 +2330,7 @@ export function SceneTab({
       };
       next.devices = [...(next.devices ?? []), copy];
     });
-    setPickedDeviceId(id);
+    pickDevice(id);
   };
   const freshObjectId = () => {
     const used = new Set(objects.map((o) => o.id));
@@ -4954,7 +5074,18 @@ export function SceneTab({
                 : undefined;
             const fontOverride = styleStr(`${key}Font`);
             return (
-              <div key={key} className="text-field-group">
+              <div
+                key={key}
+                ref={(el) => {
+                  textFieldRefs.current[key] = el;
+                }}
+                className={`text-field-group${selectedTextKey === key ? " selected" : ""}`}
+                onFocusCapture={() => {
+                  if (selectedTextKey !== key) {
+                    useTextEditStore.getState().select({ sceneIndex, key });
+                  }
+                }}
+              >
                 <TextFieldRow
                   label={label}
                   value={textValues[key] ?? doc.text?.[key] ?? ""}
@@ -5025,6 +5156,18 @@ export function SceneTab({
                           `${label.toLowerCase()} position`,
                           `${key}OffsetY`,
                           n === 0 ? undefined : n,
+                        )
+                      }
+                    />
+                    <NumberField
+                      label="Rotate °"
+                      value={styleNum(`${key}RotationDeg`) ?? 0}
+                      decimals={1}
+                      onCommit={(n) =>
+                        patchStyle(
+                          `${label.toLowerCase()} rotation`,
+                          `${key}RotationDeg`,
+                          textRotationWrite(n),
                         )
                       }
                     />
@@ -5707,11 +5850,7 @@ export function SceneTab({
         <div className="inspector-section-body object-drill">
           <DrillGroup label="Gizmo">
             <SegmentedRow
-              options={[
-                { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
-                { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
-                { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
-              ]}
+              options={GIZMO_MODE_OPTIONS}
               value={gizmoMode}
               onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
             />
@@ -5855,27 +5994,6 @@ export function SceneTab({
       if (baseline) void commitFromBaseline(baseline, mutate);
       else void patchDoc(mutate);
     };
-    // With a block, sliders edit that device's DELTA (0 = on the preset); without one they edit raw placement.
-    const mutateDelta = (
-      next: SceneDoc,
-      id: string,
-      fn: (delta: SceneDocDeviceLayoutDelta) => void,
-    ) => {
-      if (!next.deviceLayout) return;
-      next.deviceLayout.devices ??= {};
-      next.deviceLayout.devices[id] ??= {};
-      fn(next.deviceLayout.devices[id]);
-    };
-    const mutatePlacement = (
-      next: SceneDoc,
-      id: string,
-      fn: (p: NonNullable<NonNullable<SceneDoc["devices"]>[number]["placement"]>) => void,
-    ) => {
-      const d = next.devices?.find((x) => x.id === id);
-      if (!d) return;
-      d.placement ??= {};
-      fn(d.placement);
-    };
     const offsetSlider = (
       id: string,
       label: string,
@@ -5921,6 +6039,24 @@ export function SceneTab({
           <span>Position</span>
         </div>
         <div className="inspector-drill-body">
+          <DrillGroup label="Gizmo">
+            {devices.length > 1 && (
+              <SegmentedRow
+                className="subtabs-compact"
+                options={devicePillOptions}
+                value={deviceId ?? devices[0].id}
+                onChange={pickDevice}
+              />
+            )}
+            <SegmentedRow
+              options={GIZMO_MODE_OPTIONS}
+              value={deviceGizmoMode}
+              onChange={(mode) => useDeviceEditStore.getState().setGizmoMode(mode)}
+            />
+            <span className="drill-group-hint">
+              Drag the gizmo in the preview; Scale resizes evenly.
+            </span>
+          </DrillGroup>
           {devices.length > 1 && (
             <DrillGroup label="Layout">
               <div className="wizard-presets">
@@ -6229,7 +6365,7 @@ export function SceneTab({
             return;
           }
           setConfirmRemove(false);
-          setPickedDeviceId(null);
+          pickDevice(null);
           void patchDoc((next) => {
             next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
           });
@@ -6360,16 +6496,9 @@ export function SceneTab({
         {groupSection.id === "device" && devices.length > 1 && (
           <SegmentedRow
             className="subtabs-compact"
-            options={devices.map((d, i) => ({
-              value: d.id,
-              label: `${i + 1}`,
-              icon: <DevicePillIcon model={d.model} />,
-              title:
-                DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId]
-                  .name,
-            }))}
+            options={devicePillOptions}
             value={deviceId ?? devices[0].id}
-            onChange={(id) => setPickedDeviceId(id)}
+            onChange={pickDevice}
           />
         )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
