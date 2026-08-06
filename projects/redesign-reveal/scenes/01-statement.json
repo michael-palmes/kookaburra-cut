@@ -21,7 +21,7 @@
     "speed": 0.3,
     "params": {
       "thickness": 0.85,
-      "radius": 0.2,
+      "radius": 0.38,
       "innerShape": 0.4,
       "noiseScale": 3.8
     },

@@ -1,18 +1,18 @@
 {
   "version": 1,
   "name": "App Store Preview 30",
-  "tagline": "A store-legal app preview: real captured screen, overlay claims, no device frames.",
+  "tagline": "A store-legal app preview: real captured screen, type pinned over it, no device frames.",
   "category": "app-updates",
   "tags": ["app store", "preview", "store legal", "portrait", "capture", "release"],
   "personas": ["marketer"],
   "level": "standard",
   "tier": "safe",
   "storeLegal": true,
-  "uses": ["background", "overlay", "text-motion"],
+  "uses": ["background", "text-motion"],
   "highlights": [
     "Portrait only, 22 seconds, inside Apple's 15 to 30 second window",
     "No device frames, hands or recreated UI, so it passes review",
-    "Swap five screen recordings and four lines of text"
+    "Swap five app screens and four lines of text"
   ],
   "preview": {
     "poster": 1,

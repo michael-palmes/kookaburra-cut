@@ -36,7 +36,7 @@
       "media": {
         "src": "assets/kooka-feed-loop-sample.mp4",
         "kind": "video",
-        "startMs": 0
+        "startMs": -6400
       },
       "placement": {
         "position": [0, -0.3, 0],
@@ -54,12 +54,12 @@
       {
         "id": "k1",
         "tMs": 900,
-        "pose": { "target": [0, 0, 0], "azimuthDeg": -14, "elevationDeg": 4, "distance": 6.2 }
+        "pose": { "target": [0, 0, 0], "azimuthDeg": -6, "elevationDeg": 9, "distance": 6.2 }
       },
       {
         "id": "k2",
         "tMs": 3200,
-        "pose": { "target": [0, 0, 0], "azimuthDeg": 2, "elevationDeg": 0, "distance": 5.2 }
+        "pose": { "target": [0, 0, 0], "azimuthDeg": 6, "elevationDeg": 0, "distance": 5.2 }
       }
     ],
     "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]

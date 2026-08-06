@@ -6,7 +6,7 @@
     "subtitle": "Less clutter.\nMore of your day."
   },
   "textLayout": { "align": "center" },
-  "textStyle": { "titleSize": 0.75, "subtitleSize": 1.3 },
+  "textStyle": { "titleSize": 0.62, "subtitleSize": 1.15 },
   "textAnimation": {
     "in": "fade-scale",
     "out": "fade",
@@ -22,7 +22,7 @@
     "speed": 0.3,
     "params": {
       "thickness": 0.85,
-      "radius": 0.2,
+      "radius": 0.38,
       "innerShape": 0.4,
       "noiseScale": 3.8
     },

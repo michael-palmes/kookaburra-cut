@@ -80,22 +80,22 @@
         "size": [3.2, 0.06],
         "kelvin": 4200,
         "emissive": 1.4,
-        "lightIntensity": 14,
-        "placement": { "mode": "point", "position": [0, 2.4, 0] },
+        "lightIntensity": 17,
+        "placement": { "mode": "point", "position": [0, 3.4, 3.2] },
         "rotationDeg": [-90, 0, 0],
-        "repeat": { "count": 8, "spacing": 2.4, "axis": "z" }
+        "repeat": { "count": 4, "spacing": 2.4, "axis": "z" }
       }
     ],
     "keys": [
       {
         "id": "l1",
         "tMs": 0,
-        "pose": { "fixtures": { "tubes": { "emissive": 0.7, "lightIntensity": 6 } } }
+        "pose": { "fixtures": { "tubes": { "emissive": 0.7, "lightIntensity": 7 } } }
       },
       {
         "id": "l2",
         "tMs": 2600,
-        "pose": { "fixtures": { "tubes": { "emissive": 1.4, "lightIntensity": 14 } } }
+        "pose": { "fixtures": { "tubes": { "emissive": 1.4, "lightIntensity": 17 } } }
       }
     ],
     "segments": [{ "from": "l1", "to": "l2", "ease": "inOutSine" }]

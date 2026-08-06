@@ -26,7 +26,7 @@ export default defineScene({
             from={200}
             to={850}
             outAt={1800}
-            position={[0, 1.42, 0]}
+            position={[0, 0.98, 0]}
             fontSize={portrait ? 0.23 : 0.42}
           />
         ) : null}
@@ -36,7 +36,7 @@ export default defineScene({
             {...d}
             placement={{
               ...d.placement,
-              scale: (d.placement?.scale ?? 1) * (portrait ? 0.8 : 0.92),
+              scale: (d.placement?.scale ?? 1) * (portrait ? 0.8 : 0.85),
             }}
           />
         ))}

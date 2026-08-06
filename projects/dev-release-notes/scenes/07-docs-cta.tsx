@@ -8,7 +8,7 @@ export default defineScene({
     const subtitle = useSceneText("subtitle", "3.1.5");
     return (
       <SceneStage>
-        <BrandLockup title={title} subtitle={subtitle} />
+        <BrandLockup title={title} subtitle={subtitle} icon="assets/kooka-icon-dark-sample.png" />
       </SceneStage>
     );
   },

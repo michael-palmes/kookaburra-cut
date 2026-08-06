@@ -8,7 +8,7 @@ export default defineScene({
     const subtitle = useSceneText("subtitle", "Make it yours");
     return (
       <SceneStage>
-        <TitleBlock title={title} subtitle={subtitle} from={80} to={520} subtitleDelayMs={220} />
+        <TitleBlock title={title} subtitle={subtitle} from={80} to={460} subtitleDelayMs={160} />
       </SceneStage>
     );
   },

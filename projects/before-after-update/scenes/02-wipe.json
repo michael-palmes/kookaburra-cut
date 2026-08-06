@@ -47,12 +47,12 @@
         "shader": "warp",
         "preset": "p6",
         "speed": 0.4,
-        "colors": ["#140d07", "#6c4925", "#2b1c0f", "#865727"],
+        "colors": ["#0e0905", "#4a3119", "#1d1309", "#5c3b1a"],
         "params": {
           "proportion": 0.5,
           "softness": 1,
-          "distortion": 0.2,
-          "swirl": 0.6
+          "distortion": 0.12,
+          "swirl": 0.35
         }
       },
       "media": {
@@ -64,15 +64,15 @@
     },
     "mask": {
       "type": "linear",
-      "angleDeg": 75,
-      "softness": 0.03
+      "angleDeg": 90,
+      "softness": 0.02
     },
     "value": 1,
     "track": {
       "keys": [
         {
           "id": "k1",
-          "tMs": 700,
+          "tMs": 500,
           "pose": {
             "value": 1
           }
@@ -81,21 +81,21 @@
           "id": "k2",
           "tMs": 1500,
           "pose": {
-            "value": 0.56
+            "value": 0.54
           }
         },
         {
           "id": "k3",
-          "tMs": 2300,
+          "tMs": 2400,
           "pose": {
-            "value": 0.44
+            "value": 0.5
           }
         },
         {
           "id": "k4",
-          "tMs": 3100,
+          "tMs": 3200,
           "pose": {
-            "value": 0.06
+            "value": 0
           }
         }
       ],
@@ -103,7 +103,7 @@
         {
           "from": "k1",
           "to": "k2",
-          "ease": "inOutQuad"
+          "ease": "inOutCubic"
         },
         {
           "from": "k2",
@@ -123,7 +123,7 @@
         "colour": "text",
         "softness": 0
       },
-      "grip": true,
+      "grip": false,
       "chips": true
     }
   },

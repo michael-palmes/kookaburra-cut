@@ -6,8 +6,10 @@
     "title": "Plan a week\nin a minute"
   },
   "textStyle": {
-    "titleSize": 1.7,
-    "titleOffsetY": -0.12
+    "titleSize": 1.05,
+    "titleOffsetY": -0.66,
+    "titleLineHeight": 1.1,
+    "titleColor": "#1b1512"
   },
   "textAnimation": {
     "in": "fade-up",
@@ -15,12 +17,8 @@
     "staggerMs": 0,
     "delivery": "all-at-once"
   },
-  "frame": {
-    "cutout": { "shape": "rect", "size": 0.74, "side": "end", "inset": 0 },
-    "textAlign": "center"
-  },
   "background": {
     "type": "video",
-    "src": "assets/kooka-dark-loop-sample.mp4"
+    "src": "assets/kooka-feed-loop-sample.mp4"
   }
 }

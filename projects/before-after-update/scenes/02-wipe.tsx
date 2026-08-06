@@ -28,7 +28,7 @@ export default defineScene({
             textKey="title"
             from={200}
             to={900}
-            position={[0, portrait ? 1.7 : 1.55, 0]}
+            position={[0, portrait ? 1.3 : 1.55, 0]}
             fontSize={portrait ? 0.23 : 0.42}
           />
         ) : null}

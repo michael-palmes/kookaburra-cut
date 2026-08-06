@@ -16,8 +16,8 @@ Adding a background means adding its `preview-lab-bg-<id>` project here; a vites
 guards the pairing. The theme-preview fixture is NOT here: it ships, as
 `projects/preview-lab-theme/`.
 
-The kooka-loop-* projects are the SOURCE for the pool's loop clips
-(projects/_samples/kooka-*-loop-sample.mp4). Regenerate by copying the loop
-project into ~/Kookaburra Cut and exporting the ws: copy at 9:16 (fixture
-image backgrounds do not bind on the export path, so export from a workspace
-copy), then re-encode to stay under 1.5 MB.
+The pool loop clips (kooka-*-loop-sample.mp4) regenerate from the Kooka stills
+
+
+
+via scripts/make-kooka-loops.sh (ffmpeg xfade at the native 828x1792 screen ratio; the export path only renders the fixed aspects, which cover-crop inside handset screens).

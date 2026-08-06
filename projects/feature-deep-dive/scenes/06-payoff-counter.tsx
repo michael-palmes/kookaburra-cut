@@ -22,7 +22,7 @@ export default defineScene({
           text={headline}
           textKey="headline"
           face="body"
-          defaultColor="muted"
+          defaultColor="text"
           from={200}
           to={900}
           position={[0, portrait ? 0.5 : 0.72, 0]}
@@ -39,7 +39,7 @@ export default defineScene({
           text={unit}
           textKey="unit"
           face="body"
-          defaultColor="muted"
+          defaultColor="text"
           from={1500}
           to={2200}
           position={[0, portrait ? -0.5 : -0.68, 0]}

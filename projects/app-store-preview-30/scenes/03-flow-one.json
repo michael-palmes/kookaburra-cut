@@ -3,11 +3,13 @@
   "name": "Flow one",
   "duration": { "mode": "manual" },
   "text": {
-    "title": "Plan by dragging"
+    "title": "One list\na day"
   },
   "textStyle": {
-    "titleSize": 1.35,
-    "titleOffsetY": -0.32
+    "titleSize": 1.05,
+    "titleOffsetY": -0.66,
+    "titleLineHeight": 1.1,
+    "titleColor": "#f7f2ec"
   },
   "textAnimation": {
     "in": "fade-up",
@@ -15,12 +17,8 @@
     "staggerMs": 0,
     "delivery": "all-at-once"
   },
-  "frame": {
-    "cutout": { "shape": "rect", "size": 0.74, "side": "end", "inset": 0 },
-    "textAlign": "center"
-  },
   "background": {
     "type": "video",
-    "src": "assets/kooka-feed-loop-sample.mp4"
+    "src": "assets/kooka-dark-loop-sample.mp4"
   }
 }

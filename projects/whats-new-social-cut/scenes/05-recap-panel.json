@@ -2,9 +2,11 @@
   "version": 1,
   "name": "Recap panel",
   "text": {
-    "title": "In this update",
-    "subtitle": "",
-    "bullets": "Weekly planner\nShared lists\nOffline sync"
+    "title": "What's new",
+    "subtitle": "Weekly planner\nShared lists\nOffline sync"
+  },
+  "textStyle": {
+    "subtitleSize": 1.6
   },
   "textAnimation": {
     "in": "scatter-scale",
@@ -17,9 +19,8 @@
       "shape": "none"
     },
     "chip": {
-      "label": "New",
-      "icon": "circle-check",
-      "colour": "accent"
+      "label": "Kooka 2.4",
+      "colour": "muted"
     },
     "textAlign": "center"
   }

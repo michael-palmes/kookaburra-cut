@@ -9,14 +9,16 @@
     "align": "center"
   },
   "textStyle": {
-    "titleSize": 1.15,
+    "titleSize": 0.95,
     "subtitleSize": 1.4
   },
   "textAnimation": {
-    "in": "mask-reveal",
+    "in": "fade-scale",
     "out": "fade",
-    "staggerMs": 30,
-    "stagger": "char"
+    "staggerMs": 70,
+    "stagger": "word",
+    "startScale": 0.88,
+    "shine": true
   },
   "background": {
     "type": "shader",

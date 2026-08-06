@@ -25,7 +25,8 @@
       ]
     },
     "style": {
-      "preset": "terminal"
+      "preset": "terminal",
+      "scale": 0.92
     },
     "axis": {
       "value": {

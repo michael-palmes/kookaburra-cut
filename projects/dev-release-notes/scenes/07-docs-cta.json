@@ -2,8 +2,8 @@
   "version": 1,
   "name": "Docs",
   "text": {
-    "title": "Full notes at example.com",
-    "subtitle": "v4.2.0"
+    "title": "Full notes",
+    "subtitle": "docs.example.com/4.2.0"
   },
   "backdrop": {
     "type": "none"

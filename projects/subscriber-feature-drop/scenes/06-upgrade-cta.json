@@ -2,11 +2,8 @@
   "version": 1,
   "name": "Upgrade CTA",
   "text": {
-    "title": "Kooka Pro 4.2",
-    "subtitle": "Upgrade"
-  },
-  "textStyle": {
-    "titleFont": "JetBrains Mono"
+    "title": "Upgrade in the app",
+    "subtitle": "Kooka Pro"
   },
   "backdrop": {
     "type": "none"

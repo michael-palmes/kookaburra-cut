@@ -3,11 +3,12 @@
   "name": "API diff",
   "text": {
     "title": "API changes",
-    "subtitle": "Two signatures moved in 4.2.0",
+    "subtitle": "Two signatures moved",
     "code": "- send(msg)\n+ send(msg, { region })\n- onDone(value)\n+ onDone(result.value)"
   },
   "textStyle": {
-    "codeFont": "JetBrains Mono"
+    "codeFont": "JetBrains Mono",
+    "titleSize": 0.82
   },
   "textAnimation": {
     "in": "fade",
@@ -20,8 +21,9 @@
       "shape": "rect",
       "side": "end",
       "size": 0.46,
-      "inset": 0.05
+      "inset": 0.075
     },
+    "background": "#0f141b",
     "textAlign": "left"
   },
   "backdrop": {

@@ -3,11 +3,13 @@
   "name": "Flow three",
   "duration": { "mode": "manual" },
   "text": {
-    "title": "Reminders on time"
+    "title": "Make it\nyours"
   },
   "textStyle": {
-    "titleSize": 1.35,
-    "titleOffsetY": -0.32
+    "titleSize": 1.05,
+    "titleOffsetY": -0.66,
+    "titleLineHeight": 1.1,
+    "titleColor": "#1b1512"
   },
   "textAnimation": {
     "in": "fade-up",
@@ -15,12 +17,8 @@
     "staggerMs": 0,
     "delivery": "all-at-once"
   },
-  "frame": {
-    "cutout": { "shape": "rect", "size": 0.74, "side": "end", "inset": 0 },
-    "textAlign": "center"
-  },
   "background": {
-    "type": "video",
-    "src": "assets/kooka-feed-loop-sample.mp4"
+    "type": "image",
+    "src": "assets/shot-c-sample.jpg"
   }
 }

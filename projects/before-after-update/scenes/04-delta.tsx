@@ -25,7 +25,7 @@ export default defineScene({
           defaultColor="muted"
           from={200}
           to={900}
-          position={[0, portrait ? 0.62 : 0.86, 0]}
+          position={[0, portrait ? 0.7 : 0.94, 0]}
           fontSize={portrait ? 0.18 : 0.24}
         />
         <AnimatedCounter
@@ -33,16 +33,16 @@ export default defineScene({
           to={3}
           durationMs={1200}
           position={[0, 0, 0]}
-          fontSize={portrait ? 0.42 : 0.78}
+          fontSize={portrait ? 0.66 : 1.15}
         />
         <AnimatedHeadline
           text={unit}
           textKey="unit"
           face="body"
           defaultColor="muted"
-          from={1100}
-          to={1800}
-          position={[0, portrait ? -0.62 : -0.86, 0]}
+          from={600}
+          to={1150}
+          position={[0, portrait ? -0.7 : -0.94, 0]}
           fontSize={portrait ? 0.18 : 0.24}
         />
       </SceneStage>

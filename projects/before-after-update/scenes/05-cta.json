@@ -18,12 +18,12 @@
     "shader": "warp",
     "preset": "p6",
     "speed": 0.4,
-    "colors": ["#140d07", "#6c4925", "#2b1c0f", "#865727"],
+    "colors": ["#0e0905", "#4a3119", "#1d1309", "#5c3b1a"],
     "params": {
       "proportion": 0.5,
       "softness": 1,
-      "distortion": 0.2,
-      "swirl": 0.6
+      "distortion": 0.12,
+      "swirl": 0.35
     }
   },
   "backdrop": {

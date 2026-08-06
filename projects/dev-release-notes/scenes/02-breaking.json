@@ -21,8 +21,10 @@
     },
     "chip": {
       "label": "Breaking",
-      "icon": "triangle-alert"
+      "icon": "triangle-alert",
+      "colour": "#f5a524"
     },
+    "background": "#0f141b",
     "textAlign": "center"
   },
   "backdrop": {

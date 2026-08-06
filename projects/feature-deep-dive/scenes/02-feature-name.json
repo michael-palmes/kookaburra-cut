@@ -9,7 +9,8 @@
     "align": "center"
   },
   "textStyle": {
-    "titleSize": 1.15
+    "titleSize": 1.15,
+    "titleLineHeight": 1.05
   },
   "textAnimation": {
     "in": "twist-scale",

@@ -4,13 +4,12 @@
   "text": {},
   "videoWindow": {
     "media": {
-      "src": "assets/sample-laptop-recording.mp4",
+      "src": "assets/kooka-terminal-loop-sample.mp4",
       "startMs": 0,
       "loop": true,
-      "aspect": 1.5468277945619335
+      "aspect": 1.6
     },
     "radius": "macos",
-    "recording": true,
     "scale": 0.86,
     "motion": {
       "preset": "none"

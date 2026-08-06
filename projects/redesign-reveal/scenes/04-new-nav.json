@@ -34,7 +34,7 @@
       "id": "hero",
       "model": "iphone-17-pro",
       "colour": "silver",
-      "media": { "src": "assets/kooka-feed-loop-sample.mp4", "kind": "video", "startMs": 1800 },
+      "media": { "src": "assets/kooka-alt-loop-sample.mp4", "kind": "video", "startMs": 0 },
       "placement": { "position": [0, -0.35, 0], "rotationDeg": [0, -10, 0], "scale": 1 },
       "motion": { "preset": "none" },
       "shadow": "long"

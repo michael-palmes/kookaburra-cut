@@ -23,7 +23,7 @@
     "speed": 0.9,
     "colors": ["#273234", "#30473f"],
     "params": {
-      "count": 18,
+      "count": 10,
       "spread": 3,
       "depth": 24,
       "size": 0.5,

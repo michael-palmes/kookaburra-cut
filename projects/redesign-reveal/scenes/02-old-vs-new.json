@@ -52,9 +52,10 @@
       "segments": [{ "from": "k1", "to": "k2", "ease": "inOutQuad" }]
     },
     "chrome": {
-      "line": { "width": 3, "colour": "accent", "softness": 0 },
-      "grip": true,
-      "chips": true
+      "line": { "width": 2, "colour": "muted", "softness": 2 },
+      "grip": false,
+      "chips": true,
+      "tint": { "a": "background", "amount": 0.15 }
     }
   },
   "animatedTrack": "compare"

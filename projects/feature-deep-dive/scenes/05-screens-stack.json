@@ -73,11 +73,11 @@
           "id": "k2",
           "tMs": 1800,
           "pose": {
-            "spread": 0.75,
-            "azimuthDeg": 18,
+            "spread": 1,
+            "azimuthDeg": -26,
             "elevationDeg": 12,
-            "zoom": 0.67,
-            "pan": [0.1, 0]
+            "zoom": 0.6,
+            "pan": [-0.22, 0.1]
           }
         }
       ],

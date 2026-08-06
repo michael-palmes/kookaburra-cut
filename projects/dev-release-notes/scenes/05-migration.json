@@ -3,8 +3,8 @@
   "name": "Migration",
   "text": {
     "title": "How to migrate",
-    "subtitle": "About ten minutes on a mid-sized app",
-    "bullets": "Bump the SDK to 4.2.0\nPass a region to createClient\nRun the codemod for callbacks"
+    "subtitle": "Three steps, about ten minutes",
+    "bullets": "Step 1: bump the SDK to 4.2.0\nStep 2: pass a region to createClient\nStep 3: run the codemod for callbacks"
   },
   "textStyle": {
     "bulletsFont": "JetBrains Mono"
@@ -23,6 +23,7 @@
       "label": "Migrate",
       "icon": "circle-check"
     },
+    "background": "#0f141b",
     "textAlign": "center"
   },
   "backdrop": {

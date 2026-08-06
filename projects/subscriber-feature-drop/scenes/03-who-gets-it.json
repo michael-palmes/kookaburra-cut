@@ -10,7 +10,7 @@
     "cutout": {
       "shape": "squircle",
       "side": "start",
-      "size": 0.42,
+      "size": 0.34,
       "inset": 0.06
     },
     "chip": {
@@ -38,8 +38,8 @@
     "params": {
       "count": 18,
       "spread": 3,
-      "depth": 24,
-      "size": 0.5,
+      "depth": 19,
+      "size": 0.75,
       "drift": 1.25
     },
     "backing": {

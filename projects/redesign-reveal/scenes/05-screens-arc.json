@@ -44,7 +44,14 @@
       "shadow": "long"
     }
   ],
-  "deviceLayout": { "preset": "arc", "gap": 1.1 },
+  "deviceLayout": {
+    "preset": "arc",
+    "gap": 1.1,
+    "devices": {
+      "left": { "offset": [0, 0, -0.4], "rotationDeg": [0, 9, 0] },
+      "right": { "offset": [0, 0, -0.4], "rotationDeg": [0, -9, 0] }
+    }
+  },
   "camera": {
     "keys": [
       {

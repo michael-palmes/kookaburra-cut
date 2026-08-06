@@ -13,6 +13,8 @@ with alpha, each file under 150 KB.
 | File | Purpose |
 | --- | --- |
 | `sample-phone-recording.mp4` / `sample-laptop-recording.mp4` | Screen-recording stand-ins until real captures exist |
+| `kooka-feed-loop-sample.mp4` / `kooka-dark-loop-sample.mp4` / `kooka-alt-loop-sample.mp4` | Kooka screen loops at the native 828x1792 screen ratio (regenerate: `scripts/make-kooka-loops.sh`); device clips seek with a NEGATIVE `startMs` |
+| `kooka-terminal-loop-sample.mp4` | Fictional kooka CLI release run for terminal video windows |
 | `app-icon.png` | Generic rounded-square icon (BrandLockup default) |
 | `kooka-icon-sample.png` / `kooka-icon-dark-sample.png` | Kooka app mark, light and dark |
 | `shot-a-sample.jpg` / `shot-b-sample.jpg` / `shot-c-sample.jpg` | Kooka home, task detail, settings |
