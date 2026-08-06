@@ -1,8 +1,10 @@
 import { useContext, useMemo, useRef } from "react";
 import { Box3, type Group, type Object3D, Vector3 } from "three";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { useSceneConsumesObjects } from "../../engine/objectRegistry";
 import { SceneGizmo } from "../../engine/SceneGizmo";
+import { SceneOutline } from "../../engine/SceneOutline";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import type { SceneDocObjectSpec } from "../../engine/sceneDocSchema";
 import { useStageFloorY } from "../stage/context";
@@ -37,15 +39,20 @@ function LoadedObject({
   spec: SceneDocObjectSpec;
   asset: NonNullable<ReturnType<typeof readObjectAsset>>;
 }) {
-  const sceneIndex = useSceneContext()?.index;
+  const ctx = useSceneContext();
+  const sceneIndex = ctx?.index;
+  // What a click selects, or null on a comparison's B side: it mounts the same object at the same index, so a write from here would land on the A doc.
+  const editTarget =
+    sceneIndex !== undefined && ctx?.side === undefined ? { sceneIndex, objectId: spec.id } : null;
   const stageFloorY = useStageFloorY();
   const selected = useObjectEditStore((s) => s.selected);
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
+  const sectionOpen = useGizmoSectionOpen("objects");
   const groupRef = useRef<Group>(null);
   const { scene } = readObjectGltf(asset.glbUrl);
 
   // Clone once per model (drei's cache is shared, never mutate it), recentre on the origin and auto-fit to the manifest height (the HeroObject treatment).
-  const { root, fit, fittedHeight } = useMemo(() => {
+  const { root, fit, fittedHeight, size } = useMemo(() => {
     const clone = scene.clone(true);
     clone.updateMatrixWorld(true);
     const box = new Box3().setFromObject(clone);
@@ -54,7 +61,12 @@ function LoadedObject({
     clone.position.sub(center);
     const target = asset.manifest.fitHeight ?? DEFAULT_OBJECT_HEIGHT;
     const fit = size.y > 1e-6 ? target / size.y : 1;
-    return { root: clone as Object3D, fit, fittedHeight: size.y * fit };
+    return {
+      root: clone as Object3D,
+      fit,
+      fittedHeight: size.y * fit,
+      size: [size.x, size.y, size.z] as V3,
+    };
   }, [scene, asset]);
 
   const placement = spec.placement ?? {};
@@ -70,7 +82,11 @@ function LoadedObject({
   ];
 
   const isSelected =
-    selected !== null && selected.sceneIndex === sceneIndex && selected.objectId === spec.id;
+    editTarget !== null &&
+    sectionOpen &&
+    selected !== null &&
+    selected.sceneIndex === editTarget.sceneIndex &&
+    selected.objectId === editTarget.objectId;
 
   // The control mutates the group live; the commit reads the group back, so the doc lands exactly what is on screen and nothing snaps. A drag pins an explicit transform, so `ground` drops (the y just chosen wins).
   const commitDrag = () => {
@@ -115,6 +131,14 @@ function LoadedObject({
     <>
       <group ref={groupRef} position={groupPosition} rotation={rotation} scale={scale * fit}>
         <primitive object={root} />
+        {editTarget && (
+          <SceneOutline
+            size={size}
+            domain="objects"
+            selected={isSelected}
+            onSelect={() => useObjectEditStore.getState().select(editTarget)}
+          />
+        )}
       </group>
       {isSelected && sceneIndex !== undefined && (
         <SceneGizmo

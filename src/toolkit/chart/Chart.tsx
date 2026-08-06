@@ -4,7 +4,9 @@ import { useMemo, useRef } from "react";
 import type { Group } from "three";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useFormat } from "../../engine/format";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { SceneGizmo } from "../../engine/SceneGizmo";
+import { SceneOutline } from "../../engine/SceneOutline";
 import type { ResolvedChart } from "../../engine/sceneChart";
 import { useSceneContext } from "../../engine/sceneContext";
 import { useSceneChart, useSceneDoc } from "../../engine/sceneDoc";
@@ -301,14 +303,22 @@ function PanelChart({
 /** Placed among the scene's devices and text: a fixed world-space plot under the block's `placement`, so a chart poses exactly like a `Device` does. While the inspector's position drill is open the staged-object gizmo attaches to the posed group (`chartEditStore`), and `exportPreamble` clears that selection, so exports render the bare transform. */
 function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opacity }: MountArgs) {
   const floorY = useStageFloorY();
-  const sceneIndex = useSceneContext()?.index;
+  const ctx = useSceneContext();
+  const sceneIndex = ctx?.index;
+  // What a click selects, or null on a comparison's B side: it mounts the same chart at the same index, so a write from here would land on the A doc.
+  const editTarget = sceneIndex !== undefined && ctx?.side === undefined ? { sceneIndex } : null;
   const selected = useChartEditStore((s) => s.selected);
   const gizmoMode = useChartEditStore((s) => s.gizmoMode);
+  const sectionOpen = useGizmoSectionOpen("chart");
   const groupRef = useRef<Group>(null);
   const pose = chartPose(chart.placement);
   const y = chartGroundY(pose, floorY);
   const lift = enter * CHART_STAGED_SIZE.height;
-  const gizmo = selected !== null && selected.sceneIndex === sceneIndex;
+  const gizmo =
+    editTarget !== null &&
+    sectionOpen &&
+    selected !== null &&
+    selected.sceneIndex === editTarget.sceneIndex;
 
   // The control mutates the group live; the commit reads it back, so the doc lands exactly what is on screen. A drag pins an explicit y, so `ground` drops.
   const commitDrag = () => {
@@ -395,6 +405,14 @@ function StagedChart({ chart, layout, colours, surface, look, reveal, enter, opa
               opacity={opacity}
             />
           </group>
+        )}
+        {editTarget && (
+          <SceneOutline
+            size={[CHART_STAGED_SIZE.width, CHART_STAGED_SIZE.height, 0]}
+            domain="chart"
+            selected={gizmo}
+            onSelect={() => useChartEditStore.getState().select(editTarget)}
+          />
         )}
       </group>
     </>

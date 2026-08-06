@@ -10,7 +10,14 @@ export const GIZMO_COLOURS = {
   axisZ: "#82a7bb",
   /** Hovered or dragging handle, the same yellow as the 2D alignment guides. */
   active: "#ffd60a",
+  /** Idle and hovered selection outlines: --gizmo-outline, whose alphas live below. */
+  outline: "#ffffff",
+  /** The selected item's outline: --gizmo-selected (= --accent). */
+  selected: "#6f93a8",
 } as const;
+
+/** Outline alphas, the --gizmo-outline pair plus a firmer one for the selected item. */
+export const GIZMO_OUTLINE_OPACITY = { idle: 0.35, hover: 0.6, selected: 0.9 } as const;
 
 /** TransformControls `size`, the value every gizmo host passes. */
 export const GIZMO_SIZE = 1.8;
