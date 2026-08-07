@@ -160,9 +160,11 @@ trivially rich inline markup. What is gained: a single, synchronous, frame-locke
 surface whose pixels are reproducible. For product-update videos (headlines,
 counters, device demos, transitions) troika gives kerned, ligature-aware text.
 
-**The deterministic frame loop** runs with `frameloop="never"`; an export
-controller owns the clock, seeks the global timeline to `t`, advances exactly one
-frame, and reads it back. The authoritative loop, its barriers, and the
+**The deterministic frame loop** never uses rAF: an export controller owns the
+clock, seeks the global timeline to `t`, renders exactly one frame directly and
+reads it back. (The editor's canvas mounts `frameloop="demand"` for interactive
+preview; the hidden render window's mounts `frameloop="never"`; the export loop
+bypasses both.) The authoritative loop, its barriers, and the
 `preserveDrawingBuffer` requirement live in [determinism.md](./determinism.md).
 
 **Data path from frame to file.** r3f WebGL framebuffer → `gl.readPixels` into one
@@ -388,7 +390,15 @@ Where the live Tauri-2 setup matters for working in the code:
    "safari26"` (the macOS-26 WKWebView floor).
 7. **Rust target:** `aarch64-apple-darwin` is the host default: `rustup default
    stable` suffices, no `rustup target add`.
-8. **Icon / identity refresh in dev.** Tauri's build script embeds the icon set
+8. **The hidden render window** (label `render`, `render.html` →
+   `src/renderMain.tsx`) serves live captures and scene thumbs off-screen: its
+   own realm mounts the shared `StageScenes` tree plus `ExportBridge`, so the
+   editor's clock, stores and canvas are never touched by a capture. Created
+   lazily by the editor's bridge pending-check, closes itself after ~5 idle
+   minutes, stays alive (replying busy) during exports since it lives in its own
+   WebContent process. Contract and measured platform behaviour:
+   [determinism.md](./determinism.md), "The capture bridge surface".
+9. **Icon / identity refresh in dev.** Tauri's build script embeds the icon set
    and the `Info.plist` (app name) into the dev binary at **compile time** and
    does not re-run when `src-tauri/icons/` changes, so `pnpm tauri dev` keeps
    showing the old icon/name until the shell recompiles. `pnpm setup:icon`
