@@ -79,7 +79,8 @@ export default defineConfig({
     minify: process.env.TAURI_DEBUG ? false : "oxc",
     sourcemap: !!process.env.TAURI_DEBUG,
     // One entry point per Tauri WebviewWindow: the main studio window, the M5 video
-    // editor, the present window, the M5.6 settings panel and the v13 packs window.
+    // editor, the present window, the M5.6 settings panel, the v13 packs window and
+    // the hidden background render window.
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
@@ -87,6 +88,7 @@ export default defineConfig({
         present: fileURLToPath(new URL("./present.html", import.meta.url)),
         settings: fileURLToPath(new URL("./settings.html", import.meta.url)),
         packs: fileURLToPath(new URL("./packs.html", import.meta.url)),
+        render: fileURLToPath(new URL("./render.html", import.meta.url)),
       },
     },
   },

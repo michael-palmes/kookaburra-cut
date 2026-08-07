@@ -17,6 +17,7 @@ mod pack;
 mod packs_win;
 mod present;
 mod pty;
+mod render_win;
 mod scene_doc;
 mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
@@ -970,9 +971,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
         // The present window's geometry is re-derived from the modal's display pick every launch; restoring a stale fullscreen rect (possibly on an unplugged display) would fight it.
+        // The render window is hidden by design; a restored state could resurrect it visible.
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_denylist(&["present"])
+                .with_denylist(&["present", "render"])
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -986,6 +988,7 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
         .manage(present::PresentState::default())
+        .manage(render_win::RenderWindowState::default())
         .manage(packs_win::PacksState::default())
         .manage(pack::commands::PackState::default())
         .setup(|app| {
@@ -1252,6 +1255,10 @@ pub fn run() {
             bridge::bridge_write_response,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
+            render_win::ensure_render_window,
+            render_win::close_render_window,
+            render_win::render_heartbeat,
+            render_win::render_window_status,
             objects::list_objects,
             objects::read_object,
             objects::import_object,
