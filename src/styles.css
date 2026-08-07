@@ -6853,11 +6853,15 @@ img.inspector-scene-thumb {
   color: var(--text-tertiary);
 }
 
-/* Inline rename/duration inputs swapped into the row (the pb-label-input pattern). */
+/* Inline rename/duration inputs swapped into the row (the pb-label-input pattern), the editable
+   islands in a select-none list: without the reset WebKit leaves them with no word selection and
+   no Cut/Copy menu. */
 .scene-manager-edit {
   flex: 1;
   min-width: 0;
   padding: 2px 6px;
+  user-select: text;
+  -webkit-user-select: text;
   font-size: var(--text-sm);
 }
 
