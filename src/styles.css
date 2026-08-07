@@ -1726,8 +1726,9 @@ button.beat-status {
    clamped to two lines with a reserved min-height, so a row of cards keeps one
    baseline whether or not its art or copy has landed. Selected reuses the
    accent-border + accent-subtle pair every other picker uses. */
-.wizard-template-wide {
-  width: min(78rem, calc(100% - 3rem));
+/* Compound so it outweighs .wizard-wide, which sits later in the sheet at equal specificity. */
+.modal.wizard-template-wide {
+  width: min(96rem, calc(100vw - 4rem));
 }
 
 .template-gallery {
