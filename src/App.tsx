@@ -2002,6 +2002,7 @@ export default function App() {
                 key={project.id}
                 slug={workspaceSlug(project.id)}
                 cwd={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                projectName={project.name}
                 scenes={project.slots.map((s, i) => ({
                   index: i,
                   id: s.id,
