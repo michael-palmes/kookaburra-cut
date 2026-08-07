@@ -421,6 +421,7 @@ export async function exportProject(
   const prevSize = gl.getSize(new Vector2());
   const prevPixelRatio = gl.getPixelRatio();
   const prevClockMs = useClockStore.getState().currentMs;
+  let clockOwnedMs: number | null = null;
   const cam = camera as PerspectiveCamera;
   const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
 
@@ -522,6 +523,7 @@ export async function exportProject(
       const tMs = frame * (1000 / opts.fps);
       // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
       flushSync(() => useClockStore.getState().setCurrentMs(tMs));
+      clockOwnedMs = tMs;
       await awaitCanvasClockCommit(tMs);
       // Ensure each VideoClip's current frame texture is uploaded first (this may yield)...
       await awaitVideoFramesReady(scene);
@@ -578,7 +580,10 @@ export async function exportProject(
       cam.aspect = prevAspect;
       cam.updateProjectionMatrix();
     }
-    flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    // Give the playhead back only if this run wrote it and still owns it; an untouched or since-moved clock stays put.
+    if (clockOwnedMs !== null && useClockStore.getState().currentMs === clockOwnedMs) {
+      flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    }
   }
 }
 
@@ -596,7 +601,23 @@ export async function captureScreenshot(
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
 
-  await exportPreamble(opts, gl);
+  // Bridge captures run mid-edit: the preamble's selection clear (a gizmo must never reach a frame) is given back once the capture ends, unlike a user-initiated export.
+  const prevSelection = {
+    object: useObjectEditStore.getState().selected,
+    chart: useChartEditStore.getState().selected,
+    device: useDeviceEditStore.getState().selected,
+  };
+  const restoreSelection = () => {
+    useObjectEditStore.getState().select(prevSelection.object);
+    useChartEditStore.getState().select(prevSelection.chart);
+    useDeviceEditStore.getState().select(prevSelection.device);
+  };
+  try {
+    await exportPreamble(opts, gl);
+  } catch (err) {
+    restoreSelection();
+    throw err;
+  }
 
   const { width, height } = opts.format;
   const ctx = gl.getContext();
@@ -652,7 +673,18 @@ export async function captureScreenshot(
           },
         )
       : null;
+  // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
+  let restoreCameraPose: (() => void) | null = null;
   if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
+    const pos = cam.position.clone();
+    const quat = cam.quaternion.clone();
+    const fov = cam.fov;
+    restoreCameraPose = () => {
+      cam.position.copy(pos);
+      cam.quaternion.copy(quat);
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    };
     applyCameraPose(cam, baseCameraPose());
   }
 
@@ -699,7 +731,12 @@ export async function captureScreenshot(
       cam.aspect = prevAspect;
       cam.updateProjectionMatrix();
     }
-    flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    restoreCameraPose?.();
+    restoreSelection();
+    // Give the playhead back only while the capture still owns it; a scrub mid-capture wins.
+    if (useClockStore.getState().currentMs === tMs) {
+      flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    }
   }
 }
 
