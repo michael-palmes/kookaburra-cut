@@ -700,7 +700,7 @@ export async function loadProject(
 
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
   const sceneDocs = await Promise.all(
-    manifest.scenes.map((entry) => loadSceneDoc(id, entry.file, sceneDocGlob)),
+    manifest.scenes.map((entry) => loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id))),
   );
 
   // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.

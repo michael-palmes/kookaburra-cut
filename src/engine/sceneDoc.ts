@@ -30,11 +30,12 @@ import { useVideoWindowRegistry } from "./videoWindowRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
-/** Loads the sidecar beside a manifest scene entry, keyed off the manifest file (never the TSX's `defineScene` id, which may differ from the stem); missing is the normal case and returns undefined. Workspace reads go through `invoke` every time so the fingerprint-poll reload always sees fresh content. */
+/** Loads the sidecar beside a manifest scene entry, keyed off the manifest file (never the TSX's `defineScene` id, which may differ from the stem); missing is the normal case and returns undefined. Workspace reads go through `invoke` every time so the fingerprint-poll reload always sees fresh content. `bundledDir` is the project's root-absolute glob folder (projects/ or the dev-only fixtures/ tree), so fixture sidecars resolve too. */
 export async function loadSceneDoc(
   projectId: string,
   sceneFile: string,
   bundledDocs: Record<string, () => Promise<{ default: unknown }>>,
+  bundledDir?: string,
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
@@ -49,7 +50,7 @@ export async function loadSceneDoc(
       return undefined;
     }
   }
-  const key = `/projects/${projectId}/${docFile}`;
+  const key = `${bundledDir ?? `/projects/${projectId}`}/${docFile}`;
   const load = bundledDocs[key];
   if (!load) return undefined;
   return parseSceneDoc((await load()).default, key);

@@ -29,6 +29,7 @@ import { fixedCoverCrop } from "../toolkit/stage/fixedMath";
 import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
+import type { DofUnion, ResolvedDof } from "./dof";
 import { grainSeed } from "./effectParams";
 import {
   dofSideScratch,
@@ -93,6 +94,11 @@ interface CompositorState {
   /** HDR (HalfFloat/linear) A/B pair for the fx path, allocated lazily on the first fx transition frame, disposed and nulled on resize alongside the SDR pair. */
   targetAHdr: WebGLRenderTarget | null;
   targetBHdr: WebGLRenderTarget | null;
+  /** Pre-composited comparison sides for transition frames (one per comparing scene, so a wipe rides through a transition instead of standing down); flat (no MSAA), they only ever receive the fullscreen compare quad. */
+  targetComp: WebGLRenderTarget | null;
+  targetComp2: WebGLRenderTarget | null;
+  targetCompHdr: WebGLRenderTarget | null;
+  targetComp2Hdr: WebGLRenderTarget | null;
   size: Vector2;
   quadScene: Scene;
   quadCamera: Camera;
@@ -124,7 +130,7 @@ const _dip = new Color();
 const _camPos = new Vector3();
 const _camQuat = new Quaternion();
 
-function makeTarget(w: number, h: number, hdr: boolean): WebGLRenderTarget {
+function makeTarget(w: number, h: number, hdr: boolean, samples = MSAA_SAMPLES): WebGLRenderTarget {
   const t = new WebGLRenderTarget(w, h, {
     minFilter: NearestFilter,
     magFilter: NearestFilter,
@@ -134,8 +140,8 @@ function makeTarget(w: number, h: number, hdr: boolean): WebGLRenderTarget {
     depthBuffer: true,
     stencilBuffer: false,
     generateMipmaps: false,
-    // MSAA: the A/B scene renders sample at MSAA_SAMPLES and three resolves via blitFramebuffer when the composite samples the texture; the resolve is fixed-function, so it's same-machine deterministic, gated by Verify ×2 like everything else, and matches the context's own antialiasing so transition frames keep the solo frames' edge quality.
-    samples: MSAA_SAMPLES,
+    // MSAA: the A/B scene renders sample at MSAA_SAMPLES and three resolves via blitFramebuffer when the composite samples the texture; the resolve is fixed-function, so it's same-machine deterministic, gated by Verify ×2 like everything else, and matches the context's own antialiasing so transition frames keep the solo frames' edge quality. Fullscreen-quad receivers pass 0: a quad has no edges to sample.
+    samples,
   });
   t.texture.colorSpace = hdr ? LinearSRGBColorSpace : SRGBColorSpace;
   t.texture.wrapS = ClampToEdgeWrapping;
@@ -264,6 +270,14 @@ function ensureState(w: number, h: number): CompositorState {
     state.targetBHdr?.dispose();
     state.targetAHdr = null;
     state.targetBHdr = null;
+    state.targetComp?.dispose();
+    state.targetComp2?.dispose();
+    state.targetComp = null;
+    state.targetComp2 = null;
+    state.targetCompHdr?.dispose();
+    state.targetComp2Hdr?.dispose();
+    state.targetCompHdr = null;
+    state.targetComp2Hdr = null;
     state.sceneTarget?.dispose();
     state.sceneTarget = null;
     state.size.set(w, h);
@@ -294,6 +308,10 @@ function ensureState(w: number, h: number): CompositorState {
     targetB: null,
     targetAHdr: null,
     targetBHdr: null,
+    targetComp: null,
+    targetComp2: null,
+    targetCompHdr: null,
+    targetComp2Hdr: null,
     size: new Vector2(w, h),
     quadScene,
     quadCamera: new Camera(),
@@ -325,10 +343,24 @@ function ensureSdrTargets(st: CompositorState): void {
   if (!st.targetB) st.targetB = makeTarget(st.size.x, st.size.y, false);
 }
 
+/** Allocate the flat comparison-composite target(s) on first use; the second only exists once both scenes of a transition frame compare. */
+function ensureCompTargets(st: CompositorState, hdr: boolean, count: number): void {
+  if (count < 1) return;
+  if (hdr) {
+    if (!st.targetCompHdr) st.targetCompHdr = makeTarget(st.size.x, st.size.y, true, 0);
+    if (count > 1 && !st.targetComp2Hdr)
+      st.targetComp2Hdr = makeTarget(st.size.x, st.size.y, true, 0);
+  } else {
+    if (!st.targetComp) st.targetComp = makeTarget(st.size.x, st.size.y, false, 0);
+    if (count > 1 && !st.targetComp2) st.targetComp2 = makeTarget(st.size.x, st.size.y, false, 0);
+  }
+}
+
 /** During export, frames release the pools they did not touch, so idle MSAA pairs, the cutout target and the composer never sit resident between windows (each pair is 570-886 MB at 4K and the WebContent process is killed by WebKit near a 4 GB footprint). Preview never releases: a mid-playback realloc would hitch at 60fps. The next window that needs a pool simply re-allocates it through the existing ensure* path, which is a pure function of size, so pixels cannot change; the gate proves it. */
 function releaseIdlePools(used: {
   sdr?: boolean;
   hdr?: boolean;
+  comp?: boolean;
   sceneTarget?: boolean;
   composer?: boolean;
 }): void {
@@ -347,6 +379,16 @@ function releaseIdlePools(used: {
     state.targetAHdr = null;
     state.targetBHdr = null;
   }
+  if (!used.comp && (state.targetComp || state.targetCompHdr)) {
+    state.targetComp?.dispose();
+    state.targetComp2?.dispose();
+    state.targetComp = null;
+    state.targetComp2 = null;
+    state.targetCompHdr?.dispose();
+    state.targetComp2Hdr?.dispose();
+    state.targetCompHdr = null;
+    state.targetComp2Hdr = null;
+  }
   if (!used.sceneTarget && state.sceneTarget) {
     state.sceneTarget.dispose();
     state.sceneTarget = null;
@@ -364,6 +406,14 @@ export function releaseCompositorPools(): void {
   state.targetBHdr?.dispose();
   state.targetAHdr = null;
   state.targetBHdr = null;
+  state.targetComp?.dispose();
+  state.targetComp2?.dispose();
+  state.targetComp = null;
+  state.targetComp2 = null;
+  state.targetCompHdr?.dispose();
+  state.targetComp2Hdr?.dispose();
+  state.targetCompHdr = null;
+  state.targetComp2Hdr = null;
   state.sceneTarget?.dispose();
   state.sceneTarget = null;
 }
@@ -557,6 +607,59 @@ function drawFramePanelOver(
 }
 
 /** `cameras` is the frame's per-scene camera plan, present only when the project has scene-doc camera tracks (solo/a/b/overlay applied per target, absent means the camera is never touched here); `states` is the analogous per-scene render-state plan (background, environment), whose values are always restored to the shared scene on return so root-scene state never leaks into the next-loaded project. `overlays` is the per-scene resolved overlay plan (panel colour), present only when some scene declares a frame; a scene with a null entry renders full-bleed on the legacy path. */
+/** The comparison quad's uniforms for one plan; shared by the solo path and the transition pre-composite so the two cannot drift. */
+function setCompareUniforms(
+  material: ShaderMaterial,
+  plan: CompareFrame,
+  texA: Texture,
+  texB: Texture,
+  aspect: number,
+): void {
+  const spec = plan.spec;
+  const u = material.uniforms;
+  u.texA.value = texA;
+  u.texB.value = texB;
+  u.value.value = plan.value;
+  u.sweepRad.value = ((spec.angleDeg - 90) * Math.PI) / 180;
+  u.softness.value = spec.softness;
+  u.aspect.value = aspect;
+  u.maskType.value = COMPARE_MASK_ID[spec.maskType];
+  (u.center.value as Vector2).set(spec.center[0], spec.center[1]);
+  u.lineWidth.value = spec.chrome.lineWidth / 1080;
+  (u.lineColor.value as Vector3).set(...hexToSrgb(spec.chrome.lineColor));
+  u.lineSoftness.value = spec.chrome.lineSoftness / 1080;
+  u.gripSize.value = spec.chrome.gripSize;
+  (u.tintA.value as Vector3).set(...hexToSrgb(spec.chrome.tintA ?? "#000000"));
+  (u.tintB.value as Vector3).set(...hexToSrgb(spec.chrome.tintB ?? "#000000"));
+  u.tintAmountA.value = spec.chrome.tintA ? spec.chrome.tintAmount : 0;
+  u.tintAmountB.value = spec.chrome.tintB ? spec.chrome.tintAmount : 0;
+}
+
+/** One comparison side render on the frame's active lane: hdr side-dof through the side composer, dof-only through the scratch chain, else a plain render into the target. */
+function renderCompareSide(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  sideDof: ResolvedDof | null,
+  tgt: WebGLRenderTarget,
+  w: number,
+  h: number,
+  dofUnion: DofUnion | null,
+  dofOnly: boolean,
+  hdrLane: boolean,
+): void {
+  if (hdrLane && sideDof && dofUnion) {
+    renderSideWithDof(gl, scene, camera, sideDof, tgt, w, h, dofUnion);
+  } else if (dofOnly && dofUnion && sideDof && sideDof.blur > 0) {
+    gl.setRenderTarget(dofSideScratch(gl, w, h, dofUnion));
+    gl.render(scene, camera);
+    renderDofOverTarget(gl, scene, camera, sideDof, dofUnion, tgt, w, h);
+  } else {
+    gl.setRenderTarget(tgt);
+    gl.render(scene, camera);
+  }
+}
+
 export function renderComposited(
   gl: WebGLRenderer,
   scene: Scene,
@@ -567,10 +670,11 @@ export function renderComposited(
   states?: FrameSceneStatePlan,
   overlays?: readonly (ResolvedOverlay | null)[],
   lighting?: FrameLightingPlan,
-  compare?: CompareFrame | null,
+  compare?: readonly CompareFrame[] | null,
 ): void {
+  const plans = compare ?? [];
   // Snapshots the root-scene values the state plan owns, restored at every exit so root-scene state never leaks into the next-loaded project; the environment snapshot doubles as the explicit fallback for scenes whose theme declares none (legacy drei mounts keep working through it). A compare frame carrying per-side states opts in too, since its project may otherwise be legacy.
-  const wantsStatePlan = !!states || !!(compare && (compare.stateA || compare.stateB));
+  const wantsStatePlan = !!states || plans.some((p) => p.stateA || p.stateB);
   const prevStateBackground = wantsStatePlan ? scene.background : undefined;
   const sharedEnv: SharedEnvironmentSnapshot | null = wantsStatePlan
     ? {
@@ -630,9 +734,13 @@ export function renderComposited(
   const hdrLane = !!fx && !dofOnly;
   const seed = fx ? grainSeed(useClockStore.getState().currentMs, FPS) : 0;
 
-  // Comparison path: the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep), overlays are not composed here (a framed comparison renders full-bleed, the v1 rule), and transition frames never reach this branch (resolveCompareFrame yields null, the transition below blends side A only).
-  if (compare && resolved.active.length === 1) {
-    const idx = compare.index;
+  // Comparison path (solo frames): the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep), overlays are not composed here (a framed comparison renders full-bleed). Transition frames take the transition path below, which pre-composites each comparing scene into a flat pooled target so the divider rides through the blend.
+  const soloCompare =
+    resolved.active.length === 1
+      ? (plans.find((p) => p.index === resolved.active[0].index) ?? null)
+      : null;
+  if (soloCompare) {
+    const idx = soloCompare.index;
     const size = gl.getDrawingBufferSize(_size);
     const st = ensureState(size.x, size.y);
     const prevAutoClear = gl.autoClear;
@@ -654,61 +762,32 @@ export function renderComposited(
     const sideDof = dofUnion && cameras?.solo?.dof ? cameras.solo.dof : null;
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     showOnly(idx);
-    if (compare.stateA) applyState(compare.stateA);
+    if (soloCompare.stateA) applyState(soloCompare.stateA);
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     applyFrameLighting(scene, lighting?.solo);
-    if (hdrLane && sideDof && dofUnion) {
-      renderSideWithDof(gl, scene, camera, sideDof, tgtA, size.x, size.y, dofUnion);
-    } else if (dofOnly && dofUnion && sideDof && sideDof.blur > 0) {
-      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
-      gl.render(scene, camera);
-      renderDofOverTarget(gl, scene, camera, sideDof, dofUnion, tgtA, size.x, size.y);
-    } else {
-      gl.setRenderTarget(tgtA);
-      gl.render(scene, camera);
-    }
+    renderCompareSide(gl, scene, camera, sideDof, tgtA, size.x, size.y, dofUnion, dofOnly, hdrLane);
 
     showOnly(idx, "b");
-    if (compare.stateB) applyState(compare.stateB);
+    if (soloCompare.stateB) applyState(soloCompare.stateB);
     applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
     applyFrameLighting(scene, lighting?.solo);
-    if (hdrLane && sideDof && dofUnion) {
-      renderSideWithDof(gl, scene, camera, sideDof, tgtB, size.x, size.y, dofUnion);
-    } else if (dofOnly && dofUnion && sideDof && sideDof.blur > 0) {
-      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
-      gl.render(scene, camera);
-      renderDofOverTarget(gl, scene, camera, sideDof, dofUnion, tgtB, size.x, size.y);
-    } else {
-      gl.setRenderTarget(tgtB);
-      gl.render(scene, camera);
-    }
+    renderCompareSide(gl, scene, camera, sideDof, tgtB, size.x, size.y, dofUnion, dofOnly, hdrLane);
 
     // The dominant side's state backs the persistent-overlay draw (the transition dominance rule).
-    const domState = compare.value >= 0.5 ? compare.stateA : compare.stateB;
+    const domState = soloCompare.value >= 0.5 ? soloCompare.stateA : soloCompare.stateB;
     if (domState) applyState(domState);
 
     gl.toneMapping = prevToneMapping;
 
     const activeMaterial = hdrLane ? st.compareMaterialHdr : st.compareMaterial;
     st.mesh.material = activeMaterial;
-    const spec = compare.spec;
-    const u = activeMaterial.uniforms;
-    u.texA.value = tgtA.texture;
-    u.texB.value = tgtB.texture;
-    u.value.value = compare.value;
-    u.sweepRad.value = ((spec.angleDeg - 90) * Math.PI) / 180;
-    u.softness.value = spec.softness;
-    u.aspect.value = st.size.x / st.size.y;
-    u.maskType.value = COMPARE_MASK_ID[spec.maskType];
-    (u.center.value as Vector2).set(spec.center[0], spec.center[1]);
-    u.lineWidth.value = spec.chrome.lineWidth / 1080;
-    (u.lineColor.value as Vector3).set(...hexToSrgb(spec.chrome.lineColor));
-    u.lineSoftness.value = spec.chrome.lineSoftness / 1080;
-    u.gripSize.value = spec.chrome.gripSize;
-    (u.tintA.value as Vector3).set(...hexToSrgb(spec.chrome.tintA ?? "#000000"));
-    (u.tintB.value as Vector3).set(...hexToSrgb(spec.chrome.tintB ?? "#000000"));
-    u.tintAmountA.value = spec.chrome.tintA ? spec.chrome.tintAmount : 0;
-    u.tintAmountB.value = spec.chrome.tintB ? spec.chrome.tintAmount : 0;
+    setCompareUniforms(
+      activeMaterial,
+      soloCompare,
+      tgtA.texture,
+      tgtB.texture,
+      st.size.x / st.size.y,
+    );
 
     const hasOverlay = persistent.length > 0;
     if (hasOverlay) {
@@ -818,51 +897,143 @@ export function renderComposited(
   // Persistent layers must not bake into the A/B targets, they'd render into both and cross-fade against themselves (ghosting); hidden here, drawn exactly once over the composite below.
   for (const g of persistent) g.visible = false;
 
+  // A comparing scene pre-composites its two sides under the divider into a flat pooled target, so the transition blends the finished comparison rather than side A only (the retired v1 rule). Both sub-sides share that scene's transition pose (per-scene lockstep).
+  const planA = plans.find((p) => p.index === tr.fromIndex) ?? null;
+  const planB = plans.find((p) => p.index === tr.toIndex) ?? null;
+  ensureCompTargets(st, hdrLane, (planA ? 1 : 0) + (planB ? 1 : 0));
+  const compFirst = hdrLane ? st.targetCompHdr : st.targetComp;
+  const compSecond = hdrLane ? st.targetComp2Hdr : st.targetComp2;
+  const compA = planA ? compFirst : null;
+  const compB = planB ? (planA ? compSecond : compFirst) : null;
+  const compareMat = hdrLane ? st.compareMaterialHdr : st.compareMaterial;
+
   // The whole slide (panel + cutout) goes into each target, so a transition crossfades framed slides exactly as it does full-bleed scenes. Overlays don't compose through the fx (HDR) targets yet, so a framed scene under effects falls back to the plain scene render here; the dof-only lane keeps SDR targets, so framed scenes compose exactly as they do with no effects.
   const overlayA = !hdrLane ? (overlays?.[tr.fromIndex] ?? null) : null;
   const overlayB = !hdrLane ? (overlays?.[tr.toIndex] ?? null) : null;
 
-  showOnly(tr.fromIndex);
-  if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
-  if (states?.a) applyState(states.a);
-  // Target A resolves its own relative lights and its own sampled lighting: A and B use different cameras AND different scene-local times on a transition frame.
-  applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
-  applyFrameLighting(scene, lighting?.a);
-  if (overlayA) {
-    renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
-    const panelA = panelFor(tr.fromIndex);
-    if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
-  } else if (hdrLane && dofUnion && cameras?.a?.dof) {
-    // Per-side dof: the side renders through the dof composer into its target, so a rack focus rides INTO the transition instead of releasing at the cut.
-    renderSideWithDof(gl, scene, camera, cameras.a.dof, tgtA, size.x, size.y, dofUnion);
-  } else if (dofOnly && dofUnion && cameras?.a?.dof && cameras.a.dof.blur > 0) {
-    // Dof-only lane: the side renders on the plain SDR contract into the scratch, then the dof chain writes the blurred side into the real target.
-    gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
-    gl.render(scene, camera);
-    renderDofOverTarget(gl, scene, camera, cameras.a.dof, dofUnion, tgtA, size.x, size.y);
+  const sideDofA = dofUnion && cameras?.a?.dof ? cameras.a.dof : null;
+  if (planA && compA) {
+    if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
+    showOnly(tr.fromIndex);
+    if (planA.stateA) applyState(planA.stateA);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
+    applyFrameLighting(scene, lighting?.a);
+    renderCompareSide(
+      gl,
+      scene,
+      camera,
+      sideDofA,
+      tgtA,
+      size.x,
+      size.y,
+      dofUnion,
+      dofOnly,
+      hdrLane,
+    );
+    showOnly(tr.fromIndex, "b");
+    if (planA.stateB) applyState(planA.stateB);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
+    applyFrameLighting(scene, lighting?.a);
+    renderCompareSide(
+      gl,
+      scene,
+      camera,
+      sideDofA,
+      tgtB,
+      size.x,
+      size.y,
+      dofUnion,
+      dofOnly,
+      hdrLane,
+    );
+    st.mesh.material = compareMat;
+    setCompareUniforms(compareMat, planA, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
+    gl.setRenderTarget(compA);
+    gl.render(st.quadScene, st.quadCamera);
   } else {
-    gl.setRenderTarget(tgtA);
-    gl.render(scene, camera);
+    showOnly(tr.fromIndex);
+    if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
+    if (states?.a) applyState(states.a);
+    // Target A resolves its own relative lights and its own sampled lighting: A and B use different cameras AND different scene-local times on a transition frame.
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
+    applyFrameLighting(scene, lighting?.a);
+    if (overlayA) {
+      renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
+      const panelA = panelFor(tr.fromIndex);
+      if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+    } else if (hdrLane && dofUnion && cameras?.a?.dof) {
+      // Per-side dof: the side renders through the dof composer into its target, so a rack focus rides INTO the transition instead of releasing at the cut.
+      renderSideWithDof(gl, scene, camera, cameras.a.dof, tgtA, size.x, size.y, dofUnion);
+    } else if (dofOnly && dofUnion && cameras?.a?.dof && cameras.a.dof.blur > 0) {
+      // Dof-only lane: the side renders on the plain SDR contract into the scratch, then the dof chain writes the blurred side into the real target.
+      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+      gl.render(scene, camera);
+      renderDofOverTarget(gl, scene, camera, cameras.a.dof, dofUnion, tgtA, size.x, size.y);
+    } else {
+      gl.setRenderTarget(tgtA);
+      gl.render(scene, camera);
+    }
   }
 
-  showOnly(tr.toIndex);
-  if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
-  if (states?.b) applyState(states.b);
-  applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
-  applyFrameLighting(scene, lighting?.b);
-  if (overlayB) {
-    renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
-    const panelB = panelFor(tr.toIndex);
-    if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
-  } else if (hdrLane && dofUnion && cameras?.b?.dof) {
-    renderSideWithDof(gl, scene, camera, cameras.b.dof, tgtB, size.x, size.y, dofUnion);
-  } else if (dofOnly && dofUnion && cameras?.b?.dof && cameras.b.dof.blur > 0) {
-    gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
-    gl.render(scene, camera);
-    renderDofOverTarget(gl, scene, camera, cameras.b.dof, dofUnion, tgtB, size.x, size.y);
+  const sideDofB = dofUnion && cameras?.b?.dof ? cameras.b.dof : null;
+  if (planB && compB) {
+    if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
+    showOnly(tr.toIndex);
+    if (planB.stateA) applyState(planB.stateA);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
+    applyFrameLighting(scene, lighting?.b);
+    renderCompareSide(
+      gl,
+      scene,
+      camera,
+      sideDofB,
+      tgtA,
+      size.x,
+      size.y,
+      dofUnion,
+      dofOnly,
+      hdrLane,
+    );
+    showOnly(tr.toIndex, "b");
+    if (planB.stateB) applyState(planB.stateB);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
+    applyFrameLighting(scene, lighting?.b);
+    renderCompareSide(
+      gl,
+      scene,
+      camera,
+      sideDofB,
+      tgtB,
+      size.x,
+      size.y,
+      dofUnion,
+      dofOnly,
+      hdrLane,
+    );
+    st.mesh.material = compareMat;
+    setCompareUniforms(compareMat, planB, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
+    gl.setRenderTarget(compB);
+    gl.render(st.quadScene, st.quadCamera);
   } else {
-    gl.setRenderTarget(tgtB);
-    gl.render(scene, camera);
+    showOnly(tr.toIndex);
+    if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
+    if (states?.b) applyState(states.b);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
+    applyFrameLighting(scene, lighting?.b);
+    if (overlayB) {
+      renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
+      const panelB = panelFor(tr.toIndex);
+      if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
+    } else if (hdrLane && dofUnion && cameras?.b?.dof) {
+      renderSideWithDof(gl, scene, camera, cameras.b.dof, tgtB, size.x, size.y, dofUnion);
+    } else if (dofOnly && dofUnion && cameras?.b?.dof && cameras.b.dof.blur > 0) {
+      gl.setRenderTarget(dofSideScratch(gl, size.x, size.y, dofUnion));
+      gl.render(scene, camera);
+      renderDofOverTarget(gl, scene, camera, cameras.b.dof, dofUnion, tgtB, size.x, size.y);
+    } else {
+      gl.setRenderTarget(tgtB);
+      gl.render(scene, camera);
+    }
   }
 
   // The composite quad ignores `camera`; sets the dominant scene's pose here so both overlay branches below render the persistent layer with it, and the same for render state (which also feeds the dip-colour fallback in setCompositeUniforms below).
@@ -892,8 +1063,8 @@ export function renderComposited(
     activeMaterial.uniforms,
     tr,
     scene,
-    tgtA.texture,
-    tgtB.texture,
+    (compA ?? tgtA).texture,
+    (compB ?? tgtB).texture,
     st.size.x / st.size.y,
   );
 
@@ -935,6 +1106,7 @@ export function renderComposited(
   releaseIdlePools({
     sdr: !hdrLane,
     hdr: hdrLane,
+    comp: !!(planA || planB),
     sceneTarget:
       (!!overlayA && usesSceneTarget(overlayA)) || (!!overlayB && usesSceneTarget(overlayB)),
     composer: !!fx,

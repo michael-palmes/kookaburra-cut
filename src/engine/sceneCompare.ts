@@ -199,22 +199,24 @@ export interface CompareFrame {
   stateB?: SceneRenderState;
 }
 
-/** Resolve the frame's compare plan; null when the active scene has no comparison. Transition frames (two active scenes) deliberately resolve null: the compositor's transition path then blends side A only (the v1 interop rule; hard cuts show the full comparison). */
+/** Resolve the frame's compare plans, one per active scene carrying a comparison (empty when none). Transition frames resolve BOTH sides at their own scene-local times, so the compositor can pre-composite each comparing scene under its mask before the transition blend; the divider therefore rides through transitions instead of standing down (the v1 side-A-only rule is retired). */
 export function resolveCompareFrame(
   specs: readonly (CompareSpec | null)[],
   statesA: readonly SceneRenderState[] | null,
   statesB: readonly (SceneRenderState | null)[] | null,
   resolved: Resolved,
-): CompareFrame | null {
-  if (resolved.active.length !== 1) return null;
-  const active = resolved.active[0];
-  const spec = specs[active.index];
-  if (!spec) return null;
-  return {
-    index: active.index,
-    value: compareValueAt(spec, active.localMs),
-    spec,
-    stateA: statesA?.[active.index],
-    stateB: statesB?.[active.index] ?? undefined,
-  };
+): CompareFrame[] {
+  const plans: CompareFrame[] = [];
+  for (const active of resolved.active) {
+    const spec = specs[active.index];
+    if (!spec) continue;
+    plans.push({
+      index: active.index,
+      value: compareValueAt(spec, active.localMs),
+      spec,
+      stateA: statesA?.[active.index],
+      stateB: statesB?.[active.index] ?? undefined,
+    });
+  }
+  return plans;
 }

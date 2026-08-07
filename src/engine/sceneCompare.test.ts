@@ -228,20 +228,25 @@ describe("resolveCompareFrame", () => {
 
   it("resolves the active scene's spec with its side states", () => {
     const resolved: Resolved = { active: [{ index: 1, localMs: 500 }] };
-    const frame = resolveCompareFrame([null, spec], [stateA, stateA], [null, stateB], resolved);
-    expect(frame).toEqual({ index: 1, value: 0.5, spec, stateA, stateB });
+    const frames = resolveCompareFrame([null, spec], [stateA, stateA], [null, stateB], resolved);
+    expect(frames).toEqual([{ index: 1, value: 0.5, spec, stateA, stateB }]);
   });
 
-  it("null for plain scenes and for transition frames (two active scenes)", () => {
+  it("empty for plain scenes; transition frames resolve each comparing side at its own local time", () => {
     const solo: Resolved = { active: [{ index: 0, localMs: 0 }] };
-    expect(resolveCompareFrame([null, spec], null, null, solo)).toBeNull();
+    expect(resolveCompareFrame([null, spec], null, null, solo)).toEqual([]);
     const transition: Resolved = {
       active: [
         { index: 0, localMs: 900 },
         { index: 1, localMs: 100 },
       ],
     };
-    expect(resolveCompareFrame([null, spec], null, null, transition)).toBeNull();
+    const frames = resolveCompareFrame([null, spec], null, null, transition);
+    expect(frames).toHaveLength(1);
+    expect(frames[0].index).toBe(1);
+    expect(frames[0].value).toBe(0.5);
+    const both = resolveCompareFrame([spec, spec], null, null, transition);
+    expect(both.map((f) => f.index)).toEqual([0, 1]);
   });
 });
 
