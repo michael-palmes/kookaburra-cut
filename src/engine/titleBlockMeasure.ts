@@ -9,6 +9,7 @@ import {
   measuredPanelTextHeight,
   type PanelTextSpec,
 } from "./framePanelMeasure";
+import { yieldMacrotask } from "./macrotask";
 import type { SceneDoc } from "./sceneDocSchema";
 
 export interface TitleTextInput {
@@ -118,7 +119,7 @@ function outstandingCount(): number {
 export async function awaitTitleMeasuresSettled(): Promise<void> {
   for (let spins = 0; spins < 5000; spins++) {
     await awaitPanelMeasuresIdle();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldMacrotask();
     // The first pass never exits: report-on-commit means an empty map can simply mean the mount effects have not run yet.
     if (spins > 0 && outstandingCount() === 0) return;
   }

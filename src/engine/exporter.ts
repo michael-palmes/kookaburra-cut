@@ -44,6 +44,7 @@ import { setExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
 import { HELPER_LAYER } from "./lightEditStore";
+import { yieldMacrotask } from "./macrotask";
 import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
@@ -231,7 +232,7 @@ export async function awaitSceneHostsCommitted(expected: number): Promise<void> 
         `Scene tree never committed: ${getSceneHosts().length}/${expected} scene hosts registered.`,
       );
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldMacrotask();
   }
 }
 
@@ -243,7 +244,7 @@ async function awaitCanvasClockCommit(tMs: number): Promise<void> {
         `Canvas tree never committed clock ${tMs}ms (stuck at ${canvasCommittedClockMs()}ms).`,
       );
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldMacrotask();
   }
 }
 
