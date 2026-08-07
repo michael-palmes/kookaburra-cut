@@ -881,6 +881,7 @@ function parseChartValueAxis(raw: unknown, source: string): SceneDocChartValueAx
   if (typeof raw.name === "string" || raw.name === null) out.name = raw.name;
   if (raw.min === null || finiteNum(raw.min)) out.min = raw.min;
   if (raw.max === null || finiteNum(raw.max)) out.max = raw.max;
+  if (typeof raw.trim === "boolean") out.trim = raw.trim;
   if (finiteNum(raw.steps)) out.steps = raw.steps;
   if (typeof raw.labels === "boolean") out.labels = raw.labels;
   if (raw.format !== undefined) {
