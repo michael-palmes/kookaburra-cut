@@ -1332,9 +1332,11 @@ pub async fn scaffold_scene(
         })),
         _ => None,
     };
-    if let Some(mut frame) = overlay_frame {
-        // The starter chip keeps a copy-less panel visible on first insert (FramePanel bails with no text, icon or chip).
-        frame["chip"] = json!({ "label": "New", "icon": "circle-check", "colour": "accent" });
+    if let Some(frame) = overlay_frame {
+        // No starter chip: the slide pass paints the panel and its cutout whether or not the panel carries content. The full-panel variant has no cutout to read, so a copy-less one seeds a starter title instead of landing a flat, empty frame.
+        if options.kind == "overlaypanel" && doc["text"]["title"].as_str() == Some("") {
+            doc["text"]["title"] = json!("Your title");
+        }
         doc["frame"] = frame;
     }
     if options.kind == "videowindow" {

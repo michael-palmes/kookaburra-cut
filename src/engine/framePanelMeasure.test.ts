@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { computeFormat, FORMATS } from "./format";
-import { solvePanelLayout, splitBullets } from "./framePanelMeasure";
+import { headerIconScale, solvePanelLayout, splitBullets } from "./framePanelMeasure";
 import type { SceneDoc } from "./sceneDocSchema";
 
 /** These tests run the solver's COLD-cache path (the pure wrap estimate): real troika measurement needs its worker and only runs in the app, where the export preamble pre-warms the same iteration sequence. */
@@ -24,6 +24,14 @@ describe("splitBullets", () => {
     expect(splitBullets(" one \n\n two\n")).toEqual(["one", "two"]);
     expect(splitBullets(undefined)).toEqual([]);
     expect(splitBullets("")).toEqual([]);
+  });
+});
+
+describe("headerIconScale", () => {
+  it("is 1 without a sidecar override and reads textStyle.iconSize", () => {
+    expect(headerIconScale(undefined)).toBe(1);
+    expect(headerIconScale(docWith({}))).toBe(1);
+    expect(headerIconScale(docWith({ textStyle: { iconSize: 1.5 } }))).toBe(1.5);
   });
 });
 
@@ -58,8 +66,31 @@ describe("solvePanelLayout bullets", () => {
     const { pending } = solvePanelLayout(wide, frame, doc, theme);
     const texts = new Set(pending.map((s) => s.text));
     expect(texts).toContain("Title");
+    // Left-aligned bullets measure the text alone (the marker is its own node) plus the two indent probes.
+    expect(texts).toContain("one");
+    expect(texts).toContain("two");
+    expect(texts).toContain("•  •");
+    expect(texts).toContain("•");
+  });
+
+  it("keeps the one-string bullet and no indent under centre alignment", () => {
+    const centred = { ...frame, textAlign: "center" } as FrameSpec;
+    const doc = docWith({ text: { bullets: "one\ntwo" } });
+    const solution = solvePanelLayout(wide, centred, doc, theme);
+    const texts = new Set(solution.pending.map((s) => s.text));
     expect(texts).toContain("•  one");
-    expect(texts).toContain("•  two");
+    expect(texts).not.toContain("•  •");
+    expect(solution.bulletIndent).toBe(0);
+  });
+
+  it("wraps left-aligned bullets inside the indent once the probes land", () => {
+    // Cold, the probes are unmeasured, so the indent is zero and the wrap width is the full column.
+    const doc = docWith({ text: { bullets: "one" } });
+    const { pending, bulletIndent } = solvePanelLayout(wide, frame, doc, theme);
+    expect(bulletIndent).toBe(0);
+    const line = pending.find((s) => s.text === "one");
+    expect(line?.maxWidth).toBeGreaterThan(0);
+    expect(pending.find((s) => s.text === "•")?.maxWidth).toBe(Number.POSITIVE_INFINITY);
   });
 
   it("honours the sidecar Size override in the measured spec, like the renderer", () => {
@@ -86,6 +117,19 @@ describe("solvePanelLayout bullets", () => {
     expect(specOf(plain)?.lineHeight).toBeUndefined();
     expect(specOf(spaced)?.lineHeight).toBe(1.6);
     expect(spaced.titleH).toBeGreaterThan(plain.titleH);
+  });
+
+  it("reserves more of the column for a scaled header icon", () => {
+    const iconFrame = { ...frame, icon: "🚀" } as FrameSpec;
+    const lines = Array.from({ length: 14 }, (_, i) => `bullet line number ${i}`).join("\n");
+    const plain = solvePanelLayout(wide, iconFrame, docWith({ text: { bullets: lines } }), theme);
+    const big = solvePanelLayout(
+      wide,
+      iconFrame,
+      docWith({ text: { bullets: lines }, textStyle: { iconSize: 2 } }),
+      theme,
+    );
+    expect(big.fit).toBeLessThan(plain.fit);
   });
 
   it("ignores bullets when the frame does not claim the scene text", () => {

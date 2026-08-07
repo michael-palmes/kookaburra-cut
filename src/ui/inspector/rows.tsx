@@ -1,4 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import type { GizmoMode } from "../../engine/gizmoMode";
 import type { ChartType } from "../../toolkit/chart/types";
 import { isTypingIn } from "../textEditFocus";
 
@@ -317,7 +318,7 @@ export function ChartTypeIcon({ id, size = 18 }: { id: ChartType; size?: number 
 }
 
 /** Gizmo-mode pill icons (Move / Rotate / Scale), the SegmentedRow 13px size; shared by the object and chart placement drills. */
-export function GizmoModeIcon({ mode }: { mode: "translate" | "rotate" | "scale" }) {
+export function GizmoModeIcon({ mode }: { mode: GizmoMode }) {
   const glyph = {
     translate: (
       <>

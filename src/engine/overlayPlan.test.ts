@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Theme } from "../theme/tokens";
-import { resolveOverlays } from "./overlayPlan";
+import type { GradientSpec, Theme } from "../theme/tokens";
+import type { FrameSpec } from "../toolkit/frame/types";
+import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
 import type { SceneDoc } from "./sceneDocSchema";
 
 const theme = {
@@ -8,6 +9,11 @@ const theme = {
 } as Theme;
 
 const frame = { cutout: { shape: "rounded-rect" } } as const;
+
+const panelFrame = (background: FrameSpec["background"]): FrameSpec => ({
+  cutout: frame.cutout,
+  background,
+});
 
 describe("resolveOverlays", () => {
   it("returns null when no scene has a frame, keeping the byte-identical path", () => {
@@ -93,6 +99,77 @@ describe("resolveOverlays", () => {
       colors: { background: "#000000", text: "#ffffff", accent: "#ff0000", muted: "#808080" },
     } as Theme;
     expect(withShader).toEqual(resolveOverlays([frame], [plain])?.[0]?.panelColor);
+  });
+
+  it("a plain string, an unset background and an explicit colour all take the flat fill", () => {
+    const out = resolveOverlays(
+      [frame, panelFrame("text"), panelFrame({ type: "color", color: "#ffffff" })],
+      [theme, theme, theme],
+    );
+    expect(out?.map((o) => o?.panel.kind)).toEqual(["colour", "colour", "colour"]);
+    expect(out?.[2]?.panelColor).toEqual([1, 1, 1]);
+  });
+
+  it("bakes an inline gradient and keys it by the fields the raster reads", () => {
+    const spec: GradientSpec = {
+      type: "linear",
+      angleDeg: 90,
+      stops: [
+        ["#000000", 0],
+        ["#ffffff", 1],
+      ],
+    };
+    const panel = resolveOverlays([panelFrame({ type: "gradient", spec })], [theme])?.[0]?.panel;
+    expect(panel).toMatchObject({ kind: "gradient", spec });
+    expect(panel?.kind === "gradient" && panel.key).toBe(
+      JSON.stringify(["linear", 90, "srgb", spec.stops]),
+    );
+  });
+
+  it("resolves a named gradient through the theme, degrading to the flat fill when it's missing", () => {
+    const spec: GradientSpec = {
+      type: "radial",
+      angleDeg: 0,
+      stops: [
+        ["#000000", 0],
+        ["#ffffff", 1],
+      ],
+    };
+    const themed = { ...theme, gradients: { backdrop: spec } } as Theme;
+    const named = panelFrame({ type: "gradient", gradient: "backdrop" });
+    expect(resolveOverlays([named], [themed])?.[0]?.panel).toMatchObject({
+      kind: "gradient",
+      spec,
+    });
+    expect(resolveOverlays([named], [theme])?.[0]?.panel.kind).toBe("colour");
+  });
+
+  it("carries an image fill with its project, and falls back to the flat fill with no project", () => {
+    const image = panelFrame({ type: "image", src: "assets/panel.png" });
+    expect(resolveOverlays([image], [theme], [], "ws:deck")?.[0]?.panel).toEqual({
+      kind: "image",
+      projectId: "ws:deck",
+      src: "assets/panel.png",
+    });
+    expect(resolveOverlays([image], [theme])?.[0]?.panel.kind).toBe("colour");
+  });
+
+  it("a transparent panel keeps the neutral fallback colour it never paints", () => {
+    const out = resolveOverlays([panelFrame({ type: "transparent" })], [theme]);
+    expect(out?.[0]?.panel.kind).toBe("transparent");
+    expect(out?.[0]?.panelColor).toEqual(resolveOverlays([frame], [theme])?.[0]?.panelColor);
+  });
+
+  it("lists every panel image source once, for the preload barrier", () => {
+    expect(
+      overlayPanelImageSources([
+        panelFrame({ type: "image", src: "assets/a.png" }),
+        panelFrame({ type: "image", src: "assets/a.png" }),
+        panelFrame({ type: "image", src: "assets/b.png" }),
+        panelFrame("accent"),
+        undefined,
+      ]),
+    ).toEqual(["assets/a.png", "assets/b.png"]);
   });
 
   it("a scene doc's own background override wins over the theme's", () => {

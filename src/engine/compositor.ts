@@ -15,6 +15,7 @@ import {
   Scene,
   ShaderMaterial,
   SRGBColorSpace,
+  type Texture,
   UnsignedByteType,
   Vector2,
   Vector3,
@@ -24,6 +25,7 @@ import {
 } from "three";
 import type { EffectsConfig } from "../theme/tokens";
 import { cutoutPixelRect, type FrameLayout, frameLayout } from "../toolkit/frame/frameLayout";
+import { fixedCoverCrop } from "../toolkit/stage/fixedMath";
 import { applyCameraPose, baseCameraPose } from "./cameraTrack";
 import { useClockStore } from "./clock";
 import { compareFragmentShader, compareFragmentShaderHdr } from "./compareShader";
@@ -45,6 +47,7 @@ import { FPS, MSAA_SAMPLES } from "./format";
 import { getFramePanels } from "./framePanelRegistry";
 import { applyFrameLighting } from "./lightingAnimation";
 import { applyRelativeLights } from "./lightingState";
+import { panelGradientTexture, panelImageTexture } from "./overlayPanelTexture";
 import type { ResolvedOverlay } from "./overlayPlan";
 import {
   CUTOUT_MODE_BOX,
@@ -195,12 +198,15 @@ function makeCompareMaterial(fragment: string): ShaderMaterial {
   });
 }
 
-/** The overlay slide material: keys the scene target through the cutout SDF, fills the rest with the panel colour. Display-domain GLSL1, same semantics as the legacy transition composite. */
+/** The overlay slide material: keys the scene target through the cutout SDF, fills the rest with the panel fill. Display-domain GLSL1, same semantics as the legacy transition composite. */
 function makeSlideMaterial(): ShaderMaterial {
   return new ShaderMaterial({
     uniforms: {
       sceneTex: { value: null },
       panelColor: { value: new Vector3(0, 0, 0) },
+      panelTex: { value: null },
+      panelMode: { value: 0 },
+      panelUv: { value: new Vector4(1, 1, 0, 0) },
       cutoutRect: { value: new Vector4(0, 0, 1, 1) },
       cutoutCenter: { value: new Vector2(0.5, 0.5) },
       cutoutHalf: { value: new Vector2(0.5, 0.5) },
@@ -395,6 +401,24 @@ function ensureSceneTarget(st: CompositorState, w: number, h: number): WebGLRend
   return st.sceneTarget;
 }
 
+/** The panel's sampled fill for this frame: the baked gradient (stretched over the frame, the `FixedGradient` precedent) or the project image (cover-cropped like `FixedImage`, so one asset serves every aspect). Null means the flat colour path, which also covers a preview frame whose image is still loading. */
+function panelFill(
+  overlay: ResolvedOverlay,
+  aspect: number,
+): { texture: Texture; uv: [number, number, number, number] } | null {
+  const panel = overlay.panel;
+  if (panel.kind === "gradient") {
+    return { texture: panelGradientTexture(panel.key, panel.spec), uv: [1, 1, 0, 0] };
+  }
+  if (panel.kind !== "image") return null;
+  const texture = panelImageTexture(panel.projectId, panel.src);
+  if (!texture) return null;
+  const image = texture.image as { width: number; height: number } | undefined;
+  if (!image?.width || !image.height) return { texture, uv: [1, 1, 0, 0] };
+  const crop = fixedCoverCrop(image.width / image.height, aspect);
+  return { texture, uv: [crop.u1 - crop.u0, crop.v1 - crop.v0, crop.u0, crop.v0] };
+}
+
 /** Set the slide material's cutout uniforms from the layout + its pixel rect in the destination buffer. The uv rect is derived from the pixel rect (not the normalised layout) so the mask and the scene sampling stay pixel-aligned; `bufferH` sets a ~1px edge softness. */
 function setSlideUniforms(
   st: CompositorState,
@@ -412,6 +436,10 @@ function setSlideUniforms(
   const uvY = 1 - (px.y + px.height) / bufferH; // pixel rect is y-down, uv is y-up
   u.sceneTex.value = st.sceneTarget?.texture ?? null;
   (u.panelColor.value as Vector3).set(...overlay.panelColor);
+  const fill = panelFill(overlay, aspect);
+  u.panelTex.value = fill?.texture ?? null;
+  u.panelMode.value = fill ? 1 : 0;
+  (u.panelUv.value as Vector4).set(...(fill?.uv ?? [1, 1, 0, 0]));
   (u.cutoutRect.value as Vector4).set(uvX, uvY, uvW, uvH);
   (u.cutoutCenter.value as Vector2).set((uvX + uvW / 2) * aspect, uvY + uvH / 2);
   (u.cutoutHalf.value as Vector2).set((uvW / 2) * aspect, uvH / 2);
@@ -427,6 +455,11 @@ function setSlideUniforms(
   u.softness.value = 1 / bufferH;
 }
 
+/** True when the frame needs the cutout-sized scene target: a shaped cutout with a painted panel. A transparent panel renders the scene full-bleed instead, and `shape: "none"` fills flat. */
+function usesSceneTarget(overlay: ResolvedOverlay): boolean {
+  return overlay.panel.kind !== "transparent" && overlay.frame.cutout.shape !== "none";
+}
+
 /** Render one framed scene: the scene into the cutout target at the cutout aspect (FixedBackdrop tracks cam.aspect live, so it's set and restored around this render, symmetric within the call like every other state the compositor touches), then the slide pass keying it through the cutout into `dest`. */
 function renderFramedScene(
   gl: WebGLRenderer,
@@ -438,6 +471,13 @@ function renderFramedScene(
   bufferH: number,
   dest: WebGLRenderTarget | null,
 ): void {
+  // Transparent panel: nothing to fill, so the scene takes the whole frame exactly as an unframed one does (the legacy render, both destinations) and only the panel's content draws over it.
+  if (overlay.panel.kind === "transparent") {
+    gl.setRenderTarget(dest);
+    gl.render(scene, camera);
+    return;
+  }
+
   const aspect = bufferW / bufferH;
   const layout = frameLayout(aspect, overlay.frame.cutout);
 
@@ -750,7 +790,7 @@ export function renderComposited(
     }
     gl.setRenderTarget(prevTarget);
     releaseIdlePools({
-      sceneTarget: !!overlay && overlay.frame.cutout.shape !== "none",
+      sceneTarget: !!overlay && usesSceneTarget(overlay),
       composer: !!fx,
     });
     restoreSceneState();
@@ -896,8 +936,7 @@ export function renderComposited(
     sdr: !hdrLane,
     hdr: hdrLane,
     sceneTarget:
-      (!!overlayA && overlayA.frame.cutout.shape !== "none") ||
-      (!!overlayB && overlayB.frame.cutout.shape !== "none"),
+      (!!overlayA && usesSceneTarget(overlayA)) || (!!overlayB && usesSceneTarget(overlayB)),
     composer: !!fx,
   });
   restoreSceneState();

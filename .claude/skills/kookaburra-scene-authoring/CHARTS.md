@@ -32,6 +32,12 @@ is enough. One chart per scene.
     ]
   },
 
+  "palette": null,              // optional named colour scheme id (list below);
+                                // absent takes the theme's chartColors
+  "font": null,                 // optional face for ALL text in this chart
+                                // ("Family" or "Family@weight"); absent takes the
+                                // project's typography.chart, then the theme faces
+
   "style": {
     "preset": "boardroom",      // appearance preset, table below
     "depth": 0.5,               // 3D extrusion, 0..1
@@ -55,7 +61,12 @@ is enough. One chart per scene.
     "legend": { "visible": true, "position": "bottom" },   // top | bottom | trailing
     "values": { "visible": true, "location": "above",      // above | inside | below
       "format": { "decimals": 0, "separator": true, "prefix": "", "suffix": "", "compact": false },
-      "countUp": true }
+      "countUp": true,
+      "offsetY": 0,                                        // nudge in value font sizes, + is up, ±4
+      "background": null }                                 // absent = the preset's own pill;
+                                                           // present (even {}) FORCES a chip on:
+                                                           // { "colour": "#1b2733" | "accent" | null,
+                                                           //   "opacity": 0.86, "radius": 0.5 }
   },
 
   "animation": {
@@ -71,6 +82,11 @@ is enough. One chart per scene.
 
 Null means auto (axis min/max nice themselves; `decimals: null` trims to at most 2).
 `compact: true` prints 1.2k / 3.4M / 1.2B, the finance default for big values.
+`labels.values.offsetY` lifts or drops the numbers riding the marks (font sizes, so it
+reads the same at any chart size), and `labels.values.background` puts a chip behind
+them when they sit over a busy mark. The chip is FLAT charts only: a 3D chart takes the
+nudge and ignores the background (its labels billboard). Neither field touches axis
+tick labels.
 A pie charts the FIRST series only; categories become slices; extra series stay dormant
 so switching types keeps data.
 
@@ -117,10 +133,34 @@ on a type it does not cover degrades to that family's default (never an error).
 
 ## Series colours
 
-Precedence: per-series `colour` override, then the theme's `chartColors` (all bundled
-themes carry six curated swatches), then a derived ramp off the theme accent. DO NOT
-hard-code series colours in scenes for design reasons; the override exists for brand
-data (for example a competitor's brand colour) only.
+Precedence: per-series `colour` override, then the block's `palette` scheme, then the
+theme's `chartColors` (all bundled themes carry six curated swatches), then a derived
+ramp off the theme accent. DO NOT hard-code series colours in scenes for design
+reasons; the override exists for brand data (for example a competitor's brand colour)
+only. Reach for a `palette` scheme instead when a chart wants its own colours.
+
+Scheme ids: `reef`, `sunrise`, `eucalypt`, `outback`, `harbour`, `orchid`, `citrus`,
+`vivid` (high chroma), `muted` (low chroma), `slate` (cool neutrals). Every scheme is
+six mid-tone swatches that hold on light AND dark theme backgrounds, so a scheme never
+needs re-picking when the scene's theme changes. An unknown id falls back to the theme.
+
+## Chart font
+
+Precedence: the block's `chart.font`, then the project's `typography.chart` (in
+`project.json`, edited in the inspector's Project ▸ Typography drill), then the theme
+faces (body, or headline where the appearance preset emphasises). One face covers ALL
+chart text (ticks, categories, axis names, value labels, legend), so emphasis stops
+changing the family; sizes are always the chart's own.
+
+```bash
+python3 .claude/skills/kookaburra-scene-authoring/scripts/sidecar.py 03-results set chart.font "IBM Plex Mono@500"
+```
+
+Reach for it when the numerals want their own voice (a mono for a ledger, a grotesk
+for a launch chart). Keep it to families the theme or the machine actually has:
+anything else falls back to Inter with a console warning. Both sources join the export
+font preload set, so a chart font is deterministic, but a `.kbpack` does NOT yet carry
+a system face named this way (bundled families are fine).
 
 ## Keyframed data (the track)
 

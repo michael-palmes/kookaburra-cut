@@ -123,6 +123,9 @@ fn enumerate_faces() -> Vec<FaceInfo> {
         CFString::wrap_under_get_rule(core_text::font_descriptor::kCTFontVariationAttribute)
     };
     let mut faces = Vec::new();
+    // catch_unwind survives the broken descriptors, but the default hook still PRINTS each caught panic ("A font must have a non-null family name", once per bad face, every enumeration); silence the hook for the loop.
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
     for descriptor in descriptors.iter() {
         let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let path = descriptor.font_path()?;
@@ -138,6 +141,7 @@ fn enumerate_faces() -> Vec<FaceInfo> {
             faces.push(face);
         }
     }
+    std::panic::set_hook(previous_hook);
     faces
 }
 

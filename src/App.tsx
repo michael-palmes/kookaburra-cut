@@ -55,6 +55,7 @@ import { isExporting } from "./engine/exportState";
 import { FramePanel } from "./engine/FramePanel";
 import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
 import { mergeFrameSpec } from "./engine/frameSchema";
+import { useGizmoSectionOpen } from "./engine/gizmoSections";
 import {
   bindHistory,
   type HistoryChange,
@@ -113,7 +114,7 @@ import {
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
 import { planMoves } from "./engine/sceneOrder";
-import { ensureSceneThumbs } from "./engine/sceneThumbs";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
 import { getLiveSession } from "./engine/terminal";
@@ -151,6 +152,7 @@ import { CameraPill } from "./ui/CameraPill";
 import { CameraToolOverlay } from "./ui/CameraToolOverlay";
 import { ChartAnimationLane } from "./ui/ChartAnimationLane";
 import { ChartDataModal } from "./ui/ChartDataModal";
+import { ChartHeroGizmo } from "./ui/ChartHeroGizmo";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
@@ -167,6 +169,7 @@ import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
 import { TerminalPanel } from "./ui/TerminalPanel";
+import { TextGizmo } from "./ui/TextGizmo";
 import { ThemeMode } from "./ui/ThemeMode";
 import { TimelineDock } from "./ui/TimelineDock";
 import {
@@ -650,13 +653,17 @@ export default function App() {
     }
   }
 
-  async function handleSetTypography(headline: string | null, body: string | null) {
+  async function handleSetTypography(
+    headline: string | null,
+    body: string | null,
+    chart: string | null,
+  ) {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
       const slug = workspaceSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
-      await setProjectTypography(slug, headline, body);
+      await setProjectTypography(slug, headline, body, chart);
       pushHistory({
         label: "project fonts",
         changes: [
@@ -1434,8 +1441,10 @@ export default function App() {
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
-  // The decoration gizmo arms while the inspector's Decorations drill-in is open.
-  const decorationEditOpen = useUiStore((s) => s.inspector.drillIn === "frame.decorations");
+  // The three 2D gizmo layers arm with their inspector section, through the one drill-family map.
+  const decorationEditOpen = useGizmoSectionOpen("decorations");
+  const textSectionOpen = useGizmoSectionOpen("text");
+  const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -2004,7 +2013,8 @@ export default function App() {
                   doc: project.sceneDocs[i],
                 }))}
                 theme={project.theme}
-                getThumbs={() => ensureSceneThumbs(project)}
+                readThumbs={() => listCachedSceneThumbs(project)}
+                captureThumbs={() => ensureSceneThumbs(project)}
                 onProjectChanged={(focusSceneFile) => {
                   if (focusSceneFile) focusSceneFileRef.current = focusSceneFile;
                   bumpWorkspaceReloadToken();
@@ -2187,7 +2197,7 @@ export default function App() {
                           />
                         </>
                       ))}
-                {/* Decoration drag surface: DOM above the canvas, the letterboxed frame, armed while the Decorations drill-in is open. */}
+                {/* The 2D gizmo layers: DOM above the canvas and above the tool surface, so handles never reach the camera overlay and empty-area drags fall through to it. One inspector family is open at a time, so at most one mounts. */}
                 {project &&
                   isWorkspaceProjectId(project.id) &&
                   !exporting &&
@@ -2197,6 +2207,28 @@ export default function App() {
                       project={project}
                       sceneIndex={camSceneIndex}
                       aspect={format.width / format.height}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  textSectionOpen && (
+                    <TextGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  chartSectionOpen && (
+                    <ChartHeroGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
                       onDocChanged={handleDocChanged}
                     />
                   )}
@@ -2360,7 +2392,9 @@ export default function App() {
               onPasteBackground={(i) => void handlePasteBackground(i)}
               onDuplicateSceneAt={handleDuplicateScene}
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
-              onSetTypography={(headline, body) => void handleSetTypography(headline, body)}
+              onSetTypography={(headline, body, chart) =>
+                void handleSetTypography(headline, body, chart)
+              }
             />
           )}
         </div>

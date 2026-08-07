@@ -18,6 +18,7 @@ import type {
   ChartType,
   ChartValueAxis,
   ChartValueFormat,
+  ChartValueLabelBackground,
   ChartValueLabels,
   ChartValuesPose,
 } from "../toolkit/chart/types";
@@ -45,6 +46,15 @@ export const TEXT_LINE_HEIGHT_MAX = 2;
 
 export function clampLineHeight(value: number): number {
   return Math.min(TEXT_LINE_HEIGHT_MAX, Math.max(TEXT_LINE_HEIGHT_MIN, value));
+}
+
+/** Fold degrees into (-180, 180] so a wrapped drag and a hand-typed 400 land on the same value. */
+export function normaliseDeg(deg: number): number {
+  if (!Number.isFinite(deg)) return 0;
+  let d = deg % 360;
+  if (d <= -180) d += 360;
+  else if (d > 180) d -= 360;
+  return d === 0 ? 0 : d;
 }
 
 /** One device entry, deliberately shaped as `Device` props plus a stable id. */
@@ -318,9 +328,9 @@ export interface SceneDoc {
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
-  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout) and `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal"); consumed by text primitives given a matching `textKey`, inert otherwise. */
+  /** Per-text-element overrides keyed `<textKey><Suffix>`: `Color` (raw hex fill, the one narrow exception to "colours stay tokens"), `Font` ("Family" or "Family@weight"), `Size` (multiplier of the element's default, 1 = unchanged), `OffsetX`/`OffsetY` (world-unit nudges from the scene's layout), `LineHeight` (line spacing as a multiple of the font size, clamped 0.8..2; absent means troika's own "normal") and `RotationDeg` (clockwise tilt in degrees about the block's anchor; absent or 0 is upright); consumed by text primitives given a matching `textKey`, inert otherwise. */
   textStyle?: Record<string, string | number>;
-  /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead. */
+  /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
   devices?: SceneDocDeviceSpec[];
   /** The live multi-device layout block; see `SceneDocDeviceLayout`. */
@@ -433,8 +443,11 @@ export interface SceneDocChartValueAxis
   gridlines?: Partial<ChartGridlines>;
 }
 
-export interface SceneDocChartValueLabels extends Omit<Partial<ChartValueLabels>, "format"> {
+export interface SceneDocChartValueLabels
+  extends Omit<Partial<ChartValueLabels>, "format" | "background"> {
   format?: Partial<ChartValueFormat>;
+  /** PRESENT (even bare) forces a chip behind every value label; absent leaves the appearance preset's own pill maths. */
+  background?: Partial<ChartValueLabelBackground>;
 }
 
 /** One data keyframe: a FULL value snapshot (the Magic Chart model), `[series][category]`, the same shape as `data`. Structure changes (adding a series or category) are edits to `data`, never keyframable. */
@@ -460,6 +473,10 @@ export interface SceneDocChart {
   /** Staged mount only. */
   placement?: DevicePlacement;
   data: SceneDocChartData;
+  /** Named colour scheme id; absent takes the theme's chart palette. */
+  palette?: string;
+  /** Font string ("Family" or "Family@weight") for every label in the chart; absent takes the project's chart font, then the theme faces. */
+  font?: string;
   style?: Partial<ChartStyle>;
   axis?: { value?: SceneDocChartValueAxis; category?: Partial<ChartCategoryAxis> };
   labels?: { legend?: Partial<ChartLegend>; values?: SceneDocChartValueLabels };
@@ -515,6 +532,13 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+const CHART_COLOUR_TOKENS = ["background", "text", "accent", "muted"];
+const CHART_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/** A chart colour as authored: one of the four theme tokens by name, or a hex (the FrameChip rule). */
+const isChartColour = (v: unknown): v is string =>
+  typeof v === "string" && (CHART_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
 
 /** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
 function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
@@ -775,6 +799,28 @@ function parseChartFormat(
 }
 
 /** A `series` array is the one required shape: without it the block cannot chart anything and drops whole. */
+/** The chip behind the value labels. An empty object SURVIVES: presence is the semantic (it forces the chip on), so only junk fields drop. */
+function parseChartValueBackground(
+  raw: unknown,
+  source: string,
+): Partial<ChartValueLabelBackground> | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: chart.labels.values.background isn't an object, dropped`);
+    return undefined;
+  }
+  const out: Partial<ChartValueLabelBackground> = {};
+  if (raw.colour === null || isChartColour(raw.colour)) {
+    out.colour = raw.colour as string | null;
+  } else if (raw.colour !== undefined) {
+    console.warn(
+      `[sceneDoc] ${source}: chart.labels.values.background.colour isn't a theme token or hex, dropped`,
+    );
+  }
+  if (finiteNum(raw.opacity)) out.opacity = raw.opacity;
+  if (finiteNum(raw.radius)) out.radius = raw.radius;
+  return out;
+}
+
 function parseChartData(raw: unknown, source: string): SceneDocChartData | undefined {
   if (!isRecord(raw) || !Array.isArray(raw.series)) return undefined;
   const categories = (Array.isArray(raw.categories) ? raw.categories : []).map((c, i) => {
@@ -901,9 +947,14 @@ function parseChartLabels(raw: unknown, source: string): SceneDocChart["labels"]
       values.location = location;
     }
     if (typeof raw.values.countUp === "boolean") values.countUp = raw.values.countUp;
+    if (finiteNum(raw.values.offsetY)) values.offsetY = raw.values.offsetY;
     if (raw.values.format !== undefined) {
       const format = parseChartFormat(raw.values.format, source, "chart.labels.values.format");
       if (format) values.format = format;
+    }
+    if (raw.values.background !== undefined) {
+      const background = parseChartValueBackground(raw.values.background, source);
+      if (background) values.background = background;
     }
     if (Object.keys(values).length > 0) out.values = values;
   } else if (raw.values !== undefined) {
@@ -1017,6 +1068,16 @@ function parseChart(raw: unknown, source: string): SceneDocChart | undefined {
     const placement = parsePlacement(raw.placement, source, "chart.placement");
     if (placement) out.placement = placement;
   }
+  if (typeof raw.palette === "string" && raw.palette.trim().length > 0) {
+    out.palette = raw.palette;
+  } else if (raw.palette !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.palette isn't a scheme id, dropped`);
+  }
+  if (typeof raw.font === "string" && raw.font.trim().length > 0) {
+    out.font = raw.font.trim();
+  } else if (raw.font !== undefined) {
+    console.warn(`[sceneDoc] ${source}: chart.font isn't a font string, dropped`);
+  }
   if (raw.style !== undefined) {
     const style = parseChartStyle(raw.style, source);
     if (style) out.style = style;
@@ -1121,9 +1182,15 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
         } else {
           console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
         }
+      } else if (key.endsWith("RotationDeg")) {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          textStyle[key] = normaliseDeg(value);
+        } else {
+          console.warn(`[sceneDoc] ${source}: textStyle.${key} isn't a finite number, dropped`);
+        }
       } else {
         console.warn(
-          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight key, dropped`,
+          `[sceneDoc] ${source}: textStyle.${key} isn't a <textKey>Color|Font|Size|OffsetX|OffsetY|LineHeight|RotationDeg key, dropped`,
         );
       }
     }
@@ -1256,15 +1323,20 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   return out;
 }
 
-/** The distinct font refs the docs' `textStyle.<key>Font` overrides reference; feeds the pin/preload pipeline beside the theme collector. */
+/** The distinct font refs the docs' `textStyle.<key>Font` overrides and `chart.font` reference; feeds the pin/preload pipeline beside the theme collector, so a face a doc names is generated before frame 0 rather than mid-run (docs/determinism.md, "Fonts"). */
 export function collectSceneDocFontRefs(docs: readonly (SceneDoc | undefined)[]): FontRef[] {
   const seen = new Map<string, FontRef>();
+  const take = (value: string) => {
+    const ref = parseFontString(value);
+    seen.set(`${ref.family}:${ref.weight}`, ref);
+  };
   for (const doc of docs) {
     for (const [key, value] of Object.entries(doc?.textStyle ?? {})) {
-      if (key.endsWith("Font") && typeof value === "string") {
-        const ref = parseFontString(value);
-        seen.set(`${ref.family}:${ref.weight}`, ref);
-      }
+      if (key.endsWith("Font") && typeof value === "string") take(value);
+    }
+    if (typeof doc?.chart?.font === "string") take(doc.chart.font);
+    for (const deco of doc?.frame?.decorations ?? []) {
+      if (typeof deco.font === "string") take(deco.font);
     }
   }
   return [...seen.values()];

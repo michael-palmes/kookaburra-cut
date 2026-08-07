@@ -14,6 +14,17 @@ export interface CanvasHandle {
 
 export const canvasHandle: { current: CanvasHandle | null } = { current: null };
 
+/** True while a preview capture drives one `advance()`: thumbnails and welcome cards read the same preview frames the editor chrome draws into, so the compositor keeps HELPER_LAYER off the camera for that frame (the capture path hides the layer-0 gizmo handles itself). */
+let capturingPreview = false;
+
+export function setCapturingPreview(value: boolean): void {
+  capturingPreview = value;
+}
+
+export function isCapturingPreview(): boolean {
+  return capturingPreview;
+}
+
 /** The clock value the canvas tree last committed. The canvas subtree renders in the react-three-fiber reconciler, which react-dom's `flushSync` does not flush, its commits land on the r3f scheduler's own timing; the export loop must therefore not trust per-mesh readiness hooks until the canvas tree has provably committed the frame's clock value, polling this stamp to know. Without this the capture races the r3f commit and can grab the previous frame's texture/text (the back-to-back Verify ×2 divergence). See docs/determinism.md. */
 let committedClockMs = Number.NaN;
 

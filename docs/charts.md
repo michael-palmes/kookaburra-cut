@@ -18,7 +18,8 @@ slideware.
 | Coverage | All eight types in 2D and 3D | Taste is enforced by presets, not by withholding types. |
 | Data editing | Grid, paste and CSV import | The sidecar owns the numbers; import is an edit-time act. |
 | Data motion | Keyframed value snapshots on the shared KeyedTrack | The Magic Chart idea on the app's own timeline, with the same lane semantics as camera and compare. |
-| Series colours | Theme `chartColors`, else a derived OKLCH ramp, with per-series overrides | User themes without a curated palette still read on light and dark. |
+| Series colours | Per-series override, else one of 10 named schemes, else theme `chartColors`, else a derived OKLCH ramp | A chart often wants its own colours without restyling the whole scene; user themes without a curated palette still read on light and dark. |
+| Chart type (typeface) | One face for the WHOLE chart: block `chart.font`, else the project's `typography.chart`, else the theme faces | Data wants a numerals face (often a mono or a grotesk) that the rest of the deck does not; splitting it per label would only invite a chart that disagrees with itself. |
 | Number formatting | Hand-rolled, no `Intl` | Locale data varies across macOS versions, which would break byte-identical export. |
 | Appearance | 12 presets in three tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
 | Build-in | 19 presets in three tiers, sampled per element | A preset is a row of channel parameters, never bespoke motion code. |
@@ -32,7 +33,8 @@ slideware.
 src/toolkit/chart/
   layout.ts        pure layout maths        -> ChartLayout (0..1 plot rect, x right, y up)
   format.ts        number presentation      -> one formatter for axes, values, counters
-  palette.ts       series colours           -> override > theme chartColors > derived ramp
+  palette.ts       series colours           -> override > scheme > theme chartColors > ramp
+  paletteSchemes.ts colour scheme catalogue -> 10 named six-swatch sets
   stylePresets.ts  appearance catalogue     -> one ChartStyleSurface (2D facet, 3D facet, shared)
   animation.ts     build-in catalogue       -> ChartRevealSampler (per element, per series)
   mount.ts         placement maths          -> hero / staged / panel rects, fixed scale
@@ -88,6 +90,10 @@ them.
     "source": "assets/q3.csv"   // informational: nothing reads it at render time
   },
 
+  "palette": "reef",            // optional named colour scheme; absent takes the theme's
+  "font": "IBM Plex Mono@500",  // optional face for ALL text in this chart; absent takes
+                                // the project's chart font, then the theme faces
+
   "style": {
     "preset": "boardroom",      // appearance preset id
     "depth": 0.5,               // 3D extrusion depth, 0..1
@@ -115,7 +121,9 @@ them.
     "values": { "visible": true, "location": "above",      // above | inside | below
                 "format": { "decimals": 0, "separator": true, "prefix": "",
                             "suffix": "", "compact": false },
-                "countUp": true }
+                "countUp": true,
+                "offsetY": 0,                              // nudge, in value font sizes, + is up
+                "background": null }                       // absent = the preset's own pill
   },
 
   "animation": {
@@ -140,7 +148,8 @@ Every value above is the resolved default (`CHART_STYLE_DEFAULTS`,
 `CHART_ANIMATION_DEFAULTS` in `sceneChart.ts`), except `type` and `data`, which are
 required, and `mount`, which defaults to `hero`. Value-label decimals default to 0,
 so a counting label lands on exactly the printed value; axis labels default to auto
-decimals.
+decimals. `background` is the one field whose ABSENCE is load-bearing (see
+"Value labels").
 
 Resolution rules worth knowing:
 
@@ -280,10 +289,25 @@ has finished" means.
 
 ## Palette
 
-Precedence: per-series `colour` override, then the theme's curated `chartColors`
-swatch at that index, then a derived ramp. Indices wrap at every step, and a
-malformed hex falls through to the next source rather than painting a broken mark.
+Precedence: per-series `colour` override, then the block's named `palette` scheme,
+then the theme's curated `chartColors` swatch at that index, then a derived ramp.
+Indices wrap at every step, and a malformed hex falls through to the next source
+rather than painting a broken mark. With no `palette` the resolution is the
+pre-scheme one exactly, hex for hex, which is what keeps the gate EQUAL.
 
+- **Named schemes** (`paletteSchemes.ts`) are ten hand-tuned six-swatch sets:
+  Reef, Sunrise, Eucalypt, Outback, Harbour, Orchid, Citrus, Vivid, Muted, Slate.
+  A scheme is background-agnostic, unlike a theme palette curated against one
+  background, so every swatch has to hold on the darkest and the lightest bundled
+  theme at once. That pins them all into a mid-tone luminance band: the schemes
+  differ by hue family and chroma rather than tone, and none runs to neon-bright or
+  pastel-pale (Vivid and Muted are the high and low chroma ends of that band, not
+  light and dark ones). The contract, pinned by `paletteSchemes.test.ts`: 3:1
+  against every bundled theme background, neighbouring swatches separated in OKLab
+  (the two-series case), every pair in a set tellable apart, and no two schemes
+  collapsing onto each other.
+- An unknown scheme id warns once and falls through to the theme, the same degrade
+  an unknown appearance preset takes.
 - `chartColors` is an optional theme field (hex strings, six by convention). Every
   bundled theme ships a hand-picked palette; a malformed entry drops alone.
 - The derived ramp (`derivedChartPalette`) is seeded from `colors.accent`: hue rotates
@@ -296,6 +320,41 @@ malformed hex falls through to the next source rather than painting a broken mar
   entry.
 - `seriesLightnessStep` (the `paperCut` treatment) steps each successive series away
   from the background in OKLCH lightness, applied in `chartColours` at mount time.
+
+## Typography
+
+Precedence, resolved in `chartFace` (`mount.ts`) and applied by `ChartLabel`:
+
+1. The block's own `chart.font` ("Family" or "Family@weight", the sidecar font-string
+   format `textStyle.<key>Font` uses).
+2. The project's chart font, `typography.chart` in `project.json`.
+3. The theme's `typography.body`, or `typography.headline` where the appearance
+   preset's `fontEmphasis` is `headline`.
+
+A chart font replaces BOTH theme faces, so it covers tick labels, category labels,
+axis names, value labels and legend entries at once, and emphasis stops changing the
+family. Only the family and weight change: sizes stay the chart's own metrics.
+
+The project default rides the existing typography merge: `parseProjectTypography`
+folds `typography.chart` onto every resolved theme (project and per-scene alike), so
+`theme.typography.chart` is what the renderer reads. That slot is injected by the
+project load, never parsed out of a `theme.json`.
+
+**The preload seam.** The export preamble preloads exactly the refs the project
+declares, and a face first typeset mid-run claims cells in the shared SDF atlas late
+(docs/determinism.md, "Fonts"), so both new sources must join that set:
+`collectThemeFontRefs` now takes `typography.chart` beside headline and body (which
+covers the project default), and `collectSceneDocFontRefs` takes `chart.font` beside
+the `textStyle.<key>Font` overrides. Both collectors feed `ensureFontRefsPinned` +
+`preloadAppFonts` in `project.ts` AND `exportPreamble` in `exporter.ts`; a chart font
+that skipped them would export a fallback face nondeterministically. The inspector
+pins and preloads the picked face before it writes the sidecar, so the preview lands
+the same face immediately.
+
+**Not carried by packs.** Pack font closure reads theme typography and sidecar
+`textStyle.<key>Font` only, so a `.kbpack` does not yet carry a system font named by
+`chart.font` or `typography.chart` (`src-tauri/src/pack/deps.rs`). A bundled family is
+unaffected; a system face falls back on the receiving machine.
 
 ## Number formatting
 
@@ -315,6 +374,43 @@ the printed static value.
   `-$1.2M`. A value that rounds to nothing prints `0`, never `-0`, so a counter
   crossing zero does not flicker a sign.
 - Non-finite input prints as zero, matching how the layout reads broken cells.
+
+Two editors write two DIFFERENT fields and never share one object: the Axis tab's
+Tick labels group formats the numbers along the axis (`axis.value.format`), the Series
+tab's Value labels group formats the numbers riding the marks (`labels.values.format`).
+
+## Value labels
+
+The numbers riding the marks, `labels.values`. `visible`, `location` and `countUp`
+place them; two more fields dress them, and neither touches axis tick labels.
+
+- **`offsetY`, the nudge.** A vertical shift in VALUE FONT SIZES, positive lifting,
+  clamped to ±`CHART_VALUE_OFFSET_MAX` (4). Font sizes rather than world units, so one
+  authored nudge reads the same on a hero chart and a panel chart, in 2D and in 3D. The
+  chip (below) moves with the number: 2D places the pill from the nudged anchor. 0
+  places labels exactly where they always sat, in every family (bars, lines and areas,
+  pie rims, and all three 3D families).
+- **`background`, the chip.** Absent (the default) nothing changes: the appearance
+  preset's `labelPill` alone decides whether a chip is drawn, in the colour
+  `chartPillColour` derives from the theme. PRESENT, even bare (`{}`), it FORCES the
+  chip on whatever the preset says, and each field overrides the derived pill:
+  `colour` (theme token or hex, absent takes the derived one), `opacity` (0..1) and
+  `radius` (fraction of the chip height, capped at the capsule 0.5). A bare block
+  renders exactly like the preset's own pill, which
+  `CHART_VALUE_BACKGROUND_DEFAULTS` pins by test.
+
+`valueLabelPill` (`chart2dMath.ts`) is the one resolver, and `ChartPills` draws the
+chips it returns: still ONE instanced mesh per run of labels, with the block's opacity
+as the chip weight the shared default otherwise supplies.
+
+**Flat charts only, for now.** A 3D chart takes the nudge but ignores `background`,
+and the inspector hides the background controls for one. 3D value labels billboard by
+rewriting `matrixWorld` in `onBeforeRender` (`billboardLabel.ts`), and an instanced
+chip cannot ride that: three uploads `instanceMatrix` during `projectObject`, BEFORE
+any `onBeforeRender` runs, so camera-composed instance matrices would land a frame
+late. A per-label chip mesh would work but is a new render seam (a draw call per label,
+per-chip geometry, its own depth and transparency ordering against the marks), so it
+waits for its own change.
 
 ## The data track
 
@@ -358,6 +454,23 @@ hands the host a world rect. See `docs/overlays.md` for the panel itself.
   so every control shows the value that renders; writes patch only the field touched,
   so an untouched default never lands in the sidecar. Live slider and scrub ticks
   write history-less from a drag-start snapshot and settle to one history entry.
+- **Graph tab order.** Edit data leads (the row a chart is opened for), then Chart
+  type, Dimension, Mount, Appearance, Colours, Font, Shape, Placement, Legend,
+  Build in. The Colours group is a plain 2-up grid of CSS swatch tiles: a Theme tile
+  first, showing what this scene's theme resolves, then the ten schemes. Nothing here
+  is a captured preview, so the catalogue can grow without regenerating thumbnails.
+- **Font.** One row in the text-field font idiom (the family when the block overrides,
+  otherwise the project's chart family or "Theme font", with the `overridden` class
+  only on a real override). It opens a font screen inside the drill, the series-detail
+  pattern: the `FontPicker`, and a reset button back to the project font (or the theme
+  faces) whenever the block sets one. The project default lives in the Project tab's
+  Typography drill as a third slot beside Headline and Body.
+- **Series tab.** The series list and its detail screen, then the Value labels group:
+  visibility, location, format, count up, the Nudge slider (with Reset nudge, which
+  DELETES the field rather than writing a zero), and the Background toggle whose ON
+  writes the block with the shipped pill's own opacity and radius and whose OFF deletes
+  it. Its colour row resets to the derived pill by clearing `colour` alone. A 3D chart
+  shows a hint in place of the background rows.
 - **Placement.** `chart.position` is the staged mount's drill (Move / Rotate / Scale
   pills plus scrub fields); the gizmo attaches to the posed group while it is open and
   posts its commit through `chartEditStore`.
@@ -407,6 +520,9 @@ This is an export-path feature and gates through `docs/determinism.md`.
 
 - **Null-for-legacy.** A scene with no `chart` block resolves to `null`, the fallback
   renders nothing, and no chart code runs. `ws:launch-2026` 16:9 must stay EQUAL.
+- **Opt-in colour.** An absent `palette` resolves through exactly the pre-scheme
+  ladder, so every existing chart keeps its hexes; the schemes are pinned data, so a
+  chart that does name one is the same colours on every machine.
 - **Purity.** Layout, formatting, palette derivation, style resolution and the build
   sampler read no clock, no `Math.random` and no `Intl`. The sampler is rebuilt every
   frame from the scene-local clock and is deliberately NOT memoised: it must be a new
@@ -420,17 +536,27 @@ This is an export-path feature and gates through `docs/determinism.md`.
 - **Instancing is imperative.** Per-instance matrices, colours, alphas and shine are
   written in layout effects, never through r3f JSX prop diffing (per-instance colour
   through the reconciler is a known upstream bug).
-- **The bold-face rule.** Chart text takes only faces the THEME declares:
-  `typography.body`, or `typography.headline` when the preset's `fontEmphasis` is
-  `headline`. Never a synthesised weight. The export preamble preloads exactly the
-  declared refs (`collectThemeFontRefs`), and a face first typeset mid-run would claim
-  cells in the shared SDF atlas late. The same caution applies to affixes: the glyph
+- **The declared-face rule.** Chart text takes only faces something DECLARES: the
+  block's `chart.font`, the project's `typography.chart`, or the theme's
+  `typography.body` / `typography.headline` (the latter when the preset's
+  `fontEmphasis` is `headline`). Never a synthesised weight. The export preamble
+  preloads exactly the declared refs (`collectThemeFontRefs` +
+  `collectSceneDocFontRefs`, both of which now take the chart sources), and a face
+  first typeset mid-run would claim cells in the shared SDF atlas late. An unset
+  `font` resolves through the pre-font ladder exactly, which keeps the gate EQUAL.
+  The same caution applies to affixes: the glyph
   preload set covers Latin, digits and common punctuation, so an unusual prefix (a
   currency mark, for instance) is first typeset during the run; extend
   `PRELOAD_CHARACTERS` in `theme/fonts.ts` if a project needs it. Chart labels are
   plain troika text with no emoji substitution.
 - **Coplanar layers** step apart by a fixed world epsilon (`CHART_2D_Z_STEP`) with
   explicit `renderOrder`, never `polygonOffset` (driver-dependent).
+- **Billboarded labels** (3D ticks, bar values and pie values) recompose their
+  `matrixWorld` from the render camera in `onBeforeRender`, a pure function of that
+  frame's camera rather than a frame-loop billboard. TRAP: setting the prop shadows
+  troika's OWN `onBeforeRender` on the instance (glyph sync plus binding the SDF atlas
+  into the derived material), so `billboardLabel.ts` calls the inherited handler first.
+  A bare handler leaves every billboarded label invisible while the flat ones draw.
 - **Fat lines** take their `resolution` uniform once from the format's fixed pixel
   dimensions, never from a resize listener, so a stroke is the same fraction of the
   frame in preview and in export.
@@ -440,8 +566,9 @@ This is an export-path feature and gates through `docs/determinism.md`.
   `--action screenshot` frame before recording any baseline.
 
 Fixture: `ws:chart-spike`. Unit tests pin the pure halves (layout and ticks, stacking,
-pie angles, 2D metrics, 3D geometry, formatting, palette derivation, style resolution,
-the animation sampler, mount fitting, CSV round trips, track sampling).
+pie angles, 2D metrics, 3D geometry, formatting, palette derivation and the scheme
+catalogue, style resolution, the animation sampler, mount fitting, CSV round trips,
+track sampling).
 
 ## Preview-lab thumbnails
 

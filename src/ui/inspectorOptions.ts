@@ -209,7 +209,7 @@ export function sceneSections(input: {
     if (frame) {
       rows.push(
         { id: "frame.cutout", label: "Cutout", chevron: true },
-        { id: "frame.panel", label: "Panel colour", chevron: true },
+        { id: "frame.panel", label: "Panel", chevron: true },
         { id: "frame.chip", label: "Chip", chevron: true },
         { id: "frame.decorations", label: "Decorations", chevron: true },
         { id: "frame.text", label: "Scene text", chevron: true },

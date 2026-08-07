@@ -6,7 +6,8 @@ import {
   maxAcrossTrack,
   type ResolvedChart,
 } from "../../engine/sceneChart";
-import type { Theme } from "../../theme/tokens";
+import { parseFontString } from "../../theme/fontRef";
+import type { FontRef, Theme } from "../../theme/tokens";
 import type { DevicePlacement } from "../device/Device";
 import type { FormatInfo, V3 } from "../types";
 import {
@@ -111,14 +112,28 @@ export function chartHeroRect(
   };
 }
 
-/** One colour per series, or per CATEGORY for pie (the `ChartRendererProps` contract): an authored series override wins, then the theme palette, then the preset's own lightness stepping (0 for every preset that leaves the palette alone). */
+/** One colour per series, or per CATEGORY for pie (the `ChartRendererProps` contract): an authored series override wins, then the block's named colour scheme, then the theme palette, then the preset's own lightness stepping (0 for every preset that leaves the palette alone). */
 export function chartColours(chart: ChartConfig, theme: Theme, lightnessStep = 0): string[] {
   const tint = (colour: string, i: number): string =>
     chartSeriesTint(colour, theme.colors.background, i, lightnessStep);
+  const scheme = chart.palette;
   if (chart.type === "pie") {
-    return chart.data.categories.map((_, i) => tint(resolveSeriesColour(theme, i), i));
+    return chart.data.categories.map((_, i) =>
+      tint(resolveSeriesColour(theme, i, null, scheme), i),
+    );
   }
-  return chart.data.series.map((s, i) => tint(resolveSeriesColour(theme, i, s.colour), i));
+  return chart.data.series.map((s, i) => tint(resolveSeriesColour(theme, i, s.colour, scheme), i));
+}
+
+/** The face the block itself names (`chart.font`), or null for the theme path. */
+export function chartFontRef(chart: ChartConfig): FontRef | null {
+  return chart.font ? parseFontString(chart.font) : null;
+}
+
+/** The face a chart label takes: the block's own font, then the project's chart font (`typography.chart`, merged onto every resolved theme), then the theme's headline for emphasised labels and body for the rest. A chart font replaces BOTH faces, so `bold` stops changing the family. Every result is a ref something DECLARES, which is exactly what the export preamble preloads (docs/determinism.md, "Fonts"). */
+export function chartFace(font: FontRef | null, theme: Theme, bold: boolean): FontRef {
+  if (font) return font;
+  return theme.typography.chart ?? (bold ? theme.typography.headline : theme.typography.body);
 }
 
 export interface ChartValueBounds {

@@ -18,8 +18,8 @@ import {
   CHART_2D_ORDER,
   type Chart2DMetrics,
   type ChartSize,
+  type ChartValuePill,
   contrastPick,
-  LABEL_PILL,
   labelPillRect,
   makeChartRectMaterial,
   markCornerRadius,
@@ -49,8 +49,8 @@ export interface Bars2DProps {
   /** `chart.style.cornerRadius` under the preset's scale, 0..1 of half the bar thickness. */
   cornerRadius: number;
   labels: ChartValueLabels;
-  /** Chip fill behind every value label under `labelPill`; null draws them bare. */
-  pill: string | null;
+  /** The chip behind every value label (the preset's pill or the block's background); null draws them bare. */
+  pill: ChartValuePill | null;
   /** Value labels take the family's semibold face (the preset's `fontEmphasis`). */
   bold: boolean;
   reveal?: ChartRevealSource;
@@ -171,7 +171,7 @@ function BarValueLabels(props: {
   size: ChartSize;
   metrics: Chart2DMetrics;
   labels: ChartValueLabels;
-  pill: string | null;
+  pill: ChartValuePill | null;
   bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
@@ -183,6 +183,7 @@ function BarValueLabels(props: {
   const at = chartRevealFn(reveal);
   const vertical = layout.valueAxis === "y";
   const inside = labels.location === "inside";
+  const lift = labels.offsetY * metrics.value;
   const pills: WorldRect[] = [];
 
   const drawn = layout.bars.map((mark) => {
@@ -203,7 +204,7 @@ function BarValueLabels(props: {
         ? contrastPick(fill, theme.colors.text, theme.colors.background)
         : theme.colors.text;
     const x = vertical ? plotToWorldX(size, across) : plotToWorldX(size, along) + nudge;
-    const y = vertical ? plotToWorldY(size, along) + nudge : plotToWorldY(size, across);
+    const y = (vertical ? plotToWorldY(size, along) + nudge : plotToWorldY(size, across)) + lift;
     const outward = spot.direction > 0;
     const anchorX = vertical || inside ? "center" : outward ? "left" : "right";
     const anchorY = !vertical || inside ? "middle" : outward ? "bottom" : "top";
@@ -219,8 +220,9 @@ function BarValueLabels(props: {
       {pill && (
         <ChartPills
           rects={pills}
-          radiusFraction={LABEL_PILL.radius}
-          colour={pill}
+          radiusFraction={pill.radius}
+          colour={pill.colour}
+          weight={pill.opacity}
           opacity={opacity}
           alphas={drawn.map((label) => label.alpha)}
           feather={feather}

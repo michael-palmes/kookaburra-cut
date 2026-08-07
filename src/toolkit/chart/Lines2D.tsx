@@ -13,10 +13,10 @@ import {
   type Chart2DMetrics,
   type ChartDrawUniforms,
   type ChartSize,
+  type ChartValuePill,
   chartRampTexture,
   drawEdgeX,
   droppedBaseline,
-  LABEL_PILL,
   labelPillRect,
   makeChartFillMaterial,
   patchChartLineMaterial,
@@ -54,8 +54,8 @@ export interface Lines2DProps {
   metrics: Chart2DMetrics;
   look: ChartStyleSurface2D;
   labels: ChartValueLabels;
-  /** Chip fill behind every value label under `labelPill`; null draws them bare. */
-  pill: string | null;
+  /** The chip behind every value label (the preset's pill or the block's background); null draws them bare. */
+  pill: ChartValuePill | null;
   /** Value labels take the family's semibold face. */
   bold: boolean;
   reveal?: ChartRevealSource;
@@ -370,7 +370,7 @@ function PointValueLabels(props: {
   size: ChartSize;
   metrics: Chart2DMetrics;
   labels: ChartValueLabels;
-  pill: string | null;
+  pill: ChartValuePill | null;
   bold: boolean;
   reveal?: ChartRevealSource;
   opacity: number;
@@ -382,6 +382,7 @@ function PointValueLabels(props: {
   const sample = chartRevealFn(reveal);
   const below = labels.location === "below";
   const anchorY = below ? "top" : "bottom";
+  const lift = labels.offsetY * metrics.value;
   const pills: WorldRect[] = [];
 
   const drawn = layout.series.flatMap((series) =>
@@ -392,7 +393,7 @@ function PointValueLabels(props: {
       const [x, y] = plotPointToWorld(size, labels.location === "inside" ? midpoint(base, at) : at);
       const value = labels.countUp ? point.value * build.count : point.value;
       const text = formatChartValue(value, labels.format);
-      const labelY = below ? y - metrics.gap : y + metrics.gap;
+      const labelY = (below ? y - metrics.gap : y + metrics.gap) + lift;
       if (pill) pills.push(labelPillRect(text, metrics.value, x, labelY, "center", anchorY));
       return {
         key: `${series.seriesIndex}-${point.categoryIndex}`,
@@ -409,8 +410,9 @@ function PointValueLabels(props: {
       {pill && (
         <ChartPills
           rects={pills}
-          radiusFraction={LABEL_PILL.radius}
-          colour={pill}
+          radiusFraction={pill.radius}
+          colour={pill.colour}
+          weight={pill.opacity}
           opacity={opacity}
           alphas={drawn.map((label) => label.alpha)}
           feather={feather}

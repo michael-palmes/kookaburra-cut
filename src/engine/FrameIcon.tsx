@@ -1,7 +1,10 @@
+import { useContext } from "react";
 import { isAssetReference, isUnloadableAssetPath } from "../toolkit/frame/icon";
 import { ImageCard } from "../toolkit/media/ImageCard";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { V3 } from "../toolkit/types";
+import { headerIconScale } from "./framePanelMeasure";
+import { SceneDocContext } from "./sceneContext";
 
 /** Asset images draw at this multiple of the nominal glyph size, grown around the nominal box's centre so header stacking budgets still hold: an emoji's ink under-fills its em box while an image fills its box, and a header image should read a touch larger than an emoji mark (tuned by eye). */
 const ASSET_ICON_SCALE = 1.3;
@@ -15,11 +18,12 @@ export function FrameIcon({
   to,
   color,
   anchorX = "left",
+  textKey,
 }: {
   icon: string;
   /** The anchor point, world (y-up); `anchorX` picks which horizontal edge it pins, `anchorY` is always top. */
   position: V3;
-  /** Icon box edge, world units. */
+  /** Icon box edge, world units, BEFORE the sidecar's size multiplier (callers scale their own stacking budget). */
   size: number;
   from?: number;
   to?: number;
@@ -27,13 +31,17 @@ export function FrameIcon({
   color?: "text" | "muted" | "accent" | (string & {});
   /** Which horizontal edge `position[0]` pins; default "left". */
   anchorX?: "left" | "center" | "right";
+  /** The sidecar style key this mark honours ("icon" for a header icon); a chip's inline mark passes none and never scales. */
+  textKey?: string;
 }) {
+  const doc = useContext(SceneDocContext);
   if (isAssetReference(icon)) {
-    // ImageCard centres its plane on `position`; offset by the anchor so the square box pins the chosen edge.
+    // ImageCard centres its plane on `position`; offset by the anchor so the square box pins the chosen edge. The glyph branch gets its multiplier inside AnimatedHeadline, so only images apply it here.
+    const box = textKey ? size * headerIconScale(doc ?? undefined) : size;
     const f = anchorX === "left" ? 1 : anchorX === "center" ? 0 : -1;
-    const centre: V3 = [position[0] + (size / 2) * f, position[1] - size / 2, position[2]];
+    const centre: V3 = [position[0] + (box / 2) * f, position[1] - box / 2, position[2]];
     return (
-      <ImageCard src={icon} position={centre} width={size * ASSET_ICON_SCALE} from={from} to={to} />
+      <ImageCard src={icon} position={centre} width={box * ASSET_ICON_SCALE} from={from} to={to} />
     );
   }
   if (isUnloadableAssetPath(icon)) return null;
@@ -47,6 +55,7 @@ export function FrameIcon({
       {...(from !== undefined ? { from } : {})}
       {...(to !== undefined ? { to } : {})}
       {...(color !== undefined ? { color } : {})}
+      {...(textKey !== undefined ? { textKey } : {})}
     />
   );
 }

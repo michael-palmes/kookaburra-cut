@@ -66,6 +66,66 @@ describe("parseFrameSpec colour", () => {
   });
 });
 
+describe("parseFrameSpec panel fill", () => {
+  const gradient = {
+    type: "linear",
+    angleDeg: 180,
+    stops: [
+      ["#000000", 0],
+      ["#ffffff", 1],
+    ],
+  };
+
+  it("keeps the four fill types", () => {
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "transparent" } }, "t")?.background,
+    ).toEqual({ type: "transparent" });
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "color", color: "accent" } }, "t")?.background,
+    ).toEqual({ type: "color", color: "accent" });
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "gradient", spec: gradient } }, "t")
+        ?.background,
+    ).toEqual({ type: "gradient", spec: gradient });
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "image", src: "assets/panel.png" } }, "t")
+        ?.background,
+    ).toEqual({ type: "image", src: "assets/panel.png" });
+  });
+
+  it("keeps a named theme gradient, with or without an inline spec", () => {
+    expect(
+      parseFrameSpec({ ...valid, background: { type: "gradient", gradient: "backdrop" } }, "t")
+        ?.background,
+    ).toEqual({ type: "gradient", gradient: "backdrop" });
+    expect(
+      parseFrameSpec(
+        { ...valid, background: { type: "gradient", gradient: "backdrop", spec: gradient } },
+        "t",
+      )?.background,
+    ).toEqual({ type: "gradient", gradient: "backdrop", spec: gradient });
+  });
+
+  it("drops a fill that names nothing usable, keeping the rest of the block", () => {
+    const drops = [
+      { type: "gradient" },
+      { type: "gradient", spec: { type: "wobble" } },
+      { type: "color", color: "rebeccapurple" },
+      { type: "color" },
+      { type: "image", src: "" },
+      { type: "image" },
+      { type: "video", src: "assets/a.mp4" },
+      { type: 3 },
+      [],
+    ];
+    for (const background of drops) {
+      const spec = parseFrameSpec({ ...valid, background }, "t");
+      expect(spec?.background).toBeUndefined();
+      expect(spec?.cutout.shape).toBe("rounded-rect");
+    }
+  });
+});
+
 describe("parseFrameSpec chip", () => {
   it("keeps a full chip", () => {
     const spec = parseFrameSpec(
@@ -120,6 +180,76 @@ describe("parseFrameSpec decorations", () => {
 
   it("drops a non-array decorations field", () => {
     expect(parseFrameSpec({ ...valid, decorations: {} }, "t")?.decorations).toBeUndefined();
+  });
+
+  it("keeps a text decoration with its colour and face", () => {
+    const text = { id: "t1", text: "Since 2019", position: [0.4, -0.5], size: 0.05 };
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, colour: "accent", face: "body" }] }, "t")
+        ?.decorations,
+    ).toEqual([{ ...text, colour: "accent", face: "body" }]);
+  });
+
+  it("keeps an empty text decoration (the inspector's cleared field)", () => {
+    const text = { id: "t1", text: "", position: [0, 0], size: 0.05 };
+    expect(parseFrameSpec({ ...valid, decorations: [text] }, "t")?.decorations).toEqual([text]);
+  });
+
+  it("drops a text decoration's bad colour and face, keeping the decoration", () => {
+    const text = { id: "t1", text: "Hi", position: [0, 0], size: 0.05 };
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, colour: "nope", face: "mono" }] }, "t")
+        ?.decorations,
+    ).toEqual([text]);
+  });
+
+  it("keeps a text decoration's font and clamps its line spacing", () => {
+    const text = { id: "t1", text: "Hi", position: [0, 0], size: 0.05 };
+    expect(
+      parseFrameSpec(
+        { ...valid, decorations: [{ ...text, font: "Georgia@600", lineHeight: 1.4 }] },
+        "t",
+      )?.decorations,
+    ).toEqual([{ ...text, font: "Georgia@600", lineHeight: 1.4 }]);
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, lineHeight: 9 }] }, "t")?.decorations,
+    ).toEqual([{ ...text, lineHeight: 2 }]);
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...text, font: "", lineHeight: "x" }] }, "t")
+        ?.decorations,
+    ).toEqual([text]);
+  });
+
+  it("ignores shape on a text decoration and colour/face on an image one", () => {
+    const spec = parseFrameSpec(
+      {
+        ...valid,
+        decorations: [
+          { id: "t1", text: "Hi", position: [0, 0], size: 0.05, shape: "circle" },
+          { ...deco, colour: "accent", face: "body" },
+        ],
+      },
+      "t",
+    );
+    expect(spec?.decorations).toEqual([
+      { id: "t1", text: "Hi", position: [0, 0], size: 0.05 },
+      deco,
+    ]);
+  });
+
+  it("drops a decoration carrying both src and text, or neither", () => {
+    const spec = parseFrameSpec(
+      {
+        ...valid,
+        decorations: [
+          { ...deco, text: "both" },
+          { id: "empty", position: [0, 0], size: 0.1 },
+          deco,
+        ],
+      },
+      "t",
+    );
+    expect(spec?.decorations).toEqual([deco]);
   });
 });
 

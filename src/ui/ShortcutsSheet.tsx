@@ -20,6 +20,13 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
       ["O / P / Z", "Camera tools, Orbit mode: arm Orbit / Pan / Zoom (animation mode open)"],
       ["M / F / L / T", "Camera tools, Free mode: arm Move / Forward / Look / Tilt"],
       ["⌘ / ⌃ / ⌥ + drag", "Camera tools: slide / dolly / turn while dragging the stage"],
+      ["Click", "Gizmos: select an item on the stage (its inspector section open)"],
+      ["⌘ / ⌃ / ⌥ + drag", "Gizmos: keep flying the camera over a gizmo handle"],
+      ["⇧ while dragging", "Gizmos, text and decorations: snap a rotation to 15°"],
+      [
+        "⌃ while dragging",
+        "Gizmos, text, hero charts and decorations: turn off alignment snapping",
+      ],
       ["Right-click", "Scenes · theme cards · animation segments: context menu"],
     ],
   },

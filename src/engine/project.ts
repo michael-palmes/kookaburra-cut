@@ -51,8 +51,8 @@ export interface ProjectManifest {
   audio?: ProjectAudioSpec;
   /** Theme to apply, matched against `Theme.id` (`kookaburra-*` bundled, `ws:<slug>` user). */
   themeId: string;
-  /** Project-wide font override ("Family" or "Family@weight" per slot); outranks every resolved theme, per-field sidecar overrides still win. */
-  typography?: { headline?: string; body?: string };
+  /** Project-wide font override ("Family" or "Family@weight" per slot); outranks every resolved theme, per-field sidecar overrides still win. `chart` is the project's default chart face (all chart text), which a block's own `chart.font` outranks. */
+  typography?: { headline?: string; body?: string; chart?: string };
   /** Aspect ratios this project targets. */
   formats: string[];
   /** Manifest schema version; absent = 1. v2 flips transition ownership to the outgoing scene. */
@@ -174,7 +174,7 @@ export interface LoadedProject {
   /** Each scene's RESOLVED theme, index-parallel to `scenes`: the project theme unless the scene's sidecar overrides `themeId`. `SceneHost` provides it to the scene's tree; render seams read it for per-scene state (background/environment). */
   sceneThemes: Theme[];
   /** The manifest's raw typography override strings, for the inspector's Typography drill. */
-  projectTypography?: { headline?: string; body?: string };
+  projectTypography?: { headline?: string; body?: string; chart?: string };
   /** The manifest's deck-wide overlay default (`project.json` `frame`), if declared; `undefined` means no overlay anywhere. The inspector reads this to know whether to offer the Overlay section (an override alone can't create a frame). */
   deckFrame?: FrameSpec;
   /** Each scene's RESOLVED overlay, index-parallel to `scenes`: the manifest's deck frame merged with the sidecar's override, `undefined` where the scene has no frame or opted out. Every entry undefined means the project never enters the overlay render path. */
@@ -632,18 +632,18 @@ async function loadManifest(id: string): Promise<ProjectManifest> {
   return manifest;
 }
 
-/** The manifest's `typography` block as FontRefs; malformed slots degrade with a warning. */
+/** The manifest's `typography` block as FontRefs; malformed slots degrade with a warning. `chart` rides the same merge, so the project's chart face lands on every resolved theme and joins `collectThemeFontRefs` (the export preload set). */
 function parseProjectTypography(
   raw: ProjectManifest["typography"],
   source: string,
-): { headline?: FontRef; body?: FontRef } | null {
+): { headline?: FontRef; body?: FontRef; chart?: FontRef } | null {
   if (raw === undefined || raw === null) return null;
   if (typeof raw !== "object") {
     console.warn(`[project] ${source}: typography must be an object`);
     return null;
   }
-  const out: { headline?: FontRef; body?: FontRef } = {};
-  for (const slot of ["headline", "body"] as const) {
+  const out: { headline?: FontRef; body?: FontRef; chart?: FontRef } = {};
+  for (const slot of ["headline", "body", "chart"] as const) {
     const value = raw[slot];
     if (value === undefined) continue;
     if (typeof value === "string" && value.trim()) {
@@ -652,7 +652,7 @@ function parseProjectTypography(
       console.warn(`[project] ${source}: typography.${slot} isn't "Family" or "Family@weight"`);
     }
   }
-  return out.headline || out.body ? out : null;
+  return out.headline || out.body || out.chart ? out : null;
 }
 
 /** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `preview-lab-theme` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */

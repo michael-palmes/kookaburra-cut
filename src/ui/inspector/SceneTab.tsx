@@ -1,4 +1,11 @@
-import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
@@ -6,7 +13,10 @@ import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
+import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useFormat } from "../../engine/format";
+import type { GizmoMode } from "../../engine/gizmoMode";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { pushHistory } from "../../engine/history";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -38,6 +48,7 @@ import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import { useSceneStageBackdrop } from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import { useTextEditStore } from "../../engine/textEditStore";
 import {
   textKeyColorDefaults,
   textKeyStyleCapable,
@@ -52,14 +63,17 @@ import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
+import { isTextDecoration } from "../../toolkit/frame/icon";
 import type {
   FrameChipSpec,
   FrameCutoutSpec,
+  FrameDecorationFace,
   FrameDecorationLayer,
   FrameDecorationShape,
   FrameDecorationSpec,
   FrameShape,
   FrameSide,
+  FrameSpec,
 } from "../../toolkit/frame/types";
 import {
   besideDevicePlacement,
@@ -94,6 +108,7 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
+import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
   chartRowValue,
   drillStackForScene,
@@ -119,6 +134,7 @@ const SCREEN_TITLES: Record<string, string> = {
   motion: "Timing",
   "text.edit": "Edit text",
   "style.background": "Background",
+  "frame.panel": "Panel",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
   "chart.edit": "Chart",
@@ -144,6 +160,29 @@ const ROTATION_PRESETS: { id: string; label: string; value: V3 }[] = [
 ];
 
 const ROTATION_AXIS_LABELS = ["tilt x °", "turn y °", "roll z °"] as const;
+
+/** The Position drill's two write branches, module-scoped so the sliders and the preview gizmo share one write path: with a `deviceLayout` block an edit lands on that device's DELTA (0 = on the preset), without one on its raw placement. */
+function mutateDelta(
+  next: SceneDoc,
+  id: string,
+  fn: (delta: SceneDocDeviceLayoutDelta) => void,
+): void {
+  if (!next.deviceLayout) return;
+  next.deviceLayout.devices ??= {};
+  next.deviceLayout.devices[id] ??= {};
+  fn(next.deviceLayout.devices[id]);
+}
+
+function mutatePlacement(
+  next: SceneDoc,
+  id: string,
+  fn: (p: NonNullable<NonNullable<SceneDoc["devices"]>[number]["placement"]>) => void,
+): void {
+  const d = next.devices?.find((x) => x.id === id);
+  if (!d) return;
+  d.placement ??= {};
+  fn(d.placement);
+}
 
 /** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
 function DevicePillIcon({ model }: { model: string }) {
@@ -228,6 +267,7 @@ import {
   GizmoModeIcon,
   middleTruncate,
   NumberField,
+  type SegmentedOption,
   SegmentedRow,
   ToggleFieldset,
   ToggleRow,
@@ -235,6 +275,13 @@ import {
 } from "./rows";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
+
+/** The Move/Rotate/Scale pills every gizmo drill shows. */
+const GIZMO_MODE_OPTIONS: SegmentedOption<GizmoMode>[] = [
+  { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
+  { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
+  { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
+];
 
 const FRAME_SHAPES: FrameShape[] = [
   "rect",
@@ -252,6 +299,22 @@ const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
   capsule: "Capsule",
   none: "Full panel",
 };
+
+/** The Panel row's value: the colour itself for the flat fills (token or hex, the v1 shape included), the fill type otherwise. */
+function panelFillLabel(background: FrameSpec["background"]): string {
+  if (background === undefined) return "Default";
+  if (typeof background === "string") return background;
+  switch (background.type) {
+    case "color":
+      return background.color;
+    case "gradient":
+      return "Gradient";
+    case "image":
+      return middleTruncate(background.src.split("/").pop() ?? "Image");
+    default:
+      return "Transparent";
+  }
+}
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
@@ -1134,18 +1197,25 @@ const CHIP_PRESETS: { id: string; label: string; colour: string; icon: ChipIconI
   { id: "error", label: "Error", colour: "#e05656", icon: "circle-x" },
 ];
 
-/** A decoration's display name: its asset basename. */
-function decorationLabel(src: string): string {
+/** A decoration's display name: its first line of text, else its asset basename. */
+function decorationLabel(d: FrameDecorationSpec): string {
+  if (isTextDecoration(d)) return d.text?.split("\n")[0] || "Text";
+  const src = d.src ?? "";
   return src.split("/").pop() || src;
 }
 
-/** A unique decoration id from a picked asset's stem, deduped against the existing ids. */
-function nextDecorationId(src: string, taken: Set<string>): string {
-  const stem = decorationLabel(src).replace(/\.[^.]+$/, "") || "decoration";
+/** A unique decoration id from a stem, deduped against the existing ids. */
+function uniqueDecorationId(stem: string, taken: Set<string>): string {
   if (!taken.has(stem)) return stem;
   let n = 2;
   while (taken.has(`${stem}-${n}`)) n++;
   return `${stem}-${n}`;
+}
+
+/** A unique decoration id from a picked asset's stem. */
+function nextDecorationId(src: string, taken: Set<string>): string {
+  const base = src.split("/").pop() || src;
+  return uniqueDecorationId(base.replace(/\.[^.]+$/, "") || "decoration", taken);
 }
 
 /** The Animations section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
@@ -1819,6 +1889,18 @@ export function SceneTab({
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
   const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
   const selectDeco = useDecorationEditStore((s) => s.select);
+  // The text gizmo's selection, reflected both ways: touching a key's fields shows its handles, and a canvas click scrolls the drill to that key.
+  const selectedTextKey = useTextEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.key : null,
+  );
+  const textFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  useEffect(() => {
+    if (!selectedTextKey) return;
+    const el = textFieldRefs.current[selectedTextKey];
+    // Skip when the selection came from focusing a field, so typing never scrolls the panel.
+    if (!el || el.contains(document.activeElement)) return;
+    el.scrollIntoView({ block: "nearest" });
+  }, [selectedTextKey]);
   const decoMediaRequestId = useDecorationEditStore((s) => s.mediaRequestId);
   const requestDecoMedia = useDecorationEditStore((s) => s.requestMedia);
   // The gizmo's "Change media" action routes through here to reuse the scene media picker.
@@ -1834,8 +1916,20 @@ export function SceneTab({
   const [mediaTarget, setMediaTarget] = useState<
     { kind: "device"; deviceId?: string } | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
-  // Which device the device rows act on; null (or a stale id) falls back to the first device.
-  const [pickedDeviceId, setPickedDeviceId] = useState<string | null>(null);
+  // Which device the device rows act on; null (or a stale id) falls back to the first device. Store-held (the objectEditStore idiom) so a preview gizmo can attach to the same selection.
+  const pickedDeviceId = useDeviceEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.deviceId : null,
+  );
+  const pickDevice = useCallback(
+    (id: string | null) =>
+      useDeviceEditStore.getState().select(id ? { sceneIndex, deviceId: id } : null),
+    [sceneIndex],
+  );
+  const deviceGizmoMode = useDeviceEditStore((s) => s.gizmoMode);
+  // Outlines, click-to-select and the handles all follow the open section, not one deep drill.
+  const devicesSectionOpen = useGizmoSectionOpen("devices");
+  const objectsSectionOpen = useGizmoSectionOpen("objects");
+  const chartSectionOpen = useGizmoSectionOpen("chart");
   // Which staged object the placement drill targets, plus the library picker modal.
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
   const [objectPickerOpen, setObjectPickerOpen] = useState(false);
@@ -1908,6 +2002,8 @@ export function SceneTab({
   const [bgTabOverride, setBgTabOverride] = useState<
     "gradient" | "image" | "video" | "shader" | "scene3d" | null
   >(null);
+  /** Overlay panel drill: viewing the Gradient/Image tab before anything is committed (the background drill's idiom). */
+  const [panelTabOverride, setPanelTabOverride] = useState<"gradient" | "image" | null>(null);
   /** Which animated-fill card is hovered (its clip preview plays). */
   const [bgHover, setBgHover] = useState<string | null>(null);
   /** Which 3D-backing editor is open when it doesn't match the stored backing type. */
@@ -1921,6 +2017,15 @@ export function SceneTab({
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
   const deviceId = device?.id;
+  // Read by the ensure-select subscription below, which fires on store writes rather than renders.
+  const deviceIdsRef = useRef<string[]>([]);
+  deviceIdsRef.current = devices.map((d) => d.id);
+  const devicePillOptions = devices.map((d, i) => ({
+    value: d.id,
+    label: `${i + 1}`,
+    icon: <DevicePillIcon model={d.model} />,
+    title: DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId].name,
+  }));
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
   // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
@@ -1929,30 +2034,40 @@ export function SceneTab({
   useEffect(() => {
     return useObjectEditStore.subscribe((s) => {
       const commit = s.pendingCommit;
-      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      if (!commit) return;
+      // Cleared even for another scene (a click during a transition can select one): only the dominant scene has a doc to write here, so an unclaimed drag is dropped, never left to land later.
       useObjectEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
       void patchDocRef.current((next) => {
         const o = next.objects?.find((x) => x.id === commit.objectId);
         if (o) o.placement = commit.placement;
       });
     });
   }, [sceneIndex]);
-  // The preview gizmo follows the placement drill; leaving it (or the scene) deselects.
+  // The preview gizmo follows the open Objects section; leaving it (or the scene) deselects.
   const stagedObjectId = stagedObject?.id;
   useEffect(() => {
     const store = useObjectEditStore.getState();
-    if (drillIn === "objects.placement" && stagedObjectId !== undefined) {
+    if (objectsSectionOpen && stagedObjectId !== undefined) {
       store.select({ sceneIndex, objectId: stagedObjectId });
       return () => useObjectEditStore.getState().select(null);
     }
     if (store.selected) store.select(null);
-  }, [drillIn, sceneIndex, stagedObjectId]);
+  }, [objectsSectionOpen, sceneIndex, stagedObjectId]);
+  // A canvas click selects in the store, so the drill rows follow it (the mirror only writes non-null ids, so the deselect above cannot bounce back).
+  const selectedObjectId = useObjectEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.objectId : null,
+  );
+  useEffect(() => {
+    if (selectedObjectId) setPickedObjectId(selectedObjectId);
+  }, [selectedObjectId]);
   // The staged chart's gizmo, same contract: it posts finished drags here, and follows its own drill.
   useEffect(() => {
     return useChartEditStore.subscribe((s) => {
       const commit = s.pendingCommit;
-      if (!commit || commit.sceneIndex !== sceneIndex) return;
+      if (!commit) return;
       useChartEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
       void patchDocRef.current((next) => {
         if (next.chart) next.chart.placement = commit.placement;
       });
@@ -1960,12 +2075,46 @@ export function SceneTab({
   }, [sceneIndex]);
   useEffect(() => {
     const store = useChartEditStore.getState();
-    if (drillIn === "chart.position") {
+    if (chartSectionOpen) {
       store.select({ sceneIndex });
       return () => useChartEditStore.getState().select(null);
     }
     if (store.selected) store.select(null);
-  }, [drillIn, sceneIndex]);
+  }, [chartSectionOpen, sceneIndex]);
+  // The device gizmo's finished drags, through the Position drill's own write paths so a laid-out scene keeps editing its delta.
+  useEffect(() => {
+    return useDeviceEditStore.subscribe((s) => {
+      const commit = s.pendingCommit;
+      if (!commit) return;
+      useDeviceEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
+      void patchDocRef.current((next) => {
+        if (commit.kind === "delta") {
+          mutateDelta(next, commit.deviceId, (d) => Object.assign(d, commit.delta));
+        } else {
+          mutatePlacement(next, commit.deviceId, (p) => Object.assign(p, commit.placement));
+        }
+      });
+    });
+  }, [sceneIndex]);
+  // The device pills fall back to the first device implicitly; the canvas cannot, since a cleared store MUST mean no gizmo. The subscription (not just the body) is what re-selects after an export clears the store mid-session.
+  useEffect(() => {
+    if (!devicesSectionOpen || deviceId === undefined) return;
+    const ensure = () => {
+      const store = useDeviceEditStore.getState();
+      const sel = store.selected;
+      // A removed device leaves a selection nothing else repairs (no gizmo, and with one device left no pill to click back), so an id this scene no longer has counts as empty.
+      const stale =
+        sel !== null &&
+        sel.sceneIndex === sceneIndex &&
+        !deviceIdsRef.current.includes(sel.deviceId);
+      if (sel === null || stale) store.select({ sceneIndex, deviceId });
+    };
+    ensure();
+    return useDeviceEditStore.subscribe(ensure);
+  }, [devicesSectionOpen, deviceId, sceneIndex]);
+  // Declared after the ensure effect on purpose: cleanups run in declaration order, so the subscription is gone before this clears.
+  useEffect(() => () => useDeviceEditStore.getState().select(null), []);
   const sceneFile = project.sceneFiles[sceneIndex];
   const stem = sceneFile ? sceneFileStem(sceneFile) : null;
   // Default scene name: the sidecar name, else the scene's largest mounted text (the live registry), else the file stem.
@@ -2030,7 +2179,7 @@ export function SceneTab({
   useEffect(() => {
     setModal(null);
     setConfirmRemove(false);
-    setPickedDeviceId(null);
+    pickDevice(null);
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
@@ -2059,6 +2208,7 @@ export function SceneTab({
     }
     setRenaming(false);
     setBgTabOverride(null);
+    setPanelTabOverride(null);
     setBackingTabOverride(null);
     setLiveThumb((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -2158,7 +2308,7 @@ export function SceneTab({
         },
       ];
     });
-    setPickedDeviceId(id);
+    pickDevice(id);
   };
   const duplicateDevice = () => {
     if (!deviceId) return;
@@ -2180,7 +2330,7 @@ export function SceneTab({
       };
       next.devices = [...(next.devices ?? []), copy];
     });
-    setPickedDeviceId(id);
+    pickDevice(id);
   };
   const freshObjectId = () => {
     const used = new Set(objects.map((o) => o.id));
@@ -2226,11 +2376,8 @@ export function SceneTab({
   };
   const addOverlay = () =>
     void patchDoc((next) => {
-      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger.
-      next.frame = {
-        cutout: { shape: "rounded-rect", side: "start" },
-        chip: { label: "New", icon: "circle-check", colour: "accent" },
-      };
+      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger. No starter chip: the slide pass paints the panel and its cutout whether or not the panel carries content.
+      next.frame = { cutout: { shape: "rounded-rect", side: "start" } };
     });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
@@ -2408,8 +2555,13 @@ export function SceneTab({
     }
     const decos = sceneFrame?.decorations ?? [];
     const { replaceId } = mediaTarget;
+    // A pick always lands an IMAGE decoration, so a text one switching type drops its text fields.
     const nextDecos: FrameDecorationSpec[] = replaceId
-      ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+      ? decos.map((d) =>
+          d.id === replaceId
+            ? { ...d, src: rel, text: undefined, colour: undefined, face: undefined }
+            : d,
+        )
       : [
           ...decos,
           {
@@ -2605,35 +2757,154 @@ export function SceneTab({
     );
   }
   if (drillIn === "frame.panel" && sceneFrame) {
+    const panelBg = sceneFrame.background;
+    const panelObj = typeof panelBg === "object" ? panelBg : undefined;
+    const panelTab = panelTabOverride ?? panelObj?.type ?? "color";
     const resolveColour = (c: string | undefined): string => {
       if (c === "background" || c === "text" || c === "accent" || c === "muted") {
         return sceneTheme?.colors[c] ?? c;
       }
       return c ?? sceneTheme?.colors.background ?? "#1e2226";
     };
+    const commitPanel = (value: FrameSpec["background"] | undefined) => {
+      setPanelTabOverride(null);
+      void patchDoc((next) => {
+        if (value === undefined) {
+          if (next.frame) delete next.frame.background;
+          return;
+        }
+        next.frame = { ...(next.frame ?? {}), background: value };
+      });
+    };
+    const types: { id: typeof panelTab; label: string; icon: string }[] = [
+      { id: "transparent", label: "Transparent", icon: "none" },
+      { id: "color", label: "Colour", icon: "color" },
+      { id: "gradient", label: "Gradient", icon: "gradient" },
+      { id: "image", label: "Image", icon: "image" },
+    ];
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Panel colour</div>
+        <div className="inspector-drill-title">Panel background</div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Colour</span>
-            <ColourPicker
-              value={resolveColour(sceneFrame.background)}
-              label="Panel colour"
-              onCommit={(hex) =>
-                void patchDoc((next) => {
-                  next.frame = { ...(next.frame ?? {}), background: hex };
-                })
-              }
-              onReset={() =>
-                void patchDoc((next) => {
-                  if (next.frame) delete next.frame.background;
-                })
+          <div className="bg-type-grid" role="tablist" aria-label="Panel fill type">
+            {types.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={panelTab === t.id}
+                className={`bg-type-tile${panelTab === t.id ? " selected" : ""}`}
+                onClick={() => {
+                  if (t.id === "transparent") commitPanel({ type: "transparent" });
+                  // Colour is the unset default's home too: leaving a sampled fill drops back to it.
+                  else if (t.id === "color") {
+                    if (panelObj) commitPanel(undefined);
+                    else setPanelTabOverride(null);
+                  } else setPanelTabOverride(t.id);
+                }}
+              >
+                <BgTypeIcon id={t.icon} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {panelTab === "color" && (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Colour</span>
+                <ColourPicker
+                  value={resolveColour(
+                    typeof panelBg === "string"
+                      ? panelBg
+                      : panelObj?.type === "color"
+                        ? panelObj.color
+                        : undefined,
+                  )}
+                  label="Panel colour"
+                  onCommit={(hex) => commitPanel(hex)}
+                  onReset={() => commitPanel(undefined)}
+                />
+              </div>
+              <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
+            </>
+          )}
+          {panelTab === "gradient" && (
+            <GradientPickerModal
+              embedded
+              current={panelObj?.type === "gradient" ? panelObj : undefined}
+              theme={sceneTheme}
+              onCancel={() => setPanelTabOverride(null)}
+              onApply={(value) =>
+                commitPanel(
+                  value.spec
+                    ? { type: "gradient", spec: value.spec }
+                    : { type: "gradient", gradient: value.gradient },
+                )
               }
             />
+          )}
+          {panelTab === "image" && (
+            <>
+              <p className="modal-hint">
+                Fills the panel behind the overlay's content; it cover-crops per aspect, so pick an
+                image with a safe centre.
+              </p>
+              <ActionRow
+                icon={<SceneRowIcon id="frame.panel" />}
+                label={panelObj?.type === "image" ? "Change image" : "Choose an image"}
+                value={
+                  panelObj?.type === "image"
+                    ? middleTruncate(panelObj.src.split("/").pop() ?? "")
+                    : undefined
+                }
+                onClick={() => openDrill("frame.panel.media")}
+              />
+            </>
+          )}
+          {panelTab === "transparent" && (
+            <p className="modal-hint">
+              No panel fill: the scene fills the whole frame and the overlay's text, chip and
+              decorations sit over it.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.panel.media" && sceneFrame) {
+    const panelBg = sceneFrame.background;
+    const selectedSrc =
+      typeof panelBg === "object" && panelBg.type === "image" ? panelBg.src : null;
+    const selectPanelImage = (rel: string) => {
+      setPanelTabOverride(null);
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), background: { type: "image", src: rel } };
+      });
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Panel image</div>
+        <div className="inspector-drill-body">
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={["image"]}
+              globalToggle
+              refreshKey={mediaRefreshKey + mediaRefresh}
+              selectedRel={selectedSrc}
+              onPick={selectPanelImage}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: selectPanelImage,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
+            />
           </div>
-          <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
         </div>
       </div>
     );
@@ -2759,9 +3030,34 @@ export function SceneTab({
       setMediaTarget({ kind: "decoration", replaceId });
       setModal("media");
     };
+    // Switching to text keeps the placement and drops the image-only fields; switching back rides the picker, since an image decoration needs a `src` to exist.
+    const makeText = (d: FrameDecorationSpec) =>
+      patchDeco(d.id, { text: d.text ?? "Text", src: undefined, shape: undefined });
+    const addText = () =>
+      writeDecos([
+        ...decos,
+        {
+          id: uniqueDecorationId("text", new Set(decos.map((d) => d.id))),
+          text: "Text",
+          position: [0.45, -0.5],
+          size: 0.05,
+          layer: "above",
+        },
+      ]);
+    const textColour = sceneTheme?.colors.text ?? "#ffffff";
+    const decoColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? textColour;
+    };
     const shapes: { id: FrameDecorationShape; label: string }[] = [
       { id: "none", label: "Natural" },
       { id: "circle", label: "Circle" },
+    ];
+    const faces: { id: FrameDecorationFace; label: string }[] = [
+      { id: "headline", label: "Headline" },
+      { id: "body", label: "Body" },
     ];
     const layers: { id: FrameDecorationLayer; label: string }[] = [
       { id: "below", label: "Behind" },
@@ -2774,115 +3070,226 @@ export function SceneTab({
         <div className="inspector-drill-body">
           {decos.length === 0 && (
             <p className="modal-hint">
-              Positioned images that break out of the panel, like a logo or avatar.
+              Positioned images and text that break out of the panel, like a logo, an avatar or a
+              hand-placed caption.
             </p>
           )}
-          {decos.map((d) => (
-            <div
-              key={d.id}
-              className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
-              onPointerDown={() => selectDeco(d.id)}
-            >
-              <div className="deco-card-head">
-                <span className="deco-card-name" title={d.src}>
-                  {decorationLabel(d.src)}
-                </span>
-                <button
-                  type="button"
-                  className="deco-remove"
-                  title="Remove decoration"
-                  aria-label="Remove decoration"
-                  onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
-                >
-                  Remove
-                </button>
-              </div>
-              <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
-                Replace image
-              </button>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Across</span>
-                <DebouncedRange
-                  value={d.position[0]}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  label="Horizontal position"
-                  onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Up/down</span>
-                <DebouncedRange
-                  value={d.position[1]}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  label="Vertical position"
-                  onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Size</span>
-                <DebouncedRange
-                  value={d.size}
-                  min={0.03}
-                  max={0.6}
-                  step={0.01}
-                  label="Size"
-                  onCommit={(v) => patchDeco(d.id, { size: v })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Rotation</span>
-                <DebouncedRange
-                  value={d.rotationDeg ?? 0}
-                  min={-180}
-                  max={180}
-                  step={1}
-                  label="Rotation"
-                  onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline">
-                  Shape
-                  <div className="wizard-presets">
-                    {shapes.map((s) => (
+          {decos.map((d) => {
+            const isText = isTextDecoration(d);
+            return (
+              <div
+                key={d.id}
+                className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
+                onPointerDown={() => selectDeco(d.id)}
+              >
+                <div className="deco-card-head">
+                  <span className="deco-card-name" title={isText ? d.text : d.src}>
+                    {decorationLabel(d)}
+                  </span>
+                  <button
+                    type="button"
+                    className="deco-remove"
+                    title="Remove decoration"
+                    aria-label="Remove decoration"
+                    onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline">
+                    Type
+                    <div className="wizard-presets">
                       <button
-                        key={s.id}
                         type="button"
-                        className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
-                        onClick={() => patchDeco(d.id, { shape: s.id })}
+                        className={`chip${isText ? "" : " selected"}`}
+                        onClick={() => openImagePicker(d.id)}
                       >
-                        {s.label}
+                        Image
                       </button>
-                    ))}
-                  </div>
-                </span>
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline">
-                  Layer
-                  <div className="wizard-presets">
-                    {layers.map((l) => (
                       <button
-                        key={l.id}
                         type="button"
-                        className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
-                        onClick={() => patchDeco(d.id, { layer: l.id })}
+                        className={`chip${isText ? " selected" : ""}`}
+                        onClick={() => makeText(d)}
                       >
-                        {l.label}
+                        Text
                       </button>
-                    ))}
+                    </div>
+                  </span>
+                </div>
+                {isText ? (
+                  <>
+                    <TextFieldRow
+                      label="Text"
+                      value={d.text ?? ""}
+                      placeholder="Your text"
+                      colour={{
+                        value: decoColour(d.colour),
+                        defaultValue: textColour,
+                        onCommit: (hex) => patchDeco(d.id, { colour: hex }),
+                        onReset: () => patchDeco(d.id, { colour: undefined }),
+                      }}
+                      onChange={(t) => patchDeco(d.id, { text: t })}
+                    />
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Face
+                        <div className="wizard-presets">
+                          {faces.map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className={`chip${(d.face ?? "headline") === f.id ? " selected" : ""}`}
+                              onClick={() => patchDeco(d.id, { face: f.id })}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </span>
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Font
+                        <button
+                          type="button"
+                          className={`text-style-font${d.font ? " overridden" : ""}`}
+                          title="Decoration font"
+                          onClick={() => openDrill(`deco.font:${d.id}`)}
+                        >
+                          <span className="text-style-font-name">
+                            {d.font ? parseFontString(d.font).family : "Theme font"}
+                          </span>
+                          <span className="text-style-font-chevron" aria-hidden>
+                            ›
+                          </span>
+                        </button>
+                      </span>
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Line spacing</span>
+                      <DebouncedRange
+                        value={d.lineHeight ?? LINE_SPACING_NORMAL}
+                        min={TEXT_LINE_HEIGHT_MIN}
+                        max={TEXT_LINE_HEIGHT_MAX}
+                        step={0.05}
+                        label="Line spacing"
+                        onCommit={(v) => {
+                          // The text drill's snap: the 0.05 grid, cleared at Normal.
+                          const snapped = Math.round(v * 20) / 20;
+                          patchDeco(d.id, {
+                            lineHeight: snapped === LINE_SPACING_NORMAL ? undefined : snapped,
+                          });
+                        }}
+                      />
+                      {d.lineHeight !== undefined && (
+                        <button
+                          type="button"
+                          className="inspector-reset-btn"
+                          title="Back to the font's normal line spacing"
+                          onClick={() => patchDeco(d.id, { lineHeight: undefined })}
+                        >
+                          Normal
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
+                    Replace image
+                  </button>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Across</span>
+                  <DebouncedRange
+                    value={d.position[0]}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    label="Horizontal position"
+                    onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Up/down</span>
+                  <DebouncedRange
+                    value={d.position[1]}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    label="Vertical position"
+                    onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Size</span>
+                  <DebouncedRange
+                    value={d.size}
+                    min={isText ? 0.01 : 0.03}
+                    max={isText ? 0.25 : 0.6}
+                    step={isText ? 0.005 : 0.01}
+                    label="Size"
+                    onCommit={(v) => patchDeco(d.id, { size: v })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Rotation</span>
+                  <DebouncedRange
+                    value={d.rotationDeg ?? 0}
+                    min={-180}
+                    max={180}
+                    step={1}
+                    label="Rotation"
+                    onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
+                  />
+                </div>
+                {!isText && (
+                  <div className="popover-row">
+                    <span className="popover-inline">
+                      Shape
+                      <div className="wizard-presets">
+                        {shapes.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
+                            onClick={() => patchDeco(d.id, { shape: s.id })}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </span>
                   </div>
-                </span>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline">
+                    Layer
+                    <div className="wizard-presets">
+                      {layers.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
+                          onClick={() => patchDeco(d.id, { layer: l.id })}
+                        >
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-          <button type="button" className="btn" onClick={() => openImagePicker()}>
-            Add decoration
-          </button>
+            );
+          })}
+          <div className="inspector-drill-actions">
+            <button type="button" className="btn" onClick={() => openImagePicker()}>
+              Add image
+            </button>
+            <button type="button" className="btn" onClick={addText}>
+              Add text
+            </button>
+          </div>
         </div>
         {mediaModal}
       </div>
@@ -4425,6 +4832,56 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn?.startsWith("deco.font:") && sceneFrame) {
+    const decoId = drillIn.slice("deco.font:".length);
+    const decos = sceneFrame.decorations ?? [];
+    const deco = decos.find((x) => x.id === decoId);
+    const themeFace = (sceneTheme ?? project.theme).typography[deco?.face ?? "headline"];
+    const currentRef = deco?.font ? parseFontString(deco.font) : themeFace;
+    const commitFont = (value: string | undefined) =>
+      void patchDoc(
+        (next) => {
+          next.frame = {
+            ...(next.frame ?? {}),
+            decorations: decos.map((x) => (x.id === decoId ? { ...x, font: value } : x)),
+          };
+        },
+        { history: "decoration font" },
+      );
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Decoration font</div>
+        <div className="inspector-drill-body">
+          {deco?.font !== undefined && (
+            <button
+              type="button"
+              className="btn text-font-reset"
+              onClick={() => commitFont(undefined)}
+            >
+              Use theme font
+            </button>
+          )}
+          <FontPicker
+            value={currentRef}
+            onPick={(ref, opts) => {
+              // Pin + preload before the sidecar write so the face renders the moment the doc patch lands.
+              void (async () => {
+                await ensureFontRefsPinned([ref]);
+                await preloadAppFonts([ref]);
+                commitFont(formatFontString(ref));
+                if (opts?.fromRecent) closeDrill();
+              })();
+            }}
+          />
+          <p className="modal-hint">
+            System fonts are pinned into your workspace on first use, so exports never drift with
+            macOS updates.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (drillIn === "text" && doc) {
     const textKeys = Object.keys(doc.text ?? {});
     const consumed = textKeysConsumedBy(sceneIndex);
@@ -4617,7 +5074,18 @@ export function SceneTab({
                 : undefined;
             const fontOverride = styleStr(`${key}Font`);
             return (
-              <div key={key} className="text-field-group">
+              <div
+                key={key}
+                ref={(el) => {
+                  textFieldRefs.current[key] = el;
+                }}
+                className={`text-field-group${selectedTextKey === key ? " selected" : ""}`}
+                onFocusCapture={() => {
+                  if (selectedTextKey !== key) {
+                    useTextEditStore.getState().select({ sceneIndex, key });
+                  }
+                }}
+              >
                 <TextFieldRow
                   label={label}
                   value={textValues[key] ?? doc.text?.[key] ?? ""}
@@ -4691,6 +5159,18 @@ export function SceneTab({
                         )
                       }
                     />
+                    <NumberField
+                      label="Rotate °"
+                      value={styleNum(`${key}RotationDeg`) ?? 0}
+                      decimals={1}
+                      onCommit={(n) =>
+                        patchStyle(
+                          `${label.toLowerCase()} rotation`,
+                          `${key}RotationDeg`,
+                          textRotationWrite(n),
+                        )
+                      }
+                    />
                   </div>
                 )}
                 {styleCapable.has(key) && (
@@ -4746,6 +5226,22 @@ export function SceneTab({
             onBlur={flushHeaderIcon}
             onPick={setHeaderIcon}
           />
+          {(iconDraft ?? headerIcon).trim() !== "" && (
+            <div className="text-style-row text-style-icon">
+              <NumberField
+                label="Size %"
+                value={Math.round((styleNum("iconSize") ?? 1) * 100)}
+                decimals={0}
+                onCommit={(n) =>
+                  patchStyle(
+                    "header icon size",
+                    "iconSize",
+                    n === 100 || n <= 0 ? undefined : Math.min(1000, n) / 100,
+                  )
+                }
+              />
+            </div>
+          )}
           <TextMotionPanel
             current={doc.textAnimation}
             theme={sceneTheme}
@@ -5354,11 +5850,7 @@ export function SceneTab({
         <div className="inspector-section-body object-drill">
           <DrillGroup label="Gizmo">
             <SegmentedRow
-              options={[
-                { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
-                { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
-                { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
-              ]}
+              options={GIZMO_MODE_OPTIONS}
               value={gizmoMode}
               onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
             />
@@ -5502,27 +5994,6 @@ export function SceneTab({
       if (baseline) void commitFromBaseline(baseline, mutate);
       else void patchDoc(mutate);
     };
-    // With a block, sliders edit that device's DELTA (0 = on the preset); without one they edit raw placement.
-    const mutateDelta = (
-      next: SceneDoc,
-      id: string,
-      fn: (delta: SceneDocDeviceLayoutDelta) => void,
-    ) => {
-      if (!next.deviceLayout) return;
-      next.deviceLayout.devices ??= {};
-      next.deviceLayout.devices[id] ??= {};
-      fn(next.deviceLayout.devices[id]);
-    };
-    const mutatePlacement = (
-      next: SceneDoc,
-      id: string,
-      fn: (p: NonNullable<NonNullable<SceneDoc["devices"]>[number]["placement"]>) => void,
-    ) => {
-      const d = next.devices?.find((x) => x.id === id);
-      if (!d) return;
-      d.placement ??= {};
-      fn(d.placement);
-    };
     const offsetSlider = (
       id: string,
       label: string,
@@ -5568,6 +6039,24 @@ export function SceneTab({
           <span>Position</span>
         </div>
         <div className="inspector-drill-body">
+          <DrillGroup label="Gizmo">
+            {devices.length > 1 && (
+              <SegmentedRow
+                className="subtabs-compact"
+                options={devicePillOptions}
+                value={deviceId ?? devices[0].id}
+                onChange={pickDevice}
+              />
+            )}
+            <SegmentedRow
+              options={GIZMO_MODE_OPTIONS}
+              value={deviceGizmoMode}
+              onChange={(mode) => useDeviceEditStore.getState().setGizmoMode(mode)}
+            />
+            <span className="drill-group-hint">
+              Drag the gizmo in the preview; Scale resizes evenly.
+            </span>
+          </DrillGroup>
           {devices.length > 1 && (
             <DrillGroup label="Layout">
               <div className="wizard-presets">
@@ -5876,7 +6365,7 @@ export function SceneTab({
             return;
           }
           setConfirmRemove(false);
-          setPickedDeviceId(null);
+          pickDevice(null);
           void patchDoc((next) => {
             next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
           });
@@ -5934,7 +6423,7 @@ export function SceneTab({
           ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
           : undefined,
         "frame.cutout": sceneFrame ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape] : undefined,
-        "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
+        "frame.panel": sceneFrame ? panelFillLabel(sceneFrame.background) : undefined,
         "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
         "frame.decorations": sceneFrame
           ? sceneFrame.decorations?.length
@@ -6007,16 +6496,9 @@ export function SceneTab({
         {groupSection.id === "device" && devices.length > 1 && (
           <SegmentedRow
             className="subtabs-compact"
-            options={devices.map((d, i) => ({
-              value: d.id,
-              label: `${i + 1}`,
-              icon: <DevicePillIcon model={d.model} />,
-              title:
-                DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId]
-                  .name,
-            }))}
+            options={devicePillOptions}
             value={deviceId ?? devices[0].id}
-            onChange={(id) => setPickedDeviceId(id)}
+            onChange={pickDevice}
           />
         )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>

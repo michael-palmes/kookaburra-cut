@@ -85,6 +85,7 @@ export function HelperWizard({
   kind,
   scenes,
   thumbs,
+  onNeedThumbs,
   slug,
   onInsert,
   onCancel,
@@ -94,6 +95,8 @@ export function HelperWizard({
   scenes: WizardSceneInfo[];
   /** Scene-thumb paths by stem, for the placement strip's cards. */
   thumbs: Record<string, string>;
+  /** Ask the host to capture missing/stale thumbs; only the new-scene kind shows cards. */
+  onNeedThumbs: () => void;
   /** Project slug, for the media listing. */
   slug: string;
   /** Receives the composed prompt (the panel pastes it, unsubmitted). */
@@ -133,6 +136,11 @@ export function HelperWizard({
       cancelled = true;
     };
   }, [kind, slug]);
+
+  // Only new-scene renders the placement strip, and it renders on open, so this is its mount.
+  useEffect(() => {
+    if (kind === "new-scene") onNeedThumbs();
+  }, [kind, onNeedThumbs]);
 
   // Named like the pickers, with the file as the unambiguous anchor: ids can repeat across scenes, files cannot.
   const sceneName = (file: string) => {

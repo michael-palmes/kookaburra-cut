@@ -1,7 +1,11 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
-import { resolveChart } from "../../engine/sceneChart";
+import {
+  CHART_VALUE_BACKGROUND_DEFAULTS,
+  CHART_VALUE_OFFSET_MAX,
+  resolveChart,
+} from "../../engine/sceneChart";
 import type {
   SceneDoc,
   SceneDocChart,
@@ -9,6 +13,9 @@ import type {
   SceneDocChartValueAxis,
   SceneDocChartValueLabels,
 } from "../../engine/sceneDocSchema";
+import { ensureFontRefsPinned } from "../../engine/systemFonts";
+import { formatFontString, parseFontString } from "../../theme/fontRef";
+import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme } from "../../theme/tokens";
 import {
   CHART_ANIMATION_PRESET_IDS,
@@ -16,8 +23,13 @@ import {
   type ChartPresetTier,
   chartPresetFor,
 } from "../../toolkit/chart/animation";
+import { chartPillColour, chartTokenColour } from "../../toolkit/chart/chartText";
 import { CHART_DECIMALS_MAX, formatChartValue } from "../../toolkit/chart/format";
-import { resolveSeriesColour } from "../../toolkit/chart/palette";
+import { CHART_PALETTE_SIZE, resolveSeriesColour } from "../../toolkit/chart/palette";
+import {
+  CHART_PALETTE_SCHEME_IDS,
+  CHART_PALETTE_SCHEMES,
+} from "../../toolkit/chart/paletteSchemes";
 import {
   CHART_STYLE_PRESET_IDS,
   CHART_STYLE_PRESETS,
@@ -38,6 +50,7 @@ import type { DevicePlacement } from "../../toolkit/device/Device";
 import type { V3 } from "../../toolkit/types";
 import { closeChartDataModal, openChartDataModal } from "../chartDataModalStore";
 import { ColourPicker } from "../colour/ColourPicker";
+import { FontPicker } from "../FontPicker";
 import { CHART_TYPE_IDS, CHART_TYPE_LABELS } from "../inspectorOptions";
 import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
@@ -98,6 +111,37 @@ function MountGlyph({ mount }: { mount: ChartMount }) {
       <rect x="1.5" y="1.5" width="9" height="9" rx="1" stroke="currentColor" />
       <path d="M4.5 1.5v9" stroke="currentColor" />
     </svg>
+  );
+}
+
+/** One colour-scheme tile: the six swatches it paints with, over its name. Plain CSS dots, so the picker needs no captured previews. */
+function PaletteTile({
+  label,
+  swatches,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  swatches: readonly string[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      className={`chart-palette-tile${selected ? " selected" : ""}`}
+      title={label}
+      onClick={onSelect}
+    >
+      <span className="chart-palette-swatches" aria-hidden="true">
+        {swatches.map((hex, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: six fixed slots that never reorder, and a short theme palette repeats a hex.
+          <span key={i} style={{ background: hex }} />
+        ))}
+      </span>
+      {label}
+    </button>
   );
 }
 
@@ -368,6 +412,7 @@ export function ChartDrillIn({
   const [tab, setTab] = useState<ChartTab>("graph");
   const [axisTab, setAxisTab] = useState<"value" | "category">("value");
   const [seriesId, setSeriesId] = useState<string | null>(null);
+  const [fontOpen, setFontOpen] = useState(false);
   const [hoverCard, setHoverCard] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -425,12 +470,14 @@ export function ChartDrillIn({
       mutate(category);
       c.axis = { ...c.axis, category };
     }, "chart axis");
-  const writeValueLabels = (mutate: (l: SceneDocChartValueLabels) => void) =>
-    write((c) => {
+  const patchValueLabels =
+    (mutate: (l: SceneDocChartValueLabels) => void) => (c: SceneDocChart) => {
       const values = { ...(c.labels?.values ?? {}) };
       mutate(values);
       c.labels = { ...c.labels, values };
-    }, "chart labels");
+    };
+  const writeValueLabels = (mutate: (l: SceneDocChartValueLabels) => void) =>
+    write(patchValueLabels(mutate), "chart labels");
   const writeSeries = (mutate: (series: SceneDocChartSeries[]) => void, history?: string) =>
     write((c) => {
       const series = structuredClone(c.data.series);
@@ -466,14 +513,14 @@ export function ChartDrillIn({
           />
           <DrillGroup
             label="Colour"
-            hint="Without an override the theme's chart palette drives it."
+            hint="Without an override the chart's colour scheme drives it."
           >
             <div className="popover-row">
               <span className="popover-inline slider-row-label">Series colour</span>
               <ColourPicker
-                value={resolveSeriesColour(theme, selectedIndex, override)}
+                value={resolveSeriesColour(theme, selectedIndex, override, chart.palette)}
                 label={`${selected.name} colour`}
-                defaultValue={resolveSeriesColour(theme, selectedIndex)}
+                defaultValue={resolveSeriesColour(theme, selectedIndex, null, chart.palette)}
                 onReset={
                   override
                     ? () =>
@@ -539,6 +586,56 @@ export function ChartDrillIn({
     );
   }
 
+  // The block's own face, then the project's chart font, then the theme faces the labels take today.
+  const fontOverride = doc.chart.font;
+  const projectFont = theme.typography.chart;
+  const fontLabel = fontOverride
+    ? parseFontString(fontOverride).family
+    : (projectFont?.family ?? "Theme font");
+
+  // The font screen, the series-detail idiom: a full screen inside the drill with its own back bar.
+  if (fontOpen) {
+    return (
+      <div className="inspector-drill chart-drill">
+        <DrillBack label="Chart" onClick={() => setFontOpen(false)} />
+        <div className="inspector-drill-title">Chart font</div>
+        <div className="inspector-drill-body">
+          {fontOverride && (
+            <button
+              type="button"
+              className="btn text-font-reset"
+              onClick={() =>
+                write((c) => {
+                  delete c.font;
+                }, "chart font")
+              }
+            >
+              {projectFont ? "Use the project font" : "Use theme fonts"}
+            </button>
+          )}
+          <FontPicker
+            value={
+              fontOverride ? parseFontString(fontOverride) : (projectFont ?? theme.typography.body)
+            }
+            onPick={(ref) => {
+              // Pin + preload before the sidecar write so the face renders the moment the patch lands (the text-font pattern).
+              void (async () => {
+                await ensureFontRefsPinned([ref]);
+                await preloadAppFonts([ref]);
+                write((c) => {
+                  c.font = formatFontString(ref);
+                }, "chart font");
+              })();
+            }}
+          />
+          <p className="modal-hint">
+            One face for every label, value, axis name and legend entry in this chart.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const styleIds = (tier: ChartStyleTier) =>
     CHART_STYLE_PRESET_IDS.filter((id) => CHART_STYLE_PRESETS[id].tier === tier);
   const animationIds = (tier: ChartPresetTier) =>
@@ -551,9 +648,20 @@ export function ChartDrillIn({
     label: MOUNT_LABELS[value],
     icon: <MountGlyph mount={value} />,
   }));
+  // What the "Theme" tile paints: the swatches this scene's theme resolves, scheme aside.
+  const themeSwatches = Array.from({ length: CHART_PALETTE_SIZE }, (_, i) =>
+    resolveSeriesColour(theme, i),
+  );
 
   const graph = (
     <>
+      <ActionRow
+        label="Edit data"
+        value={dataSummary}
+        chevron
+        onClick={() => openChartDataModal()}
+      />
+
       <DrillGroup label="Chart type">
         <div className="bg-type-grid chart-type-grid">
           {CHART_TYPE_IDS.map((type) => (
@@ -646,6 +754,63 @@ export function ChartDrillIn({
             </div>
           </Fragment>
         ))}
+      </DrillGroup>
+
+      <DrillGroup
+        label="Colours"
+        hint="A scheme replaces the theme's chart palette; a per-series colour still wins."
+      >
+        <div className="chart-palette-grid">
+          <PaletteTile
+            label="Theme"
+            swatches={themeSwatches}
+            selected={!chart.palette}
+            onSelect={() =>
+              write((c) => {
+                delete c.palette;
+              }, "chart colours")
+            }
+          />
+          {CHART_PALETTE_SCHEME_IDS.map((id) => (
+            <PaletteTile
+              key={id}
+              label={CHART_PALETTE_SCHEMES[id].label}
+              swatches={CHART_PALETTE_SCHEMES[id].swatches}
+              selected={chart.palette === id}
+              onSelect={() =>
+                write((c) => {
+                  c.palette = id;
+                }, "chart colours")
+              }
+            />
+          ))}
+        </div>
+      </DrillGroup>
+
+      <DrillGroup
+        label="Font"
+        hint={
+          fontOverride
+            ? undefined
+            : projectFont
+              ? "This project's chart font. Pick one here for this chart alone."
+              : "Chart text follows the theme. Pick one face for this chart alone."
+        }
+      >
+        <div className="popover-row">
+          <span className="popover-inline slider-row-label">Chart font</span>
+          <button
+            type="button"
+            className={`text-style-font${fontOverride ? " overridden" : ""}`}
+            title="Chart font"
+            onClick={() => setFontOpen(true)}
+          >
+            <span className="text-style-font-name">{fontLabel}</span>
+            <span className="text-style-font-chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        </div>
       </DrillGroup>
 
       <DrillGroup label="Shape">
@@ -895,13 +1060,6 @@ export function ChartDrillIn({
           />
         </div>
       </DrillGroup>
-
-      <ActionRow
-        label="Edit data"
-        value={dataSummary}
-        chevron
-        onClick={() => openChartDataModal()}
-      />
     </>
   );
 
@@ -978,9 +1136,9 @@ export function ChartDrillIn({
               }
             />
           </DrillGroup>
-          <DrillGroup label="Value labels">
+          <DrillGroup label="Tick labels" hint="The numbers along the axis itself.">
             <ToggleRow
-              label="Tick labels"
+              label="Show tick labels"
               checked={valueAxis.labels}
               onChange={(labels) =>
                 writeValueAxis((a) => {
@@ -1059,6 +1217,8 @@ export function ChartDrillIn({
   );
 
   const values = chart.labels.values;
+  const background = values.background;
+  const derivedPill = chartPillColour(theme);
   const seriesTab = (
     <>
       <DrillGroup label="Series">
@@ -1069,9 +1229,9 @@ export function ChartDrillIn({
             return (
               <li key={s.id} className={`chart-series-row${greyed ? " greyed" : ""}`}>
                 <ColourPicker
-                  value={resolveSeriesColour(theme, i, override)}
+                  value={resolveSeriesColour(theme, i, override, chart.palette)}
                   label={`${s.name} colour`}
-                  defaultValue={resolveSeriesColour(theme, i)}
+                  defaultValue={resolveSeriesColour(theme, i, null, chart.palette)}
                   onReset={
                     override
                       ? () =>
@@ -1183,7 +1343,7 @@ export function ChartDrillIn({
           </span>
         )}
       </DrillGroup>
-      <DrillGroup label="Value labels">
+      <DrillGroup label="Value labels" hint="The numbers riding the marks themselves.">
         <ToggleRow
           label="Show values"
           checked={values.visible}
@@ -1221,6 +1381,139 @@ export function ChartDrillIn({
             })
           }
         />
+        <div className="popover-row">
+          <span className="popover-inline slider-row-label">Nudge</span>
+          <DebouncedRange
+            value={values.offsetY}
+            min={-CHART_VALUE_OFFSET_MAX / 2}
+            max={CHART_VALUE_OFFSET_MAX / 2}
+            step={0.05}
+            label="Nudge"
+            onInput={(v) =>
+              live(
+                patchValueLabels((l) => {
+                  l.offsetY = v;
+                }),
+              )
+            }
+            onCommit={(v) =>
+              commit(
+                patchValueLabels((l) => {
+                  l.offsetY = v;
+                }),
+                "chart labels",
+              )
+            }
+          />
+        </div>
+        <ActionRow
+          label="Reset nudge"
+          chevron={false}
+          disabled={values.offsetY === 0}
+          onClick={() =>
+            writeValueLabels((l) => {
+              delete l.offsetY;
+            })
+          }
+        />
+        {chart.dimension === "3d" ? (
+          <span className="drill-group-hint">
+            Label backgrounds are flat charts only; 3D value labels face the camera.
+          </span>
+        ) : (
+          <>
+            <ToggleRow
+              label="Background"
+              description="A chip behind every number, for legibility over a mark."
+              checked={background !== null}
+              onChange={(on) =>
+                writeValueLabels((l) => {
+                  if (on) {
+                    l.background = {
+                      opacity: CHART_VALUE_BACKGROUND_DEFAULTS.opacity,
+                      radius: CHART_VALUE_BACKGROUND_DEFAULTS.radius,
+                    };
+                  } else delete l.background;
+                })
+              }
+            />
+            {background && (
+              <>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Colour</span>
+                  <ColourPicker
+                    value={chartTokenColour(theme, background.colour) ?? derivedPill}
+                    label="Value label background"
+                    defaultValue={derivedPill}
+                    onReset={
+                      background.colour
+                        ? () =>
+                            writeValueLabels((l) => {
+                              if (l.background) delete l.background.colour;
+                            })
+                        : undefined
+                    }
+                    onCommit={(hex) =>
+                      writeValueLabels((l) => {
+                        l.background = { ...l.background, colour: hex };
+                      })
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Opacity</span>
+                  <DebouncedRange
+                    value={background.opacity}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    label="Background opacity"
+                    onInput={(v) =>
+                      live(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, opacity: v };
+                        }),
+                      )
+                    }
+                    onCommit={(v) =>
+                      commit(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, opacity: v };
+                        }),
+                        "chart labels",
+                      )
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Corner radius</span>
+                  <DebouncedRange
+                    value={background.radius}
+                    min={0}
+                    max={0.5}
+                    step={0.01}
+                    label="Background corner radius"
+                    onInput={(v) =>
+                      live(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, radius: v };
+                        }),
+                      )
+                    }
+                    onCommit={(v) =>
+                      commit(
+                        patchValueLabels((l) => {
+                          l.background = { ...l.background, radius: v };
+                        }),
+                        "chart labels",
+                      )
+                    }
+                  />
+                </div>
+              </>
+            )}
+          </>
+        )}
       </DrillGroup>
     </>
   );
