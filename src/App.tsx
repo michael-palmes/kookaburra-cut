@@ -1459,12 +1459,13 @@ export default function App() {
         project: loadedProjectRef.current,
         format,
         exporting,
+        playing,
       }).finally(() => {
         bridgeBusyRef.current = false;
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isAutoRun, exporting, format]);
+  }, [isAutoRun, exporting, format, playing]);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {

@@ -1,39 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadedProject } from "./project";
 
-/** The native thumb cache, scripted per test; `writes` records which stems were captured. */
+/** The native thumb cache, scripted per test; `submitted`/`cancelled` record the queue traffic to the render window. */
 let listing = {
   stamp: null as string | null,
   thumbs: {} as Record<string, string>,
   stamps: {} as Record<string, string>,
   sourceStamps: {} as Record<string, string>,
 };
-const writes: { stem: string; stamp: string }[] = [];
+const submitted: { slug: string; generation: number; jobs: { stem: string; stamp: string }[] }[] =
+  [];
+const cancelled: number[] = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(
-    async (cmd: string, _arg?: unknown, opts?: { headers?: Record<string, string> }) => {
-      if (cmd === "list_scene_thumbs") return listing;
-      if (cmd === "write_scene_thumb") {
-        writes.push({
-          stem: opts?.headers?.["x-kookaburra-stem"] ?? "",
-          stamp: opts?.headers?.["x-kookaburra-stamp"] ?? "",
-        });
-        return undefined;
-      }
-      throw new Error(`unexpected command ${cmd}`);
-    },
-  ),
-}));
-
-const captured: number[] = [];
-let onCapture: (() => void) | null = null;
-vi.mock("./snapshots", () => ({
-  withBorrowedClock: vi.fn(async (fn: () => Promise<unknown>) => fn()),
-  captureFrameAt: vi.fn(async (tMs: number) => {
-    captured.push(tMs);
-    onCapture?.();
-    return new Uint8Array([1]);
+  invoke: vi.fn(async (cmd: string, arg?: unknown) => {
+    if (cmd === "list_scene_thumbs") return listing;
+    if (cmd === "render_submit_thumbs") {
+      submitted.push((arg as { batch: (typeof submitted)[number] }).batch);
+      return undefined;
+    }
+    if (cmd === "render_cancel_thumbs") {
+      cancelled.push((arg as { generation: number }).generation);
+      return undefined;
+    }
+    throw new Error(`unexpected command ${cmd}`);
   }),
 }));
 
@@ -46,14 +36,13 @@ function project(stems: string[]): LoadedProject {
 }
 
 beforeEach(() => {
-  writes.length = 0;
-  captured.length = 0;
-  onCapture = null;
+  submitted.length = 0;
+  cancelled.length = 0;
   listing = { stamp: null, thumbs: {}, stamps: {}, sourceStamps: {} };
 });
 
 describe("ensureSceneThumbs", () => {
-  it("captures nothing when every thumb matches its source stamp", async () => {
+  it("submits nothing when every thumb matches its source stamp", async () => {
     const { ensureSceneThumbs } = await import("./sceneThumbs");
     listing = {
       stamp: null,
@@ -62,12 +51,11 @@ describe("ensureSceneThumbs", () => {
       sourceStamps: { a: "1", b: "2" },
     };
     const thumbs = await ensureSceneThumbs(project(["a", "b"]));
-    expect(writes).toEqual([]);
-    expect(captured).toEqual([]);
+    expect(submitted).toEqual([]);
     expect(thumbs).toEqual({ a: "/t/a.png", b: "/t/b.png" });
   });
 
-  it("captures only the added scene, not the whole project", async () => {
+  it("submits only the added scene, not the whole project", async () => {
     const { ensureSceneThumbs } = await import("./sceneThumbs");
     listing = {
       stamp: null,
@@ -75,13 +63,15 @@ describe("ensureSceneThumbs", () => {
       stamps: { a: "1", b: "2" },
       sourceStamps: { a: "1", b: "2", c: "3" },
     };
-    await ensureSceneThumbs(project(["a", "b", "c"]));
-    expect(writes).toEqual([{ stem: "c", stamp: "3" }]);
-    // Third slot, so the centre frame of 2000..3000.
-    expect(captured).toEqual([2500]);
+    const thumbs = await ensureSceneThumbs(project(["a", "b", "c"]));
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].slug).toBe("demo");
+    expect(submitted[0].jobs).toEqual([{ stem: "c", stamp: "3" }]);
+    // Resolves immediately with the cached set; the fresh thumb announces itself later.
+    expect(thumbs).toEqual({ a: "/t/a.png", b: "/t/b.png" });
   });
 
-  it("recaptures a scene whose sources moved, and stamps it with the new value", async () => {
+  it("resubmits a scene whose sources moved, stamped with the new value", async () => {
     const { ensureSceneThumbs } = await import("./sceneThumbs");
     listing = {
       stamp: null,
@@ -90,31 +80,31 @@ describe("ensureSceneThumbs", () => {
       sourceStamps: { a: "1", b: "2-edited" },
     };
     await ensureSceneThumbs(project(["a", "b"]));
-    expect(writes).toEqual([{ stem: "b", stamp: "2-edited" }]);
+    expect(submitted[0].jobs).toEqual([{ stem: "b", stamp: "2-edited" }]);
   });
 
-  it("skips a stem with no scene module on disk instead of capturing forever", async () => {
+  it("skips a stem with no scene module on disk instead of queueing forever", async () => {
     const { ensureSceneThumbs } = await import("./sceneThumbs");
     listing = { stamp: null, thumbs: {}, stamps: {}, sourceStamps: {} };
     await ensureSceneThumbs(project(["ghost"]));
-    expect(writes).toEqual([]);
-    expect(captured).toEqual([]);
+    expect(submitted).toEqual([]);
   });
 
-  it("an aborted signal stops between scenes, keeping thumbs already captured", async () => {
+  it("an aborted signal cancels this submission's generation", async () => {
     const { ensureSceneThumbs } = await import("./sceneThumbs");
-    listing = { stamp: null, thumbs: {}, stamps: {}, sourceStamps: { a: "1", b: "2", c: "3" } };
+    listing = { stamp: null, thumbs: {}, stamps: {}, sourceStamps: { a: "1" } };
     const controller = new AbortController();
-    onCapture = () => controller.abort();
-    await ensureSceneThumbs(project(["a", "b", "c"]), { signal: controller.signal });
-    expect(writes).toEqual([{ stem: "a", stamp: "1" }]);
-    expect(captured).toEqual([500]);
+    await ensureSceneThumbs(project(["a"]), { signal: controller.signal });
+    expect(submitted).toHaveLength(1);
+    controller.abort();
+    await Promise.resolve();
+    expect(cancelled).toEqual([submitted[0].generation]);
   });
 
   it("ignores non-workspace projects", async () => {
     const { ensureSceneThumbs } = await import("./sceneThumbs");
     const bundled = { ...project(["a"]), id: "showcase-tour" } as LoadedProject;
     expect(await ensureSceneThumbs(bundled)).toEqual({});
-    expect(writes).toEqual([]);
+    expect(submitted).toEqual([]);
   });
 });

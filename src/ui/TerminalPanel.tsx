@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -367,12 +368,28 @@ export function TerminalPanel({
       .then(addThumbs)
       .catch(() => {});
   }, [addThumbs]);
-  // A closed wizard's capture loop must not keep seeking the preview clock behind the user.
+  // A closed wizard's queued thumbs are cancelled rather than left draining for nobody.
   useEffect(() => {
     if (wizard === null) thumbsAbort.current?.abort();
     const holder = thumbsAbort;
     return () => holder.current?.abort();
   }, [wizard]);
+  // Fresh thumbs land asynchronously from the render window; repaint open grids as they arrive.
+  const readRef = useRef(readThumbs);
+  useEffect(() => {
+    readRef.current = readThumbs;
+  });
+  useEffect(() => {
+    const stop = listen("kookaburra://thumbs-updated", () => {
+      readRef
+        .current()
+        .then(addThumbs)
+        .catch(() => {});
+    });
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
+  }, [addThumbs]);
 
   // The playback bar / ⌘K channel: a pending wizard request opens the matching wizard once the rail is mounted, then clears itself.
   const railWizardRequest = useUiStore((s) => s.railWizardRequest);

@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
@@ -13,7 +14,7 @@ import {
   sceneFileStem,
   workspaceSlug,
 } from "../engine/project";
-import { ensureSceneThumbs } from "../engine/sceneThumbs";
+import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { BeatLane } from "./BeatLane";
@@ -457,7 +458,16 @@ export function DuplicateSceneDialog({
     void ensureSceneThumbs(project, { signal: controller.signal }).then((t) => {
       if (!controller.signal.aborted) setThumbs(t);
     });
-    return () => controller.abort();
+    // Fresh thumbs land asynchronously from the render window; repaint as they arrive.
+    const stop = listen("kookaburra://thumbs-updated", () => {
+      void listCachedSceneThumbs(project).then((t) => {
+        if (!controller.signal.aborted) setThumbs(t);
+      });
+    });
+    return () => {
+      controller.abort();
+      void stop.then((unlisten) => unlisten());
+    };
   }, [project]);
   const scenes: WizardSceneInfo[] = project.slots.map((s, i) => ({
     index: i,

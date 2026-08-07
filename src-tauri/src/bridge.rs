@@ -45,6 +45,8 @@ pub struct EditorContext {
     pub aspect: String,
     pub current_ms: f64,
     pub export_locked: bool,
+    /// Live playback in the editor; queued thumb jobs park while true (bridge captures still serve).
+    pub playing: bool,
 }
 
 #[derive(Default)]

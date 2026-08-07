@@ -989,6 +989,7 @@ pub fn run() {
         .manage(edit::EditorState::default())
         .manage(present::PresentState::default())
         .manage(render_win::RenderWindowState::default())
+        .manage(render_win::ThumbQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
         .manage(pack::commands::PackState::default())
@@ -1263,6 +1264,10 @@ pub fn run() {
             render_win::close_render_window,
             render_win::render_heartbeat,
             render_win::render_window_status,
+            render_win::render_submit_thumbs,
+            render_win::render_cancel_thumbs,
+            render_win::render_take_thumb_job,
+            render_win::thumbs_pending_count,
             objects::list_objects,
             objects::read_object,
             objects::import_object,

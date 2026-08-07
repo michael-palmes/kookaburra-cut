@@ -1,17 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { resolveScreenshotTimeMs } from "../engine/autorun";
-import { awaitSceneHostsCommitted, captureScreenshot } from "../engine/exporter";
+import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from "../engine/exporter";
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
 import {
   bumpWorkspaceReloadToken,
   isWorkspaceProjectId,
   type LoadedProject,
   loadProject,
+  sceneFileStem,
   workspaceSlug,
 } from "../engine/project";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 
-/** The render window's half of the capture bridge: claim one request per tick, load (or reload) the target project into this window's own canvas, render the frame through the deterministic export path and respond, all without touching the editor realm. Requests with an explicit --scene may target any project on disk; playhead requests (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. */
+/** The render window's half of the capture bridge: claim one request per tick, load (or reload) the target project into this window's own canvas, render the frame through the deterministic export path and respond, all without touching the editor realm. Requests with an explicit --scene may target any project on disk; playhead requests (no scene) need the editor's open project, whose id/aspect/playhead arrive via the pushed editor context. Idle ticks drain the thumb queue instead (fast tier: same path, small buffer), parked while the editor is playing. */
 
 interface BridgeRequest {
   version: number;
@@ -28,9 +30,22 @@ interface EditorContext {
   aspect: string;
   currentMs: number;
   exportLocked: boolean;
+  playing: boolean;
+}
+
+/** Mirror of render_win.rs's ThumbTake. */
+interface ThumbTake {
+  slug: string;
+  generation: number;
+  stem: string;
+  stamp: string;
+  remaining: number;
 }
 
 const BRIDGE_COMMANDS = { begin: "begin_bridge_screenshot", save: "save_bridge_screenshot" };
+
+/** Fast-tier thumb width; matches the legacy preview-canvas thumbs. */
+const THUMB_WIDTH = 640;
 
 interface LoadedState {
   project: LoadedProject;
@@ -45,14 +60,33 @@ export function startBridgeService(
   let busy = false;
   let current: LoadedState | null = null;
 
-  const serve = async (): Promise<void> => {
-    let request: BridgeRequest | null = null;
-    try {
-      request = await invoke<BridgeRequest | null>("bridge_claim_request");
-    } catch {
-      return;
+  /** Load (or reload) `targetId` at `format` unless the mounted tree is already exactly that. */
+  const ensureLoaded = async (targetId: string, format: FormatSpec): Promise<LoadedProject> => {
+    const fingerprint = isWorkspaceProjectId(targetId)
+      ? await invoke<string>("project_fingerprint", { slug: workspaceSlug(targetId) }).catch(
+          () => null,
+        )
+      : null;
+    if (
+      !current ||
+      current.project.id !== targetId ||
+      current.fingerprint !== fingerprint ||
+      current.formatName !== format.name
+    ) {
+      bumpWorkspaceReloadToken();
+      const loaded = await loadProject(targetId);
+      apply(loaded, format);
+      await awaitProjectCommitted(loaded);
+      await awaitSceneHostsCommitted(loaded.slots.length);
+      current = { project: loaded, fingerprint, formatName: format.name };
     }
-    if (!request) return;
+    return current.project;
+  };
+
+  const contextFormat = (context: EditorContext | null): FormatSpec =>
+    FORMATS[(context?.aspect ?? "16:9") as AspectName] ?? FORMATS["16:9"];
+
+  const serveCapture = async (request: BridgeRequest): Promise<boolean> => {
     const id = request.id;
     const respond = (body: Record<string, unknown>) =>
       invoke("bridge_write_response", {
@@ -68,7 +102,7 @@ export function startBridgeService(
           busy: true,
           error: "Kookaburra Cut is exporting right now; retry shortly",
         });
-        return;
+        return true;
       }
       const targetId = request.project ?? context?.projectId ?? null;
       if (!targetId) {
@@ -77,38 +111,18 @@ export function startBridgeService(
           error:
             "no project is open in Kookaburra Cut; open one (or pass --scene with an explicit project) and retry",
         });
-        return;
+        return true;
       }
       if (!request.scene && targetId !== context?.projectId) {
         await respond({
           ok: false,
           error: `requested project "${targetId}" isn't open (currently open: "${context?.projectId ?? "none"}"); playhead captures need the open project, or pass --scene to capture any project`,
         });
-        return;
+        return true;
       }
 
-      const fingerprint = isWorkspaceProjectId(targetId)
-        ? await invoke<string>("project_fingerprint", { slug: workspaceSlug(targetId) }).catch(
-            () => null,
-          )
-        : null;
-      const formatName = (context?.aspect ?? "16:9") as AspectName;
-      const format = FORMATS[formatName] ?? FORMATS["16:9"];
-      if (
-        !current ||
-        current.project.id !== targetId ||
-        current.fingerprint !== fingerprint ||
-        current.formatName !== format.name
-      ) {
-        bumpWorkspaceReloadToken();
-        const loaded = await loadProject(targetId);
-        apply(loaded, format);
-        await awaitProjectCommitted(loaded);
-        await awaitSceneHostsCommitted(loaded.slots.length);
-        current = { project: loaded, fingerprint, formatName: format.name };
-      }
-
-      const project = current.project;
+      const format = contextFormat(context);
+      const project = await ensureLoaded(targetId, format);
       const tMs = resolveScreenshotTimeMs(
         project,
         request.scene ?? undefined,
@@ -116,22 +130,7 @@ export function startBridgeService(
         targetId === context?.projectId ? context.currentMs : undefined,
       );
       const path = await captureScreenshot(
-        {
-          projectId: project.id,
-          fps: FPS,
-          durationMs: project.totalMs,
-          slots: project.slots,
-          cameraTrack: project.cameraTrack,
-          sceneDocs: project.sceneDocs,
-          theme: project.theme,
-          sceneThemes: project.sceneThemes,
-          projectLighting: project.projectLighting,
-          sceneFrames: project.sceneFrames,
-          compareBDocs: project.compareBDocs,
-          compareBThemes: project.compareBThemes,
-          codec: "libx264",
-          format,
-        },
+        exportOptions(project, format),
         tMs,
         id,
         BRIDGE_COMMANDS,
@@ -150,14 +149,110 @@ export function startBridgeService(
       current = null;
       await respond({ ok: false, error: String(e) });
     }
+    return true;
+  };
+
+  const serveThumb = async (context: EditorContext | null): Promise<void> => {
+    if (context?.exportLocked || context?.playing) return;
+    const take = await invoke<ThumbTake | null>("render_take_thumb_job").catch(() => null);
+    if (!take) return;
+    try {
+      const format = contextFormat(context);
+      const project = await ensureLoaded(`ws:${take.slug}`, format);
+      const index = project.sceneFiles.findIndex((f) => sceneFileStem(f) === take.stem);
+      const slot = project.slots[index];
+      if (!slot) return;
+      const thumbFormat: FormatSpec = {
+        name: format.name,
+        width: THUMB_WIDTH,
+        height: Math.round((THUMB_WIDTH * format.height) / format.width / 2) * 2,
+      };
+      const tMs = Math.round(slot.startMs + slot.durationMs / 2);
+      const { rgba, width, height } = await captureFrameRgba(
+        exportOptions(project, thumbFormat),
+        tMs,
+      );
+      const png = await rgbaToPng(rgba, width, height);
+      if (!png) return;
+      await invoke("write_scene_thumb", png, {
+        headers: {
+          "x-kookaburra-slug": take.slug,
+          "x-kookaburra-stem": take.stem,
+          "x-kookaburra-stamp": take.stamp,
+        },
+      });
+      await emit("kookaburra://thumbs-updated", { slug: take.slug });
+    } catch (e) {
+      current = null;
+      console.warn(`[render-bridge] thumb ${take.slug}/${take.stem} failed:`, e);
+    }
+  };
+
+  const tick = async (): Promise<void> => {
+    let request: BridgeRequest | null = null;
+    try {
+      request = await invoke<BridgeRequest | null>("bridge_claim_request");
+    } catch {
+      return;
+    }
+    if (request) {
+      await serveCapture(request);
+      return;
+    }
+    const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
+    await serveThumb(context);
   };
 
   const timer = window.setInterval(() => {
     if (busy) return;
     busy = true;
-    void serve().finally(() => {
+    void tick().finally(() => {
       busy = false;
     });
   }, 1000);
   return () => window.clearInterval(timer);
+}
+
+function exportOptions(project: LoadedProject, format: FormatSpec) {
+  return {
+    projectId: project.id,
+    fps: FPS,
+    durationMs: project.totalMs,
+    slots: project.slots,
+    cameraTrack: project.cameraTrack,
+    sceneDocs: project.sceneDocs,
+    theme: project.theme,
+    sceneThemes: project.sceneThemes,
+    projectLighting: project.projectLighting,
+    sceneFrames: project.sceneFrames,
+    compareBDocs: project.compareBDocs,
+    compareBThemes: project.compareBThemes,
+    codec: "libx264" as const,
+    format,
+  };
+}
+
+/** GL readback rows are bottom-up; flip while packing into ImageData, then PNG-encode via a scratch 2D canvas (the same encoder the legacy preview-canvas thumbs used; thumbs are stamp-gated, never hash-gated). */
+async function rgbaToPng(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+): Promise<Uint8Array | null> {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const image = ctx.createImageData(width, height);
+  const rowBytes = width * 4;
+  for (let y = 0; y < height; y++) {
+    image.data.set(
+      rgba.subarray((height - 1 - y) * rowBytes, (height - y) * rowBytes),
+      y * rowBytes,
+    );
+  }
+  ctx.putImageData(image, 0, 0);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) return null;
+  return new Uint8Array(await blob.arrayBuffer());
 }
