@@ -85,7 +85,7 @@ export function TerminalPanel({
   /** Scene-picker thumbnails straight from the cache: no capture, no clock borrow. */
   readThumbs: () => Promise<Record<string, string>>;
   /** Capture the scene-picker thumbnails that are missing or stale (borrows the preview clock). */
-  captureThumbs: () => Promise<Record<string, string>>;
+  captureThumbs: (signal?: AbortSignal) => Promise<Record<string, string>>;
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
 }) {
@@ -357,12 +357,22 @@ export function TerminalPanel({
   useEffect(() => {
     captureRef.current = captureThumbs;
   });
+  const thumbsAbort = useRef<AbortController | null>(null);
   const needThumbs = useCallback(() => {
+    thumbsAbort.current?.abort();
+    const controller = new AbortController();
+    thumbsAbort.current = controller;
     captureRef
-      .current()
+      .current(controller.signal)
       .then(addThumbs)
       .catch(() => {});
   }, [addThumbs]);
+  // A closed wizard's capture loop must not keep seeking the preview clock behind the user.
+  useEffect(() => {
+    if (wizard === null) thumbsAbort.current?.abort();
+    const holder = thumbsAbort;
+    return () => holder.current?.abort();
+  }, [wizard]);
 
   // The playback bar / ⌘K channel: a pending wizard request opens the matching wizard once the rail is mounted, then clears itself.
   const railWizardRequest = useUiStore((s) => s.railWizardRequest);

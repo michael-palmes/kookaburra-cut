@@ -27,10 +27,12 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 const captured: number[] = [];
+let onCapture: (() => void) | null = null;
 vi.mock("./snapshots", () => ({
   withBorrowedClock: vi.fn(async (fn: () => Promise<unknown>) => fn()),
   captureFrameAt: vi.fn(async (tMs: number) => {
     captured.push(tMs);
+    onCapture?.();
     return new Uint8Array([1]);
   }),
 }));
@@ -46,6 +48,7 @@ function project(stems: string[]): LoadedProject {
 beforeEach(() => {
   writes.length = 0;
   captured.length = 0;
+  onCapture = null;
   listing = { stamp: null, thumbs: {}, stamps: {}, sourceStamps: {} };
 });
 
@@ -96,6 +99,16 @@ describe("ensureSceneThumbs", () => {
     await ensureSceneThumbs(project(["ghost"]));
     expect(writes).toEqual([]);
     expect(captured).toEqual([]);
+  });
+
+  it("an aborted signal stops between scenes, keeping thumbs already captured", async () => {
+    const { ensureSceneThumbs } = await import("./sceneThumbs");
+    listing = { stamp: null, thumbs: {}, stamps: {}, sourceStamps: { a: "1", b: "2", c: "3" } };
+    const controller = new AbortController();
+    onCapture = () => controller.abort();
+    await ensureSceneThumbs(project(["a", "b", "c"]), { signal: controller.signal });
+    expect(writes).toEqual([{ stem: "a", stamp: "1" }]);
+    expect(captured).toEqual([500]);
   });
 
   it("ignores non-workspace projects", async () => {

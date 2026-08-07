@@ -2014,7 +2014,7 @@ export default function App() {
                 }))}
                 theme={project.theme}
                 readThumbs={() => listCachedSceneThumbs(project)}
-                captureThumbs={() => ensureSceneThumbs(project)}
+                captureThumbs={(signal) => ensureSceneThumbs(project, { signal })}
                 onProjectChanged={(focusSceneFile) => {
                   if (focusSceneFile) focusSceneFileRef.current = focusSceneFile;
                   bumpWorkspaceReloadToken();

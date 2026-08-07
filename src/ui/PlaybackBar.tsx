@@ -453,13 +453,11 @@ export function DuplicateSceneDialog({
   const [busy, setBusy] = useState(false);
   useEscapeClose(onClose, !busy);
   useEffect(() => {
-    let cancelled = false;
-    void ensureSceneThumbs(project).then((t) => {
-      if (!cancelled) setThumbs(t);
+    const controller = new AbortController();
+    void ensureSceneThumbs(project, { signal: controller.signal }).then((t) => {
+      if (!controller.signal.aborted) setThumbs(t);
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [project]);
   const scenes: WizardSceneInfo[] = project.slots.map((s, i) => ({
     index: i,

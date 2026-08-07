@@ -28,8 +28,11 @@ export async function listCachedSceneThumbs(
   }
 }
 
-/** Absolute thumb paths by scene file stem, capturing the missing/stale ones first; returns what it has on partial failure, since a card with a placeholder beats a blocked picker. Non-workspace projects get `{}` (pickers only exist for workspace projects). */
-export async function ensureSceneThumbs(project: LoadedProject): Promise<Record<string, string>> {
+/** Absolute thumb paths by scene file stem, capturing the missing/stale ones first; returns what it has on partial failure, since a card with a placeholder beats a blocked picker. An aborted `signal` stops the loop between scenes (the requesting dialog closed), keeping thumbs already captured. Non-workspace projects get `{}` (pickers only exist for workspace projects). */
+export async function ensureSceneThumbs(
+  project: LoadedProject,
+  opts?: { signal?: AbortSignal },
+): Promise<Record<string, string>> {
   if (!isWorkspaceProjectId(project.id)) return {};
   const slug = workspaceSlug(project.id);
   const stems = project.sceneFiles.map(sceneFileStem);
@@ -46,6 +49,7 @@ export async function ensureSceneThumbs(project: LoadedProject): Promise<Record<
 
     await withBorrowedClock(async () => {
       for (let i = 0; i < project.slots.length; i++) {
+        if (opts?.signal?.aborted) break;
         const slot = project.slots[i];
         const stem = stems[i];
         if (!stem || !pending.has(stem)) continue;
