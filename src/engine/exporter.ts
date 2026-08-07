@@ -588,16 +588,11 @@ export async function exportProject(
   }
 }
 
-/** Renders one deterministic frame at tMs through the export path and writes it as <workspace>/_autorun/<name>.png. */
-export async function captureScreenshot(
+/** Renders one deterministic frame at tMs through the export path and returns its raw pixels (GL bottom-up row order). The shared core of `captureScreenshot` and the render window's thumb service. */
+export async function captureFrameRgba(
   opts: ExportOptions,
   tMs: number,
-  name: string,
-  commands: { begin: string; save: string } = {
-    begin: "begin_screenshot",
-    save: "save_screenshot",
-  },
-): Promise<string> {
+): Promise<{ rgba: Uint8Array; width: number; height: number }> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
@@ -721,8 +716,7 @@ export async function captureScreenshot(
       compareFrame,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
-    await invoke(commands.begin, { width, height, name });
-    return await invoke<string>(commands.save, rgba);
+    return { rgba, width, height };
   } finally {
     setExporting(false);
     setClipLane(everydayClipLane());
@@ -739,6 +733,21 @@ export async function captureScreenshot(
       flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
     }
   }
+}
+
+/** Renders one deterministic frame at tMs through the export path and writes it natively as a PNG (autorun `_autorun/<name>.png` by default, the bridge pair for capture requests). */
+export async function captureScreenshot(
+  opts: ExportOptions,
+  tMs: number,
+  name: string,
+  commands: { begin: string; save: string } = {
+    begin: "begin_screenshot",
+    save: "save_screenshot",
+  },
+): Promise<string> {
+  const { rgba, width, height } = await captureFrameRgba(opts, tMs);
+  await invoke(commands.begin, { width, height, name });
+  return await invoke<string>(commands.save, rgba);
 }
 
 /** The determinism gate: exports the same project twice (overwriting the per-aspect output path) and compares the SHA-256 of each run, returning both digests and whether they match. Must run in the app runtime, export needs WebGL and the ffmpeg sidecar. */
