@@ -1,6 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import blankThumb from "../assets/templates/blank.png";
-import starterThumb from "../assets/theme-previews/kookaburra-studio-white-1.jpg";
 import { fsUrl } from "./media";
 
 /** Frontend face of the native workspace module: first-run settings, project listing/creation, snapshots. The native side owns all path resolution and re-asserts the on-disk layout on every call; see src-tauri/src/workspace.rs. */
@@ -48,13 +46,6 @@ export interface WorkspaceProjectInfo {
   /** Welcome-screen section heading, from project.json. */
   group: string | null;
 }
-
-/** Bundled projects exposed as user-facing starting points in the create-project flow. */
-export const PROJECT_TEMPLATES = [
-  // The 4 standard themed scenes, the same project the theme previews render.
-  { id: "theme-starter", name: "Theme starter", thumb: starterThumb },
-  { id: "blank", name: "Blank", thumb: blankThumb },
-] as const;
 
 export function getSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_settings");

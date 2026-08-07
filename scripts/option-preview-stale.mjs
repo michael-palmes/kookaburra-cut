@@ -36,9 +36,10 @@ const isClip = (stem, set) =>
 
 function collectSets() {
   const sets = new Map();
-  const labs = readdirSync(join(ROOT, "projects")).filter((d) => d.startsWith("preview-lab"));
+  // The labs are dev-only fixtures, so they live in fixtures/, not the shipped projects/ tree.
+  const labs = readdirSync(join(ROOT, "fixtures")).filter((d) => d.startsWith("preview-lab"));
   for (const lab of labs) {
-    const projectPath = join(ROOT, "projects", lab, "project.json");
+    const projectPath = join(ROOT, "fixtures", lab, "project.json");
     if (!existsSync(projectPath)) continue;
     const manifest = JSON.parse(readFileSync(projectPath, "utf8"));
     for (const scene of manifest.scenes ?? []) {
@@ -48,8 +49,8 @@ function collectSets() {
       const hash = createHash("sha1");
       hash.update(enginePin);
       hash.update(`duration=${scene.durationMs}`);
-      hash.update(readFileSync(join(ROOT, "projects", lab, "scenes", `${stem}.tsx`)));
-      const sidecar = join(ROOT, "projects", lab, "scenes", `${stem}.json`);
+      hash.update(readFileSync(join(ROOT, "fixtures", lab, "scenes", `${stem}.tsx`)));
+      const sidecar = join(ROOT, "fixtures", lab, "scenes", `${stem}.json`);
       if (existsSync(sidecar)) hash.update(readFileSync(sidecar));
       sets.set(set, { hash: hash.digest("hex"), clip: isClip(stem, set) });
     }

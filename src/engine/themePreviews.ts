@@ -4,10 +4,13 @@ import { fsUrl } from "./media";
 import type { LoadedProject } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
-/** Theme previews (locked decision 14): the middle frame of 4 representative `theme-starter` scenes, 640px JPEG, captured off the live preview canvas via the borrowed clock (the scene-thumbs precedent, never the export loop). Bundled themes' previews are rendered by `kookaburra:run --action theme-previews` and committed under `src/assets/theme-previews/`; user themes cache at `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON. */
+/** Theme previews (locked decision 14): the middle frame of 4 representative `preview-lab-theme` scenes, 640px JPEG, captured off the live preview canvas via the borrowed clock (the scene-thumbs precedent, never the export loop). Bundled themes' previews are rendered by `kookaburra:run --action theme-previews` and committed under `src/assets/theme-previews/`; user themes cache at `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON. */
 
 export const THEME_PREVIEW_WIDTH = 640;
 export const THEME_PREVIEW_COUNT = 4;
+
+/** The fixture every theme's previews render from (formerly `theme-starter`): a shipped project, since user themes generate their previews at runtime in the packaged app. Its scene bytes are frozen, a content change invalidates all 40 committed previews. */
+export const THEME_PREVIEW_PROJECT_ID = "preview-lab-theme";
 
 // Committed bundled previews as fingerprinted URLs; a glob (not explicit imports) so a not-yet-generated preview degrades to placeholder art instead of failing the build.
 const bundledGlob = import.meta.glob<string>("../assets/theme-previews/*.jpg", {
@@ -114,7 +117,7 @@ export async function ensureUserThemePreviews(
   const { preloadBundledBackdrops } = await import("../toolkit/stage/backdrops");
   try {
     await preloadBundledBackdrops();
-    const starter = await loadProject("theme-starter", { themeId });
+    const starter = await loadProject(THEME_PREVIEW_PROJECT_ID, { themeId });
     applyProject(starter);
     await awaitProjectCommitted(starter);
     await awaitSceneHostsCommitted(starter.slots.length);

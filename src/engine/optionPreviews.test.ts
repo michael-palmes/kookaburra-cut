@@ -11,13 +11,13 @@ import { largestSceneText } from "./sceneTextRegistry";
 
 // The committed bgp-* fixtures, loaded through the same glob machinery the app uses for bundled docs.
 const bgpFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
-  "../../projects/preview-lab-bg-*/scenes/bgp-*.json",
+  "../../fixtures/preview-lab-bg-*/scenes/bgp-*.json",
   { eager: true, import: "default" },
 );
 
 // The committed bg-*-light fixtures: the light-theme type-card clips.
 const bgLightFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
-  "../../projects/preview-lab-bg-*/scenes/bg-*-light.json",
+  "../../fixtures/preview-lab-bg-*/scenes/bg-*-light.json",
   { eager: true, import: "default" },
 );
 
@@ -25,22 +25,22 @@ const bgLightFixtures = import.meta.glob<{ background?: Record<string, unknown> 
 const labManifests = import.meta.glob<{
   id?: string;
   scenes?: { file: string; durationMs: number }[];
-}>("../../projects/preview-lab-*/project.json", { eager: true, import: "default" });
+}>("../../fixtures/preview-lab-*/project.json", { eager: true, import: "default" });
 
 // The committed chart fixtures: appearance stills and build-in clips, with the manifests that time them.
 const chartFixtures = import.meta.glob<Record<string, unknown>>(
-  "../../projects/preview-lab-chart/scenes/*.json",
+  "../../fixtures/preview-lab-chart/scenes/*.json",
   { eager: true, import: "default" },
 );
 
 const chartAnimFixtures = import.meta.glob<Record<string, unknown>>(
-  "../../projects/preview-lab-chart-anim/scenes/*.json",
+  "../../fixtures/preview-lab-chart-anim/scenes/*.json",
   { eager: true, import: "default" },
 );
 
 // The wizard's Chart kind card, which stages a chart of its own.
 const kindChartFixture = import.meta.glob<Record<string, unknown>>(
-  "../../projects/preview-lab-stage/scenes/kind-chart.json",
+  "../../fixtures/preview-lab-stage/scenes/kind-chart.json",
   { eager: true, import: "default" },
 );
 
@@ -58,7 +58,7 @@ function chartBuildMs(doc: unknown, stem: string): number {
 }
 
 function chartSceneMs(lab: string, stem: string): number {
-  const manifest = labManifests[`../../projects/${lab}/project.json`];
+  const manifest = labManifests[`../../fixtures/${lab}/project.json`];
   const entry = manifest?.scenes?.find((s) => s.file === `scenes/${stem}.tsx`);
   expect(entry, `${lab}/${stem} registered in project.json`).toBeDefined();
   return entry?.durationMs ?? 0;
@@ -121,7 +121,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
   });
 
   it("preview-lab covers EVERY text preset — the picker's cards stay complete", () => {
-    // The committed project's tm- stems must track the preset vocabulary; if a preset is added, add its scene to projects/preview-lab and regenerate the previews.
+    // The committed project's tm- stems must track the preset vocabulary; if a preset is added, add its scene to fixtures/preview-lab and regenerate the previews.
     const labStems = TEXT_PRESET_NAMES.map((p) => `tm-${p}`);
     const sets = optionPreviewJobs(labStems).map((j) => j.set);
     expect(sets).toEqual(TEXT_PRESET_NAMES.map((p) => `textanim-${p}`));
@@ -133,7 +133,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     for (const [shader, presets] of Object.entries(SHADER_BACKGROUND_PRESETS)) {
       for (const preset of presets) {
         const stem = `bgp-${shader}-${preset.id}`;
-        const doc = bgpFixtures[`../../projects/preview-lab-bg-${shader}/scenes/${stem}.json`];
+        const doc = bgpFixtures[`../../fixtures/preview-lab-bg-${shader}/scenes/${stem}.json`];
         expect(doc, stem).toBeDefined();
         expect(doc.background, stem).toEqual({
           type: "shader",
@@ -159,7 +159,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     for (const [look, presets] of Object.entries(SCENE3D_BACKGROUND_PRESETS)) {
       for (const preset of presets) {
         const stem = `bgp-${look}-${preset.id}`;
-        const doc = bgpFixtures[`../../projects/preview-lab-bg-${look}/scenes/${stem}.json`];
+        const doc = bgpFixtures[`../../fixtures/preview-lab-bg-${look}/scenes/${stem}.json`];
         expect(doc, stem).toBeDefined();
         expect(doc.background, stem).toEqual({
           type: "scene3d",
@@ -190,7 +190,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       expect(p1, shader).toBeDefined();
       if (!p1) continue;
       const stem = `bg-${shader}-light`;
-      const doc = bgLightFixtures[`../../projects/preview-lab-bg-${shader}/scenes/${stem}.json`];
+      const doc = bgLightFixtures[`../../fixtures/preview-lab-bg-${shader}/scenes/${stem}.json`];
       expect(doc, stem).toBeDefined();
       expect(doc.background, stem).toEqual({
         type: "shader",
@@ -216,7 +216,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       expect(p1, look).toBeDefined();
       if (!p1) continue;
       const stem = `bg-${look}-light`;
-      const doc = bgLightFixtures[`../../projects/preview-lab-bg-${look}/scenes/${stem}.json`];
+      const doc = bgLightFixtures[`../../fixtures/preview-lab-bg-${look}/scenes/${stem}.json`];
       expect(doc, stem).toBeDefined();
       expect(doc.background, stem).toEqual({
         type: "scene3d",
@@ -256,7 +256,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     // The carousel shows these stills as "the preset"; a fixture drifting from stylePresets.ts would sell a look the click doesn't apply.
     for (const id of CHART_STYLE_PRESET_IDS) {
       const stem = `chart-${id}`;
-      const doc = chartFixtures[`../../projects/preview-lab-chart/scenes/${stem}.json`];
+      const doc = chartFixtures[`../../fixtures/preview-lab-chart/scenes/${stem}.json`];
       expect(doc, stem).toBeDefined();
       expect((doc?.chart as { style?: { preset?: string } })?.style?.preset, stem).toBe(id);
     }
@@ -267,7 +267,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
   it("preview-lab covers EVERY chart build-in, each fixture on its own preset", () => {
     for (const id of CHART_ANIMATION_PRESET_IDS) {
       const stem = `chartanim-${id}`;
-      const doc = chartAnimFixtures[`../../projects/preview-lab-chart-anim/scenes/${stem}.json`];
+      const doc = chartAnimFixtures[`../../fixtures/preview-lab-chart-anim/scenes/${stem}.json`];
       expect(doc, stem).toBeDefined();
       expect((doc?.chart as { animation?: { preset?: string } })?.animation?.preset, stem).toBe(id);
     }
@@ -280,13 +280,13 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
   it("every chart STILL has settled by its capture, the scene middle", () => {
     for (const id of CHART_STYLE_PRESET_IDS) {
       const stem = `chart-${id}`;
-      const doc = chartFixtures[`../../projects/preview-lab-chart/scenes/${stem}.json`];
+      const doc = chartFixtures[`../../fixtures/preview-lab-chart/scenes/${stem}.json`];
       expect(chartBuildMs(doc, stem), stem).toBeLessThanOrEqual(
         chartSceneMs("preview-lab-chart", stem) / 2,
       );
     }
     // The kind card runs the SCAFFOLDER's animation defaults, so a slower default would capture it mid-build.
-    const kind = kindChartFixture["../../projects/preview-lab-stage/scenes/kind-chart.json"];
+    const kind = kindChartFixture["../../fixtures/preview-lab-stage/scenes/kind-chart.json"];
     expect(chartBuildMs(kind, "kind-chart")).toBeLessThanOrEqual(
       chartSceneMs("preview-lab-stage", "kind-chart") / 2,
     );
@@ -296,7 +296,7 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     // A build still running at the last captured frame reads as a broken card, so every fixture lands with room to spare.
     for (const id of CHART_ANIMATION_PRESET_IDS) {
       const stem = `chartanim-${id}`;
-      const doc = chartAnimFixtures[`../../projects/preview-lab-chart-anim/scenes/${stem}.json`];
+      const doc = chartAnimFixtures[`../../fixtures/preview-lab-chart-anim/scenes/${stem}.json`];
       expect(chartBuildMs(doc, stem), stem).toBeLessThanOrEqual(
         chartSceneMs("preview-lab-chart-anim", stem) - 200,
       );

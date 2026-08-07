@@ -12,12 +12,17 @@ const host = process.env.TAURI_DEV_HOST;
 // engine/reel.ts `resolveAssetPath`. Bundled-app resolution is a later phase.
 const projectsDir = fileURLToPath(new URL("./projects", import.meta.url));
 
+// The sibling dev-only tree (gate spikes + preview labs). Never bundled, so this root only
+// ever answers in dev; engine/project.ts gates every fixture glob on import.meta.env.DEV.
+const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url));
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
 
   define: {
     __PROJECTS_DIR__: JSON.stringify(projectsDir),
+    __FIXTURES_DIR__: JSON.stringify(fixturesDir),
   },
 
   // Tauri serves the built bundle over a custom protocol (tauri://localhost),

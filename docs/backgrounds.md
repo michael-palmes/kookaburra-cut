@@ -81,7 +81,7 @@ rigs. The contract on every look:
   Presets stamp a flat backing colour and follow the same 9-preset structure, bands and AA
   rules as the shader packs, applied to every geometry colour AND the backing
   (`scene3d/presets.test.ts`). Preview fixtures live in the look's own
-  `projects/preview-lab-bg-<look>/` project like every background.
+  `fixtures/preview-lab-bg-<look>/` project like every background.
 
 ## Themes
 

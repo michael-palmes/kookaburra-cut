@@ -29,5 +29,5 @@
 
     "types": ["vite/client"]
   },
-  "include": ["src", "projects"]
+  "include": ["src", "projects", "fixtures"]
 }

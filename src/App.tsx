@@ -1313,7 +1313,7 @@ export default function App() {
     [project, armPollBaseline],
   );
 
-  // Duplicate a theme into `~/Kookaburra Cut/themes/<slug>/theme.json`, then render its previews by borrowing the canvas (theme-starter under the new theme) and restore the project.
+  // Duplicate a theme into `~/Kookaburra Cut/themes/<slug>/theme.json`, then render its previews by borrowing the canvas (preview-lab-theme under the new theme) and restore the project.
   const handleDuplicateTheme = useCallback(
     async (name: string, baseThemeId: string) => {
       const slug = slugifyName(name);
