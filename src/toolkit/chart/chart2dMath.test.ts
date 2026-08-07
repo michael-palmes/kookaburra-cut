@@ -30,6 +30,7 @@ import {
   makeChartFillMaterial,
   makeChartRectMaterial,
   markCornerRadius,
+  PILL_ALPHA,
   packLegendRows,
   patchChartLineMaterial,
   pieSliceShape,
@@ -47,6 +48,7 @@ import {
   rectsGeometry,
   revealedPoint,
   revealedPoints,
+  valueLabelPill,
 } from "./chart2dMath";
 import { computeChartLayout } from "./layout";
 import { CHART_FULL_REVEAL, CHART_GROW_MAX, meanAlpha, revealAt } from "./reveal";
@@ -108,6 +110,8 @@ const chartOf = (values: ChartData, parts: Partial<ChartConfig> = {}): ChartConf
         location: "above",
         format: { decimals: 0, separator: true, prefix: "", suffix: "", compact: false },
         countUp: true,
+        offsetY: 0,
+        background: null,
       },
     },
     animation: {
@@ -690,6 +694,39 @@ describe("label pills", () => {
     expect(chip.width).toBeCloseTo(4 + 2 * 0.5, 12);
     expect(chip.x).toBeCloseTo(-0.5, 12);
     expect(chip.y + chip.height / 2).toBeCloseTo(0, 12);
+  });
+
+  it("takes the preset's own pill when no background is authored, and nothing at all without either", () => {
+    expect(valueLabelPill(true, "#101418", null)).toEqual({
+      colour: "#101418",
+      opacity: PILL_ALPHA,
+      radius: LABEL_PILL.radius,
+    });
+    expect(valueLabelPill(false, "#101418", null)).toBeNull();
+  });
+
+  it("lets an authored background force the chip on and override the derived pill", () => {
+    const off = valueLabelPill(false, "#101418", { colour: null, opacity: 0.85, radius: 0.4 });
+    expect(off).toEqual({ colour: "#101418", opacity: 0.85, radius: 0.4 });
+    const overridden = valueLabelPill(true, "#101418", {
+      colour: "#1b2733",
+      opacity: 0.5,
+      radius: 0,
+    });
+    expect(overridden).toEqual({ colour: "#1b2733", opacity: 0.5, radius: 0 });
+  });
+
+  it("caps the authored radius at the capsule and the opacity at solid", () => {
+    expect(valueLabelPill(false, "#101418", { colour: null, opacity: 3, radius: 2 })).toEqual({
+      colour: "#101418",
+      opacity: 1,
+      radius: LABEL_PILL.radius,
+    });
+    expect(valueLabelPill(false, "#101418", { colour: null, opacity: -1, radius: -1 })).toEqual({
+      colour: "#101418",
+      opacity: 0,
+      radius: 0,
+    });
   });
 });
 

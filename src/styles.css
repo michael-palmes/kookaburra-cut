@@ -976,13 +976,16 @@ body {
   border: 0;
 }
 
+/* Only images reach this <img> branch, so the thumb's transparency checkerboard belongs here too. */
 .media-preview img {
   position: relative;
   z-index: 1;
   max-width: 90vw;
   max-height: 85vh;
+  background:
+    repeating-conic-gradient(var(--surface-panel-alt) 0% 25%, var(--surface-recessed) 0% 50%) 50% /
+    16px 16px;
   border-radius: var(--radius-md);
-  background: #000;
 }
 
 /* ── Minimal video player (shared: fullscreen previews in both windows) ─────── */
@@ -1861,8 +1864,10 @@ button.beat-status {
 
 /* ── Font picker (v8 · M5) ─────────────────────────────────────────────────── */
 
+/* Three slots (headline, body, chart) never fit the 312px panel on one line, so they wrap. */
 .font-slot-row {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-3);
 }
@@ -6636,6 +6641,11 @@ img.inspector-scene-thumb {
   padding: 0 6px;
 }
 
+/* The header icon's lone Size % field keeps the width of the per-key size fields above it. */
+.text-style-row.text-style-icon {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .text-style-fontfield {
   display: flex;
   flex-direction: column;
@@ -7432,6 +7442,51 @@ img.inspector-scene-thumb {
   text-align: center;
 }
 
+/* Colour-scheme picker: 2-up tiles of plain CSS swatch dots, no captured previews. */
+.chart-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: 0 4px;
+}
+
+.chart-palette-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: var(--space-2);
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.chart-palette-tile:hover {
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.chart-palette-tile.selected {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.chart-palette-swatches {
+  display: flex;
+  gap: 3px;
+}
+
+.chart-palette-swatches span {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
 .chart-stepper {
   display: flex;
   align-items: center;
@@ -7575,4 +7630,8 @@ img.inspector-scene-thumb {
   min-width: 0;
   width: auto;
   max-width: 110px;
+}
+.chart-drill .popover-row > .text-style-font {
+  flex: 1;
+  min-width: 0;
 }

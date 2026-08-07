@@ -74,6 +74,7 @@ def show(doc: dict) -> None:
     anim = chart.get("animation") or {}
     print(f"type      {chart.get('type', 'column')}  ·  {chart.get('dimension', '2d')}  ·  mount {chart.get('mount', 'hero')}")
     print(f"style     {style.get('preset', 'boardroom')}  ·  build-in {anim.get('preset', 'rise')} ({anim.get('delivery', 'cascade')})")
+    print(f"colours   {chart.get('palette') or 'theme'}")
     data = chart.get("data") or {}
     categories = data.get("categories") or []
     width = max([len(s.get("name", "")) for s in data.get("series", [])] + [6])

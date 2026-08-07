@@ -58,6 +58,15 @@ function QualityIcon({ kind }: { kind: "full" | "balanced" | "performance" }) {
   );
 }
 
+/** The manifest `typography` slots the drill edits; `chart` is the project's default chart face. */
+type TypographySlot = "headline" | "body" | "chart";
+const TYPOGRAPHY_SLOTS: readonly TypographySlot[] = ["headline", "body", "chart"];
+const TYPOGRAPHY_SLOT_LABELS: Record<TypographySlot, string> = {
+  headline: "Headline",
+  body: "Body",
+  chart: "Chart",
+};
+
 /** Project/Scene tab glyphs: a folder for the project, a clip for the scene. */
 function TabIcon({ id }: { id: "project" | "scene" }) {
   return (
@@ -158,8 +167,8 @@ export function InspectorPanel({
   onDuplicateSceneAt: (index: number, position?: number) => Promise<void>;
   /** Write the project display transform (manifest `render`); App owns the write + history. */
   onSetRenderSettings: (settings: RenderSettings) => void;
-  /** Write the project font override (manifest `typography`; both null clears); App owns the write + history. */
-  onSetTypography: (headline: string | null, body: string | null) => void;
+  /** Write the project font override (manifest `typography`; all null clears); App owns the write + history. `chart` is the project's default chart face. */
+  onSetTypography: (headline: string | null, body: string | null, chart: string | null) => void;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
@@ -212,8 +221,14 @@ export function InspectorPanel({
     isWorkspace,
     themeName: project.theme.name,
     typographyLabel:
-      project.projectTypography?.headline || project.projectTypography?.body
-        ? [project.projectTypography?.headline, project.projectTypography?.body]
+      project.projectTypography?.headline ||
+      project.projectTypography?.body ||
+      project.projectTypography?.chart
+        ? [
+            project.projectTypography?.headline,
+            project.projectTypography?.body,
+            project.projectTypography?.chart,
+          ]
             .filter((s): s is string => Boolean(s))
             .map((s) => parseFontString(s).family)
             .filter((family, i, all) => all.indexOf(family) === i)
@@ -255,11 +270,14 @@ export function InspectorPanel({
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
   const [copyingScenes, setCopyingScenes] = useState<number[] | null>(null);
-  const [fontSlot, setFontSlot] = useState<"headline" | "body">("headline");
-  /** The slot's effective font: the manifest override when set, else the (already-overridden) resolved theme's face. */
-  const typographyRef = (slot: "headline" | "body") => {
+  const [fontSlot, setFontSlot] = useState<TypographySlot>("headline");
+  /** The slot's effective font: the manifest override when set, else the (already-overridden) resolved theme's face; charts fall back to the body face, which is what their labels take unset. */
+  const typographyRef = (slot: TypographySlot) => {
     const raw = project.projectTypography?.[slot];
-    return raw ? parseFontString(raw) : project.theme.typography[slot];
+    if (raw) return parseFontString(raw);
+    return slot === "chart"
+      ? (project.theme.typography.chart ?? project.theme.typography.body)
+      : project.theme.typography[slot];
   };
   // The media drill-in: the modal's library, re-homed as a Project-tab sub-panel like Background ▸ Video.
   const [mediaRefresh, setMediaRefresh] = useState(0);
@@ -429,7 +447,7 @@ export function InspectorPanel({
           <div className="inspector-drill-title">Typography</div>
           <div className="inspector-drill-body">
             <div className="font-slot-row">
-              {(["headline", "body"] as const).map((slot) => {
+              {TYPOGRAPHY_SLOTS.map((slot) => {
                 const ref = typographyRef(slot);
                 return (
                   <button
@@ -438,7 +456,7 @@ export function InspectorPanel({
                     className={`chip${fontSlot === slot ? " selected" : ""}`}
                     onClick={() => setFontSlot(slot)}
                   >
-                    {slot === "headline" ? "Headline" : "Body"} — {ref.family} · {ref.weight}
+                    {TYPOGRAPHY_SLOT_LABELS[slot]}: {ref.family} · {ref.weight}
                   </button>
                 );
               })}
@@ -447,24 +465,31 @@ export function InspectorPanel({
               value={typographyRef(fontSlot)}
               onPick={(ref) => {
                 const current = project.projectTypography;
-                const next: { headline: string | null; body: string | null } = {
+                const next: Record<TypographySlot, string | null> = {
                   headline: current?.headline ?? null,
                   body: current?.body ?? null,
+                  chart: current?.chart ?? null,
                 };
                 next[fontSlot] = formatFontString(ref);
-                onSetTypography(next.headline, next.body);
+                onSetTypography(next.headline, next.body, next.chart);
               }}
             />
             <span className="modal-hint">
               Project fonts override the theme for every scene; a text field's own font still wins.
+              Charts follow the theme until the Chart slot is set, and a chart's own font outranks
+              it.
             </span>
           </div>
           <div className="inspector-drill-actions">
             <button
               type="button"
               className="btn btn-left"
-              onClick={() => onSetTypography(null, null)}
-              disabled={!project.projectTypography?.headline && !project.projectTypography?.body}
+              onClick={() => onSetTypography(null, null, null)}
+              disabled={
+                !project.projectTypography?.headline &&
+                !project.projectTypography?.body &&
+                !project.projectTypography?.chart
+              }
             >
               Use theme fonts
             </button>

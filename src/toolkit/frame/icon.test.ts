@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isAssetReference, isUnloadableAssetPath } from "./icon";
+import { isAssetReference, isTextDecoration, isUnloadableAssetPath } from "./icon";
+import type { FrameDecorationSpec } from "./types";
 
 describe("isAssetReference", () => {
   it("treats known image extensions as assets", () => {
@@ -32,5 +33,19 @@ describe("isUnloadableAssetPath", () => {
     expect(isUnloadableAssetPath("assets/app-icon.png")).toBe(false);
     expect(isUnloadableAssetPath("🚀")).toBe(false);
     expect(isUnloadableAssetPath("Beta")).toBe(false);
+  });
+});
+
+describe("isTextDecoration", () => {
+  const base = { id: "d1", position: [0, 0], size: 0.1 } as unknown as FrameDecorationSpec;
+
+  it("routes by the text key, empty string included", () => {
+    expect(isTextDecoration({ ...base, text: "Since 2019" })).toBe(true);
+    expect(isTextDecoration({ ...base, text: "" })).toBe(true);
+  });
+
+  it("routes an image decoration to the image path", () => {
+    expect(isTextDecoration({ ...base, src: "assets/logo.png" })).toBe(false);
+    expect(isTextDecoration({ ...base, src: "assets/logo.png", text: undefined })).toBe(false);
   });
 });

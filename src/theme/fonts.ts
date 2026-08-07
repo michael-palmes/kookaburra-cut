@@ -93,13 +93,13 @@ export function fontUrl(ref: FontRef | string): string {
   return interRegularUrl;
 }
 
-/** The distinct font refs a set of themes uses (headline + body of each). */
+/** The distinct font refs a set of themes uses (headline + body of each, plus the project's chart face where one is set). */
 export function collectThemeFontRefs(themes: readonly (Theme | undefined)[]): FontRef[] {
   const seen = new Map<string, FontRef>();
   for (const theme of themes) {
     if (!theme) continue;
-    for (const ref of [theme.typography.headline, theme.typography.body]) {
-      seen.set(`${ref.family}:${ref.weight}`, ref);
+    for (const ref of [theme.typography.headline, theme.typography.body, theme.typography.chart]) {
+      if (ref) seen.set(`${ref.family}:${ref.weight}`, ref);
     }
   }
   return [...seen.values()];

@@ -1,6 +1,7 @@
 /** Overlay ("frame") types: a camera-locked panel with a shaped cutout the scene renders through. Named `Frame` in code because `overlay` already means the persistent transition layer in the compositor (`FrameCameraPlan.overlay`, `ComposerState.overlayPass`). See docs/overlays.md. */
 
 import type { SceneTextAlign } from "../../engine/sceneDocSchema";
+import type { GradientSpec } from "../../theme/tokens";
 
 /** `"none"` removes the cutout entirely: the panel owns the whole frame and `side`/`size`/`inset`/`radius` are no-ops. */
 export type FrameShape = "rect" | "rounded-rect" | "squircle" | "circle" | "capsule" | "none";
@@ -44,25 +45,50 @@ export interface FrameChartSlot {
   position?: FrameChartPosition;
 }
 
+/** Which theme face a text decoration types in. */
+export type FrameDecorationFace = "headline" | "body";
+
+/** One positioned mark on the panel: an image or a line of text, EXACTLY one of `src`/`text`. Decoration text lives here rather than in the document's `text` map because it is positioned art, not body copy, and several decorations each need their own string. */
 export interface FrameDecorationSpec {
   id: string;
-  /** Project-relative asset path. */
-  src: string;
+  /** Project-relative asset path; the image decoration. */
+  src?: string;
+  /** The text decoration's line (troika, theme fonts); `\n` is the only break. */
+  text?: string;
+  /** Text fill: a theme token id ("accent", "muted", "text", "background") or a hex override. Text decorations only. */
+  colour?: string;
+  /** Theme face for a text decoration; default "headline". */
+  face?: FrameDecorationFace;
+  /** Explicit font ("Family" or "Family@weight") replacing the face for a text decoration. */
+  font?: string;
+  /** Line spacing as a multiple of the font size (0.8..2); absent means the font's normal. Text decorations only. */
+  lineHeight?: number;
   /** Centre in frame-relative coords, -1..1 on both axes. */
   position: [number, number];
-  /** Width as a fraction of the frame width. */
+  /** An image's width, or a text decoration's font size, as a fraction of the frame width. */
   size: number;
   /** Clockwise rotation in degrees about the decoration's centre; absent (or 0) is upright. */
   rotationDeg?: number;
+  /** Images only: `circle` crops the plane to a disc. */
   shape?: FrameDecorationShape;
   layer?: FrameDecorationLayer;
 }
 
+/** The panel fill, beyond the flat colour a plain string still means: a baked gradient, a cover-fit project image, or nothing at all (`transparent` paints no panel, so the scene fills the frame behind the overlay's content). Mirrors the stage's `ThemeBackground` vocabulary for the types it shares. */
+export type FramePanelBackground =
+  | { type: "transparent" }
+  /** Theme token id, or a hex override (the string form, spelled out). */
+  | { type: "color"; color: string }
+  /** `gradient` names a THEME gradient; `spec` carries an inline self-contained one (the picker's write-through). `spec` wins when both are present. */
+  | { type: "gradient"; gradient?: string; spec?: GradientSpec }
+  /** Project-relative asset path, cover-cropped to the frame. */
+  | { type: "image"; src: string };
+
 export interface FrameSpec {
   enabled?: boolean;
   cutout: FrameCutoutSpec;
-  /** Theme token id, or a hex override. */
-  background?: string;
+  /** The panel fill: a theme token id, a hex override, or a `FramePanelBackground` object. Absent takes the neutral panel the theme suits. */
+  background?: string | FramePanelBackground;
   /** Emoji or asset path, drawn above the title. */
   icon?: string;
   chip?: FrameChipSpec;

@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { LABEL_PILL, PILL_ALPHA } from "../toolkit/chart/chart2dMath";
+import type { ChartValueFormat } from "../toolkit/chart/types";
 import {
   CHART_ANIMATION_DEFAULTS,
   CHART_AXIS_FORMAT_DEFAULTS,
   CHART_STYLE_DEFAULTS,
+  CHART_VALUE_BACKGROUND_DEFAULTS,
   CHART_VALUE_FORMAT_DEFAULTS,
+  CHART_VALUE_OFFSET_MAX,
   chartDataWithValues,
   chartValuesAt,
   maxAcrossTrack,
   resolveChart,
 } from "./sceneChart";
-import type { SceneDoc, SceneDocChart } from "./sceneDocSchema";
+import { parseSceneDoc, type SceneDoc, type SceneDocChart } from "./sceneDocSchema";
 
 const chartDoc = (chart: SceneDocChart): SceneDoc => ({ version: 1, chart });
 
@@ -39,6 +43,8 @@ describe("resolveChart", () => {
     expect(chart.dimension).toBe("2d");
     expect(chart.mount).toBe("hero");
     expect(chart.placement).toBeUndefined();
+    expect(chart.palette).toBeNull();
+    expect(chart.font).toBeNull();
     expect(chart.style).toEqual(CHART_STYLE_DEFAULTS);
     expect(chart.style.rotation).not.toBe(CHART_STYLE_DEFAULTS.rotation);
     expect(chart.axis.value).toEqual({
@@ -57,6 +63,8 @@ describe("resolveChart", () => {
       location: "above",
       format: CHART_VALUE_FORMAT_DEFAULTS,
       countUp: true,
+      offsetY: 0,
+      background: null,
     });
     expect(chart.animation).toEqual(CHART_ANIMATION_DEFAULTS);
     expect(chart.track).toEqual({ keys: [], segments: [] });
@@ -89,6 +97,18 @@ describe("resolveChart", () => {
     expect(chart.animation.durationMs).toBe(1200);
   });
 
+  it("carries an authored colour scheme and leaves it null when unset", () => {
+    expect(resolved({ type: "column", data: data(), palette: "reef" }).palette).toBe("reef");
+    expect(resolved({ type: "column", data: data() }).palette).toBeNull();
+  });
+
+  it("carries an authored font and leaves it null when unset (the theme faces then apply)", () => {
+    expect(resolved({ type: "column", data: data(), font: "Georgia@600" }).font).toBe(
+      "Georgia@600",
+    );
+    expect(resolved({ type: "column", data: data() }).font).toBeNull();
+  });
+
   it("keeps an explicitly null decimals as auto, and absence as the field default", () => {
     const auto = resolved({
       type: "column",
@@ -97,6 +117,48 @@ describe("resolveChart", () => {
     });
     expect(auto.labels.values.format.decimals).toBeNull();
     expect(auto.axis.value.format.decimals).toBeNull();
+  });
+
+  it("clamps the value-label nudge and leaves an unauthored one at zero", () => {
+    expect(resolved({ type: "column", data: data() }).labels.values.offsetY).toBe(0);
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { offsetY: 1.25 } } }).labels
+        .values.offsetY,
+    ).toBe(1.25);
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { offsetY: 40 } } }).labels.values
+        .offsetY,
+    ).toBe(CHART_VALUE_OFFSET_MAX);
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { offsetY: -40 } } }).labels.values
+        .offsetY,
+    ).toBe(-CHART_VALUE_OFFSET_MAX);
+  });
+
+  it("defaults a bare value-label background to the shipped pill and clamps its fields", () => {
+    expect(
+      resolved({ type: "column", data: data(), labels: { values: { background: {} } } }).labels
+        .values.background,
+    ).toEqual(CHART_VALUE_BACKGROUND_DEFAULTS);
+    expect(
+      resolved({
+        type: "column",
+        data: data(),
+        labels: { values: { background: { colour: "accent", opacity: 4, radius: 9 } } },
+      }).labels.values.background,
+    ).toEqual({ colour: "accent", opacity: 1, radius: 0.5 });
+    expect(
+      resolved({
+        type: "column",
+        data: data(),
+        labels: { values: { background: { opacity: -2, radius: -1 } } },
+      }).labels.values.background,
+    ).toEqual({ colour: null, opacity: 0, radius: 0 });
+  });
+
+  it("keeps the pill defaults the renderers ship with, so a bare background matches the preset's own", () => {
+    expect(CHART_VALUE_BACKGROUND_DEFAULTS.opacity).toBe(PILL_ALPHA);
+    expect(CHART_VALUE_BACKGROUND_DEFAULTS.radius).toBe(LABEL_PILL.radius);
   });
 
   it("forces 2d on a panel mount and keeps placement for the staged mount only", () => {
@@ -345,5 +407,73 @@ describe("hero placement style", () => {
     );
     expect(chart?.style.offset).toEqual([20, -20]);
     expect(chart?.style.scale).toBe(3);
+  });
+});
+
+/** The two number-format editors write different fields of the same block, so an edit to one must never resolve into the other, and both must survive the sidecar round trip. `editAxisFormat`/`editValueLabelFormat` mirror the inspector's own writers (`writeValueAxis` + `FormatRows`, `writeValueLabels` + `FormatRows` in `ChartSection.tsx`). */
+describe("number-format edits", () => {
+  const editAxisFormat = (
+    chart: SceneDocChart,
+    patch: Partial<ChartValueFormat>,
+  ): SceneDocChart => {
+    const next = structuredClone(chart);
+    const value = { ...(next.axis?.value ?? {}) };
+    value.format = { ...value.format, ...patch };
+    next.axis = { ...next.axis, value };
+    return next;
+  };
+  const editValueLabelFormat = (
+    chart: SceneDocChart,
+    patch: Partial<ChartValueFormat>,
+  ): SceneDocChart => {
+    const next = structuredClone(chart);
+    const values = { ...(next.labels?.values ?? {}) };
+    values.format = { ...values.format, ...patch };
+    next.labels = { ...next.labels, values };
+    return next;
+  };
+  /** The sidecar write and the reload that follows it: JSON out, parser in. */
+  const roundTrip = (chart: SceneDocChart) => {
+    const doc = parseSceneDoc(JSON.parse(JSON.stringify(chartDoc(chart))), "test");
+    const out = resolveChart(doc);
+    if (!out) throw new Error("expected a resolved chart");
+    return out;
+  };
+
+  it("lands an axis separator and prefix edit, through the sidecar round trip", () => {
+    const edited = editAxisFormat(
+      editAxisFormat({ type: "column", data: data() }, { separator: false }),
+      { prefix: "$" },
+    );
+    const chart = roundTrip(edited);
+    expect(chart.axis.value.format.separator).toBe(false);
+    expect(chart.axis.value.format.prefix).toBe("$");
+  });
+
+  it("keeps the axis and value-label formats independent in both directions", () => {
+    const axisEdit = roundTrip(
+      editAxisFormat({ type: "column", data: data() }, { separator: false, prefix: "$" }),
+    );
+    expect(axisEdit.labels.values.format).toEqual(CHART_VALUE_FORMAT_DEFAULTS);
+    const labelEdit = roundTrip(
+      editValueLabelFormat({ type: "column", data: data() }, { separator: false, prefix: "€" }),
+    );
+    expect(labelEdit.axis.value.format).toEqual(CHART_AXIS_FORMAT_DEFAULTS);
+  });
+
+  it("resolves a fresh format object per field, never the shared defaults", () => {
+    const chart = resolved({ type: "column", data: data() });
+    expect(chart.axis.value.format).not.toBe(chart.labels.values.format);
+    expect(chart.axis.value.format).not.toBe(CHART_AXIS_FORMAT_DEFAULTS);
+    expect(chart.labels.values.format).not.toBe(CHART_VALUE_FORMAT_DEFAULTS);
+  });
+
+  it("an empty prefix clears an authored one rather than dropping the edit", () => {
+    const chart = roundTrip(
+      editAxisFormat(editAxisFormat({ type: "column", data: data() }, { prefix: "$" }), {
+        prefix: "",
+      }),
+    );
+    expect(chart.axis.value.format.prefix).toBe("");
   });
 });

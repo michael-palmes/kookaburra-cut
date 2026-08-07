@@ -21,9 +21,16 @@ import {
   plotToWorldX,
   plotToWorldY,
   rectsGeometry,
+  valueLabelPill,
   withGap,
 } from "./chart2dMath";
-import { ChartLabel, type ChartLegendEntry, ChartLegendRow, chartPillColour } from "./chartText";
+import {
+  ChartLabel,
+  type ChartLegendEntry,
+  ChartLegendRow,
+  chartPillColour,
+  chartTokenColour,
+} from "./chartText";
 import { formatChartValue } from "./format";
 import { Lines2D } from "./Lines2D";
 import { Pie2D } from "./Pie2D";
@@ -80,6 +87,12 @@ export function Chart2D(props: Chart2DProps) {
   );
   const bold = surface.fontEmphasis === "headline";
   const pillColour = chartPillColour(theme);
+  const background = chart.labels.values.background;
+  const valuePill = valueLabelPill(
+    look.labelPill,
+    pillColour,
+    background && { ...background, colour: chartTokenColour(theme, background.colour) },
+  );
 
   return (
     <group>
@@ -109,7 +122,7 @@ export function Chart2D(props: Chart2DProps) {
           metrics={metrics}
           cornerRadius={cornerRadius}
           labels={chart.labels.values}
-          pill={look.labelPill ? pillColour : null}
+          pill={valuePill}
           bold={bold}
           reveal={reveal}
           opacity={opacity}
@@ -125,7 +138,7 @@ export function Chart2D(props: Chart2DProps) {
           metrics={metrics}
           look={look}
           labels={chart.labels.values}
-          pill={look.labelPill ? pillColour : null}
+          pill={valuePill}
           bold={bold}
           reveal={reveal}
           opacity={opacity}
@@ -142,7 +155,7 @@ export function Chart2D(props: Chart2DProps) {
           metrics={metrics}
           look={look}
           labels={chart.labels.values}
-          pill={look.labelPill ? pillColour : null}
+          pill={valuePill}
           bold={bold}
           reveal={reveal}
           opacity={opacity}

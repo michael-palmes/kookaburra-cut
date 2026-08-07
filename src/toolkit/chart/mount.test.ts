@@ -12,6 +12,8 @@ import {
   CHART_STAGED_SIZE,
   chartColours,
   chartEnterOffset,
+  chartFace,
+  chartFontRef,
   chartGroundY,
   chartHeroPose,
   chartHeroRect,
@@ -25,6 +27,7 @@ import {
   fitChart2d,
   fitChart3d,
 } from "./mount";
+import { CHART_PALETTE_SCHEMES } from "./paletteSchemes";
 import { chart3dSpace } from "./space3d";
 import type { ChartLayout } from "./types";
 
@@ -103,6 +106,55 @@ describe("chartColours", () => {
       },
     });
     expect(chartColours(chart, theme)).toHaveLength(4);
+  });
+
+  it("paints a named scheme where the block asks for one, series overrides aside", () => {
+    const chart = columns();
+    chart.palette = "reef";
+    expect(chartColours(chart, theme)).toEqual([
+      CHART_PALETTE_SCHEMES.reef.swatches[0],
+      CHART_PALETTE_SCHEMES.reef.swatches[1],
+    ]);
+    chart.data.series[1].colour = "#ff0000";
+    expect(chartColours(chart, theme)[1]).toBe("#ff0000");
+  });
+
+  it("keys a scheme on CATEGORY for pie, like the theme palette", () => {
+    const chart = resolve({
+      type: "pie",
+      palette: "harbour",
+      data: {
+        categories: ["a", "b", "c"],
+        series: [{ id: "s", name: "Share", values: [1, 2, 3] }],
+      },
+    });
+    expect(chartColours(chart, theme)).toEqual(CHART_PALETTE_SCHEMES.harbour.swatches.slice(0, 3));
+  });
+});
+
+describe("chartFace", () => {
+  const projectFont = { family: "IBM Plex Mono", weight: 500 };
+
+  it("takes the theme's own faces when nothing overrides them", () => {
+    expect(chartFontRef(columns())).toBeNull();
+    expect(chartFace(null, theme, false)).toEqual(theme.typography.body);
+    expect(chartFace(null, theme, true)).toEqual(theme.typography.headline);
+  });
+
+  it("takes the project's chart font over both theme faces", () => {
+    const withProject = { ...theme, typography: { ...theme.typography, chart: projectFont } };
+    expect(chartFace(null, withProject, false)).toEqual(projectFont);
+    expect(chartFace(null, withProject, true)).toEqual(projectFont);
+  });
+
+  it("lets the block's own font outrank the project font and both theme faces", () => {
+    const chart = columns();
+    chart.font = "Georgia@600";
+    const own = chartFontRef(chart);
+    expect(own).toEqual({ family: "Georgia", weight: 600 });
+    const withProject = { ...theme, typography: { ...theme.typography, chart: projectFont } };
+    expect(chartFace(own, withProject, false)).toEqual({ family: "Georgia", weight: 600 });
+    expect(chartFace(own, withProject, true)).toEqual({ family: "Georgia", weight: 600 });
   });
 });
 

@@ -221,6 +221,47 @@ describe("parseSceneDoc", () => {
     ]);
   });
 
+  it("collects a chart font into the preload set, so exported chart text can't fall back", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data: { categories: ["a"], series: [{ id: "s1", values: [1] }] },
+          font: "IBM Plex Mono@500",
+        },
+      },
+      "test",
+    );
+    expect(doc?.chart?.font).toBe("IBM Plex Mono@500");
+    expect(collectSceneDocFontRefs([doc])).toEqual([{ family: "IBM Plex Mono", weight: 500 }]);
+    const plain = parseSceneDoc(
+      {
+        version: 1,
+        chart: { type: "column", data: { categories: ["a"], series: [{ id: "s1", values: [1] }] } },
+      },
+      "test",
+    );
+    expect(collectSceneDocFontRefs([plain])).toEqual([]);
+  });
+
+  it("collects a text decoration's font into the preload set", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        frame: {
+          cutout: { shape: "rounded-rect", side: "start" },
+          decorations: [
+            { id: "t1", text: "Since 2019", position: [0.4, -0.5], size: 0.05, font: "Avenir@700" },
+          ],
+        },
+      },
+      "test",
+    );
+    expect(doc?.frame?.decorations?.[0]?.font).toBe("Avenir@700");
+    expect(collectSceneDocFontRefs([doc])).toEqual([{ family: "Avenir", weight: 700 }]);
+  });
+
   it("keeps a camera track only when keys AND segments are arrays", () => {
     const good = parseSceneDoc({ version: 1, camera: { keys: [], segments: [] } }, "test");
     expect(good?.camera).toEqual({ keys: [], segments: [] });
@@ -602,6 +643,43 @@ describe("parseSceneDoc", () => {
     });
   });
 
+  it("keeps a chart colour scheme id and drops anything that isn't one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, palette: "reef" } }, "test")?.chart
+        ?.palette,
+    ).toBe("reef");
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, palette: 7 } }, "test")?.chart
+        ?.palette,
+    ).toBeUndefined();
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, palette: "  " } }, "test")?.chart
+        ?.palette,
+    ).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.palette"));
+    vi.restoreAllMocks();
+  });
+
+  it("keeps a chart font string and drops anything that isn't one", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, font: " Georgia " } }, "test")
+        ?.chart?.font,
+    ).toBe("Georgia");
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, font: 7 } }, "test")?.chart?.font,
+    ).toBeUndefined();
+    expect(
+      parseSceneDoc({ version: 1, chart: { type: "column", data, font: "  " } }, "test")?.chart
+        ?.font,
+    ).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.font"));
+    vi.restoreAllMocks();
+  });
+
   it("keeps a chart block absent from legacy docs (null-for-legacy)", () => {
     expect(parseSceneDoc({ version: 1, text: { headline: "hi" } }, "test")?.chart).toBeUndefined();
   });
@@ -628,6 +706,82 @@ describe("parseSceneDoc", () => {
     expect(doc?.chart?.type).toBe("column");
     expect(doc?.chart?.data).toEqual({ categories: ["a"], series: [] });
     warn.mockRestore();
+  });
+
+  it("keeps a value-label nudge and a background block, dropping only the junk fields", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data = { categories: ["a"], series: [{ id: "s1", values: [1] }] };
+    const authored = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data,
+          labels: {
+            values: {
+              offsetY: 1.2,
+              background: { colour: "#1b2733", opacity: 0.85, radius: 0.4 },
+            },
+          },
+        },
+      },
+      "test",
+    );
+    expect(authored?.chart?.labels?.values).toEqual({
+      offsetY: 1.2,
+      background: { colour: "#1b2733", opacity: 0.85, radius: 0.4 },
+    });
+    const degraded = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data,
+          labels: {
+            values: {
+              offsetY: "up",
+              background: { colour: "chartreuse", opacity: "half", radius: null },
+            },
+          },
+        },
+      },
+      "test",
+    );
+    // The block survives bare, because its PRESENCE is what forces the chip on.
+    expect(degraded?.chart?.labels?.values).toEqual({ background: {} });
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("chart.labels.values.background.colour"),
+    );
+    const token = parseSceneDoc(
+      { version: 1, chart: { type: "column", data, labels: { values: { background: "solid" } } } },
+      "test",
+    );
+    expect(token?.chart?.labels?.values).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("chart.labels.values.background"));
+    const named = parseSceneDoc(
+      {
+        version: 1,
+        chart: { type: "column", data, labels: { values: { background: { colour: "accent" } } } },
+      },
+      "test",
+    );
+    expect(named?.chart?.labels?.values?.background).toEqual({ colour: "accent" });
+    warn.mockRestore();
+  });
+
+  it("leaves the value-label nudge and background absent when nothing authors them", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        chart: {
+          type: "column",
+          data: { categories: ["a"], series: [{ id: "s1", values: [1] }] },
+          labels: { values: { visible: true } },
+        },
+      },
+      "test",
+    );
+    expect(doc?.chart?.labels?.values).toEqual({ visible: true });
   });
 
   it("coerces a panel-mounted chart to 2d and leaves other mounts alone", () => {

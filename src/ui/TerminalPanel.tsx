@@ -70,7 +70,8 @@ export function TerminalPanel({
   cwd,
   scenes,
   theme,
-  getThumbs,
+  readThumbs,
+  captureThumbs,
   onProjectChanged,
 }: {
   /** Workspace project slug (provisioning + the session registry key). */
@@ -81,8 +82,10 @@ export function TerminalPanel({
   scenes: WizardSceneInfo[];
   /** The project's theme, for the New-scene wizard's colour swatch defaults. */
   theme: Theme;
-  /** Lazily capture/fetch scene-picker thumbnails. */
-  getThumbs: () => Promise<Record<string, string>>;
+  /** Scene-picker thumbnails straight from the cache: no capture, no clock borrow. */
+  readThumbs: () => Promise<Record<string, string>>;
+  /** Capture the scene-picker thumbnails that are missing or stale (borrows the preview clock). */
+  captureThumbs: () => Promise<Record<string, string>>;
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
 }) {
@@ -331,18 +334,35 @@ export function TerminalPanel({
     [slug],
   );
 
-  /** Open a wizard, kicking off the lazy thumb capture for the kinds with scene cards (cards fill in as it lands). */
+  /** Cards fill in progressively, so a later listing only ever adds to what is already showing. */
+  const addThumbs = useCallback((next: Record<string, string>) => {
+    setThumbs((prev) => ({ ...prev, ...next }));
+  }, []);
+
+  /** Open a wizard, painting whatever thumbs the cache already holds. Capture is NOT kicked off here: it borrows the preview clock and seeks every stale scene, which used to scrub the timeline under the user the moment a wizard opened. */
   const openSceneWizard = useCallback(
     (which: WizardKind | "new-scene-native" | "edit-scene") => {
       setMoreOpen(false);
       setWizard(which);
       if (which !== "new-scene-native" && which !== "edit-scene" && which !== "new-scene") return;
-      getThumbs()
-        .then(setThumbs)
+      readThumbs()
+        .then(addThumbs)
         .catch(() => {});
     },
-    [getThumbs],
+    [readThumbs, addThumbs],
   );
+
+  // Stable request handle: wizards fire it when their thumb grid mounts, so a re-identified `captureThumbs` prop can't re-trigger their step effects.
+  const captureRef = useRef(captureThumbs);
+  useEffect(() => {
+    captureRef.current = captureThumbs;
+  });
+  const needThumbs = useCallback(() => {
+    captureRef
+      .current()
+      .then(addThumbs)
+      .catch(() => {});
+  }, [addThumbs]);
 
   // The playback bar / ⌘K channel: a pending wizard request opens the matching wizard once the rail is mounted, then clears itself.
   const railWizardRequest = useUiStore((s) => s.railWizardRequest);
@@ -531,6 +551,7 @@ export function TerminalPanel({
           projectPath={cwd}
           scenes={scenes}
           thumbs={thumbs}
+          onNeedThumbs={needThumbs}
           theme={theme}
           onDone={(result) => {
             setWizard(null);
@@ -545,6 +566,7 @@ export function TerminalPanel({
           projectPath={cwd}
           scenes={scenes}
           thumbs={thumbs}
+          onNeedThumbs={needThumbs}
           onSaved={() => {
             setWizard(null);
             onProjectChanged();
@@ -557,6 +579,7 @@ export function TerminalPanel({
           kind={wizard}
           scenes={scenes}
           thumbs={thumbs}
+          onNeedThumbs={needThumbs}
           slug={slug}
           onInsert={(prompt) => {
             setWizard(null);

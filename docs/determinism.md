@@ -1183,8 +1183,27 @@ rolling-gate project (`showcase-tour`):
 | `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
 | `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
 | `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
-| `ws:chart-spike` (chart gate, machine-local) | `c947c931…` | `eb2e9c72…` | `593d4561…` | `0375e77b…` | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — |
+
+> **2026-08-07 (batch 18):** two deliberate re-records. `ws:chart-spike` 16:9
+> (`c947c931…` → `d58ff1f2…`): a billboard `onBeforeRender` prop had shadowed
+> troika's own prototype handler (the one that binds the SDF atlas uniforms),
+> so every billboarded 3D chart label rendered nothing since the 2026-08-05
+> billboard swap; the fix makes 3D tick, value and slice labels draw again
+> (eyeballed on 3D columns and pie), and 3D bar value labels now anchor off
+> the mark end like the flat renderer. The 9:16/1:1/4:5 hashes went stale
+> rather than re-recorded (a chart-spike leg is 3330 frames; the full matrix
+> is a phase-closing gate). `ws:overlay-spike` joins the table at `0ceda71d…`:
+> the overlay shader gained panel-fill uniforms, and the recompiled program
+> shifts 58 px of the hero frame by one channel LSB (proven by pixel-diffing
+> against main-built frames; the full-panel frame is byte-identical). Bullet
+> hanging indent and the iconed-title recentre move NO bundled project
+> (`grep -rln bullets projects/` is empty, no bundled scene pairs a header
+> icon with an empty subtitle); `pnpm gate:merge` EQUAL on both anchors over
+> the whole batch, and `ws:overlay-polish-spike` Verify ×2 proves the deeper
+> preamble (indent probes → wrap width → fit, passes raised 4 → 8) converges.
 
 > **2026-08-06 (gizmos):** the unified-gizmo batch added one sidecar render
 > input, `textStyle.<key>RotationDeg` (clockwise tilt about the block's anchor,

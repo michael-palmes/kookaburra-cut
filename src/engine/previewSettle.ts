@@ -14,6 +14,8 @@ import {
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { awaitSceneHostsCommitted } from "./exporter";
 import { isExporting } from "./exportState";
+import { preloadOverlayPanelImages } from "./overlayPanelTexture";
+import { overlayPanelImageSources } from "./overlayPlan";
 import { type LoadedProject, preloadProjectImages } from "./project";
 import { awaitProjectCommitted, sceneMiddles } from "./themePreviews";
 
@@ -58,6 +60,10 @@ export async function settleProjectOpen(
       guard("catalog models", preloadCatalogModels()),
       guard("hero models", preloadHeroModels()),
       guard("project images", preloadProjectImages(loaded.id)),
+      guard(
+        "overlay panels",
+        preloadOverlayPanelImages(loaded.id, overlayPanelImageSources(loaded.sceneFrames)),
+      ),
       guard("bundled backdrops", preloadBundledBackdrops()),
       gl
         ? guard(

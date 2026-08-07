@@ -7,6 +7,7 @@ import {
   derivedChartPalette,
   resolveSeriesColour,
 } from "./palette";
+import { CHART_PALETTE_SCHEMES } from "./paletteSchemes";
 
 /** WCAG 2.x reference maths (mirrors themePreset.test.ts): chart marks are graphical objects, so 3:1 against the theme background is the bar every derived swatch must clear, on every theme, because it derives at render time where no reviewer eyeballs it. */
 const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
@@ -177,6 +178,51 @@ describe("resolveSeriesColour", () => {
     const palette = derivedChartPalette(dark);
     expect(resolveSeriesColour(bare(dark), Number.NaN)).toBe(palette[0]);
     expect(resolveSeriesColour(withSwatches(dark, []), 3)).toBe(palette[3]);
+  });
+});
+
+/** The named-scheme rung of the ladder: override > scheme > theme chartColors > derived ramp. The unset case is the whole determinism argument, so it is pinned against the pre-scheme answer rather than a literal. */
+describe("resolveSeriesColour with a named scheme", () => {
+  const reef = CHART_PALETTE_SCHEMES.reef.swatches;
+
+  it("resolves identically to the theme path when no scheme is set", () => {
+    for (const theme of themes) {
+      for (let i = 0; i < CHART_PALETTE_SIZE + 2; i++) {
+        expect(resolveSeriesColour(theme, i, null, null), theme.id).toBe(
+          resolveSeriesColour(theme, i),
+        );
+        expect(resolveSeriesColour(theme, i, null, undefined), theme.id).toBe(
+          resolveSeriesColour(theme, i),
+        );
+        expect(resolveSeriesColour(theme, i, null, ""), theme.id).toBe(
+          resolveSeriesColour(theme, i),
+        );
+      }
+    }
+  });
+
+  it("prefers the scheme over the theme palette and the derived ramp", () => {
+    expect(resolveSeriesColour(dark, 0, null, "reef")).toBe(reef[0]);
+    expect(resolveSeriesColour(dark, 2, null, "reef")).toBe(reef[2]);
+    expect(resolveSeriesColour(bare(light), 3, null, "reef")).toBe(reef[3]);
+    expect(resolveSeriesColour(withSwatches(dark, ["#112233"]), 0, null, "reef")).toBe(reef[0]);
+  });
+
+  it("still lets a per-series override win", () => {
+    expect(resolveSeriesColour(dark, 1, "#f0a848", "reef")).toBe("#f0a848");
+  });
+
+  it("wraps the scheme index like every other source", () => {
+    expect(resolveSeriesColour(dark, CHART_PALETTE_SIZE, null, "reef")).toBe(reef[0]);
+    expect(resolveSeriesColour(dark, -1, null, "reef")).toBe(reef[CHART_PALETTE_SIZE - 1]);
+    expect(resolveSeriesColour(dark, Number.NaN, null, "reef")).toBe(reef[0]);
+  });
+
+  it("falls through to the theme on an unknown scheme id", () => {
+    expect(resolveSeriesColour(dark, 2, null, "not-a-scheme")).toBe(resolveSeriesColour(dark, 2));
+    expect(resolveSeriesColour(bare(dark), 2, null, "not-a-scheme")).toBe(
+      derivedChartPalette(dark)[2],
+    );
   });
 });
 

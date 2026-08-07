@@ -2,6 +2,8 @@ import { useContext, useEffect, useId, useMemo, useSyncExternalStore } from "rea
 import { FrameIcon } from "../../engine/FrameIcon";
 import { useFormat } from "../../engine/format";
 import {
+  headerIconScale,
+  ICON_TEXT_KEY,
   panelMeasureVersion,
   requestPanelTextMeasure,
   subscribePanelMeasures,
@@ -139,17 +141,20 @@ export function TitleBlock(props: TitleBlockProps) {
       : align === "right"
         ? format.frame.width / 2 - format.safe.right
         : 0;
-  // The title stays anchored and grows around its middle, so half its growth lifts the icon and half pushes the subtitle down; the subtitle's own growth pushes it down again so it only ever extends downward.
-  const titleLift = cascade.titleGrowth / 2;
-  const titleY = hasSubtitle ? (portrait ? 0.55 : 0.35) : 0;
-  const subtitleY = (portrait ? -0.28 : -0.42) - titleLift - cascade.subtitleGrowth / 2;
-  const at = (y: number): V3 => [anchorX + position[0], y + position[1], position[2]];
-
   // The sidecar's headerIcon is the default so any scene that renders a TitleBlock (the scaffold's own, not just TextFallback) shows it; an explicit prop still wins.
   const icon = props.icon ?? doc?.headerIcon;
   const iconSize = titleSize * HEADER_ICON_SIZE;
+  const iconScale = headerIconScale(doc ?? undefined);
+  // What the icon adds above the title: the recentring branch drops the pair by half of it, so an icon scene centres on the whole block rather than on the title alone.
+  const iconStack = icon ? iconSize * iconScale + titleSize * HEADER_ICON_GAP : 0;
+  // The title stays anchored and grows around its middle, so half its growth lifts the icon and half pushes the subtitle down; the subtitle's own growth pushes it down again so it only ever extends downward.
+  const titleLift = cascade.titleGrowth / 2;
+  const titleY = hasSubtitle ? (portrait ? 0.55 : 0.35) : -iconStack / 2;
+  const subtitleY = (portrait ? -0.28 : -0.42) - titleLift - cascade.subtitleGrowth / 2;
+  const at = (y: number): V3 => [anchorX + position[0], y + position[1], position[2]];
+
   // The title is middle-anchored at titleY; lift the top-anchored icon above its top edge (~titleSize/2) plus the gap.
-  const iconTopY = titleY + titleSize * (0.5 + HEADER_ICON_GAP) + iconSize + titleLift;
+  const iconTopY = titleY + titleSize * (0.5 + HEADER_ICON_GAP) + iconSize * iconScale + titleLift;
 
   return (
     <>
@@ -161,6 +166,7 @@ export function TitleBlock(props: TitleBlockProps) {
           from={from}
           to={to}
           anchorX={align}
+          textKey={ICON_TEXT_KEY}
         />
       )}
       <AnimatedHeadline

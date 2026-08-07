@@ -24,6 +24,11 @@ export const BULLET_OF_TITLE = 0.32;
 /** Icon edge as a multiple of the title height, and its gap above the title in title-heights. */
 export const ICON_SIZE = 1.25;
 export const ICON_GAP = 0.4;
+/** The header icon's own `textStyle` key, so the generic `<key>Size` multiplier steers it (the app's Size % control). */
+export const ICON_TEXT_KEY = "icon";
+/** The bullet marker, and the gap between it and the line's text. */
+export const BULLET_MARKER = "•";
+export const BULLET_GAP = "  ";
 /** Gap below the title before the subtitle, in title-heights. */
 export const TITLE_GAP = 0.35;
 /** Extra gap between bullet lines, and the chip's gap above the bullets, in bullet-heights. */
@@ -35,6 +40,8 @@ export const CHIP_HEIGHT_FRAC = 0.059;
 export const HEADER_BODY_GAP = 0.5;
 /** Fit iterations: heights are near-linear in size, so the fixpoint settles in two passes; the third absorbs a wrap-count change at the smaller size. */
 const FIT_ITERATIONS = 3;
+/** Preload passes: each warms what the previous solve was missing, and the hanging indent adds a dependency level (its probes decide the bullets' wrap width) on top of the fit fixpoint. */
+const PRELOAD_PASSES = 8;
 
 export interface PanelTextSpec {
   /** The string troika lays out (emoji already substituted, the EmojiQuads contract). */
@@ -52,20 +59,31 @@ function specKey(spec: PanelTextSpec): string {
   return `${spec.font}|${spec.fontSize}|${spec.maxWidth}|${spec.textAlign}|${spec.lineHeight ?? ""}|${spec.text}`;
 }
 
-const heights = new Map<string, number>();
+/** A measured block's world size at the spec's font size. */
+export interface PanelTextBlock {
+  width: number;
+  height: number;
+}
+
+const blocks = new Map<string, PanelTextBlock>();
 const inflight = new Map<string, Promise<void>>();
 const listeners = new Set<() => void>();
 let version = 0;
 
 /** Measured block height in world units at the spec's size, or null until the typeset lands. */
 export function measuredPanelTextHeight(spec: PanelTextSpec): number | null {
-  return heights.get(specKey(spec)) ?? null;
+  return blocks.get(specKey(spec))?.height ?? null;
 }
 
-/** Kick a measurement (idempotent); listeners fire when the height lands. */
+/** Measured block width AND height, for callers that need the box rather than the stack budget (the decoration gizmo). Null until the typeset lands. */
+export function measuredPanelTextBlock(spec: PanelTextSpec): PanelTextBlock | null {
+  return blocks.get(specKey(spec)) ?? null;
+}
+
+/** Kick a measurement (idempotent); listeners fire when the block lands. */
 export function requestPanelTextMeasure(spec: PanelTextSpec): void {
   const key = specKey(spec);
-  if (heights.has(key) || inflight.has(key)) return;
+  if (blocks.has(key) || inflight.has(key)) return;
   const job = new Promise<void>((resolve) => {
     const t = new Text();
     t.text = spec.text;
@@ -76,7 +94,7 @@ export function requestPanelTextMeasure(spec: PanelTextSpec): void {
     if (spec.lineHeight !== undefined) t.lineHeight = spec.lineHeight;
     t.sync(() => {
       const b = t.textRenderInfo?.blockBounds;
-      heights.set(key, b ? b[3] - b[1] : 0);
+      blocks.set(key, b ? { width: b[2] - b[0], height: b[3] - b[1] } : { width: 0, height: 0 });
       t.dispose();
       inflight.delete(key);
       version++;
@@ -129,6 +147,8 @@ export interface PanelLayoutSolution {
   subH: number;
   /** Per-bullet measured heights at the solved fit, in `splitBullets` order (wrapped bullets are taller than one line). */
   bulletHeights: number[];
+  /** Hanging indent at the solved fit: the marker prefix's advance, so wrapped bullet lines clear the marker. Zero under centre/right alignment (the markers ride with the text) and until the probes land. */
+  bulletIndent: number;
   /** Cache misses hit along the iteration path; request these, then re-solve when they land. */
   pending: PanelTextSpec[];
 }
@@ -159,15 +179,21 @@ function textInput(
   };
 }
 
-/** Block height at `fit`: the measured cache when warm, else the wrap estimate (recording the miss). */
-function heightAt(input: PanelTextInput | null, fit: number, pending: PanelTextSpec[]): number {
+/** Block height at `fit`: the measured cache when warm, else the wrap estimate (recording the miss). `maxWidth` overrides the input's own wrap width (the bullets wrap inside their hanging indent). */
+function heightAt(
+  input: PanelTextInput | null,
+  fit: number,
+  pending: PanelTextSpec[],
+  maxWidth?: number,
+): number {
   if (!input) return 0;
   const fontSize = input.baseSize * fit;
+  const wrapWidth = maxWidth ?? input.maxWidth;
   const spec: PanelTextSpec = {
     text: input.text,
     font: input.font,
     fontSize,
-    maxWidth: input.maxWidth,
+    maxWidth: wrapWidth,
     textAlign: input.textAlign,
     ...(input.lineHeight !== undefined ? { lineHeight: input.lineHeight } : {}),
   };
@@ -175,7 +201,35 @@ function heightAt(input: PanelTextInput | null, fit: number, pending: PanelTextS
   if (measured !== null) return measured;
   pending.push(spec);
   const line = input.lineHeight ?? LINE_HEIGHT;
-  return estimateTitleLines(input.text, fontSize, input.maxWidth) * line * fontSize;
+  return estimateTitleLines(input.text, fontSize, wrapWidth) * line * fontSize;
+}
+
+/** The hanging indent at `fit`: the advance of the rendered `"•  "` prefix, so an unwrapped bullet's text starts exactly where the old single-string bullet put it. Taken as marker+gap+marker less one marker, because troika drops a line's TRAILING whitespace from its measured width, which would lose the gap. Zero until both probes land (the export preamble warms them). */
+function bulletIndentAt(input: PanelTextInput, fit: number, pending: PanelTextSpec[]): number {
+  const base = {
+    font: input.font,
+    fontSize: input.baseSize * fit,
+    maxWidth: Number.POSITIVE_INFINITY,
+    textAlign: input.textAlign,
+    ...(input.lineHeight !== undefined ? { lineHeight: input.lineHeight } : {}),
+  };
+  const prefixed: PanelTextSpec = {
+    ...base,
+    text: `${BULLET_MARKER}${BULLET_GAP}${BULLET_MARKER}`,
+  };
+  const marker: PanelTextSpec = { ...base, text: BULLET_MARKER };
+  const prefixedBlock = measuredPanelTextBlock(prefixed);
+  const markerBlock = measuredPanelTextBlock(marker);
+  if (!prefixedBlock) pending.push(prefixed);
+  if (!markerBlock) pending.push(marker);
+  if (!prefixedBlock || !markerBlock) return 0;
+  return Math.max(0, prefixedBlock.width - markerBlock.width);
+}
+
+/** The sidecar's size multiplier for the header icon (`textStyle.iconSize`), 1 when unset: `FrameIcon` applies it to the drawn mark, callers apply it to their stacking budget. */
+export function headerIconScale(doc: SceneDoc | undefined): number {
+  const value = doc?.textStyle?.[`${ICON_TEXT_KEY}Size`];
+  return typeof value === "number" ? value : 1;
 }
 
 /** Solve the panel's fit-to-column fixpoint for one scene: title/subtitle heights at the candidate size feed the fit, which feeds the next candidate size, until the stack fits (or the iteration cap). Pure given a warm cache, so the live panel and the export pre-warm walk the same sequence. */
@@ -207,14 +261,26 @@ export function solvePanelLayout(
         "subtitle",
       )
     : null;
-  // Bullets measure the exact rendered string (the leading marker changes wrapping); each wraps independently.
+  // Bullets measure the exact rendered string; each wraps independently. Left-aligned bullets render the marker as its own node, so they measure the TEXT alone inside the reduced (indented) width, and centre/right keep the one-string form.
   const baseBullet = baseTitle * BULLET_OF_TITLE;
+  const hanging = align === "left";
   const bulletInputs = bulletLines.map((line) =>
-    textInput(`•  ${line}`, "body", baseBullet, col.width, align, theme, doc, "bullets"),
+    textInput(
+      hanging ? line : `${BULLET_MARKER}${BULLET_GAP}${line}`,
+      "body",
+      baseBullet,
+      col.width,
+      align,
+      theme,
+      doc,
+      "bullets",
+    ),
   );
 
   // Every non-measured block scales linearly with fit; sum them once at fit = 1.
-  const iconBudget = frame.icon ? baseTitle * ICON_SIZE + ICON_GAP * baseTitle : 0;
+  const iconBudget = frame.icon
+    ? baseTitle * ICON_SIZE * headerIconScale(doc) + ICON_GAP * baseTitle
+    : 0;
   const titleGap = title && subtitle ? TITLE_GAP * baseTitle : 0;
   const baseChip = CHIP_HEIGHT_FRAC * format.frame.height;
   const chipBudget = frame.chip
@@ -226,11 +292,16 @@ export function solvePanelLayout(
   let titleH = 0;
   let subH = 0;
   let bulletHeights: number[] = [];
+  let bulletIndent = 0;
   const pending: PanelTextSpec[] = [];
   for (let i = 0; i < FIT_ITERATIONS; i++) {
     titleH = heightAt(titleInput, fit, pending);
     subH = heightAt(subInput, fit, pending);
-    bulletHeights = bulletInputs.map((input) => heightAt(input, fit, pending));
+    const first = bulletInputs[0];
+    bulletIndent = hanging && first ? bulletIndentAt(first, fit, pending) : 0;
+    bulletHeights = bulletInputs.map((input) =>
+      heightAt(input, fit, pending, col.width - bulletIndent),
+    );
     const bulletsH =
       bulletHeights.length > 0
         ? bulletHeights.reduce((sum, h) => sum + h, 0) +
@@ -240,7 +311,7 @@ export function solvePanelLayout(
     if (stack <= col.height || stack <= 0) break;
     fit = (fit * col.height) / stack;
   }
-  return { fit, titleH, subH, bulletHeights, pending };
+  return { fit, titleH, subH, bulletHeights, bulletIndent, pending };
 }
 
 /** Pre-warm every overlay scene's measurements along the solver's own iteration path before frame 0 (called from the export preamble beside the emoji-raster preload). */
@@ -251,7 +322,7 @@ export async function preloadPanelMeasures(
   themes: readonly (Theme | undefined)[],
 ): Promise<void> {
   // Each pass warms the specs the previous solve was missing; the sequence is finite (FIT_ITERATIONS keys per text).
-  for (let pass = 0; pass < FIT_ITERATIONS + 1; pass++) {
+  for (let pass = 0; pass < PRELOAD_PASSES; pass++) {
     let missing = 0;
     frames.forEach((frame, i) => {
       const theme = themes[i];

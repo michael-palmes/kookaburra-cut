@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Group } from "three";
 import { useTheme } from "../theme";
 import type { Theme } from "../theme/tokens";
@@ -17,13 +17,17 @@ import {
   frameTextAlign,
 } from "./framePanelLayout";
 import {
+  BULLET_GAP,
   BULLET_LINE_GAP,
+  BULLET_MARKER,
   BULLET_OF_TITLE,
   CHIP_GAP,
   CHIP_HEIGHT_FRAC,
   HEADER_BODY_GAP,
+  headerIconScale,
   ICON_GAP,
   ICON_SIZE,
+  ICON_TEXT_KEY,
   panelMeasureVersion,
   requestPanelTextMeasure,
   SUBTITLE_OF_TITLE,
@@ -96,12 +100,14 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   if (!hasText && !icon && !chip && decorations.length === 0 && !chart) return null;
 
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
-  const { fit, titleH, subH, bulletHeights } = solution;
+  const { fit, titleH, subH, bulletHeights, bulletIndent } = solution;
 
   const titleSize = baseTitle * fit;
   const subtitleSize = baseTitle * SUBTITLE_OF_TITLE * fit;
   const bulletSize = baseTitle * BULLET_OF_TITLE * fit;
+  // The nominal icon box; FrameIcon applies the sidecar multiplier to the mark itself, so only the stacking budget below scales it here.
   const iconSize = baseTitle * ICON_SIZE * fit;
+  const iconScale = headerIconScale(doc ?? undefined);
   const chipHeight = CHIP_HEIGHT_FRAC * format.frame.height * fit;
   // Text alignment: the anchor x sits at the column's left (nudged), centre or right edge, with the
   // headlines and chip anchored to match. Default "left" reproduces the original contentX exactly.
@@ -118,7 +124,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   // Header, top-anchored; titleH/subH are the solved heights at the fitted size.
   let y = col.top;
   const iconTop = y;
-  if (icon) y -= iconSize + ICON_GAP * titleSize;
+  if (icon) y -= iconSize * iconScale + ICON_GAP * titleSize;
   const titleTop = y;
   if (title.trim()) y -= titleH;
   if (title.trim() && subtitle.trim()) y -= TITLE_GAP * titleSize;
@@ -162,6 +168,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           from={150}
           to={700}
           anchorX={align}
+          textKey={ICON_TEXT_KEY}
         />
       )}
       {title.trim() && (
@@ -194,22 +201,58 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           maxWidth={col.width}
         />
       )}
-      {bullets.map((line, i) => (
-        <AnimatedHeadline
-          key={line}
-          text={`•  ${line}`}
-          textKey="bullets"
-          from={500 + i * 140}
-          to={1000 + i * 140}
-          position={at(bulletTops[i] ?? bodyTop)}
-          fontSize={bulletSize}
-          face="body"
-          anchorX={align}
-          anchorY="top"
-          textAlign={align}
-          maxWidth={col.width}
-        />
-      ))}
+      {bullets.map((line, i) => {
+        const top = bulletTops[i] ?? bodyTop;
+        // Hanging indent: the marker is its own node at the column edge and the text wraps inside the remaining width, so continuation lines clear the marker. The indent IS the old prefix's advance, so an unwrapped bullet keeps its geometry. Centre/right alignment keeps the single string (a marker pinned left of centred text would read as a stray dot).
+        if (bulletIndent <= 0) {
+          return (
+            <AnimatedHeadline
+              key={line}
+              text={`${BULLET_MARKER}${BULLET_GAP}${line}`}
+              textKey="bullets"
+              from={500 + i * 140}
+              to={1000 + i * 140}
+              position={at(top)}
+              fontSize={bulletSize}
+              face="body"
+              anchorX={align}
+              anchorY="top"
+              textAlign={align}
+              maxWidth={col.width}
+            />
+          );
+        }
+        // The line mounts before its marker so the scene-name derivation (largest mounted text, first wins a tie) reads the bullet, never the dot.
+        return (
+          <Fragment key={line}>
+            <AnimatedHeadline
+              text={line}
+              textKey="bullets"
+              from={500 + i * 140}
+              to={1000 + i * 140}
+              position={[alignX + bulletIndent, top, 0]}
+              fontSize={bulletSize}
+              face="body"
+              anchorX={align}
+              anchorY="top"
+              textAlign={align}
+              maxWidth={col.width - bulletIndent}
+            />
+            <AnimatedHeadline
+              text={BULLET_MARKER}
+              textKey="bullets"
+              from={500 + i * 140}
+              to={1000 + i * 140}
+              position={at(top)}
+              fontSize={bulletSize}
+              face="body"
+              anchorX={align}
+              anchorY="top"
+              textAlign={align}
+            />
+          </Fragment>
+        );
+      })}
       {chip && (
         <FrameChip
           chip={chip}

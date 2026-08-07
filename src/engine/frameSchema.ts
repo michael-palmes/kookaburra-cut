@@ -1,14 +1,17 @@
 /** Validation for the overlay ("frame") block, in `project.json` as the deck default and in a scene sidecar as the per-scene override. Same degrade-don't-crash contract as `parseSceneDoc`: a malformed optional field drops with a warning, a malformed `cutout` drops the whole block, nothing throws. PURE module (validation only). See docs/overlays.md. */
 
+import { parseGradient } from "../theme/schema";
 import type {
   FrameChartPosition,
   FrameChartSlot,
   FrameChipSpec,
   FrameCutoutSpec,
+  FrameDecorationFace,
   FrameDecorationLayer,
   FrameDecorationShape,
   FrameDecorationSpec,
   FrameOverrideSpec,
+  FramePanelBackground,
   FrameShape,
   FrameSide,
   FrameSpec,
@@ -18,6 +21,7 @@ import type { SceneTextAlign } from "./sceneDocSchema";
 const SHAPES: FrameShape[] = ["rect", "rounded-rect", "squircle", "circle", "capsule", "none"];
 const SIDES: FrameSide[] = ["start", "end"];
 const DECORATION_SHAPES: FrameDecorationShape[] = ["none", "circle"];
+const DECORATION_FACES: FrameDecorationFace[] = ["headline", "body"];
 const CHART_POSITIONS: FrameChartPosition[] = ["below", "replace"];
 const DECORATION_LAYERS: FrameDecorationLayer[] = ["above", "below"];
 const TEXT_ALIGNS: SceneTextAlign[] = ["left", "center", "right"];
@@ -35,6 +39,55 @@ function isColour(value: unknown): value is string {
 
 function num(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** The panel fill. A plain string stays a colour (the v1 shape every existing sidecar carries), an object picks one of the four fill types, and anything malformed drops the field so the panel falls back to the theme's neutral surface. */
+function parsePanelBackground(
+  raw: unknown,
+  source: string,
+): string | FramePanelBackground | undefined {
+  if (typeof raw === "string") {
+    if (isColour(raw)) return raw;
+    console.warn(`[frame] ${source}: background isn't a theme token or hex, dropped`);
+    return undefined;
+  }
+  if (!isRecord(raw)) {
+    console.warn(`[frame] ${source}: background isn't a colour or a fill object, dropped`);
+    return undefined;
+  }
+  switch (raw.type) {
+    case "transparent":
+      return { type: "transparent" };
+    case "color":
+      if (isColour(raw.color)) return { type: "color", color: raw.color };
+      console.warn(`[frame] ${source}: background.color isn't a theme token or hex, dropped`);
+      return undefined;
+    case "gradient": {
+      const gradient: Extract<FramePanelBackground, { type: "gradient" }> = { type: "gradient" };
+      if (typeof raw.gradient === "string" && raw.gradient.length > 0) {
+        gradient.gradient = raw.gradient;
+      }
+      if (raw.spec !== undefined) {
+        const spec = parseGradient(raw.spec);
+        if (spec) gradient.spec = spec;
+        else console.warn(`[frame] ${source}: background.spec isn't a gradient, dropped`);
+      }
+      if (!gradient.gradient && !gradient.spec) {
+        console.warn(`[frame] ${source}: background gradient needs a name or a spec, dropped`);
+        return undefined;
+      }
+      return gradient;
+    }
+    case "image":
+      if (typeof raw.src === "string" && raw.src.length > 0) return { type: "image", src: raw.src };
+      console.warn(`[frame] ${source}: background.src needs an asset path, dropped`);
+      return undefined;
+    default:
+      console.warn(
+        `[frame] ${source}: background.type isn't transparent|color|gradient|image, dropped`,
+      );
+      return undefined;
+  }
 }
 
 function parseChip(raw: unknown, source: string): FrameChipSpec | undefined {
@@ -78,6 +131,7 @@ function parseChartSlot(raw: unknown, source: string): FrameChartSlot | undefine
   return slot;
 }
 
+/** One decoration: an image (`src`) or a line of text (`text`), never both and never neither. */
 function parseDecoration(
   raw: unknown,
   source: string,
@@ -88,8 +142,15 @@ function parseDecoration(
     console.warn(`[frame] ${source}: ${where} isn't an object — dropped`);
     return undefined;
   }
-  if (typeof raw.id !== "string" || typeof raw.src !== "string") {
-    console.warn(`[frame] ${source}: ${where} needs string "id" + "src" — dropped`);
+  if (typeof raw.id !== "string") {
+    console.warn(`[frame] ${source}: ${where} needs a string "id", dropped`);
+    return undefined;
+  }
+  const src = typeof raw.src === "string" && raw.src.length > 0 ? raw.src : undefined;
+  // An EMPTY text survives (the inspector's cleared field stays an editable text decoration); an empty src does not, since there is nothing to load.
+  const text = typeof raw.text === "string" ? raw.text : undefined;
+  if ((src === undefined) === (text === undefined)) {
+    console.warn(`[frame] ${source}: ${where} needs exactly one of "src" or "text", dropped`);
     return undefined;
   }
   const position = raw.position;
@@ -110,11 +171,34 @@ function parseDecoration(
   }
   const decoration: FrameDecorationSpec = {
     id: raw.id,
-    src: raw.src,
+    ...(src !== undefined ? { src } : { text }),
     position: [px, py],
     size,
   };
-  if (DECORATION_SHAPES.includes(raw.shape as FrameDecorationShape)) {
+  if (text !== undefined) {
+    if (raw.colour !== undefined) {
+      if (isColour(raw.colour)) decoration.colour = raw.colour;
+      else console.warn(`[frame] ${source}: ${where}.colour isn't a theme token or hex, dropped`);
+    }
+    if (DECORATION_FACES.includes(raw.face as FrameDecorationFace)) {
+      decoration.face = raw.face as FrameDecorationFace;
+    } else if (raw.face !== undefined) {
+      console.warn(`[frame] ${source}: ${where}.face isn't headline|body, dropped`);
+    }
+    if (typeof raw.font === "string" && raw.font.length > 0) {
+      decoration.font = raw.font;
+    } else if (raw.font !== undefined) {
+      console.warn(`[frame] ${source}: ${where}.font needs a font string, dropped`);
+    }
+    const lineHeight = num(raw.lineHeight);
+    if (lineHeight !== undefined) {
+      // The textStyle <key>LineHeight range, inlined (a value import of sceneDocSchema here would cycle).
+      decoration.lineHeight = Math.min(2, Math.max(0.8, lineHeight));
+    } else if (raw.lineHeight !== undefined) {
+      console.warn(`[frame] ${source}: ${where}.lineHeight needs a finite number, dropped`);
+    }
+  }
+  if (src !== undefined && DECORATION_SHAPES.includes(raw.shape as FrameDecorationShape)) {
     decoration.shape = raw.shape as FrameDecorationShape;
   }
   if (DECORATION_LAYERS.includes(raw.layer as FrameDecorationLayer)) {
@@ -165,8 +249,8 @@ export function parseFrameOverride(raw: unknown, source: string): FrameOverrideS
   if (raw.enabled === false) out.enabled = false;
   if (raw.claimsSceneText === false) out.claimsSceneText = false;
   if (raw.background !== undefined) {
-    if (isColour(raw.background)) out.background = raw.background;
-    else console.warn(`[frame] ${source}: background isn't a theme token or hex — dropped`);
+    const background = parsePanelBackground(raw.background, source);
+    if (background !== undefined) out.background = background;
   }
   if (typeof raw.icon === "string" && raw.icon.length > 0) out.icon = raw.icon;
   if (TEXT_ALIGNS.includes(raw.textAlign as SceneTextAlign)) {

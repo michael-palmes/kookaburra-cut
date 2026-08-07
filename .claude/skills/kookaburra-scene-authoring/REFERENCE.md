@@ -401,15 +401,28 @@ replaces the deck's outright (never deep-merges); other fields override field-by
                                   // the aspect, so ONE config serves landscape and portrait
     "inset": 0.06                 // margin to the frame edge, fraction of the shorter frame edge
   },
-  "background": "accent",         // panel fill: theme token or "#hex"; absent = the panel default
+  "background": "accent",         // panel fill: theme token or "#hex"; absent = the panel default.
+                                  // Or an object: { "type": "transparent" } (no fill: the scene
+                                  // fills the frame behind the panel's content),
+                                  // { "type": "color", "color": "accent" },
+                                  // { "type": "gradient", "spec": { ...GradientSpec } } (or
+                                  // "gradient": "<theme gradient name>"), or
+                                  // { "type": "image", "src": "assets/panel.png" } (cover-cropped)
   "icon": "🚀",                   // emoji or project-relative asset path, drawn above the title
   "chip": { "label": "New", "icon": "circle-check", "colour": "accent" },
-  "decorations": [                // images placed on the panel (avatars, logos, illustrations)
+  "decorations": [                // marks placed on the panel: EXACTLY one of "src" or "text"
     { "id": "a1", "src": "assets/avatar.png", "position": [-0.62, 0.3],
-      "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" }
-  ],                              // position is frame-relative -1..1 both axes; size is a
-                                  // fraction of frame width; "above" draws OVER the cutout
-                                  // (the deliberate breakout), "below" tucks behind it
+      "size": 0.12, "rotationDeg": 0, "shape": "circle", "layer": "above" },
+    { "id": "t1", "text": "Since 2019", "colour": "accent", "face": "body",
+      "font": "Georgia@600",         // optional: replaces the face; "Family" or "Family@weight"
+      "lineHeight": 1.3,             // optional: line spacing multiple (0.8..2) for multi-line text
+      "position": [0.4, -0.55], "size": 0.05, "rotationDeg": -6, "layer": "above" }
+  ],                              // position is frame-relative -1..1 both axes; size is the
+                                  // image's WIDTH, or the text's FONT SIZE, as a fraction of
+                                  // the frame width; "above" draws OVER the cutout (the
+                                  // deliberate breakout), "below" tucks behind it; "shape"
+                                  // is image-only, and decoration text lives HERE, never in
+                                  // the doc's text map (it is positioned art, not body copy)
   "textAlign": "left",
   "claimsSceneText": true         // default true: the panel takes the sidecar's text.title /
                                   // text.subtitle / text.bullets and suppresses the in-world
@@ -419,13 +432,22 @@ replaces the deck's outright (never deep-merges); other fields override field-by
 
 Rules:
 
-- **A full panel (no visible scene window) is a collapsed cutout, not a missing one.**
-  `cutout` is required, so the Overlay panel preset ships `size: 0.1, inset: 0.2` — a
-  sliver that reads as full-frame at every aspect. Never omit `cutout` hoping for a panel.
-- **An empty panel renders nothing.** `FramePanel` bails without text, an icon or a chip;
-  that is why scaffolded overlays carry the starter `"New"` chip. Keep at least one of the
-  three or the panel silently disappears.
+- **A full panel (no visible scene window) is a shape, not a missing cutout.**
+  `cutout` is required, so the Overlay panel preset ships `"shape": "none"`: the panel
+  owns the whole frame and `side`/`size`/`inset`/`radius` are no-ops. Never omit `cutout`
+  hoping for a panel.
+- **An empty panel still renders the slide.** `FramePanel` bails without text, an icon, a
+  chip, a chart or a decoration, but that only stands the CONTENT down: the panel fill and
+  the cutout still paint, so a fresh overlay reads as a slide (no starter chip is seeded).
+  The exception is `"shape": "none"`, which has no window to read: give it copy, or it is a
+  flat fill and nothing else.
+- **A transparent panel ignores the cutout.** With no fill there is no hole to cut, so the
+  scene renders full-bleed and the panel keeps only its content (text, chip, decorations).
 - **Bullets** are one sidecar string split on newlines: `text.bullets = "First\nSecond"`.
+  Left-aligned bullets hang, so a wrapped line clears the marker instead of running under it.
+- **Header icon size** rides the generic style map: `textStyle.iconSize = 1.5` draws the
+  header icon (the sidecar's `headerIcon`, or an overlay's `frame.icon`) at 150%, and the
+  layout reserves the bigger box. The app writes it from Size % beside the icon picker.
 - Decoration and icon assets follow the media rules above: project-relative, copied into
   `assets/` first, path checked before writing.
 - Terminal edits ride the sidecar helper, e.g.
@@ -540,8 +562,10 @@ Staging toggle writes `backdrop: {type:"none"}` to reveal image/video fills):
 
 Typography is `FontRef {family, weight}` resolved through the bundled OFL registry →
 workspace-pinned system fonts (auto-pinned by copy on first project load) → Inter. ANY
-family installed in Font Book works, at the theme level (`typography.headline`/`body`) or
-per text element (sidecar `<textKey>Font`): the first reference copies the exact face into
+family installed in Font Book works, at the theme level (`typography.headline`/`body`), at
+the project level (`project.json` `typography.headline`/`body`, plus `typography.chart` for
+all chart text), per chart (sidecar `chart.font`) or per text element (sidecar
+`<textKey>Font`): the first reference copies the exact face into
 `~/Kookaburra Cut/fonts/` (variable fonts instanced static), so projects stay portable and
 exports never follow a macOS font update; if a pinned file goes missing it re-pins by
 installed name, and an uninstalled family warns and falls back to Inter. Theme
@@ -972,9 +996,12 @@ keyframed data morphs on the shared track system. The TSX is one line:
 <Chart />   // reads the sidecar chart block; ChartFallback renders it even without this
 ```
 
-Everything else lives in the `chart` sidecar block (data, style, axis, labels,
-animation, track). Series colours come from the theme (`chartColors`, then a derived
-accent ramp); never hard-code them. Scalar edits go through `sidecar.py` dotted paths;
+Everything else lives in the `chart` sidecar block (data, palette, font, style, axis,
+labels, animation, track). Series colours come from the theme (`chartColors`, then a
+derived accent ramp) unless the block names one of the 10 colour schemes in `palette`;
+never hard-code them. Chart text takes the theme faces unless the project sets
+`typography.chart` or the block sets `font`. Scalar edits go through `sidecar.py`
+dotted paths;
 tabular data, keyframes and a readable summary go through `scripts/chart.py`.
 
 **Load `CHARTS.md` (beside this file) before authoring or editing any chart**: it

@@ -22,12 +22,14 @@ import { chart3dBelowStack } from "./axes3d";
 import { Chart2D } from "./Chart2D";
 import { Chart3D } from "./Chart3D";
 import { type Chart2DAppearance, chart2dLook } from "./chart2dMath";
+import { ChartFontContext } from "./chartText";
 import {
   CHART_3D_STACK_PERSPECTIVE,
   CHART_STAGED_SIZE,
   type ChartRect,
   chartColours,
   chartEnterOffset,
+  chartFontRef,
   chartGroundY,
   chartHeroPose,
   chartHeroRect,
@@ -115,6 +117,8 @@ export function MountedChart(props: MountedChartProps) {
     () => chartColours(chart, theme, surface.seriesLightnessStep),
     [chart, theme, surface.seriesLightnessStep],
   );
+  // The block's own face, replacing both theme faces under it; the project default (`theme.typography.chart`) resolves in the label itself.
+  const font = useMemo(() => chartFontRef(chart), [chart]);
   const bounds = useMemo(() => chartScaleBounds(chart), [chart]);
   const layout = useMemo(() => chartLayoutAt(chart, localMs, bounds), [chart, localMs, bounds]);
   const { seriesCount, categoryCount } = layout;
@@ -139,13 +143,18 @@ export function MountedChart(props: MountedChartProps) {
   };
 
   // The panel mount only draws inside an overlay panel, which hands it its slot; the parser already coerces it to 2d.
-  if (chart.mount === "panel") return panel ? <PanelChart {...mounted} slot={panel} /> : null;
-  return (
-    <>
-      {chart.dimension === "3d" && (lit ?? !staged) && <LightRig />}
-      <ChartBody {...mounted} />
-    </>
-  );
+  const body =
+    chart.mount === "panel" ? (
+      panel ? (
+        <PanelChart {...mounted} slot={panel} />
+      ) : null
+    ) : (
+      <>
+        {chart.dimension === "3d" && (lit ?? !staged) && <LightRig />}
+        <ChartBody {...mounted} />
+      </>
+    );
+  return <ChartFontContext.Provider value={font}>{body}</ChartFontContext.Provider>;
 }
 
 function ChartBody(props: MountArgs) {

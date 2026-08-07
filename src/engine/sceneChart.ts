@@ -14,6 +14,7 @@ import type {
   ChartStyle,
   ChartValueAxis,
   ChartValueFormat,
+  ChartValueLabelBackground,
   ChartValueLabels,
   ChartValuesPose,
 } from "../toolkit/chart/types";
@@ -46,6 +47,16 @@ export const CHART_AXIS_FORMAT_DEFAULTS: ChartValueFormat = { ...CHART_DEFAULT_F
 export const CHART_VALUE_FORMAT_DEFAULTS: ChartValueFormat = {
   ...CHART_DEFAULT_FORMAT,
   decimals: 0,
+};
+
+/** Vertical nudge ceiling, in value font sizes: enough to clear a mark or a neighbouring label, never enough to lose a number off the frame. */
+export const CHART_VALUE_OFFSET_MAX = 4;
+
+/** A background block present but bare renders exactly like the appearance preset's own pill (`PILL_ALPHA` and `LABEL_PILL.radius` in `toolkit/chart/chart2dMath.ts`, pinned by test). */
+export const CHART_VALUE_BACKGROUND_DEFAULTS: ChartValueLabelBackground = {
+  colour: null,
+  opacity: 0.86,
+  radius: 0.5,
 };
 
 export const CHART_ANIMATION_DEFAULTS: ChartAnimationConfig = {
@@ -179,12 +190,26 @@ function resolveLegend(raw: Partial<ChartLegend> | undefined): ChartLegend {
   return { visible: raw?.visible !== false, position: raw?.position ?? "bottom" };
 }
 
+/** Null when the block authors no background, so the preset's own pill maths stands. Present, every field lands defaulted and clamped: the renderer never null-checks a field. */
+function resolveValueBackground(
+  raw: Partial<ChartValueLabelBackground> | undefined,
+): ChartValueLabelBackground | null {
+  if (!raw) return null;
+  return {
+    colour: typeof raw.colour === "string" && raw.colour.length > 0 ? raw.colour : null,
+    opacity: clamp(num(raw.opacity, CHART_VALUE_BACKGROUND_DEFAULTS.opacity), 0, 1),
+    radius: clamp(num(raw.radius, CHART_VALUE_BACKGROUND_DEFAULTS.radius), 0, 0.5),
+  };
+}
+
 function resolveValueLabels(raw: SceneDocChartValueLabels | undefined): ChartValueLabels {
   return {
     visible: raw?.visible !== false,
     location: raw?.location ?? "above",
     format: resolveFormat(raw?.format, CHART_VALUE_FORMAT_DEFAULTS),
     countUp: raw?.countUp !== false,
+    offsetY: clamp(num(raw?.offsetY, 0), -CHART_VALUE_OFFSET_MAX, CHART_VALUE_OFFSET_MAX),
+    background: resolveValueBackground(raw?.background),
   };
 }
 
@@ -253,6 +278,8 @@ export function resolveChart(doc: SceneDoc | undefined): ResolvedChart | null {
     dimension: mount === "panel" ? "2d" : (raw.dimension ?? "2d"),
     mount,
     data,
+    palette: raw.palette ?? null,
+    font: raw.font ?? null,
     style: resolveStyle(raw.style),
     axis,
     labels,

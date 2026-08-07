@@ -31,6 +31,7 @@ import type {
   ChartPoint,
   ChartStyleSurface,
   ChartStyleSurface2D,
+  ChartValueLabelBackground,
   ChartValueLabelLocation,
 } from "./types";
 
@@ -384,6 +385,33 @@ export function axisLineRect(
 
 /** Value-label pill proportions, in font sizes: padding either side of the estimated text box, padding above and below, and the corner radius as a fraction of the pill height (0.5 is a capsule). */
 export const LABEL_PILL = { padX: 0.42, padY: 0.26, radius: 0.5 } as const;
+/** How solid a chip sits by default: it reads on a light or a dark stage without ever competing with the mark it labels. */
+export const PILL_ALPHA = 0.86;
+
+/** The chip drawn behind a run of value labels, already resolved. */
+export interface ChartValuePill {
+  colour: string;
+  opacity: number;
+  /** Corner radius as a fraction of the chip height. */
+  radius: number;
+}
+
+/** The chip behind the value labels: the preset's own pill, or the block's authored background, whose PRESENCE forces a chip on and whose fields override the derived pill one for one. Null when neither asks for one, and with no background authored this is exactly the pre-background path. `background.colour` arrives already resolved against the theme. */
+export function valueLabelPill(
+  presetPill: boolean,
+  derivedColour: string,
+  background: ChartValueLabelBackground | null,
+): ChartValuePill | null {
+  if (!background) {
+    if (!presetPill) return null;
+    return { colour: derivedColour, opacity: PILL_ALPHA, radius: LABEL_PILL.radius };
+  }
+  return {
+    colour: background.colour ?? derivedColour,
+    opacity: Math.min(1, Math.max(0, background.opacity)),
+    radius: Math.min(LABEL_PILL.radius, Math.max(0, background.radius)),
+  };
+}
 /** Legend chip proportions: padding either side of the entry, and its height in font sizes. */
 export const LEGEND_CHIP = { padX: 0.5, height: 1.62 } as const;
 

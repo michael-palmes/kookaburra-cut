@@ -1,10 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { useDecorationEditStore } from "../engine/decorationEditStore";
+import {
+  LINE_HEIGHT,
+  measuredPanelTextBlock,
+  type PanelTextBlock,
+  type PanelTextSpec,
+  panelMeasureVersion,
+  requestPanelTextMeasure,
+  subscribePanelMeasures,
+} from "../engine/framePanelMeasure";
+import { charAdvance } from "../engine/framePanelText";
 import type { StageRect } from "../engine/gizmoRegistry";
 import { type LoadedProject, resolveAssetUrl } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { parseFontString } from "../theme/fontRef";
+import { fontUrl } from "../theme/fonts";
+import type { Theme } from "../theme/tokens";
+import { isTextDecoration } from "../toolkit/frame/icon";
 import type { FrameDecorationSpec } from "../toolkit/frame/types";
+import { prepareEmojiText } from "../toolkit/text/emojiText";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import type { Pt } from "./gizmo/gizmo2dMath";
@@ -29,6 +44,31 @@ function toPos(x: number, y: number, rect: StageRect): [number, number] {
   return [(2 * (x - rect.left)) / rect.width - 1, 1 - (2 * (y - rect.top)) / rect.height];
 }
 
+/** The troika measurement a text decoration's box needs: one em (fontSize 1), unwrapped, in the font the renderer types it in. Null for an image decoration. */
+function textSpec(d: FrameDecorationSpec, theme: Theme | undefined): PanelTextSpec | null {
+  if (!isTextDecoration(d) || !d.text || !theme) return null;
+  return {
+    text: prepareEmojiText(d.text).text,
+    font: fontUrl(d.font ? parseFontString(d.font) : theme.typography[d.face ?? "headline"]),
+    fontSize: 1,
+    maxWidth: Number.POSITIVE_INFINITY,
+    textAlign: "left",
+    ...(d.lineHeight !== undefined ? { lineHeight: d.lineHeight } : {}),
+  };
+}
+
+/** Em box until the real typeset lands: the panel's advance classes, widest line by line count. */
+function estimateEm(text: string): PanelTextBlock {
+  const lines = text.split("\n");
+  let width = 0;
+  for (const line of lines) {
+    let em = 0;
+    for (const c of line) em += charAdvance(c);
+    width = Math.max(width, em);
+  }
+  return { width, height: lines.length * LINE_HEIGHT };
+}
+
 export function DecorationGizmo({
   project,
   sceneIndex,
@@ -37,10 +77,15 @@ export function DecorationGizmo({
 }: {
   project: LoadedProject;
   sceneIndex: number;
-  /** Frame aspect (width / height); a box's height fraction is `size · aspect / imageAspect`. */
+  /** Frame aspect (width / height); it turns a box's world proportions into frame fractions (see `boxFrac`). */
   aspect: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
 }) {
+  const measureTick = useSyncExternalStore(
+    subscribePanelMeasures,
+    panelMeasureVersion,
+    panelMeasureVersion,
+  );
   const selectedId = useDecorationEditStore((s) => s.selectedId);
   const select = useDecorationEditStore((s) => s.select);
   const requestMedia = useDecorationEditStore((s) => s.requestMedia);
@@ -52,21 +97,36 @@ export function DecorationGizmo({
 
   const decorations = project.sceneFrames[sceneIndex]?.decorations ?? [];
   const doc = project.sceneDocs[sceneIndex] ?? null;
+  const theme = project.sceneThemes[sceneIndex];
 
-  /** A decoration's box height as a fraction of the frame height (also the NDC half-height). */
-  const heightFrac = useCallback(
-    (d: FrameDecorationSpec) =>
-      d.size * (aspect / (d.shape === "circle" ? 1 : (imgAspect[d.src] ?? 1))),
-    [aspect, imgAspect],
+  /** A decoration's box, as fractions of the frame width and height (also the NDC half-extents). An image sizes by its natural aspect (circle crops square); text sizes by its measured em box, both axes scaling with `size` so a corner drag stays a uniform scale. */
+  const boxFrac = useCallback(
+    (d: FrameDecorationSpec): [number, number] => {
+      if (isTextDecoration(d)) {
+        void measureTick;
+        const spec = textSpec(d, theme);
+        const em = (spec && measuredPanelTextBlock(spec)) || estimateEm(d.text ?? "");
+        // An empty (or unmeasured, zero-width) text still needs a grabbable box.
+        return [
+          Math.max(MIN_SIZE, d.size * em.width),
+          Math.max(MIN_SIZE, d.size * em.height) * aspect,
+        ];
+      }
+      return [
+        d.size,
+        d.size * (aspect / (d.shape === "circle" ? 1 : (imgAspect[d.src ?? ""] ?? 1))),
+      ];
+    },
+    [aspect, imgAspect, theme, measureTick],
   );
 
   // Each decoration image's natural aspect, for the box height (shape "none"); circle stays square.
-  const srcKey = decorations.map((d) => d.src).join("|");
+  const srcKey = decorations.map((d) => d.src ?? "").join("|");
   // biome-ignore lint/correctness/useExhaustiveDependencies: srcKey stands in for decorations; the array itself is a fresh identity each render
   useEffect(() => {
     let alive = true;
     for (const d of decorations) {
-      if (requested.current.has(d.src)) continue;
+      if (!d.src || requested.current.has(d.src)) continue;
       requested.current.add(d.src);
       let url: string;
       try {
@@ -75,9 +135,10 @@ export function DecorationGizmo({
         continue;
       }
       const img = new Image();
+      const src = d.src;
       img.onload = () => {
         if (alive && img.naturalHeight > 0) {
-          setImgAspect((m) => ({ ...m, [d.src]: img.naturalWidth / img.naturalHeight }));
+          setImgAspect((m) => ({ ...m, [src]: img.naturalWidth / img.naturalHeight }));
         }
       };
       img.src = url;
@@ -86,6 +147,18 @@ export function DecorationGizmo({
       alive = false;
     };
   }, [srcKey, project.id]);
+
+  // Text decoration boxes come from the panel's troika measurement cache; the estimate stands in until each lands.
+  const textKey = decorations
+    .map((d) => `${d.text ?? ""} ${d.face ?? ""} ${d.font ?? ""} ${d.lineHeight ?? ""}`)
+    .join("|");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: textKey stands in for decorations, same as srcKey above
+  useEffect(() => {
+    for (const d of decorations) {
+      const spec = textSpec(d, theme);
+      if (spec) requestPanelTextMeasure(spec);
+    }
+  }, [textKey, theme]);
 
   // Drop the selection when the gizmo unmounts (drill-in closed).
   useEffect(() => () => select(null), [select]);
@@ -124,17 +197,18 @@ export function DecorationGizmo({
         can: { move: true, resize: true, rotate: true },
         frame: (rect: StageRect) => {
           const [cx, cy] = centrePx(d, rect);
+          const [wf, hf] = boxFrac(d);
           return {
             cx,
             cy,
-            w: d.size * rect.width,
-            h: heightFrac(d) * rect.height,
+            w: wf * rect.width,
+            h: hf * rect.height,
             deg: d.rotationDeg ?? 0,
             pivot: [cx, cy] as Pt,
           };
         },
       })),
-    [decorations, heightFrac],
+    [decorations, boxFrac],
   );
 
   // The frame centre only, which is exactly what decorations have always snapped to.
@@ -236,8 +310,11 @@ export function DecorationGizmo({
             select(copyId);
           },
         },
-        { id: "media", label: "Change media…", onSelect: () => requestMedia(id) },
-        "separator",
+        // A text decoration has no media to change; its text edits live in the drill.
+        ...(isTextDecoration(d)
+          ? []
+          : [{ id: "media", label: "Change media…", onSelect: () => requestMedia(id) }]),
+        "separator" as const,
         {
           id: "front",
           label: "Bring to front",
@@ -248,7 +325,7 @@ export function DecorationGizmo({
           label: "Send to back",
           onSelect: () => apply([d, ...without], "send decoration to back"),
         },
-        "separator",
+        "separator" as const,
         {
           id: "delete",
           label: "Delete",

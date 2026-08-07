@@ -63,14 +63,17 @@ import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
+import { isTextDecoration } from "../../toolkit/frame/icon";
 import type {
   FrameChipSpec,
   FrameCutoutSpec,
+  FrameDecorationFace,
   FrameDecorationLayer,
   FrameDecorationShape,
   FrameDecorationSpec,
   FrameShape,
   FrameSide,
+  FrameSpec,
 } from "../../toolkit/frame/types";
 import {
   besideDevicePlacement,
@@ -131,6 +134,7 @@ const SCREEN_TITLES: Record<string, string> = {
   motion: "Timing",
   "text.edit": "Edit text",
   "style.background": "Background",
+  "frame.panel": "Panel",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
   "chart.edit": "Chart",
@@ -295,6 +299,22 @@ const FRAME_SHAPE_LABELS: Record<FrameShape, string> = {
   capsule: "Capsule",
   none: "Full panel",
 };
+
+/** The Panel row's value: the colour itself for the flat fills (token or hex, the v1 shape included), the fill type otherwise. */
+function panelFillLabel(background: FrameSpec["background"]): string {
+  if (background === undefined) return "Default";
+  if (typeof background === "string") return background;
+  switch (background.type) {
+    case "color":
+      return background.color;
+    case "gradient":
+      return "Gradient";
+    case "image":
+      return middleTruncate(background.src.split("/").pop() ?? "Image");
+    default:
+      return "Transparent";
+  }
+}
 
 /** Scene-row icons: same 20-viewBox stroke style as the Project tab. */
 function SceneRowIcon({ id }: { id: string }) {
@@ -1177,18 +1197,25 @@ const CHIP_PRESETS: { id: string; label: string; colour: string; icon: ChipIconI
   { id: "error", label: "Error", colour: "#e05656", icon: "circle-x" },
 ];
 
-/** A decoration's display name: its asset basename. */
-function decorationLabel(src: string): string {
+/** A decoration's display name: its first line of text, else its asset basename. */
+function decorationLabel(d: FrameDecorationSpec): string {
+  if (isTextDecoration(d)) return d.text?.split("\n")[0] || "Text";
+  const src = d.src ?? "";
   return src.split("/").pop() || src;
 }
 
-/** A unique decoration id from a picked asset's stem, deduped against the existing ids. */
-function nextDecorationId(src: string, taken: Set<string>): string {
-  const stem = decorationLabel(src).replace(/\.[^.]+$/, "") || "decoration";
+/** A unique decoration id from a stem, deduped against the existing ids. */
+function uniqueDecorationId(stem: string, taken: Set<string>): string {
   if (!taken.has(stem)) return stem;
   let n = 2;
   while (taken.has(`${stem}-${n}`)) n++;
   return `${stem}-${n}`;
+}
+
+/** A unique decoration id from a picked asset's stem. */
+function nextDecorationId(src: string, taken: Set<string>): string {
+  const base = src.split("/").pop() || src;
+  return uniqueDecorationId(base.replace(/\.[^.]+$/, "") || "decoration", taken);
 }
 
 /** The Animations section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
@@ -1975,6 +2002,8 @@ export function SceneTab({
   const [bgTabOverride, setBgTabOverride] = useState<
     "gradient" | "image" | "video" | "shader" | "scene3d" | null
   >(null);
+  /** Overlay panel drill: viewing the Gradient/Image tab before anything is committed (the background drill's idiom). */
+  const [panelTabOverride, setPanelTabOverride] = useState<"gradient" | "image" | null>(null);
   /** Which animated-fill card is hovered (its clip preview plays). */
   const [bgHover, setBgHover] = useState<string | null>(null);
   /** Which 3D-backing editor is open when it doesn't match the stored backing type. */
@@ -2179,6 +2208,7 @@ export function SceneTab({
     }
     setRenaming(false);
     setBgTabOverride(null);
+    setPanelTabOverride(null);
     setBackingTabOverride(null);
     setLiveThumb((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -2346,11 +2376,8 @@ export function SceneTab({
   };
   const addOverlay = () =>
     void patchDoc((next) => {
-      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger.
-      next.frame = {
-        cutout: { shape: "rounded-rect", side: "start" },
-        chip: { label: "New", icon: "circle-check", colour: "accent" },
-      };
+      // The Rust scaffolder's Cutout start defaults, byte for byte; replaces wholesale so stale opt-out junk can't linger. No starter chip: the slide pass paints the panel and its cutout whether or not the panel carries content.
+      next.frame = { cutout: { shape: "rounded-rect", side: "start" } };
     });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
@@ -2528,8 +2555,13 @@ export function SceneTab({
     }
     const decos = sceneFrame?.decorations ?? [];
     const { replaceId } = mediaTarget;
+    // A pick always lands an IMAGE decoration, so a text one switching type drops its text fields.
     const nextDecos: FrameDecorationSpec[] = replaceId
-      ? decos.map((d) => (d.id === replaceId ? { ...d, src: rel } : d))
+      ? decos.map((d) =>
+          d.id === replaceId
+            ? { ...d, src: rel, text: undefined, colour: undefined, face: undefined }
+            : d,
+        )
       : [
           ...decos,
           {
@@ -2725,35 +2757,154 @@ export function SceneTab({
     );
   }
   if (drillIn === "frame.panel" && sceneFrame) {
+    const panelBg = sceneFrame.background;
+    const panelObj = typeof panelBg === "object" ? panelBg : undefined;
+    const panelTab = panelTabOverride ?? panelObj?.type ?? "color";
     const resolveColour = (c: string | undefined): string => {
       if (c === "background" || c === "text" || c === "accent" || c === "muted") {
         return sceneTheme?.colors[c] ?? c;
       }
       return c ?? sceneTheme?.colors.background ?? "#1e2226";
     };
+    const commitPanel = (value: FrameSpec["background"] | undefined) => {
+      setPanelTabOverride(null);
+      void patchDoc((next) => {
+        if (value === undefined) {
+          if (next.frame) delete next.frame.background;
+          return;
+        }
+        next.frame = { ...(next.frame ?? {}), background: value };
+      });
+    };
+    const types: { id: typeof panelTab; label: string; icon: string }[] = [
+      { id: "transparent", label: "Transparent", icon: "none" },
+      { id: "color", label: "Colour", icon: "color" },
+      { id: "gradient", label: "Gradient", icon: "gradient" },
+      { id: "image", label: "Image", icon: "image" },
+    ];
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Panel colour</div>
+        <div className="inspector-drill-title">Panel background</div>
         <div className="inspector-drill-body">
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Colour</span>
-            <ColourPicker
-              value={resolveColour(sceneFrame.background)}
-              label="Panel colour"
-              onCommit={(hex) =>
-                void patchDoc((next) => {
-                  next.frame = { ...(next.frame ?? {}), background: hex };
-                })
-              }
-              onReset={() =>
-                void patchDoc((next) => {
-                  if (next.frame) delete next.frame.background;
-                })
+          <div className="bg-type-grid" role="tablist" aria-label="Panel fill type">
+            {types.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={panelTab === t.id}
+                className={`bg-type-tile${panelTab === t.id ? " selected" : ""}`}
+                onClick={() => {
+                  if (t.id === "transparent") commitPanel({ type: "transparent" });
+                  // Colour is the unset default's home too: leaving a sampled fill drops back to it.
+                  else if (t.id === "color") {
+                    if (panelObj) commitPanel(undefined);
+                    else setPanelTabOverride(null);
+                  } else setPanelTabOverride(t.id);
+                }}
+              >
+                <BgTypeIcon id={t.icon} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {panelTab === "color" && (
+            <>
+              <div className="popover-row">
+                <span className="popover-inline slider-row-label">Colour</span>
+                <ColourPicker
+                  value={resolveColour(
+                    typeof panelBg === "string"
+                      ? panelBg
+                      : panelObj?.type === "color"
+                        ? panelObj.color
+                        : undefined,
+                  )}
+                  label="Panel colour"
+                  onCommit={(hex) => commitPanel(hex)}
+                  onReset={() => commitPanel(undefined)}
+                />
+              </div>
+              <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
+            </>
+          )}
+          {panelTab === "gradient" && (
+            <GradientPickerModal
+              embedded
+              current={panelObj?.type === "gradient" ? panelObj : undefined}
+              theme={sceneTheme}
+              onCancel={() => setPanelTabOverride(null)}
+              onApply={(value) =>
+                commitPanel(
+                  value.spec
+                    ? { type: "gradient", spec: value.spec }
+                    : { type: "gradient", gradient: value.gradient },
+                )
               }
             />
+          )}
+          {panelTab === "image" && (
+            <>
+              <p className="modal-hint">
+                Fills the panel behind the overlay's content; it cover-crops per aspect, so pick an
+                image with a safe centre.
+              </p>
+              <ActionRow
+                icon={<SceneRowIcon id="frame.panel" />}
+                label={panelObj?.type === "image" ? "Change image" : "Choose an image"}
+                value={
+                  panelObj?.type === "image"
+                    ? middleTruncate(panelObj.src.split("/").pop() ?? "")
+                    : undefined
+                }
+                onClick={() => openDrill("frame.panel.media")}
+              />
+            </>
+          )}
+          {panelTab === "transparent" && (
+            <p className="modal-hint">
+              No panel fill: the scene fills the whole frame and the overlay's text, chip and
+              decorations sit over it.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (drillIn === "frame.panel.media" && sceneFrame) {
+    const panelBg = sceneFrame.background;
+    const selectedSrc =
+      typeof panelBg === "object" && panelBg.type === "image" ? panelBg.src : null;
+    const selectPanelImage = (rel: string) => {
+      setPanelTabOverride(null);
+      void patchDoc((next) => {
+        next.frame = { ...(next.frame ?? {}), background: { type: "image", src: rel } };
+      });
+    };
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Panel image</div>
+        <div className="inspector-drill-body">
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={["image"]}
+              globalToggle
+              refreshKey={mediaRefreshKey + mediaRefresh}
+              selectedRel={selectedSrc}
+              onPick={selectPanelImage}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: selectPanelImage,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
+            />
           </div>
-          <p className="modal-hint">Leave unset for the neutral panel that suits the theme.</p>
         </div>
       </div>
     );
@@ -2879,9 +3030,34 @@ export function SceneTab({
       setMediaTarget({ kind: "decoration", replaceId });
       setModal("media");
     };
+    // Switching to text keeps the placement and drops the image-only fields; switching back rides the picker, since an image decoration needs a `src` to exist.
+    const makeText = (d: FrameDecorationSpec) =>
+      patchDeco(d.id, { text: d.text ?? "Text", src: undefined, shape: undefined });
+    const addText = () =>
+      writeDecos([
+        ...decos,
+        {
+          id: uniqueDecorationId("text", new Set(decos.map((d) => d.id))),
+          text: "Text",
+          position: [0.45, -0.5],
+          size: 0.05,
+          layer: "above",
+        },
+      ]);
+    const textColour = sceneTheme?.colors.text ?? "#ffffff";
+    const decoColour = (c: string | undefined): string => {
+      if (c === "background" || c === "text" || c === "accent" || c === "muted") {
+        return sceneTheme?.colors[c] ?? c;
+      }
+      return c ?? textColour;
+    };
     const shapes: { id: FrameDecorationShape; label: string }[] = [
       { id: "none", label: "Natural" },
       { id: "circle", label: "Circle" },
+    ];
+    const faces: { id: FrameDecorationFace; label: string }[] = [
+      { id: "headline", label: "Headline" },
+      { id: "body", label: "Body" },
     ];
     const layers: { id: FrameDecorationLayer; label: string }[] = [
       { id: "below", label: "Behind" },
@@ -2894,115 +3070,226 @@ export function SceneTab({
         <div className="inspector-drill-body">
           {decos.length === 0 && (
             <p className="modal-hint">
-              Positioned images that break out of the panel, like a logo or avatar.
+              Positioned images and text that break out of the panel, like a logo, an avatar or a
+              hand-placed caption.
             </p>
           )}
-          {decos.map((d) => (
-            <div
-              key={d.id}
-              className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
-              onPointerDown={() => selectDeco(d.id)}
-            >
-              <div className="deco-card-head">
-                <span className="deco-card-name" title={d.src}>
-                  {decorationLabel(d.src)}
-                </span>
-                <button
-                  type="button"
-                  className="deco-remove"
-                  title="Remove decoration"
-                  aria-label="Remove decoration"
-                  onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
-                >
-                  Remove
-                </button>
-              </div>
-              <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
-                Replace image
-              </button>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Across</span>
-                <DebouncedRange
-                  value={d.position[0]}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  label="Horizontal position"
-                  onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Up/down</span>
-                <DebouncedRange
-                  value={d.position[1]}
-                  min={-1}
-                  max={1}
-                  step={0.01}
-                  label="Vertical position"
-                  onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Size</span>
-                <DebouncedRange
-                  value={d.size}
-                  min={0.03}
-                  max={0.6}
-                  step={0.01}
-                  label="Size"
-                  onCommit={(v) => patchDeco(d.id, { size: v })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Rotation</span>
-                <DebouncedRange
-                  value={d.rotationDeg ?? 0}
-                  min={-180}
-                  max={180}
-                  step={1}
-                  label="Rotation"
-                  onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline">
-                  Shape
-                  <div className="wizard-presets">
-                    {shapes.map((s) => (
+          {decos.map((d) => {
+            const isText = isTextDecoration(d);
+            return (
+              <div
+                key={d.id}
+                className={`deco-card${d.id === selectedDecoId ? " selected" : ""}`}
+                onPointerDown={() => selectDeco(d.id)}
+              >
+                <div className="deco-card-head">
+                  <span className="deco-card-name" title={isText ? d.text : d.src}>
+                    {decorationLabel(d)}
+                  </span>
+                  <button
+                    type="button"
+                    className="deco-remove"
+                    title="Remove decoration"
+                    aria-label="Remove decoration"
+                    onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline">
+                    Type
+                    <div className="wizard-presets">
                       <button
-                        key={s.id}
                         type="button"
-                        className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
-                        onClick={() => patchDeco(d.id, { shape: s.id })}
+                        className={`chip${isText ? "" : " selected"}`}
+                        onClick={() => openImagePicker(d.id)}
                       >
-                        {s.label}
+                        Image
                       </button>
-                    ))}
-                  </div>
-                </span>
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline">
-                  Layer
-                  <div className="wizard-presets">
-                    {layers.map((l) => (
                       <button
-                        key={l.id}
                         type="button"
-                        className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
-                        onClick={() => patchDeco(d.id, { layer: l.id })}
+                        className={`chip${isText ? " selected" : ""}`}
+                        onClick={() => makeText(d)}
                       >
-                        {l.label}
+                        Text
                       </button>
-                    ))}
+                    </div>
+                  </span>
+                </div>
+                {isText ? (
+                  <>
+                    <TextFieldRow
+                      label="Text"
+                      value={d.text ?? ""}
+                      placeholder="Your text"
+                      colour={{
+                        value: decoColour(d.colour),
+                        defaultValue: textColour,
+                        onCommit: (hex) => patchDeco(d.id, { colour: hex }),
+                        onReset: () => patchDeco(d.id, { colour: undefined }),
+                      }}
+                      onChange={(t) => patchDeco(d.id, { text: t })}
+                    />
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Face
+                        <div className="wizard-presets">
+                          {faces.map((f) => (
+                            <button
+                              key={f.id}
+                              type="button"
+                              className={`chip${(d.face ?? "headline") === f.id ? " selected" : ""}`}
+                              onClick={() => patchDeco(d.id, { face: f.id })}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </span>
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline">
+                        Font
+                        <button
+                          type="button"
+                          className={`text-style-font${d.font ? " overridden" : ""}`}
+                          title="Decoration font"
+                          onClick={() => openDrill(`deco.font:${d.id}`)}
+                        >
+                          <span className="text-style-font-name">
+                            {d.font ? parseFontString(d.font).family : "Theme font"}
+                          </span>
+                          <span className="text-style-font-chevron" aria-hidden>
+                            ›
+                          </span>
+                        </button>
+                      </span>
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Line spacing</span>
+                      <DebouncedRange
+                        value={d.lineHeight ?? LINE_SPACING_NORMAL}
+                        min={TEXT_LINE_HEIGHT_MIN}
+                        max={TEXT_LINE_HEIGHT_MAX}
+                        step={0.05}
+                        label="Line spacing"
+                        onCommit={(v) => {
+                          // The text drill's snap: the 0.05 grid, cleared at Normal.
+                          const snapped = Math.round(v * 20) / 20;
+                          patchDeco(d.id, {
+                            lineHeight: snapped === LINE_SPACING_NORMAL ? undefined : snapped,
+                          });
+                        }}
+                      />
+                      {d.lineHeight !== undefined && (
+                        <button
+                          type="button"
+                          className="inspector-reset-btn"
+                          title="Back to the font's normal line spacing"
+                          onClick={() => patchDeco(d.id, { lineHeight: undefined })}
+                        >
+                          Normal
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" className="btn" onClick={() => openImagePicker(d.id)}>
+                    Replace image
+                  </button>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Across</span>
+                  <DebouncedRange
+                    value={d.position[0]}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    label="Horizontal position"
+                    onCommit={(v) => patchDeco(d.id, { position: [v, d.position[1]] })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Up/down</span>
+                  <DebouncedRange
+                    value={d.position[1]}
+                    min={-1}
+                    max={1}
+                    step={0.01}
+                    label="Vertical position"
+                    onCommit={(v) => patchDeco(d.id, { position: [d.position[0], v] })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Size</span>
+                  <DebouncedRange
+                    value={d.size}
+                    min={isText ? 0.01 : 0.03}
+                    max={isText ? 0.25 : 0.6}
+                    step={isText ? 0.005 : 0.01}
+                    label="Size"
+                    onCommit={(v) => patchDeco(d.id, { size: v })}
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Rotation</span>
+                  <DebouncedRange
+                    value={d.rotationDeg ?? 0}
+                    min={-180}
+                    max={180}
+                    step={1}
+                    label="Rotation"
+                    onCommit={(v) => patchDeco(d.id, { rotationDeg: v })}
+                  />
+                </div>
+                {!isText && (
+                  <div className="popover-row">
+                    <span className="popover-inline">
+                      Shape
+                      <div className="wizard-presets">
+                        {shapes.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`chip${(d.shape ?? "none") === s.id ? " selected" : ""}`}
+                            onClick={() => patchDeco(d.id, { shape: s.id })}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </span>
                   </div>
-                </span>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline">
+                    Layer
+                    <div className="wizard-presets">
+                      {layers.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          className={`chip${(d.layer ?? "above") === l.id ? " selected" : ""}`}
+                          onClick={() => patchDeco(d.id, { layer: l.id })}
+                        >
+                          {l.label}
+                        </button>
+                      ))}
+                    </div>
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
-          <button type="button" className="btn" onClick={() => openImagePicker()}>
-            Add decoration
-          </button>
+            );
+          })}
+          <div className="inspector-drill-actions">
+            <button type="button" className="btn" onClick={() => openImagePicker()}>
+              Add image
+            </button>
+            <button type="button" className="btn" onClick={addText}>
+              Add text
+            </button>
+          </div>
         </div>
         {mediaModal}
       </div>
@@ -4545,6 +4832,56 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn?.startsWith("deco.font:") && sceneFrame) {
+    const decoId = drillIn.slice("deco.font:".length);
+    const decos = sceneFrame.decorations ?? [];
+    const deco = decos.find((x) => x.id === decoId);
+    const themeFace = (sceneTheme ?? project.theme).typography[deco?.face ?? "headline"];
+    const currentRef = deco?.font ? parseFontString(deco.font) : themeFace;
+    const commitFont = (value: string | undefined) =>
+      void patchDoc(
+        (next) => {
+          next.frame = {
+            ...(next.frame ?? {}),
+            decorations: decos.map((x) => (x.id === decoId ? { ...x, font: value } : x)),
+          };
+        },
+        { history: "decoration font" },
+      );
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Decoration font</div>
+        <div className="inspector-drill-body">
+          {deco?.font !== undefined && (
+            <button
+              type="button"
+              className="btn text-font-reset"
+              onClick={() => commitFont(undefined)}
+            >
+              Use theme font
+            </button>
+          )}
+          <FontPicker
+            value={currentRef}
+            onPick={(ref, opts) => {
+              // Pin + preload before the sidecar write so the face renders the moment the doc patch lands.
+              void (async () => {
+                await ensureFontRefsPinned([ref]);
+                await preloadAppFonts([ref]);
+                commitFont(formatFontString(ref));
+                if (opts?.fromRecent) closeDrill();
+              })();
+            }}
+          />
+          <p className="modal-hint">
+            System fonts are pinned into your workspace on first use, so exports never drift with
+            macOS updates.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (drillIn === "text" && doc) {
     const textKeys = Object.keys(doc.text ?? {});
     const consumed = textKeysConsumedBy(sceneIndex);
@@ -4889,6 +5226,22 @@ export function SceneTab({
             onBlur={flushHeaderIcon}
             onPick={setHeaderIcon}
           />
+          {(iconDraft ?? headerIcon).trim() !== "" && (
+            <div className="text-style-row text-style-icon">
+              <NumberField
+                label="Size %"
+                value={Math.round((styleNum("iconSize") ?? 1) * 100)}
+                decimals={0}
+                onCommit={(n) =>
+                  patchStyle(
+                    "header icon size",
+                    "iconSize",
+                    n === 100 || n <= 0 ? undefined : Math.min(1000, n) / 100,
+                  )
+                }
+              />
+            </div>
+          )}
           <TextMotionPanel
             current={doc.textAnimation}
             theme={sceneTheme}
@@ -6070,7 +6423,7 @@ export function SceneTab({
           ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
           : undefined,
         "frame.cutout": sceneFrame ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape] : undefined,
-        "frame.panel": sceneFrame ? (sceneFrame.background ?? "Default") : undefined,
+        "frame.panel": sceneFrame ? panelFillLabel(sceneFrame.background) : undefined,
         "frame.chip": sceneFrame ? (sceneFrame.chip?.label ?? "None") : undefined,
         "frame.decorations": sceneFrame
           ? sceneFrame.decorations?.length

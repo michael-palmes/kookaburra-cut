@@ -60,12 +60,14 @@ Steps:
      hand-authored positions.
    - titleicon: `headerIcon` (the user's emoji or `assets/` image path, else `"🚀"`).
    - overlaystart/overlayend: `frame` = `{ "cutout": { "shape": "rounded-rect", "side":
-     "start"|"end" }, "background": "background", "chip": { "label": "New", "icon":
-     "circle-check", "colour": "accent" } }`; user bullet lines (one per line) go to
-     `text.bullets`.
-   - overlaypanel: `frame` = `{ "cutout": { "shape": "none" } }` plus the same starter
-     chip; no scene shows through and content centres by default (the `"none"` shape's
-     alignment default). User bullet lines go to `text.bullets` here too.
+     "start"|"end" }, "background": "background" }`; NO starter chip (the panel fill and
+     its cutout paint whether or not the panel carries content); user bullet lines (one
+     per line) go to `text.bullets`.
+   - overlaypanel: `frame` = `{ "cutout": { "shape": "none" } }`; no scene shows through
+     and content centres by default (the `"none"` shape's alignment default). With no
+     window to read, a copy-less panel would be a flat fill, so `text.title` seeds
+     `"Your title"` when the user gave none. User bullet lines go to `text.bullets` here
+     too.
    - layeredscreenshot: a `layeredScreenshot` block with one layer (`{ "id": "l1",
      "visible": true, "z": 0, "items": [...] }`, the first screen as `{ "id": "i1",
      "kind": "screen", "src": "assets/<file>", "media": "image"|"video", "attach": null }`
