@@ -113,7 +113,7 @@ import {
   writeSceneDoc,
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
-import { planMoves } from "./engine/sceneOrder";
+import { planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
@@ -801,9 +801,9 @@ export default function App() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
-      // Descending, each copy after its original, so earlier indices stay valid.
-      for (const i of [...indices].sort((a, b) => b - a)) {
-        await duplicateProjectScene(workspaceSlug(current.id), i, i + 1);
+      // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows).
+      for (const { from, at } of planDuplicates(indices)) {
+        await duplicateProjectScene(workspaceSlug(current.id), from, at);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
