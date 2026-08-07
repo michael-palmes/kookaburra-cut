@@ -1099,6 +1099,30 @@ The Export button opens the modal (`ui/ExportModal.tsx`; all maths in unit-pinne
   time mapping (`buildSceneTimeline` / `resolveAt`) are unit-tested to enforce
   purity.
 
+### The capture bridge surface (the hidden render window)
+
+Live captures (`capture.py`, scene thumbs) are served by the hidden `render`
+window: its own realm and WebContent process, the same `renderComposited` seam
+and export barriers, driven rAF-free so it renders while hidden. Three measured
+facts (2026-08-07) define its contract:
+
+- **Per-surface deterministic.** Repeated bridge captures of the same frame hash
+  identically across window boots and capture order.
+- **NOT hash-exact against the cold-boot surface.** The same frame differs from
+  `--action screenshot` by a fixed glyph-edge AA delta (measured 81 px of 8.3 M,
+  max channel delta 4): the realms carry different troika atlas state (the
+  editor preview-renders before capturing; the render realm never does).
+  Responses carry `surface: "render-window"`; any hash dispute defers to the
+  cold-boot surface, which stays the determinism reference. Baselines are never
+  recorded from bridge captures.
+- **Hidden-page timer clamp.** WebKit aligns a hidden page's nested timers to
+  1 s, so the render realm opts into MessageChannel yields for the settle
+  barriers (`engine/macrotask.ts`); visible windows keep the proven setTimeout
+  path. Neither yield primitive affects pixels, only wall time.
+
+The autorun surface (env-gated, cold-boot, single-instance) is unchanged;
+neither surface may regress the other.
+
 ### Gate tiers: how much to run
 
 Verify runs are expensive (minutes per project-aspect, one app instance at a

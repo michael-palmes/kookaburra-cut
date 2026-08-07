@@ -69,10 +69,13 @@ python3 .claude/skills/kookaburra-scene-authoring/scripts/capture.py --scene 01-
 ```
 
 This asks the RUNNING Kookaburra Cut app for a deterministic frame (the export
-path, so what you see is what exports) and prints the PNG path. It captures the
-project currently open in the app window; if that is a different project than
-this folder, ask the user to open this one first. If the app is exporting, the
-script retries briefly on its own.
+path, so what you see is what exports) and prints the PNG path. The frame renders
+in a hidden background window, so capturing never disturbs the user's editing.
+Playhead captures (no `--scene`) need the requested project open in the app;
+`--scene` captures serve any project on disk. If the app is exporting, the script
+retries briefly on its own. Captures are visually exact but carry
+`surface: "render-window"`: for byte-level hash disputes use
+`--action screenshot` (docs/determinism.md, "The capture bridge surface").
 
 ## Matching the soundtrack
 

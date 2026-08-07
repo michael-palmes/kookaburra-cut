@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -85,7 +86,7 @@ export function TerminalPanel({
   /** Scene-picker thumbnails straight from the cache: no capture, no clock borrow. */
   readThumbs: () => Promise<Record<string, string>>;
   /** Capture the scene-picker thumbnails that are missing or stale (borrows the preview clock). */
-  captureThumbs: () => Promise<Record<string, string>>;
+  captureThumbs: (signal?: AbortSignal) => Promise<Record<string, string>>;
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
 }) {
@@ -339,7 +340,23 @@ export function TerminalPanel({
     setThumbs((prev) => ({ ...prev, ...next }));
   }, []);
 
-  /** Open a wizard, painting whatever thumbs the cache already holds. Capture is NOT kicked off here: it borrows the preview clock and seeks every stale scene, which used to scrub the timeline under the user the moment a wizard opened. */
+  // Stable request handle: wizards fire it when their thumb grid mounts, so a re-identified `captureThumbs` prop can't re-trigger their step effects.
+  const captureRef = useRef(captureThumbs);
+  useEffect(() => {
+    captureRef.current = captureThumbs;
+  });
+  const thumbsAbort = useRef<AbortController | null>(null);
+  const needThumbs = useCallback(() => {
+    thumbsAbort.current?.abort();
+    const controller = new AbortController();
+    thumbsAbort.current = controller;
+    captureRef
+      .current(controller.signal)
+      .then(addThumbs)
+      .catch(() => {});
+  }, [addThumbs]);
+
+  /** Open a wizard, painting cached thumbs immediately AND submitting the stale ones straight away: the render window captures in the background (never the editor's clock, which the old pipeline scrubbed), so by the placement step the fresh thumbs are usually already in. */
   const openSceneWizard = useCallback(
     (which: WizardKind | "new-scene-native" | "edit-scene") => {
       setMoreOpen(false);
@@ -348,20 +365,31 @@ export function TerminalPanel({
       readThumbs()
         .then(addThumbs)
         .catch(() => {});
+      needThumbs();
     },
-    [readThumbs, addThumbs],
+    [readThumbs, addThumbs, needThumbs],
   );
-
-  // Stable request handle: wizards fire it when their thumb grid mounts, so a re-identified `captureThumbs` prop can't re-trigger their step effects.
-  const captureRef = useRef(captureThumbs);
+  // A closed wizard's queued thumbs are cancelled rather than left draining for nobody.
   useEffect(() => {
-    captureRef.current = captureThumbs;
+    if (wizard === null) thumbsAbort.current?.abort();
+    const holder = thumbsAbort;
+    return () => holder.current?.abort();
+  }, [wizard]);
+  // Fresh thumbs land asynchronously from the render window; repaint open grids as they arrive.
+  const readRef = useRef(readThumbs);
+  useEffect(() => {
+    readRef.current = readThumbs;
   });
-  const needThumbs = useCallback(() => {
-    captureRef
-      .current()
-      .then(addThumbs)
-      .catch(() => {});
+  useEffect(() => {
+    const stop = listen("kookaburra://thumbs-updated", () => {
+      readRef
+        .current()
+        .then(addThumbs)
+        .catch(() => {});
+    });
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
   }, [addThumbs]);
 
   // The playback bar / ⌘K channel: a pending wizard request opens the matching wizard once the rail is mounted, then clears itself.

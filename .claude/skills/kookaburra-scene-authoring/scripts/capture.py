@@ -2,8 +2,9 @@
 """Capture one deterministic frame from the RUNNING Kookaburra Cut app (dev or packaged).
 
 Writes a request into ~/Kookaburra Cut/_bridge/requests/ and polls for the app's
-response; the app renders the frame through its export path and answers with a PNG.
-The requested project must be the one open in the app window.
+response; the app's hidden render window renders the frame through the export path
+and answers with a PNG, without disturbing the editor. Playhead captures (no --scene)
+need the requested project open in the app; --scene captures serve any project on disk.
 
     python3 capture.py                       # current playhead of this project
     python3 capture.py --scene 01-hero --at 1.5

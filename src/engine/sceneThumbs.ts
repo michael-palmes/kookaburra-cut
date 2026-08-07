@@ -1,10 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isWorkspaceProjectId, type LoadedProject, sceneFileStem, workspaceSlug } from "./project";
-import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
-/** Scene-picker thumbnails: one centre-frame PNG per scene, captured lazily off the live preview canvas when a thumb grid mounts (never during export/autorun, the clock borrow guards it) and cached natively under the workspace state dir (`.kookaburra/scene-thumbs/<slug>/<stem>.png`). Each thumb carries its own source stamp (that scene's module plus sidecar), so adding or editing ONE scene recaptures ONE thumb; the old whole-project fingerprint invalidated the set on every insert, which is what made every picker re-scrub the timeline. */
-
-const THUMB_WIDTH = 320;
+/** Scene-picker thumbnails: one centre-frame PNG per scene, rendered by the hidden render window's fast tier (render/bridgeService.ts) and cached natively under the workspace state dir (`.kookaburra/scene-thumbs/<slug>/<stem>.png`). Each thumb carries its own source stamp (that scene's module plus sidecar), so adding or editing ONE scene recaptures ONE thumb; capture never borrows the editor's clock (the pre-window pipeline scrubbed the timeline under the user). Grids paint the cached set immediately and refresh on `kookaburra://thumbs-updated` as fresh thumbs land. */
 
 interface SceneThumbsListing {
   stamp: string | null;
@@ -13,7 +10,7 @@ interface SceneThumbsListing {
   sourceStamps: Record<string, string>;
 }
 
-/** Read-only thumb lookup: whatever the cache holds right now, fresh or stale, with no capture and no borrowed-clock scrubbing, since the transition picker must never seek the stage on open and staleness is fine for a preview backdrop. Missing thumbs simply aren't in the record; callers fall back to sample slides. */
+/** Read-only thumb lookup: whatever the cache holds right now, fresh or stale, with no capture, since the transition picker must never seek the stage on open and staleness is fine for a preview backdrop. Missing thumbs simply aren't in the record; callers fall back to sample slides. */
 export async function listCachedSceneThumbs(
   project: LoadedProject,
 ): Promise<Record<string, string>> {
@@ -28,44 +25,32 @@ export async function listCachedSceneThumbs(
   }
 }
 
-/** Absolute thumb paths by scene file stem, capturing the missing/stale ones first; returns what it has on partial failure, since a card with a placeholder beats a blocked picker. Non-workspace projects get `{}` (pickers only exist for workspace projects). */
-export async function ensureSceneThumbs(project: LoadedProject): Promise<Record<string, string>> {
+/** Cached thumb paths by scene file stem, submitting the missing/stale ones to the render window's queue (latest submission wins). Resolves immediately with what the cache holds; fresh thumbs announce themselves via `kookaburra://thumbs-updated`. An aborted `signal` cancels this submission's queue (the requesting dialog closed). Non-workspace projects get `{}` (pickers only exist for workspace projects). */
+export async function ensureSceneThumbs(
+  project: LoadedProject,
+  opts?: { signal?: AbortSignal },
+): Promise<Record<string, string>> {
   if (!isWorkspaceProjectId(project.id)) return {};
   const slug = workspaceSlug(project.id);
   const stems = project.sceneFiles.map(sceneFileStem);
   try {
     const listing = await invoke<SceneThumbsListing>("list_scene_thumbs", { slug });
     // A stem with no source stamp has no scene module on disk, so there is nothing to capture from.
-    const pending = new Set(
-      stems.filter((stem) => {
+    const jobs = stems
+      .filter((stem) => {
         const source = listing.sourceStamps[stem];
         return !!source && (!listing.thumbs[stem] || listing.stamps[stem] !== source);
-      }),
-    );
-    if (pending.size === 0) return listing.thumbs;
-
-    await withBorrowedClock(async () => {
-      for (let i = 0; i < project.slots.length; i++) {
-        const slot = project.slots[i];
-        const stem = stems[i];
-        if (!stem || !pending.has(stem)) continue;
-        const bytes = await captureFrameAt(
-          Math.round(slot.startMs + slot.durationMs / 2),
-          THUMB_WIDTH,
-        );
-        if (!bytes) continue;
-        await invoke("write_scene_thumb", bytes, {
-          headers: {
-            "x-kookaburra-slug": slug,
-            "x-kookaburra-stem": stem,
-            "x-kookaburra-stamp": listing.sourceStamps[stem],
-          },
-        });
-      }
+      })
+      .map((stem) => ({ stem, stamp: listing.sourceStamps[stem] }));
+    if (jobs.length === 0) return listing.thumbs;
+    const generation = Date.now();
+    await invoke("render_submit_thumbs", { batch: { slug, generation, jobs } });
+    opts?.signal?.addEventListener("abort", () => {
+      void invoke("render_cancel_thumbs", { generation }).catch(() => {});
     });
-    return (await invoke<SceneThumbsListing>("list_scene_thumbs", { slug })).thumbs;
+    return listing.thumbs;
   } catch (e) {
-    console.warn("[sceneThumbs] capture failed:", e);
+    console.warn("[sceneThumbs] submit failed:", e);
     return {};
   }
 }

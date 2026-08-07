@@ -46,7 +46,8 @@ export type AutoRunAction =
   | "perf"
   | "screenshot"
   | "packroundtrip"
-  | "create";
+  | "create"
+  | "render-spike";
 
 export interface AutoRunConfig {
   action: AutoRunAction;
@@ -206,10 +207,11 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "perf" &&
     action !== "screenshot" &&
     action !== "packroundtrip" &&
-    action !== "create"
+    action !== "create" &&
+    action !== "render-spike"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot | packroundtrip | create)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike)`,
     );
   }
   const at = env.at?.trim();
@@ -327,6 +329,21 @@ export function resolveScreenshotTimeMs(
   const t = atSeconds !== undefined ? atSeconds * 1000 : (fallbackMs ?? 0);
   return Math.min(Math.max(0, t), Math.max(0, project.totalMs - 1));
 }
+
+/** Mirror of render_win.rs's status payload (render-spike). */
+interface RenderWindowStatus {
+  alive: boolean;
+  lastBeatAgoMs: number | null;
+  beats: { seq: number; deltaMs: number; glMs: number; atMs: number }[];
+}
+
+const round2 = (v: number) => Math.round(v * 100) / 100;
+const mean = (vs: number[]) => (vs.length === 0 ? 0 : vs.reduce((a, b) => a + b, 0) / vs.length);
+const percentile = (vs: number[], p: number) => {
+  if (vs.length === 0) return 0;
+  const sorted = [...vs].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+};
 
 export async function runAutoRun(
   project: LoadedProject,
@@ -455,6 +472,72 @@ export async function runAutoRun(
       await awaitSceneHostsCommitted(project.slots.length);
       const rows = await runPerfProbe(project);
       for (const row of rows) results.push({ aspect: format.name, ...row });
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "render-spike") {
+    // R1 platform spike (21 - Background Renderer): opens the hidden render window and samples its one-a-second heartbeat for --at seconds (default 300). The failure mode being hunted is suspension (the WebContent process napping, beats stopping); WebKit's hidden-page timer alignment is EXPECTED and measured at ~2s per nested 1s timer (2026-08-07: 156 beats/300s, avg gap 1934ms, unchanged when the whole app is hidden; GL frames avg 17.5ms throughout). The pass bar is therefore a live window, beats still flowing, and no gap near suspension scale; timer waits here deliberately use setTimeout, never rAF (the main window may itself be occluded during an AFK run).
+    try {
+      const durationS = config.atSeconds ?? 300;
+      const created = await invoke<boolean>("ensure_render_window");
+      console.warn(`[autorun] render-spike window ${created ? "created" : "already open"}`);
+      const deadline = performance.now() + durationS * 1000;
+      while (performance.now() < deadline) {
+        const waitMs = Math.min(15000, deadline - performance.now());
+        await new Promise((resolve) => window.setTimeout(resolve, waitMs));
+        const status = await invoke<RenderWindowStatus>("render_window_status");
+        const last =
+          status.lastBeatAgoMs === null ? "none" : `${Math.round(status.lastBeatAgoMs)}ms ago`;
+        console.warn(
+          `[autorun] render-spike alive=${status.alive} beats=${status.beats.length} last=${last}`,
+        );
+      }
+      const status = await invoke<RenderWindowStatus>("render_window_status");
+      // Beat 0's delta covers window boot, so gap statistics start at beat 1.
+      const gaps = status.beats.slice(1).map((b) => b.deltaMs);
+      const gls = status.beats.map((b) => b.glMs);
+      results.push({
+        aspect: "-",
+        pass: "beat-gap",
+        frames: status.beats.length,
+        avgMs: round2(mean(gaps)),
+        p95Ms: round2(percentile(gaps, 0.95)),
+        maxMs: round2(Math.max(0, ...gaps)),
+      });
+      results.push({
+        aspect: "-",
+        pass: "gl-frame",
+        frames: gls.length,
+        avgMs: round2(mean(gls)),
+        p95Ms: round2(percentile(gls, 0.95)),
+        maxMs: round2(Math.max(0, ...gls)),
+      });
+      if (!status.alive) throw new Error("render-spike: the render window died mid-run");
+      if (status.beats.length < (durationS * 1000) / 3000) {
+        throw new Error(
+          `render-spike: only ${status.beats.length} beats in ${durationS}s (below the ~2s clamped cadence; the window is suspending)`,
+        );
+      }
+      const worst = Math.max(0, ...gaps);
+      if (worst > 5000) {
+        throw new Error(
+          `render-spike: worst beat gap ${Math.round(worst)}ms exceeds 5000ms (suspension-scale stall)`,
+        );
+      }
+      await invoke("close_render_window");
     } catch (e) {
       ok = false;
       error = String(e);

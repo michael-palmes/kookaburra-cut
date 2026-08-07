@@ -10,8 +10,9 @@
 #   pnpm kookaburra:run --action export --project device-spike --aspect 16:9 --codec libx264
 #   pnpm kookaburra:run --action theme-previews          # regenerate src/assets/theme-previews/
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
+#   pnpm kookaburra:run --action render-spike --at 300   # hidden render window throttling spike
 #
-# Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot (required)
+# Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme, option-previews → the preview-lab-* fixtures (incremental
 #                  via the src/assets/option-previews/manifest.json diff; --all re-records
@@ -19,7 +20,8 @@
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
 #         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
-#         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene)
+#         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene;
+#                  render-spike: sample duration, default 300)
 #         --codec  libx264|h264_videotoolbox|prores_ks (default: libx264)
 #         --preset <id>  export through a bundled/user export preset (v11 · M7);
 #                  without --aspect, the preset's favoured aspect is used
@@ -62,8 +64,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip' or 'create'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -240,6 +242,11 @@ echo
 # `"ok": true` (2-space-indented JSON) ⇒ pass; anything else ⇒ fail.
 if ! grep -q '"ok": true' "$RESULT_FILE"; then
   exit 1
+fi
+
+# render-spike: the beat statistics live in the result file.
+if [[ "$ACTION" == "render-spike" ]]; then
+  echo "kookaburra:run: render-spike stats → $RESULT_FILE"
 fi
 
 # screenshot: surface the PNG path.
