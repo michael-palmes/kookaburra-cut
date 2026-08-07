@@ -152,16 +152,16 @@ export function startBridgeService(
     return true;
   };
 
-  const serveThumb = async (context: EditorContext | null): Promise<void> => {
-    if (context?.exportLocked || context?.playing) return;
+  const serveThumb = async (context: EditorContext | null): Promise<boolean> => {
+    if (context?.exportLocked || context?.playing) return false;
     const take = await invoke<ThumbTake | null>("render_take_thumb_job").catch(() => null);
-    if (!take) return;
+    if (!take) return false;
     try {
       const format = contextFormat(context);
       const project = await ensureLoaded(`ws:${take.slug}`, format);
       const index = project.sceneFiles.findIndex((f) => sceneFileStem(f) === take.stem);
       const slot = project.slots[index];
-      if (!slot) return;
+      if (!slot) return true;
       const thumbFormat: FormatSpec = {
         name: format.name,
         width: THUMB_WIDTH,
@@ -173,7 +173,7 @@ export function startBridgeService(
         tMs,
       );
       const png = await rgbaToPng(rgba, width, height);
-      if (!png) return;
+      if (!png) return true;
       await invoke("write_scene_thumb", png, {
         headers: {
           "x-kookaburra-slug": take.slug,
@@ -186,6 +186,7 @@ export function startBridgeService(
       current = null;
       console.warn(`[render-bridge] thumb ${take.slug}/${take.stem} failed:`, e);
     }
+    return true;
   };
 
   const tick = async (): Promise<void> => {
@@ -199,8 +200,16 @@ export function startBridgeService(
       await serveCapture(request);
       return;
     }
-    const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
-    await serveThumb(context);
+    // Drain the whole thumb queue in one tick: the claim interval is timer-clamped (~2s hidden), so a job-per-tick cadence would stack seconds of idle wait between thumbs. Context re-reads keep the playback/export parking live mid-drain, and a capture request arriving mid-drain takes over.
+    for (;;) {
+      const context = await invoke<EditorContext | null>("get_editor_context").catch(() => null);
+      if (!(await serveThumb(context))) return;
+      const next = await invoke<BridgeRequest | null>("bridge_claim_request").catch(() => null);
+      if (next) {
+        await serveCapture(next);
+        return;
+      }
+    }
   };
 
   const timer = window.setInterval(() => {

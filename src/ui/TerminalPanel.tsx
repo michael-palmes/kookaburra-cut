@@ -340,19 +340,6 @@ export function TerminalPanel({
     setThumbs((prev) => ({ ...prev, ...next }));
   }, []);
 
-  /** Open a wizard, painting whatever thumbs the cache already holds. Capture is NOT kicked off here: it borrows the preview clock and seeks every stale scene, which used to scrub the timeline under the user the moment a wizard opened. */
-  const openSceneWizard = useCallback(
-    (which: WizardKind | "new-scene-native" | "edit-scene") => {
-      setMoreOpen(false);
-      setWizard(which);
-      if (which !== "new-scene-native" && which !== "edit-scene" && which !== "new-scene") return;
-      readThumbs()
-        .then(addThumbs)
-        .catch(() => {});
-    },
-    [readThumbs, addThumbs],
-  );
-
   // Stable request handle: wizards fire it when their thumb grid mounts, so a re-identified `captureThumbs` prop can't re-trigger their step effects.
   const captureRef = useRef(captureThumbs);
   useEffect(() => {
@@ -368,6 +355,20 @@ export function TerminalPanel({
       .then(addThumbs)
       .catch(() => {});
   }, [addThumbs]);
+
+  /** Open a wizard, painting cached thumbs immediately AND submitting the stale ones straight away: the render window captures in the background (never the editor's clock, which the old pipeline scrubbed), so by the placement step the fresh thumbs are usually already in. */
+  const openSceneWizard = useCallback(
+    (which: WizardKind | "new-scene-native" | "edit-scene") => {
+      setMoreOpen(false);
+      setWizard(which);
+      if (which !== "new-scene-native" && which !== "edit-scene" && which !== "new-scene") return;
+      readThumbs()
+        .then(addThumbs)
+        .catch(() => {});
+      needThumbs();
+    },
+    [readThumbs, addThumbs, needThumbs],
+  );
   // A closed wizard's queued thumbs are cancelled rather than left draining for nobody.
   useEffect(() => {
     if (wizard === null) thumbsAbort.current?.abort();
