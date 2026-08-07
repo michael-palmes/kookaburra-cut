@@ -989,6 +989,7 @@ pub fn run() {
         .manage(edit::EditorState::default())
         .manage(present::PresentState::default())
         .manage(render_win::RenderWindowState::default())
+        .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
         .manage(pack::commands::PackState::default())
         .setup(|app| {
@@ -1255,6 +1256,9 @@ pub fn run() {
             bridge::bridge_write_response,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
+            bridge::bridge_pending_count,
+            bridge::set_editor_context,
+            bridge::get_editor_context,
             render_win::ensure_render_window,
             render_win::close_render_window,
             render_win::render_heartbeat,

@@ -37,6 +37,45 @@ struct PendingBridgeShot {
 #[derive(Default)]
 pub struct BridgeScreenshotState(Mutex<Option<PendingBridgeShot>>);
 
+/// What the render window needs from the editor to serve a request: pushed by the editor's pending-check tick, read by the render window at claim time. `project_id` is None on the welcome screen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorContext {
+    pub project_id: Option<String>,
+    pub aspect: String,
+    pub current_ms: f64,
+    pub export_locked: bool,
+}
+
+#[derive(Default)]
+pub struct EditorContextState(pub Mutex<Option<EditorContext>>);
+
+#[tauri::command]
+pub fn set_editor_context(state: State<EditorContextState>, context: EditorContext) {
+    *state.0.lock().unwrap() = Some(context);
+}
+
+#[tauri::command]
+pub fn get_editor_context(state: State<EditorContextState>) -> Option<EditorContext> {
+    state.0.lock().unwrap().clone()
+}
+
+/// Unclaimed request count: the editor's cheap pending probe (one directory read, no claims).
+#[tauri::command]
+pub fn bridge_pending_count(app: AppHandle) -> Result<usize, String> {
+    let requests = bridge_root(&app)?.join("requests");
+    let Ok(entries) = std::fs::read_dir(&requests) else {
+        return Ok(0);
+    };
+    Ok(entries
+        .flatten()
+        .filter(|e| {
+            let path = e.path();
+            path.is_file() && path.extension().and_then(|x| x.to_str()) == Some("json")
+        })
+        .count())
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

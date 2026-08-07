@@ -5,7 +5,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import {
   type CSSProperties,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -29,7 +28,7 @@ import {
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
-import { pollCaptureBridge } from "./engine/captureBridge";
+import { ensureCaptureService } from "./engine/captureBridge";
 import { useChartTrackEditStore } from "./engine/chartTrackEditStore";
 import {
   clipExtractionCount,
@@ -52,7 +51,6 @@ import {
   verifyAllFormats,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
-import { FramePanel } from "./engine/FramePanel";
 import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
 import { mergeFrameSpec } from "./engine/frameSchema";
 import { useGizmoSectionOpen } from "./engine/gizmoSections";
@@ -68,7 +66,6 @@ import {
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
-import { PersistentLayer } from "./engine/PersistentLayer";
 import {
   setPreviewAudioMuted,
   setPreviewAudioProject,
@@ -86,7 +83,6 @@ import {
   type ProjectListing,
   resolveAssetPath,
   sceneFileStem,
-  sceneMountKey,
   WORKSPACE_PROJECT_PREFIX,
   workspaceProjectPath,
   workspaceSlug,
@@ -102,10 +98,9 @@ import { TrustDeniedError } from "./engine/projectTrust";
 import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
-import { SceneHost } from "./engine/SceneHost";
+import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
-import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
   applyEditRepoint,
   resyncFollowMediaDuration,
@@ -137,15 +132,6 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
-import { ChartFallback } from "./toolkit/chart/ChartFallback";
-import { CompareChips } from "./toolkit/compare/CompareChips";
-import { DevicesFallback } from "./toolkit/device/Device";
-import { AssetBoundary } from "./toolkit/media/AssetBoundary";
-import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
-import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
-import { ObjectsFallback } from "./toolkit/objects/ObjectPrimitive";
-import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
-import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
@@ -1462,23 +1448,23 @@ export default function App() {
   const chartLaneOpen = useChartTrackEditStore((s) => s.open);
   const stackedLanes = comparePresent || chartPresent;
 
-  // The capture bridge: answer the embedded terminal's frame requests from the running app (engine/captureBridge.ts); mounts on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
+  // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
     const timer = window.setInterval(() => {
       if (bridgeBusyRef.current) return;
       bridgeBusyRef.current = true;
-      void pollCaptureBridge({
+      void ensureCaptureService({
         project: loadedProjectRef.current,
+        format,
         exporting,
-        setExporting,
       }).finally(() => {
         bridgeBusyRef.current = false;
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isAutoRun, exporting]);
+  }, [isAutoRun, exporting, format]);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
@@ -2076,99 +2062,8 @@ export default function App() {
                       commitStamp={project}
                     />
                   )}
-                  {/* Scenes resolve assets against the project that owns them, the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
-                  <ProjectIdContext.Provider value={project?.id ?? null}>
-                    <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
-                      <Suspense fallback={null}>
-                        {project?.scenes.map((scene, i) => {
-                          const slot = project.slots[i];
-                          const SceneComponent = scene.Scene;
-                          return (
-                            <SceneHost
-                              key={sceneMountKey(project.id, project.sceneFiles[i])}
-                              index={i}
-                              id={project.sceneFiles[i]}
-                              startMs={slot.startMs}
-                              durationMs={slot.durationMs}
-                              doc={project.sceneDocs[i]}
-                              theme={project.sceneThemes[i]}
-                              frame={project.sceneFrames[i]}
-                            >
-                              {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
-                              <AssetBoundary label={`scene ${i + 1}`}>
-                                {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
-                                <SceneBackground />
-                                <SceneComponent />
-                                {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
-                                <DevicesFallback />
-                                <ObjectsFallback />
-                                <LayeredScreenshotFallback />
-                                <VideoWindowFallback />
-                                <ChartFallback />
-                                <TextFallback />
-                                <CompareChips />
-                              </AssetBoundary>
-                            </SceneHost>
-                          );
-                        })}
-                        {/* Comparison side-B hosts: the same scene component mounted again with side B's derived doc and theme, so per-side media/background/lighting scope through the normal host machinery; the compositor renders the pair to its A/B targets and masks them. */}
-                        {project?.scenes.map((scene, i) => {
-                          const bDoc = project.compareBDocs[i];
-                          if (!bDoc) return null;
-                          const slot = project.slots[i];
-                          const SceneComponent = scene.Scene;
-                          return (
-                            <SceneHost
-                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:b`}
-                              index={i}
-                              side="b"
-                              id={project.sceneFiles[i]}
-                              startMs={slot.startMs}
-                              durationMs={slot.durationMs}
-                              doc={bDoc}
-                              theme={project.compareBThemes[i]}
-                              frame={project.sceneFrames[i]}
-                            >
-                              <AssetBoundary label={`scene ${i + 1} after`}>
-                                <SceneBackground />
-                                <SceneComponent />
-                                <DevicesFallback />
-                                <ObjectsFallback />
-                                <LayeredScreenshotFallback />
-                                <VideoWindowFallback />
-                                <ChartFallback />
-                                <TextFallback />
-                                <CompareChips />
-                              </AssetBoundary>
-                            </SceneHost>
-                          );
-                        })}
-                        {/* The persistent (hoisted morph) layer mounts once as a sibling of the scene hosts, outside every SceneContext, so it reads global time and tweens across scene seams. The compositor owns its per-frame visibility. */}
-                        {project?.persistent && (
-                          <PersistentLayer key={`${project.id}:persistent`}>
-                            <project.persistent />
-                          </PersistentLayer>
-                        )}
-                        {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
-                        {project?.scenes.map((_, i) => {
-                          const frame = project.sceneFrames[i];
-                          if (!frame) return null;
-                          const slot = project.slots[i];
-                          return (
-                            <FramePanel
-                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
-                              index={i}
-                              startMs={slot.startMs}
-                              durationMs={slot.durationMs}
-                              doc={project.sceneDocs[i]}
-                              theme={project.sceneThemes[i]}
-                              frame={frame}
-                            />
-                          );
-                        })}
-                      </Suspense>
-                    </ProjectLightingContext.Provider>
-                  </ProjectIdContext.Provider>
+                  {/* The scene tree itself is shared with the hidden render window (engine/StageScenes): scenes resolve assets against the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
+                  <StageScenes project={project} />
                 </Canvas>
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
