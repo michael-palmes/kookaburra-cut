@@ -2696,6 +2696,8 @@ button.beat-status {
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
+  /* Both panes are positioned, so anything overflowing them paints over the toolbar below. */
+  overflow: hidden;
 }
 
 .editor-preview {
@@ -2730,10 +2732,12 @@ button.beat-status {
   container-type: size;
 }
 
-.editor-preview video {
+/* Scoped to the box, not a pane, so the preview and the compare pane letterbox identically. */
+.editor-video-box video {
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   background: #000;
   border-radius: var(--radius-sm);
 }
