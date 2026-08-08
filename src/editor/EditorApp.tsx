@@ -1180,10 +1180,13 @@ export function EditorApp() {
                   value={selectedClip?.speed ?? 1}
                   disabled={!selectedClip}
                   title="Playback speed of the selected clip"
-                  onChange={(e) =>
-                    selectedId &&
-                    commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
-                  }
+                  onChange={(e) => {
+                    if (selectedId) {
+                      commit(setClipSpeed(doc.clips, selectedId, Number(e.currentTarget.value)));
+                    }
+                    // The popup closes but the select keeps focus, and it eats the next click.
+                    e.currentTarget.blur();
+                  }}
                 >
                   {SPEED_OPTIONS.map((s) => (
                     <option key={s} value={s}>
@@ -1219,6 +1222,7 @@ export function EditorApp() {
                             ? { ...doc, reference: { rel, offsetMs: 0 } }
                             : { ...doc, reference: undefined },
                         );
+                        e.currentTarget.blur();
                       }}
                     >
                       <option value="">None</option>

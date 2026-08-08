@@ -121,9 +121,81 @@ export function binaryDir(path: string): string | null {
   return cut > 0 ? path.slice(0, cut) : null;
 }
 
-/** The command the panel runs for a project session. `claudePath` is the detected binary (detect_claude), exec'd by full path since detection probes the filesystem while a login non-interactive shell resolves via zprofile PATH only, and the two disagree on a default install (~/.zshrc owns the PATH line), which is exactly the packaged-app case; `continueLast` resumes the folder's most recent conversation (only valid when `hasClaudeSession` is true). */
-export function claudeSessionCommand(continueLast: boolean, claudePath: string): string {
-  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto --model claude-opus-5 --effort high`;
+/** One scene of the open project, as the app already has it loaded. */
+export interface SessionScene {
+  /** Manifest module path, e.g. `scenes/02-hero.tsx`: the CLI's edit target. */
+  file: string;
+  /** Sidecar display name, or null for a scene without one. */
+  name: string | null;
+}
+
+/** What the app knows about the project a session drives, for the grounding the CLI can't discover: which project is open in the app right now. */
+export interface SessionProject {
+  /** The workspace folder name (also the session registry key). */
+  slug: string;
+  /** The project's display name, or null when the app can't resolve one. */
+  name: string | null;
+  /** The project's scenes in timeline order, as loaded at launch. */
+  scenes: readonly SessionScene[];
+}
+
+/** Past this many scenes the list is summarised, so a long deck can't crowd out the lines under it. */
+const GROUNDING_SCENE_MAX = 20;
+
+/** Project text is user-supplied and lands inside an app-owned system prompt AND the terminal: strip controls, flatten whitespace and cap the length, so a crafted name can't forge grounding lines or move the cursor. */
+function projectText(value: string): string {
+  const flat = value.replace(/[\p{Cc}\p{Cf}\s]+/gu, " ").trim();
+  return flat.length > 80 ? `${flat.slice(0, 80).trimEnd()}…` : flat;
+}
+
+/** The project's name for the grounding, falling back to the folder when the app has none. */
+function projectLabel(project: SessionProject): string {
+  const name = project.name ? projectText(project.name) : "";
+  const slug = projectText(project.slug);
+  return name ? `"${name}" (folder ${slug})` : `the project in folder ${slug}`;
+}
+
+/** The scene roster the CLI would otherwise have to read project.json and every sidecar to learn. */
+function sceneList(scenes: readonly SessionScene[]): string {
+  const parts = scenes.slice(0, GROUNDING_SCENE_MAX).map((scene) => {
+    const name = scene.name ? projectText(scene.name) : "";
+    return name ? `${projectText(scene.file)} "${name}"` : projectText(scene.file);
+  });
+  const rest = scenes.length - parts.length;
+  if (rest > 0) parts.push(`and ${rest} more`);
+  return parts.join(", ");
+}
+
+/** The hidden grounding appended to the session's system prompt: which project the app has open, what is in it, that the user is watching it, and the skill to reach for. The durable rules stay in the project's own CLAUDE.md (user-editable, written once), which this points at rather than restates. */
+export function claudeGroundingPrompt(project: SessionProject): string {
+  const count = project.scenes.length;
+  const scenes = count === 1 ? "1 scene" : `${count} scenes`;
+  return [
+    "You are the editing assistant inside Kookaburra Cut, a deterministic animated-video studio for macOS.",
+    `This session drives ONE video project, ${projectLabel(project)}, which is open in the app right now: the working directory is that project's folder, and it currently has ${scenes} under scenes/.`,
+    count > 0 ? `Those scenes, in timeline order: ${sceneList(project.scenes)}.` : "",
+    "The user is looking at the app while they type, so treat requests as being about what is on screen now.",
+    "Use the kookaburra-scene-authoring skill for any scene, sidecar, theme or toolkit work, from the first message, without waiting to be asked.",
+    "CLAUDE.md in this folder is the authority on what you may edit and how; follow it instead of assuming.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** The short visible line the panel prints before the CLI starts, so the user knows what this assistant is for. */
+export function claudeSessionBanner(project: SessionProject): string {
+  const name = project.name ? `"${projectText(project.name)}"` : "this project";
+  return `Claude Code is your editing assistant for ${name}: it already knows what you have open, so just ask for scene, text, colour, pacing or media changes in plain English.`;
+}
+
+/** The command the panel runs for a project session. `claudePath` is the detected binary (detect_claude), exec'd by full path since detection probes the filesystem while a login non-interactive shell resolves via zprofile PATH only, and the two disagree on a default install (~/.zshrc owns the PATH line), which is exactly the packaged-app case; `continueLast` resumes the folder's most recent conversation (only valid when `hasClaudeSession` is true); the grounding rides `--append-system-prompt`, which applies to resumed sessions too. */
+export function claudeSessionCommand(
+  continueLast: boolean,
+  claudePath: string,
+  project: SessionProject,
+): string {
+  const grounding = shellQuote(claudeGroundingPrompt(project));
+  return `exec ${shellQuote(claudePath)}${continueLast ? " --continue" : ""} --permission-mode auto --model claude-opus-5 --effort high --append-system-prompt ${grounding}`;
 }
 
 /** The official installer, run VISIBLY inside the terminal for transparency. */

@@ -3,6 +3,7 @@ import { moveSelection } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { sceneMenuItems } from "../sceneMenu";
+import { canOpenSceneMenu, nextRename, renameCommit, type SceneEdit } from "../sceneRename";
 import { DrillBack } from "./rows";
 
 /** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; Duplicate copies the selection after itself. Double-click renames in place; right-click opens the shared scene menu (the timeline's). Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
@@ -62,9 +63,10 @@ export function ScenesDrillIn({
   const [anchor, setAnchor] = useState<number | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
-  const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
+  const [renaming, setRenaming] = useState<SceneEdit | null>(null);
+  const [timing, setTiming] = useState<SceneEdit | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const edits = { busy, renaming, timing };
 
   const select = (index: number, e: React.MouseEvent | React.PointerEvent) => {
     if (e.shiftKey && anchor !== null) {
@@ -132,18 +134,14 @@ export function ScenesDrillIn({
   }
 
   const startRename = (scene: SceneManagerRow) => {
-    if (busy || !scene.hasDoc) return;
-    setRenaming({ index: scene.index, text: scene.name });
+    const next = nextRename(scene, edits);
+    if (next) setRenaming(next);
   };
 
   const finishRename = (commit: boolean) => {
-    const r = renaming;
+    const write = renameCommit(renaming, scenes, commit);
     setRenaming(null);
-    if (!commit || !r) return;
-    const text = r.text.trim();
-    const current = scenes.find((s) => s.index === r.index);
-    if (!text || text === current?.name) return;
-    onRename(r.index, text);
+    if (write) onRename(write.index, write.name);
   };
 
   const finishTiming = (commit: boolean) => {
@@ -159,7 +157,8 @@ export function ScenesDrillIn({
   };
 
   const openMenu = (e: React.MouseEvent, scene: SceneManagerRow) => {
-    if (busy) return;
+    // Never preventDefault on a row holding a live field, or WKWebView's own text menu is suppressed too.
+    if (!canOpenSceneMenu(scene.index, edits)) return;
     e.preventDefault();
     // Right-clicking inside a multi-selection turns Duplicate into the footer button's bulk action.
     const bulk =
@@ -225,6 +224,7 @@ export function ScenesDrillIn({
                   autoFocus
                   aria-label="Scene name"
                   onPointerDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   onChange={(e) => setRenaming({ index: scene.index, text: e.target.value })}
                   onBlur={() => finishRename(true)}
                   onKeyDown={(e) => {
@@ -244,6 +244,7 @@ export function ScenesDrillIn({
                   autoFocus
                   aria-label="Scene duration in seconds"
                   onPointerDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   onChange={(e) => setTiming({ index: scene.index, text: e.target.value })}
                   onBlur={() => finishTiming(true)}
                   onKeyDown={(e) => {

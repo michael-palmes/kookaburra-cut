@@ -15,11 +15,33 @@ import type { SceneDoc } from "../engine/sceneDocSchema";
 import { rebakeRigBindings } from "../engine/sceneRigConvert";
 import { resolveOverlapMs } from "../engine/sceneTimeline";
 
-/** The one scene-document write funnel: `patchDoc` writes a patched copy of the doc, hands the exact written doc to the host for an in-memory patch (no reload, the no-flicker rule), and records one history entry (`history: false` for the text-motion panel's live writes, since its Done records the session); a themeId change flags `reload` because resolution bakes at load; `commitDuration` writes project.json, flips the sidecar to manual mode, and records one compound history entry, then the nonce-only timing refresh. */
+/** The host's in-memory doc patch. Always pass the `sceneFile` the write targeted: the index alone cannot survive the await (see `resolveDocPatchIndex`). */
+export type DocChangedHandler = (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => void;
+
+/** Manifest module paths may carry a leading `./`; `sceneMountKey` normalises the same way. */
+const normFile = (file: string) => file.replace(/^\.?\//, "");
+
+/** Which slot an awaited doc write must patch. A write is a real IPC round trip, so an insert or reorder that lands first shifts every later scene and the captured index now names someone else's scene: the FILE is the identity, exactly as it is for mount keys. Null drops the patch, the scene left the project mid-write. A caller with no file keeps the old bounds-checked behaviour. */
+export function resolveDocPatchIndex(
+  sceneFiles: readonly string[],
+  sceneIndex: number,
+  sceneFile?: string,
+): number | null {
+  if (sceneFile === undefined) {
+    return sceneIndex >= 0 && sceneIndex < sceneFiles.length ? sceneIndex : null;
+  }
+  const wanted = normFile(sceneFile);
+  const here = sceneFiles[sceneIndex];
+  if (here !== undefined && normFile(here) === wanted) return sceneIndex;
+  const moved = sceneFiles.findIndex((f) => normFile(f) === wanted);
+  return moved >= 0 ? moved : null;
+}
+
+/** The one scene-document write funnel: `patchDoc` writes a patched copy of the doc, hands the exact written doc AND its file to the host for an in-memory patch (no reload, the no-flicker rule), and records one history entry (`history: false` for the text-motion panel's live writes, since its Done records the session); a themeId change flags `reload` because resolution bakes at load; `commitDuration` writes project.json, flips the sidecar to manual mode, and records one compound history entry, then the nonce-only timing refresh. */
 export function useSceneDocPatch(
   project: LoadedProject,
   sceneIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
   onTimingChanged: () => void,
 ) {
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +69,7 @@ export function useSceneDocPatch(
       if (!slug) return;
       const changes: HistoryChange[] = [];
       await writeSceneDoc(slug, sceneFile, next);
-      onDocChanged(sceneIndex, next);
+      onDocChanged(sceneIndex, next, sceneFile);
       changes.push({
         kind: "sceneDoc",
         slug,
@@ -82,7 +104,7 @@ export function useSceneDocPatch(
           });
         }
         if (clampedDoc) {
-          onDocChanged(sceneIndex, clampedDoc);
+          onDocChanged(sceneIndex, clampedDoc, sceneFile);
           changes.push({
             kind: "sceneDoc",
             slug,
@@ -113,7 +135,7 @@ export function useSceneDocPatch(
       const after = structuredClone(baseline);
       patch(after);
       await writeSceneDoc(slug, sceneFile, after);
-      onDocChanged(sceneIndex, after);
+      onDocChanged(sceneIndex, after, sceneFile);
       pushHistory({
         label: "scene edit",
         changes: [
@@ -160,7 +182,7 @@ export async function commitSceneDuration(
   project: LoadedProject,
   sceneIndex: number,
   ms: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
   onTimingChanged: () => void,
 ): Promise<void> {
   const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
@@ -200,7 +222,7 @@ export async function commitSceneDuration(
     if (dirty) {
       const before = structuredClone(doc);
       await writeSceneDoc(slug, sceneFile, next);
-      onDocChanged(sceneIndex, next);
+      onDocChanged(sceneIndex, next, sceneFile);
       changes.push({
         kind: "sceneDoc",
         slug,

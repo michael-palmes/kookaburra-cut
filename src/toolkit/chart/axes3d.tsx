@@ -425,7 +425,9 @@ function ChartValues3D(props: ChartValues3DProps) {
   return (
     <>
       {layout.series.flatMap((series) =>
-        series.points.map((point, i) => {
+        series.points.flatMap((point, i) => {
+          // A trimmed vertex carries no datum, and a point outside the band has no mark to label.
+          if (!point.datum || !point.inside) return [];
           const build = revealAt(at, series.seriesIndex, point.categoryIndex);
           const rode = revealedPoint(point, series.baseline[i], build.grow, build.drop);
           return (

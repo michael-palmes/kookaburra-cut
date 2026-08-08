@@ -108,7 +108,7 @@ import {
   writeSceneDoc,
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
-import { planMoves } from "./engine/sceneOrder";
+import { planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
@@ -168,7 +168,7 @@ import {
 } from "./ui/Titlebar";
 import { hasPendingTextEdit } from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
-import { commitSceneDuration } from "./ui/useSceneDocPatch";
+import { commitSceneDuration, resolveDocPatchIndex } from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
 
 /** A recessed matte over the letterboxed stage while a freshly-opened project settles, with an honest step-based progress bar (no fabricated animation); never rendered in autorun. */
@@ -524,29 +524,32 @@ export default function App() {
 
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
   const handleDocChanged = useCallback(
-    (sceneIndex: number, doc: SceneDoc) => {
+    (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => {
       setProject((prev) => {
-        if (!prev || sceneIndex >= prev.sceneDocs.length) return prev;
+        if (!prev) return prev;
+        // The written FILE addresses the slot, never the captured index: a write awaits real IPC, and an insert or reorder landing first shifts every later scene (the phantom-device bug).
+        const at = resolveDocPatchIndex(prev.sceneFiles, sceneIndex, sceneFile);
+        if (at === null) return prev;
         // Re-resolve this scene's overlay from the new sidecar override, mirroring loadProject:
         // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
         const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
         const resolvedFrame = merged?.enabled === false ? undefined : merged;
         // Comparison side B derives from the doc, so the in-memory patch must re-derive it too (adding a comparison mounts the side-B host without a reload). A changed after-theme id resolves properly at the chained reload; until it lands the previous resolution (else the scene's own theme) stands in.
         const bDoc = deriveCompareBDoc(doc) ?? undefined;
-        const prevBDoc = prev.compareBDocs[sceneIndex];
+        const prevBDoc = prev.compareBDocs[at];
         const bTheme = bDoc
           ? bDoc.themeId
             ? bDoc.themeId === prevBDoc?.themeId
-              ? prev.compareBThemes[sceneIndex]
-              : (prev.compareBThemes[sceneIndex] ?? prev.sceneThemes[sceneIndex])
-            : prev.sceneThemes[sceneIndex]
+              ? prev.compareBThemes[at]
+              : (prev.compareBThemes[at] ?? prev.sceneThemes[at])
+            : prev.sceneThemes[at]
           : undefined;
         return {
           ...prev,
-          sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)),
-          sceneFrames: prev.sceneFrames.map((f, i) => (i === sceneIndex ? resolvedFrame : f)),
-          compareBDocs: prev.compareBDocs.map((d, i) => (i === sceneIndex ? bDoc : d)),
-          compareBThemes: prev.compareBThemes.map((t, i) => (i === sceneIndex ? bTheme : t)),
+          sceneDocs: prev.sceneDocs.map((d, i) => (i === at ? doc : d)),
+          sceneFrames: prev.sceneFrames.map((f, i) => (i === at ? resolvedFrame : f)),
+          compareBDocs: prev.compareBDocs.map((d, i) => (i === at ? bDoc : d)),
+          compareBThemes: prev.compareBThemes.map((t, i) => (i === at ? bTheme : t)),
         };
       });
       const id = loadedProjectRef.current?.id;
@@ -716,7 +719,7 @@ export default function App() {
         if (trimmed) next.name = trimmed;
         else delete next.name;
         await writeSceneDoc(slug, file, next);
-        handleDocChanged(sceneIndex, next);
+        handleDocChanged(sceneIndex, next, file);
         pushHistory({
           label: "scene name",
           changes: [
@@ -784,9 +787,9 @@ export default function App() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
-      // Descending, each copy after its original, so earlier indices stay valid.
-      for (const i of [...indices].sort((a, b) => b - a)) {
-        await duplicateProjectScene(workspaceSlug(current.id), i, i + 1);
+      // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows).
+      for (const { from, at } of planDuplicates(indices)) {
+        await duplicateProjectScene(workspaceSlug(current.id), from, at);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -854,7 +857,7 @@ export default function App() {
       else delete written.camera;
       try {
         await writeSceneDoc(slug, file, written);
-        handleDocChanged(sceneIndex, written);
+        handleDocChanged(sceneIndex, written, file);
         pushHistory({
           label,
           changes: [
@@ -955,7 +958,7 @@ export default function App() {
         next.background = clip.background ? structuredClone(clip.background) : undefined;
         next.backdrop = clip.backdrop ? structuredClone(clip.backdrop) : undefined;
         await writeSceneDoc(slug, file, next);
-        handleDocChanged(sceneIndex, next);
+        handleDocChanged(sceneIndex, next, file);
         pushHistory({
           label: "paste background",
           changes: [
@@ -993,7 +996,7 @@ export default function App() {
       const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
       next.chart = newChartBlock();
       await writeSceneDoc(slug, file, next);
-      handleDocChanged(sceneIndex, next);
+      handleDocChanged(sceneIndex, next, file);
       pushHistory({
         label: "add chart",
         changes: [
@@ -1012,7 +1015,7 @@ export default function App() {
       if (change.kind === "sceneDoc") {
         const target = (dir === "undo" ? change.before : change.after) ?? { version: 1 };
         await writeSceneDoc(change.slug, change.file, target);
-        handleDocChanged(change.sceneIndex, target);
+        handleDocChanged(change.sceneIndex, target, change.file);
         // A themeId revert resolves at load; without this the undo lands on disk invisibly until the next reload.
         if (change.reload) handleTimingChanged();
       } else {
@@ -1095,7 +1098,7 @@ export default function App() {
           try {
             await writeSceneDoc(pending.slug, sceneFile, next);
             // Surgical (flicker fix): patch the doc in memory since the scene re-binds its clip by src without a reload; only a duration change needs the timing refresh.
-            handleDocChanged(pending.index, next);
+            handleDocChanged(pending.index, next, sceneFile);
             pushHistory({
               label: "video re-point",
               changes: [
@@ -1989,6 +1992,7 @@ export default function App() {
                 key={project.id}
                 slug={workspaceSlug(project.id)}
                 cwd={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                projectName={project.name}
                 scenes={project.slots.map((s, i) => ({
                   index: i,
                   id: s.id,

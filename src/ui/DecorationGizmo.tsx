@@ -86,8 +86,11 @@ export function DecorationGizmo({
     panelMeasureVersion,
     panelMeasureVersion,
   );
-  const selectedId = useDecorationEditStore((s) => s.selectedId);
+  const selectedId = useDecorationEditStore((s) =>
+    s.sceneIndex === sceneIndex ? s.selectedId : null,
+  );
   const select = useDecorationEditStore((s) => s.select);
+  const setScene = useDecorationEditStore((s) => s.setScene);
   const requestMedia = useDecorationEditStore((s) => s.requestMedia);
   const cameraArmed = useCameraEditStore((s) => s.armedTool !== null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -160,6 +163,11 @@ export function DecorationGizmo({
     }
   }, [textKey, theme]);
 
+  // The gizmo follows the playhead, so it owns the store's scene: scrubbing into another scene drops the selection rather than matching the id against that scene's decorations.
+  useEffect(() => {
+    setScene(sceneIndex);
+  }, [setScene, sceneIndex]);
+
   // Drop the selection when the gizmo unmounts (drill-in closed).
   useEffect(() => () => select(null), [select]);
 
@@ -170,16 +178,17 @@ export function DecorationGizmo({
     [],
   );
 
-  // Latest decorations/doc for the keydown handler, which mounts once.
-  const latest = useRef({ decorations, doc });
-  latest.current = { decorations, doc };
+  // Latest scene/decorations/doc for the keydown handler, which mounts once.
+  const latest = useRef({ sceneIndex, decorations, doc });
+  latest.current = { sceneIndex, decorations, doc };
   // Delete/Backspace removes the selected decoration (undoable), unless a text field has focus.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      const id = useDecorationEditStore.getState().selectedId;
+      const store = useDecorationEditStore.getState();
+      const id = store.sceneIndex === latest.current.sceneIndex ? store.selectedId : null;
       if (!id) return;
       e.preventDefault();
       const { decorations: decos, doc: base } = latest.current;

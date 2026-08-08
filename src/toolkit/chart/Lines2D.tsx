@@ -16,7 +16,6 @@ import {
   type ChartValuePill,
   chartRampTexture,
   drawEdgeX,
-  droppedBaseline,
   labelPillRect,
   makeChartFillMaterial,
   patchChartLineMaterial,
@@ -35,6 +34,7 @@ import {
 } from "./chart2dMath";
 import { ChartLabel, ChartPills } from "./chartText";
 import { formatChartValue } from "./format";
+import { chartTrimRuns } from "./layout";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
@@ -87,20 +87,24 @@ export function Lines2D(props: Lines2DProps) {
     <>
       {layout.series.map((series) => {
         const builds = series.points.map((p) => revealAt(at, series.seriesIndex, p.categoryIndex));
+        const grows = builds.map((b) => b.grow);
         const drops = builds.map((b) => b.drop);
-        const points = revealedPoints(
-          series.points,
-          series.baseline,
-          builds.map((b) => b.grow),
-          drops,
-        );
-        // A falling series translates as one band, so its fill boundary drops with it; identity when nothing is falling, which keeps the fill's vertex key stable.
-        const baseline = droppedBaseline(series.baseline, drops);
-        const build = chartSeriesReveal(reveal, series.seriesIndex, series.points.length);
+        const points = revealedPoints(series.points, series.baseline, grows, drops);
+        // The fill boundary rides the same build out of the same origin, so a trimmed edge arrives with the curve above it and a falling series still translates as one band.
+        const baseline = revealedPoints(series.fillBaseline, series.baseline, grows, drops);
+        const runs = chartTrimRuns(series.points);
+        const build = chartSeriesReveal(reveal, series.seriesIndex, layout.categoryCount);
         const colour = chartColourAt(colours, series.seriesIndex, theme.colors.accent);
         const alpha = build.alpha * opacity;
         const layerZ = z + series.seriesIndex * CHART_2D_Z_STEP;
-        const draw = drawState(points, build.draw, build.headX, size, (i) => builds[i]?.pulse ?? 0);
+        const draw = drawState(
+          points,
+          runs,
+          build.draw,
+          build.headX,
+          size,
+          (i) => builds[i]?.pulse ?? 0,
+        );
         return (
           <group key={series.seriesIndex}>
             {filled && (
@@ -116,28 +120,33 @@ export function Lines2D(props: Lines2DProps) {
                 z={layerZ}
               />
             )}
-            {(!filled || look.areaStroke) && (
-              <LineStroke
-                points={points}
-                size={size}
-                colour={colour}
-                opacity={alpha}
-                width={metrics.stroke * props.pixelsPerUnit}
-                resolution={props.resolution}
-                draw={draw}
-                feather={metrics.grid}
-                glow={metrics.point * HEAD_GLOW}
-                accent={theme.colors.accent}
-                z={layerZ + CHART_2D_Z_STEP / 2}
-              />
-            )}
+            {(!filled || look.areaStroke) &&
+              runs.map(([from, to]) => (
+                <LineStroke
+                  key={from}
+                  points={points.slice(from, to)}
+                  size={size}
+                  colour={colour}
+                  opacity={alpha}
+                  width={metrics.stroke * props.pixelsPerUnit}
+                  resolution={props.resolution}
+                  draw={draw}
+                  feather={metrics.grid}
+                  glow={metrics.point * HEAD_GLOW}
+                  accent={theme.colors.accent}
+                  z={layerZ + CHART_2D_Z_STEP / 2}
+                />
+              ))}
             {points.map((p, i) => {
+              const vertex = series.points[i];
+              // A trimmed vertex carries no datum, and a point outside the band has no mark to dot.
+              if (!vertex.datum || !vertex.inside) return null;
               const pulse = builds[i].pulse;
               // A chart without point dots still shows an emphasis pulse: the dot fades up with the envelope and leaves with it.
               if (!look.points && pulse <= 0) return null;
               return (
                 <mesh
-                  key={series.points[i].categoryIndex}
+                  key={vertex.categoryIndex}
                   geometry={dot}
                   position={[
                     plotToWorldX(size, p.x),
@@ -194,9 +203,10 @@ export function Lines2D(props: Lines2DProps) {
   );
 }
 
-/** Where the draw-on has reached, in world units: the clip edge, and the head riding the line (with the emphasis pulse of the point it is passing). Both null once the series is fully drawn, so a preset without the draw channel pays nothing. */
+/** Where the draw-on has reached, in world units: the clip edge, and the head riding the line (with the emphasis pulse of the point it is passing). Both null once the series is fully drawn, so a preset without the draw channel pays nothing; the head also drops where the trim has cut the stroke away, rather than floating over the gap. */
 function drawState(
   points: readonly ChartPoint[],
+  runs: readonly (readonly [number, number])[],
   draw: number,
   headX: number,
   size: ChartSize,
@@ -204,8 +214,11 @@ function drawState(
 ): DrawState {
   if (draw >= 1 || points.length < 2) return { clipX: null, head: null };
   const edge = drawEdgeX(points, draw);
+  // Tested against the polyline's own span, never the raw head: an untrimmed series must not lose its head to a rounding step at either end.
+  const spanX = Math.min(Math.max(headX, points[0].x), points[points.length - 1].x);
+  const onLine = runs.some(([from, to]) => spanX >= points[from].x && spanX <= points[to - 1].x);
   const head =
-    headX < 0
+    headX < 0 || !onLine
       ? null
       : {
           x: plotToWorldX(size, headX),
@@ -386,7 +399,9 @@ function PointValueLabels(props: {
   const pills: WorldRect[] = [];
 
   const drawn = layout.series.flatMap((series) =>
-    series.points.map((point, i) => {
+    series.points.flatMap((point, i) => {
+      // A trimmed vertex carries no datum, and a point outside the band has no mark to label.
+      if (!point.datum || !point.inside) return [];
       const build = revealAt(sample, series.seriesIndex, point.categoryIndex);
       const base = revealedPoint(series.baseline[i] ?? point, undefined, 1, build.drop);
       const at = revealedPoint(point, series.baseline[i], build.grow, build.drop);
@@ -395,13 +410,15 @@ function PointValueLabels(props: {
       const text = formatChartValue(value, labels.format);
       const labelY = (below ? y - metrics.gap : y + metrics.gap) + lift;
       if (pill) pills.push(labelPillRect(text, metrics.value, x, labelY, "center", anchorY));
-      return {
-        key: `${series.seriesIndex}-${point.categoryIndex}`,
-        text,
-        x,
-        y: labelY,
-        alpha: build.alpha,
-      };
+      return [
+        {
+          key: `${series.seriesIndex}-${point.categoryIndex}`,
+          text,
+          x,
+          y: labelY,
+          alpha: build.alpha,
+        },
+      ];
     }),
   );
 
