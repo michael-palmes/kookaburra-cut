@@ -1022,6 +1022,17 @@ upscaled. HEVC-in-mp4 carries `-tag:v hvc1`. VideoToolbox lanes are bitrate-only
 threads to 1 (x264 VBV under threads is non-deterministic: identical frames,
 differing bytes; x265: `frame-threads=1:pools=1`).
 
+**The optional poster frame is runtime-only.** The export modal never stores it
+in a preset. `posterFrame: true` inserts exactly one encoded frame before
+timeline frame 0, using the lower-centre sample from the first scene on the
+selected output-fps grid. That poster renders scene one alone, even when its
+timestamp lies inside an outgoing transition. The video and audio durations grow
+by exactly `1 / fps`; Rust prepends one frame of sample-exact silence (800
+samples at 60 fps, 1600 at 30 fps) and shifts the soundtrack fades and padding
+with it. An absent or false field takes the existing frame and audio paths
+unchanged. Hosts still choose their own link-preview thumbnail, so this improves
+the candidate frame without guaranteeing selection.
+
 **Two-pass = the FFV1 mezzanine.** Pass 1 consumes its input, so two-pass presets
 render ONCE to a lossless FFV1 `.mkv` at OUTPUT res/fps/pix_fmt in
 `$APPDATA/cache/export-mezz/` (statvfs disk guard blocks pre-flight: raw-frame

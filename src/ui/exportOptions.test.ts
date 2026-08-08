@@ -8,11 +8,13 @@ import {
   estimateSizeMB,
   fitToCap,
   groupPresets,
+  highQualityEncode,
   presetAspects,
   railPresets,
   resolveDraft,
   slugifyPresetName,
   specChips,
+  withPosterFrame,
 } from "./exportOptions";
 
 /** A bundled preset the suite depends on; throw loudly rather than assert non-null. */
@@ -189,6 +191,25 @@ describe("the Custom draft", () => {
     const pcmMp4 = { ...customSeed(), audioMode: "pcm" as const };
     expect(resolveDraft(pcmMp4).error).toMatch(/\.mov/);
     expect(resolveDraft(customSeed()).spec?.codec).toBe("libx264");
+  });
+
+  it("keeps the poster frame runtime-only and out of saved presets", () => {
+    const draft = customSeed();
+    const doc = draftToDoc(draft, "ws:links", "Links", "");
+    expect(doc.video).not.toHaveProperty("posterFrame");
+    const spec = present(resolveDraft(draft).spec);
+    expect(withPosterFrame(spec, false)).toBe(spec);
+    expect(withPosterFrame(spec, true).posterFrame).toBe(true);
+  });
+
+  it("keeps High quality legacy when off and resolves its spec only when on", () => {
+    expect(highQualityEncode(false)).toBeUndefined();
+    expect(highQualityEncode(true)).toMatchObject({
+      codec: "libx264",
+      fps: 60,
+      rate: { crf: 18 },
+      posterFrame: true,
+    });
   });
 
   it("slugifies preset names to workspace slugs", () => {

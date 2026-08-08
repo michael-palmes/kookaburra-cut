@@ -12,7 +12,7 @@ import {
 export const KOOKABURRA_STANDARD_ID = "kookaburra-standard";
 export const CUSTOM_ID = "custom";
 
-/** The frozen legacy path as a display-only rail doc (High quality in the Studio group). Never resolved to an encode: selecting this id still exports with the spec omitted, keeping the frozen-path contract. */
+/** The frozen legacy path's rail doc (High quality in the Studio group). It resolves only when the runtime poster-frame toggle needs an explicit spec; option-off still omits the spec. */
 export const HIGH_QUALITY_DISPLAY_DOC: ExportPresetDoc = {
   version: EXPORT_PRESET_VERSION,
   id: KOOKABURRA_STANDARD_ID,
@@ -308,6 +308,16 @@ export function resolveDraft(
   } catch (e) {
     return { error: e instanceof Error ? e.message.replace(/^Custom: /, "") : String(e) };
   }
+}
+
+export function withPosterFrame(spec: EncodeSpec, enabled: boolean): EncodeSpec {
+  return enabled ? { ...spec, posterFrame: true } : spec;
+}
+
+export function highQualityEncode(posterFrame: boolean): EncodeSpec | undefined {
+  return posterFrame
+    ? withPosterFrame(resolvePresetToEncodeSpec(HIGH_QUALITY_DISPLAY_DOC), true)
+    : undefined;
 }
 
 /** Slug for Save-as-preset: the workspace slug rules (lowercase, hyphenated). */

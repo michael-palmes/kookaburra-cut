@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 
-use crate::encode::{audio_filter_graph, AudioOptions};
+use crate::encode::{audio_filter_graph_gained, AudioOptions};
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +30,7 @@ pub async fn measure_loudness(
     start_offset_ms: u64,
     total_frames: u32,
     fps: u32,
+    poster_frame: bool,
 ) -> Result<LoudnessInfo, String> {
     let path = std::path::PathBuf::from(&file);
     if !path.is_absolute() || !path.is_file() {
@@ -42,7 +43,7 @@ pub async fn measure_loudness(
         fade_out_ms,
         start_offset_ms,
     };
-    let graph = audio_filter_graph(&audio, total_frames, fps)?;
+    let graph = audio_filter_graph_gained(&audio, total_frames, fps, 0.0, u32::from(poster_frame))?;
 
     // Cache key: the file's bytes plus the exact graph string; any change to either (edited track, new fades, different duration) is a different measurement.
     let mut hasher = Sha256::new();
