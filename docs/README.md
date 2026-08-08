@@ -19,5 +19,5 @@ architecture → determinism → decisions.
 | [voice.md](./voice.md) | Voice, tone, lexicon and the locked copy lines |
 
 Scene-authoring rules and the toolkit reference live in the
-`kookaburra-scene-authoring` skill (`.claude/skills/`); `/new-scene` scaffolds a
+`kookaburra-scene-authoring` skill (`.agents/skills/`); `/new-scene` scaffolds a
 scene, and the `kookaburra-export-presets` skill covers export preset flows.

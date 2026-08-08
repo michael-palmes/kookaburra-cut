@@ -283,5 +283,5 @@ Parked (specs recorded, unbuilt):
   to verify, current baselines.
 - [design.md](./design.md): the application chrome's design language.
 - [voice.md](./voice.md): voice, lexicon and the locked copy lines.
-- `kookaburra-scene-authoring` skill (`.claude/skills/`): the scene rules and
+- `kookaburra-scene-authoring` skill (`.agents/skills/`): the scene rules and
   toolkit reference; `kookaburra-export-presets`: the preset schema and flows.

@@ -61,11 +61,7 @@ function DofIcon({ id, size = 17 }: { id: string; size?: number }) {
           </>
         );
       case "auto":
-        return (
-          <>
-            <path d="M10 3.6l1.6 4.8L16.4 10l-4.8 1.6L10 16.4l-1.6-4.8L3.6 10l4.8-1.6z" />
-          </>
-        );
+        return <path d="M10 3.6l1.6 4.8L16.4 10l-4.8 1.6L10 16.4l-1.6-4.8L3.6 10l4.8-1.6z" />;
       case "manual":
         return (
           <>

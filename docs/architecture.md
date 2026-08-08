@@ -234,7 +234,7 @@ The toolkit ships pre-built with the app (`@kookaburra/toolkit`). Every scene is
 `defineScene` default export; scenes animate only via toolkit primitives or the
 `useTimeline` value, read tokens via `useTheme`, lay out against `useFormat`, and
 reference assets by relative path. The full rules and the primitive reference live
-in the `kookaburra-scene-authoring` skill (`.claude/skills/`); `/new-scene`
+in the `kookaburra-scene-authoring` skill (`.agents/skills/`); `/new-scene`
 scaffolds one. Representative primitives: `AnimatedHeadline`, `AnimatedCounter`,
 `ImageCard`, `AnimatedGroup`, `VideoClip`, `Device`, `SceneStage` (staging:
 floors, backdrops, fixed backgrounds), plus the generative 3D set
