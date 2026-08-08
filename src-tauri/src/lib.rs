@@ -48,11 +48,11 @@ fn show_character_palette(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         app.run_on_main_thread(|| {
-            use objc2_app_kit::NSApplication;
+            use objc2_app_kit::NSApp;
             use objc2_foundation::MainThreadMarker;
-            if let Some(mtm) = MainThreadMarker::new() {
-                NSApplication::sharedApplication(mtm).orderFrontCharacterPalette(None);
-            }
+            // run_on_main_thread guarantees the marker required by AppKit.
+            let mtm = unsafe { MainThreadMarker::new_unchecked() };
+            NSApp(mtm).orderFrontCharacterPalette(None);
         })
         .map_err(|error| error.to_string())
     }
