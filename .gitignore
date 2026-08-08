@@ -27,6 +27,7 @@ src/assets/models/licensed/
 
 # Logs & caches
 *.log
+.pnpm-store/
 .vite/
 coverage/
 

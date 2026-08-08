@@ -422,7 +422,7 @@ fn dev_fixtures_root() -> Option<PathBuf> {
 
 /// Where the shipped project skills live (same debug-tree-first / release-resource-first split as `templates_root`; bundled as the `claude-skills` resource so packaged apps provision projects exactly like dev).
 fn skills_root(app: &AppHandle) -> PathBuf {
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.claude/skills");
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.agents/skills");
     if cfg!(debug_assertions) && dev.is_dir() {
         return dev;
     }

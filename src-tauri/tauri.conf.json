@@ -63,7 +63,7 @@
     "externalBin": ["bin/ffmpeg", "bin/ffprobe"],
     "resources": {
       "../projects": "projects",
-      "../.claude/skills": "claude-skills"
+      "../.agents/skills": "claude-skills"
     },
     "icon": [
       "icons/32x32.png",

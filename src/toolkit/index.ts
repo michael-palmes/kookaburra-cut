@@ -1,4 +1,4 @@
-/** `@kookaburra/toolkit`, the SHIPPED authoring surface; scene files import everything from here. See .claude/skills/kookaburra-scene-authoring for the authoring rules. */
+/** `@kookaburra/toolkit`, the SHIPPED authoring surface; scene files import everything from here. See .agents/skills/kookaburra-scene-authoring for the authoring rules. */
 
 export { useFormat } from "../engine/format";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
