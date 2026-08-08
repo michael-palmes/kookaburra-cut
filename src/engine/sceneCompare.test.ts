@@ -195,12 +195,13 @@ describe("deriveCompareBDoc", () => {
     expect(b?.compare).toBeDefined();
   });
 
-  it("applies side B's theme, background, lighting and per-device media", () => {
+  it("applies side B's theme, background, staging, lighting and per-device media", () => {
     const b = deriveCompareBDoc(
       compareDoc({
         b: {
           themeId: "after-theme",
           background: { type: "color", color: "#123456" } as NonNullable<SceneDoc["background"]>,
+          backdrop: { type: "floor", color: "#654321" },
           lighting: { exposure: 1.2 } as NonNullable<SceneDoc["lighting"]>,
           media: { d2: { src: "assets/after.mp4", kind: "video" } },
         },
@@ -208,6 +209,7 @@ describe("deriveCompareBDoc", () => {
     );
     expect(b?.themeId).toBe("after-theme");
     expect(b?.background).toEqual({ type: "color", color: "#123456" });
+    expect(b?.backdrop).toEqual({ type: "floor", color: "#654321" });
     expect(b?.lighting).toEqual({ exposure: 1.2 });
     expect(b?.devices?.[0].media?.src).toBe("assets/before.mp4");
     expect(b?.devices?.[1].media?.src).toBe("assets/after.mp4");

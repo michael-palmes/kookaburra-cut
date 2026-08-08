@@ -43,6 +43,26 @@ use encode::{
     ExportOptions,
 };
 
+#[tauri::command]
+fn show_character_palette(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        app.run_on_main_thread(|| {
+            use objc2_app_kit::NSApplication;
+            use objc2_foundation::MainThreadMarker;
+            if let Some(mtm) = MainThreadMarker::new() {
+                NSApplication::sharedApplication(mtm).orderFrontCharacterPalette(None);
+            }
+        })
+        .map_err(|error| error.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("The system emoji picker is only available on macOS.".into())
+    }
+}
+
 /// Progress event streamed back to the frontend over an ipc `Channel`.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1198,6 +1218,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            show_character_palette,
             start_export,
             notify_export_done,
             media::probe_audio,
@@ -1259,6 +1280,7 @@ pub fn run() {
             scene_doc::remove_project_scene,
             scene_doc::move_project_scene,
             scene_doc::update_project_scene_transition,
+            scene_doc::apply_project_transition_to_all,
             scene_doc::set_project_theme,
             scene_doc::set_project_audio,
             scene_doc::scaffold_scene,

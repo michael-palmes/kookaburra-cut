@@ -397,6 +397,8 @@ export function LightingSectionBody({
   onBack,
   patchDoc,
   commitFromBaseline,
+  showReset,
+  resetLabel,
 }: {
   doc: SceneDoc;
   theme: Theme;
@@ -407,6 +409,8 @@ export function LightingSectionBody({
   onBack: () => void;
   patchDoc: (patch: (next: SceneDoc) => void, opts?: { history?: string | false }) => Promise<void>;
   commitFromBaseline: (baseline: SceneDoc, patch: (next: SceneDoc) => void) => Promise<void>;
+  showReset?: boolean;
+  resetLabel?: string;
 }) {
   const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -1072,11 +1076,11 @@ export function LightingSectionBody({
               )}
             </DrillGroup>
 
-            {doc.lighting && (
+            {(showReset ?? doc.lighting !== undefined) && (
               <>
                 <div className="inspector-section-divider" />
                 <ActionRow
-                  label="Reset to theme"
+                  label={resetLabel ?? "Reset to theme"}
                   chevron={false}
                   onClick={() =>
                     commit((next) => {

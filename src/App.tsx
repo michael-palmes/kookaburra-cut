@@ -507,7 +507,7 @@ export default function App() {
     slug: string;
     index: number;
     editName: string;
-    slot: "device" | "background" | "videoWindow";
+    slot: "device" | "compareDevice" | "background" | "videoWindow";
     deviceId?: string;
   } | null>(null);
 
@@ -1111,7 +1111,11 @@ export default function App() {
                 },
               ],
             });
-            if (pending.slot === "device" || pending.slot === "videoWindow") {
+            if (
+              pending.slot === "device" ||
+              pending.slot === "compareDevice" ||
+              pending.slot === "videoWindow"
+            ) {
               const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
@@ -1760,7 +1764,7 @@ export default function App() {
     async (
       sceneIndex: number,
       mediaRel: string,
-      slot: "device" | "background" | "videoWindow" = "device",
+      slot: "device" | "compareDevice" | "background" | "videoWindow" = "device",
       deviceId?: string,
     ) => {
       if (!project || !isWorkspaceProjectId(project.id)) return;

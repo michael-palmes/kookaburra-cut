@@ -114,7 +114,7 @@ export interface SceneSectionModel {
   rows: SceneRowModel[];
 }
 
-/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Animations (id `camera`) and Duration are always present. */
+/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
 export function sceneSections(input: {
   doc: SceneDoc | undefined;
   slotsCount: number;
@@ -226,8 +226,8 @@ export function sceneSections(input: {
 
   sections.push({
     id: "camera",
-    label: "Animations",
-    rows: [{ id: "camera.animate", label: "Animate scene", chevron: true }],
+    label: "Camera",
+    rows: [],
   });
 
   const motionRows: SceneRowModel[] = [];

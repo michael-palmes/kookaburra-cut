@@ -334,6 +334,23 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("parses comparison staging independently from its other overrides", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        compare: {
+          b: {
+            backdrop: { type: "floor", color: "#123456" },
+            background: { type: "color", color: "#654321" },
+          },
+        },
+      },
+      "test",
+    );
+    expect(doc?.compare?.b?.backdrop).toEqual({ type: "floor", color: "#123456" });
+    expect(doc?.compare?.b?.background).toEqual({ type: "color", color: "#654321" });
+  });
+
   it("keeps a non-empty string themeId and drops other shapes (v8)", () => {
     expect(parseSceneDoc({ version: 1, themeId: "kookaburra-studio-white" }, "test")?.themeId).toBe(
       "kookaburra-studio-white",

@@ -179,6 +179,7 @@ export function deriveCompareBDoc(doc: SceneDoc | undefined): SceneDoc | null {
   if (!side) return b;
   if (side.themeId !== undefined) b.themeId = side.themeId;
   if (side.background !== undefined) b.background = side.background;
+  if (side.backdrop !== undefined) b.backdrop = side.backdrop;
   if (side.lighting !== undefined) b.lighting = side.lighting;
   if (side.media) {
     for (const device of b.devices ?? []) {

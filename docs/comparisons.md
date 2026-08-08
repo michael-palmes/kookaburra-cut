@@ -3,7 +3,7 @@
 One scene rendered twice and composited under an animatable mask: side A
 ("before") is the scene itself, side B ("after") is the same scene with the
 `compare.b` overrides applied. Each side carries its own theme, background,
-lighting and screen media; only finished pixels mix (the cross-theme
+staging, lighting and screen media; only finished pixels mix (the cross-theme
 transition rule). The divider is data, sampled on the CPU, never
 time-derived in GLSL.
 
@@ -18,6 +18,7 @@ itself; deleting the block leaves a valid plain scene):
     "media": { "d2": { "src": "assets/after.mp4", "kind": "video" } },
     "themeId": "kookaburra-midnight",
     "background": { "type": "shader", "shader": "mesh-gradient" },
+    "backdrop": { "type": "floor", "color": "#101820" },
     "lighting": { /* LightingSpec, replaces the scene layer for side B */ }
   },
   "mask": {
@@ -86,10 +87,9 @@ Rules:
 
 ## Interop rules (v1)
 
-- **Transitions** adjacent to a comparison blend its BEFORE side only
-  during the window (the compare plan resolves null on two-active frames);
-  the transition picker says so on affected boundaries. Hard cuts show the
-  full comparison to the edge.
+- **Transitions** preserve each active scene's full comparison. Each scene
+  composites its Before and After sides first, then the boundary transition
+  blends the finished scene pixels. Hard cuts show the comparison to the edge.
 - **Overlays (frames)** do not compose with the compare branch; a framed
   comparison renders full-bleed.
 - **Tone mapping/exposure** is the project's display transform on both
@@ -112,11 +112,10 @@ The `comparison` scene kind scaffolds the two-device pair (labels
 yaws, scale 0.85; the template compresses x and scale in portrait). For a
 masked split on any scene: add the block above, or use the inspector's Add
 comparison (Scene tab), which seeds a visible default (line + chips). The
-drill's After pill edits side B's media, theme, background and lighting;
-the background and lighting drills are the scene's own screens routed at
-`compare.b` through a transplant wrapper (side B's value swaps in before
-the mutation and transplants out after), so the two surfaces can never
-drift.
+Scene inspector's Before/After selector routes Theme, Background, Staging,
+Lighting and device-video actions to that side. After values write through
+`compare.b`; clearing an override returns that field to Before. Comparison
+video actions target device screens only.
 
 ## Gate fixture
 

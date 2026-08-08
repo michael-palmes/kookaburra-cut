@@ -376,11 +376,12 @@ export interface SceneDoc {
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart";
 }
 
-/** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
+/** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; the other fields replace the doc's own values for side B only. */
 export interface SceneDocCompareSide {
   media?: Record<string, DeviceMediaSpec>;
   themeId?: string;
   background?: ThemeBackground;
+  backdrop?: ThemeBackdrop;
   lighting?: LightingSpec;
 }
 
@@ -597,6 +598,10 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
     if (b.background !== undefined) {
       const background = parseBackgroundSpec(b.background, `${source} compare.b`, { video: true });
       if (background) side.background = background;
+    }
+    if (b.backdrop !== undefined) {
+      const backdrop = parseBackdropSpec(b.backdrop, `${source} compare.b`);
+      if (backdrop) side.backdrop = backdrop;
     }
     if (b.lighting !== undefined) {
       const lighting = normalizeLighting(b.lighting, `${source} compare.b`);

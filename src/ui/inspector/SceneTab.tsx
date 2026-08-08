@@ -14,6 +14,7 @@ import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import { sampleVideoForDevice } from "../../engine/deviceSampleMedia";
 import { useFormat } from "../../engine/format";
 import type { GizmoMode } from "../../engine/gizmoMode";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
@@ -23,7 +24,11 @@ import { fsUrl, type MediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
-import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
+import {
+  applyTransitionToAll,
+  readProjectManifestSnapshot,
+  updateSceneTransition,
+} from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
@@ -129,7 +134,7 @@ const SCREEN_TITLES: Record<string, string> = {
   text: "Text",
   device: "Device",
   frame: "Overlay",
-  camera: "Animations",
+  camera: "Camera",
   lighting: "Lighting",
   motion: "Timing",
   "text.edit": "Edit text",
@@ -258,6 +263,7 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
+import { mutateCompareBackgroundTarget, mutateCompareLightingTarget } from "./comparisonTarget";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
 import {
@@ -1218,7 +1224,7 @@ function nextDecorationId(src: string, taken: Set<string>): string {
   return uniqueDecorationId(base.replace(/\.[^.]+$/, "") || "decoration", taken);
 }
 
-/** The Animations section body: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
+/** Camera controls: orbit-pose numerics (decision 5, the real model, not the mock's pos/rot) editing the selected-else-nearest key via `setKeyPose` → `useCameraDoc.commit` (history rides "camera edit" for free); an empty track commits a lone key at 0, the whole-scene static reframe, exactly the CameraToolOverlay's seed. */
 function CameraSectionBody({
   project,
   sceneIndex,
@@ -1254,7 +1260,6 @@ function CameraSectionBody({
   const banded = useSceneIsBanded(sceneIndex);
   const lsAnimated = doc?.animatedTrack === "layeredScreenshot";
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
-  const cameraOpen = useCameraEditStore((s) => s.open);
   const detailedLane = useUiStore((s) => s.detailedAnimationView);
   const setDetailedLane = useUiStore((s) => s.setDetailedAnimationView);
   const keyCount = free ? rig.keys.length : camera.keys.length;
@@ -1445,17 +1450,6 @@ function CameraSectionBody({
         commitPose={commitRigPose}
         commitRig={(next: RigDoc) => void commitRig(next)}
       />
-      <ActionRow
-        icon={<SceneRowIcon id="camera.animate" />}
-        label="Animate scene"
-        value={
-          rig.keys.length > 0
-            ? `${rig.keys.length} key${rig.keys.length === 1 ? "" : "s"}`
-            : undefined
-        }
-        selected={cameraOpen}
-        onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
-      />
       {presetRow}
       {continuityRow}
     </>
@@ -1547,17 +1541,6 @@ function CameraSectionBody({
           })
         }
       />
-      <ActionRow
-        icon={<SceneRowIcon id="camera.animate" />}
-        label="Animate scene"
-        value={
-          camera.keys.length > 0
-            ? `${camera.keys.length} key${camera.keys.length === 1 ? "" : "s"}`
-            : undefined
-        }
-        selected={cameraOpen}
-        onClick={() => useCameraEditStore.getState().setOpen(!cameraOpen)}
-      />
       {presetRow}
       {camera.keys.length > 1 && (
         <>
@@ -1629,7 +1612,7 @@ function CameraSectionBody({
   return (
     <div className="inspector-drill">
       <DrillBack label="Scene" onClick={onBack} />
-      <div className="inspector-drill-title">Animations</div>
+      <div className="inspector-drill-title">Camera</div>
       {keyCount > 0 && (
         <div className="inspector-drill-reset">
           <button
@@ -1861,7 +1844,7 @@ export function SceneTab({
   onOpenEditVideo: (
     sceneIndex: number,
     mediaRel: string,
-    slot?: "device" | "background" | "videoWindow",
+    slot?: "device" | "compareDevice" | "background" | "videoWindow",
     deviceId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
@@ -1934,15 +1917,12 @@ export function SceneTab({
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
   const [objectPickerOpen, setObjectPickerOpen] = useState(false);
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
-  // The comparison drill's side pill and its full-height media screen's target device.
+  // The scene-level comparison selector and its full-height media screen's target device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
   const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
   const compareDragBaseline = useRef<SceneDoc | null>(null);
-  // Which document the background/lighting drills edit: the scene itself, or the comparison's after side (set at every drill entry point, reset on scene change).
-  const [bgTarget, setBgTarget] = useState<"scene" | "compareB">("scene");
-  const [lightingTarget, setLightingTarget] = useState<"scene" | "compareB">("scene");
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
@@ -2183,8 +2163,6 @@ export function SceneTab({
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
-    setBgTarget("scene");
-    setLightingTarget("scene");
     // Text drafts are keyed by field name, not by scene, so a leftover would shadow the new
     // scene's text. A pending debounce is detached rather than cancelled: its closure holds the
     // old scene's patchDoc, so unflushed typing still lands on the scene it was typed in.
@@ -2246,17 +2224,21 @@ export function SceneTab({
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
   useEffect(() => {
     void themesRefreshKey; // re-list on ThemeMode close
-    if (drillIn === "style.theme" || drillIn === "compare.edit" || drillIn === "compare.theme") {
+    if (drillIn === "style.theme") {
       void listThemeChoices().then(setThemeChoices);
     }
   }, [drillIn, themesRefreshKey]);
 
-  // The theme-card right-click menu; Apply here means the scene override.
+  // The theme-card right-click menu applies to the comparison side selected in Scene.
   const themeMenu = useThemeCardMenu({
     onApply: (themeId) => {
       setThemeDraft(themeId);
       void patchDoc((next) => {
-        next.themeId = themeId || undefined;
+        if (compareSide === "b" && next.compare) {
+          next.compare.b = { ...next.compare.b, themeId: themeId || undefined };
+        } else {
+          next.themeId = themeId || undefined;
+        }
       }).then(onTimingChanged);
     },
     onManage: onOpenTheme,
@@ -2267,9 +2249,17 @@ export function SceneTab({
 
   if (!slug) return null;
 
+  const editingAfter = compareSide === "b" && doc?.compare !== undefined;
+  const compareBDoc = editingAfter ? project.compareBDocs[sceneIndex] : undefined;
+  const editingTheme = editingAfter
+    ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
+    : (sceneTheme ?? project.theme);
+  const editingDeviceMedia = editingAfter
+    ? (doc?.compare?.b?.media?.[deviceId ?? ""] ?? device?.media)
+    : device?.media;
   const sceneFrame = project.sceneFrames[sceneIndex];
   const sections = sceneSections({
-    doc,
+    doc: compareBDoc ?? doc,
     slotsCount: project.slots.length,
     deckFrame: project.deckFrame !== undefined,
     frame: sceneFrame,
@@ -2302,6 +2292,7 @@ export function SceneTab({
           id,
           model: "iphone-17-pro",
           colour: "silver",
+          media: { src: sampleVideoForDevice("iphone-17-pro"), kind: "video" },
           placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
           motion: { preset: "none" },
           shadow: "soft",
@@ -2407,49 +2398,22 @@ export function SceneTab({
     );
   };
 
-  /** Route a background-drill mutation at its target: the scene's own `background`, or the comparison's after side. For the after side, side B's value swaps in before the mutation and transplants out after, so the drill's reads and writes work unchanged and every OTHER field still mutates the real doc. */
+  /** Route a background-drill mutation to Before, or transplant After's fill and staging fields through the unchanged editor. */
   const patchBgDoc = (mutate: (next: SceneDoc) => void, opts?: Parameters<typeof patchDoc>[1]) => {
-    if (bgTarget !== "compareB") return patchDoc(mutate, opts);
-    return patchDoc((next) => {
-      const own = next.background;
-      next.background = next.compare?.b?.background;
-      mutate(next);
-      const written = next.background;
-      next.background = own;
-      if (!next.compare) next.compare = {};
-      if (!next.compare.b) next.compare.b = {};
-      next.compare.b.background = written;
-    }, opts);
+    if (!editingAfter) return patchDoc(mutate, opts);
+    return patchDoc((next) => mutateCompareBackgroundTarget(next, mutate), opts);
   };
-  /** The lighting drill's target routing, same transplant rule over `lighting`. */
   const patchLightingDoc = (
     mutate: (next: SceneDoc) => void,
     opts?: Parameters<typeof patchDoc>[1],
   ) => {
-    if (lightingTarget !== "compareB") return patchDoc(mutate, opts);
-    return patchDoc((next) => {
-      const own = next.lighting;
-      next.lighting = next.compare?.b?.lighting;
-      mutate(next);
-      const written = next.lighting;
-      next.lighting = own;
-      if (!next.compare) next.compare = {};
-      if (!next.compare.b) next.compare.b = {};
-      next.compare.b.lighting = written;
-    }, opts);
+    if (!editingAfter) return patchDoc(mutate, opts);
+    return patchDoc((next) => mutateCompareLightingTarget(next, mutate), opts);
   };
   const commitLightingFromBaseline = (baseline: SceneDoc, mutate: (next: SceneDoc) => void) => {
-    if (lightingTarget !== "compareB") return commitFromBaseline(baseline, mutate);
-    return commitFromBaseline(baseline, (next) => {
-      const own = next.lighting;
-      next.lighting = next.compare?.b?.lighting;
-      mutate(next);
-      const written = next.lighting;
-      next.lighting = own;
-      if (!next.compare) next.compare = {};
-      if (!next.compare.b) next.compare.b = {};
-      next.compare.b.lighting = written;
-    });
+    if (!editingAfter) return commitFromBaseline(baseline, mutate);
+    const actualBaseline = { ...baseline, lighting: doc?.lighting };
+    return commitFromBaseline(actualBaseline, (next) => mutateCompareLightingTarget(next, mutate));
   };
 
   /** Commit a video background pick; the card click and the menu's Select share it, and a previously set parallax (Drift) survives the src swap. Follow-media scenes sourced from the background re-sync their length to the new video. */
@@ -2581,7 +2545,13 @@ export function SceneTab({
     <div className="modal-overlay" role="dialog" aria-modal="true">
       <div className="modal wizard-wide media-modal-wide">
         <div className="modal-title-row">
-          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change video"}</h2>
+          <h2>
+            {mediaTarget.kind === "decoration"
+              ? "Choose image"
+              : doc?.compare
+                ? `Change ${editingAfter ? "after" : "before"} video`
+                : "Change video"}
+          </h2>
         </div>
         <div className="wizard-media-host">
           <MediaBrowser
@@ -2618,13 +2588,19 @@ export function SceneTab({
       setThemeDraft(id);
       // Theme resolution bakes at load; the write chains the nonce reload.
       void patchDoc((next) => {
-        next.themeId = id || undefined;
+        if (editingAfter && next.compare) {
+          next.compare.b = { ...next.compare.b, themeId: id || undefined };
+        } else {
+          next.themeId = id || undefined;
+        }
       }).then(onTimingChanged);
     };
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Scene theme</div>
+        <div className="inspector-drill-title">
+          {doc.compare ? (editingAfter ? "After theme" : "Before theme") : "Scene theme"}
+        </div>
         <div className="inspector-drill-body">
           <div className="font-slot-row">
             <button
@@ -2632,7 +2608,7 @@ export function SceneTab({
               className={`chip${themeDraft === "" ? " selected" : ""}`}
               onClick={() => applySceneTheme("")}
             >
-              Project theme
+              {editingAfter ? "Match before side" : "Project theme"}
             </button>
           </div>
           <ThemeGrid
@@ -3815,7 +3791,7 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.background.media" && doc) {
-    const bgActive = bgTarget === "compareB" ? doc.compare?.b?.background : doc.background;
+    const bgActive = editingAfter ? compareBDoc?.background : doc.background;
     const kind: "image" | "video" =
       bgTabOverride === "image" || bgTabOverride === "video"
         ? bgTabOverride
@@ -3847,7 +3823,7 @@ export function SceneTab({
                 onChanged: () => setMediaRefresh((n) => n + 1),
                 onError: setError,
                 onEdit:
-                  kind === "video"
+                  kind === "video" && !editingAfter
                     ? (rel) => {
                         if (bgActive?.type !== "video" || bgActive.src !== rel) return false;
                         onOpenEditVideo(sceneIndex, rel, "background");
@@ -3862,14 +3838,16 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.background" && doc) {
-    const bgActive = bgTarget === "compareB" ? doc.compare?.b?.background : doc.background;
-    const bgOpts = backgroundOptions(sceneTheme);
+    const bgOverride = editingAfter ? doc.compare?.b?.background : doc.background;
+    const bgActive = editingAfter ? compareBDoc?.background : doc.background;
+    const bgOpts = backgroundOptions(editingTheme);
     const colourOpt = bgOpts.find((o) => o.value?.type === "color")?.value;
-    const docTab = bgActive === undefined ? "default" : bgActive.type;
-    const bgTab = bgTabOverride ?? docTab;
+    const docTab = bgOverride === undefined ? "default" : bgOverride.type;
+    const bgTab = bgTabOverride ?? bgActive?.type ?? docTab;
     // Staging state from the registry: null = the scene mounts no SceneStage (hide the toggle, never warn).
-    const stagingOn = stagedBackdrop !== null && stagedBackdrop !== "none";
-    const resolvedBackdrop = doc.backdrop ?? sceneTheme?.backdrop;
+    const resolvedBackdrop = (compareBDoc ?? doc).backdrop ?? editingTheme.backdrop;
+    const stagingOn =
+      stagedBackdrop !== null && (resolvedBackdrop?.type ?? stagedBackdrop) !== "none";
     /** A floor of `hex`, keeping the resolved floor's fillet so write-through can't reshape the cyc. */
     const floorFor = (hex: string): ThemeBackdrop =>
       resolvedBackdrop?.type === "floor" && resolvedBackdrop.filletRadius !== undefined
@@ -3924,7 +3902,7 @@ export function SceneTab({
     // The Theme tile: colours resolve live from the theme (motion stamps from the mode's anchor preset).
     const applyThemePreset = () =>
       patchShader((spec) => {
-        const anchor = sceneTheme ? themePresetAnchor(spec.shader, sceneTheme) : undefined;
+        const anchor = themePresetAnchor(spec.shader, editingTheme);
         spec.colors = undefined;
         spec.themeColors = true;
         spec.speed = anchor?.speed ?? 1;
@@ -3936,7 +3914,7 @@ export function SceneTab({
       shaderSpec?.preset && shaderSpec
         ? SHADER_BACKGROUND_PRESETS[shaderSpec.shader]?.find((p) => p.id === shaderSpec.preset)
         : undefined;
-    const lightTheme = sceneTheme?.mode === "light";
+    const lightTheme = editingTheme.mode === "light";
     const stripeSwatch = (stripes: string[]) =>
       `data:image/svg+xml,${encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">${stripes
@@ -3949,21 +3927,21 @@ export function SceneTab({
           .join("")}</svg>`,
       )}`;
     // Derived Theme-preset colours for the current pick: the tile swatch always, the pickers only while the flag is on.
-    const themeSwatchColors =
-      shaderSpec && sceneTheme ? deriveThemeShaderColors(shaderSpec.shader, sceneTheme) : null;
+    const themeSwatchColors = shaderSpec
+      ? deriveThemeShaderColors(shaderSpec.shader, editingTheme)
+      : null;
     const themeDerivedColors = shaderSpec?.themeColors ? themeSwatchColors : null;
     const themeSwatchImage = themeSwatchColors ? stripeSwatch(themeSwatchColors) : null;
     // The scene3d Theme preset derives geometry colours and the backing SEPARATELY (the renderer derives from anchor.colors alone; deriving them together would shift the luminance ranks).
-    const scene3dAnchor =
-      scene3dSpec && sceneTheme ? scene3dThemeAnchor(scene3dSpec.look, sceneTheme) : undefined;
-    const scene3dColorsDerived =
-      scene3dAnchor && sceneTheme
-        ? deriveThemeColorsFromAnchor(scene3dAnchor.colors, sceneTheme)
-        : null;
-    const scene3dBackingDerived =
-      scene3dAnchor && sceneTheme
-        ? deriveThemeColorsFromAnchor([scene3dAnchor.backing], sceneTheme)?.[0]
-        : undefined;
+    const scene3dAnchor = scene3dSpec
+      ? scene3dThemeAnchor(scene3dSpec.look, editingTheme)
+      : undefined;
+    const scene3dColorsDerived = scene3dAnchor
+      ? deriveThemeColorsFromAnchor(scene3dAnchor.colors, editingTheme)
+      : null;
+    const scene3dBackingDerived = scene3dAnchor
+      ? deriveThemeColorsFromAnchor([scene3dAnchor.backing], editingTheme)?.[0]
+      : undefined;
     const scene3dThemeSwatch =
       scene3dBackingDerived && scene3dColorsDerived
         ? stripeSwatch([scene3dBackingDerived, ...scene3dColorsDerived])
@@ -4019,12 +3997,14 @@ export function SceneTab({
         <div className="inspector-drill-body">
           {docTab === "default" ? (
             <p className="modal-hint">
-              Following the theme's background. Pick a fill type to override it for this scene.
+              {editingAfter
+                ? "Matching the before background. Pick a fill type to override it for After."
+                : "Following the theme's background. Pick a fill type to override it for this scene."}
             </p>
           ) : (
             <div className="popover-row">
               <button type="button" className="btn" onClick={() => commitBackground(undefined)}>
-                Reset to theme default
+                {editingAfter ? "Match before side" : "Reset to theme default"}
               </button>
             </div>
           )}
@@ -4070,7 +4050,7 @@ export function SceneTab({
             <GradientPickerModal
               embedded
               current={bgActive}
-              theme={sceneTheme}
+              theme={editingTheme}
               onCancel={() => setBgTabOverride(null)}
               onApply={(value) => {
                 setBgTabOverride(null);
@@ -4387,7 +4367,7 @@ export function SceneTab({
                         current={
                           scene3dSpec.backing?.type === "gradient" ? scene3dSpec.backing : undefined
                         }
-                        theme={sceneTheme}
+                        theme={editingTheme}
                         onCancel={() => setBackingTabOverride(null)}
                         onApply={(value) => {
                           setBackingTabOverride(null);
@@ -4614,13 +4594,13 @@ export function SceneTab({
                       return;
                     }
                     // Back on: the theme's own staging when it has one, else a floor in the current colour.
-                    if (sceneTheme?.backdrop && sceneTheme.backdrop.type !== "none") {
+                    if (editingTheme.backdrop && editingTheme.backdrop.type !== "none") {
                       next.backdrop = undefined;
                     } else {
                       next.backdrop = floorFor(
                         bgActive?.type === "color"
                           ? bgActive.color
-                          : (sceneTheme?.colors.background ?? "#ffffff"),
+                          : editingTheme.colors.background,
                       );
                     }
                   })
@@ -4629,19 +4609,22 @@ export function SceneTab({
               {stagingOn && (
                 <div className="wizard-presets">
                   {(() => {
-                    const themeGradients = Object.keys(sceneTheme?.gradients ?? {});
+                    const themeGradients = Object.keys(editingTheme.gradients ?? {});
                     const themeGradient = themeGradients.includes("backdrop")
                       ? "backdrop"
                       : themeGradients[0];
                     const gradientSource = bgActive?.type === "gradient" ? bgActive : undefined;
                     const currentColour =
-                      bgActive?.type === "color"
-                        ? bgActive.color
-                        : (sceneTheme?.colors.background ?? "#ffffff");
+                      bgActive?.type === "color" ? bgActive.color : editingTheme.colors.background;
                     const form =
-                      doc.backdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
+                      (editingAfter ? doc.compare?.b?.backdrop : doc.backdrop) === undefined
+                        ? "theme"
+                        : (resolvedBackdrop?.type ?? "none");
                     const chips: { id: string; label: string; disabled?: boolean }[] = [
-                      { id: "theme", label: "Theme default" },
+                      {
+                        id: "theme",
+                        label: editingAfter ? "Match before side" : "Theme default",
+                      },
                       { id: "floor", label: "Floor" },
                       {
                         id: "gradient",
@@ -4679,7 +4662,7 @@ export function SceneTab({
               )}
             </>
           )}
-          {slug && project.slots.length > 1 && (
+          {!editingAfter && slug && project.slots.length > 1 && (
             <DrillGroup
               label="Apply everywhere"
               hint={`Copies this background${stagedBackdrop !== null ? " and staging" : ""} onto every other scene, matching each slide.`}
@@ -4713,20 +4696,10 @@ export function SceneTab({
     );
   }
   if (drillIn === "motion.transition") {
-    // A comparison on either side of this boundary blends its Before side only during the window (the v1 interop rule); said here where the choice is made, not as a console warning.
-    const boundaryHasCompare =
-      project.sceneDocs[boundaryIndex]?.compare !== undefined ||
-      project.sceneDocs[boundaryIndex + 1]?.compare !== undefined;
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
         <div className="inspector-drill-title">{`Transition out of scene ${boundaryIndex + 1}`}</div>
-        {boundaryHasCompare && (
-          <p className="inspector-stub-note">
-            A comparison sits on this boundary: during the transition window it blends its Before
-            side only. Use a hard cut (None) to keep the full comparison to the edge.
-          </p>
-        )}
         <TransitionModal
           embedded
           project={project}
@@ -4748,33 +4721,26 @@ export function SceneTab({
                 },
               ],
             });
+            onTimingChanged();
+          }}
+          onApplyAll={async (spec) => {
+            const manifestBefore = await readProjectManifestSnapshot(slug);
+            await applyTransitionToAll(slug, spec);
+            pushHistory({
+              label: "transition (all)",
+              changes: [
+                {
+                  kind: "manifest",
+                  slug,
+                  before: manifestBefore,
+                  after: await readProjectManifestSnapshot(slug),
+                  reload: false,
+                },
+              ],
+            });
             closeDrill();
             onTimingChanged();
           }}
-          onApplyAll={
-            project.slots.length > 2
-              ? async (spec) => {
-                  const manifestBefore = await readProjectManifestSnapshot(slug);
-                  for (let i = 0; i < project.slots.length - 1; i++) {
-                    await updateSceneTransition(slug, i, spec);
-                  }
-                  pushHistory({
-                    label: "transition (all)",
-                    changes: [
-                      {
-                        kind: "manifest",
-                        slug,
-                        before: manifestBefore,
-                        after: await readProjectManifestSnapshot(slug),
-                        reload: false,
-                      },
-                    ],
-                  });
-                  closeDrill();
-                  onTimingChanged();
-                }
-              : undefined
-          }
         />
       </div>
     );
@@ -5288,8 +5254,8 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label="Comparison" onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">After screen</div>
+        <DrillBack label={backLabel} onClick={() => closeDrill()} />
+        <div className="inspector-drill-title">Change after video</div>
         <div className="inspector-drill-body">
           {current && (
             <ActionRow
@@ -5329,33 +5295,6 @@ export function SceneTab({
       </div>
     );
   }
-  if (drillIn === "compare.theme" && doc?.compare) {
-    const applyAfterTheme = (id: string) =>
-      void patchDoc((next) => {
-        if (!next.compare) return;
-        if (!next.compare.b) next.compare.b = {};
-        next.compare.b.themeId = id || undefined;
-      }).then(onTimingChanged);
-    const bThemeId = doc.compare.b?.themeId ?? "";
-    return (
-      <div className="inspector-drill">
-        <DrillBack label="Comparison" onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">After theme</div>
-        <div className="inspector-drill-body">
-          <div className="font-slot-row">
-            <button
-              type="button"
-              className={`chip${bThemeId === "" ? " selected" : ""}`}
-              onClick={() => applyAfterTheme("")}
-            >
-              Match the before side
-            </button>
-          </div>
-          <ThemeGrid choices={themeChoices} value={bThemeId} onChange={applyAfterTheme} />
-        </div>
-      </div>
-    );
-  }
   if (drillIn === "compare.edit" && doc?.compare) {
     const cmp = doc.compare;
     const patchCompare = (mutate: (c: NonNullable<SceneDoc["compare"]>) => void) =>
@@ -5391,9 +5330,6 @@ export function SceneTab({
       });
     };
     const lineTokens = ["accent", "text", "muted", "background"] as const;
-    const bThemeName = cmp.b?.themeId
-      ? (themeChoices.find((c) => c.id === cmp.b?.themeId)?.name ?? cmp.b.themeId)
-      : "Same as before";
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
@@ -5645,126 +5581,10 @@ export function SceneTab({
               </div>
             )}
           </DrillGroup>
-          <ToggleFieldset
-            control={
-              <SegmentedRow
-                options={[
-                  { value: "a" as const, label: "Before" },
-                  { value: "b" as const, label: "After" },
-                ]}
-                value={compareSide}
-                onChange={setCompareSide}
-              />
-            }
-          >
-            {compareSide === "a" ? (
-              <>
-                <p className="inspector-stub-note">
-                  The before side is this scene itself; these rows edit it in place.
-                </p>
-                {devices.map((d, i) => (
-                  <ActionRow
-                    key={d.id}
-                    icon={<SceneRowIcon id="device.media" />}
-                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
-                    value={middleTruncate(d.media?.src.split("/").pop() ?? "None")}
-                    chevron
-                    onClick={() => {
-                      setMediaTarget({ kind: "device", deviceId: d.id });
-                      setModal("media");
-                    }}
-                  />
-                ))}
-                <ActionRow
-                  icon={<SceneRowIcon id="style.theme" />}
-                  label="Theme"
-                  value={sceneTheme?.name}
-                  chevron
-                  onClick={() => {
-                    setThemeDraft(doc.themeId ?? "");
-                    openDrill("style.theme");
-                  }}
-                />
-                <ActionRow
-                  icon={<SceneRowIcon id="style.background" />}
-                  label="Background"
-                  chevron
-                  onClick={() => {
-                    setBgTabOverride(null);
-                    setBgTarget("scene");
-                    openDrill("style.background");
-                  }}
-                />
-                <ActionRow
-                  icon={<SceneRowIcon id="lighting" />}
-                  label="Lighting"
-                  chevron
-                  onClick={() => {
-                    setLightingTarget("scene");
-                    openDrill("lighting");
-                  }}
-                />
-              </>
-            ) : (
-              <>
-                {devices.map((d, i) => (
-                  <ActionRow
-                    key={d.id}
-                    icon={<SceneRowIcon id="device.media" />}
-                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
-                    value={middleTruncate(
-                      cmp.b?.media?.[d.id]?.src.split("/").pop() ?? "Same as before",
-                    )}
-                    chevron
-                    onClick={() => {
-                      setCompareMediaDeviceId(d.id);
-                      openDrill("compare.media");
-                    }}
-                  />
-                ))}
-                <ActionRow
-                  icon={<SceneRowIcon id="style.theme" />}
-                  label="Theme"
-                  value={bThemeName}
-                  chevron
-                  onClick={() => openDrill("compare.theme")}
-                />
-                <ActionRow
-                  icon={<SceneRowIcon id="style.background" />}
-                  label="Background"
-                  value={
-                    cmp.b?.background
-                      ? {
-                          none: "None",
-                          color: "Colour",
-                          gradient: "Gradient",
-                          shader: "Animated",
-                          scene3d: "3D",
-                          image: "Image",
-                          video: "Video",
-                        }[cmp.b.background.type]
-                      : "Same as before"
-                  }
-                  chevron
-                  onClick={() => {
-                    setBgTabOverride(null);
-                    setBgTarget("compareB");
-                    openDrill("style.background");
-                  }}
-                />
-                <ActionRow
-                  icon={<SceneRowIcon id="lighting" />}
-                  label="Lighting"
-                  value={cmp.b?.lighting ? "Overridden" : "Same as before"}
-                  chevron
-                  onClick={() => {
-                    setLightingTarget("compareB");
-                    openDrill("lighting");
-                  }}
-                />
-              </>
-            )}
-          </ToggleFieldset>
+          <p className="inspector-stub-note">
+            Choose Before or After above, then use Theme, Background (including Staging) and
+            Lighting to style that side.
+          </p>
           <div className="inspector-section-divider" />
           <ActionRow
             icon={<SceneRowIcon id="device.remove" />}
@@ -5777,6 +5597,7 @@ export function SceneTab({
                 return;
               }
               setConfirmRemoveCompare(false);
+              setCompareSide("a");
               void patchDoc((next) => {
                 next.compare = undefined;
                 if (next.animatedTrack === "compare") next.animatedTrack = undefined;
@@ -5785,7 +5606,6 @@ export function SceneTab({
             }}
           />
         </div>
-        {mediaModal}
       </div>
     );
   }
@@ -6342,11 +6162,23 @@ export function SceneTab({
       }
       const onClick = {
         "device.media": () => {
+          if (editingAfter && deviceId) {
+            setCompareMediaDeviceId(deviceId);
+            openDrill("compare.media");
+            return;
+          }
           setMediaTarget({ kind: "device", deviceId });
           setModal("media");
         },
         "device.editVideo": () =>
-          device?.media && onOpenEditVideo(sceneIndex, device.media.src, "device", device.id),
+          editingDeviceMedia?.kind === "video" &&
+          device &&
+          onOpenEditVideo(
+            sceneIndex,
+            editingDeviceMedia.src,
+            editingAfter ? "compareDevice" : "device",
+            device.id,
+          ),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
         "objects.add": () => setObjectPickerOpen(true),
@@ -6376,12 +6208,11 @@ export function SceneTab({
         },
         "style.theme": () => {
           if (!doc) return;
-          setThemeDraft(doc.themeId ?? "");
+          setThemeDraft(editingAfter ? (doc.compare?.b?.themeId ?? "") : (doc.themeId ?? ""));
           openDrill("style.theme");
         },
         "style.background": () => {
           setBgTabOverride(null);
-          setBgTarget("scene");
           openDrill("style.background");
         },
         "style.shadow": () => openDrill("style.shadow"),
@@ -6439,11 +6270,19 @@ export function SceneTab({
         <ActionRow
           key={row.id}
           icon={<SceneRowIcon id={row.id} />}
-          label={row.id === "device.remove" && confirmRemove ? "Really remove?" : row.label}
+          label={
+            row.id === "device.remove" && confirmRemove
+              ? "Really remove?"
+              : doc?.compare && row.id === "device.media"
+                ? `Change ${editingAfter ? "after" : "before"} video`
+                : doc?.compare && row.id === "device.editVideo"
+                  ? `Edit ${editingAfter ? "after" : "before"} video`
+                  : row.label
+          }
           value={value}
           chevron={row.chevron}
           danger={row.danger}
-          selected={row.id === "device.media" && modal === "media"}
+          selected={row.id === "device.media" && !editingAfter && modal === "media"}
           onClick={onClick}
         />
       );
@@ -6461,22 +6300,18 @@ export function SceneTab({
     );
   }
   if (drillIn === "lighting" && doc) {
-    // The after target hands the section a doc VIEW whose `lighting` is side B's, with write wrappers transplanting the field back; the section itself never learns about comparisons.
-    const forAfter = lightingTarget === "compareB" && !!doc.compare;
     return (
       <LightingSectionBody
-        doc={forAfter ? { ...doc, lighting: doc.compare?.b?.lighting } : doc}
-        theme={
-          forAfter
-            ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
-            : (sceneTheme ?? project.theme)
-        }
+        doc={editingAfter ? { ...doc, lighting: compareBDoc?.lighting } : doc}
+        theme={editingTheme}
         projectId={project.id}
         projectLighting={project.projectLighting}
         slot={scene}
         onBack={closeDrill}
-        patchDoc={forAfter ? patchLightingDoc : patchDoc}
-        commitFromBaseline={forAfter ? commitLightingFromBaseline : commitFromBaseline}
+        patchDoc={editingAfter ? patchLightingDoc : patchDoc}
+        commitFromBaseline={editingAfter ? commitLightingFromBaseline : commitFromBaseline}
+        showReset={editingAfter ? doc.compare?.b?.lighting !== undefined : undefined}
+        resetLabel={editingAfter ? "Match before side" : undefined}
       />
     );
   }
@@ -6514,9 +6349,12 @@ export function SceneTab({
     ? DEVICE_CATALOG[(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId]
         .name
     : undefined;
+  const selectedBackground = editingAfter ? doc?.compare?.b?.background : doc?.background;
   const bgLabel = doc
-    ? doc.background === undefined
-      ? "Theme default"
+    ? selectedBackground === undefined
+      ? editingAfter
+        ? "Same as before"
+        : "Theme default"
       : {
           none: "None",
           color: "Colour",
@@ -6525,7 +6363,7 @@ export function SceneTab({
           scene3d: "3D",
           image: "Image",
           video: "Video",
-        }[doc.background.type]
+        }[selectedBackground.type]
     : undefined;
   // The Scene tab's top level, in three divided sections: what the scene HAS (with the
   // Change/Edit video pair adjacent), what can be ADDED, then the scene settings; the
@@ -6550,7 +6388,7 @@ export function SceneTab({
       icon: "text.edit",
       onClick: () => openDrill("text"),
     });
-  const deviceVideo = device?.media?.kind === "video" ? device.media.src : undefined;
+  const deviceVideo = editingDeviceMedia?.kind === "video" ? editingDeviceMedia.src : undefined;
   const windowVideo = doc?.videoWindow?.media.src;
   if (device)
     contentEntries.push({
@@ -6641,9 +6479,23 @@ export function SceneTab({
       icon: "objects.add",
       onClick: () => setObjectPickerOpen(true),
     });
-  // The video pair closes the content section, always adjacent: Change video first (the
-  // device's picker wins when a scene has both surfaces), its edit right under.
-  if (device || doc?.videoWindow)
+  // Comparison media is device-only, so this selector never redirects background or video-window media.
+  if (doc?.compare && device)
+    contentEntries.push({
+      key: "changeVideo",
+      label: `Change ${editingAfter ? "after" : "before"} video`,
+      icon: "device.media",
+      onClick: () => {
+        if (editingAfter && deviceId) {
+          setCompareMediaDeviceId(deviceId);
+          openDrill("compare.media");
+        } else {
+          setMediaTarget({ kind: "device", deviceId });
+          setModal("media");
+        }
+      },
+    });
+  else if (!doc?.compare && (device || doc?.videoWindow))
     contentEntries.push({
       key: "changeVideo",
       label: "Change video",
@@ -6655,7 +6507,21 @@ export function SceneTab({
           }
         : () => openDrill("videoWindow.media"),
     });
-  if (deviceVideo)
+  if (doc?.compare && deviceVideo && device)
+    contentEntries.push({
+      key: "editVideo.device",
+      label: `Edit ${editingAfter ? "after" : "before"} video`,
+      icon: "device.editVideo",
+      chevron: false,
+      onClick: () =>
+        onOpenEditVideo(
+          sceneIndex,
+          deviceVideo,
+          editingAfter ? "compareDevice" : "device",
+          device.id,
+        ),
+    });
+  else if (!doc?.compare && deviceVideo)
     contentEntries.push({
       key: "editVideo.device",
       label: windowVideo ? "Edit device video" : "Edit video",
@@ -6663,7 +6529,7 @@ export function SceneTab({
       chevron: false,
       onClick: () => onOpenEditVideo(sceneIndex, deviceVideo, "device", device?.id),
     });
-  else if (windowVideo)
+  else if (!doc?.compare && windowVideo)
     contentEntries.push({
       key: "editVideo.vw",
       label: "Edit video",
@@ -6671,7 +6537,7 @@ export function SceneTab({
       chevron: false,
       onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
     });
-  if (deviceVideo && windowVideo)
+  if (!doc?.compare && deviceVideo && windowVideo)
     contentEntries.push({
       key: "editVideo.vw",
       label: "Edit recording",
@@ -6695,12 +6561,12 @@ export function SceneTab({
       onClick: addOverlay,
     });
   if (doc) {
-    const themeId = doc.themeId ?? "";
+    const themeId = editingAfter ? (doc.compare?.b?.themeId ?? "") : (doc.themeId ?? "");
     settingEntries.push({
       key: "theme",
       label: "Theme",
       icon: "style.theme",
-      value: sceneTheme?.name,
+      value: editingAfter && !doc.compare?.b?.themeId ? "Same as before" : editingTheme.name,
       onClick: () => {
         setThemeDraft(themeId);
         openDrill("style.theme");
@@ -6713,14 +6579,13 @@ export function SceneTab({
       value: bgLabel,
       onClick: () => {
         setBgTabOverride(null);
-        setBgTarget("scene");
         openDrill("style.background");
       },
     });
   }
   settingEntries.push({
     key: "camera",
-    label: "Animations",
+    label: "Camera",
     icon: "camera.animate",
     onClick: () => openDrill("camera"),
   });
@@ -6729,10 +6594,8 @@ export function SceneTab({
       key: "lighting",
       label: "Lighting",
       icon: "lighting",
-      onClick: () => {
-        setLightingTarget("scene");
-        openDrill("lighting");
-      },
+      value: editingAfter && !doc.compare?.b?.lighting ? "Same as before" : undefined,
+      onClick: () => openDrill("lighting"),
     });
   if (project.slots.length > 1) {
     settingEntries.push({
@@ -6760,6 +6623,19 @@ export function SceneTab({
   return (
     <>
       {header}
+      {doc?.compare && (
+        <div className="comparison-side-selector">
+          <span>Editing comparison side</span>
+          <SegmentedRow
+            options={[
+              { value: "a" as const, label: "Before" },
+              { value: "b" as const, label: "After" },
+            ]}
+            value={compareSide}
+            onChange={setCompareSide}
+          />
+        </div>
+      )}
       {unrenderableChars.size > 0 && (
         <p className="inspector-text-warning">
           {`Some characters can't render in this scene's fonts: ${[...unrenderableChars].join("  ")}`}

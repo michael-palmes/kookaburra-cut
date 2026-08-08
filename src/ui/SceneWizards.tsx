@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
+import {
+  isSampleDeviceVideo,
+  SAMPLE_LAPTOP_VIDEO,
+  sampleVideoForDevice,
+} from "../engine/deviceSampleMedia";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { fsUrl, type MediaMeta } from "../engine/media";
 import { optionPreviewStill } from "../engine/optionPreviews";
@@ -113,9 +118,6 @@ const SUBTITLE_KINDS: SceneKind[] = [
   "overlayend",
   "overlaypanel",
 ];
-
-/** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
-const SAMPLE_LAPTOP_VIDEO = "assets/sample-laptop-recording.mp4";
 
 const CHART_TYPE_OPTIONS: { id: ChartType; label: string }[] = [
   { id: "column", label: "Column" },
@@ -639,8 +641,9 @@ export function NewSceneWizard({
                 type="button"
                 className="btn primary"
                 onClick={() => {
-                  // The video kinds' media step starts on the sample so "Use the sample video" is a one-click accept.
-                  if (VIDEO_MEDIA_KINDS.includes(kind) && media?.kind !== "video") {
+                  if (isDeviceKind && (!media || isSampleDeviceVideo(media.rel))) {
+                    setMedia({ rel: sampleVideoForDevice(model), kind: "video", meta: null });
+                  } else if (VIDEO_MEDIA_KINDS.includes(kind) && media?.kind !== "video") {
                     setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video", meta: null });
                   }
                   setStep(
@@ -671,6 +674,9 @@ export function NewSceneWizard({
                 onChange={(m, c) => {
                   setModel(m);
                   setColour(c);
+                  if (isDeviceKind && (!media || isSampleDeviceVideo(media.rel))) {
+                    setMedia({ rel: sampleVideoForDevice(m), kind: "video", meta: null });
+                  }
                 }}
               />
             </Field>
@@ -757,7 +763,7 @@ export function NewSceneWizard({
                       ? step === "mediaB"
                         ? (mediaExtra[mediaIndex - 1]?.rel ?? null)
                         : (media?.rel ?? null)
-                      : VIDEO_MEDIA_KINDS.includes(kind) || kind === "image"
+                      : kind !== "layeredscreenshot"
                         ? (media?.rel ?? null)
                         : undefined
                   }

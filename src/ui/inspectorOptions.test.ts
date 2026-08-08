@@ -380,7 +380,7 @@ describe("drillStackForScene (what the inspector keeps open across a scene chang
     expect(drillStackForScene(["device"], full)).toEqual(["device"]);
   });
 
-  it("Animations survives even a doc-less scene", () => {
+  it("Camera survives even a doc-less scene", () => {
     expect(drillStackForScene(["camera"], { ...full, hasDoc: false, textKeys: [] })).toEqual([
       "camera",
     ]);

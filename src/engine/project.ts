@@ -77,6 +77,8 @@ export interface ProjectManifest {
   lighting?: unknown;
   /** The background "Apply everywhere" last stamped across the project, so NEW scenes scaffold with it (`scaffold_scene` reads it; nothing on the render path does). Absent means new scenes follow the theme, and clearing one scene's background in the inspector leaves that scene reverted. */
   appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
+  /** Transition seeded onto new boundaries. Missing keeps the catalogue crossfade for older projects; null explicitly means a hard cut. */
+  defaultTransition?: TransitionSpec | null;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
