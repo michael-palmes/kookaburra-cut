@@ -10,8 +10,8 @@ import type {
   ChartStyleSurface3D,
 } from "./types";
 
-/** Classic is restrained and editorial, studio is crafted and video-native, market is the crypto and finance shelf. */
-export type ChartStyleTier = "classic" | "studio" | "market";
+/** Classic is restrained and editorial, studio is crafted and video-native, market is finance-led, and dark is designed for night stages first. */
+export type ChartStyleTier = "classic" | "studio" | "market" | "dark";
 
 export interface ChartStylePreset {
   id: string;
@@ -104,7 +104,7 @@ interface ChartStylePresetSeed {
   shared?: Partial<ChartStyleShared>;
 }
 
-/** The catalogue in carousel order: the safe default first, then the rest of the classic shelf, the studio looks, and the market looks last. Every row is deltas against boardroom. */
+/** The catalogue in carousel order: the safe default first, then the rest of the classic shelf, studio, market and dark looks. Every row is deltas against boardroom. */
 const SEEDS: ChartStylePresetSeed[] = [
   // ── Classic: restrained, editorial, safe in front of any audience ──
   {
@@ -378,6 +378,96 @@ const SEEDS: ChartStylePresetSeed[] = [
       fontEmphasis: "headline",
     },
   },
+
+  // ── Dark: three distinct night-stage voices, from editorial to launch to material ──
+  {
+    // Restrained editorial: fine rules, compact type and a barely luminous edge over matte marks.
+    id: "nightEditorial",
+    label: "Night editorial",
+    tier: "dark",
+    twod: {
+      labelFraction: 0.046,
+      strokeFraction: 0.006,
+      strokeWidthScale: 0.78,
+      gridFraction: 0.0015,
+      gridOpacity: 0.2,
+      areaOpacity: 0.32,
+      pieGap: 0.004,
+      tickWeight: 0.2,
+      axisLine: true,
+    },
+    threed: {
+      roughness: 0.78,
+      metalness: 0.05,
+      clearcoat: 0,
+      emissiveEdge: 0.08,
+      bevelScale: 0.4,
+      floorShadow: false,
+      interiorFlatStacks: true,
+    },
+    shared: {
+      gridStyleWeight: 0.55,
+      pieGapScale: 0.65,
+      cornerRadiusScale: 0.2,
+    },
+  },
+  {
+    // Luminous launch dashboard: a bright ramp, strong points and glowing dimensional edges.
+    id: "launchGlow",
+    label: "Launch glow",
+    tier: "dark",
+    twod: {
+      gridOpacity: 0.16,
+      areaOpacity: 0.82,
+      areaGradient: "vertical",
+      strokeWidthScale: 1.35,
+      points: true,
+      pointFraction: 0.016,
+      labelPill: true,
+    },
+    threed: {
+      roughness: 0.24,
+      metalness: 0.08,
+      clearcoat: 0.3,
+      clearcoatRoughness: 0.18,
+      emissiveEdge: 0.9,
+      bevelScale: 1.15,
+      wallGrid: false,
+    },
+    shared: {
+      gridStyleWeight: 0.35,
+      legendChrome: "chips",
+      cornerRadiusScale: 1.25,
+      fontEmphasis: "headline",
+    },
+  },
+  {
+    // Premium dimensional material: dense dark metal, broad clearcoat and a sculpted bevel without glow.
+    id: "obsidian",
+    label: "Obsidian",
+    tier: "dark",
+    twod: {
+      gridOpacity: 0.12,
+      areaOpacity: 0.58,
+      strokeWidthScale: 1.05,
+      labelPill: true,
+      pieRadius: 0.86,
+    },
+    threed: {
+      roughness: 0.16,
+      metalness: 0.88,
+      clearcoat: 0.82,
+      clearcoatRoughness: 0.14,
+      bevelScale: 1.45,
+      wallGrid: false,
+    },
+    shared: {
+      gridStyleWeight: 0.25,
+      legendChrome: "chips",
+      cornerRadiusScale: 0.75,
+      fontEmphasis: "headline",
+    },
+  },
 ];
 
 function buildCatalogue(): Record<string, ChartStylePreset> {
@@ -402,7 +492,7 @@ function buildCatalogue(): Record<string, ChartStylePreset> {
 /** The appearance catalogue, keyed by preset id. */
 export const CHART_STYLE_PRESETS: Record<string, ChartStylePreset> = buildCatalogue();
 
-/** Carousel order (boardroom first, then the rest of classic, studio, market): what a picker lists. */
+/** Carousel order (boardroom first, then the rest of classic, studio, market and dark): what a picker lists. */
 export const CHART_STYLE_PRESET_IDS: string[] = SEEDS.map((s) => s.id);
 
 /** The id every unknown preset degrades to. */

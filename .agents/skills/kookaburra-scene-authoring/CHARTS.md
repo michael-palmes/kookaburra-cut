@@ -111,6 +111,7 @@ so switching types keeps data.
 | classic | `boardroom` (default), `print`, `paperCut`, `terminal` | Matte, editorial, grid-forward |
 | studio | `studio`, `gradientRise`, `glass`, `velvet`, `horizon` | Gloss, gradients, transmission glass |
 | market | `midnightGold`, `neonLedger`, `pulseGlass` | Premium finance and crypto: metallic, neon edges, glass + glow |
+| dark | `nightEditorial`, `launchGlow`, `obsidian` | Dark-stage editorial, luminous dashboard and premium dimensional material |
 
 Authored `style` scalars COMPOSE with the preset (cornerRadius scales it, depth scales
 glass thickness); the preset never overwrites them. Dark-first presets (glass, the

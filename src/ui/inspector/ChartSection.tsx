@@ -62,6 +62,7 @@ import {
   GizmoModeIcon,
   NumberField,
   SegmentedRow,
+  TableGridIcon,
   ToggleFieldset,
   ToggleRow,
 } from "./rows";
@@ -149,6 +150,7 @@ const CHART_STYLE_TIERS: { id: ChartStyleTier; label: string }[] = [
   { id: "classic", label: "Classic" },
   { id: "studio", label: "Studio" },
   { id: "market", label: "Market" },
+  { id: "dark", label: "Dark" },
 ];
 
 const CHART_PRESET_TIERS: { id: ChartPresetTier; label: string }[] = [
@@ -501,6 +503,13 @@ export function ChartDrillIn({
         <DrillBack label="Chart" onClick={() => setSeriesId(null)} />
         <div className="inspector-drill-title">{selected.name}</div>
         <div className="inspector-drill-body inspector-section-body">
+          <ActionRow
+            icon={<TableGridIcon />}
+            label="Edit data"
+            value={dataSummary}
+            chevron
+            onClick={() => openChartDataModal()}
+          />
           <TextRow
             label="Name"
             value={selected.name}
@@ -561,12 +570,6 @@ export function ChartDrillIn({
                 </li>
               ))}
             </ul>
-            <ActionRow
-              label="Edit data"
-              value={dataSummary}
-              chevron
-              onClick={() => openChartDataModal()}
-            />
           </DrillGroup>
           <ActionRow
             label="Remove series"
@@ -600,6 +603,13 @@ export function ChartDrillIn({
         <DrillBack label="Chart" onClick={() => setFontOpen(false)} />
         <div className="inspector-drill-title">Chart font</div>
         <div className="inspector-drill-body">
+          <ActionRow
+            icon={<TableGridIcon />}
+            label="Edit data"
+            value={dataSummary}
+            chevron
+            onClick={() => openChartDataModal()}
+          />
           {fontOverride && (
             <button
               type="button"
@@ -655,13 +665,6 @@ export function ChartDrillIn({
 
   const graph = (
     <>
-      <ActionRow
-        label="Edit data"
-        value={dataSummary}
-        chevron
-        onClick={() => openChartDataModal()}
-      />
-
       <DrillGroup label="Chart type">
         <div className="bg-type-grid chart-type-grid">
           {CHART_TYPE_IDS.map((type) => (
@@ -1533,6 +1536,13 @@ export function ChartDrillIn({
       <DrillBack label={backLabel} onClick={onBack} />
       <div className="inspector-drill-title">Chart</div>
       <div className="inspector-drill-body">
+        <ActionRow
+          icon={<TableGridIcon />}
+          label="Edit data"
+          value={dataSummary}
+          chevron
+          onClick={() => openChartDataModal()}
+        />
         <ToggleFieldset
           control={
             <SegmentedRow
