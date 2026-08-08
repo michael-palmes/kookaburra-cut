@@ -21,7 +21,6 @@ import {
   contrastPick,
   dashSegments,
   drawEdgeX,
-  droppedBaseline,
   estimateTextWidth,
   gridlineRects,
   LABEL_PILL,
@@ -264,17 +263,17 @@ describe("the fall entrance", () => {
     const base = { x: 0.5, y: 0.1 };
     expect(revealedPoint(point, base, 1, 0.45).y).toBeCloseTo(1.25, 10);
     expect(revealedPoint(point, base, 0, 0.45).y).toBeCloseTo(0.55, 10);
-    const boundary = droppedBaseline([base, base], [0.45, 0.45]);
+    const boundary = revealedPoints([base, base], [base, base], [1, 1], [0.45, 0.45]);
     expect(boundary.map((p) => p.y)).toEqual([0.55, 0.55]);
   });
 
-  it("holds the fill boundary's identity when nothing is falling", () => {
+  it("leaves an untrimmed fill boundary exactly on the baseline", () => {
     const boundary = [
       { x: 0, y: 0 },
       { x: 1, y: 0 },
     ];
-    expect(droppedBaseline(boundary, [0, 0])).toBe(boundary);
-    expect(droppedBaseline(boundary, [])).toBe(boundary);
+    expect(revealedPoints(boundary, boundary, [0.4, 0.4])).toEqual(boundary);
+    expect(revealedPoints(boundary, boundary, [])).toEqual(boundary);
   });
 
   it("keeps a settled series exactly where the layout put it", () => {

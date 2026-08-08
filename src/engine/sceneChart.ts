@@ -169,6 +169,7 @@ function resolveValueAxis(raw: SceneDocChartValueAxis | undefined): ChartValueAx
     name: typeof raw?.name === "string" ? raw.name : null,
     min: boundOf(raw?.min),
     max: boundOf(raw?.max),
+    trim: raw?.trim !== false,
     steps: num(raw?.steps, CHART_DEFAULT_STEPS),
     format: resolveFormat(raw?.format, CHART_AXIS_FORMAT_DEFAULTS),
     gridlines: {

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -11,6 +12,7 @@ import {
   CLAUDE_INSTALL_COMMAND,
   type ClaudeVersionInfo,
   claudeDoctorCommand,
+  claudeSessionBanner,
   claudeSessionCommand,
   claudeUpdateCommand,
   claudeVersionInfo,
@@ -19,6 +21,7 @@ import {
   getLiveSession,
   hasClaudeSession,
   removeLiveSession,
+  type SessionProject,
   setLiveSession,
   spawnTerminalSession,
 } from "../engine/terminal";
@@ -34,11 +37,11 @@ type PanelStatus = "idle" | "detecting" | "missing" | "installing" | "running" |
 /** A session that dies this fast never worked; surface the shell's parting words since the overlay covers the scrollback and they'd otherwise vanish with the flash. */
 const QUICK_EXIT_MS = 5000;
 
-/** The terminal's last non-empty lines, oldest first. */
-function lastTerminalLines(term: Terminal, max = 3): string {
+/** The terminal's last non-empty lines, oldest first, ignoring everything above `floor` (the rows the panel itself printed before launching, which are not diagnostics). */
+function lastTerminalLines(term: Terminal, floor = 0, max = 3): string {
   const buf = term.buffer.active;
   const lines: string[] = [];
-  for (let i = buf.length - 1; i >= 0 && lines.length < max; i--) {
+  for (let i = buf.length - 1; i >= floor && lines.length < max; i--) {
     const text = buf.getLine(i)?.translateToString(true).trim();
     if (text) lines.unshift(text);
   }
@@ -68,6 +71,7 @@ function themeFromTokens(): ITheme {
 export function TerminalPanel({
   slug,
   cwd,
+  projectName,
   scenes,
   theme,
   readThumbs,
@@ -78,6 +82,8 @@ export function TerminalPanel({
   slug: string;
   /** Absolute project path the shell starts in. */
   cwd: string;
+  /** The open project's display name, for the session banner and grounding; null when unresolved. */
+  projectName?: string | null;
   /** The loaded project's scenes, for the wizards (pickers + scene-aware dropdowns). */
   scenes: WizardSceneInfo[];
   /** The project's theme, for the New-scene wizard's colour swatch defaults. */
@@ -85,7 +91,7 @@ export function TerminalPanel({
   /** Scene-picker thumbnails straight from the cache: no capture, no clock borrow. */
   readThumbs: () => Promise<Record<string, string>>;
   /** Capture the scene-picker thumbnails that are missing or stale (borrows the preview clock). */
-  captureThumbs: () => Promise<Record<string, string>>;
+  captureThumbs: (signal?: AbortSignal) => Promise<Record<string, string>>;
   /** A native write changed project.json/scenes; reload the preview immediately. `focusSceneFile` lands the playhead on that scene after the reload. */
   onProjectChanged: (focusSceneFile?: string) => void;
 }) {
@@ -105,6 +111,9 @@ export function TerminalPanel({
 
   // Stable notifier the registry can call when a (possibly detached) session exits.
   const notifyRef = useRef((next: "idle" | "exited") => setStatus(next));
+  // The grounding wants the scene roster as it stands at launch; via a ref so a rebuilt scenes array can't churn startSession's identity.
+  const scenesRef = useRef(scenes);
+  scenesRef.current = scenes;
 
   // Mount: adopt the project's live session if one exists (re-attach DOM, keep the process), else create a fresh idle terminal; unmount: detach a live session's DOM without killing it, dispose only when nothing is running.
   useEffect(() => {
@@ -216,12 +225,23 @@ export function TerminalPanel({
             "\r\n⚠ Kookaburra Cut's scene-authoring skill is missing from this install, so Claude may not know this app's conventions. Try reinstalling Kookaburra Cut.\r\n",
           );
         }
+        const project: SessionProject = {
+          slug,
+          name: projectName ?? null,
+          scenes: scenesRef.current.map((s) => ({ file: s.file, name: s.name })),
+        };
+        term.writeln(`\r\n${claudeSessionBanner(project)}\r\n`);
+        // Writes are queued, so this lands after the banner and before any PTY output: the row the shell's own output starts on.
+        let noteFloor = 0;
+        term.write("", () => {
+          noteFloor = term.buffer.active.baseY + term.buffer.active.cursorY;
+        });
         const startedAt = Date.now();
         const session = await spawnTerminalSession({
           term,
           cwd,
           // Exec the detected binary and put its dir on the child PATH: a login non-interactive shell never sources ~/.zshrc (where the default install writes its PATH line), and packaged apps have no interactive PATH to inherit.
-          command: claudeSessionCommand(continueLast, path),
+          command: claudeSessionCommand(continueLast, path, project),
           pathPrepend: binaryDir(path) ?? undefined,
           onExit: () => {
             const entry = getLiveSession(slug);
@@ -229,7 +249,7 @@ export function TerminalPanel({
               removeLiveSession(slug);
               if (Date.now() - startedAt < QUICK_EXIT_MS) {
                 // xterm writes are async and the exit message can outrun the shell's final output; a zero-write barrier parses everything queued first.
-                term.write("", () => setExitNote(lastTerminalLines(term)));
+                term.write("", () => setExitNote(lastTerminalLines(term, noteFloor)));
               }
               entry.notify?.("exited");
             }
@@ -251,7 +271,7 @@ export function TerminalPanel({
         setStatus("exited");
       }
     },
-    [slug, cwd],
+    [slug, cwd, projectName],
   );
 
   // Install/update/diagnostics flow: an interactive login shell with the command typed into it, so the user watches exactly what runs; when it finishes they click through to start Claude, which re-detects.
@@ -339,7 +359,23 @@ export function TerminalPanel({
     setThumbs((prev) => ({ ...prev, ...next }));
   }, []);
 
-  /** Open a wizard, painting whatever thumbs the cache already holds. Capture is NOT kicked off here: it borrows the preview clock and seeks every stale scene, which used to scrub the timeline under the user the moment a wizard opened. */
+  // Stable request handle: wizards fire it when their thumb grid mounts, so a re-identified `captureThumbs` prop can't re-trigger their step effects.
+  const captureRef = useRef(captureThumbs);
+  useEffect(() => {
+    captureRef.current = captureThumbs;
+  });
+  const thumbsAbort = useRef<AbortController | null>(null);
+  const needThumbs = useCallback(() => {
+    thumbsAbort.current?.abort();
+    const controller = new AbortController();
+    thumbsAbort.current = controller;
+    captureRef
+      .current(controller.signal)
+      .then(addThumbs)
+      .catch(() => {});
+  }, [addThumbs]);
+
+  /** Open a wizard, painting cached thumbs immediately AND submitting the stale ones straight away: the render window captures in the background (never the editor's clock, which the old pipeline scrubbed), so by the placement step the fresh thumbs are usually already in. */
   const openSceneWizard = useCallback(
     (which: WizardKind | "new-scene-native" | "edit-scene") => {
       setMoreOpen(false);
@@ -348,20 +384,31 @@ export function TerminalPanel({
       readThumbs()
         .then(addThumbs)
         .catch(() => {});
+      needThumbs();
     },
-    [readThumbs, addThumbs],
+    [readThumbs, addThumbs, needThumbs],
   );
-
-  // Stable request handle: wizards fire it when their thumb grid mounts, so a re-identified `captureThumbs` prop can't re-trigger their step effects.
-  const captureRef = useRef(captureThumbs);
+  // A closed wizard's queued thumbs are cancelled rather than left draining for nobody.
   useEffect(() => {
-    captureRef.current = captureThumbs;
+    if (wizard === null) thumbsAbort.current?.abort();
+    const holder = thumbsAbort;
+    return () => holder.current?.abort();
+  }, [wizard]);
+  // Fresh thumbs land asynchronously from the render window; repaint open grids as they arrive.
+  const readRef = useRef(readThumbs);
+  useEffect(() => {
+    readRef.current = readThumbs;
   });
-  const needThumbs = useCallback(() => {
-    captureRef
-      .current()
-      .then(addThumbs)
-      .catch(() => {});
+  useEffect(() => {
+    const stop = listen("kookaburra://thumbs-updated", () => {
+      readRef
+        .current()
+        .then(addThumbs)
+        .catch(() => {});
+    });
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
   }, [addThumbs]);
 
   // The playback bar / ⌘K channel: a pending wizard request opens the matching wizard once the rail is mounted, then clears itself.

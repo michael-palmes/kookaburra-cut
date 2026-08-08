@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { canvasCommittedProject } from "./exportBridge";
+import { yieldMacrotask } from "./macrotask";
 import { fsUrl } from "./media";
 import type { LoadedProject } from "./project";
 import { captureFrameAt, withBorrowedClock } from "./snapshots";
@@ -41,7 +42,7 @@ export async function awaitProjectCommitted(project: LoadedProject): Promise<voi
     if (spins > 5000) {
       throw new Error("Canvas tree never committed the swapped project.");
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldMacrotask();
   }
 }
 

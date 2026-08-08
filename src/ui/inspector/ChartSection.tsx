@@ -1124,6 +1124,16 @@ export function ChartDrillIn({
                 }
               />
             </div>
+            <ToggleRow
+              label="Trim to scale"
+              description="Cut lines and areas where they cross a bound."
+              checked={valueAxis.trim}
+              onChange={(trim) =>
+                writeValueAxis((a) => {
+                  a.trim = trim;
+                })
+              }
+            />
             <StepperRow
               label="Steps"
               value={valueAxis.steps}

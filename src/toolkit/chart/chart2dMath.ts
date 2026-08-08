@@ -459,15 +459,6 @@ export function revealedPoint(
   return { x: b.x + (point.x - b.x) * g, y: b.y + (point.y - b.y) * g + d };
 }
 
-/** A fill boundary displaced by the same per-point `drop` as the curve above it, so a falling area translates as one rigid band instead of stretching. Returns the ORIGINAL array when nothing is displaced, which keeps the fill's vertex key (and its buffers) unchanged on a settled chart. */
-export function droppedBaseline(
-  baseline: readonly ChartPoint[],
-  drops: readonly number[],
-): readonly ChartPoint[] {
-  if (!drops.some((d) => d !== 0)) return baseline;
-  return baseline.map((p, i) => ({ x: p.x, y: p.y + (drops[i] ?? 0) }));
-}
-
 /** A series' drawn points at a build state: each point rides from its baseline up to its value, so a cascade reads as a growth story rather than a pop. */
 export function revealedPoints(
   points: readonly ChartPoint[],

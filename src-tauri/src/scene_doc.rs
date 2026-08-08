@@ -1,6 +1,6 @@
 //! Per-scene sidecar documents and the native scene scaffolder; a scene document is scenes/<stem>.json beside its TSX (the composition), holding the machine-editable half of a scene (name, text map, devices, camera track, duration mode) owned jointly by the app UI and Claude, with both writers sharing one atomic tmp+rename path and version guard so the frontend never touches files directly (see docs/decisions.md, "Project format & authoring").
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -307,7 +307,207 @@ pub fn move_project_scene(
     atomic_write_json(&path, &manifest)
 }
 
-/// Duplicate a scene: the TSX + sidecar copy to a freshly numbered stem (files stay the identity, but the copy mints a fresh unique scene id so React keys and id-keyed UI stay one-to-one), the manifest entry lands at `position` (omitted/out-of-range = append) with `durationMs` and `transition` riding along; files write before the manifest so a failed manifest write can never point at missing files.
+// ── Copied-document id re-minting ─────────────────────────────────────────────
+
+/// The `<textKey><Suffix>` override keys a sidecar's `textStyle` carries (`sceneDocSchema.ts`).
+const TEXT_STYLE_SUFFIXES: [&str; 7] = [
+    "Color",
+    "Font",
+    "Size",
+    "OffsetX",
+    "OffsetY",
+    "LineHeight",
+    "RotationDeg",
+];
+
+/// Give one entry a fresh `<prefix><n>` id, recording old -> new; an entry with no string id is left alone and takes no number. Repeated ids map to their FIRST sighting, the normalisers' own duplicate rule.
+fn mint_id(entry: &mut Value, prefix: &str, n: &mut usize, map: &mut HashMap<String, String>) {
+    let Some(old) = entry.get("id").and_then(Value::as_str).map(str::to_string) else {
+        return;
+    };
+    *n += 1;
+    let new = format!("{prefix}{n}");
+    entry["id"] = json!(&new);
+    map.entry(old).or_insert(new);
+}
+
+/// Renumber every entry of an array from 1 (`<prefix>1`, `<prefix>2`, …), returning the old -> new map its references follow.
+fn renumber_ids(array: Option<&mut Value>, prefix: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let mut n = 0usize;
+    if let Some(entries) = array.and_then(Value::as_array_mut) {
+        for entry in entries {
+            mint_id(entry, prefix, &mut n, &mut map);
+        }
+    }
+    map
+}
+
+/// Rewrite one string field through a map; an absent or unmapped value is left exactly as it is.
+fn remap_field(value: Option<&mut Value>, field: &str, map: &HashMap<String, String>) {
+    let Some(object) = value.and_then(Value::as_object_mut) else {
+        return;
+    };
+    let new = object
+        .get(field)
+        .and_then(Value::as_str)
+        .and_then(|id| map.get(id))
+        .cloned();
+    if let Some(new) = new {
+        object.insert(field.into(), json!(new));
+    }
+}
+
+/// Rewrite an id-keyed record's KEYS through a map (`deviceLayout.devices`, `compare.b.media`, the `ls-` text keys); every mapped entry lifts out before any lands back, so a swap can't clobber.
+fn remap_keys(value: Option<&mut Value>, map: &HashMap<String, String>) {
+    let Some(object) = value.and_then(Value::as_object_mut) else {
+        return;
+    };
+    let moved: Vec<String> = object
+        .keys()
+        .filter(|key| map.contains_key(*key))
+        .cloned()
+        .collect();
+    let mut taken: Vec<(String, Value)> = Vec::with_capacity(moved.len());
+    for key in moved {
+        if let Some(entry) = object.remove(&key) {
+            taken.push((map[&key].clone(), entry));
+        }
+    }
+    for (new, entry) in taken {
+        object.insert(new, entry);
+    }
+}
+
+/// Renumber a keyed track's `keys` from `k1` and point its `segments` at them (the shared KeyedTrack model: camera, rig, lighting, compare, chart, screenshot animation).
+fn renumber_track(track: Option<&mut Value>) {
+    let Some(track) = track else {
+        return;
+    };
+    let keys = renumber_ids(track.get_mut("keys"), "k");
+    let Some(segments) = track.get_mut("segments").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for segment in segments {
+        remap_field(Some(segment), "from", &keys);
+        remap_field(Some(segment), "to", &keys);
+    }
+}
+
+/// Renumber the screenshot stack's layers (`l1`, …) and its items (`i1`, …, numbered across every layer since one scene shares the item space), rewriting each item's `attach.to`; returns the item map the `ls-<id>` text keys follow.
+fn renumber_layered_screenshot(block: Option<&mut Value>) -> HashMap<String, String> {
+    let mut items = HashMap::new();
+    let Some(block) = block else {
+        return items;
+    };
+    renumber_ids(block.get_mut("layers"), "l");
+    let Some(layers) = block.get_mut("layers").and_then(Value::as_array_mut) else {
+        return items;
+    };
+    let mut n = 0usize;
+    for layer in layers.iter_mut() {
+        if let Some(list) = layer.get_mut("items").and_then(Value::as_array_mut) {
+            for item in list {
+                mint_id(item, "i", &mut n, &mut items);
+            }
+        }
+    }
+    for layer in layers {
+        if let Some(list) = layer.get_mut("items").and_then(Value::as_array_mut) {
+            for item in list {
+                remap_field(item.get_mut("attach"), "to", &items);
+            }
+        }
+    }
+    items
+}
+
+/// Point the `ls-<itemId>` text and `textStyle` keys at the re-minted items (`LayeredScreenshot.tsx`'s textKey contract).
+fn remap_layered_text_keys(doc: &mut Value, items: &HashMap<String, String>) {
+    if items.is_empty() {
+        return;
+    }
+    let mut text: HashMap<String, String> = HashMap::new();
+    let mut style: HashMap<String, String> = HashMap::new();
+    for (old, new) in items {
+        let (old, new) = (format!("ls-{old}"), format!("ls-{new}"));
+        for suffix in TEXT_STYLE_SUFFIXES {
+            style.insert(format!("{old}{suffix}"), format!("{new}{suffix}"));
+        }
+        text.insert(old, new);
+    }
+    remap_keys(doc.get_mut("text"), &text);
+    remap_keys(doc.get_mut("textStyle"), &style);
+}
+
+/// Re-mint every scene-local id in a COPIED sidecar so a duplicate is a genuinely new scene rather than a second document wearing the source's ids: each namespace renumbers from 1 in document order (stable and diffable, these files are committed) and every cross-reference follows its target in the same pass, so a rig aim still finds its device and a segment still finds its keys. Two things deliberately do NOT move: `assets/…` paths (references to files, not ids), and lighting light/fixture ids, which `resolveLighting` merges whole-field across theme, project and scene, so a scene's lighting keys may name ids this document doesn't own.
+fn remint_scene_doc_ids(doc: &mut Value) {
+    let devices = renumber_ids(doc.get_mut("devices"), "d");
+    // Nothing in the document references a staged object, so its map is dropped.
+    renumber_ids(doc.get_mut("objects"), "o");
+    remap_field(doc.get_mut("duration"), "sourceDeviceId", &devices);
+    remap_keys(
+        doc.get_mut("deviceLayout")
+            .and_then(|l| l.get_mut("devices")),
+        &devices,
+    );
+    remap_keys(
+        doc.get_mut("compare")
+            .and_then(|c| c.get_mut("b"))
+            .and_then(|b| b.get_mut("media")),
+        &devices,
+    );
+
+    // Object-mode rig aims bind to a DEVICE and nothing else (`resolveAimTarget`, and `bindables` only ever offers devices); the videoWindow and layeredScreenshot sentinels aren't in the map and stay verbatim, as does an id that resolves to nothing.
+    if let Some(keys) = doc
+        .get_mut("cameraRig")
+        .and_then(|rig| rig.get_mut("keys"))
+        .and_then(Value::as_array_mut)
+    {
+        for key in keys {
+            let Some(aim) = key
+                .get_mut("pose")
+                .and_then(|pose| pose.get_mut("aim"))
+                .filter(|aim| aim.get("mode").and_then(Value::as_str) == Some("object"))
+            else {
+                continue;
+            };
+            let new = aim
+                .get("id")
+                .and_then(Value::as_str)
+                .and_then(|id| devices.get(id))
+                .cloned();
+            if let Some(new) = new {
+                aim["id"] = json!(new);
+            }
+        }
+    }
+
+    renumber_track(doc.get_mut("camera"));
+    renumber_track(doc.get_mut("cameraRig"));
+    renumber_track(doc.get_mut("lighting"));
+    renumber_track(doc.get_mut("compare").and_then(|c| c.get_mut("track")));
+    renumber_track(doc.get_mut("chart").and_then(|c| c.get_mut("track")));
+    renumber_track(
+        doc.get_mut("layeredScreenshot")
+            .and_then(|ls| ls.get_mut("animation")),
+    );
+    renumber_ids(
+        doc.get_mut("chart")
+            .and_then(|c| c.get_mut("data"))
+            .and_then(|d| d.get_mut("series")),
+        "s",
+    );
+    renumber_ids(
+        doc.get_mut("frame").and_then(|f| f.get_mut("decorations")),
+        "dec",
+    );
+
+    let items = renumber_layered_screenshot(doc.get_mut("layeredScreenshot"));
+    remap_layered_text_keys(doc, &items);
+}
+
+/// Duplicate a scene: the TSX + sidecar copy to a freshly numbered stem (files stay the identity, but the copy mints a fresh unique scene id so React keys and id-keyed UI stay one-to-one, and `remint_scene_doc_ids` renumbers every id INSIDE the sidecar), the manifest entry lands at `position` (omitted/out-of-range = append) with `durationMs` and `transition` riding along; files write before the manifest so a failed manifest write can never point at missing files.
 #[tauri::command]
 pub fn duplicate_scene(
     app: AppHandle,
@@ -385,6 +585,7 @@ pub fn duplicate_scene(
         if let Some(name) = &source_name {
             doc["name"] = json!(format!("{name} copy"));
         }
+        remint_scene_doc_ids(&mut doc);
         atomic_write_json(&scene_doc_path(&root, &slug, &new_doc_file)?, &doc)?;
     }
 
@@ -397,12 +598,9 @@ pub fn duplicate_scene(
         .and_then(Value::as_u64)
         .unwrap_or(DEFAULT_SCENE_DURATION_MS);
     let mut entry = json!({ "file": new_file, "durationMs": duration_ms });
-    // The last scene has no outgoing transition; anywhere else the source's rides along (the move_project_scene convention).
-    let lands_last = !matches!(position, Some(i) if i < scenes.len());
-    if !lands_last {
-        if let Some(transition) = source.get("transition") {
-            entry["transition"] = transition.clone();
-        }
+    // The source's outgoing transition always rides along (the move_project_scene convention): a copy that lands last carries it inert, and it comes alive if a later copy lands behind it, which is what duplicating a block of scenes needs.
+    if let Some(transition) = source.get("transition") {
+        entry["transition"] = transition.clone();
     }
     match position {
         Some(i) if i < scenes.len() => scenes.insert(i, entry),
@@ -473,7 +671,7 @@ fn free_sibling_name(dir: &Path, name: &str) -> String {
     }
 }
 
-/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination, every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
+/// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination (and a sidecar re-minted by `remint_scene_doc_ids`), every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
 #[tauri::command]
 pub fn copy_scene_to_project(
     app: AppHandle,
@@ -560,7 +758,7 @@ pub fn copy_scene_to_project(
         workspace::touch_now(&dest_path);
     }
 
-    let doc = match &doc_text {
+    let mut doc = match &doc_text {
         Some(t) => Some(
             serde_json::from_str::<Value>(t)
                 .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
@@ -595,7 +793,8 @@ pub fn copy_scene_to_project(
         None => log::warn!("{file} has no readable defineScene id, the copy keeps the source's"),
     }
     atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
-    if let Some(doc) = &doc {
+    if let Some(doc) = &mut doc {
+        remint_scene_doc_ids(doc);
         atomic_write_json(&scene_doc_path(&root, &dest_slug, &new_doc_file)?, doc)?;
     }
 
@@ -1622,6 +1821,268 @@ mod asset_scan_tests {
     fn skips_traversal_dedupes_and_longer_segments() {
         let text = r#""assets/a.png" and again "assets/a.png"; "my-assets/no.png"; "assets/../x""#;
         assert_eq!(scan_asset_refs(text), vec!["assets/a.png"]);
+    }
+}
+
+#[cfg(test)]
+mod remint_tests {
+    use super::remint_scene_doc_ids;
+    use serde_json::{json, Value};
+
+    /// One scene carrying every id-bearing block, ids deliberately out of order and gappy so a renumber is visible.
+    fn scene() -> Value {
+        json!({
+            "version": 1,
+            "name": "Spike",
+            "duration": { "mode": "follow-media", "sourceDeviceId": "d7" },
+            "text": { "title": "Hi", "ls-i9": "Label", "ls-i4": "Other" },
+            "textStyle": { "titleSize": 1.2, "ls-i9Color": "#ffffff", "ls-i4OffsetY": 0.1 },
+            "devices": [
+                { "id": "d7", "model": "iphone-17-pro", "media": { "src": "assets/a.mp4", "kind": "video" } },
+                { "id": "d3", "model": "iphone-17-pro" },
+            ],
+            "deviceLayout": {
+                "preset": "row",
+                "devices": { "d3": { "scale": 1.2 }, "d7": { "scale": 0.9 } },
+            },
+            "objects": [
+                { "id": "o5", "objectId": "lantern" },
+                { "id": "o2", "objectId": "plant" },
+            ],
+            "camera": {
+                "keys": [{ "id": "k4", "tMs": 0 }, { "id": "k9", "tMs": 800 }],
+                "segments": [{ "from": "k4", "to": "k9", "ease": "linear" }],
+            },
+            "cameraMode": "rig",
+            "cameraRig": {
+                "keys": [
+                    { "id": "r2", "tMs": 0, "pose": { "aim": { "mode": "object", "id": "d3", "at": [0, 0, 0] } } },
+                    { "id": "r5", "tMs": 500, "pose": { "aim": { "mode": "object", "id": "o5", "at": [0, 0, 0] } } },
+                    { "id": "r8", "tMs": 900, "pose": { "aim": { "mode": "object", "id": "videoWindow", "at": [0, 0, 0] } } },
+                ],
+                "segments": [
+                    { "from": "r2", "to": "r5", "ease": "linear" },
+                    { "from": "r5", "to": "r8", "ease": "linear" },
+                ],
+            },
+            "frame": {
+                "decorations": [
+                    { "id": "logo", "src": "assets/logo.png", "position": [0, 0], "size": 0.1 },
+                    { "id": "text-2", "text": "Beta", "position": [0.2, 0], "size": 0.05 },
+                ],
+            },
+            "layeredScreenshot": {
+                "layers": [
+                    { "id": "l4", "visible": true, "z": 0, "items": [
+                        { "id": "i9", "kind": "text", "attach": null },
+                        { "id": "i4", "kind": "screen", "src": "assets/screen.png", "media": "image", "attach": { "to": "i9", "side": "right" } },
+                    ] },
+                    { "id": "l2", "visible": true, "z": 1, "items": [
+                        { "id": "i7", "kind": "screen", "src": "assets/screen.png", "media": "image", "attach": null },
+                    ] },
+                ],
+                "pose": { "spread": 0, "azimuthDeg": 0, "elevationDeg": 0, "zoom": 1, "pan": [0, 0] },
+                "animation": {
+                    "keys": [{ "id": "a1", "tMs": 0 }, { "id": "a2", "tMs": 600 }],
+                    "segments": [{ "from": "a1", "to": "a2", "ease": "linear" }],
+                },
+            },
+            "compare": {
+                "b": { "media": { "d3": { "src": "assets/b.png", "kind": "image" } } },
+                "track": {
+                    "keys": [
+                        { "id": "c1", "tMs": 0, "pose": { "value": 0 } },
+                        { "id": "c2", "tMs": 900, "pose": { "value": 1 } },
+                    ],
+                    "segments": [{ "from": "c1", "to": "c2", "ease": "linear" }],
+                },
+            },
+            "chart": {
+                "type": "column",
+                "palette": "ocean",
+                "data": {
+                    "categories": ["A"],
+                    "series": [{ "id": "s4", "values": [1] }, { "id": "s2", "values": [2] }],
+                },
+                "track": {
+                    "keys": [{ "id": "t1", "tMs": 0, "pose": { "values": [[1], [2]] } }],
+                    "segments": [],
+                },
+            },
+            "lighting": {
+                "lights": [{ "id": "rim-left", "intensity": 2, "placement": {} }],
+                "fixtures": [{ "id": "tubes", "form": "tube", "size": [1, 0.1], "emissive": 2, "lightIntensity": 1, "placement": {} }],
+                "keys": [
+                    { "id": "lk1", "tMs": 0, "pose": { "lights": { "rim-left": { "intensity": 1 } }, "fixtures": { "tubes": { "emissive": 1 } } } },
+                    { "id": "lk2", "tMs": 700, "pose": { "lights": { "rim-left": { "intensity": 3 } } } },
+                ],
+                "segments": [{ "from": "lk1", "to": "lk2", "ease": "linear" }],
+            },
+        })
+    }
+
+    fn minted(doc: &Value) -> Value {
+        let mut doc = doc.clone();
+        remint_scene_doc_ids(&mut doc);
+        doc
+    }
+
+    /// The `id` of every entry in an array, in document order.
+    fn ids(array: &Value) -> Vec<String> {
+        array
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    /// Every `assets/…` string anywhere in the document, sorted.
+    fn asset_paths(value: &Value) -> Vec<String> {
+        let mut found = Vec::new();
+        fn walk(value: &Value, found: &mut Vec<String>) {
+            match value {
+                Value::String(s) if s.starts_with("assets/") => found.push(s.clone()),
+                Value::Array(list) => list.iter().for_each(|v| walk(v, found)),
+                Value::Object(map) => map.values().for_each(|v| walk(v, found)),
+                _ => {}
+            }
+        }
+        walk(value, &mut found);
+        found.sort();
+        found
+    }
+
+    #[test]
+    fn every_namespace_renumbers_from_one_in_document_order() {
+        let doc = minted(&scene());
+        assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(ids(&doc["objects"]), ["o1", "o2"]);
+        assert_eq!(ids(&doc["camera"]["keys"]), ["k1", "k2"]);
+        assert_eq!(ids(&doc["cameraRig"]["keys"]), ["k1", "k2", "k3"]);
+        assert_eq!(ids(&doc["chart"]["data"]["series"]), ["s1", "s2"]);
+        assert_eq!(ids(&doc["chart"]["track"]["keys"]), ["k1"]);
+        assert_eq!(ids(&doc["compare"]["track"]["keys"]), ["k1", "k2"]);
+        assert_eq!(ids(&doc["frame"]["decorations"]), ["dec1", "dec2"]);
+        assert_eq!(ids(&doc["layeredScreenshot"]["layers"]), ["l1", "l2"]);
+        assert_eq!(
+            ids(&doc["layeredScreenshot"]["animation"]["keys"]),
+            ["k1", "k2"]
+        );
+        assert_eq!(ids(&doc["lighting"]["keys"]), ["k1", "k2"]);
+        // Items number across every layer, since one scene shares the item space.
+        assert_eq!(
+            ids(&doc["layeredScreenshot"]["layers"][0]["items"]),
+            ["i1", "i2"]
+        );
+        assert_eq!(ids(&doc["layeredScreenshot"]["layers"][1]["items"]), ["i3"]);
+    }
+
+    #[test]
+    fn cross_references_follow_their_targets() {
+        let doc = minted(&scene());
+        assert_eq!(doc["duration"]["sourceDeviceId"], json!("d1"));
+        assert_eq!(doc["deviceLayout"]["devices"]["d1"]["scale"], json!(0.9));
+        assert_eq!(doc["deviceLayout"]["devices"]["d2"]["scale"], json!(1.2));
+        assert_eq!(
+            doc["compare"]["b"]["media"]["d2"]["src"],
+            json!("assets/b.png")
+        );
+        assert_eq!(
+            doc["cameraRig"]["keys"][0]["pose"]["aim"]["id"],
+            json!("d2")
+        );
+        assert_eq!(
+            doc["layeredScreenshot"]["layers"][0]["items"][1]["attach"]["to"],
+            json!("i1")
+        );
+        assert_eq!(doc["text"]["ls-i1"], json!("Label"));
+        assert_eq!(doc["text"]["ls-i2"], json!("Other"));
+        assert_eq!(doc["textStyle"]["ls-i1Color"], json!("#ffffff"));
+        assert_eq!(doc["textStyle"]["ls-i2OffsetY"], json!(0.1));
+        assert_eq!(doc["textStyle"]["titleSize"], json!(1.2));
+        for (track, count) in [
+            (&doc["camera"], 1),
+            (&doc["cameraRig"], 2),
+            (&doc["compare"]["track"], 1),
+            (&doc["layeredScreenshot"]["animation"], 1),
+            (&doc["lighting"], 1),
+        ] {
+            let segments = track["segments"].as_array().unwrap();
+            assert_eq!(segments.len(), count);
+            let keys = ids(&track["keys"]);
+            for segment in segments {
+                assert!(keys.iter().any(|k| k == segment["from"].as_str().unwrap()));
+                assert!(keys.iter().any(|k| k == segment["to"].as_str().unwrap()));
+            }
+        }
+        assert_eq!(doc["cameraRig"]["segments"][0]["from"], json!("k1"));
+        assert_eq!(doc["cameraRig"]["segments"][1]["to"], json!("k3"));
+    }
+
+    #[test]
+    fn asset_paths_and_library_ids_never_move() {
+        let source = scene();
+        let doc = minted(&source);
+        assert_eq!(asset_paths(&doc), asset_paths(&source));
+        assert_eq!(doc["objects"][0]["objectId"], json!("lantern"));
+        assert_eq!(doc["objects"][1]["objectId"], json!("plant"));
+        assert_eq!(doc["chart"]["palette"], json!("ocean"));
+        // Only devices are bindable, so the sentinel and the unresolvable object id both stay verbatim.
+        assert_eq!(
+            doc["cameraRig"]["keys"][1]["pose"]["aim"]["id"],
+            json!("o5")
+        );
+        assert_eq!(
+            doc["cameraRig"]["keys"][2]["pose"]["aim"]["id"],
+            json!("videoWindow")
+        );
+    }
+
+    #[test]
+    fn lighting_light_and_fixture_ids_stay_put() {
+        let doc = minted(&scene());
+        assert_eq!(doc["lighting"]["lights"][0]["id"], json!("rim-left"));
+        assert_eq!(doc["lighting"]["fixtures"][0]["id"], json!("tubes"));
+        assert_eq!(
+            doc["lighting"]["keys"][0]["pose"]["lights"]["rim-left"]["intensity"],
+            json!(1)
+        );
+        assert_eq!(
+            doc["lighting"]["keys"][0]["pose"]["fixtures"]["tubes"]["emissive"],
+            json!(1)
+        );
+    }
+
+    #[test]
+    fn a_swapped_pair_keeps_each_record_with_its_own_device() {
+        let mut doc = json!({
+            "version": 1,
+            "devices": [{ "id": "d2", "model": "a" }, { "id": "d1", "model": "b" }],
+            "deviceLayout": { "preset": "row", "devices": { "d1": { "scale": 1.0 }, "d2": { "scale": 2.0 } } },
+        });
+        remint_scene_doc_ids(&mut doc);
+        assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(doc["devices"][0]["model"], json!("a"));
+        assert_eq!(doc["deviceLayout"]["devices"]["d1"]["scale"], json!(2.0));
+        assert_eq!(doc["deviceLayout"]["devices"]["d2"]["scale"], json!(1.0));
+    }
+
+    #[test]
+    fn a_second_pass_changes_nothing() {
+        let once = minted(&scene());
+        assert_eq!(minted(&once), once);
+    }
+
+    #[test]
+    fn a_document_with_no_ids_is_untouched() {
+        let source = json!({
+            "version": 1,
+            "name": "Title",
+            "text": { "title": "Hi" },
+            "background": { "type": "video", "src": "assets/loop.mp4" },
+        });
+        assert_eq!(minted(&source), source);
     }
 }
 

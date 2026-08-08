@@ -13,6 +13,12 @@ const SNAPSHOT_POINT = 0.38;
 const SNAPSHOT_WIDTH = 640;
 
 let capturing = false;
+let lastSeekMs: number | null = null;
+
+/** Records a clock write made under the borrowed clock, so the restore can tell this capture's own seeks from someone else's write. Called by `captureFrameAt`; exported for tests. */
+export function noteBorrowedSeek(tMs: number): void {
+  lastSeekMs = tMs;
+}
 
 /** Timer-based wait (never rAF; WKWebView suspends rAF when occluded). */
 function waitFor(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
@@ -31,15 +37,19 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-/** Borrows the preview clock for one or more captures: guards re-entrancy and exports, runs `fn`, then gives the scrub position back, unless an export took the clock mid-capture, in which case writing it would poison the run (the exporter owns it now). Returns null when capture isn't possible right now. */
+/** Borrows the preview clock for one or more captures: guards re-entrancy and exports, runs `fn`, then gives the scrub position back, but only while the clock still sits on this capture's own last seek. If anything else wrote it mid-capture (an export took it and writing would poison the run, the post-add focus seek landed, the user scrubbed), the newer position wins. Returns null when capture isn't possible right now. */
 export async function withBorrowedClock<T>(fn: () => Promise<T>): Promise<T | null> {
   if (capturing || isExporting() || !canvasHandle.current) return null;
   const prevMs = useClockStore.getState().currentMs;
   capturing = true;
+  lastSeekMs = null;
   try {
     return await fn();
   } finally {
-    if (!isExporting()) useClockStore.getState().setCurrentMs(prevMs);
+    const cur = useClockStore.getState().currentMs;
+    if (!isExporting() && lastSeekMs !== null && cur === lastSeekMs) {
+      useClockStore.getState().setCurrentMs(prevMs);
+    }
     capturing = false;
   }
 }
@@ -52,6 +62,7 @@ export async function captureFrameAt(
 ): Promise<Uint8Array | null> {
   const clock = useClockStore.getState();
   clock.setCurrentMs(tMs);
+  noteBorrowedSeek(tMs);
   if (!(await waitFor(() => canvasCommittedClockMs() === tMs, 1000))) return null;
   // The commit stamp is the React commit; clip textures stream in asynchronously, so give them a settle beat.
   await delay(200);

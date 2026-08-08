@@ -43,6 +43,14 @@ export function stampCommittedProject(project: unknown): void {
   committedProject = project;
 }
 
+/** Render-window twin of CompositorDriver's commit stamp: mounts inside that window's `<Canvas>` (the same-flush guarantee needs the r3f reconciler) so `awaitProjectCommitted` works without the preview driver. */
+export function ProjectCommitStamp({ project }: { project: unknown }) {
+  useLayoutEffect(() => {
+    committedProject = project;
+  }, [project]);
+  return null;
+}
+
 /** Mounts inside `<Canvas>`; publishes the renderer/scene/camera so the deterministic exporter (`engine/exporter.ts`) can drive renders and read pixels off the same GL context the preview uses, no second canvas, so preview and export cannot drift. */
 export function ExportBridge() {
   const gl = useThree((s) => s.gl);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { CHART_SERIES_GAP, computeChartLayout } from "./layout";
-import type { ChartData, ChartLayoutConfig, ChartType } from "./types";
+import { CHART_SERIES_GAP, chartTrimRuns, computeChartLayout } from "./layout";
+import type { ChartData, ChartLayoutConfig, ChartSeriesLayout, ChartType } from "./types";
 
 const data = (categories: string[], ...rows: number[][]): ChartData => ({
   categories,
@@ -296,6 +296,117 @@ describe("lines and areas", () => {
     expect(line.pie).toBeNull();
     const column = computeChartLayout(data(["a"], [1]), config("column"));
     expect(column.series).toEqual([]);
+  });
+});
+
+describe("axis trim", () => {
+  const scaled = (type: ChartType, min: number, max: number, trim?: boolean): ChartLayoutConfig =>
+    config(type, { axis: { value: { min, max, ...(trim === undefined ? {} : { trim }) } } });
+
+  const seriesOf = (rows: number[][], parts: ChartLayoutConfig): ChartSeriesLayout => {
+    const categories = rows[0].map((_, i) => `c${i + 1}`);
+    return computeChartLayout(data(categories, ...rows), parts).series[0];
+  };
+
+  it("leaves a curve inside the band exactly where it was", () => {
+    const inside = seriesOf([[2, 5, 8]], scaled("line", 0, 10));
+    expect(inside.points.map((p) => p.y)).toEqual([0.2, 0.5, 0.8]);
+    expect(inside.points.every((p) => p.datum && p.inside)).toBe(true);
+    expect(inside.fillBaseline).toBe(inside.baseline);
+    expect(chartTrimRuns(inside.points)).toEqual([[0, 3]]);
+  });
+
+  it("cuts a segment at the top bound", () => {
+    const over = seriesOf([[5, 15]], scaled("line", 0, 10));
+    expect(over.points.map((p) => p.x)).toEqual([0.25, 0.5, 0.75]);
+    expect(over.points.map((p) => p.y)).toEqual([0.5, 1, 1]);
+    expect(over.points.map((p) => p.datum)).toEqual([true, false, true]);
+    expect(over.points.map((p) => p.inside)).toEqual([true, true, false]);
+    expect(over.points[1].value).toBeCloseTo(10, 10);
+    expect(chartTrimRuns(over.points)).toEqual([[0, 2]]);
+  });
+
+  it("cuts a segment at the bottom bound", () => {
+    const under = seriesOf([[5, -5]], scaled("line", 0, 10));
+    expect(under.points.map((p) => p.x)).toEqual([0.25, 0.5, 0.75]);
+    expect(under.points.map((p) => p.y)).toEqual([0.5, 0, 0]);
+    expect(under.points.map((p) => p.inside)).toEqual([true, true, false]);
+    expect(chartTrimRuns(under.points)).toEqual([[0, 2]]);
+  });
+
+  it("draws nothing for a curve wholly outside the band", () => {
+    const away = seriesOf([[15, 20]], scaled("line", 0, 10));
+    expect(away.points.map((p) => p.y)).toEqual([1, 1]);
+    expect(away.points.every((p) => p.inside)).toBe(false);
+    expect(chartTrimRuns(away.points)).toEqual([]);
+  });
+
+  it("splits a series that leaves and re-enters", () => {
+    const peak = seriesOf([[5, 15, 5]], scaled("line", 0, 10));
+    for (const [i, x] of [1 / 6, 1 / 3, 1 / 2, 2 / 3, 5 / 6].entries()) {
+      expect(peak.points[i].x).toBeCloseTo(x, 10);
+    }
+    expect(peak.points.map((p) => p.y)).toEqual([0.5, 1, 1, 1, 0.5]);
+    expect(peak.points.map((p) => p.inside)).toEqual([true, true, false, true, true]);
+    expect(chartTrimRuns(peak.points)).toEqual([
+      [0, 2],
+      [3, 5],
+    ]);
+  });
+
+  it("clamps the fill boundary without moving what the build grows out of", () => {
+    const lifted = seriesOf([[15, 25]], scaled("area", 10, 30));
+    expect(lifted.points.map((p) => p.y)).toEqual([0.25, 0.75]);
+    expect(lifted.baseline.map((p) => p.y)).toEqual([-0.5, -0.5]);
+    expect(lifted.fillBaseline.map((p) => p.y)).toEqual([0, 0]);
+  });
+
+  it("leaves the curve alone when only its zero-line boundary is off-plot", () => {
+    const rows = [[16400, 18200, 27600]];
+    const lifted = seriesOf(rows, scaled("line", 15000, 30000));
+    const bare = seriesOf(rows, scaled("line", 15000, 30000, false));
+    expect(lifted.points).toEqual(bare.points);
+    expect(lifted.baseline).toEqual(bare.baseline);
+    expect(lifted.fillBaseline.map((p) => p.y)).toEqual([0, 0, 0]);
+    expect(bare.baseline.map((p) => p.y)).toEqual([-1, -1, -1]);
+    expect(chartTrimRuns(lifted.points)).toEqual([[0, 3]]);
+  });
+
+  it("cuts a segment that leaves through both bounds at once", () => {
+    const swing = seriesOf([[-5, 15]], scaled("line", 0, 10));
+    expect(swing.points.map((p) => p.x)).toEqual([0.25, 0.375, 0.625, 0.75]);
+    expect(swing.points.map((p) => p.y)).toEqual([0, 0, 1, 1]);
+    expect(swing.points.map((p) => p.value)).toEqual([-5, 0, 10, 15]);
+    expect(swing.points.map((p) => p.inside)).toEqual([false, true, true, false]);
+    expect(chartTrimRuns(swing.points)).toEqual([[1, 3]]);
+  });
+
+  it("cuts the fill boundary where the layer below it leaves the band", () => {
+    const stacked = computeChartLayout(
+      data(["c1", "c2"], [4, 12], [1, 1]),
+      scaled("stackedArea", 0, 10),
+    ).series[1];
+    expect(stacked.points.map((p) => p.x)).toEqual([0.25, 0.5625, 0.625, 0.75]);
+    expect(stacked.points.map((p) => p.y)).toEqual([0.5, 1, 1, 1]);
+    expect(stacked.points.map((p) => p.inside)).toEqual([true, true, false, false]);
+    for (const [i, y] of [0.4, 0.9, 1, 1.2].entries()) {
+      expect(stacked.baseline[i].y).toBeCloseTo(y, 10);
+      expect(stacked.fillBaseline[i].y).toBeCloseTo(Math.min(1, y), 10);
+    }
+    expect(chartTrimRuns(stacked.points)).toEqual([[0, 2]]);
+  });
+
+  it("draws no run for a lone vertex left standing on the bound", () => {
+    const spike = seriesOf([[15, 10, 15]], scaled("line", 0, 10));
+    expect(spike.points.map((p) => p.inside)).toEqual([false, true, false]);
+    expect(chartTrimRuns(spike.points)).toEqual([]);
+  });
+
+  it("leaves everything outside the band when the toggle is off", () => {
+    const raw = seriesOf([[5, 15, 5]], scaled("line", 0, 10, false));
+    expect(raw.points.map((p) => p.y)).toEqual([0.5, 1.5, 0.5]);
+    expect(raw.points.every((p) => p.datum && p.inside)).toBe(true);
+    expect(chartTrimRuns(raw.points)).toEqual([[0, 3]]);
   });
 });
 

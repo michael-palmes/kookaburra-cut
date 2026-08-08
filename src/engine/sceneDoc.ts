@@ -171,7 +171,7 @@ export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneD
 export async function applyBackgroundToAllScenes(
   project: LoadedProject,
   sourceIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => void,
 ): Promise<{ applied: number; failed: number }> {
   if (!isWorkspaceProjectId(project.id)) return { applied: 0, failed: 0 };
   const slug = workspaceSlug(project.id);
@@ -189,7 +189,7 @@ export async function applyBackgroundToAllScenes(
     next.backdrop = source?.backdrop ? structuredClone(source.backdrop) : undefined;
     try {
       await writeSceneDoc(slug, file, next);
-      onDocChanged(i, next);
+      onDocChanged(i, next, file);
       applied++;
       changes.push({
         kind: "sceneDoc",
