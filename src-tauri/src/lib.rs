@@ -1148,9 +1148,21 @@ pub fn run() {
                     } else if event.id() == "find-project" {
                         let _ = app.emit("kookaburra://find-project", ());
                     } else if event.id() == "kookaburra-undo" {
-                        let _ = app.emit("kookaburra://undo", ());
+                        if let Some(window) = app
+                            .webview_windows()
+                            .into_values()
+                            .find(|window| window.is_focused().unwrap_or(false))
+                        {
+                            let _ = app.emit_to(window.label(), "kookaburra://undo", ());
+                        }
                     } else if event.id() == "kookaburra-redo" {
-                        let _ = app.emit("kookaburra://redo", ());
+                        if let Some(window) = app
+                            .webview_windows()
+                            .into_values()
+                            .find(|window| window.is_focused().unwrap_or(false))
+                        {
+                            let _ = app.emit_to(window.label(), "kookaburra://redo", ());
+                        }
                     } else if event.id() == "show-shortcuts" {
                         let _ = app.emit("kookaburra://show-shortcuts", ());
                     } else if event.id() == "check-for-updates" {

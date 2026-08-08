@@ -151,6 +151,30 @@ export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditCl
   return relayout([...clips.slice(0, i), left, freeze, right, ...clips.slice(i + 1)]);
 }
 
+/** Append a hold of the last displayed output-frame sample when the playhead is at the timeline end. */
+export function freezeAtEnd(
+  clips: EditClip[],
+  outputFps: number,
+  holdMs: number,
+): EditClip[] | null {
+  const clip = clips.at(-1);
+  if (!clip || clip.holdMs !== undefined) return null;
+  const fps = outputFps > 0 ? outputFps : 60;
+  const endMs = clip.startMs + clipTimelineMs(clip);
+  const sampleMs = Math.max(clip.startMs, endMs - 1000 / fps);
+  const src = Math.round(timelineToSource(clip, sampleMs));
+  const freeze: EditClip = {
+    id: nextClipId(clips),
+    sourceId: clip.sourceId,
+    inMs: src,
+    outMs: src,
+    speed: 1,
+    holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)),
+    startMs: 0,
+  };
+  return relayout([...clips, freeze]);
+}
+
 /** Splice a caller-built clip in at output time t, mirroring freezeAt: splits the containing clip there, slips to its nearer edge when a half would fall under the source floor (or when t lands on a freeze), and appends off-timeline (including exactly at the end). The caller owns `newClip`'s id (nextClipId against the pre-splice array is safe: the split's right half collision-checks against it). */
 export function insertClipAt(clips: EditClip[], tMs: number, newClip: EditClip): EditClip[] {
   const i = clipIndexAt(clips, tMs);
