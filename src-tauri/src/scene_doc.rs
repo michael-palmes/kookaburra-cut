@@ -462,7 +462,7 @@ fn remap_field(value: Option<&mut Value>, field: &str, map: &HashMap<String, Str
     }
 }
 
-/// Rewrite an id-keyed record's KEYS through a map (`deviceLayout.devices`, `compare.b.media`, the `ls-` text keys); every mapped entry lifts out before any lands back, so a swap can't clobber.
+/// Rewrite an id-keyed record's KEYS through a map (`deviceLayout.devices`, comparison device records, the `ls-` text keys); every mapped entry lifts out before any lands back, so a swap can't clobber.
 fn remap_keys(value: Option<&mut Value>, map: &HashMap<String, String>) {
     let Some(object) = value.and_then(Value::as_object_mut) else {
         return;
@@ -559,6 +559,12 @@ fn remint_scene_doc_ids(doc: &mut Value) {
         doc.get_mut("compare")
             .and_then(|c| c.get_mut("b"))
             .and_then(|b| b.get_mut("media")),
+        &devices,
+    );
+    remap_keys(
+        doc.get_mut("compare")
+            .and_then(|c| c.get_mut("b"))
+            .and_then(|b| b.get_mut("deviceAppearance")),
         &devices,
     );
 
@@ -2101,7 +2107,14 @@ mod remint_tests {
                 },
             },
             "compare": {
-                "b": { "media": { "d3": { "src": "assets/b.png", "kind": "image" } } },
+                "b": {
+                    "media": { "d3": { "src": "assets/b.png", "kind": "image" } },
+                    "deviceAppearance": {
+                        "d7": { "colour": "silver", "shadow": "long" },
+                        "d3": { "colour": "graphite", "shadow": "soft" },
+                        "missing": { "colour": "white" },
+                    },
+                },
                 "track": {
                     "keys": [
                         { "id": "c1", "tMs": 0, "pose": { "value": 0 } },
@@ -2202,6 +2215,18 @@ mod remint_tests {
             json!("assets/b.png")
         );
         assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d1"]["colour"],
+            json!("silver")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d2"]["shadow"],
+            json!("soft")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["missing"]["colour"],
+            json!("white")
+        );
+        assert_eq!(
             doc["cameraRig"]["keys"][0]["pose"]["aim"]["id"],
             json!("d2")
         );
@@ -2273,12 +2298,36 @@ mod remint_tests {
             "version": 1,
             "devices": [{ "id": "d2", "model": "a" }, { "id": "d1", "model": "b" }],
             "deviceLayout": { "preset": "row", "devices": { "d1": { "scale": 1.0 }, "d2": { "scale": 2.0 } } },
+            "compare": { "b": { "deviceAppearance": { "d1": { "colour": "silver" }, "d2": { "colour": "black" } } } },
         });
         remint_scene_doc_ids(&mut doc);
         assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
         assert_eq!(doc["devices"][0]["model"], json!("a"));
         assert_eq!(doc["deviceLayout"]["devices"]["d1"]["scale"], json!(2.0));
         assert_eq!(doc["deviceLayout"]["devices"]["d2"]["scale"], json!(1.0));
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d1"]["colour"],
+            json!("black")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d2"]["colour"],
+            json!("silver")
+        );
+    }
+
+    #[test]
+    fn malformed_comparison_device_appearance_is_left_untouched() {
+        let source = json!({
+            "version": 1,
+            "devices": [{ "id": "d7", "model": "a" }],
+            "compare": { "b": { "deviceAppearance": ["d7", null] } },
+        });
+        let doc = minted(&source);
+        assert_eq!(doc["devices"][0]["id"], json!("d1"));
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"],
+            source["compare"]["b"]["deviceAppearance"]
+        );
     }
 
     #[test]

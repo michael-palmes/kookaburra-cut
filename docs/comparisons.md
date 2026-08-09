@@ -3,9 +3,9 @@
 One scene rendered twice and composited under an animatable mask: side A
 ("before") is the scene itself, side B ("after") is the same scene with the
 `compare.b` overrides applied. Each side carries its own theme, background,
-staging, lighting and screen media; only finished pixels mix (the cross-theme
-transition rule). The divider is data, sampled on the CPU, never
-time-derived in GLSL.
+staging, lighting, screen media, device colour and device shadow; only finished
+pixels mix (the cross-theme transition rule). The divider is data, sampled on
+the CPU, never time-derived in GLSL.
 
 ## The sidecar block
 
@@ -16,6 +16,9 @@ itself; deleting the block leaves a valid plain scene):
 "compare": {
   "b": {                       // the after side; absent fields match side A
     "media": { "d2": { "src": "assets/after.mp4", "kind": "video" } },
+    "deviceAppearance": {
+      "d2": { "colour": "silver", "shadow": "long" }
+    },
     "themeId": "kookaburra-midnight",
     "background": { "type": "shader", "shader": "mesh-gradient" },
     "backdrop": { "type": "floor", "color": "#101820" },
@@ -44,6 +47,8 @@ itself; deleting the block leaves a valid plain scene):
 Rules:
 
 - `media` is keyed by device id and remaps that device's screen on side B.
+- `deviceAppearance` is keyed by device id and may override only `colour` and
+  `shadow`. Model, placement, motion and lid remain shared with side A.
 - Chrome colours are THEME TOKEN names (`background | text | accent |
   muted`), resolved against the scene's theme at plan build; sizes are
   1080-tall reference pixels so they hold across aspects.
@@ -114,9 +119,11 @@ masked split on any scene: add the block above, or use the inspector's Add
 comparison (Scene tab), which seeds a visible default (line + chips). The
 Device, Theme, Background and Lighting inspectors each show a Before/After
 selector. The scene overview exposes Change and Edit video actions for both
-sides, while Device exposes those actions for its selected side. After values
-write through `compare.b`; clearing an override returns that field to Before.
-Comparison video actions target device screens only.
+sides through a compact Before/After picker, while Device exposes those actions
+for its selected side. The Device selector also routes colour and shadow, with
+After inheriting Before until it is explicitly changed. After values write
+through `compare.b`; choosing Match before clears that override. Comparison
+video actions target device screens only.
 
 ## Gate fixture
 

@@ -6415,8 +6415,13 @@ button.beat-status {
   cursor: pointer;
 }
 
-.inspector-popover-item:hover {
+.inspector-popover-item:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+
+.inspector-popover-item:disabled {
+  opacity: 0.42;
+  cursor: default;
 }
 
 .inspector-popover-item.active {
@@ -6426,6 +6431,11 @@ button.beat-status {
 
 /* The aspect popover's proportioned rect glyphs sit clear of the label. */
 .inspector-popover-item > .aspect-icon {
+  flex: none;
+  margin-right: var(--space-3);
+}
+
+.comparison-media-popover .inspector-popover-item > svg {
   flex: none;
   margin-right: var(--space-3);
 }

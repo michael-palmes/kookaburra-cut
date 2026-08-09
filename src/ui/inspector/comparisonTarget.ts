@@ -1,4 +1,4 @@
-import type { SceneDoc } from "../../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocCompareDeviceAppearance } from "../../engine/sceneDocSchema";
 
 const clone = <T>(value: T | undefined): T | undefined =>
   value === undefined ? undefined : structuredClone(value);
@@ -54,4 +54,66 @@ export function mutateCompareLightingTarget(
   const written = doc.lighting;
   doc.lighting = own;
   sideB(doc).lighting = same(written, starting) ? prior : written;
+}
+
+/** Set one After-only device appearance field. Matching or clearing the Before value restores inheritance and prunes empty records. */
+export function setCompareDeviceAppearance<K extends keyof SceneDocCompareDeviceAppearance>(
+  doc: SceneDoc,
+  deviceId: string,
+  field: K,
+  value: SceneDocCompareDeviceAppearance[K] | undefined,
+): void {
+  const inherited = doc.devices?.find((device) => device.id === deviceId)?.[field];
+  const shouldInherit = value === undefined || value === inherited;
+  const currentMap = doc.compare?.b?.deviceAppearance;
+  if (shouldInherit) {
+    const current = currentMap?.[deviceId];
+    if (!current) return;
+    delete current[field];
+    if (Object.keys(current).length === 0) delete currentMap[deviceId];
+    if (Object.keys(currentMap).length === 0 && doc.compare?.b) {
+      delete doc.compare.b.deviceAppearance;
+    }
+    return;
+  }
+  const side = sideB(doc);
+  side.deviceAppearance ??= {};
+  side.deviceAppearance[deviceId] = {
+    ...side.deviceAppearance[deviceId],
+    [field]: value,
+  };
+}
+
+/** Remove every comparison record targeting a deleted device. */
+export function pruneCompareDeviceTargets(doc: SceneDoc, deviceId: string): void {
+  const side = doc.compare?.b;
+  if (!side) return;
+  if (side.media) {
+    delete side.media[deviceId];
+    if (Object.keys(side.media).length === 0) delete side.media;
+  }
+  if (side.deviceAppearance) {
+    delete side.deviceAppearance[deviceId];
+    if (Object.keys(side.deviceAppearance).length === 0) delete side.deviceAppearance;
+  }
+}
+
+/** Carry a device's comparison-specific media and appearance when the base device is duplicated. */
+export function duplicateCompareDeviceTargets(
+  doc: SceneDoc,
+  sourceDeviceId: string,
+  targetDeviceId: string,
+): void {
+  const side = doc.compare?.b;
+  if (!side) return;
+  const media = side.media?.[sourceDeviceId];
+  if (media) {
+    side.media ??= {};
+    side.media[targetDeviceId] = structuredClone(media);
+  }
+  const appearance = side.deviceAppearance?.[sourceDeviceId];
+  if (appearance) {
+    side.deviceAppearance ??= {};
+    side.deviceAppearance[targetDeviceId] = structuredClone(appearance);
+  }
 }

@@ -66,8 +66,10 @@ import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import {
+  customColourHex,
   DEFAULT_DEVICE_ID,
   DEVICE_CATALOG,
+  deviceColour,
   resolveAvailableDeviceId,
   resolveAvailableDeviceSpec,
 } from "../../toolkit/device/catalog";
@@ -113,6 +115,7 @@ import {
 } from "../../toolkit/text/emojiRaster";
 import { prepareEmojiText } from "../../toolkit/text/emojiText";
 import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
+import { ComparisonSideIcon } from "../ComparisonSideIcon";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { applyDeviceChoice } from "../deviceChoice";
@@ -123,6 +126,7 @@ import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
   chartRowValue,
   comparisonDeviceVideoRows,
+  comparisonDeviceVideoSides,
   drillStackForScene,
   objectRowLabel,
   type SceneSectionModel,
@@ -270,8 +274,14 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
-import { mutateCompareBackgroundTarget, mutateCompareLightingTarget } from "./comparisonTarget";
-import { DeviceDrillIn } from "./DeviceDrillIn";
+import {
+  duplicateCompareDeviceTargets,
+  mutateCompareBackgroundTarget,
+  mutateCompareLightingTarget,
+  pruneCompareDeviceTargets,
+  setCompareDeviceAppearance,
+} from "./comparisonTarget";
+import { DeviceColourDrillIn, DeviceDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
 import {
   ActionRow,
@@ -297,8 +307,8 @@ const GIZMO_MODE_OPTIONS: SegmentedOption<GizmoMode>[] = [
 ];
 
 const COMPARISON_SIDE_OPTIONS: SegmentedOption<"a" | "b">[] = [
-  { value: "a", label: "Before" },
-  { value: "b", label: "After" },
+  { value: "a", label: "Before", icon: <ComparisonSideIcon side="before" /> },
+  { value: "b", label: "After", icon: <ComparisonSideIcon side="after" /> },
 ];
 
 function ComparisonSideTabs({
@@ -1948,6 +1958,7 @@ export function SceneTab({
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
   // Shared target for the comparison-aware inspectors and the After media screen's device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
+  const [comparisonMediaMenu, setComparisonMediaMenu] = useState<"change" | "edit" | null>(null);
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
   const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
@@ -2191,6 +2202,7 @@ export function SceneTab({
     setConfirmRemove(false);
     pickDevice(null);
     setCompareSide("a");
+    setComparisonMediaMenu(null);
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
     // Text drafts are keyed by field name, not by scene, so a leftover would shadow the new
@@ -2250,6 +2262,17 @@ export function SceneTab({
   // Drill-ins + inline modals close on Esc, popping one level like the back bar.
   useEscapeClose(() => closeDrill(), drillIn !== null);
   useEscapeClose(() => setModal(null), modal === "media");
+  useEscapeClose(() => setComparisonMediaMenu(null), comparisonMediaMenu !== null);
+
+  useEffect(() => {
+    if (comparisonMediaMenu === null) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest(".comparison-media-menu-anchor")) setComparisonMediaMenu(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, [comparisonMediaMenu]);
 
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
   useEffect(() => {
@@ -2281,12 +2304,22 @@ export function SceneTab({
 
   const editingAfter = compareSide === "b" && doc?.compare !== undefined;
   const compareBDoc = editingAfter ? project.compareBDocs[sceneIndex] : undefined;
+  const editingDevice = editingAfter
+    ? (compareBDoc?.devices?.find((candidate) => candidate.id === deviceId) ?? device)
+    : device;
   const editingTheme = editingAfter
     ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
     : (sceneTheme ?? project.theme);
   const editingDeviceMedia = editingAfter
     ? (doc?.compare?.b?.media?.[deviceId ?? ""] ?? device?.media)
     : device?.media;
+  const resolvedDeviceSpec = device ? resolveAvailableDeviceSpec(device.model) : undefined;
+  const beforeDeviceColour = resolvedDeviceSpec
+    ? deviceColour(resolvedDeviceSpec, device?.colour).id
+    : undefined;
+  const editingDeviceColour = resolvedDeviceSpec
+    ? deviceColour(resolvedDeviceSpec, editingDevice?.colour).id
+    : undefined;
   const sceneFrame = project.sceneFrames[sceneIndex];
   const baseSections = sceneSections({
     doc: compareBDoc ?? doc,
@@ -2371,6 +2404,7 @@ export function SceneTab({
         rotationDeg: [rx, -ry, rz],
       };
       next.devices = [...(next.devices ?? []), copy];
+      duplicateCompareDeviceTargets(next, deviceId, id);
     });
     pickDevice(id);
   };
@@ -3353,22 +3387,54 @@ export function SceneTab({
     );
   }
   if (drillIn === "style.shadow" && doc && device) {
+    const effectiveShadow = editingDevice?.shadow ?? "soft";
+    const afterOverride = editingAfter
+      ? doc.compare?.b?.deviceAppearance?.[device.id]?.shadow
+      : undefined;
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Device shadow</div>
+        <div className="inspector-drill-title">
+          {editingAfter ? "After device shadow" : "Device shadow"}
+        </div>
         <div className="inspector-drill-body">
+          {editingAfter && afterOverride !== undefined && (
+            <div className="popover-row">
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  void patchDoc((next) => {
+                    setCompareDeviceAppearance(next, device.id, "shadow", undefined);
+                  })
+                }
+              >
+                Match before side
+              </button>
+            </div>
+          )}
           <div className="option-grid">
             {SHADOW_OPTIONS.map((o) => (
               <OptionCard
                 key={o.id}
                 label={o.label}
                 image={optionPreviewStill(`shadow-${o.id}`)}
-                selected={(device.shadow ?? "soft") === o.id}
+                selected={effectiveShadow === o.id}
                 onSelect={() => {
-                  patchDevice((d) => {
-                    d.shadow = o.id as DeviceShadowMode;
-                  });
+                  if (editingAfter) {
+                    void patchDoc((next) => {
+                      setCompareDeviceAppearance(
+                        next,
+                        device.id,
+                        "shadow",
+                        o.id as DeviceShadowMode,
+                      );
+                    });
+                  } else {
+                    patchDevice((d) => {
+                      d.shadow = o.id as DeviceShadowMode;
+                    });
+                  }
                 }}
               />
             ))}
@@ -5678,6 +5744,30 @@ export function SceneTab({
     );
   }
   if (drillIn === "device.change" && device) {
+    if (
+      editingAfter &&
+      deviceId &&
+      beforeDeviceColour &&
+      editingDeviceColour &&
+      resolvedDeviceSpec
+    ) {
+      return (
+        <DeviceColourDrillIn
+          model={resolveAvailableDeviceId(device.model)}
+          colour={editingDeviceColour}
+          beforeColour={beforeDeviceColour}
+          overridden={doc?.compare?.b?.deviceAppearance?.[deviceId]?.colour !== undefined}
+          onBack={() => closeDrill()}
+          backLabel={backLabel}
+          onSave={(colour) => {
+            closeDrill();
+            void patchDoc((next) => {
+              setCompareDeviceAppearance(next, deviceId, "colour", colour);
+            });
+          }}
+        />
+      );
+    }
     return (
       <DeviceDrillIn
         model={resolveAvailableDeviceId(device.model)}
@@ -5701,8 +5791,21 @@ export function SceneTab({
           void patchDoc((next) => {
             for (const d of next.devices ?? []) {
               if (!applyAll && d.id !== deviceId) continue;
+              const previousModel = d.model;
               applyDeviceChoice(d, { model, colour, changed: deviceChoiceChanged });
               d.motion = { ...d.motion, preset: motion };
+              if (deviceChoiceChanged) {
+                const afterColour = next.compare?.b?.deviceAppearance?.[d.id]?.colour;
+                const nextSpec = resolveAvailableDeviceSpec(d.model);
+                const invalidForModel =
+                  d.model !== previousModel &&
+                  afterColour !== undefined &&
+                  customColourHex(afterColour) === undefined &&
+                  !nextSpec.colours.some((option) => option.id === afterColour);
+                if (afterColour !== undefined && (afterColour === d.colour || invalidForModel)) {
+                  setCompareDeviceAppearance(next, d.id, "colour", undefined);
+                }
+              }
             }
           });
         }}
@@ -6271,6 +6374,7 @@ export function SceneTab({
           pickDevice(null);
           void patchDoc((next) => {
             next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
+            if (deviceId) pruneCompareDeviceTargets(next, deviceId);
           });
         },
         "motion.transition": () => {
@@ -6296,7 +6400,11 @@ export function SceneTab({
       }[row.id];
       const value = {
         "text.motion": doc?.textAnimation ? describeSpec(doc.textAnimation) : "Theme default",
-        "device.change": device ? resolveAvailableDeviceSpec(device.model).name : undefined,
+        "device.change": device
+          ? editingAfter && resolvedDeviceSpec
+            ? deviceColour(resolvedDeviceSpec, editingDevice?.colour).name
+            : resolveAvailableDeviceSpec(device.model).name
+          : undefined,
         "device.position": doc?.deviceLayout
           ? LAYOUT_PRESET_LABELS[doc.deviceLayout.preset].label
           : device
@@ -6317,8 +6425,8 @@ export function SceneTab({
                 video: "Video",
               }[doc.background.type]
           : undefined,
-        "style.shadow": device
-          ? SHADOW_OPTIONS.find((o) => o.id === (device.shadow ?? "soft"))?.label
+        "style.shadow": editingDevice
+          ? SHADOW_OPTIONS.find((o) => o.id === (editingDevice.shadow ?? "soft"))?.label
           : undefined,
         "frame.cutout": sceneFrame ? FRAME_SHAPE_LABELS[sceneFrame.cutout.shape] : undefined,
         "frame.panel": sceneFrame ? panelFillLabel(sceneFrame.background) : undefined,
@@ -6344,7 +6452,9 @@ export function SceneTab({
                 ? `Change ${editingAfter ? "after" : "before"} video`
                 : doc?.compare && row.id === "device.editVideo"
                   ? `Edit ${editingAfter ? "after" : "before"} video`
-                  : row.label
+                  : editingAfter && row.id === "device.change"
+                    ? "Colour"
+                    : row.label
           }
           value={value}
           chevron={row.chevron}
@@ -6450,6 +6560,7 @@ export function SceneTab({
     /** False for instant in-place actions that open nothing (Add device). */
     chevron?: boolean;
     disabled?: boolean;
+    comparisonMenu?: "change" | "edit";
     onClick: () => void;
   }
   const contentEntries: TopEntry[] = [];
@@ -6559,29 +6670,16 @@ export function SceneTab({
     });
   if (doc?.compare && device) {
     for (const row of comparisonDeviceVideoRows(beforeDeviceMedia, afterDeviceMedia)) {
+      const action = row.id === "device.media" ? "change" : "edit";
       contentEntries.push({
-        key: row.id,
+        key: `comparison.${action}Video`,
         label: row.label,
-        icon: row.id.startsWith("device.media") ? "device.media" : "device.editVideo",
+        icon: action === "change" ? "device.media" : "device.editVideo",
+        value: row.value,
         chevron: row.chevron,
         disabled: row.disabled,
-        onClick: () => {
-          if (row.id === "device.media.before") {
-            setCompareSide("a");
-            setMediaTarget({ kind: "device", deviceId: device.id });
-            setModal("media");
-          } else if (row.id === "device.media.after") {
-            setCompareSide("b");
-            setCompareMediaDeviceId(device.id);
-            openDrill("compare.media");
-          } else if (row.id === "device.editVideo.before" && beforeDeviceMedia?.kind === "video") {
-            setCompareSide("a");
-            onOpenEditVideo(sceneIndex, beforeDeviceMedia.src, "device", device.id);
-          } else if (row.id === "device.editVideo.after" && afterDeviceMedia?.kind === "video") {
-            setCompareSide("b");
-            onOpenEditVideo(sceneIndex, afterDeviceMedia.src, "compareDevice", device.id);
-          }
-        },
+        comparisonMenu: action,
+        onClick: () => setComparisonMediaMenu((open) => (open === action ? null : action)),
       });
     }
   } else if (device || doc?.videoWindow)
@@ -6684,17 +6782,68 @@ export function SceneTab({
       },
     });
   }
-  const renderEntry = (entry: TopEntry) => (
-    <ActionRow
-      key={entry.key}
-      icon={<SceneRowIcon id={entry.icon} />}
-      label={entry.label}
-      value={entry.value}
-      chevron={entry.chevron ?? true}
-      disabled={entry.disabled}
-      onClick={entry.onClick}
-    />
-  );
+  const chooseComparisonMediaSide = (action: "change" | "edit", side: "before" | "after") => {
+    if (!device) return;
+    setComparisonMediaMenu(null);
+    if (action === "change") {
+      if (side === "before") {
+        setMediaTarget({ kind: "device", deviceId: device.id });
+        setModal("media");
+      } else {
+        setCompareMediaDeviceId(device.id);
+        openDrill("compare.media");
+      }
+      return;
+    }
+    const media = side === "before" ? beforeDeviceMedia : afterDeviceMedia;
+    if (media?.kind !== "video") return;
+    onOpenEditVideo(
+      sceneIndex,
+      media.src,
+      side === "before" ? "device" : "compareDevice",
+      device.id,
+    );
+  };
+  const renderEntry = (entry: TopEntry) => {
+    const row = (
+      <ActionRow
+        key={entry.comparisonMenu ? undefined : entry.key}
+        icon={<SceneRowIcon id={entry.icon} />}
+        label={entry.label}
+        value={entry.value}
+        chevron={entry.chevron ?? true}
+        disabled={entry.disabled}
+        selected={entry.comparisonMenu === comparisonMediaMenu}
+        onClick={entry.onClick}
+      />
+    );
+    if (!entry.comparisonMenu) return row;
+    const action = entry.comparisonMenu;
+    return (
+      <div key={entry.key} className="inspector-row-anchor comparison-media-menu-anchor">
+        {row}
+        {comparisonMediaMenu === action && (
+          <div className="inspector-popover comparison-media-popover" role="menu">
+            {comparisonDeviceVideoSides(beforeDeviceMedia, afterDeviceMedia, action).map(
+              (option) => (
+                <button
+                  key={option.side}
+                  type="button"
+                  role="menuitem"
+                  disabled={option.disabled}
+                  className="inspector-popover-item"
+                  onClick={() => chooseComparisonMediaSide(action, option.side)}
+                >
+                  <ComparisonSideIcon side={option.side} />
+                  {option.label}
+                </button>
+              ),
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>

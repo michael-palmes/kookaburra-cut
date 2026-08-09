@@ -24,8 +24,20 @@ const compareDoc = (compare: SceneDoc["compare"]): SceneDoc =>
   docWith({
     themeId: "base-theme",
     devices: [
-      { id: "d1", model: "iphone-17-pro", media: { src: "assets/before.mp4", kind: "video" } },
-      { id: "d2", model: "iphone-17-pro", media: { src: "assets/before.mp4", kind: "video" } },
+      {
+        id: "d1",
+        model: "iphone-17-pro",
+        colour: "silver",
+        shadow: "soft",
+        media: { src: "assets/before.mp4", kind: "video" },
+      },
+      {
+        id: "d2",
+        model: "iphone-17-pro",
+        colour: "graphite",
+        shadow: "long",
+        media: { src: "assets/before.mp4", kind: "video" },
+      },
     ] as SceneDoc["devices"],
     compare,
   });
@@ -195,7 +207,7 @@ describe("deriveCompareBDoc", () => {
     expect(b?.compare).toBeDefined();
   });
 
-  it("applies side B's theme, background, staging, lighting and per-device media", () => {
+  it("applies side B's theme, staging, lighting, media and narrow device appearance", () => {
     const b = deriveCompareBDoc(
       compareDoc({
         b: {
@@ -204,6 +216,10 @@ describe("deriveCompareBDoc", () => {
           backdrop: { type: "floor", color: "#654321" },
           lighting: { exposure: 1.2 } as NonNullable<SceneDoc["lighting"]>,
           media: { d2: { src: "assets/after.mp4", kind: "video" } },
+          deviceAppearance: {
+            d1: { colour: "blue", shadow: "none" },
+            missing: { colour: "ignored" },
+          },
         },
       }),
     );
@@ -213,6 +229,8 @@ describe("deriveCompareBDoc", () => {
     expect(b?.lighting).toEqual({ exposure: 1.2 });
     expect(b?.devices?.[0].media?.src).toBe("assets/before.mp4");
     expect(b?.devices?.[1].media?.src).toBe("assets/after.mp4");
+    expect(b?.devices?.[0]).toMatchObject({ colour: "blue", shadow: "none" });
+    expect(b?.devices?.[1]).toMatchObject({ colour: "graphite", shadow: "long" });
   });
 
   it("leaves the base doc untouched (a fresh clone)", () => {

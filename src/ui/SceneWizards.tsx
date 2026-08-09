@@ -31,6 +31,7 @@ import {
   resolveAvailableDeviceId,
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
+import { ComparisonSideIcon } from "./ComparisonSideIcon";
 import { ColourPicker } from "./colour/ColourPicker";
 import { applyDeviceChoice } from "./deviceChoice";
 import { ChartTypeIcon, SegmentedRow } from "./inspector/rows";
@@ -194,32 +195,6 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
       <span className="wizard-label">{label}</span>
       {children}
     </div>
-  );
-}
-
-/** Split-square glyph for the comparison media steps: the filled half is the screen being picked (before = left, after = right, the scene's own layout). */
-function SideChipGlyph({ side }: { side: "before" | "after" }) {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-      <rect
-        x="1.5"
-        y="2.5"
-        width="13"
-        height="11"
-        rx="2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <rect
-        x={side === "before" ? 3.2 : 8}
-        y="4.2"
-        width="4.8"
-        height="7.6"
-        rx="1"
-        fill="currentColor"
-      />
-    </svg>
   );
 }
 
@@ -724,7 +699,7 @@ export function NewSceneWizard({
                 isComparison && deviceCount === 2 ? (
                   <span className="wizard-side-label">
                     <span className={`wizard-side-chip${step === "mediaB" ? " after" : ""}`}>
-                      <SideChipGlyph side={step === "mediaB" ? "after" : "before"} />
+                      <ComparisonSideIcon side={step === "mediaB" ? "after" : "before"} />
                       {step === "mediaB" ? "After" : "Before"}
                     </span>
                     {step === "mediaB"

@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
-import { mutateCompareBackgroundTarget, mutateCompareLightingTarget } from "./comparisonTarget";
+import {
+  duplicateCompareDeviceTargets,
+  mutateCompareBackgroundTarget,
+  mutateCompareLightingTarget,
+  pruneCompareDeviceTargets,
+  setCompareDeviceAppearance,
+} from "./comparisonTarget";
 
 const doc = (): SceneDoc => ({
   version: 1,
+  devices: [
+    { id: "d1", model: "android", colour: "graphite", shadow: "soft" },
+    { id: "d2", model: "android", colour: "silver", shadow: "long" },
+  ],
   background: { type: "shader", shader: "mesh-gradient", colors: ["#111111", "#222222"] },
   backdrop: { type: "floor", color: "#111111" },
   lighting: { ambient: 0.4, preset: "base-lighting" },
@@ -48,5 +58,65 @@ describe("comparison inspector targets", () => {
     });
     expect(next.lighting).toEqual({ ambient: 0.4, preset: "base-lighting" });
     expect(next.compare?.b?.lighting).toBeUndefined();
+  });
+
+  it("sets and clears colour without disturbing the device's shadow override", () => {
+    const next = doc();
+    setCompareDeviceAppearance(next, "d1", "shadow", "long");
+    setCompareDeviceAppearance(next, "d1", "colour", "silver");
+    expect(next.compare?.b?.deviceAppearance?.d1).toEqual({
+      colour: "silver",
+      shadow: "long",
+    });
+
+    setCompareDeviceAppearance(next, "d1", "colour", "graphite");
+    expect(next.compare?.b?.deviceAppearance?.d1).toEqual({ shadow: "long" });
+  });
+
+  it("prunes the appearance map after the last override returns to Before", () => {
+    const next = doc();
+    setCompareDeviceAppearance(next, "d2", "shadow", "none");
+    setCompareDeviceAppearance(next, "d2", "shadow", undefined);
+    expect(next.compare?.b?.deviceAppearance).toBeUndefined();
+  });
+
+  it("prunes comparison media and appearance when a device is removed", () => {
+    const next = doc();
+    if (next.compare) {
+      next.compare.b = {
+        media: {
+          d1: { src: "assets/after.mp4", kind: "video" },
+          d2: { src: "assets/keep.mp4", kind: "video" },
+        },
+        deviceAppearance: {
+          d1: { colour: "silver" },
+          d2: { shadow: "none" },
+        },
+      };
+    }
+    pruneCompareDeviceTargets(next, "d1");
+    expect(next.compare?.b?.media).toEqual({
+      d2: { src: "assets/keep.mp4", kind: "video" },
+    });
+    expect(next.compare?.b?.deviceAppearance).toEqual({ d2: { shadow: "none" } });
+  });
+
+  it("duplicates comparison media and appearance for a duplicated device", () => {
+    const next = doc();
+    if (next.compare) {
+      next.compare.b = {
+        media: { d1: { src: "assets/after.mp4", kind: "video" } },
+        deviceAppearance: { d1: { colour: "silver", shadow: "none" } },
+      };
+    }
+    duplicateCompareDeviceTargets(next, "d1", "d3");
+    expect(next.compare?.b?.media?.d3).toEqual({
+      src: "assets/after.mp4",
+      kind: "video",
+    });
+    expect(next.compare?.b?.deviceAppearance?.d3).toEqual({
+      colour: "silver",
+      shadow: "none",
+    });
   });
 });

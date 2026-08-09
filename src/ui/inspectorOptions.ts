@@ -114,20 +114,37 @@ export function comparisonDeviceVideoRows(
   after: SceneDocDeviceSpec["media"],
 ): SceneRowModel[] {
   return [
-    { id: "device.media.before", label: "Change before video", chevron: true },
-    { id: "device.media.after", label: "Change after video", chevron: true },
     {
-      id: "device.editVideo.before",
-      label: "Edit before video",
-      chevron: false,
-      disabled: before?.kind !== "video",
+      id: "device.media",
+      label: "Change video",
+      value: "Before / After",
+      chevron: true,
     },
     {
-      id: "device.editVideo.after",
-      label: "Edit after video",
-      chevron: false,
-      disabled: after?.kind !== "video",
+      id: "device.editVideo",
+      label: "Edit video",
+      value: "Before / After",
+      chevron: true,
+      disabled: before?.kind !== "video" && after?.kind !== "video",
     },
+  ];
+}
+
+export interface ComparisonVideoSideOption {
+  side: "before" | "after";
+  label: "Before" | "After";
+  disabled: boolean;
+}
+
+/** The compact comparison media picker: Change accepts either side, Edit disables only the sides that are not videos. */
+export function comparisonDeviceVideoSides(
+  before: SceneDocDeviceSpec["media"],
+  after: SceneDocDeviceSpec["media"],
+  action: "change" | "edit",
+): ComparisonVideoSideOption[] {
+  return [
+    { side: "before", label: "Before", disabled: action === "edit" && before?.kind !== "video" },
+    { side: "after", label: "After", disabled: action === "edit" && after?.kind !== "video" },
   ];
 }
 

@@ -181,11 +181,12 @@ export function deriveCompareBDoc(doc: SceneDoc | undefined): SceneDoc | null {
   if (side.background !== undefined) b.background = side.background;
   if (side.backdrop !== undefined) b.backdrop = side.backdrop;
   if (side.lighting !== undefined) b.lighting = side.lighting;
-  if (side.media) {
-    for (const device of b.devices ?? []) {
-      const media = side.media[device.id];
-      if (media) device.media = media;
-    }
+  for (const device of b.devices ?? []) {
+    const media = side.media?.[device.id];
+    if (media) device.media = media;
+    const appearance = side.deviceAppearance?.[device.id];
+    if (appearance?.colour !== undefined) device.colour = appearance.colour;
+    if (appearance?.shadow !== undefined) device.shadow = appearance.shadow;
   }
   return b;
 }

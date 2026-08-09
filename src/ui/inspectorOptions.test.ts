@@ -7,41 +7,54 @@ import {
   CHART_TYPE_LABELS,
   chartRowValue,
   comparisonDeviceVideoRows,
+  comparisonDeviceVideoSides,
   drillStackForScene,
   projectRows,
   sceneSections,
 } from "./inspectorOptions";
 
-describe("comparison device video rows", () => {
-  it("always exposes both Change actions and enables Edit only for video", () => {
+describe("comparison device video actions", () => {
+  it("consolidates the overview to one Change and one Edit row", () => {
     expect(
       comparisonDeviceVideoRows(
         { kind: "video", src: "assets/before.mp4" },
         { kind: "image", src: "assets/after.png" },
       ),
     ).toEqual([
-      { id: "device.media.before", label: "Change before video", chevron: true },
-      { id: "device.media.after", label: "Change after video", chevron: true },
       {
-        id: "device.editVideo.before",
-        label: "Edit before video",
-        chevron: false,
-        disabled: false,
+        id: "device.media",
+        label: "Change video",
+        value: "Before / After",
+        chevron: true,
       },
       {
-        id: "device.editVideo.after",
-        label: "Edit after video",
-        chevron: false,
-        disabled: true,
+        id: "device.editVideo",
+        label: "Edit video",
+        value: "Before / After",
+        chevron: true,
+        disabled: false,
       },
     ]);
   });
 
-  it("enables inherited After video editing", () => {
-    const media = { kind: "video" as const, src: "assets/shared.mp4" };
-    const rows = comparisonDeviceVideoRows(media, media);
-    expect(rows.find((row) => row.id === "device.editVideo.before")?.disabled).toBe(false);
-    expect(rows.find((row) => row.id === "device.editVideo.after")?.disabled).toBe(false);
+  it("disables Edit only when neither side resolves to video", () => {
+    const image = { kind: "image" as const, src: "assets/still.png" };
+    expect(comparisonDeviceVideoRows(image, image)[1].disabled).toBe(true);
+    const video = { kind: "video" as const, src: "assets/shared.mp4" };
+    expect(comparisonDeviceVideoRows(image, video)[1].disabled).toBe(false);
+  });
+
+  it("enables Change for both sides and Edit only for video sides", () => {
+    const before = { kind: "image" as const, src: "assets/before.png" };
+    const after = { kind: "video" as const, src: "assets/after.mp4" };
+    expect(comparisonDeviceVideoSides(before, after, "change")).toEqual([
+      { side: "before", label: "Before", disabled: false },
+      { side: "after", label: "After", disabled: false },
+    ]);
+    expect(comparisonDeviceVideoSides(before, after, "edit")).toEqual([
+      { side: "before", label: "Before", disabled: true },
+      { side: "after", label: "After", disabled: false },
+    ]);
   });
 });
 

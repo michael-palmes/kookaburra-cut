@@ -11,7 +11,7 @@ vi.mock("../../toolkit/device/modelUrl", () => ({
   macbookPro16ModelAvailable: false,
 }));
 
-import { DeviceDrillIn } from "./DeviceDrillIn";
+import { DeviceColourDrillIn, DeviceDrillIn } from "./DeviceDrillIn";
 
 describe("DeviceDrillIn in a clean clone", () => {
   it("shows only Android and seeds its default colour for an unavailable model", () => {
@@ -29,5 +29,24 @@ describe("DeviceDrillIn in a clean clone", () => {
     expect(html).toContain("Graphite");
     expect(html).not.toContain("iPhone 17 Pro");
     expect(html).not.toContain("MacBook Pro");
+  });
+
+  it("keeps the After editor focused on colour inheritance", () => {
+    const html = renderToStaticMarkup(
+      <DeviceColourDrillIn
+        model="android"
+        colour="graphite"
+        beforeColour="graphite"
+        overridden={false}
+        onBack={() => undefined}
+        onSave={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("After device colour");
+    expect(html).toContain("Match before");
+    expect(html).not.toContain("Device model");
+    expect(html).not.toContain("Motion");
+    expect(html).not.toContain("All devices");
   });
 });
