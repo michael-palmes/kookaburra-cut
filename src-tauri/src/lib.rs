@@ -1320,6 +1320,7 @@ pub fn run() {
             export_presets::write_export_preset,
             export_presets::delete_export_preset,
             workspace::set_last_export_preset,
+            workspace::set_opening_poster_frame,
             fonts::list_system_fonts,
             fonts::list_workspace_fonts,
             fonts::pin_system_font,

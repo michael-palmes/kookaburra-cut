@@ -314,6 +314,11 @@ export function withPosterFrame(spec: EncodeSpec, enabled: boolean): EncodeSpec 
   return enabled ? { ...spec, posterFrame: true } : spec;
 }
 
+/** App settings store the opt-out so missing settings and older installs default to on. */
+export function openingPosterFrameEnabled(disabled?: boolean): boolean {
+  return disabled !== true;
+}
+
 export function highQualityEncode(posterFrame: boolean): EncodeSpec | undefined {
   return posterFrame
     ? withPosterFrame(resolvePresetToEncodeSpec(HIGH_QUALITY_DISPLAY_DOC), true)

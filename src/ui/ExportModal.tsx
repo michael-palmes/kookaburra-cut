@@ -8,6 +8,7 @@ import {
   deleteExportPreset,
   getSettings,
   listExportPresets,
+  setOpeningPosterFrame,
   writeExportPreset,
 } from "../engine/workspace";
 import { BUNDLED_EXPORT_PRESETS } from "../export/presetRegistry";
@@ -35,6 +36,7 @@ import {
   isProRes,
   isVideotoolbox,
   KOOKABURRA_STANDARD_ID,
+  openingPosterFrameEnabled,
   type PresetRow,
   presetAspects,
   railPresets,
@@ -88,7 +90,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   const [draft, setDraft] = useState<CustomDraft>(customSeed);
   const [fitted, setFitted] = useState<ExportPresetDoc["video"]["rate"] | null>(null);
   const [loudness, setLoudness] = useState<LoudnessCache>({});
-  const [posterFrame, setPosterFrame] = useState(false);
+  const [posterFrame, setPosterFrame] = useState(true);
   const [saveAs, setSaveAs] = useState<{ name: string; description: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -99,6 +101,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     return () => window.clearTimeout(timer);
   }, [confirmDelete]);
   const loudnessRef = useRef<LoudnessCache>({});
+  const posterFrameTouchedRef = useRef(false);
+  const posterFrameWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const posterFrameWriteNonceRef = useRef(0);
 
   const refreshUserPresets = useCallback(async () => {
     try {
@@ -128,6 +133,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       try {
         const settings = await getSettings();
         if (!live) return;
+        if (!posterFrameTouchedRef.current) {
+          setPosterFrame(openingPosterFrameEnabled(settings.disableOpeningPosterFrame));
+        }
         const last =
           settings.lastExportPresetByProject?.[project.id] ??
           settings.lastExportPreset ??
@@ -141,6 +149,21 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       live = false;
     };
   }, [project.id, refreshUserPresets]);
+
+  const changePosterFrame = useCallback((enabled: boolean) => {
+    posterFrameTouchedRef.current = true;
+    setPosterFrame(enabled);
+    setError(null);
+    const nonce = ++posterFrameWriteNonceRef.current;
+    const write = posterFrameWriteRef.current
+      .catch(() => {})
+      .then(() => setOpeningPosterFrame(enabled));
+    posterFrameWriteRef.current = write.catch((e) => {
+      if (posterFrameWriteNonceRef.current === nonce) {
+        setError(`Couldn't save the opening poster frame preference: ${String(e)}`);
+      }
+    });
+  }, []);
 
   // Joined the shared Escape stack: layered surfaces close top-first.
   useEscapeClose(onClose);
@@ -513,7 +536,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                 <input
                   type="checkbox"
                   checked={posterFrame}
-                  onChange={(e) => setPosterFrame(e.target.checked)}
+                  onChange={(e) => changePosterFrame(e.target.checked)}
                 />
                 Opening poster frame
               </label>

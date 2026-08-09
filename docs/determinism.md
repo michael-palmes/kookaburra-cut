@@ -1004,7 +1004,9 @@ stays deterministic):
 `encode.rs::legacy_export_args()`: the original argv extracted VERBATIM and
 byte-pinned by Rust goldens (`legacy_argv_goldens`, audio + `-an` variants).
 Standing baselines and Verify ×2 never carry a spec, so presets can never move
-them; an edit to the legacy builder is a deliberate full rebase.
+them; an edit to the legacy builder is a deliberate full rebase. The modal's
+High quality row takes this path when Opening poster frame is off. When it is on,
+the row resolves the legacy-equivalent spec plus the runtime poster flag.
 
 **The spec family** (`spec_argv_goldens` pins every lane): the pinned vf chain is
 `vflip[,fps=N][,scale=W:H:flags=lanczos[:out_color_matrix=bt709,format=<pix_fmt>]]`.
@@ -1023,11 +1025,12 @@ threads to 1 (x264 VBV under threads is non-deterministic: identical frames,
 differing bytes; x265: `frame-threads=1:pools=1`).
 
 **The optional poster frame is runtime-only.** The export modal never stores it
-in a preset. `posterFrame: true` inserts exactly one encoded frame before
-timeline frame 0, using the lower-centre sample from the first scene on the
-selected output-fps grid. That poster renders scene one alone, even when its
-timestamp lies inside an outgoing transition. The video and audio durations grow
-by exactly `1 / fps`; Rust prepends one frame of sample-exact silence (800
+in a preset. Its default-on choice is remembered app-wide in `settings.json`,
+across projects and launches. `posterFrame: true` inserts exactly one encoded
+frame before timeline frame 0, using the lower-centre sample from the first scene
+on the selected output-fps grid. That poster renders scene one alone, even when
+its timestamp lies inside an outgoing transition. The video and audio durations
+grow by exactly `1 / fps`; Rust prepends one frame of sample-exact silence (800
 samples at 60 fps, 1600 at 30 fps) and shifts the soundtrack fades and padding
 with it. An absent or false field takes the existing frame and audio paths
 unchanged. Hosts still choose their own link-preview thumbnail, so this improves

@@ -9,6 +9,7 @@ import {
   fitToCap,
   groupPresets,
   highQualityEncode,
+  openingPosterFrameEnabled,
   presetAspects,
   railPresets,
   resolveDraft,
@@ -200,6 +201,12 @@ describe("the Custom draft", () => {
     const spec = present(resolveDraft(draft).spec);
     expect(withPosterFrame(spec, false)).toBe(spec);
     expect(withPosterFrame(spec, true).posterFrame).toBe(true);
+  });
+
+  it("defaults the app-wide opening poster frame on and honours its opt-out", () => {
+    expect(openingPosterFrameEnabled()).toBe(true);
+    expect(openingPosterFrameEnabled(false)).toBe(true);
+    expect(openingPosterFrameEnabled(true)).toBe(false);
   });
 
   it("keeps High quality legacy when off and resolves its spec only when on", () => {
