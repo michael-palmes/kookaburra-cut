@@ -21,7 +21,13 @@ import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { DuplicateSceneDialog } from "../PlaybackBar";
 import { DebouncedRange } from "../TextAnimationPicker";
-import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
+import {
+  builtinThemeChoices,
+  listThemeChoices,
+  recordSuccessfulThemeUse,
+  ThemeBrowser,
+  type ThemeChoice,
+} from "../ThemePicker";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
@@ -150,7 +156,7 @@ export function InspectorPanel({
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
-  onApplyTheme: (themeId: string) => void;
+  onApplyTheme: (themeId: string) => Promise<void>;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
   onDeleteScene: (sceneIndex: number) => void;
   /** Scene manager: apply a full desired order (original indices) to the manifest. */
@@ -265,7 +271,7 @@ export function InspectorPanel({
   const openDrill = useUiStore((s) => s.openInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const setDrillIn = (id: string | null) => (id === null ? closeDrill() : openDrill(id));
-  const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
+  const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
@@ -298,11 +304,13 @@ export function InspectorPanel({
   }, [drillIn, themesRefreshKey]);
 
   // The theme-card right-click menu (shared with the scene-theme drill).
+  const applyProjectTheme = (themeId: string) => {
+    setThemeDraft(themeId);
+    void recordSuccessfulThemeUse(themeId, () => onApplyTheme(themeId));
+  };
+
   const themeMenu = useThemeCardMenu({
-    onApply: (themeId) => {
-      setThemeDraft(themeId);
-      onApplyTheme(themeId);
-    },
+    onApply: applyProjectTheme,
     onManage: onOpenTheme,
     onEditInClaude: onEditThemeInClaude,
     onThemeEdited,
@@ -417,14 +425,14 @@ export function InspectorPanel({
           <DrillBack label="Project" onClick={() => setDrillIn(null)} />
           <div className="inspector-drill-title">Theme</div>
           <div className="inspector-drill-body">
-            <ThemeGrid
+            <ThemeBrowser
+              layout="compact"
               choices={themeChoices}
               value={themeDraft}
               onChange={(id) => {
                 // Applies on selection; the draft doubles as the same-id de-dupe.
                 if (id === themeDraft) return;
-                setThemeDraft(id);
-                onApplyTheme(id);
+                applyProjectTheme(id);
               }}
               onCardContextMenu={themeMenu.openMenu}
             />

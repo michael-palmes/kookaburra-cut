@@ -2283,7 +2283,7 @@ export default function App() {
               }
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
-              onApplyTheme={(id) => void handleApplyTheme(id)}
+              onApplyTheme={handleApplyTheme}
               onDeleteScene={(i) => void handleDeleteScene(i)}
               onReorderScenes={handleReorderScenes}
               onDuplicateScenes={handleDuplicateScenes}

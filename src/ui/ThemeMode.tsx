@@ -4,7 +4,13 @@ import { slugifyName } from "../engine/workspace";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";
-import { listThemeChoices, type ThemeChoice, ThemeGrid } from "./ThemePicker";
+import {
+  builtinThemeChoices,
+  listThemeChoices,
+  recordSuccessfulThemeUse,
+  ThemeBrowser,
+  type ThemeChoice,
+} from "./ThemePicker";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Main-window theme mode: browse the theme library, apply one to the project, or duplicate any theme into a workspace theme (the starting point for user themes, locked decision 11: token-level tweaks duplicate the theme, deep edits go through Claude on the JSON); modal shell per the MediaLibrary pattern. */
@@ -30,7 +36,7 @@ export function ThemeMode({
   onThemeEdited: (wsId: string, json: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [choices, setChoices] = useState<ThemeChoice[]>([]);
+  const [choices, setChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [selected, setSelected] = useState(initialThemeId ?? currentThemeId);
   const [view, setView] = useState<"browse" | "duplicate" | "fonts">(
     initialView === "duplicate" ? "duplicate" : "browse",
@@ -110,7 +116,7 @@ export function ThemeMode({
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Project theme">
-      <div className="modal wizard-wide">
+      <div className="modal wizard-wide wizard-theme-wide">
         <h2>
           {view === "browse" && "Project theme"}
           {view === "duplicate" && "Duplicate theme"}
@@ -122,7 +128,7 @@ export function ThemeMode({
               Hover a card to preview its four scenes. Applying re-themes every scene that doesn't
               set its own theme.
             </p>
-            <ThemeGrid choices={choices} value={selected} onChange={setSelected} />
+            <ThemeBrowser choices={choices} value={selected} onChange={setSelected} />
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onClose} disabled={busy}>
@@ -177,7 +183,11 @@ export function ThemeMode({
               <button
                 type="button"
                 className="btn primary"
-                onClick={() => run(() => onApply(selected))}
+                onClick={() =>
+                  run(async () => {
+                    await recordSuccessfulThemeUse(selected, () => onApply(selected));
+                  })
+                }
                 disabled={busy || selected === currentThemeId}
               >
                 {busy ? "Applying…" : "Apply theme"}
