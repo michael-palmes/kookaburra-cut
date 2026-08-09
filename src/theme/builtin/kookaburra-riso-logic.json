@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "id": "kookaburra-riso-logic",
+  "name": "Riso Logic",
+  "mode": "light",
+  "catalogue": {
+    "category": "maker-energy",
+    "useLabel": "Indie creative launches",
+    "tags": ["riso", "indie", "creative", "launch", "print", "bold"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#f5ecf2",
+    "text": "#24151e",
+    "accent": "#ad2055",
+    "muted": "#5d4552"
+  },
+  "chartColors": ["#ad2055", "#2563eb", "#08736c", "#7e22ce", "#b45309", "#3f6212"],
+  "typography": {
+    "headline": { "family": "Nunito", "weight": 600 },
+    "body": { "family": "Libre Franklin", "weight": 600 },
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 170, "base": 440, "slow": 820 },
+    "easings": { "standard": "outCubic", "emphasized": "outBack" }
+  },
+  "textAnimation": {
+    "in": "scatter-scale",
+    "out": "fade",
+    "staggerMs": 28,
+    "stagger": "char"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "swirl",
+    "colors": ["#f5ecf2", "#e9d5e4", "#dcc2d6", "#efe0ea"],
+    "speed": 0.5,
+    "params": {
+      "bandCount": 7,
+      "twist": 0.2,
+      "softness": 0.2
+    },
+    "preset": "p3"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -28,
+      "elevationDeg": 48,
+      "intensity": 1.9,
+      "color": "#fff8fc"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 135,
+        "elevationDeg": 20,
+        "intensity": 0.75,
+        "color": "#f0b9d0"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 34,
+        "intensity": 0.35,
+        "color": "#b8c8ff"
+      }
+    ],
+    "ambient": 0.75
+  }
+}

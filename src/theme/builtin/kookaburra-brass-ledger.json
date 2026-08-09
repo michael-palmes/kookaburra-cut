@@ -1,0 +1,79 @@
+{
+  "version": 2,
+  "id": "kookaburra-brass-ledger",
+  "name": "Brass Ledger",
+  "mode": "dark",
+  "catalogue": {
+    "category": "modern-finance",
+    "useLabel": "Private wealth and insurance",
+    "tags": ["private-wealth", "insurance", "premium", "heritage", "finance", "experimental"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#0e1219",
+    "text": "#f8fbff",
+    "accent": "#79aee1",
+    "muted": "#dce7f2"
+  },
+  "chartColors": ["#79aee1", "#e5a56b", "#cb94e5", "#75cfad", "#e07b96", "#d9c769"],
+  "typography": {
+    "headline": { "family": "Cormorant Garamond", "weight": 600 },
+    "body": { "family": "Libre Franklin", "weight": 600 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 200, "base": 500, "slow": 900 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 36,
+    "stagger": "word",
+    "startScale": 0.9,
+    "shine": true
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "grid-shell",
+    "colors": ["#416589"],
+    "speed": 0.9,
+    "params": {
+      "radius": 23,
+      "latCount": 9,
+      "lonCount": 24,
+      "horizonBias": 0.6,
+      "drift": 0.8,
+      "opacity": 0.7
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p8"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -26,
+      "elevationDeg": 46,
+      "intensity": 1.9,
+      "color": "#f3e6cf"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 132,
+        "elevationDeg": 20,
+        "intensity": 0.8,
+        "color": "#79aee1"
+      },
+      {
+        "azimuthDeg": 166,
+        "elevationDeg": 34,
+        "intensity": 0.5,
+        "color": "#c89b62"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

@@ -3,6 +3,13 @@
   "id": "kookaburra-pacific",
   "name": "Pacific",
   "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Calm product stories",
+    "tags": ["calm", "coastal", "product", "technology", "blue", "soft"],
+    "stage": "physical",
+    "order": 20
+  },
   "colors": {
     "background": "#ffffff",
     "text": "#0b1440",

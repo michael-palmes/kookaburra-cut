@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "id": "kookaburra-paper-circuit",
+  "name": "Paper Circuit",
+  "mode": "light",
+  "catalogue": {
+    "category": "quiet-technology",
+    "useLabel": "Conceptual system maps",
+    "tags": ["systems", "mapping", "concept", "technology", "diagram", "experimental"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#eef5f5",
+    "text": "#102b31",
+    "accent": "#08736c",
+    "muted": "#38565b"
+  },
+  "chartColors": ["#08736c", "#1333d4", "#7e22ce", "#b91c1c", "#15803d", "#8f5000"],
+  "typography": {
+    "headline": { "family": "JetBrains Mono", "weight": 400 },
+    "body": "Inter",
+    "scale": 1.2
+  },
+  "motion": {
+    "durations": { "fast": 180, "base": 460, "slow": 860 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "scatter-scale",
+    "out": "fade",
+    "staggerMs": 25,
+    "stagger": "char"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "horizon-grid",
+    "colors": ["#eef5f5", "#e4f0ef", "#e3f2f0"],
+    "speed": 0.4,
+    "params": { "horizon": 0.05, "density": 14, "lineWeight": 0.4, "glow": 0.5, "fade": 0.6 },
+    "preset": "p1"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 25,
+      "elevationDeg": 55,
+      "intensity": 1.9,
+      "color": "#ffffff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -135,
+        "elevationDeg": 18,
+        "intensity": 0.65,
+        "color": "#b9e3df"
+      }
+    ],
+    "ambient": 0.75
+  }
+}

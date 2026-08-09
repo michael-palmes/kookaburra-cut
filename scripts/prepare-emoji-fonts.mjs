@@ -42,6 +42,10 @@ const BUNDLED_FAMILY_FILES = {
   "JetBrains Mono": ["src/assets/fonts/JetBrainsMono-Regular.woff"],
   "Playfair Display": ["src/assets/fonts/PlayfairDisplay-SemiBold.woff"],
   Lora: ["src/assets/fonts/Lora-Regular.woff"],
+  "Barlow Condensed": ["src/assets/fonts/BarlowCondensed-SemiBold.woff"],
+  Nunito: ["src/assets/fonts/Nunito-SemiBold.woff"],
+  "Cormorant Garamond": ["src/assets/fonts/CormorantGaramond-SemiBold.woff"],
+  "Libre Franklin": ["src/assets/fonts/LibreFranklin-SemiBold.woff"],
 };
 
 const EMOJI_PUA_START = 0xe000;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectThemeFontRefs } from "./fonts";
+import { BUNDLED_FONTS, collectThemeFontRefs } from "./fonts";
 import { builtinThemes } from "./registry";
 import type { Theme } from "./tokens";
 
@@ -48,5 +48,19 @@ describe("collectThemeFontRefs", () => {
       { family: "Inter", weight: 600 },
       { family: "Inter", weight: 400 },
     ]);
+  });
+});
+
+describe("bundled theme faces", () => {
+  it("appends the four theme-library display faces at their audited static weight", () => {
+    expect(Object.keys(BUNDLED_FONTS).slice(-4)).toEqual([
+      "Barlow Condensed",
+      "Nunito",
+      "Cormorant Garamond",
+      "Libre Franklin",
+    ]);
+    for (const family of Object.keys(BUNDLED_FONTS).slice(-4)) {
+      expect(Object.keys(BUNDLED_FONTS[family]).map(Number)).toEqual([600]);
+    }
   });
 });

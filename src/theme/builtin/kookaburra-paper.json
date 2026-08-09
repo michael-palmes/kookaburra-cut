@@ -3,6 +3,13 @@
   "id": "kookaburra-paper",
   "name": "Paper",
   "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Editorial explainers",
+    "tags": ["editorial", "storytelling", "warm", "organic", "print", "education"],
+    "stage": "physical",
+    "order": 30
+  },
   "colors": {
     "background": "#f7f1e3",
     "text": "#2b2119",

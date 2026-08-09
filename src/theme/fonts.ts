@@ -1,9 +1,13 @@
 import { configureTextBuilder, preloadFont } from "troika-three-text";
+import barlowCondensedSemiBoldUrl from "../assets/fonts/BarlowCondensed-SemiBold.woff?url";
+import cormorantGaramondSemiBoldUrl from "../assets/fonts/CormorantGaramond-SemiBold.woff?url";
 import interRegularUrl from "../assets/fonts/Inter-Regular.woff?url";
 import interSemiBoldUrl from "../assets/fonts/Inter-SemiBold.woff?url";
 import jetbrainsMonoRegularUrl from "../assets/fonts/JetBrainsMono-Regular.woff?url";
 import kookaburraFallbackUrl from "../assets/fonts/KookaburraFallback.otf?url";
+import libreFranklinSemiBoldUrl from "../assets/fonts/LibreFranklin-SemiBold.woff?url";
 import loraRegularUrl from "../assets/fonts/Lora-Regular.woff?url";
+import nunitoSemiBoldUrl from "../assets/fonts/Nunito-SemiBold.woff?url";
 import openSansRegularUrl from "../assets/fonts/OpenSans-Regular.woff?url";
 import openSansSemiBoldUrl from "../assets/fonts/OpenSans-SemiBold.woff?url";
 import playfairSemiBoldUrl from "../assets/fonts/PlayfairDisplay-SemiBold.woff?url";
@@ -30,6 +34,10 @@ export const BUNDLED_FONTS: Record<string, Record<number, string>> = {
   // The editorial faces for the Paper theme.
   "Playfair Display": { 600: playfairSemiBoldUrl },
   Lora: { 400: loraRegularUrl },
+  "Barlow Condensed": { 600: barlowCondensedSemiBoldUrl },
+  Nunito: { 600: nunitoSemiBoldUrl },
+  "Cormorant Garamond": { 600: cormorantGaramondSemiBoldUrl },
+  "Libre Franklin": { 600: libreFranklinSemiBoldUrl },
 };
 
 /** Workspace-pinned system fonts: family → weight → asset-protocol URL under `~/Kookaburra Cut/fonts/`, registered by `engine/systemFonts.ts`; pinning copies exact bytes so exports stay reproducible across macOS updates. */

@@ -3,6 +3,13 @@
   "id": "kookaburra-neon",
   "name": "Neon",
   "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Bold digital energy",
+    "tags": ["digital", "developer", "code", "energetic", "futuristic", "dark"],
+    "stage": "lighting-only",
+    "order": 80
+  },
   "colors": {
     "background": "#000000",
     "text": "#f5f7fa",

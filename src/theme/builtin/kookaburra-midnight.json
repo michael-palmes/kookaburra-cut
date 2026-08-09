@@ -3,6 +3,13 @@
   "id": "kookaburra-midnight",
   "name": "Midnight",
   "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Polished technology",
+    "tags": ["technology", "premium", "dark", "product", "cinematic", "ai"],
+    "stage": "lighting-only",
+    "order": 70
+  },
   "colors": {
     "background": "#0a0e1a",
     "text": "#f2f5fa",

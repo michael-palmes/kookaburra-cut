@@ -1,0 +1,78 @@
+{
+  "version": 2,
+  "id": "kookaburra-lucid-chrome",
+  "name": "Lucid Chrome",
+  "mode": "dark",
+  "catalogue": {
+    "category": "sensory-and-surreal",
+    "useLabel": "Immersive media launches",
+    "tags": ["immersive", "media", "chrome", "orbital", "cinematic", "bold"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#0e1219",
+    "text": "#f5fbff",
+    "accent": "#65d9ff",
+    "muted": "#c7d4df"
+  },
+  "chartColors": ["#65d9ff", "#ffe08a", "#d89cff", "#74e0b0", "#ff7d9c", "#b8c4d8"],
+  "typography": {
+    "headline": { "family": "Barlow Condensed", "weight": 600 },
+    "body": { "family": "Libre Franklin", "weight": 600 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 160, "base": 420, "slow": 800 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 42,
+    "stagger": "word",
+    "startScale": 0.84,
+    "shine": true
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "orb-field",
+    "colors": ["#2b3138", "#4c4034"],
+    "speed": 1.5,
+    "params": {
+      "count": 12,
+      "spread": 3,
+      "depth": 13,
+      "size": 1,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 42,
+      "intensity": 1.8,
+      "color": "#d9f7ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 125,
+        "elevationDeg": 18,
+        "intensity": 0.9,
+        "color": "#68d8ff"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 32,
+        "intensity": 0.55,
+        "color": "#ffb36b"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

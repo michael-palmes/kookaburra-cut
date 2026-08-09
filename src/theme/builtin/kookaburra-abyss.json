@@ -3,6 +3,13 @@
   "id": "kookaburra-abyss",
   "name": "Abyss",
   "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Cinematic depth",
+    "tags": ["cinematic", "immersive", "dark", "depth", "technology", "dramatic"],
+    "stage": "physical",
+    "order": 90
+  },
   "colors": {
     "background": "#071021",
     "text": "#dce4f2",

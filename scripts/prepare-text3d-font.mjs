@@ -17,6 +17,12 @@ const FONTS = [
   { src: "src/assets/fonts/SpaceGrotesk-Regular.woff", family: "Space Grotesk" },
   { src: "src/assets/fonts/OpenSans-Regular.woff", family: "Open Sans" },
   { src: "src/assets/fonts/JetBrainsMono-Regular.woff", family: "JetBrains Mono" },
+  { src: "src/assets/fonts/PlayfairDisplay-SemiBold.woff", family: "Playfair Display" },
+  { src: "src/assets/fonts/Lora-Regular.woff", family: "Lora" },
+  { src: "src/assets/fonts/BarlowCondensed-SemiBold.woff", family: "Barlow Condensed" },
+  { src: "src/assets/fonts/Nunito-SemiBold.woff", family: "Nunito" },
+  { src: "src/assets/fonts/CormorantGaramond-SemiBold.woff", family: "Cormorant Garamond" },
+  { src: "src/assets/fonts/LibreFranklin-SemiBold.woff", family: "Libre Franklin" },
 ];
 
 // Keep in sync with PRELOAD_CHARACTERS in src/theme/fonts.ts — the same glyph
