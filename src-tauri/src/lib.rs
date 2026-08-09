@@ -550,6 +550,8 @@ struct AutorunEnv {
     at: Option<String>,
     /// option-previews: comma list of stale set names to capture (unset = all).
     sets: Option<String>,
+    /// theme-previews: comma list of stale bundled theme ids to capture (unset = all).
+    themes: Option<String>,
 }
 
 #[tauri::command]
@@ -570,6 +572,7 @@ fn get_autorun_config() -> AutorunEnv {
         scene: var("KOOKABURRA_SCENE"),
         at: var("KOOKABURRA_AT"),
         sets: var("KOOKABURRA_SETS"),
+        themes: var("KOOKABURRA_THEMES"),
     }
 }
 
