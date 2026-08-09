@@ -54,7 +54,7 @@ export async function withBorrowedClock<T>(fn: () => Promise<T>): Promise<T | nu
   }
 }
 
-/** Seeks to `tMs`, waits for the canvas tree to commit (plus a settle beat for streamed-in textures), and downscales the preserved GL buffer to a PNG, or a JPEG when `format` says so (theme previews; JPEG keeps 40 committed previews small). Caller must hold the borrowed clock (`withBorrowedClock`); worst case the frame is slightly stale, which only affects card art. */
+/** Seeks to `tMs`, waits for the canvas tree to commit (plus a settle beat for streamed-in textures), and downscales the preserved GL buffer to a PNG, or a JPEG when `format` says so (theme previews use JPEG to stay small). Caller must hold the borrowed clock (`withBorrowedClock`); worst case the frame is slightly stale, which only affects card art. */
 export async function captureFrameAt(
   tMs: number,
   width: number,

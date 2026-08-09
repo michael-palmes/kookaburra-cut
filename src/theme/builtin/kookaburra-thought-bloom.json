@@ -1,0 +1,66 @@
+{
+  "version": 2,
+  "id": "kookaburra-thought-bloom",
+  "name": "Thought Bloom",
+  "mode": "light",
+  "catalogue": {
+    "category": "human-centred-ai",
+    "useLabel": "Warm AI explainers",
+    "tags": ["ai", "explainer", "human", "warm", "learning", "optimistic"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#ffffff",
+    "text": "#15261f",
+    "accent": "#22644d",
+    "muted": "#3e5149"
+  },
+  "chartColors": ["#22644d", "#2563eb", "#7c3aed", "#b45309", "#be123c", "#3f6212"],
+  "typography": {
+    "headline": { "family": "Nunito", "weight": 600 },
+    "body": "Open Sans",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 220, "base": 560, "slow": 1000 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "blur-in",
+    "out": "fade",
+    "staggerMs": 55,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "neuro-noise",
+    "colors": ["#ffffff", "#ccd9d2", "#ecf1ee"],
+    "speed": 0.4,
+    "params": { "brightness": 0.08, "contrast": 0.15 },
+    "preset": "p1"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 30,
+      "elevationDeg": 48,
+      "intensity": 1.8,
+      "color": "#f7fff9"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -130,
+        "elevationDeg": 20,
+        "intensity": 0.7,
+        "color": "#a7d6c0"
+      },
+      {
+        "azimuthDeg": 155,
+        "elevationDeg": 36,
+        "intensity": 0.35,
+        "color": "#c6c1ed"
+      }
+    ],
+    "ambient": 0.85
+  }
+}

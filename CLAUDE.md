@@ -122,7 +122,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 
 The app is feature-complete through its planned pre-release phases: deterministic
 multi-scene export in four aspects (16:9 / 9:16 / 1:1 / 4:5) with transitions,
-effects, themes (10 bundled + workspace user themes), devices with on-screen
+effects, bundled and workspace user themes, devices with on-screen
 media, camera rigging (orbit plus free-flight poses, depth bands),
 fixed/video backgrounds, a text-motion pack, one
 soundtrack per project, platform export presets, the studio workspace

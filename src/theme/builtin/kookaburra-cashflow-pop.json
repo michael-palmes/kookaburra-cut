@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "kookaburra-cashflow-pop",
+  "name": "Cashflow Pop",
+  "mode": "light",
+  "catalogue": {
+    "category": "modern-finance",
+    "useLabel": "Expense and payment launches",
+    "tags": ["expenses", "payments", "cashflow", "launch", "energetic", "bold"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#f4ede1",
+    "text": "#2c2113",
+    "accent": "#9b3f13",
+    "muted": "#5a4935"
+  },
+  "chartColors": ["#9b3f13", "#315d92", "#296953", "#783b78", "#7a5818", "#4d4d58"],
+  "typography": {
+    "headline": { "family": "Barlow Condensed", "weight": 600 },
+    "body": { "family": "Open Sans", "weight": 400 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 160, "base": 410, "slow": 760 },
+    "easings": { "standard": "outCubic", "emphasized": "outBack" }
+  },
+  "textAnimation": {
+    "in": "twist-scale",
+    "out": "fade",
+    "staggerMs": 36,
+    "stagger": "word",
+    "direction": "from-left"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "warp",
+    "colors": ["#f4ede1", "#e3cfa9", "#ede2cd", "#dcc394"],
+    "speed": 0.4,
+    "params": {
+      "proportion": 0.5,
+      "softness": 1,
+      "distortion": 0.2,
+      "swirl": 0.6
+    },
+    "preset": "p1"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -24,
+      "elevationDeg": 50,
+      "intensity": 2,
+      "color": "#fff8ed"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 136,
+        "elevationDeg": 22,
+        "intensity": 0.8,
+        "color": "#e8c38f"
+      },
+      {
+        "azimuthDeg": 168,
+        "elevationDeg": 34,
+        "intensity": 0.35,
+        "color": "#aac8dd"
+      }
+    ],
+    "ambient": 0.78
+  }
+}

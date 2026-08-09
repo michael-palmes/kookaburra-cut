@@ -1,0 +1,78 @@
+{
+  "version": 2,
+  "id": "kookaburra-strange-orchard",
+  "name": "Strange Orchard",
+  "mode": "light",
+  "catalogue": {
+    "category": "sensory-and-surreal",
+    "useLabel": "Unexpected challenger campaigns",
+    "tags": ["challenger", "unexpected", "organic", "surreal", "campaign", "experimental"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#f5f0dc",
+    "text": "#241d0c",
+    "accent": "#78611b",
+    "muted": "#30260e"
+  },
+  "chartColors": ["#78611b", "#9a3e2b", "#356b51", "#5f4b8b", "#1f6280", "#7b2f5b"],
+  "typography": {
+    "headline": { "family": "Cormorant Garamond", "weight": 600 },
+    "body": { "family": "Nunito", "weight": 600 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 210, "base": 540, "slow": 980 },
+    "easings": { "standard": "outCubic", "emphasized": "outBack" }
+  },
+  "textAnimation": {
+    "in": "scatter-scale",
+    "out": "fade",
+    "staggerMs": 34,
+    "stagger": "char"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "dust-drift",
+    "colors": ["#b0974d", "#bf8e4a"],
+    "speed": 1,
+    "params": {
+      "count": 900,
+      "innerRadius": 10,
+      "outerRadius": 26,
+      "twinkle": 0.6,
+      "pointSize": 0.09,
+      "drift": 1,
+      "opacity": 0.9
+    },
+    "backing": {
+      "type": "color",
+      "color": "#f5f0dc"
+    },
+    "preset": "p1"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -35,
+      "elevationDeg": 44,
+      "intensity": 1.9,
+      "color": "#fff5cf"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 120,
+        "elevationDeg": 22,
+        "intensity": 0.75,
+        "color": "#d4a55e"
+      },
+      {
+        "azimuthDeg": 160,
+        "elevationDeg": 34,
+        "intensity": 0.4,
+        "color": "#9fc8ae"
+      }
+    ],
+    "ambient": 0.7
+  }
+}

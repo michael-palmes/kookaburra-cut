@@ -1,0 +1,81 @@
+{
+  "version": 2,
+  "id": "kookaburra-chain-current",
+  "name": "Chain Current",
+  "mode": "dark",
+  "catalogue": {
+    "category": "digital-assets",
+    "useLabel": "Protocol and wallet launches",
+    "tags": ["protocol", "wallet", "network", "digital-assets", "infrastructure", "bold"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#0e1219",
+    "text": "#f4f8ff",
+    "accent": "#7eb8f2",
+    "muted": "#eedfd2"
+  },
+  "chartColors": ["#7eb8f2", "#ffd166", "#7ed6b4", "#d59cff", "#e87845", "#ff879b"],
+  "typography": {
+    "headline": { "family": "Libre Franklin", "weight": 600 },
+    "body": { "family": "JetBrains Mono", "weight": 400 },
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 160, "base": 410, "slow": 780 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 32,
+    "stagger": "char",
+    "startScale": 0.86,
+    "shine": true
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "point-swell",
+    "colors": ["#42607e", "#855838"],
+    "speed": 1,
+    "params": {
+      "spacing": 0.9,
+      "amplitude": 0.45,
+      "wavelength": 9,
+      "clearRadius": 4,
+      "fadeRadius": 40,
+      "pointSize": 0.08,
+      "drift": 1,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -24,
+      "elevationDeg": 46,
+      "intensity": 1.8,
+      "color": "#d8edff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 130,
+        "elevationDeg": 20,
+        "intensity": 0.85,
+        "color": "#75b9f1"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 34,
+        "intensity": 0.5,
+        "color": "#d18b59"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

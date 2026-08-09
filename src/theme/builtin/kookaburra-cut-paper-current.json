@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "id": "kookaburra-cut-paper-current",
+  "name": "Cut-Paper Current",
+  "mode": "light",
+  "catalogue": {
+    "category": "maker-energy",
+    "useLabel": "Playful consumer campaigns",
+    "tags": ["consumer", "playful", "campaign", "paper", "colourful", "safe"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#e4f2fe",
+    "text": "#102535",
+    "accent": "#136c8a",
+    "muted": "#294653"
+  },
+  "chartColors": ["#136c8a", "#1d4ed8", "#9333ea", "#b42318", "#0f766e", "#8a4f00"],
+  "typography": {
+    "headline": { "family": "Barlow Condensed", "weight": 600 },
+    "body": { "family": "Nunito", "weight": 600 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 200, "base": 500, "slow": 900 },
+    "easings": { "standard": "outQuad", "emphasized": "outCubic" }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 55,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "skyline-prisms",
+    "colors": ["#9cd5ff", "#71c7e4"],
+    "speed": 1.5,
+    "params": {
+      "count": 20,
+      "depth": 14,
+      "tallest": 8,
+      "drift": 1
+    },
+    "backing": {
+      "type": "color",
+      "color": "#e4f2fe"
+    },
+    "preset": "p1"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -20,
+      "elevationDeg": 52,
+      "intensity": 2,
+      "color": "#ffffff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 130,
+        "elevationDeg": 20,
+        "intensity": 0.7,
+        "color": "#8fd9ef"
+      },
+      {
+        "azimuthDeg": 160,
+        "elevationDeg": 32,
+        "intensity": 0.35,
+        "color": "#ffd3a8"
+      }
+    ],
+    "ambient": 0.8
+  }
+}

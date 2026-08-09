@@ -3,6 +3,13 @@
   "id": "kookaburra-ember",
   "name": "Ember",
   "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Warm crafted stories",
+    "tags": ["crafted", "human", "warm", "storytelling", "organic", "premium"],
+    "stage": "physical",
+    "order": 100
+  },
   "colors": {
     "background": "#191512",
     "text": "#f5ede4",

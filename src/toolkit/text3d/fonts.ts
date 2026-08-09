@@ -1,7 +1,13 @@
 import { type Font, FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
+import barlowCondensedTypeface from "../../assets/fonts/BarlowCondensed-SemiBold.typeface.json";
+import cormorantGaramondTypeface from "../../assets/fonts/CormorantGaramond-SemiBold.typeface.json";
 import interTypeface from "../../assets/fonts/Inter-Regular.typeface.json";
 import jetbrainsMonoTypeface from "../../assets/fonts/JetBrainsMono-Regular.typeface.json";
+import libreFranklinTypeface from "../../assets/fonts/LibreFranklin-SemiBold.typeface.json";
+import loraTypeface from "../../assets/fonts/Lora-Regular.typeface.json";
+import nunitoTypeface from "../../assets/fonts/Nunito-SemiBold.typeface.json";
 import openSansTypeface from "../../assets/fonts/OpenSans-Regular.typeface.json";
+import playfairDisplayTypeface from "../../assets/fonts/PlayfairDisplay-SemiBold.typeface.json";
 import spaceGroteskTypeface from "../../assets/fonts/SpaceGrotesk-Regular.typeface.json";
 import type { FontRef } from "../../theme/tokens";
 
@@ -11,6 +17,12 @@ const TYPEFACE_DATA: Record<string, unknown> = {
   "Space Grotesk": spaceGroteskTypeface,
   "Open Sans": openSansTypeface,
   "JetBrains Mono": jetbrainsMonoTypeface,
+  "Playfair Display": playfairDisplayTypeface,
+  Lora: loraTypeface,
+  "Barlow Condensed": barlowCondensedTypeface,
+  Nunito: nunitoTypeface,
+  "Cormorant Garamond": cormorantGaramondTypeface,
+  "Libre Franklin": libreFranklinTypeface,
 };
 
 const parsed = new Map<string, Font>();

@@ -1,0 +1,80 @@
+{
+  "version": 2,
+  "id": "kookaburra-ledger-prism",
+  "name": "Ledger Prism",
+  "mode": "dark",
+  "catalogue": {
+    "category": "digital-assets",
+    "useLabel": "Institutional asset launches",
+    "tags": ["institutional", "assets", "markets", "prism", "digital-assets", "safe"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#0e1219",
+    "text": "#f7fbff",
+    "accent": "#78a7e5",
+    "muted": "#dce7f2"
+  },
+  "chartColors": ["#78a7e5", "#f0b36f", "#d19af2", "#73d1b4", "#f07f9d", "#d9cf6c"],
+  "typography": {
+    "headline": { "family": "Cormorant Garamond", "weight": 600 },
+    "body": { "family": "JetBrains Mono", "weight": 400 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 180, "base": 460, "slow": 840 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 32,
+    "stagger": "word",
+    "startScale": 0.9,
+    "shine": true
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "grid-hall",
+    "colors": ["#45648f"],
+    "speed": 1,
+    "params": {
+      "width": 19,
+      "depth": 48,
+      "height": 12,
+      "spacing": 1.2,
+      "clearRadius": 3.5,
+      "drift": 1,
+      "opacity": 0.95
+    },
+    "backing": {
+      "type": "color",
+      "color": "#0e1219"
+    },
+    "preset": "p6"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -24,
+      "elevationDeg": 48,
+      "intensity": 1.9,
+      "color": "#e8f2ff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 132,
+        "elevationDeg": 20,
+        "intensity": 0.8,
+        "color": "#78a7e5"
+      },
+      {
+        "azimuthDeg": 166,
+        "elevationDeg": 34,
+        "intensity": 0.4,
+        "color": "#d6b07d"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

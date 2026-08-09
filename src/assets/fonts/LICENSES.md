@@ -13,4 +13,8 @@ beside them are derived outline conversions (`pnpm assets:text3d-font`).
 | Space Grotesk | SpaceGrotesk-*.woff, SpaceGrotesk-Regular.typeface.json | © 2020 The Space Grotesk Project Authors (github.com/floriankarsten/space-grotesk) |
 | Open Sans | OpenSans-*.woff, OpenSans-Regular.typeface.json | © 2020 The Open Sans Project Authors (github.com/googlefonts/opensans) |
 | JetBrains Mono | JetBrainsMono-*.woff, JetBrainsMono-Regular.typeface.json | © 2020 The JetBrains Mono Project Authors (github.com/JetBrains/JetBrainsMono) |
+| Barlow Condensed | BarlowCondensed-SemiBold.* | © 2017 The Barlow Project Authors (github.com/jpt/barlow) |
+| Nunito | Nunito-SemiBold.* | © The Nunito Project Authors (github.com/googlefonts/nunito) |
+| Cormorant Garamond | CormorantGaramond-SemiBold.* | © 2015 The Cormorant Project Authors (github.com/CatharsisFonts/Cormorant) |
+| Libre Franklin | LibreFranklin-SemiBold.* | © The Libre Franklin Project Authors (github.com/impallari/Libre-Franklin) |
 | Kookaburra Fallback | KookaburraFallback.otf | Derived subset (`pnpm assets:emoji-fonts`) of Noto Sans Symbols 2, Noto Sans Symbols and Noto Sans Math, © The Noto Project Authors (github.com/notofonts), merged with empty private-use placeholder glyphs; renamed per the OFL reserved-name clause |

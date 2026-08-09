@@ -3,6 +3,14 @@
   "id": "kookaburra-default",
   "name": "Kookaburra Cut Default",
   "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Legacy fallback",
+    "tags": ["legacy", "fallback", "house"],
+    "stage": "none",
+    "hidden": true,
+    "order": 1000
+  },
   "colors": {
     "background": "#0b0f14",
     "text": "#f5f7fa",

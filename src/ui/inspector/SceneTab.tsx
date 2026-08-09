@@ -249,7 +249,13 @@ import { HeaderIconField, TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
 import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
-import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
+import {
+  builtinThemeChoices,
+  listThemeChoices,
+  recordSuccessfulThemeUse,
+  ThemeBrowser,
+  type ThemeChoice,
+} from "../ThemePicker";
 import { TransitionModal } from "../TransitionPicker";
 import { describeSpec } from "../textAnimationOptions";
 import { isTypingIn } from "../textEditFocus";
@@ -2011,7 +2017,7 @@ export function SceneTab({
   const codedMotion = useSceneHasCodedTextMotion(sceneIndex);
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
-  const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
+  const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
   const devices = doc?.devices ?? [];
@@ -2251,14 +2257,18 @@ export function SceneTab({
     }
   }, [drillIn, themesRefreshKey]);
 
+  const applySceneThemeChoice = (themeId: string) => {
+    setThemeDraft(themeId);
+    void recordSuccessfulThemeUse(themeId, () =>
+      patchDoc((next) => {
+        next.themeId = themeId || undefined;
+      }).then(onTimingChanged),
+    );
+  };
+
   // The theme-card right-click menu; Apply here means the scene override.
   const themeMenu = useThemeCardMenu({
-    onApply: (themeId) => {
-      setThemeDraft(themeId);
-      void patchDoc((next) => {
-        next.themeId = themeId || undefined;
-      }).then(onTimingChanged);
-    },
+    onApply: applySceneThemeChoice,
     onManage: onOpenTheme,
     onEditInClaude: onEditThemeInClaude,
     onThemeEdited,
@@ -2615,11 +2625,8 @@ export function SceneTab({
     // Applies on selection; the draft doubles as the same-id de-dupe.
     const applySceneTheme = (id: string) => {
       if (id === themeDraft) return;
-      setThemeDraft(id);
       // Theme resolution bakes at load; the write chains the nonce reload.
-      void patchDoc((next) => {
-        next.themeId = id || undefined;
-      }).then(onTimingChanged);
+      applySceneThemeChoice(id);
     };
     return (
       <div className="inspector-drill">
@@ -2635,7 +2642,8 @@ export function SceneTab({
               Project theme
             </button>
           </div>
-          <ThemeGrid
+          <ThemeBrowser
+            layout="compact"
             choices={themeChoices}
             value={themeDraft}
             onChange={applySceneTheme}
@@ -5331,11 +5339,13 @@ export function SceneTab({
   }
   if (drillIn === "compare.theme" && doc?.compare) {
     const applyAfterTheme = (id: string) =>
-      void patchDoc((next) => {
-        if (!next.compare) return;
-        if (!next.compare.b) next.compare.b = {};
-        next.compare.b.themeId = id || undefined;
-      }).then(onTimingChanged);
+      void recordSuccessfulThemeUse(id, () =>
+        patchDoc((next) => {
+          if (!next.compare) return;
+          if (!next.compare.b) next.compare.b = {};
+          next.compare.b.themeId = id || undefined;
+        }).then(onTimingChanged),
+      );
     const bThemeId = doc.compare.b?.themeId ?? "";
     return (
       <div className="inspector-drill">
@@ -5351,7 +5361,12 @@ export function SceneTab({
               Match the before side
             </button>
           </div>
-          <ThemeGrid choices={themeChoices} value={bThemeId} onChange={applyAfterTheme} />
+          <ThemeBrowser
+            layout="compact"
+            choices={themeChoices}
+            value={bThemeId}
+            onChange={applyAfterTheme}
+          />
         </div>
       </div>
     );

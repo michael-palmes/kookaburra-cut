@@ -3,6 +3,14 @@
   "id": "kookaburra-fx",
   "name": "Kookaburra FX",
   "mode": "dark",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Legacy effects fallback",
+    "tags": ["legacy", "fallback", "effects"],
+    "stage": "none",
+    "hidden": true,
+    "order": 1010
+  },
   "colors": {
     "background": "#0b0f14",
     "text": "#f5f7fa",
