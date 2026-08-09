@@ -6765,30 +6765,13 @@ img.inspector-scene-thumb {
   background: var(--surface-raised);
 }
 
-.comparison-side-selector {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 8px 10px 14px;
-  padding: 10px;
-  color: var(--text-primary);
-  font-size: var(--text-xs);
-  font-weight: 590;
-  background: var(--surface-recessed);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-}
-
-.comparison-side-selector .inspector-subtabs {
+.inspector-subtabs.comparison-side-tabs {
   align-self: stretch;
-  margin: 0;
-  background: var(--surface-canvas);
 }
 
-.comparison-side-selector .inspector-subtab {
+.inspector-subtabs.comparison-side-tabs .inspector-subtab {
   flex: 1;
   justify-content: center;
-  height: 28px;
 }
 /* The object placement drill's rhythm: clear air above every labelled group (less for the first, which sits under the drill title), content hugging its own label, and the gizmo pills stripped of their stock margins so they align with the 8px label inset and their hint reads attached. */
 .object-drill .drill-group {

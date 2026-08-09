@@ -1,5 +1,5 @@
 import type { AspectName } from "../engine/format";
-import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart, SceneDocDeviceSpec } from "../engine/sceneDocSchema";
 import type { ChartType } from "../toolkit/chart/types";
 import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
@@ -105,7 +105,30 @@ export interface SceneRowModel {
   value?: string;
   /** Danger styling + no chevron (Remove device). */
   danger?: boolean;
+  disabled?: boolean;
   chevron: boolean;
+}
+
+export function comparisonDeviceVideoRows(
+  before: SceneDocDeviceSpec["media"],
+  after: SceneDocDeviceSpec["media"],
+): SceneRowModel[] {
+  return [
+    { id: "device.media.before", label: "Change before video", chevron: true },
+    { id: "device.media.after", label: "Change after video", chevron: true },
+    {
+      id: "device.editVideo.before",
+      label: "Edit before video",
+      chevron: false,
+      disabled: before?.kind !== "video",
+    },
+    {
+      id: "device.editVideo.after",
+      label: "Edit after video",
+      chevron: false,
+      disabled: after?.kind !== "video",
+    },
+  ];
 }
 
 export interface SceneSectionModel {

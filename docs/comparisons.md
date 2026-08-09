@@ -112,10 +112,11 @@ The `comparison` scene kind scaffolds the two-device pair (labels
 yaws, scale 0.85; the template compresses x and scale in portrait). For a
 masked split on any scene: add the block above, or use the inspector's Add
 comparison (Scene tab), which seeds a visible default (line + chips). The
-Scene inspector's Before/After selector routes Theme, Background, Staging,
-Lighting and device-video actions to that side. After values write through
-`compare.b`; clearing an override returns that field to Before. Comparison
-video actions target device screens only.
+Device, Theme, Background and Lighting inspectors each show a Before/After
+selector. The scene overview exposes Change and Edit video actions for both
+sides, while Device exposes those actions for its selected side. After values
+write through `compare.b`; clearing an override returns that field to Before.
+Comparison video actions target device screens only.
 
 ## Gate fixture
 

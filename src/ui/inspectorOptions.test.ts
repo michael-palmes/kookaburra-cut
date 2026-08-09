@@ -6,10 +6,44 @@ import {
   CHART_TYPE_IDS,
   CHART_TYPE_LABELS,
   chartRowValue,
+  comparisonDeviceVideoRows,
   drillStackForScene,
   projectRows,
   sceneSections,
 } from "./inspectorOptions";
+
+describe("comparison device video rows", () => {
+  it("always exposes both Change actions and enables Edit only for video", () => {
+    expect(
+      comparisonDeviceVideoRows(
+        { kind: "video", src: "assets/before.mp4" },
+        { kind: "image", src: "assets/after.png" },
+      ),
+    ).toEqual([
+      { id: "device.media.before", label: "Change before video", chevron: true },
+      { id: "device.media.after", label: "Change after video", chevron: true },
+      {
+        id: "device.editVideo.before",
+        label: "Edit before video",
+        chevron: false,
+        disabled: false,
+      },
+      {
+        id: "device.editVideo.after",
+        label: "Edit after video",
+        chevron: false,
+        disabled: true,
+      },
+    ]);
+  });
+
+  it("enables inherited After video editing", () => {
+    const media = { kind: "video" as const, src: "assets/shared.mp4" };
+    const rows = comparisonDeviceVideoRows(media, media);
+    expect(rows.find((row) => row.id === "device.editVideo.before")?.disabled).toBe(false);
+    expect(rows.find((row) => row.id === "device.editVideo.after")?.disabled).toBe(false);
+  });
+});
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {

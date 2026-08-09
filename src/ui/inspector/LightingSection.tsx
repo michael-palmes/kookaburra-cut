@@ -399,6 +399,7 @@ export function LightingSectionBody({
   commitFromBaseline,
   showReset,
   resetLabel,
+  comparisonControl,
 }: {
   doc: SceneDoc;
   theme: Theme;
@@ -411,6 +412,7 @@ export function LightingSectionBody({
   commitFromBaseline: (baseline: SceneDoc, patch: (next: SceneDoc) => void) => Promise<void>;
   showReset?: boolean;
   resetLabel?: string;
+  comparisonControl?: ReactNode;
 }) {
   const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -606,6 +608,7 @@ export function LightingSectionBody({
     <div className="inspector-drill">
       <DrillBack label="Scene" onClick={onBack} />
       <div className="inspector-drill-title">Lighting</div>
+      {comparisonControl}
       <div className="inspector-drill-body inspector-section-body">
         {!resolved ? (
           <>

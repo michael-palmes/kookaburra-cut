@@ -122,6 +122,7 @@ import { GradientPickerModal } from "../GradientPicker";
 import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
   chartRowValue,
+  comparisonDeviceVideoRows,
   drillStackForScene,
   objectRowLabel,
   type SceneSectionModel,
@@ -294,6 +295,28 @@ const GIZMO_MODE_OPTIONS: SegmentedOption<GizmoMode>[] = [
   { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
   { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
 ];
+
+const COMPARISON_SIDE_OPTIONS: SegmentedOption<"a" | "b">[] = [
+  { value: "a", label: "Before" },
+  { value: "b", label: "After" },
+];
+
+function ComparisonSideTabs({
+  value,
+  onChange,
+}: {
+  value: "a" | "b";
+  onChange: (value: "a" | "b") => void;
+}) {
+  return (
+    <SegmentedRow
+      className="comparison-side-tabs"
+      options={COMPARISON_SIDE_OPTIONS}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
 
 const FRAME_SHAPES: FrameShape[] = [
   "rect",
@@ -1923,7 +1946,7 @@ export function SceneTab({
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
   const [objectPickerOpen, setObjectPickerOpen] = useState(false);
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
-  // The scene-level comparison selector and its full-height media screen's target device.
+  // Shared target for the comparison-aware inspectors and the After media screen's device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
   const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
@@ -2236,7 +2259,7 @@ export function SceneTab({
     }
   }, [drillIn, themesRefreshKey]);
 
-  // The theme-card right-click menu applies to the comparison side selected in Scene.
+  // The theme-card right-click menu applies to the side selected inside Theme.
   const themeMenu = useThemeCardMenu({
     onApply: (themeId) => {
       setThemeDraft(themeId);
@@ -2265,13 +2288,34 @@ export function SceneTab({
     ? (doc?.compare?.b?.media?.[deviceId ?? ""] ?? device?.media)
     : device?.media;
   const sceneFrame = project.sceneFrames[sceneIndex];
-  const sections = sceneSections({
+  const baseSections = sceneSections({
     doc: compareBDoc ?? doc,
     slotsCount: project.slots.length,
     deckFrame: project.deckFrame !== undefined,
     frame: sceneFrame,
     selectedDeviceId: pickedDeviceId ?? undefined,
   });
+  const sections = doc?.compare
+    ? baseSections.map((section) =>
+        section.id === "device" && device
+          ? {
+              ...section,
+              rows: [
+                { id: "device.media", label: "Change video", chevron: true },
+                {
+                  id: "device.editVideo",
+                  label: "Edit video",
+                  chevron: false,
+                  disabled: editingDeviceMedia?.kind !== "video",
+                },
+                ...section.rows.filter(
+                  (row) => row.id !== "device.media" && row.id !== "device.editVideo",
+                ),
+              ],
+            }
+          : section,
+      )
+    : baseSections;
 
   /** Mutate the selected device in place; a no-op when the scene has none. */
   const patchDevice = (fn: (d: NonNullable<SceneDoc["devices"]>[number]) => void) =>
@@ -2556,7 +2600,7 @@ export function SceneTab({
             {mediaTarget.kind === "decoration"
               ? "Choose image"
               : doc?.compare
-                ? `Change ${editingAfter ? "after" : "before"} video`
+                ? "Change before video"
                 : "Change video"}
           </h2>
         </div>
@@ -2605,9 +2649,16 @@ export function SceneTab({
     return (
       <div className="inspector-drill">
         <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          {doc.compare ? (editingAfter ? "After theme" : "Before theme") : "Scene theme"}
-        </div>
+        <div className="inspector-drill-title">{doc.compare ? "Theme" : "Scene theme"}</div>
+        {doc.compare && (
+          <ComparisonSideTabs
+            value={compareSide}
+            onChange={(side) => {
+              setCompareSide(side);
+              setThemeDraft(side === "b" ? (doc.compare?.b?.themeId ?? "") : (doc.themeId ?? ""));
+            }}
+          />
+        )}
         <div className="inspector-drill-body">
           <div className="font-slot-row">
             <button
@@ -4001,6 +4052,16 @@ export function SceneTab({
             </button>
           )}
         </div>
+        {doc.compare && (
+          <ComparisonSideTabs
+            value={compareSide}
+            onChange={(side) => {
+              setCompareSide(side);
+              setBgTabOverride(null);
+              setBackingTabOverride(null);
+            }}
+          />
+        )}
         <div className="inspector-drill-body">
           {docTab === "default" ? (
             <p className="modal-hint">
@@ -5589,8 +5650,8 @@ export function SceneTab({
             )}
           </DrillGroup>
           <p className="inspector-stub-note">
-            Choose Before or After above, then use Theme, Background (including Staging) and
-            Lighting to style that side.
+            Use the Before and After toggles in Device, Theme, Background and Lighting to edit each
+            side.
           </p>
           <div className="inspector-section-divider" />
           <ActionRow
@@ -6288,6 +6349,7 @@ export function SceneTab({
           value={value}
           chevron={row.chevron}
           danger={row.danger}
+          disabled={row.disabled}
           selected={row.id === "device.media" && !editingAfter && modal === "media"}
           onClick={onClick}
         />
@@ -6308,6 +6370,7 @@ export function SceneTab({
   if (drillIn === "lighting" && doc) {
     return (
       <LightingSectionBody
+        key={doc.compare ? `lighting-${compareSide}` : "lighting"}
         doc={editingAfter ? { ...doc, lighting: compareBDoc?.lighting } : doc}
         theme={editingTheme}
         projectId={project.id}
@@ -6318,6 +6381,11 @@ export function SceneTab({
         commitFromBaseline={editingAfter ? commitLightingFromBaseline : commitFromBaseline}
         showReset={editingAfter ? doc.compare?.b?.lighting !== undefined : undefined}
         resetLabel={editingAfter ? "Match before side" : undefined}
+        comparisonControl={
+          doc.compare ? (
+            <ComparisonSideTabs value={compareSide} onChange={setCompareSide} />
+          ) : undefined
+        }
       />
     );
   }
@@ -6334,6 +6402,9 @@ export function SceneTab({
             ? groupSection.label
             : (SCREEN_TITLES[groupSection.id] ?? groupSection.label)}
         </div>
+        {groupSection.id === "device" && doc?.compare && (
+          <ComparisonSideTabs value={compareSide} onChange={setCompareSide} />
+        )}
         {groupSection.id === "device" && devices.length > 1 && (
           <SegmentedRow
             className="subtabs-compact"
@@ -6352,22 +6423,21 @@ export function SceneTab({
   }
 
   const deviceName = deviceSpec?.name;
-  const selectedBackground = editingAfter ? doc?.compare?.b?.background : doc?.background;
-  const bgLabel = doc
-    ? selectedBackground === undefined
-      ? editingAfter
-        ? "Same as before"
-        : "Theme default"
-      : {
-          none: "None",
-          color: "Colour",
-          gradient: "Gradient",
-          shader: "Animated",
-          scene3d: "3D",
-          image: "Image",
-          video: "Video",
-        }[selectedBackground.type]
-    : undefined;
+  const bgLabel = doc?.compare
+    ? "Before / After"
+    : doc
+      ? doc.background === undefined
+        ? "Theme default"
+        : {
+            none: "None",
+            color: "Colour",
+            gradient: "Gradient",
+            shader: "Animated",
+            scene3d: "3D",
+            image: "Image",
+            video: "Video",
+          }[doc.background.type]
+      : undefined;
   // The Scene tab's top level, in three divided sections: what the scene HAS (with the
   // Change/Edit video pair adjacent), what can be ADDED, then the scene settings; the
   // Delete row keeps its own bottom section. Gating mirrors sceneSections; icons reuse
@@ -6379,6 +6449,7 @@ export function SceneTab({
     value?: string;
     /** False for instant in-place actions that open nothing (Add device). */
     chevron?: boolean;
+    disabled?: boolean;
     onClick: () => void;
   }
   const contentEntries: TopEntry[] = [];
@@ -6391,7 +6462,11 @@ export function SceneTab({
       icon: "text.edit",
       onClick: () => openDrill("text"),
     });
-  const deviceVideo = editingDeviceMedia?.kind === "video" ? editingDeviceMedia.src : undefined;
+  const beforeDeviceMedia = device?.media;
+  const afterDeviceMedia = device
+    ? (doc?.compare?.b?.media?.[device.id] ?? beforeDeviceMedia)
+    : undefined;
+  const deviceVideo = beforeDeviceMedia?.kind === "video" ? beforeDeviceMedia.src : undefined;
   const windowVideo = doc?.videoWindow?.media.src;
   if (device)
     contentEntries.push({
@@ -6482,23 +6557,34 @@ export function SceneTab({
       icon: "objects.add",
       onClick: () => setObjectPickerOpen(true),
     });
-  // Comparison media is device-only, so this selector never redirects background or video-window media.
-  if (doc?.compare && device)
-    contentEntries.push({
-      key: "changeVideo",
-      label: `Change ${editingAfter ? "after" : "before"} video`,
-      icon: "device.media",
-      onClick: () => {
-        if (editingAfter && deviceId) {
-          setCompareMediaDeviceId(deviceId);
-          openDrill("compare.media");
-        } else {
-          setMediaTarget({ kind: "device", deviceId });
-          setModal("media");
-        }
-      },
-    });
-  else if (!doc?.compare && (device || doc?.videoWindow))
+  if (doc?.compare && device) {
+    for (const row of comparisonDeviceVideoRows(beforeDeviceMedia, afterDeviceMedia)) {
+      contentEntries.push({
+        key: row.id,
+        label: row.label,
+        icon: row.id.startsWith("device.media") ? "device.media" : "device.editVideo",
+        chevron: row.chevron,
+        disabled: row.disabled,
+        onClick: () => {
+          if (row.id === "device.media.before") {
+            setCompareSide("a");
+            setMediaTarget({ kind: "device", deviceId: device.id });
+            setModal("media");
+          } else if (row.id === "device.media.after") {
+            setCompareSide("b");
+            setCompareMediaDeviceId(device.id);
+            openDrill("compare.media");
+          } else if (row.id === "device.editVideo.before" && beforeDeviceMedia?.kind === "video") {
+            setCompareSide("a");
+            onOpenEditVideo(sceneIndex, beforeDeviceMedia.src, "device", device.id);
+          } else if (row.id === "device.editVideo.after" && afterDeviceMedia?.kind === "video") {
+            setCompareSide("b");
+            onOpenEditVideo(sceneIndex, afterDeviceMedia.src, "compareDevice", device.id);
+          }
+        },
+      });
+    }
+  } else if (device || doc?.videoWindow)
     contentEntries.push({
       key: "changeVideo",
       label: "Change video",
@@ -6510,21 +6596,7 @@ export function SceneTab({
           }
         : () => openDrill("videoWindow.media"),
     });
-  if (doc?.compare && deviceVideo && device)
-    contentEntries.push({
-      key: "editVideo.device",
-      label: `Edit ${editingAfter ? "after" : "before"} video`,
-      icon: "device.editVideo",
-      chevron: false,
-      onClick: () =>
-        onOpenEditVideo(
-          sceneIndex,
-          deviceVideo,
-          editingAfter ? "compareDevice" : "device",
-          device.id,
-        ),
-    });
-  else if (!doc?.compare && deviceVideo)
+  if (!doc?.compare && deviceVideo)
     contentEntries.push({
       key: "editVideo.device",
       label: windowVideo ? "Edit device video" : "Edit video",
@@ -6569,7 +6641,7 @@ export function SceneTab({
       key: "theme",
       label: "Theme",
       icon: "style.theme",
-      value: editingAfter && !doc.compare?.b?.themeId ? "Same as before" : editingTheme.name,
+      value: doc.compare ? "Before / After" : editingTheme.name,
       onClick: () => {
         setThemeDraft(themeId);
         openDrill("style.theme");
@@ -6597,7 +6669,7 @@ export function SceneTab({
       key: "lighting",
       label: "Lighting",
       icon: "lighting",
-      value: editingAfter && !doc.compare?.b?.lighting ? "Same as before" : undefined,
+      value: doc.compare ? "Before / After" : undefined,
       onClick: () => openDrill("lighting"),
     });
   if (project.slots.length > 1) {
@@ -6619,6 +6691,7 @@ export function SceneTab({
       label={entry.label}
       value={entry.value}
       chevron={entry.chevron ?? true}
+      disabled={entry.disabled}
       onClick={entry.onClick}
     />
   );
@@ -6626,19 +6699,6 @@ export function SceneTab({
   return (
     <>
       {header}
-      {doc?.compare && (
-        <div className="comparison-side-selector">
-          <span>Editing comparison side</span>
-          <SegmentedRow
-            options={[
-              { value: "a" as const, label: "Before" },
-              { value: "b" as const, label: "After" },
-            ]}
-            value={compareSide}
-            onChange={setCompareSide}
-          />
-        </div>
-      )}
       {unrenderableChars.size > 0 && (
         <p className="inspector-text-warning">
           {`Some characters can't render in this scene's fonts: ${[...unrenderableChars].join("  ")}`}
