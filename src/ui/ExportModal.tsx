@@ -508,7 +508,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
               />
             )}
             <h4 className="export-section-title">Link previews</h4>
-            <div className="export-knobs">
+            <div className="export-knobs export-link-previews">
               <label className="export-check">
                 <input
                   type="checkbox"

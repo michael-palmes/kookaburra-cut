@@ -5935,6 +5935,10 @@ button.beat-status {
   inline-size: 100%;
 }
 
+.export-link-previews .export-notes {
+  grid-column: 1 / -1;
+}
+
 /* Checkbox rows override the column layout `.export-knobs label` sets — beat it on
    specificity (0,2,1), never !important. */
 .export-knobs label.export-check {
