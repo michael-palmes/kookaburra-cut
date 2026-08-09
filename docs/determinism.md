@@ -1335,6 +1335,22 @@ rolling-gate project (`showcase-tour`):
 > 9:16 `58d0ac28…`, both Verify ×2 EQUAL (the same-day `ae8b22f3…`/
 > `91680399…` pair and the original `cee2ab6f…`/`09f57c3c…` are STALE).
 
+> **2026-08-09 (device availability):** licensed device GLBs remain optional,
+> gitignored build inputs. A build now exposes only models whose complete GLB is
+> present, with committed Android always available and selected by default in a
+> clean clone. Existing documents keep their saved model id, but rendering,
+> screen binding, colours, fit, lid controls and layout resolve together to the
+> Android specification when that id is unavailable. The preload barrier now
+> rejects any available model whose declared screen material is missing, closing
+> the placeholder/material mismatch that left iPhone 17 and MacBook screens
+> black in worktrees. An asset-free screenshot of `ws:test-duplicate` scene 4
+> showed the Android fallback with its video bound; after the three licensed
+> GLBs were copied into the worktree, the same screenshot showed the iPhone 17
+> with the same video. The 2026-07-30 equal-layout note below remains historical:
+> current clean builds use Android's catalogue width for unavailable devices.
+> With licensed assets restored, `showcase-tour` Verify ×2 stayed EQUAL and
+> unchanged at `f304f1bd…`.
+
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so
 > troika's derived text material never linked and every text mesh was invisible

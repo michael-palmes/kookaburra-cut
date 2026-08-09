@@ -30,6 +30,19 @@ fn default_scene_duration_ms(kind: &str) -> u64 {
     }
 }
 
+fn device_model_and_colour<'a>(
+    model: Option<&'a str>,
+    colour: Option<&'a str>,
+) -> (&'a str, &'a str) {
+    let model = model.unwrap_or("android");
+    let default_colour = match model {
+        "iphone-15-pro" => "natural-titanium",
+        "iphone-17-pro" | "macbook-pro-16" => "silver",
+        _ => "graphite",
+    };
+    (model, colour.unwrap_or(default_colour))
+}
+
 fn transition_is_valid(spec: &Value) -> bool {
     spec.as_object()
         .and_then(|object| object.get("type"))
@@ -1731,10 +1744,12 @@ pub async fn scaffold_scene(
         if device_only {
             placement["ground"] = json!(true);
         }
+        let (model, colour) =
+            device_model_and_colour(options.device_model.as_deref(), options.colour.as_deref());
         let mut device = json!({
             "id": "d1",
-            "model": options.device_model.as_deref().unwrap_or("iphone-17-pro"),
-            "colour": options.colour.as_deref().unwrap_or("silver"),
+            "model": model,
+            "colour": colour,
             "placement": placement,
             "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
         });
@@ -1763,8 +1778,8 @@ pub async fn scaffold_scene(
     }
     if is_comparison {
         // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
-        let model = options.device_model.as_deref().unwrap_or("iphone-17-pro");
-        let colour = options.colour.as_deref().unwrap_or("silver");
+        let (model, colour) =
+            device_model_and_colour(options.device_model.as_deref(), options.colour.as_deref());
         let mut list = Vec::new();
         for (i, (rel, kind)) in comparison_slots.iter().enumerate() {
             let mut device = json!({
@@ -1836,8 +1851,8 @@ pub async fn scaffold_scene(
 #[cfg(test)]
 mod scaffold_default_tests {
     use super::{
-        apply_transition_to_manifest, default_scene_duration_ms, project_default_transition,
-        seed_inserted_scene_transitions, transition_is_valid,
+        apply_transition_to_manifest, default_scene_duration_ms, device_model_and_colour,
+        project_default_transition, seed_inserted_scene_transitions, transition_is_valid,
     };
     use serde_json::{json, Value};
 
@@ -1847,6 +1862,23 @@ mod scaffold_default_tests {
         assert_eq!(default_scene_duration_ms("titleicon"), 2600);
         assert_eq!(default_scene_duration_ms("overlaypanel"), 4000);
         assert_eq!(default_scene_duration_ms("chart"), 5000);
+    }
+
+    #[test]
+    fn device_scaffolds_default_to_the_bundled_android() {
+        assert_eq!(device_model_and_colour(None, None), ("android", "graphite"));
+        assert_eq!(
+            device_model_and_colour(Some("iphone-17-pro"), None),
+            ("iphone-17-pro", "silver")
+        );
+        assert_eq!(
+            device_model_and_colour(Some("iphone-15-pro"), None),
+            ("iphone-15-pro", "natural-titanium")
+        );
+        assert_eq!(
+            device_model_and_colour(Some("android"), Some("white")),
+            ("android", "white")
+        );
     }
 
     #[test]

@@ -60,7 +60,7 @@ export function normaliseDeg(deg: number): number {
 /** One device entry, deliberately shaped as `Device` props plus a stable id. */
 export interface SceneDocDeviceSpec {
   id: string;
-  /** Catalog id, e.g. `"iphone-15-pro"` (unknown ids degrade inside `Device`). */
+  /** Catalog id, e.g. `"iphone-15-pro"` (unknown or unavailable ids render as Android). */
   model: string;
   colour?: string;
   media?: DeviceMediaSpec;

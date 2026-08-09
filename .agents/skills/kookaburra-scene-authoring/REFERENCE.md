@@ -69,8 +69,8 @@ normally and simply shows no editing affordances.
   "devices": [                               // array from day one — UI edits [0]
     {
       "id": "d1",                            // stable per-scene id
-      "model": "iphone-15-pro",              // catalog id, e.g. iphone-17-pro, macbook-pro-16
-      "colour": "natural-titanium",          // catalog colour id
+      "model": "android",                    // catalog id; paid models need their local licensed glb
+      "colour": "graphite",                  // catalog colour id
       "media": { "src": "assets/demo.mp4", "kind": "video", "startMs": 0, "fit": "cover" },
       "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
       "motion": { "preset": "none" },        // opt-in: none|turntable|float|tilt-reveal|push-in (+ params)
@@ -822,7 +822,7 @@ Rules and conventions:
 
 ```ts
 <Device
-  model="iphone-15-pro"  // catalog id (DEVICE_CATALOG): iphone-15-pro | iphone-17-pro | macbook-pro-16
+  model="android"        // catalog id: android | iphone-15-pro | iphone-17-pro | macbook-pro-16
   colour?               // catalog colour id, e.g. "blue-titanium" (default: the model's)
   media?                // { src, kind: "video"|"image", startMs?, fit?: "cover" } on the SCREEN
   placement?            // { position?, rotationDeg? (DEGREES), scale? (× auto-fit) }
@@ -833,8 +833,10 @@ Rules and conventions:
 />                                                    // Phase v7 · M1 — implemented + gated
 ```
 
-`Device` (v7 · M1) is the device+media pillar: a licensed, real-name catalog handset with
-media on its screen. Video rides the SAME deterministic clip pipeline as `VideoClip`
+`Device` (v7 · M1) is the device+media pillar: a real-name catalogue device with media
+on its screen. Android is committed and always available; the paid iPhone and MacBook
+models appear only in builds containing their gitignored licensed GLBs. Video rides the
+SAME deterministic clip pipeline as `VideoClip`
 (`useClipTexture` — pre-extracted CFR-60 PNGs, clock-sampled, preamble-awaited); images ride
 the texture cache. Media is cover-cropped in the screen mesh's UVs. Motion presets are pure
 clock functions; shadows are procedural `DataTexture` gradients (drei `ContactShadows` is
@@ -842,8 +844,10 @@ nondeterministic — never swap it in). Colour variants are the vendor's authore
 factors — exact replacements, not tints. **Light rigs add up:** the first `Device` in a scene
 brings the lit set; pass `lit={false}` to every additional one. Scaffolded scenes get their
 device array from the sidecar via `useSceneDevices()` — prefer editing the sidecar over
-hard-coding `Device` props (skill rule 7). Unknown model/colour ids degrade with a console
-error, never a crash. Gate project: `ws:device-video-spike`. The `comparison` scene kind
+hard-coding `Device` props (skill rule 7). Unknown or unavailable model ids render with
+the complete Android specification without rewriting the sidecar; unknown colour ids use
+the rendered model's default. Both paths warn rather than crash. Gate project:
+`ws:device-video-spike`. The `comparison` scene kind
 stages 2-4 devices with per-device media and optional label chips (text keys
 `beforeLabel`/`afterLabel`, scaffolded EMPTY so chips appear only when typed): devices
 carry NO placement, a sidecar `deviceLayout` block (`toe-in`, gap 0.35) resolves
@@ -858,8 +862,9 @@ preset base at natural size, uniform compression against the aspect's safe width
 (positions and scales together), then per-device deltas (offset/rotation add, scale
 multiplies). Presets: `row`, `toe-in`, `arc`, `cascade`, `hero` (device 1 forward),
 `depth-pair` (exactly 2, else falls back to toe-in). Widths come from catalog
-`layoutWidth` constants, never runtime bboxes, so placeholder and licensed builds lay
-out identically. Resolved placements carry a `resolvedLayout` stamp that `Device`
+`layoutWidth` constants from the model this build can render, never runtime bboxes. An
+unavailable model therefore uses Android's width as well as its geometry. Resolved
+placements carry a `resolvedLayout` stamp that `Device`
 prefers over the scalar fields, so scene TSX that post-processes placements (the
 templates' frozen portrait multipliers) cannot drift a laid-out scene: post-process
 only block-less scenes, or delete the field first. Gate fixture:

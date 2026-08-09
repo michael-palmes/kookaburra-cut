@@ -134,10 +134,11 @@ The full contract and its failure catalogue are in
 | Decision | Choice | Why |
 | --- | --- | --- |
 | Device identity | Real product names with accurate licensed models ("iPhone 15 Pro, Natural Titanium") | Best UX; ubiquitous industry practice for mockup tooling |
-| Device asset | The handset glb is a purchased, licensed vendor asset. It is **not committed**; it lives in a gitignored folder and is bundled into app builds only | The licence covers app embedding, not source redistribution |
+| Device assets | Paid product glbs are **not committed**; they live in a gitignored folder and are bundled into maintainer builds only. The original Android glb is committed and freely distributable | Paid licences cover app embedding, not source redistribution; a clean clone still needs one honest, functional device |
+| Device availability | Pickers show only models whose complete glb is in the build. Unknown and unavailable saved ids render through the Android specification without rewriting the document | A saved project remains portable, screen media keeps working, and restoring licensed assets restores the requested model |
 | Colour variants | Material-name overrides on one glb, using the vendor's authored material values as exact replacements | Four glbs for four colours would quadruple the bundle for identical geometry |
 | Device motion | Opt-in only (2026-07-17): every scaffold path (Rust scaffolder, new-scene wizard, inspector quick-add) writes `preset: "none"`; motion is a deliberate per-device sidecar choice | A device should hold still until the author asks it to move |
-| Screen media | One shared clip-texture hook plays video/image media on the glb's `SCREEN` material, the same pre-extracted CFR frame pipeline as `VideoClip` | One clip pipeline for every consumer |
+| Screen media | One shared clip-texture hook plays video/image media on each glb's declared screen material, using the same pre-extracted CFR frame pipeline as `VideoClip` | One clip pipeline for every consumer |
 | Clip playback | Sources pre-extract once to a cached CFR-60 PNG sequence; frame choice is a pure clock function (clamp to hold, modulo to loop) | Seeking an `HTMLVideoElement` is neither exact nor deterministic |
 | Clip decode lanes | Extraction is dual-lane: everyday preview and hardware fast-draft exports decode via VideoToolbox into `<sha>-60fps-hw`; deterministic-codec exports (all Verify runs) pin to software decode in the unchanged `<sha>-60fps` dir | Hardware decode is measurably not pixel-identical to software; separate dirs keep the baseline lane unpoisonable while everyday extraction gets the media engine |
 | Device shadows | Procedural deterministic contact shadows by default; the stock accumulating helper was rejected | It jitters its light per frame, nondeterministic by design |
@@ -227,11 +228,12 @@ The full contract and its failure catalogue are in
 
 The project's own code is dual-licensed **MIT OR Apache-2.0** (Tauri's
 convention; see `LICENSE-MIT` / `LICENSE-APACHE`, inventory in `NOTICE.md`).
-The device model is a licensed, purchased asset kept out of the repository
-(gitignored, bundled into the maintainer's builds); clones build against a
-committed generic placeholder, and using accurate branded device models
-(including the committed preview renders, shipped with disclaimers) is a
-deliberate, recorded product decision. The ffmpeg sidecar **stays the GPL
+The paid product models are licensed, purchased assets kept out of the
+repository (gitignored, bundled into the maintainer's builds). Clones offer the
+committed, freely distributable Android model only; saved references to unavailable models
+render as Android without rewriting the document. Using accurate branded device
+models (including the committed preview renders, shipped with disclaimers)
+remains a deliberate, recorded product decision. The ffmpeg sidecar **stays the GPL
 build** (libx264/libx265) as the shipped default: the deterministic default
 encoder outranks licence convenience; the LGPL build flag remains an escape
 hatch only, and binary releases carry a corresponding-source pointer. Bundled

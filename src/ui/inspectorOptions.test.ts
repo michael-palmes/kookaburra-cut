@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
+import { isDeviceAvailable } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
 import {
   CHART_TYPE_IDS,
@@ -180,7 +181,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     );
   });
 
-  it("a laptop device adds the Lid angle row", () => {
+  it("a laptop device adds the Lid angle row only when its model is available", () => {
     const doc = docWith({
       devices: [{ id: "d1", model: "macbook-pro-16" }] as SceneDoc["devices"],
     });
@@ -191,7 +192,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.media",
       "device.change",
       "device.position",
-      "device.lid",
+      ...(isDeviceAvailable("macbook-pro-16") ? ["device.lid"] : []),
       "style.shadow",
       "device.duplicate",
       "device.add",
@@ -224,7 +225,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const forD2 = sceneSections({ doc, slotsCount: 1, selectedDeviceId: "d2" })
       .find((s) => s.id === "device")
       ?.rows.map((r) => r.id);
-    expect(forD2).toContain("device.lid");
+    expect(forD2?.includes("device.lid")).toBe(isDeviceAvailable("macbook-pro-16"));
     expect(forD2).not.toContain("device.editVideo");
   });
 

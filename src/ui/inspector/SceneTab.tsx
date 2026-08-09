@@ -65,7 +65,12 @@ import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
-import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
+import {
+  DEFAULT_DEVICE_ID,
+  DEVICE_CATALOG,
+  resolveAvailableDeviceId,
+  resolveAvailableDeviceSpec,
+} from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
 import { isTextDecoration } from "../../toolkit/frame/icon";
@@ -110,6 +115,7 @@ import { prepareEmojiText } from "../../toolkit/text/emojiText";
 import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
+import { applyDeviceChoice } from "../deviceChoice";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
@@ -191,7 +197,7 @@ function mutatePlacement(
 
 /** 14px phone/laptop glyph for the device pill (laptops are the catalog entries with a lid). */
 function DevicePillIcon({ model }: { model: string }) {
-  const laptop = isDeviceId(model) && DEVICE_CATALOG[model].lid !== undefined;
+  const laptop = resolveAvailableDeviceSpec(model).lid !== undefined;
   return laptop ? (
     <svg
       width="14"
@@ -1997,6 +2003,7 @@ export function SceneTab({
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
   const deviceId = device?.id;
+  const deviceSpec = device ? resolveAvailableDeviceSpec(device.model) : undefined;
   // Read by the ensure-select subscription below, which fires on store writes rather than renders.
   const deviceIdsRef = useRef<string[]>([]);
   deviceIdsRef.current = devices.map((d) => d.id);
@@ -2004,7 +2011,7 @@ export function SceneTab({
     value: d.id,
     label: `${i + 1}`,
     icon: <DevicePillIcon model={d.model} />,
-    title: DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId].name,
+    title: resolveAvailableDeviceSpec(d.model).name,
   }));
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
@@ -2285,14 +2292,14 @@ export function SceneTab({
     const k = devices.length;
     const x = k === 0 ? 0 : DEVICE_STEP_X * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
     void patchDoc((next) => {
-      // The Rust scaffolder's device defaults, byte for byte (the first device lands centred).
+      const spec = DEVICE_CATALOG[DEFAULT_DEVICE_ID];
       next.devices = [
         ...(next.devices ?? []),
         {
           id,
-          model: "iphone-17-pro",
-          colour: "silver",
-          media: { src: sampleVideoForDevice("iphone-17-pro"), kind: "video" },
+          model: DEFAULT_DEVICE_ID,
+          colour: spec.defaultColour,
+          media: { src: sampleVideoForDevice(DEFAULT_DEVICE_ID), kind: "video" },
           placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
           motion: { preset: "none" },
           shadow: "soft",
@@ -2310,7 +2317,7 @@ export function SceneTab({
       const copy = structuredClone(src);
       copy.id = id;
       // Mirror across centre: flip x (a centred device steps one footprint aside) and the y rotation.
-      const laptop = isDeviceId(src.model) && DEVICE_CATALOG[src.model].lid !== undefined;
+      const laptop = resolveAvailableDeviceSpec(src.model).lid !== undefined;
       const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (src.placement?.scale ?? 1);
       const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
       const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
@@ -5612,8 +5619,12 @@ export function SceneTab({
   if (drillIn === "device.change" && device) {
     return (
       <DeviceDrillIn
-        model={(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId}
-        colour={device.colour ?? DEVICE_CATALOG["iphone-15-pro"].defaultColour}
+        model={resolveAvailableDeviceId(device.model)}
+        colour={
+          resolveAvailableDeviceId(device.model) === device.model
+            ? (device.colour ?? deviceSpec?.defaultColour ?? "graphite")
+            : (deviceSpec?.defaultColour ?? "graphite")
+        }
         motion={device.motion?.preset ?? "none"}
         deviceCount={devices.length}
         deviceLabel={`Device ${
@@ -5624,13 +5635,12 @@ export function SceneTab({
         }`}
         onBack={() => closeDrill()}
         backLabel={backLabel}
-        onSave={(model, colour, motion, applyAll) => {
+        onSave={(model, colour, motion, applyAll, deviceChoiceChanged) => {
           closeDrill();
           void patchDoc((next) => {
             for (const d of next.devices ?? []) {
               if (!applyAll && d.id !== deviceId) continue;
-              d.model = model;
-              d.colour = colour;
+              applyDeviceChoice(d, { model, colour, changed: deviceChoiceChanged });
               d.motion = { ...d.motion, preset: motion };
             }
           });
@@ -5935,7 +5945,7 @@ export function SceneTab({
               ? (delta.rotationDeg ?? [0, 0, 0])
               : (d.placement?.rotationDeg ?? [0, 0, 0]);
             const scale = layout ? (delta.scale ?? 1) : (d.placement?.scale ?? 1);
-            const modelName = isDeviceId(d.model) ? DEVICE_CATALOG[d.model].name : d.model;
+            const modelName = resolveAvailableDeviceSpec(d.model).name;
             const writeRotation = (next: SceneDoc, rotationDeg: V3) => {
               if (layout) {
                 mutateDelta(next, d.id, (dd) => {
@@ -6107,7 +6117,7 @@ export function SceneTab({
         );
       }
       if (row.id === "device.lid" && device) {
-        const lid = isDeviceId(device.model) ? DEVICE_CATALOG[device.model].lid : undefined;
+        const lid = deviceSpec?.lid;
         return (
           <LidRow
             key={row.id}
@@ -6225,11 +6235,7 @@ export function SceneTab({
       }[row.id];
       const value = {
         "text.motion": doc?.textAnimation ? describeSpec(doc.textAnimation) : "Theme default",
-        "device.change": device
-          ? DEVICE_CATALOG[
-              (device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId
-            ].name
-          : undefined,
+        "device.change": device ? resolveAvailableDeviceSpec(device.model).name : undefined,
         "device.position": doc?.deviceLayout
           ? LAYOUT_PRESET_LABELS[doc.deviceLayout.preset].label
           : device
@@ -6345,10 +6351,7 @@ export function SceneTab({
     );
   }
 
-  const deviceName = device
-    ? DEVICE_CATALOG[(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId]
-        .name
-    : undefined;
+  const deviceName = deviceSpec?.name;
   const selectedBackground = editingAfter ? doc?.compare?.b?.background : doc?.background;
   const bgLabel = doc
     ? selectedBackground === undefined

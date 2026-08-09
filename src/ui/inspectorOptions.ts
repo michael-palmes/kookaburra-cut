@@ -1,7 +1,7 @@
 import type { AspectName } from "../engine/format";
 import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
 import type { ChartType } from "../toolkit/chart/types";
-import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
+import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
 
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
@@ -160,7 +160,7 @@ export function sceneSections(input: {
       { id: "device.change", label: "Change device", chevron: true },
       { id: "device.position", label: "Position", chevron: true },
     );
-    if (isDeviceId(device.model) && DEVICE_CATALOG[device.model].lid) {
+    if (resolveAvailableDeviceSpec(device.model).lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });
     }
     rows.push({ id: "style.shadow", label: "Shadow", chevron: true });

@@ -44,7 +44,7 @@ import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
-import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
+import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
 import { mediaCardMenu } from "../ui/mediaCardMenu";
@@ -500,7 +500,7 @@ export function EditorApp() {
         const devices = sceneDoc.devices ?? [];
         devices.forEach((d, i) => {
           if (d.media?.kind === "video") {
-            const model = isDeviceId(d.model) ? DEVICE_CATALOG[d.model].name : d.model;
+            const model = resolveAvailableDeviceSpec(d.model).name;
             entries.push({ rel: d.media.src, label: `Device ${i + 1} · ${model}` });
           }
         });

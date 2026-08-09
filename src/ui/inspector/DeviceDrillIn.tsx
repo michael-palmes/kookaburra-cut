@@ -1,10 +1,11 @@
 import { useState } from "react";
 import {
+  AVAILABLE_DEVICE_IDS,
   CUSTOM_COLOUR_PREFIX,
   customColourHex,
   DEVICE_CATALOG,
-  DEVICE_IDS,
   type DeviceId,
+  resolveAvailableDeviceId,
 } from "../../toolkit/device/catalog";
 import type { DeviceMotionPreset } from "../../toolkit/device/Device";
 import { ColourPicker } from "../colour/ColourPicker";
@@ -32,12 +33,22 @@ export function DeviceDrillIn({
   deviceLabel?: string;
   onBack: () => void;
   backLabel?: string;
-  onSave: (model: DeviceId, colour: string, motion: DeviceMotionPreset, applyAll: boolean) => void;
+  onSave: (
+    model: DeviceId,
+    colour: string,
+    motion: DeviceMotionPreset,
+    applyAll: boolean,
+    deviceChoiceChanged: boolean,
+  ) => void;
 }) {
-  const [m, setM] = useState<DeviceId>(model);
-  const [c, setC] = useState(colour);
+  const initialModel = resolveAvailableDeviceId(model);
+  const [m, setM] = useState<DeviceId>(initialModel);
+  const [c, setC] = useState(
+    initialModel === model ? colour : DEVICE_CATALOG[initialModel].defaultColour,
+  );
   const [mo, setMo] = useState<DeviceMotionPreset>(motion);
   const [applyAll, setApplyAll] = useState(true);
+  const [deviceChoiceChanged, setDeviceChoiceChanged] = useState(false);
   useEscapeClose(onBack);
   const spec = DEVICE_CATALOG[m];
   return (
@@ -64,7 +75,7 @@ export function DeviceDrillIn({
           </div>
         )}
         <div className="inspector-device-switcher" role="radiogroup" aria-label="Device model">
-          {DEVICE_IDS.map((id) => (
+          {AVAILABLE_DEVICE_IDS.map((id) => (
             <button
               type="button"
               key={id}
@@ -74,6 +85,7 @@ export function DeviceDrillIn({
               onClick={() => {
                 setM(id);
                 setC(id === model ? colour : DEVICE_CATALOG[id].defaultColour);
+                setDeviceChoiceChanged(true);
               }}
             >
               <img
@@ -101,14 +113,20 @@ export function DeviceDrillIn({
                   title={col.name}
                   className={`swatch${c === col.id ? " selected" : ""}`}
                   style={{ background: col.swatch }}
-                  onClick={() => setC(col.id)}
+                  onClick={() => {
+                    setC(col.id);
+                    setDeviceChoiceChanged(true);
+                  }}
                 />
               ))}
               <span className={`swatch-custom${customColourHex(c) ? " selected" : ""}`}>
                 <ColourPicker
                   value={customColourHex(c) ?? "#8a93a6"}
                   label="Custom colour"
-                  onCommit={(hex) => setC(CUSTOM_COLOUR_PREFIX + hex.toLowerCase())}
+                  onCommit={(hex) => {
+                    setC(CUSTOM_COLOUR_PREFIX + hex.toLowerCase());
+                    setDeviceChoiceChanged(true);
+                  }}
                 />
               </span>
             </fieldset>
@@ -141,7 +159,7 @@ export function DeviceDrillIn({
         <button
           type="button"
           className="btn primary"
-          onClick={() => onSave(m, c, mo, deviceCount > 1 && applyAll)}
+          onClick={() => onSave(m, c, mo, deviceCount > 1 && applyAll, deviceChoiceChanged)}
         >
           Save
         </button>

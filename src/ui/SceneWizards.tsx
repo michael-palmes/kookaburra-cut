@@ -21,15 +21,18 @@ import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
 import type { ChartDimension, ChartType } from "../toolkit/chart/types";
 import {
+  AVAILABLE_DEVICE_IDS,
   CUSTOM_COLOUR_PREFIX,
   customColourHex,
+  DEFAULT_DEVICE_ID,
   DEVICE_CATALOG,
-  DEVICE_IDS,
   type DeviceId,
   deviceColour,
+  resolveAvailableDeviceId,
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
 import { ColourPicker } from "./colour/ColourPicker";
+import { applyDeviceChoice } from "./deviceChoice";
 import { ChartTypeIcon, SegmentedRow } from "./inspector/rows";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
@@ -286,7 +289,7 @@ function DevicePicker({
 }) {
   return (
     <div className="device-picker">
-      {DEVICE_IDS.map((id) => {
+      {AVAILABLE_DEVICE_IDS.map((id) => {
         const spec = DEVICE_CATALOG[id];
         const active = id === model;
         const activeColour = deviceColour(spec, active ? colour : spec.defaultColour);
@@ -421,8 +424,8 @@ export function NewSceneWizard({
   const [chartType, setChartType] = useState<ChartType>("column");
   const [chartDimension, setChartDimension] = useState<ChartDimension>("3d");
   const [chartData, setChartData] = useState(CHART_STARTER_DATA[0].id);
-  const [model, setModel] = useState<DeviceId>("iphone-17-pro");
-  const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
+  const [model, setModel] = useState<DeviceId>(DEFAULT_DEVICE_ID);
+  const [colour, setColour] = useState(DEVICE_CATALOG[DEFAULT_DEVICE_ID].defaultColour);
   const [media, setMedia] = useState<{
     rel: string;
     kind: "video" | "image";
@@ -1053,8 +1056,9 @@ export function EditSceneWizard({
   // Form state, seeded from the selected scene's sidecar when entering the form step.
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
-  const [model, setModel] = useState<DeviceId>("iphone-17-pro");
-  const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
+  const [model, setModel] = useState<DeviceId>(DEFAULT_DEVICE_ID);
+  const [colour, setColour] = useState(DEVICE_CATALOG[DEFAULT_DEVICE_ID].defaultColour);
+  const [deviceChoiceChanged, setDeviceChoiceChanged] = useState(false);
   const [media, setMedia] = useState<{
     rel: string;
     kind: "video" | "image";
@@ -1136,10 +1140,15 @@ export function EditSceneWizard({
     setTextAnim(ta);
     setTextAnimSeed(ta);
     const d = doc.devices?.[0];
+    setDeviceChoiceChanged(false);
     if (d) {
-      const validModel = (d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId;
+      const validModel = resolveAvailableDeviceId(d.model);
       setModel(validModel);
-      setColour(d.colour ?? DEVICE_CATALOG[validModel].defaultColour);
+      setColour(
+        validModel === d.model
+          ? (d.colour ?? DEVICE_CATALOG[validModel].defaultColour)
+          : DEVICE_CATALOG[validModel].defaultColour,
+      );
       setMedia(d.media ? { rel: d.media.src, kind: d.media.kind, meta: null } : null);
       setMotion(d.motion?.preset ?? "none");
       setShadow(d.shadow ?? "soft");
@@ -1178,8 +1187,7 @@ export function EditSceneWizard({
         (device?.media?.src ?? null) !== (media?.rel ?? null) ||
         (device?.media?.kind ?? null) !== (media?.kind ?? null);
       if (d) {
-        d.model = model;
-        d.colour = colour;
+        applyDeviceChoice(d, { model, colour, changed: deviceChoiceChanged });
         d.media = media ? { ...d.media, src: media.rel, kind: media.kind } : undefined;
         d.motion = { ...d.motion, preset: motion as DeviceMotionPreset };
         d.shadow = shadow as DeviceShadowMode;
@@ -1352,6 +1360,7 @@ export function EditSceneWizard({
                     onChange={(m, c) => {
                       setModel(m);
                       setColour(c);
+                      setDeviceChoiceChanged(true);
                     }}
                   />
                 </Field>

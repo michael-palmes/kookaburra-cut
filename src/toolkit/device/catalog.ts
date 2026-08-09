@@ -15,12 +15,15 @@ import previewMbpSilver from "../../assets/device-previews/macbook-pro-16/silver
 import previewMbpGrey from "../../assets/device-previews/macbook-pro-16/space-grey.png?url";
 import {
   androidModelUrl,
+  iphone15ProModelAvailable,
+  iphone17ProModelAvailable,
   iphone17ProModelUrl,
+  macbookPro16ModelAvailable,
   macbookPro16ModelUrl,
   phoneModelUrl,
 } from "./modelUrl";
 
-/** The device catalog: devices keyed by stable id + colour id, geometry bundled as fingerprinted glTFs so a model swap never touches a project; real product names are a deliberate 2026-07-05 trade-dress-risk decision (see docs/decisions.md), and iphone-15-pro's model derives from a LICENSED vendor .blend (see src/assets/models/README.md) whose colour overrides are exact linear-to-sRGB baseColorFactor replacements, not approximate tints. */
+/** The device catalog: devices keyed by stable id + colour id, with build-time availability separate from document identity so a missing licensed model never rewrites a project. Real product names are a deliberate 2026-07-05 trade-dress-risk decision (see docs/decisions.md), and iphone-15-pro's model derives from a LICENSED vendor .blend (see src/assets/models/README.md) whose colour overrides are exact linear-to-sRGB baseColorFactor replacements, not approximate tints. */
 
 export type DeviceForm = "phone" | "laptop" | "tablet";
 
@@ -69,7 +72,7 @@ export interface DeviceSpec {
   previews: Record<string, string>;
   /** Auto-fit override; laptops fit by width since their bbox height is lid-angle-dependent. */
   fit?: DeviceFitSpec;
-  /** Fitted world-space body width at placement scale 1: a static constant (never the runtime bbox, which differs between licensed and placeholder glbs) so `resolveDeviceLayout`'s gap maths stays deterministic; approximations from body proportions, refined against fixture screenshots. */
+  /** Fitted world-space body width at placement scale 1: a static constant, never the runtime bbox, so `resolveDeviceLayout` stays deterministic for the model this build can render. */
   layoutWidth: number;
   /** Hinge for lid-angle control: the glb node (three.js-sanitised name) whose local X rotation opens the lid, the authored open angle, and the default pose when the doc sets none. */
   lid?: { node: string; openDeg: number; defaultDeg: number };
@@ -120,7 +123,7 @@ function titaniumColour(id: string, name: string, finish: TitaniumFinish | null)
   return { id, name, overrides, swatch: finish?.frame ?? NATURAL_FRAME_SWATCH };
 }
 
-// Entry order is the picker order (DEVICE_IDS): 17 Pro leads as the default device.
+// Entry order is the available picker order: 17 Pro leads when its licensed model is present.
 export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
   "iphone-17-pro": {
     id: "iphone-17-pro",
@@ -276,8 +279,38 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
 
 export const DEVICE_IDS = Object.keys(DEVICE_CATALOG) as DeviceId[];
 
+export const FALLBACK_DEVICE_ID: DeviceId = "android";
+
+export const DEVICE_AVAILABILITY: Readonly<Record<DeviceId, boolean>> = {
+  "iphone-17-pro": iphone17ProModelAvailable,
+  "macbook-pro-16": macbookPro16ModelAvailable,
+  "iphone-15-pro": iphone15ProModelAvailable,
+  android: true,
+};
+
+/** Devices this build can render with their own model and screen contract. */
+export const AVAILABLE_DEVICE_IDS = DEVICE_IDS.filter((id) => DEVICE_AVAILABILITY[id]);
+
+/** Keeps the studio default when licensed assets exist, otherwise uses bundled Android. */
+export const DEFAULT_DEVICE_ID: DeviceId = DEVICE_AVAILABILITY["iphone-17-pro"]
+  ? "iphone-17-pro"
+  : FALLBACK_DEVICE_ID;
+
 export function isDeviceId(id: string): id is DeviceId {
-  return id in DEVICE_CATALOG;
+  return Object.hasOwn(DEVICE_CATALOG, id);
+}
+
+export function isDeviceAvailable(id: string): id is DeviceId {
+  return isDeviceId(id) && DEVICE_AVAILABILITY[id];
+}
+
+/** Preserves known ids in documents while rendering unknown or unavailable models as Android. */
+export function resolveAvailableDeviceId(id: string): DeviceId {
+  return isDeviceAvailable(id) ? id : FALLBACK_DEVICE_ID;
+}
+
+export function resolveAvailableDeviceSpec(id: string): DeviceSpec {
+  return DEVICE_CATALOG[resolveAvailableDeviceId(id)];
 }
 
 /** Custom-tint colour ids: `"custom:#rrggbb"` in the sidecar's `colour` slot. */
@@ -366,21 +399,38 @@ export function deviceColour(spec: DeviceSpec, colourId: string | undefined): De
 /** Barrier: awaits every catalog model fetched + parsed before frame 0 and warms drei's `useGLTF` cache (see docs/determinism.md); throws on zero textured materials since GLTFLoader silently drops textures when embedded-image decode fails (the CSP-blocked blob: fetch regression that once shipped bald devices). */
 export async function preloadCatalogModels(): Promise<void> {
   const loader = new GLTFLoader();
-  const urls = [...new Set(Object.values(DEVICE_CATALOG).map((s) => s.glbUrl))];
   await Promise.all(
-    urls.map(async (url) => {
-      useGLTF.preload(url);
-      const gltf = await loader.loadAsync(url);
+    AVAILABLE_DEVICE_IDS.map(async (id) => {
+      const spec = DEVICE_CATALOG[id];
+      useGLTF.preload(spec.glbUrl);
+      const gltf = await loader.loadAsync(spec.glbUrl);
       let textured = 0;
+      let screens = 0;
       gltf.scene.traverse((obj) => {
-        const mat = (obj as Mesh).material as MeshStandardMaterial | undefined;
-        if (mat?.isMeshStandardMaterial && (mat.map || mat.normalMap)) textured++;
+        const material = (obj as Mesh).material as
+          | MeshStandardMaterial
+          | MeshStandardMaterial[]
+          | undefined;
+        const materials = Array.isArray(material) ? material : material ? [material] : [];
+        if (materials[0]?.name === spec.screen.material) screens++;
+        if (
+          materials.some(
+            (mat) => mat.isMeshStandardMaterial && (mat.map !== null || mat.normalMap !== null),
+          )
+        ) {
+          textured++;
+        }
       });
       if (textured === 0) {
         throw new Error(
-          `Device model "${url}" parsed with NO textured materials — embedded texture ` +
+          `Device model "${spec.glbUrl}" parsed with NO textured materials, embedded texture ` +
             "decode failed (is `connect-src blob:` missing from the CSP?). " +
             "See docs/determinism.md (Packaged-app parity: the CSP is render contract).",
+        );
+      }
+      if (screens === 0) {
+        throw new Error(
+          `Device model "${spec.name}" has no material named "${spec.screen.material}" for screen media`,
         );
       }
     }),
