@@ -29,6 +29,8 @@ export interface ColourPickerProps {
   onReset?: () => void;
   size?: "sm" | "md";
   disabled?: boolean;
+  /** Optional toggle state when the swatch participates in a labelled choice group. */
+  pressed?: boolean;
 }
 
 export function ColourPicker({
@@ -39,6 +41,7 @@ export function ColourPicker({
   onReset,
   size = "sm",
   disabled = false,
+  pressed,
 }: ColourPickerProps) {
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -53,6 +56,7 @@ export function ColourPicker({
         style={{ background: value }}
         aria-label={label}
         aria-expanded={open}
+        {...(pressed === undefined ? {} : { "aria-pressed": pressed })}
         title={label}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Theme } from "../../theme/tokens";
 import { SHINE_AXIS, SHINE_HALF_W, shineBand } from "../text/presets";
-import { foldBandToChild, type GroupAnimationState } from "./context";
+import { foldBandToChild, type GroupAnimationState, groupImageEffects } from "./context";
 import {
   DEFAULT_GROUP_EM,
   DEFAULT_GROUP_EXTENT,
@@ -113,6 +113,49 @@ describe("foldBandToChild", () => {
 
   it("ignores z and leaves a centred child's band untouched", () => {
     expect(foldBandToChild(state, [0, 0, 5])).toEqual(state.band);
+  });
+});
+
+describe("groupImageEffects", () => {
+  it("keeps ordinary groups on the stock material", () => {
+    expect(groupImageEffects(null, 1, 1)).toBeNull();
+    expect(groupImageEffects({ alpha: 1, band: null, shineCapable: false }, 1, 1)).toBeNull();
+  });
+
+  it("maps blur and a partial mask to deterministic texture-space uniforms", () => {
+    expect(
+      groupImageEffects(
+        {
+          alpha: 1,
+          band: null,
+          shineCapable: false,
+          imageEffectsCapable: true,
+          imageBlurWorld: 0.1,
+          imageSweep: [0, 0.5],
+        },
+        2,
+        1,
+      ),
+    ).toEqual({
+      blur: [0.05, 0.1, 1, 0],
+      mask: [0, 0.5, 1 / 512, 1],
+    });
+  });
+
+  it("disables the mask branch for a full reveal", () => {
+    expect(
+      groupImageEffects(
+        {
+          alpha: 1,
+          band: null,
+          shineCapable: false,
+          imageEffectsCapable: true,
+          imageSweep: [0, 1],
+        },
+        1,
+        1,
+      )?.mask[3],
+    ).toBe(0);
   });
 });
 

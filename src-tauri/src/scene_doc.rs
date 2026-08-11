@@ -1966,6 +1966,23 @@ mod asset_scan_tests {
     }
 
     #[test]
+    fn sidecar_walk_includes_managed_project_image_icons() {
+        let doc = json!({
+            "managedText": {
+                "items": [
+                    { "key": "emoji", "type": "icon", "icon": "🪄" },
+                    { "key": "mark", "type": "icon", "icon": "assets/managed-mark.png" },
+                ],
+            },
+        });
+
+        assert_eq!(
+            collect_json_asset_refs(&doc),
+            vec!["assets/managed-mark.png"]
+        );
+    }
+
+    #[test]
     fn a_sidecar_image_collision_copies_and_rewrites_the_exact_path() {
         let root = temp_dir("collision");
         let project = root.join("source");
@@ -2037,6 +2054,11 @@ mod remint_tests {
             "duration": { "mode": "follow-media", "sourceDeviceId": "d7" },
             "text": { "title": "Hi", "ls-i9": "Label", "ls-i4": "Other" },
             "textStyle": { "titleSize": 1.2, "ls-i9Color": "#ffffff", "ls-i4OffsetY": 0.1 },
+            "managedText": {
+                "items": [
+                    { "key": "mark", "type": "icon", "icon": "assets/managed-mark.png" },
+                ],
+            },
             "devices": [
                 { "id": "d7", "model": "iphone-17-pro", "media": { "src": "assets/a.mp4", "kind": "video" } },
                 { "id": "d3", "model": "iphone-17-pro" },
@@ -2232,6 +2254,10 @@ mod remint_tests {
         assert_eq!(asset_paths(&doc), asset_paths(&source));
         assert_eq!(doc["images"][0]["src"], json!("assets/hero.png"));
         assert_eq!(doc["images"][1]["src"], json!("assets/logo-mark.webp"));
+        assert_eq!(
+            doc["managedText"]["items"][0]["icon"],
+            json!("assets/managed-mark.png")
+        );
         assert_eq!(doc["objects"][0]["objectId"], json!("lantern"));
         assert_eq!(doc["objects"][1]["objectId"], json!("plant"));
         assert_eq!(doc["chart"]["palette"], json!("ocean"));

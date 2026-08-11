@@ -173,6 +173,7 @@ function TextDecoration({
         {...(decoration.colour !== undefined ? { color: decoration.colour } : {})}
         {...(decoration.font !== undefined ? { fontRef: parseFontString(decoration.font) } : {})}
         {...(decoration.lineHeight !== undefined ? { lineHeight: decoration.lineHeight } : {})}
+        managedTextRole="embedded"
       />
     </group>
   );

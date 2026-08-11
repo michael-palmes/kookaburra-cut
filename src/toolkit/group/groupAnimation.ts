@@ -20,8 +20,9 @@ export function resolveGroupAnimation(
   props: ResolveTextAnimationProps,
   theme: Theme,
   doc?: TextAnimationDocFields | null,
+  textKey?: string,
 ): ResolvedTextAnimation | null {
-  const resolved = resolveTextAnimationWithDoc(props, theme, doc);
+  const resolved = resolveTextAnimationWithDoc(props, theme, doc, textKey);
   return resolved === null ? null : { ...resolved, granularity: null };
 }
 

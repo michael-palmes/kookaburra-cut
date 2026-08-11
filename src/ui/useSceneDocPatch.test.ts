@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computeFormat, FORMATS } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { bakeRigBinding } from "../engine/sceneRigConvert";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
 import {
   applySceneDocPatch,
   docPatchMatchesProject,
@@ -14,7 +18,7 @@ const mocks = vi.hoisted(() => ({
   pushHistory: vi.fn(),
   rebakeRigBindings: vi.fn(),
   setError: vi.fn(),
-  writeSceneDoc: vi.fn(async () => {}),
+  writeSceneDoc: vi.fn(async (_slug: string, _file: string, _doc: SceneDoc) => {}),
 }));
 
 vi.mock("react", async (importOriginal) => {
@@ -39,9 +43,9 @@ vi.mock("../engine/sceneDoc", async (importOriginal) => {
 
 vi.mock("../engine/sceneRigConvert", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../engine/sceneRigConvert")>();
-  const rebakeRigBindings: typeof actual.rebakeRigBindings = (rig, doc) => {
+  const rebakeRigBindings: typeof actual.rebakeRigBindings = (rig, doc, format, floorY) => {
     mocks.rebakeRigBindings();
-    return actual.rebakeRigBindings(rig, doc);
+    return actual.rebakeRigBindings(rig, doc, format, floorY);
   };
   return { ...actual, rebakeRigBindings };
 });
@@ -151,6 +155,50 @@ describe("applySceneDocPatch", () => {
       at: [0, 0, 0],
     });
   });
+
+  it("pre-bakes an arranged target before a deletion freezes its camera aim", () => {
+    const format = computeFormat(FORMATS["9:16"]);
+    const baseline: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "other", model: "iphone-17-pro" },
+        { id: "phone", model: "iphone-17-pro", placement: { ground: true } },
+      ],
+      deviceLayout: { preset: "row", devices: { phone: { offset: [0.25, 0.1, -0.2] } } },
+      cameraRig: {
+        keys: [
+          {
+            id: "key-1",
+            tMs: 0,
+            pose: {
+              position: [0, 0, 5],
+              aim: { mode: "object", id: "phone", at: [0, 0, 0] },
+            },
+          },
+        ],
+        segments: [],
+      },
+    };
+    const layout = baseline.deviceLayout;
+    if (!layout) throw new Error("device layout expected");
+    const floorY = -0.75;
+    const placement = resolveDeviceLayout(baseline.devices ?? [], layout, format)[1];
+    const expected = resolveDeviceWorldAnchor(
+      baseline.devices?.[1] ?? { model: "" },
+      placement,
+      floorY,
+    );
+    const after = applySceneDocPatch(
+      baseline,
+      (next) => {
+        if (next.cameraRig) next.cameraRig = bakeRigBinding(next.cameraRig, "phone");
+        next.devices = next.devices?.filter((device) => device.id !== "phone");
+      },
+      format,
+      floorY,
+    );
+    expect(after.cameraRig?.keys[0].pose.aim).toEqual({ mode: "point", at: expected });
+  });
 });
 
 describe("abortable scene-doc mutations", () => {
@@ -199,6 +247,85 @@ describe("abortable scene-doc mutations", () => {
 
     expect(succeeded).toBe(false);
     expect(docWithRig.name).toBe("Before");
+    expect(mocks.rebakeRigBindings).not.toHaveBeenCalled();
+    expect(mocks.writeSceneDoc).not.toHaveBeenCalled();
+    expect(mocks.onDocChanged).not.toHaveBeenCalled();
+    expect(mocks.pushHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("rebased scene-doc baseline commits", () => {
+  it("applies the reducer to the queued latest doc and records the supplied baseline once", async () => {
+    const baseline: SceneDoc = {
+      version: 1,
+      name: "Drag start",
+      text: { title: "Original title" },
+    };
+    const project = abortableProject("rebased-latest", baseline);
+    const { commitRebasedFromBaselineResult, patchDocResult } = useSceneDocPatch(
+      project,
+      0,
+      mocks.onDocChanged,
+      mocks.onTimingChanged,
+    );
+
+    expect(
+      await patchDocResult(
+        (next) => {
+          next.name = "Queued latest";
+          next.text = { ...next.text, subtitle: "Added during drag" };
+        },
+        { history: false },
+      ),
+    ).toBe(true);
+
+    const reducer = vi.fn((next: SceneDoc) => {
+      expect(next.name).toBe("Queued latest");
+      expect(next.text?.subtitle).toBe("Added during drag");
+      next.text = { ...next.text, title: "Final title" };
+    });
+    expect(await commitRebasedFromBaselineResult(baseline, reducer, "text style")).toBe(true);
+
+    expect(reducer).toHaveBeenCalledOnce();
+    expect(mocks.writeSceneDoc).toHaveBeenCalledTimes(2);
+    expect(mocks.writeSceneDoc.mock.calls[1]?.[2]).toEqual({
+      version: 1,
+      name: "Queued latest",
+      text: { title: "Final title", subtitle: "Added during drag" },
+    });
+    expect(mocks.pushHistory).toHaveBeenCalledOnce();
+    expect(mocks.pushHistory).toHaveBeenCalledWith({
+      label: "text style",
+      changes: [
+        expect.objectContaining({
+          kind: "sceneDoc",
+          before: baseline,
+          after: {
+            version: 1,
+            name: "Queued latest",
+            text: { title: "Final title", subtitle: "Added during drag" },
+          },
+        }),
+      ],
+    });
+  });
+
+  it("does not write, patch the host or add history when the rebased reducer aborts", async () => {
+    const baseline: SceneDoc = { version: 1, name: "Before" };
+    const { commitRebasedFromBaselineResult } = useSceneDocPatch(
+      abortableProject("rebased-abort", baseline),
+      0,
+      mocks.onDocChanged,
+      mocks.onTimingChanged,
+    );
+
+    const succeeded = await commitRebasedFromBaselineResult(baseline, (next) => {
+      next.name = "Discarded";
+      return false;
+    });
+
+    expect(succeeded).toBe(false);
+    expect(baseline.name).toBe("Before");
     expect(mocks.rebakeRigBindings).not.toHaveBeenCalled();
     expect(mocks.writeSceneDoc).not.toHaveBeenCalled();
     expect(mocks.onDocChanged).not.toHaveBeenCalled();

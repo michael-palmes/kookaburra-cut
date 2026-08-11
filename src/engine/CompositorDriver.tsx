@@ -23,6 +23,7 @@ import { isCapturingPreview, stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
 import { useFormat } from "./format";
 import { HELPER_LAYER } from "./lightEditStore";
+import { useLightingEditStore } from "./lightingEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
   buildSceneCameraTracks,
@@ -33,9 +34,14 @@ import {
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import type { SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
-import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
+import {
+  buildCompareBLightingTracks,
+  buildLightingTracks,
+  resolveFrameLighting,
+} from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
+import { useSceneStageFloors } from "./stageRegistry";
 
 /** Routes the preview through the same `renderComposited` the exporter calls: a `useFrame` with priority > 0 takes over r3f's automatic render (the documented postprocessing takeover) so every previewed frame goes through the compositor; the clock is read imperatively, `PreviewClock` invalidates on scrub which runs this callback. */
 export function CompositorDriver({
@@ -72,6 +78,7 @@ export function CompositorDriver({
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const format = useFormat();
+  const sceneFloorYs = useSceneStageFloors(slots.length);
 
   // Stamps synchronously with this canvas-tree commit: once the stamp equals a LoadedProject, every scene has committed under that project's themes.
   useLayoutEffect(() => {
@@ -80,14 +87,21 @@ export function CompositorDriver({
 
   // Normalized once per project load; null entries for scenes without a camera track.
   const sceneTracks = useMemo(
-    () => buildSceneCameraTracks(sceneDocs ?? [], format),
-    [sceneDocs, format],
+    () => buildSceneCameraTracks(sceneDocs ?? [], format, sceneFloorYs),
+    [sceneDocs, format, sceneFloorYs],
   );
 
   // Lighting keyframe tracks (scene-doc layer only); null-for-legacy when nothing keys.
   const lightingTracks = useMemo(
     () => (sceneThemes ? buildLightingTracks(sceneThemes, projectLighting, sceneDocs ?? []) : null),
     [sceneThemes, projectLighting, sceneDocs],
+  );
+  const compareBLightingTracks = useMemo(
+    () =>
+      sceneThemes
+        ? buildCompareBLightingTracks(sceneThemes, compareBThemes, projectLighting, sceneDocs ?? [])
+        : null,
+    [sceneThemes, compareBThemes, projectLighting, sceneDocs],
   );
 
   // Per-scene render states; null unless the project opts into themed scene state.
@@ -162,10 +176,16 @@ export function CompositorDriver({
     if (sceneDocs) invalidate();
   }, [invalidate, sceneDocs]);
 
+  useEffect(() => {
+    void sceneTracks;
+    invalidate();
+  }, [invalidate, sceneTracks]);
+
   // Redraw on camera-edit draft changes (a drag moves the camera without moving the clock).
   useEffect(() => useCameraEditStore.subscribe(() => invalidate()), [invalidate]);
   // Redraw on divider-lane draft changes, same rule.
   useEffect(() => useCompareEditStore.subscribe(() => invalidate()), [invalidate]);
+  useEffect(() => useLightingEditStore.subscribe(() => invalidate()), [invalidate]);
 
   // Stale-pose healing: the shared camera persists across project switches and a trackless project never writes it, so after previewing a camera-tracked project it would keep the displaced pose; one base-pose write on load is identical floats in the pristine case, so gated projects stay byte-identical (the exporter mirrors this once per run). See docs/determinism.md.
   const camera = useThree((s) => s.camera);
@@ -197,7 +217,60 @@ export function CompositorDriver({
     if (!plan) applyCameraTrack(s.camera as PerspectiveCamera, cameraTrack, currentMs);
     // Scene render state, same rules: an opted-in project gets an explicit per-target plan every frame; legacy projects pass undefined and the root scene is never touched.
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+    let frameLightingTracks = lightingTracks;
+    let frameCompareBLightingTracks = compareBLightingTracks;
+    const lightingDraft = useLightingEditStore.getState().draft;
+    if (
+      frameLightingTracks &&
+      lightingDraft &&
+      lightingDraft.projectId === projectId &&
+      lightingDraft.sceneIndex < frameLightingTracks.length &&
+      sceneThemes?.[lightingDraft.sceneIndex]
+    ) {
+      const baseDoc = sceneDocs?.[lightingDraft.sceneIndex];
+      if (lightingDraft.target === "scene") {
+        const merged = frameLightingTracks.slice();
+        const draftDoc: SceneDoc = {
+          ...(baseDoc ?? { version: 1 }),
+          lighting: { ...(baseDoc?.lighting ?? {}), ...lightingDraft.track },
+        };
+        merged[lightingDraft.sceneIndex] =
+          buildLightingTracks([sceneThemes[lightingDraft.sceneIndex]], projectLighting, [
+            draftDoc,
+          ])[0] ?? null;
+        frameLightingTracks = merged;
+      } else if (frameCompareBLightingTracks) {
+        const mergedTracks = frameCompareBLightingTracks.tracks.slice();
+        const mergedOwned = frameCompareBLightingTracks.owned.slice();
+        const draftDoc: SceneDoc = {
+          ...(baseDoc ?? { version: 1 }),
+          compare: {
+            ...(baseDoc?.compare ?? {}),
+            b: {
+              ...(baseDoc?.compare?.b ?? {}),
+              lighting: {
+                ...(baseDoc?.compare?.b?.lighting ?? {}),
+                ...lightingDraft.track,
+              },
+            },
+          },
+        };
+        const built = buildCompareBLightingTracks(
+          [sceneThemes[lightingDraft.sceneIndex]],
+          [compareBThemes?.[lightingDraft.sceneIndex]],
+          projectLighting,
+          [draftDoc],
+        );
+        mergedTracks[lightingDraft.sceneIndex] = built.tracks[0] ?? null;
+        mergedOwned[lightingDraft.sceneIndex] = built.owned[0] ?? false;
+        frameCompareBLightingTracks = { tracks: mergedTracks, owned: mergedOwned };
+      }
+    }
+    const lightingPlan = resolveFrameLighting(
+      frameLightingTracks,
+      resolved,
+      frameCompareBLightingTracks,
+    );
     // The comparison plan, resolved at the same shared seam (mirrored in the export loop); an in-flight divider drag replaces its scene's spec for this render, the camera-draft rule (imperative read, unreachable during export).
     let frameSpecs = compareSpecs;
     const compareDraft = useCompareEditStore.getState().draft;

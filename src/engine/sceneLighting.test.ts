@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LightingSpec, LightSpec, Placement } from "../theme/tokens";
 import {
+  buildCompareBLightingTracks,
   buildLightingTracks,
   captureLightingPose,
   chainLightingSegments,
   FIXTURE_MAX_COUNT,
+  lightingSampleForCompareSide,
   MAX_SCENE_LIGHTS,
   mixPlacement,
   normalizeLighting,
@@ -265,6 +267,33 @@ describe("normalizeLighting", () => {
   it("keeps the preset id as an opaque string", () => {
     expect(normalizeLighting({ preset: "neon-corridor" }, "t")?.preset).toBe("neon-corridor");
   });
+
+  it("parses inspector lighting additions without changing the legacy rig gate", () => {
+    const spec = normalizeLighting(
+      {
+        ambientColor: "#d8e5ff",
+        animationEnabled: false,
+        shadow: {
+          technique: "map",
+          enabled: false,
+          catchBackdrop: false,
+          softness: 0.7,
+          opacity: 0.32,
+          mapSize: 2048,
+          bias: -0.0005,
+        },
+      },
+      "scene",
+    );
+    expect(spec).toMatchObject({
+      ambientColor: "#d8e5ff",
+      animationEnabled: false,
+      shadow: { enabled: false, catchBackdrop: false },
+    });
+    expect(
+      normalizeLighting({ animationEnabled: false }, "theme", { themeLayer: true }),
+    ).toBeNull();
+  });
 });
 
 describe("resolveLighting (three layers)", () => {
@@ -279,9 +308,15 @@ describe("resolveLighting (three layers)", () => {
   });
 
   it("scene wins over project wins over theme, field-level", () => {
-    const merged = resolveLighting(theme, { ambient: 0.3 }, { ambient: 0.1 });
+    const merged = resolveLighting(
+      { ...theme, ambientColor: "#ffffff", animationEnabled: true },
+      { ambient: 0.3, ambientColor: "#ddeeff" },
+      { ambient: 0.1, animationEnabled: false },
+    );
     expect(merged?.ambient).toBe(0.1);
     expect(merged?.sun).toBe(theme.sun);
+    expect(merged?.ambientColor).toBe("#ddeeff");
+    expect(merged?.animationEnabled).toBe(false);
     expect(resolveLighting(theme, { ambient: 0.3 }, undefined)?.ambient).toBe(0.3);
   });
 
@@ -496,6 +531,51 @@ describe("lighting keyframes (v9 · PR 6)", () => {
     expect(sampleLightingPose(track, -50).ambient).toBe(0);
   });
 
+  it("normalises and interpolates keyed fixture placement as one rigid rig", () => {
+    const spec: LightingSpec = {
+      ...specWithTrack(
+        [
+          {
+            id: "k1",
+            tMs: 0,
+            pose: {
+              fixtures: {
+                practical: {
+                  emissive: 2,
+                  placement: { mode: "point", position: [0, 1, 2] },
+                },
+              },
+            },
+          },
+          {
+            id: "k2",
+            tMs: 1000,
+            pose: {
+              fixtures: {
+                practical: {
+                  emissive: 4,
+                  placement: { mode: "point", position: [4, 3, 0] },
+                },
+              },
+            },
+          },
+        ],
+        [{ from: "k1", to: "k2", ease: "linear" }],
+      ),
+      fixtures: [
+        validFixture({ id: "practical" }) as unknown as NonNullable<
+          LightingSpec["fixtures"]
+        >[number],
+      ],
+    };
+    const track = normalizeLightingTrack(spec, "t");
+    if (!track) throw new Error("track expected");
+    expect(sampleLightingPose(track, 500).fixtures?.practical).toEqual({
+      emissive: 3,
+      placement: { mode: "point", position: [2, 2, 1] },
+    });
+  });
+
   it("a field present at only one endpoint holds rather than lerping to nothing", () => {
     const track = normalizeLightingTrack(
       specWithTrack(
@@ -564,6 +644,144 @@ describe("lighting keyframes (v9 · PR 6)", () => {
     expect(resolveFrameLighting([null, null], { active: [{ index: 0, localMs: 0 }] })).toBeNull();
   });
 
+  it("builds comparison-B tracks only for explicit side-B lighting keys", () => {
+    const theme = {
+      colors: COLORS,
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 }, ambient: 0.4 },
+    } as unknown as Parameters<typeof buildCompareBLightingTracks>[0][number];
+    const inherited = specWithTrack([{ id: "a", tMs: 0, pose: { ambient: 0.2 } }]);
+    const after = specWithTrack([{ id: "b", tMs: 0, pose: { ambient: 0.8 } }]);
+    const tracks = buildCompareBLightingTracks([theme, theme], undefined, undefined, [
+      { lighting: inherited, compare: { b: {} } },
+      { lighting: inherited, compare: { b: { lighting: after } } },
+    ]);
+
+    expect(tracks.tracks[0]).toBeNull();
+    expect(tracks.owned).toEqual([false, true]);
+    expect(tracks.tracks[1]?.keys[0].id).toBe("b");
+  });
+
+  it("plans distinct comparison-side samples and preserves the shared-A fallback", () => {
+    const theme = {
+      colors: COLORS,
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 }, ambient: 0.4 },
+    } as unknown as Parameters<typeof buildLightingTracks>[0][number];
+    const scene = specWithTrack(
+      [
+        { id: "a1", tMs: 0, pose: { ambient: 0 } },
+        { id: "a2", tMs: 1000, pose: { ambient: 1 } },
+      ],
+      [{ from: "a1", to: "a2", ease: "linear" }],
+    );
+    const after = specWithTrack(
+      [
+        { id: "b1", tMs: 0, pose: { ambient: 1 } },
+        { id: "b2", tMs: 1000, pose: { ambient: 0 } },
+      ],
+      [{ from: "b1", to: "b2", ease: "linear" }],
+    );
+    const sceneTracks = buildLightingTracks([theme], undefined, [{ lighting: scene }]);
+    const afterTracks = buildCompareBLightingTracks([theme], [theme], undefined, [
+      { lighting: scene, compare: { b: { lighting: after } } },
+    ]);
+    const plan = resolveFrameLighting(
+      sceneTracks,
+      { active: [{ index: 0, localMs: 250 }] },
+      afterTracks,
+    );
+
+    expect(lightingSampleForCompareSide(plan, "solo", "a")?.pose.ambient).toBeCloseTo(0.25, 6);
+    expect(lightingSampleForCompareSide(plan, "solo", "b")?.pose.ambient).toBeCloseTo(0.75, 6);
+
+    const legacyPlan = resolveFrameLighting(sceneTracks, {
+      active: [{ index: 0, localMs: 250 }],
+    });
+    expect(legacyPlan?.compareB).toBeUndefined();
+    expect(lightingSampleForCompareSide(legacyPlan, "solo", "b")).toBe(legacyPlan?.solo);
+  });
+
+  it("samples comparison B at each transition scene's own local time", () => {
+    const theme = {
+      colors: COLORS,
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 }, ambient: 0.4 },
+    } as unknown as Parameters<typeof buildLightingTracks>[0][number];
+    const ramp = (from: number, to: number, prefix: string) =>
+      specWithTrack(
+        [
+          { id: `${prefix}1`, tMs: 0, pose: { ambient: from } },
+          { id: `${prefix}2`, tMs: 1000, pose: { ambient: to } },
+        ],
+        [{ from: `${prefix}1`, to: `${prefix}2`, ease: "linear" }],
+      );
+    const sceneTracks = buildLightingTracks([theme, theme], undefined, [
+      { lighting: ramp(0, 1, "a") },
+      { lighting: ramp(1, 0, "b") },
+    ]);
+    const docs = [
+      { compare: { b: { lighting: ramp(1, 0, "c") } } },
+      { compare: { b: { lighting: ramp(0, 1, "d") } } },
+    ];
+    const afterTracks = buildCompareBLightingTracks(
+      [theme, theme],
+      [theme, theme],
+      undefined,
+      docs,
+    );
+    const plan = resolveFrameLighting(
+      sceneTracks,
+      {
+        active: [
+          { index: 0, localMs: 750 },
+          { index: 1, localMs: 250 },
+        ],
+        transition: { fromIndex: 0, toIndex: 1, progress: 0.4 },
+      },
+      afterTracks,
+    );
+
+    expect(lightingSampleForCompareSide(plan, "a", "b")?.pose.ambient).toBeCloseTo(0.25, 6);
+    expect(lightingSampleForCompareSide(plan, "b", "b")?.pose.ambient).toBeCloseTo(0.25, 6);
+  });
+
+  it("adds an empty scene sample to reset A before a B-only animation", () => {
+    const track = normalizeLightingTrack(
+      specWithTrack([{ id: "b", tMs: 0, pose: { ambient: 0.8 } }]),
+      "b",
+    );
+    const plan = resolveFrameLighting(
+      [null],
+      { active: [{ index: 0, localMs: 0 }] },
+      { tracks: [track], owned: [true] },
+    );
+
+    expect(plan?.solo).toEqual({ index: 0, pose: {} });
+    expect(plan?.compareB?.solo?.pose).toEqual({ ambient: 0.8 });
+  });
+
+  it("mutes comparison-B keys to its static rig rather than inheriting A animation", () => {
+    const plan = resolveFrameLighting(
+      [normalizeLightingTrack(specWithTrack([{ id: "a", tMs: 0, pose: { ambient: 0.2 } }]), "a")],
+      { active: [{ index: 0, localMs: 0 }] },
+      { tracks: [null], owned: [true] },
+    );
+
+    expect(lightingSampleForCompareSide(plan, "solo", "a")?.pose).toEqual({ ambient: 0.2 });
+    expect(lightingSampleForCompareSide(plan, "solo", "b")?.pose).toEqual({});
+  });
+
+  it("mutes a lighting track without deleting its keys", () => {
+    const theme = {
+      colors: COLORS,
+      lighting: { sun: { azimuthDeg: 0, elevationDeg: 45, intensity: 2 }, ambient: 0.4 },
+    } as unknown as Parameters<typeof buildLightingTracks>[0][number];
+    const lighting = {
+      ...specWithTrack([{ id: "k1", tMs: 0, pose: { ambient: 0.2 } }]),
+      animationEnabled: false,
+    };
+    expect(buildLightingTracks([theme], undefined, [{ lighting }])).toEqual([null]);
+    expect(lighting.keys).toHaveLength(1);
+  });
+
   it("captureLightingPose diffs the scene layer against the theme+project base", () => {
     const theme = {
       colors: COLORS,
@@ -576,6 +794,21 @@ describe("lighting keyframes (v9 · PR 6)", () => {
     expect(pose.sun).toEqual({ intensity: 3.5, kelvin: 2900 });
     expect(pose.ambient).toBeUndefined();
     expect(captureLightingPose(theme, undefined, undefined)).toEqual({});
+  });
+
+  it("captureLightingPose includes changed fixture placement", () => {
+    const baseFixture = validFixture({ id: "practical" }) as unknown as NonNullable<
+      LightingSpec["fixtures"]
+    >[number];
+    const theme = {
+      colors: COLORS,
+      lighting: { fixtures: [baseFixture] },
+    } as unknown as Parameters<typeof captureLightingPose>[0];
+    const placement: Placement = { mode: "point", position: [2, 3, 4] };
+    const pose = captureLightingPose(theme, undefined, {
+      fixtures: [{ ...baseFixture, placement }],
+    });
+    expect(pose.fixtures?.practical?.placement).toEqual(placement);
   });
 
   it("chainLightingSegments chains consecutive keys and preserves matching eases", () => {

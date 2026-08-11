@@ -65,7 +65,7 @@ export function CameraPathOverlay({
 }) {
   const open = useCameraEditStore((s) => s.open);
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
-  const { slot, doc, mode, rig, previewRig, commitRig, appliedViewAt } = useCameraDoc(
+  const { slot, doc, mode, rig, previewRig, commitRig, appliedViewAt, stageFloorY } = useCameraDoc(
     project,
     sceneIndex,
     onDocChanged,
@@ -100,9 +100,9 @@ export function CameraPathOverlay({
   const track = useMemo(
     () =>
       mode === "rig" && rig.keys.length > 0
-        ? normalizeSceneRig(rig, "path-overlay", doc, format)
+        ? normalizeSceneRig(rig, "path-overlay", doc, format, stageFloorY)
         : null,
-    [mode, rig, doc, format],
+    [mode, rig, doc, format, stageFloorY],
   );
 
   // The path's WORLD shape and each key's bounds verdict are pure functions of the track: they

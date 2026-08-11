@@ -77,6 +77,8 @@ function parseShadowSpec(v: unknown): ThemeShadowSpec | undefined {
     mapSize: v.mapSize,
     bias: v.bias,
   };
+  if (typeof v.enabled === "boolean") shadow.enabled = v.enabled;
+  if (typeof v.catchBackdrop === "boolean") shadow.catchBackdrop = v.catchBackdrop;
   if (isStr(v.color)) shadow.color = v.color;
   return shadow;
 }
@@ -317,6 +319,7 @@ export function normalizeLighting(
     console.warn(`[lighting] ${source}: invalid sun/key light — dropped`);
   }
   if (isNum(raw.ambient)) out.ambient = raw.ambient;
+  if (isStr(raw.ambientColor)) out.ambientColor = raw.ambientColor;
 
   if (Array.isArray(raw.fills)) {
     const fills: ThemeLightSpec[] = [];
@@ -369,6 +372,9 @@ export function normalizeLighting(
     else console.warn(`[lighting] ${source}: invalid "lighting.shadow" — dropped`);
   }
   if (isStr(raw.preset)) out.preset = raw.preset;
+  if (typeof raw.animationEnabled === "boolean" && !opts.themeLayer) {
+    out.animationEnabled = raw.animationEnabled;
+  }
 
   // The keyframe track passes through RAW (the camera sidecar precedent); deep validation runs in normalizeLightingTrack at build, against the RESOLVED spec's ids.
   if (Array.isArray(raw.keys) && raw.keys.length > 0 && !opts.themeLayer) {
@@ -392,11 +398,13 @@ const MERGE_FIELDS = [
   "environment",
   "sun",
   "ambient",
+  "ambientColor",
   "fills",
   "lights",
   "fixtures",
   "shadow",
   "preset",
+  "animationEnabled",
 ] as const;
 
 /** The three-layer resolve: theme -> project -> scene, each present field fully replacing the one below (lists replace wholesale; merging by id was rejected as complexity without honesty). Returns undefined when the merged result cannot light a scene — the exact v8 rule (key/sun + ambient) widened by v9 content — so an absent-everywhere block keeps the legacy path verbatim. */
@@ -578,6 +586,8 @@ function normalizePose(
       const entry: NonNullable<LightingPose["fixtures"]>[string] = {};
       if (isNum(value.emissive)) entry.emissive = Math.max(0, value.emissive);
       if (isNum(value.lightIntensity)) entry.lightIntensity = Math.max(0, value.lightIntensity);
+      const placement = parsePlacement(value.placement);
+      if (placement) entry.placement = placement;
       if (Object.keys(entry).length > 0) fixtures[id] = entry;
     }
     if (Object.keys(fixtures).length > 0) pose.fixtures = fixtures;
@@ -665,6 +675,11 @@ function mixPose(a: LightingPose, b: LightingPose, t: number): LightingPose {
       if (emissive !== undefined) entry.emissive = emissive;
       const lightIntensity = mixMaybe(from.lightIntensity, to?.lightIntensity, t);
       if (lightIntensity !== undefined) entry.lightIntensity = lightIntensity;
+      if (from.placement) {
+        entry.placement = to?.placement
+          ? mixPlacement(from.placement, to.placement, t)
+          : from.placement;
+      }
       if (Object.keys(entry).length > 0) fixtures[id] = entry;
     }
     if (Object.keys(fixtures).length > 0) out.fixtures = fixtures;
@@ -701,7 +716,7 @@ export function buildLightingTracks(
 ): (LightingTrack | null)[] {
   return sceneThemes.map((theme, i) => {
     const doc = sceneDocs[i];
-    if (!doc?.lighting?.keys?.length) return null;
+    if (!doc?.lighting?.keys?.length || doc.lighting.animationEnabled === false) return null;
     const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
     if (!resolved) return null;
     // The track validates against the resolved spec but the raw keys/segments come from the doc layer.
@@ -712,9 +727,41 @@ export function buildLightingTracks(
   });
 }
 
+/** Comparison B opts into a distinct animation track only when its override declares keys. An absent B track deliberately leaves the original shared-A compositor path untouched. */
+export interface CompareBLightingTrackSet {
+  tracks: (LightingTrack | null)[];
+  /** True when B owns retained keys, including while its animation toggle mutes them. */
+  owned: boolean[];
+}
+
+export function buildCompareBLightingTracks(
+  sceneThemes: readonly Theme[],
+  compareBThemes: readonly (Theme | undefined)[] | null | undefined,
+  projectLighting: LightingSpec | undefined,
+  sceneDocs: readonly (SceneDocLike | undefined)[],
+): CompareBLightingTrackSet {
+  const owned = sceneThemes.map((_, i) => !!sceneDocs[i]?.compare?.b?.lighting?.keys?.length);
+  const tracks = sceneThemes.map((theme, i) => {
+    const lighting = sceneDocs[i]?.compare?.b?.lighting;
+    if (!lighting?.keys?.length || lighting.animationEnabled === false) return null;
+    const resolved = resolveLighting(
+      compareBThemes?.[i]?.lighting ?? theme.lighting,
+      projectLighting,
+      lighting,
+    );
+    if (!resolved) return null;
+    return normalizeLightingTrack(
+      { ...resolved, keys: lighting.keys, segments: lighting.segments },
+      `comparison scene ${i}`,
+    );
+  });
+  return { tracks, owned };
+}
+
 /** Structural stand-in for SceneDoc (sceneDocSchema imports this module, so the real type can't be named here). */
 interface SceneDocLike {
   lighting?: LightingSpec;
+  compare?: { b?: { lighting?: LightingSpec } };
 }
 
 export function hasLightingTracks(
@@ -730,27 +777,35 @@ export interface SceneLightingSample {
 }
 
 /** The frame's lighting plan (solo | a/b + overlay, the FrameCameraPlan shape). Null whenever no scene in the project has a lighting track: the byte-identical legacy path. On transition frames A and B are at DIFFERENT scene-local times, so each target samples its own scene's track at its own time (the camera rule; same failure mode if got wrong). */
-export interface FrameLightingPlan {
+export interface FrameLightingSamples {
   solo?: SceneLightingSample;
   a?: SceneLightingSample;
   b?: SceneLightingSample;
   overlay?: SceneLightingSample;
 }
 
+export interface FrameLightingPlan extends FrameLightingSamples {
+  /** Present only when comparison B owns a track on this frame, including a muted track's empty pose. */
+  compareB?: FrameLightingSamples;
+}
+
+export type FrameLightingTarget = keyof FrameLightingSamples;
+
 interface ResolvedLike {
   active: { index: number; localMs: number }[];
   transition?: { fromIndex: number; toIndex: number; progress: number } | null;
 }
 
-export function resolveFrameLighting(
+function resolveFrameLightingSamples(
   tracks: readonly (LightingTrack | null)[] | null | undefined,
   resolved: ResolvedLike,
-): FrameLightingPlan | null {
-  if (!tracks || !hasLightingTracks(tracks)) return null;
+  owned?: readonly boolean[],
+): FrameLightingSamples | null {
+  if ((!tracks || !hasLightingTracks(tracks)) && !owned?.some(Boolean)) return null;
   if (resolved.active.length === 0) return null;
   const sampleFor = (active: { index: number; localMs: number }): SceneLightingSample | null => {
-    const track = tracks[active.index];
-    if (!track) return null;
+    const track = tracks?.[active.index];
+    if (!track) return owned?.[active.index] ? { index: active.index, pose: {} } : null;
     return { index: active.index, pose: sampleLightingPose(track, active.localMs) };
   };
   const tr = resolved.transition;
@@ -769,6 +824,38 @@ export function resolveFrameLighting(
   const b = sampleFor(to) ?? undefined;
   if (!a && !b) return null;
   return { a, b, overlay: tr.progress < 0.5 ? a : b };
+}
+
+export function resolveFrameLighting(
+  tracks: readonly (LightingTrack | null)[] | null | undefined,
+  resolved: ResolvedLike,
+  compareBTracks?: CompareBLightingTrackSet | null,
+): FrameLightingPlan | null {
+  const scene = resolveFrameLightingSamples(tracks, resolved);
+  const compareB = resolveFrameLightingSamples(
+    compareBTracks?.tracks,
+    resolved,
+    compareBTracks?.owned,
+  );
+  if (!compareB) return scene;
+
+  const plan: FrameLightingPlan = scene ? { ...scene } : {};
+  for (const target of ["solo", "a", "b", "overlay"] as const) {
+    const after = compareB[target];
+    if (after && !plan[target]) plan[target] = { index: after.index, pose: {} };
+  }
+  plan.compareB = compareB;
+  return plan;
+}
+
+/** Selects the sample used for one comparison host. Without an explicit B plan this returns the original A sample object. */
+export function lightingSampleForCompareSide(
+  plan: FrameLightingPlan | null | undefined,
+  target: FrameLightingTarget,
+  side: "a" | "b",
+): SceneLightingSample | undefined {
+  const scene = plan?.[target];
+  return side === "b" ? (plan?.compareB?.[target] ?? scene) : scene;
 }
 
 /** Capture the scene's CURRENT overrides as a sparse pose: only fields where the scene layer differs from the theme+project base (capturing everything would make every key a full snapshot and later base edits useless). What the "Add key" affordance writes. */
@@ -819,6 +906,9 @@ export function captureLightingPose(
     const entry: NonNullable<LightingPose["fixtures"]>[string] = {};
     if (fixture.emissive !== b?.emissive) entry.emissive = fixture.emissive;
     if (fixture.lightIntensity !== b?.lightIntensity) entry.lightIntensity = fixture.lightIntensity;
+    if (JSON.stringify(fixture.placement) !== JSON.stringify(b?.placement)) {
+      entry.placement = fixture.placement;
+    }
     if (Object.keys(entry).length > 0) {
       pose.fixtures = { ...(pose.fixtures ?? {}), [fixture.id]: entry };
     }

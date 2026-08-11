@@ -250,6 +250,27 @@ describe("deriveSceneOverview", () => {
     expect(model.groups[0].rows[0].selectionTarget).toBeUndefined();
   });
 
+  it("uses the ordered managed projection exclusively, including present-empty", () => {
+    const doc = docWith({ text: { dormant: "Legacy copy" } });
+    const managed = overview(doc, {
+      fallbackText: "Code fallback",
+      textItems: [
+        { key: "subtitle", type: "subtitle", text: "Second" },
+        {
+          key: "points",
+          type: "bullets",
+          points: [{ key: "p1", text: "First point" }],
+        },
+      ],
+    });
+
+    expect(managed.groups[0]?.rows.map((row) => row.id)).toEqual(["text:subtitle", "text:points"]);
+    expect(managed.groups[0]?.rows[1]?.label).toBe("First point");
+
+    const empty = overview(doc, { fallbackText: "Code fallback", textItems: [] });
+    expect(empty.groups.find((group) => group.id === "text")).toBeUndefined();
+  });
+
   it("pins heavy scenes to the specified group, standalone and setting order", () => {
     const devices = Array.from({ length: 6 }, (_, index) => ({
       id: `d${index + 1}`,

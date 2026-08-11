@@ -66,6 +66,7 @@ import {
 import { useImageEditStore } from "./engine/imageEditStore";
 import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
+import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
 import {
@@ -153,6 +154,7 @@ import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
+import { LightingAnimationLane } from "./ui/LightingAnimationLane";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
@@ -1435,6 +1437,7 @@ export default function App() {
     useCameraEditStore.getState().reset();
     useImageEditStore.getState().reset();
     useLayeredScreenshotEditStore.getState().reset();
+    useLightingEditStore.getState().reset();
   }, [loadedProjectId]);
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
@@ -1459,7 +1462,8 @@ export default function App() {
   // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
   const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
   const chartLaneOpen = useChartTrackEditStore((s) => s.open);
-  const stackedLanes = comparePresent || chartPresent;
+  const lightingLaneOpen = useLightingEditStore((state) => state.open);
+  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen;
 
   // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
@@ -2326,6 +2330,7 @@ export default function App() {
           connectorActive={
             (comparePresent && compareLaneOpen) ||
             (chartPresent && chartLaneOpen) ||
+            lightingLaneOpen ||
             (lsActive ? lsLaneOpen : cameraEditOpen)
           }
           activeIndex={camSceneIndex}
@@ -2342,6 +2347,14 @@ export default function App() {
                 )}
                 {chartPresent && (
                   <ChartAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {lightingLaneOpen && (
+                  <LightingAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}

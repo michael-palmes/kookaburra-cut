@@ -16,6 +16,8 @@ import type { CameraDoc, RigDoc } from "../engine/sceneCameraEdit";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc, SceneDocCameraPose, SceneDocRigPose } from "../engine/sceneDocSchema";
 import { normalizeSceneRig, sampleSceneRig } from "../engine/sceneRig";
+import { rebakeRigBindings } from "../engine/sceneRigConvert";
+import { useSceneStageFloorY } from "../engine/stageRegistry";
 
 /** Shared camera-doc plumbing used by the animation lane, camera pill, stage tool overlay, path overlay and inspector: the in-flight draft, live preview via the camera-edit store, sidecar commit with history + write-error surface, and the applied-pose samplers. `onDocChanged` receives the exact doc each commit wrote so the host patches the loaded project in memory instead of reloading, keeping selection and the armed tool intact. Both camera blocks funnel through ONE write, so a mode switch and a pose edit are one history entry each and never fight. */
 
@@ -34,6 +36,7 @@ export function useCameraDoc(
   const sceneFile = project.sceneFiles[sceneIndex];
   const slot = project.slots[sceneIndex];
   const format = useFormat();
+  const stageFloorY = useSceneStageFloorY(sceneIndex);
   // The in-flight (or just-committed, pre-reload) camera slice; cleared when the reload lands.
   const [localDraft, setLocalDraft] = useState<{
     mode: CameraMode;
@@ -57,26 +60,32 @@ export function useCameraDoc(
         sceneIndex,
         track: sceneCameraTracks(
           normalizeSceneCamera(next.camera, "camera-edit"),
-          next.mode === "rig" ? normalizeSceneRig(next.rig, "camera-edit", doc, format) : null,
+          next.mode === "rig"
+            ? normalizeSceneRig(next.rig, "camera-edit", doc, format, stageFloorY)
+            : null,
         ),
         committed,
       });
     },
-    [project.id, sceneIndex, doc, format],
+    [project.id, sceneIndex, doc, format, stageFloorY],
   );
 
   /** Write the camera slice to the sidecar (creating a minimal doc for doc-less scenes) and hand the written doc to the host for the in-memory patch. Empty blocks are omitted entirely (`camera` included, so a rig-only scene never grows an empty orbit stub), keeping legacy sidecars byte-identical. */
   const commitSlice = useCallback(
     async (next: { mode: CameraMode; camera: CameraDoc; rig: RigDoc }, label: string) => {
       if (!slug || !sceneFile) return;
-      previewSlice(next, true); // hold the pose until the patched project lands
       const base: SceneDoc = doc ? structuredClone(doc) : { version: 1 };
+      const resolved = {
+        ...next,
+        rig: rebakeRigBindings(next.rig, base, format, stageFloorY),
+      };
+      previewSlice(resolved, true); // hold the pose until the patched project lands
       const written: SceneDoc = { ...base };
-      if (next.camera.keys.length > 0) written.camera = next.camera;
+      if (resolved.camera.keys.length > 0) written.camera = resolved.camera;
       else delete written.camera;
-      if (next.mode === "rig") written.cameraMode = "rig";
+      if (resolved.mode === "rig") written.cameraMode = "rig";
       else delete written.cameraMode;
-      if (next.rig.keys.length > 0) written.cameraRig = next.rig;
+      if (resolved.rig.keys.length > 0) written.cameraRig = resolved.rig;
       else delete written.cameraRig;
       try {
         await writeSceneDoc(slug, sceneFile, written);
@@ -101,7 +110,7 @@ export function useCameraDoc(
         useCameraEditStore.getState().setWriteError(String(e));
       }
     },
-    [slug, sceneFile, doc, previewSlice, onDocChanged, sceneIndex],
+    [slug, sceneFile, doc, format, stageFloorY, previewSlice, onDocChanged, sceneIndex],
   );
 
   const preview = useCallback(
@@ -131,7 +140,7 @@ export function useCameraDoc(
   const appliedViewAt = useCallback(
     (localT: number): CameraPose => {
       if (mode === "rig" && rig.keys.length > 0) {
-        const norm = normalizeSceneRig(rig, "camera-edit", doc, format);
+        const norm = normalizeSceneRig(rig, "camera-edit", doc, format, stageFloorY);
         if (norm) {
           const s = sampleSceneRig(norm, localT);
           return {
@@ -151,7 +160,7 @@ export function useCameraDoc(
       }
       return sampleCameraTrack(project.cameraTrack ?? [], slot.startMs + localT);
     },
-    [mode, rig, camera, doc, format, inheritedFov, project.cameraTrack, slot.startMs],
+    [mode, rig, camera, doc, format, stageFloorY, inheritedFov, project.cameraTrack, slot.startMs],
   );
 
   /** The applied pose as an ORBIT pose: Add-animation and lone-key seeds sample this so an edit never visibly moves the camera until the user drags. */
@@ -211,5 +220,6 @@ export function useCameraDoc(
     appliedRigAt,
     appliedViewAt,
     inheritedFov,
+    stageFloorY,
   };
 }

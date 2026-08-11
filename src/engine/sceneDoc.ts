@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useContext, useLayoutEffect, useMemo } from "react";
+import { useContext, useId, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
@@ -67,13 +67,15 @@ export function useSceneDoc(): SceneDoc | null {
 export function useSceneText(key: string, fallback = ""): string {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
+  const mountId = useId();
+  const resolved = doc?.text?.[key] ?? fallback;
   // Layout effect so TextFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
-    useTextKeyRegistry.getState().register(sceneIndex, key);
-    return () => useTextKeyRegistry.getState().unregister(sceneIndex, key);
-  }, [sceneIndex, key]);
-  return doc?.text?.[key] ?? fallback;
+    useTextKeyRegistry.getState().register(sceneIndex, key, mountId, { resolvedText: resolved });
+    return () => useTextKeyRegistry.getState().unregister(sceneIndex, key, mountId);
+  }, [sceneIndex, key, mountId, resolved]);
+  return resolved;
 }
 
 /** `Device`-spreadable props (the sidecar device entry, with `model` narrowed). */

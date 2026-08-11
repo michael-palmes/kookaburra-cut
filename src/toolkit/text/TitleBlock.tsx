@@ -21,6 +21,7 @@ import {
 import { useTheme } from "../../theme";
 import type { V3 } from "../types";
 import { AnimatedHeadline } from "./AnimatedHeadline";
+import { ManagedTextStack } from "./ManagedTextStack";
 
 /** How many modular-scale steps the subtitle sits below the title (matches the hand-authored .56/.22 convention at scale 1.25). */
 const SUBTITLE_SCALE_STEPS = 4;
@@ -133,7 +134,7 @@ export function TitleBlock(props: TitleBlockProps) {
   }, [cascade, measureId]);
 
   // The overlay panel renders the headline instead; suppress the in-world one.
-  if (claimed) return null;
+  if (claimed || doc?.managedText !== undefined) return null;
 
   const anchorX =
     align === "left"
@@ -208,7 +209,9 @@ export const FALLBACK_TEXT_KEYS = ["title", "subtitle"] as const;
 export function TextFallback() {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
+  const claimed = useContext(SceneTextClaimedContext);
   const consumed = useSceneConsumesAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
+  if (doc?.managedText !== undefined) return claimed ? null : <ManagedTextStack />;
   const title = doc?.text?.title ?? "";
   if (consumed || !title.trim()) return null;
   // TitleBlock reads the sidecar's headerIcon itself, so it needs no icon wiring here.

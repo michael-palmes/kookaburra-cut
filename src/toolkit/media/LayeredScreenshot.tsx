@@ -35,7 +35,7 @@ import {
   resolveLayeredScreenshotPose,
   sampleLoopedLayeredScreenshotTrack,
 } from "../../engine/sceneLayeredScreenshot";
-import { useStageRegistry } from "../../engine/stageRegistry";
+import { useSceneHostStageBackdrop } from "../../engine/stageRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { type Theme, useTheme } from "../../theme";
@@ -284,6 +284,7 @@ function TextCard({ item, rect }: { item: LayeredScreenshotTextItem; rect: Solve
       position={[rect.x, rect.y, 0]}
       fontSize={rect.height * TEXT_FONT_RATIO}
       maxWidth={rect.width}
+      managedTextRole="embedded"
     />
   );
 }
@@ -315,11 +316,10 @@ function StackRenderer({
   const format = useFormat();
   const theme = useTheme();
   const projectId = useResolvedProjectId();
-  const sceneIndex = useSceneContext()?.index;
+  const sceneContext = useSceneContext();
+  const sceneIndex = sceneContext?.index;
   // The staged cyc floor is an opaque, depth-writing plane; anything below its surface culls, so the fit region stops above it (clearance covers the dropped soft shadows).
-  const stagedBackdrop = useStageRegistry((s) =>
-    sceneIndex !== undefined ? (s.stages[sceneIndex]?.backdropType ?? null) : null,
-  );
+  const stagedBackdrop = useSceneHostStageBackdrop(sceneIndex, sceneContext?.side);
 
   const layers = useMemo(
     () =>

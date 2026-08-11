@@ -338,6 +338,12 @@ describe("mergeFrameSpec", () => {
     expect(merged?.icon).toBe("🚀");
   });
 
+  it("keeps an explicit empty icon so a scene can hide the deck icon", () => {
+    const override = parseFrameOverride({ icon: "" }, "t");
+    expect(override?.icon).toBe("");
+    expect(mergeFrameSpec(base, override)?.icon).toBe("");
+  });
+
   it("inherits the deck cutout when the override omits one", () => {
     const deck = parseFrameSpec({ cutout: { shape: "squircle", size: 0.7 } }, "t");
     const merged = mergeFrameSpec(deck, parseFrameOverride({ background: "#000" }, "t"));

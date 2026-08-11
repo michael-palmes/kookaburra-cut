@@ -6,6 +6,7 @@ import { MountedChart } from "../toolkit/chart/Chart";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { OverlaySceneImages } from "../toolkit/media/SceneImage";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
+import { ManagedTextStack } from "../toolkit/text/ManagedTextStack";
 import type { V3 } from "../toolkit/types";
 import { FrameChip } from "./FrameChip";
 import { FrameDecoration } from "./FrameDecoration";
@@ -94,14 +95,17 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const replaced = !!chart && framePanelChartReplaces(frame.chart);
   // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
   const claimed = frame.claimsSceneText !== false && !replaced;
-  const title = claimed ? (doc?.text?.title ?? "") : "";
-  const subtitle = claimed ? (doc?.text?.subtitle ?? "") : "";
-  const bullets = claimed ? splitBullets(doc?.text?.bullets) : [];
-  const icon = replaced ? undefined : frame.icon;
+  const managed = claimed && doc?.managedText !== undefined;
+  const title = claimed && !managed ? (doc?.text?.title ?? "") : "";
+  const subtitle = claimed && !managed ? (doc?.text?.subtitle ?? "") : "";
+  const bullets = claimed && !managed ? splitBullets(doc?.text?.bullets) : [];
+  const icon = replaced || managed ? undefined : frame.icon;
   const chip = replaced ? undefined : frame.chip;
   const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
+  const hasManagedText = managed && (doc?.managedText?.items.length ?? 0) > 0;
   if (
     !hasText &&
+    !hasManagedText &&
     !icon &&
     !chip &&
     decorations.length === 0 &&
@@ -112,7 +116,9 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   }
 
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
-  const { fit, titleH, subH, bulletHeights, bulletIndent } = solution;
+  const { fit, titleH, subH } = solution;
+  const bulletHeights = managed ? [] : solution.bulletHeights;
+  const bulletIndent = managed ? 0 : solution.bulletIndent;
 
   const titleSize = baseTitle * fit;
   const subtitleSize = baseTitle * SUBTITLE_OF_TITLE * fit;
@@ -172,6 +178,17 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
 
   return (
     <>
+      {managed && (
+        <ManagedTextStack
+          region={{
+            left: col.left,
+            top: col.top,
+            bottom: textBottom,
+            width: col.width,
+            align,
+          }}
+        />
+      )}
       {icon && (
         <FrameIcon
           icon={icon}
@@ -181,6 +198,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           to={700}
           anchorX={align}
           textKey={ICON_TEXT_KEY}
+          managedTextRole={claimed ? "scene" : "embedded"}
         />
       )}
       {title.trim() && (

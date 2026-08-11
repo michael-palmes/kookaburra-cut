@@ -22,12 +22,14 @@ function FreeLight({
   spec,
   shadow,
   allowShadow,
+  mapShadows,
   colors,
 }: {
   spec: LightSpec;
   shadow: ThemeShadowSpec | undefined;
   /** Inside the deterministic caster budget (declaration order, MAX_SHADOW_CASTERS). */
   allowShadow: boolean;
+  mapShadows: boolean;
   colors: Theme["colors"];
 }) {
   const key = useId();
@@ -35,6 +37,7 @@ function FreeLight({
   const relative = (spec.space ?? "world") !== "world";
   const position = placementPosition(spec.placement, aim);
   const color = resolveLightingColour(spec, colors);
+  const sceneIndex = useSceneContext()?.index;
   const lightRef = useRef<Object3D>(null);
   // Directional and spot lights aim via a target Object3D (three's classic gotcha: without one they point at the origin regardless); area lights aim themselves via lookAt.
   const targetObject = useMemo(() => new Object3D(), []);
@@ -57,11 +60,12 @@ function FreeLight({
         // Raw, not defaulted: an absent target means "aim at the subject", which the seam resolves.
         target: spec.target,
       },
+      target:
+        sceneIndex === undefined ? undefined : { sceneIndex, kind: "light" as const, id: spec.id },
     });
-  }, [key, relative, aimed, spec, targetObject]);
+  }, [key, relative, aimed, spec, targetObject, sceneIndex]);
 
   // Keyframe apply-seam registration (intensity/kelvin per light id; placement for world lights).
-  const sceneIndex = useSceneContext()?.index;
   useEffect(() => {
     const light = lightRef.current as Light | null;
     if (!light || sceneIndex === undefined) return;
@@ -75,7 +79,7 @@ function FreeLight({
     });
   }, [key, spec, sceneIndex, color]);
 
-  const castShadow = allowShadow && spec.castShadow === true;
+  const castShadow = mapShadows && allowShadow && spec.castShadow === true;
   const mapSize = shadow?.mapSize ?? 2048;
   const radius = (shadow?.softness ?? 0.5) * SHADOW_RADIUS_SCALE;
   const bias = shadow?.bias ?? -0.0005;
@@ -165,6 +169,7 @@ export function StageLights({
   lights,
   shadowCasterIds,
   shadow,
+  mapShadows,
   colors,
 }: {
   /** The resolved, enabled, budget-capped light list (SceneStage owns the caps). */
@@ -172,6 +177,7 @@ export function StageLights({
   /** Ids inside the deterministic shadow-caster budget. */
   shadowCasterIds: ReadonlySet<string>;
   shadow: ThemeShadowSpec | undefined;
+  mapShadows: boolean;
   colors: Theme["colors"];
 }) {
   return (
@@ -182,6 +188,7 @@ export function StageLights({
           spec={light}
           shadow={shadow}
           allowShadow={shadowCasterIds.has(light.id)}
+          mapShadows={mapShadows}
           colors={colors}
         />
       ))}

@@ -40,7 +40,7 @@ import {
   preloadMirrorEnvironments,
 } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
-import { setExporting } from "./exportState";
+import { setExporting, withExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
 import { useImageEditStore } from "./imageEditStore";
@@ -61,9 +61,14 @@ import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } fro
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
-import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
+import {
+  buildCompareBLightingTracks,
+  buildLightingTracks,
+  resolveFrameLighting,
+} from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
+import { snapshotSceneStageFloors } from "./stageRegistry";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
 
@@ -227,10 +232,12 @@ function frameDelta(frame: number, a: Uint8Array, b: Uint8Array, width: number):
 
 /** Waits until every scene's host is registered, i.e. the canvas tree has actually committed the scenes. All scenes mount inside one shared `<Suspense fallback={null}>`; on a cold load a suspending primitive (ImageCard's `useTexture`) keeps the whole boundary out of the graph until React's retry commits, which races the export preamble on the wall clock, and frame 0 rendered before it lands captures a scene-less frame (the showcase-tour white-first-frame flake) that the clock barrier can't catch since the clock is already committed at its initial 0. Host registration runs in a `useEffect` after the boundary's content commits, so counting hosts observes exactly the state frame 0 needs; called after the asset preloads so the spin exits within a few ticks. Exported for the theme-preview batch, which swaps projects the same way. */
 export async function awaitSceneHostsCommitted(expected: number): Promise<void> {
-  for (let spins = 0; getSceneHosts().length < expected; spins++) {
+  const primaryHostCount = (): number =>
+    getSceneHosts().filter((host) => host.side === undefined).length;
+  for (let spins = 0; primaryHostCount() < expected; spins++) {
     if (spins > 5000) {
       throw new Error(
-        `Scene tree never committed: ${getSceneHosts().length}/${expected} scene hosts registered.`,
+        `Scene tree never committed: ${primaryHostCount()}/${expected} primary scene hosts registered.`,
       );
     }
     await yieldMacrotask();
@@ -408,11 +415,25 @@ export async function exportProject(
   /** UI overlay hook: reports each coarse export-preamble phase (1..3); UI only, never affects render. */
   onPrepareStep?: (step: number) => void,
 ): Promise<string> {
+  return withExporting(() =>
+    exportProjectHeld(opts, onProgress, onFrame, onBoundClipFrame, onFingerprint, onPrepareStep),
+  );
+}
+
+async function exportProjectHeld(
+  opts: ExportOptions,
+  onProgress?: (p: ExportProgress) => void,
+  onFrame?: (frame: number, rgba: Uint8Array) => void,
+  onBoundClipFrame?: (frame: number, boundClipFrame: number) => void,
+  onFingerprint?: (fp: RenderStateFingerprint) => void,
+  onPrepareStep?: (step: number) => void,
+): Promise<string> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
 
   await exportPreamble(opts, gl, onPrepareStep);
+  const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
   const { width, height } = opts.format;
   const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
@@ -470,9 +491,21 @@ export async function exportProject(
   });
 
   // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
-  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? [], computeFormat(opts.format));
+  const sceneTracks = buildSceneCameraTracks(
+    opts.sceneDocs ?? [],
+    computeFormat(opts.format),
+    sceneFloorYs,
+  );
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
+  const compareBLightingTracks = opts.sceneThemes
+    ? buildCompareBLightingTracks(
+        opts.sceneThemes,
+        opts.compareBThemes,
+        opts.projectLighting,
+        opts.sceneDocs ?? [],
+      )
     : null;
 
   // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
@@ -549,7 +582,7 @@ export async function exportProject(
       const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-      const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+      const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
       const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
       // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
       renderComposited(
@@ -595,6 +628,13 @@ export async function captureFrameRgba(
   opts: ExportOptions,
   tMs: number,
 ): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+  return withExporting(() => captureFrameRgbaHeld(opts, tMs));
+}
+
+async function captureFrameRgbaHeld(
+  opts: ExportOptions,
+  tMs: number,
+): Promise<{ rgba: Uint8Array; width: number; height: number }> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
@@ -618,6 +658,7 @@ export async function captureFrameRgba(
     restoreSelection();
     throw err;
   }
+  const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
   const { width, height } = opts.format;
   const ctx = gl.getContext();
@@ -637,9 +678,21 @@ export async function captureFrameRgba(
     cam.updateProjectionMatrix();
   }
 
-  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? [], computeFormat(opts.format));
+  const sceneTracks = buildSceneCameraTracks(
+    opts.sceneDocs ?? [],
+    computeFormat(opts.format),
+    sceneFloorYs,
+  );
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
+  const compareBLightingTracks = opts.sceneThemes
+    ? buildCompareBLightingTracks(
+        opts.sceneThemes,
+        opts.compareBThemes,
+        opts.projectLighting,
+        opts.sceneDocs ?? [],
+      )
     : null;
   const sceneStates =
     opts.theme && opts.sceneThemes
@@ -705,7 +758,7 @@ export async function captureFrameRgba(
     const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
     if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+    const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
     const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
     renderComposited(
       gl,

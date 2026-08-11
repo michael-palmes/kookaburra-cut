@@ -131,6 +131,7 @@ export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCount
 export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
 // Horizontal app-icon + title/subtitle lockup revealed as one unit.
 export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
+export { ManagedTextStack, type ManagedTextStackProps } from "./text/ManagedTextStack";
 // Text-animation presets: theme `textAnimation` defaults + per-primitive overrides.
 export {
   isTextPresetName,

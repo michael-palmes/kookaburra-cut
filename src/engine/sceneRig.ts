@@ -1,6 +1,7 @@
 /** Per-SCENE camera RIG: free-flight pose keyframes stored in a scene's sidecar `cameraRig` block and sampled in SCENE-LOCAL time. A separate block behind `cameraMode`, so the orbit sampler (sceneCamera.ts) is untouched and projects without a rig render byte-identically. Pure (no three.js, no clock reads) like every sampler here, with hand-rolled directional maths: poses interpolate through a CANONICAL form (position + unit forward + aim distance), which is what lets a 180 degree pan-in-place turn without the look point sweeping through the camera. See docs/determinism.md. */
 
 import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { type DeviceFloorY, resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
 import type { FormatInfo } from "../toolkit/types";
 import { viewBasis } from "./cameraProject";
 import {
@@ -235,25 +236,23 @@ function validRigPose(raw: unknown): raw is SceneDocRigPose {
   );
 }
 
-/** Where a bound object sits in the scene: a device by its own id, else the two singletons. Placement is read, never written: rebaking `at` when the object moves is the inspector's job (`sceneRigConvert.ts`), so the engine stays pure. */
+/** Where a bound object sits in the scene: a device by its own id, else the two singletons. `undefined` means the object exists but its arranged aspect or mounted floor is not known yet, so callers preserve its baked point; `null` means the id is genuinely missing. */
 export function resolveAimTarget(
   id: string,
   doc: SceneDoc | undefined,
   format?: FormatInfo,
-): V3 | null {
+  floorY?: DeviceFloorY,
+): V3 | null | undefined {
   if (!doc) return null;
   const deviceIndex = doc.devices?.findIndex((d) => d.id === id) ?? -1;
   const device = deviceIndex >= 0 ? doc.devices?.[deviceIndex] : undefined;
   if (device) {
-    if (doc.deviceLayout && format) {
-      const placement = resolveDeviceLayout(doc.devices ?? [], doc.deviceLayout, format)[
-        deviceIndex
-      ];
-      const at = placement?.position;
-      if (finite3(at)) return [at[0], at[1], at[2]];
+    let placement = device.placement;
+    if (doc.deviceLayout) {
+      if (!format) return undefined;
+      placement = resolveDeviceLayout(doc.devices ?? [], doc.deviceLayout, format)[deviceIndex];
     }
-    const at = device.placement?.position;
-    return finite3(at) ? [at[0], at[1], at[2]] : [0, 0, 0];
+    return resolveDeviceWorldAnchor(device, placement, floorY);
   }
   if (id === VIDEO_WINDOW_AIM_ID && doc.videoWindow) return [0, 0, 0];
   if (id === LAYERED_SCREENSHOT_AIM_ID && doc.layeredScreenshot) {
@@ -269,6 +268,7 @@ export function normalizeSceneRig(
   source: string,
   doc?: SceneDoc,
   format?: FormatInfo,
+  floorY?: DeviceFloorY,
 ): SceneRigTrack | null {
   if (!raw) return null;
   const keys: SceneDocRigKey[] = [];
@@ -300,10 +300,10 @@ export function normalizeSceneRig(
       }
     }
     if (pose.aim.mode === "object") {
-      const at = resolveAimTarget(pose.aim.id, doc, format);
+      const at = resolveAimTarget(pose.aim.id, doc, format, floorY);
       if (at) {
         pose.aim = { ...pose.aim, at };
-      } else if (!warnedBindings.has(pose.aim.id)) {
+      } else if (at === null && !warnedBindings.has(pose.aim.id)) {
         warnedBindings.add(pose.aim.id);
         console.warn(
           `[sceneRig] ${source}: aim binding "${pose.aim.id}" is unresolved — using the baked point`,

@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import {
   type ReactNode,
   useCallback,
@@ -17,7 +19,9 @@ import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import { isExporting, subscribeExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
+import { mergeFrameSpec } from "../../engine/frameSchema";
 import type { GizmoMode } from "../../engine/gizmoMode";
 import type { GizmoDomain } from "../../engine/gizmoRegistry";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
@@ -25,7 +29,9 @@ import { pushHistory } from "../../engine/history";
 import { imageEditCommitMatches, useImageEditStore } from "../../engine/imageEditStore";
 import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
-import { fsUrl, type MediaMeta } from "../../engine/media";
+import { useLightingEditStore } from "../../engine/lightingEditStore";
+import { deriveManagedTextModel } from "../../engine/managedText";
+import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
 import {
@@ -58,22 +64,27 @@ import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTex
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
 import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
-import { useSceneStageBackdrop } from "../../engine/stageRegistry";
+import { useSceneStageBackdrop, useSceneStageFloorY } from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
 import { useTextEditStore } from "../../engine/textEditStore";
 import {
-  textKeyColorDefaults,
-  textKeyStyleCapable,
-  textKeysConsumedBy,
+  codedTextMotionNames,
+  useTextKeyRegistry,
+  virtualManagedTextRegistrations,
 } from "../../engine/textKeyRegistry";
-import { useSceneHasCodedTextMotion } from "../../engine/textMotionRegistry";
 import { TRANSITION_CATALOG } from "../../engine/transitionCatalog";
 import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
+import { mergeLighting } from "../../theme/schema";
 import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
-import { DEVICE_CATALOG, type DeviceId, isDeviceId } from "../../toolkit/device/catalog";
+import {
+  DEVICE_CATALOG,
+  DEVICE_FALLBACK_ID,
+  type DeviceId,
+  isDeviceId,
+} from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
 import { isTextDecoration } from "../../toolkit/frame/icon";
@@ -109,6 +120,7 @@ import {
   type ShaderBackgroundPreset,
   themePresetAnchor,
 } from "../../toolkit/stage/shaders";
+import { stageMapShadowsEnabled } from "../../toolkit/stage/shadowRig";
 import {
   emojiRasterVersion,
   subscribeEmojiRasters,
@@ -122,7 +134,6 @@ import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
-import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
   deriveSceneOverview,
   drillStackForScene,
@@ -151,11 +162,28 @@ import {
   reconcileImageEditor,
   removeImage,
 } from "./imageEditorModel";
-import { LightingSectionBody } from "./LightingSection";
+import { type LightingInspectorScreen, LightingInspectorSection } from "./LightingInspectorSection";
+import {
+  comparisonLightingEditorDoc,
+  type LightingAnimationScope,
+  mutateComparisonLightingTarget,
+} from "./lightingEditorModel";
+import {
+  ManagedTextDrill,
+  type ManagedTextWrite,
+  restoreManagedTextActivatorFocus,
+} from "./ManagedTextDrill";
+import {
+  applyManagedTextStructuralAction,
+  type ManagedTextStructuralAction,
+  type ManagedTextTakeoverRequest,
+  managedTextVirtualOptionsForFrame,
+  performManagedTextStructuralAction,
+} from "./managedTextEditorModel";
+import { TextMotionDrill } from "./TextMotionDrill";
 
-/** Sideways step between devices: a phone auto-fits 2.6 world units tall (~1.26 wide at scale 1), a laptop width-fits to 3.4, so these clear one footprint with margin. */
+/** Sideways step between newly added phones. */
 const DEVICE_STEP_X = 1.4;
-const LAPTOP_STEP_X = 3.6;
 
 const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: string }> = {
   row: { label: "Row", title: "A flat line-up facing the camera" },
@@ -165,6 +193,58 @@ const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: s
   hero: { label: "Hero", title: "Device 1 forward, the rest flanking behind" },
   "depth-pair": { label: "Depth", title: "Two devices split front and back" },
 };
+
+const LIGHTING_ROUTES: Record<string, LightingInspectorScreen> = {
+  lighting: "overview",
+  "lighting.environment": "environment",
+  "lighting.sun": "sun",
+  "lighting.fixtures": "fixtures",
+  "lighting.shadows": "shadows",
+  "lighting.animation": "animation",
+};
+
+const LIGHTING_ROUTE_FOR_SCREEN: Record<LightingInspectorScreen, string> = {
+  overview: "lighting",
+  environment: "lighting.environment",
+  sun: "lighting.sun",
+  fixtures: "lighting.fixtures",
+  shadows: "lighting.shadows",
+  animation: "lighting.animation",
+};
+
+const TEXT_ICON_RECENTS_KEY = "kookaburra:text-icon-recents";
+
+function loadTextIconRecents(): string[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(TEXT_ICON_RECENTS_KEY) ?? "[]");
+    return Array.isArray(stored)
+      ? stored.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function storeTextIconRecent(value: string): string[] {
+  const next = [value, ...loadTextIconRecents().filter((candidate) => candidate !== value)].slice(
+    0,
+    10,
+  );
+  try {
+    localStorage.setItem(TEXT_ICON_RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    return next;
+  }
+  return next;
+}
+
+function overwriteSceneDoc(target: SceneDoc, replacement: SceneDoc): void {
+  const record = target as unknown as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (!(key in replacement)) delete record[key];
+  }
+  Object.assign(target, replacement);
+}
 
 /** The Position drill's two write branches, module-scoped so the sliders and the preview gizmo share one write path: with a `deviceLayout` block an edit lands on that device's DELTA (0 = on the preset), without one on its raw placement. */
 function mutateDelta(
@@ -221,38 +301,15 @@ function DevicePillIcon({ model }: { model: string }) {
   );
 }
 
-/** Text-alignment glyphs: three lines pinned left, centre or right. */
-function AlignIcon({ id }: { id: SceneTextAlign }) {
-  const lines: Record<SceneTextAlign, string> = {
-    left: "M3 5h12M3 9h7M3 13h10",
-    center: "M3 5h12M5.5 9h7M4 13h10",
-    right: "M3 5h12M8 9h7M5 13h10",
-  };
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 18 18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d={lines[id]} />
-    </svg>
-  );
-}
-
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { ObjectPicker } from "../ObjectPicker";
 import { OptionCard } from "../OptionCard";
-import { HeaderIconField, TextFieldRow } from "../SceneTextFields";
+import { HEADER_EMOJIS, TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
-import { DebouncedRange, TextMotionPanel } from "../TextAnimationPicker";
+import { DebouncedRange } from "../TextAnimationPicker";
 import {
   builtinThemeChoices,
   listThemeChoices,
@@ -268,8 +325,15 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
-import { DeviceDrillIn } from "./DeviceDrillIn";
+import { changeFirstClassDeviceModel, DeviceDrillIn, DeviceModelDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
+import {
+  deviceSelectionFallback,
+  deviceSelectionOwnsAction,
+  duplicateDevice as duplicateDeviceInDoc,
+  removeDevice as removeDeviceFromDoc,
+  replaceDeviceMedia,
+} from "./deviceEditorModel";
 import { ImageHostPicker } from "./ImageHostPicker";
 import {
   ActionRow,
@@ -1945,6 +2009,9 @@ export function SceneTab({
   /** Trash-recoverable scene removal (the bottom Delete row; Rust guards the last scene). */
   onDeleteScene: (sceneIndex: number) => void;
 }) {
+  const activeFormat = useFormat();
+  const activeStageFloorY = useSceneStageFloorY(sceneIndex);
+  const sceneFrame = project.sceneFrames[sceneIndex];
   const {
     slug,
     doc,
@@ -1955,8 +2022,16 @@ export function SceneTab({
     patchDocResult,
     commitFromBaseline,
     commitFromBaselineResult,
+    commitRebasedFromBaselineResult,
     commitDuration,
-  } = useSceneDocPatch(project, sceneIndex, onDocChanged, onTimingChanged);
+  } = useSceneDocPatch(
+    project,
+    sceneIndex,
+    onDocChanged,
+    onTimingChanged,
+    activeFormat,
+    activeStageFloorY,
+  );
   const drillIn = useUiStore((s) => s.inspector.drillIn);
   const drillStack = useUiStore((s) => s.inspector.drillStack);
   // The back bar names the screen it pops to: the parent group (or a detail with children), else the row list.
@@ -1982,10 +2057,42 @@ export function SceneTab({
   const selectedImageId = useImageEditStore((s) =>
     s.selected?.sceneIndex === sceneIndex ? s.selected.imageId : null,
   );
+  const textSectionOpen = useGizmoSectionOpen("text");
   // The text gizmo's selection, reflected both ways: touching a key's fields shows its handles, and a canvas click scrolls the drill to that key.
   const selectedTextKey = useTextEditStore((s) =>
     s.selected?.sceneIndex === sceneIndex ? s.selected.key : null,
   );
+  const registeredText = useTextKeyRegistry((state) => state.keys[sceneIndex]);
+  const textRegistrations = useMemo(() => {
+    void registeredText;
+    return virtualManagedTextRegistrations(sceneIndex);
+  }, [registeredText, sceneIndex]);
+  const textVirtualOptionsForDoc = useCallback(
+    (candidate: SceneDoc) =>
+      managedTextVirtualOptionsForFrame(mergeFrameSpec(project.deckFrame, candidate.frame)),
+    [project.deckFrame],
+  );
+  const managedTextModel = useMemo(
+    () =>
+      doc ? deriveManagedTextModel(doc, textRegistrations, textVirtualOptionsForDoc(doc)) : null,
+    [doc, textRegistrations, textVirtualOptionsForDoc],
+  );
+  const managedTextKeysKey = managedTextModel?.items.map((item) => item.key).join("\u0000") ?? "";
+  useEffect(() => {
+    const store = useTextEditStore.getState();
+    if (!textSectionOpen) {
+      if (store.selected?.sceneIndex === sceneIndex) store.select(null);
+      return;
+    }
+    const keys = managedTextKeysKey ? managedTextKeysKey.split("\u0000") : [];
+    if (keys.length === 0) {
+      if (store.selected?.sceneIndex === sceneIndex) store.select(null);
+      return;
+    }
+    if (store.selected?.sceneIndex !== sceneIndex || !keys.includes(store.selected.key)) {
+      store.select({ sceneIndex, key: keys[0] ?? "" });
+    }
+  }, [managedTextKeysKey, sceneIndex, textSectionOpen]);
   const textFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
   useEffect(() => {
     if (!selectedTextKey) return;
@@ -2004,13 +2111,14 @@ export function SceneTab({
     requestDecoMedia(null);
   }, [decoMediaRequestId, requestDecoMedia]);
 
-  const [modal, setModal] = useState<"media" | "imageHost" | null>(null);
+  const [modal, setModal] = useState<"media" | "imageHost" | "textEmoji" | null>(null);
   const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
   const [imagePickError, setImagePickError] = useState<string | null>(null);
   // What a media pick targets: a scene device, a first-class Image, or a legacy decoration.
   const [mediaTarget, setMediaTarget] = useState<
     | { kind: "device"; deviceId?: string }
     | { kind: "image"; replaceId?: string; legacyId?: string }
+    | { kind: "textIcon" }
     | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
   // Which device the device rows act on; null (or a stale id) falls back to the first device. Store-held (the objectEditStore idiom) so a preview gizmo can attach to the same selection.
@@ -2040,6 +2148,9 @@ export function SceneTab({
   // Which document the background/lighting drills edit: the scene itself, or the comparison's after side (set at every drill entry point, reset on scene change).
   const [bgTarget, setBgTarget] = useState<"scene" | "compareB">("scene");
   const [lightingTarget, setLightingTarget] = useState<"scene" | "compareB">("scene");
+  const [lightingAnimationScope, setLightingAnimationScope] = useState<LightingAnimationScope>({
+    kind: "rig",
+  });
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
@@ -2048,6 +2159,9 @@ export function SceneTab({
   const contentPickerAnchorRef = useRef<HTMLDivElement>(null);
   const contentPickerButtonRef = useRef<HTMLButtonElement>(null);
   const imageSourceButtonRef = useRef<HTMLButtonElement>(null);
+  const textEmojiInputRef = useRef<HTMLInputElement>(null);
+  const textEmojiActivatorRef = useRef<HTMLElement | null>(null);
+  const textImageActivatorRef = useRef<HTMLElement | null>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const overviewRootRef = useRef<HTMLDivElement>(null);
   const sceneIndexRef = useRef(sceneIndex);
@@ -2056,6 +2170,18 @@ export function SceneTab({
   const docRef = useRef(doc);
   const resolvedDecorationsRef = useRef(project.sceneFrames[sceneIndex]?.decorations);
   const patchDocResultRef = useRef(patchDocResult);
+  const textEmojiResolverRef = useRef<((value: string | undefined) => void) | null>(null);
+  const textImageResolverRef = useRef<((value: string | undefined) => void) | null>(null);
+  const textTakeoverRef = useRef<symbol | null>(null);
+  const [textEmojiDraft, setTextEmojiDraft] = useState("");
+  const [textIconRecents, setTextIconRecents] = useState(loadTextIconRecents);
+  const [textTakeoverBusy, setTextTakeoverBusy] = useState(false);
+  const comparisonLightingBaselineARef = useRef<SceneDoc["lighting"] | null>(null);
+  useEffect(() => {
+    setLightingAnimationScope({ kind: "rig" });
+    comparisonLightingBaselineARef.current = null;
+    useLightingEditStore.getState().setTarget(lightingTarget);
+  }, [lightingTarget]);
   const legacyImagePromotionRef = useRef<LegacyImagePromotionSession | null>(null);
   const legacyImageOperationRef = useRef<symbol | null>(null);
   const [legacyImageNotice, setLegacyImageNotice] = useState<string | null>(null);
@@ -2072,6 +2198,109 @@ export function SceneTab({
   docRef.current = doc;
   resolvedDecorationsRef.current = project.sceneFrames[sceneIndex]?.decorations;
   patchDocResultRef.current = patchDocResult;
+
+  const finishTextEmoji = useCallback((value: string | undefined) => {
+    const picked = value?.trim() || undefined;
+    textEmojiResolverRef.current?.(picked);
+    textEmojiResolverRef.current = null;
+    setTextEmojiDraft("");
+    setModal(null);
+    restoreManagedTextActivatorFocus(textEmojiActivatorRef);
+  }, []);
+  const finishTextImage = useCallback((value: string | undefined) => {
+    textImageResolverRef.current?.(value);
+    textImageResolverRef.current = null;
+    setModal(null);
+    restoreManagedTextActivatorFocus(textImageActivatorRef);
+  }, []);
+  const chooseTextEmoji = useCallback(() => {
+    textEmojiResolverRef.current?.(undefined);
+    textEmojiActivatorRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return new Promise<string | undefined>((resolve) => {
+      textEmojiResolverRef.current = resolve;
+      setTextEmojiDraft("");
+      setModal("textEmoji");
+    });
+  }, []);
+  const chooseTextImage = useCallback(() => {
+    textImageResolverRef.current?.(undefined);
+    textImageActivatorRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return new Promise<string | undefined>((resolve) => {
+      textImageResolverRef.current = resolve;
+      setMediaTarget({ kind: "textIcon" });
+      setModal("media");
+    });
+  }, []);
+  useEffect(() => {
+    void project.id;
+    return () => {
+      textEmojiResolverRef.current?.(undefined);
+      textEmojiResolverRef.current = null;
+      textImageResolverRef.current?.(undefined);
+      textImageResolverRef.current = null;
+      textEmojiActivatorRef.current = null;
+      textImageActivatorRef.current = null;
+      textTakeoverRef.current = null;
+    };
+  }, [project.id]);
+  const confirmManagedTextTakeover = useCallback(
+    async ({ action, itemCount }: ManagedTextTakeoverRequest): Promise<boolean> => {
+      if (docRef.current?.managedText !== undefined) return true;
+      if (itemCount === 0) return true;
+      if (textTakeoverRef.current) return false;
+      const token = Symbol("managed-text-takeover");
+      const expectedProjectId = project.id;
+      const expectedSceneIndex = sceneIndex;
+      const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+      textTakeoverRef.current = token;
+      setTextTakeoverBusy(true);
+      try {
+        const accepted = await ask(
+          `This scene's ${itemCount === 1 ? "text line is" : `${itemCount} text lines are`} controlled by its scene code. ${action.type === "add-item" ? "Adding a line" : action.type === "take-over" ? "Editing this icon" : "This structural edit"} lets the inspector take over the whole text block. Undo restores the exact coded version.`,
+          {
+            title: "Take over scene text?",
+            kind: "warning",
+            okLabel: "Take over",
+            cancelLabel: "Leave it",
+          },
+        );
+        return (
+          accepted &&
+          textTakeoverRef.current === token &&
+          projectIdRef.current === expectedProjectId &&
+          sceneIndexRef.current === expectedSceneIndex &&
+          sceneFileRef.current === expectedSceneFile
+        );
+      } finally {
+        if (textTakeoverRef.current === token) textTakeoverRef.current = null;
+        setTextTakeoverBusy(false);
+      }
+    },
+    [project.id, project.sceneFiles, sceneIndex],
+  );
+  const writeManagedText = useCallback<ManagedTextWrite>(
+    async (request) => {
+      const apply = (next: SceneDoc) => {
+        const replacement = request.applyToCurrent(next);
+        if (replacement === next && !request.historyFromBaseline) return false;
+        overwriteSceneDoc(next, replacement);
+      };
+      if (request.history === false) {
+        return patchDocResult(apply, { history: false });
+      }
+      if (request.historyFromBaseline) {
+        return commitRebasedFromBaselineResult(
+          request.baseline,
+          apply,
+          request.history ?? "scene edit",
+        );
+      }
+      return patchDocResult(apply, { history: request.history });
+    },
+    [commitRebasedFromBaselineResult, patchDocResult],
+  );
   useEffect(() => {
     if (drillIn === "legacyImage.edit") return;
     legacyImagePromotionRef.current = null;
@@ -2100,50 +2329,10 @@ export function SceneTab({
   }, []);
   // Snapshot of the doc at the start of a videoWindow slider drag: live ticks write history-less, release records one entry.
   const vwDragBaseline = useRef<SceneDoc | null>(null);
-  // The Text drill's line-spacing drag baseline (same pattern).
-  const lineDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
   const [mediaRefresh, setMediaRefresh] = useState(0);
-  const [textValues, setTextValues] = useState<Record<string, string>>({});
-  const textEditTimer = useRef<number | null>(null);
-  const textEditBaseline = useRef<SceneDoc | null>(null);
-  // The header-icon field mirrors the text-field debounce so half-typed paths don't hit the renderer per keystroke.
-  const [iconDraft, setIconDraft] = useState<string | null>(null);
-  const iconEditTimer = useRef<number | null>(null);
-  const iconEditBaseline = useRef<SceneDoc | null>(null);
-  // Text fields commit on a 200ms debounce (history-less live preview); the session finalises to one undo on blur.
-  const liveText = (key: string, value: string) => {
-    setTextValues((v) => ({ ...v, [key]: value }));
-    if (!textEditBaseline.current && doc) textEditBaseline.current = structuredClone(doc);
-    if (textEditTimer.current !== null) window.clearTimeout(textEditTimer.current);
-    // The handle check keeps a write detached by a scene change from clearing the new scene's own.
-    const id = window.setTimeout(() => {
-      if (textEditTimer.current === id) textEditTimer.current = null;
-      void patchDoc(
-        (next) => {
-          next.text = { ...(next.text ?? {}), [key]: value };
-        },
-        { history: false },
-      );
-    }, 200);
-    textEditTimer.current = id;
-  };
-  const flushText = () => {
-    if (textEditTimer.current !== null) {
-      window.clearTimeout(textEditTimer.current);
-      textEditTimer.current = null;
-    }
-    const baseline = textEditBaseline.current;
-    if (!baseline) return;
-    textEditBaseline.current = null;
-    const merged = { ...(doc?.text ?? {}), ...textValues };
-    setTextValues({});
-    void commitFromBaseline(baseline, (next) => {
-      next.text = merged;
-    });
-  };
   /** Header preview fallback: a current-frame capture when no cached thumb exists. An object URL, revoked on replacement/unmount. */
   const [liveThumb, setLiveThumb] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -2158,24 +2347,44 @@ export function SceneTab({
   const [bgHover, setBgHover] = useState<string | null>(null);
   /** Which 3D-backing editor is open when it doesn't match the stored backing type. */
   const [backingTabOverride, setBackingTabOverride] = useState<"gradient" | "shader" | null>(null);
-  const codedMotion = useSceneHasCodedTextMotion(sceneIndex);
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
+  const resolvedSceneLighting = mergeLighting(
+    (sceneTheme ?? project.theme).lighting,
+    project.projectLighting,
+    doc?.lighting,
+  );
+  const deviceMapShadows = stageMapShadowsEnabled(
+    stagedBackdrop !== null && stagedBackdrop !== "none",
+    resolvedSceneLighting?.shadow,
+  );
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
   const devices = doc?.devices ?? [];
   const device = devices.find((d) => d.id === pickedDeviceId) ?? devices[0];
   const deviceId = device?.id;
-  // Read by the ensure-select subscription below, which fires on store writes rather than renders.
-  const deviceIdsRef = useRef<string[]>([]);
-  deviceIdsRef.current = devices.map((d) => d.id);
-  const devicePillOptions = devices.map((d, i) => ({
-    value: d.id,
-    label: `${i + 1}`,
-    icon: <DevicePillIcon model={d.model} />,
-    title: DEVICE_CATALOG[(d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId].name,
-  }));
+  const deviceIds = devices.map((candidate) => candidate.id);
+  const deviceIdsKey = deviceIds.join("\u0000");
+  const deviceMediaSrc = device?.media?.src;
+  const [deviceMediaMeta, setDeviceMediaMeta] = useState<{
+    src: string;
+    meta: MediaMeta;
+  } | null>(null);
+  useEffect(() => {
+    void mediaRefresh;
+    void mediaRefreshKey;
+    if (!slug || !deviceMediaSrc) return;
+    let active = true;
+    void mediaMeta(slug, deviceMediaSrc)
+      .then((meta) => {
+        if (active) setDeviceMediaMeta({ src: deviceMediaSrc, meta });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [deviceMediaSrc, mediaRefresh, mediaRefreshKey, slug]);
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
   const imageIds = useMemo(() => (doc?.images ?? []).map((image) => image.id), [doc?.images]);
@@ -2388,32 +2597,68 @@ export function SceneTab({
       const commit = s.pendingCommit;
       if (!commit) return;
       useDeviceEditStore.getState().clearCommit();
-      if (commit.sceneIndex !== sceneIndex) return;
-      void patchDocRef.current((next) => {
-        if (commit.kind === "delta") {
-          mutateDelta(next, commit.deviceId, (d) => Object.assign(d, commit.delta));
-        } else {
-          mutatePlacement(next, commit.deviceId, (p) => Object.assign(p, commit.placement));
-        }
-      });
+      if (commit.sceneIndex !== sceneIndex) {
+        useDeviceEditStore.getState().acknowledgeCommit(commit, false);
+        return;
+      }
+      void patchDocResultRef
+        .current(
+          (next) => {
+            const target = next.devices?.find((device) => device.id === commit.deviceId);
+            if (!target || (commit.kind === "delta" && !next.deviceLayout)) return false;
+            if (commit.kind === "delta") {
+              mutateDelta(next, commit.deviceId, (delta) => Object.assign(delta, commit.delta));
+            } else {
+              mutatePlacement(next, commit.deviceId, (placement) =>
+                Object.assign(placement, commit.placement),
+              );
+            }
+            if (commit.clearGround) {
+              target.placement = { ...target.placement };
+              delete target.placement.ground;
+            }
+            return true;
+          },
+          { history: "transform device" },
+        )
+        .then((succeeded) => useDeviceEditStore.getState().acknowledgeCommit(commit, succeeded));
     });
   }, [sceneIndex]);
-  // The device pills fall back to the first device implicitly; the canvas cannot, since a cleared store MUST mean no gizmo. The subscription (not just the body) is what re-selects after an export clears the store mid-session.
+  // A store subscription restores an empty selection after export without rejecting a just-minted id before its document render lands.
   useEffect(() => {
     if (!devicesSectionOpen || deviceId === undefined) return;
+    const renderedDeviceIds = deviceIdsKey.split("\u0000");
     const ensure = () => {
+      if (isExporting()) return;
       const store = useDeviceEditStore.getState();
-      const sel = store.selected;
-      // A removed device leaves a selection nothing else repairs (no gizmo, and with one device left no pill to click back), so an id this scene no longer has counts as empty.
-      const stale =
-        sel !== null &&
-        sel.sceneIndex === sceneIndex &&
-        !deviceIdsRef.current.includes(sel.deviceId);
-      if (sel === null || stale) store.select({ sceneIndex, deviceId });
+      const fallback = deviceSelectionFallback(
+        store.selected,
+        sceneIndex,
+        renderedDeviceIds,
+        false,
+      );
+      if (fallback) store.select({ sceneIndex, deviceId: fallback });
     };
     ensure();
-    return useDeviceEditStore.subscribe(ensure);
-  }, [devicesSectionOpen, deviceId, sceneIndex]);
+    const unsubscribeDevice = useDeviceEditStore.subscribe(ensure);
+    const unsubscribeExport = subscribeExporting(ensure);
+    return () => {
+      unsubscribeDevice();
+      unsubscribeExport();
+    };
+  }, [deviceIdsKey, devicesSectionOpen, deviceId, sceneIndex]);
+  // Stale-id repair runs only after React has rendered the authoritative device list, so Add and Duplicate can select their pending minted ids safely.
+  useEffect(() => {
+    if (!devicesSectionOpen || deviceId === undefined || isExporting()) return;
+    const store = useDeviceEditStore.getState();
+    const fallback = deviceSelectionFallback(
+      store.selected,
+      sceneIndex,
+      deviceIdsKey.split("\u0000"),
+      true,
+    );
+    if (fallback) store.select({ sceneIndex, deviceId: fallback });
+  }, [deviceIdsKey, devicesSectionOpen, deviceId, sceneIndex]);
   // Declared after the ensure effect on purpose: cleanups run in declaration order, so the subscription is gone before this clears.
   useEffect(() => () => useDeviceEditStore.getState().select(null), []);
   const sceneFile = project.sceneFiles[sceneIndex];
@@ -2478,6 +2723,15 @@ export function SceneTab({
   // where the new scene has it (its editor reads the new doc), else it pops back a level.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-scene
   useEffect(() => {
+    textEmojiResolverRef.current?.(undefined);
+    textEmojiResolverRef.current = null;
+    textImageResolverRef.current?.(undefined);
+    textImageResolverRef.current = null;
+    textEmojiActivatorRef.current = null;
+    textImageActivatorRef.current = null;
+    textTakeoverRef.current = null;
+    setTextTakeoverBusy(false);
+    setTextEmojiDraft("");
     setModal(null);
     setPendingImageSrc(null);
     setImagePickError(null);
@@ -2496,19 +2750,11 @@ export function SceneTab({
     setContentMenu(null);
     setBgTarget("scene");
     setLightingTarget("scene");
-    // Text drafts are keyed by field name, not by scene, so a leftover would shadow the new
-    // scene's text. A pending debounce is detached rather than cancelled: its closure holds the
-    // old scene's patchDoc, so unflushed typing still lands on the scene it was typed in.
-    setTextValues({});
-    textEditTimer.current = null;
-    textEditBaseline.current = null;
-    setIconDraft(null);
-    iconEditTimer.current = null;
-    iconEditBaseline.current = null;
+    setLightingAnimationScope({ kind: "rig" });
     setThemeDraft(doc?.themeId ?? "");
     const kept = drillStackForScene(drillStack, {
       hasDoc: !!doc,
-      textKeys: Object.keys(doc?.text ?? {}),
+      textKeys: managedTextModel?.items.map((item) => item.key) ?? [],
       hasDevice: devices.length > 0,
       hasObject: objects.length > 0,
       hasOverlay: project.deckFrame !== undefined || doc?.frame?.cutout !== undefined,
@@ -2560,6 +2806,14 @@ export function SceneTab({
 
   // Inline layers close before the shell-owned drill Escape handler.
   useEscapeClose(() => {
+    if (modal === "textEmoji") {
+      finishTextEmoji(undefined);
+      return;
+    }
+    if (mediaTarget.kind === "textIcon") {
+      finishTextImage(undefined);
+      return;
+    }
     const restoreImageFocus =
       mediaTarget.kind === "image" &&
       (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
@@ -2568,6 +2822,13 @@ export function SceneTab({
     setImagePickError(null);
     if (restoreImageFocus) restoreImageSourceFocus();
   }, modal !== null);
+  useEffect(() => {
+    if (modal !== "textEmoji") return;
+    const frame = window.requestAnimationFrame(() =>
+      textEmojiInputRef.current?.focus({ preventScroll: true }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [modal]);
   useEscapeClose(() => closeContentPicker(true), drillIn === null && contentPickerOpen);
   useEffect(() => {
     if (drillIn !== null || !contentPickerOpen) return;
@@ -2619,7 +2880,6 @@ export function SceneTab({
 
   if (!slug) return null;
 
-  const sceneFrame = project.sceneFrames[sceneIndex];
   const sections = sceneSections({
     doc,
     slotsCount: project.slots.length,
@@ -2686,9 +2946,7 @@ export function SceneTab({
       });
     });
   };
-  const duplicateDevice = () => {
-    if (!deviceId) return;
-    const sourceId = deviceId;
+  const duplicateSceneDevice = (sourceId: string) => {
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
@@ -2696,25 +2954,8 @@ export function SceneTab({
     let createdId: string | null = null;
     void patchDocResult(
       (next) => {
-        const src = next.devices?.find((candidate) => candidate.id === sourceId);
-        if (!src) return;
-        const id = nextNumberedContentId(
-          "d",
-          (next.devices ?? []).map((candidate) => candidate.id),
-        );
-        const copy = structuredClone(src);
-        copy.id = id;
-        const laptop = isDeviceId(src.model) && DEVICE_CATALOG[src.model].lid !== undefined;
-        const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (src.placement?.scale ?? 1);
-        const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
-        const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
-        copy.placement = {
-          ...copy.placement,
-          position: [px === 0 ? step : -px, py, pz],
-          rotationDeg: [rx, -ry, rz],
-        };
-        createdId = id;
-        next.devices = [...(next.devices ?? []), copy];
+        createdId = duplicateDeviceInDoc(next, sourceId);
+        return createdId !== null;
       },
       { history: "duplicate device" },
     ).then((succeeded) => {
@@ -2726,12 +2967,54 @@ export function SceneTab({
         projectIdRef.current !== expectedProjectId ||
         sceneIndexRef.current !== expectedSceneIndex ||
         sceneFileRef.current !== expectedSceneFile ||
+        !deviceSelectionOwnsAction(
+          useDeviceEditStore.getState().selected,
+          expectedSceneIndex,
+          sourceId,
+        ) ||
         inspector.tab !== "scene" ||
         inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
       ) {
         return;
       }
       pickDevice(id);
+    });
+  };
+  const duplicateDevice = () => {
+    if (deviceId) duplicateSceneDevice(deviceId);
+  };
+  const removeSceneDevice = (sourceId: string) => {
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    let nextDeviceId: string | null = null;
+    void patchDocResult(
+      (next) => {
+        if (!next.devices?.some((candidate) => candidate.id === sourceId)) return false;
+        nextDeviceId = removeDeviceFromDoc(next, sourceId);
+        return true;
+      },
+      { history: "remove device" },
+    ).then((succeeded) => {
+      if (
+        !succeeded ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        !deviceSelectionOwnsAction(
+          useDeviceEditStore.getState().selected,
+          expectedSceneIndex,
+          sourceId,
+        )
+      ) {
+        return;
+      }
+      if (nextDeviceId) pickDevice(nextDeviceId);
+      else pickDevice(null);
+      const inspector = useUiStore.getState().inspector;
+      if (nextDeviceId === null && inspector.tab === "scene" && inspector.drillIn === "device") {
+        closeDrill();
+      }
     });
   };
   const addObjectFromPicker = (objectId: string) => {
@@ -2866,26 +3149,28 @@ export function SceneTab({
     if (lightingTarget !== "compareB") return patchDoc(mutate, opts);
     return patchDoc((next) => {
       const own = next.lighting;
-      next.lighting = next.compare?.b?.lighting;
-      mutate(next);
-      const written = next.lighting;
-      next.lighting = own;
-      if (!next.compare) next.compare = {};
-      if (!next.compare.b) next.compare.b = {};
-      next.compare.b.lighting = written;
+      if (opts?.history === false && comparisonLightingBaselineARef.current === null) {
+        comparisonLightingBaselineARef.current = structuredClone(own);
+      }
+      mutateComparisonLightingTarget(next, mutate);
     }, opts);
+  };
+  const patchLightingDocResult = (
+    mutate: (next: SceneDoc) => unknown,
+    opts?: Parameters<typeof patchDocResult>[1],
+  ) => {
+    if (lightingTarget !== "compareB") return patchDocResult(mutate, opts);
+    return patchDocResult((next) => mutateComparisonLightingTarget(next, mutate), opts);
   };
   const commitLightingFromBaseline = (baseline: SceneDoc, mutate: (next: SceneDoc) => void) => {
     if (lightingTarget !== "compareB") return commitFromBaseline(baseline, mutate);
-    return commitFromBaseline(baseline, (next) => {
-      const own = next.lighting;
-      next.lighting = next.compare?.b?.lighting;
-      mutate(next);
-      const written = next.lighting;
-      next.lighting = own;
-      if (!next.compare) next.compare = {};
-      if (!next.compare.b) next.compare.b = {};
-      next.compare.b.lighting = written;
+    const realBaseline = structuredClone(baseline);
+    realBaseline.lighting = structuredClone(
+      comparisonLightingBaselineARef.current ?? docRef.current?.lighting,
+    );
+    comparisonLightingBaselineARef.current = null;
+    return commitFromBaseline(realBaseline, (next) => {
+      mutateComparisonLightingTarget(next, mutate);
     });
   };
 
@@ -3037,6 +3322,11 @@ export function SceneTab({
   // The media picker, shared by the device-media row and the decorations drill-in. Defined here
   // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
   const pickMediaModal = (rel: string, meta: MediaMeta | null) => {
+    if (mediaTarget.kind === "textIcon") {
+      if (meta && meta.kind !== "image") return;
+      finishTextImage(rel);
+      return;
+    }
     if (mediaTarget.kind === "image") {
       if (meta && meta.kind !== "image") return;
       if (!isSceneImageSource(rel)) {
@@ -3095,14 +3385,8 @@ export function SceneTab({
       const targetId = mediaTarget.deviceId ?? deviceId;
       void patchDoc(
         (next) => {
-          const d = next.devices?.find((x) => x.id === targetId);
-          if (d) {
-            d.media = { ...d.media, src: rel, kind: isVideo ? "video" : "image" };
-            // A device video defaults the scene length to the clip, unless it was locked manually.
-            if (isVideo && next.duration?.mode !== "manual") {
-              next.duration = { mode: "follow-media", sourceDeviceId: d.id };
-            }
-          }
+          if (!targetId) return;
+          replaceDeviceMedia(next, targetId, { src: rel, kind: isVideo ? "video" : "image" });
         },
         { resync: true },
       );
@@ -3214,6 +3498,10 @@ export function SceneTab({
               type="button"
               className="btn"
               onClick={() => {
+                if (mediaTarget.kind === "textIcon") {
+                  finishTextImage(undefined);
+                  return;
+                }
                 const restoreImageFocus =
                   mediaTarget.kind === "image" &&
                   (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
@@ -3257,6 +3545,71 @@ export function SceneTab({
               }}
             >
               Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : modal === "textEmoji" ? (
+      <div
+        className="modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="text-emoji-title"
+      >
+        <div className="modal text-emoji-modal">
+          <div className="modal-title-row">
+            <h2 id="text-emoji-title">Choose emoji</h2>
+          </div>
+          <label className="wizard-field">
+            <span className="wizard-label">Emoji or symbol</span>
+            <input
+              ref={textEmojiInputRef}
+              className="modal-input"
+              value={textEmojiDraft}
+              onChange={(event) => setTextEmojiDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && textEmojiDraft.trim()) {
+                  event.preventDefault();
+                  finishTextEmoji(textEmojiDraft);
+                }
+              }}
+            />
+          </label>
+          <fieldset className="chip-icon-grid text-emoji-grid">
+            <legend className="visually-hidden">Quick emoji</legend>
+            {HEADER_EMOJIS.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                title={emoji}
+                className="chip-icon-tile emoji"
+                onClick={() => finishTextEmoji(emoji)}
+              >
+                {emoji}
+              </button>
+            ))}
+          </fieldset>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn btn-left"
+              onClick={() => {
+                textEmojiInputRef.current?.focus({ preventScroll: true });
+                void invoke("show_character_palette").catch((reason) => setError(String(reason)));
+              }}
+            >
+              More emoji…
+            </button>
+            <button type="button" className="btn" onClick={() => finishTextEmoji(undefined)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!textEmojiDraft.trim()}
+              onClick={() => finishTextEmoji(textEmojiDraft)}
+            >
+              Use
             </button>
           </div>
         </div>
@@ -5429,14 +5782,191 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "text" && doc) {
+    const mutateLegacyIcon = (
+      source: SceneDoc,
+      itemKey: string,
+      value: string | undefined,
+    ): SceneDoc | null => {
+      if (itemKey !== "icon") return null;
+      const next = structuredClone(source);
+      const frame = mergeFrameSpec(project.deckFrame, source.frame);
+      if (frame && frame.enabled !== false) {
+        next.frame = { ...(next.frame ?? {}) };
+        if (value) next.frame.icon = value;
+        else next.frame.icon = "";
+      } else if (value) next.headerIcon = value;
+      else delete next.headerIcon;
+      return next;
+    };
+    return (
+      <>
+        <ManagedTextDrill
+          key={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}\u0000text`}
+          doc={doc}
+          registrations={textRegistrations}
+          virtualOptions={textVirtualOptionsForDoc(doc)}
+          virtualOptionsForDoc={textVirtualOptionsForDoc}
+          selectedItemKey={selectedTextKey}
+          backLabel={backLabel}
+          onBack={closeDrill}
+          onSelectItem={(itemKey) => {
+            useTextEditStore.getState().select(itemKey ? { sceneIndex, key: itemKey } : null);
+            setOverviewSelection(
+              itemKey ? { sceneIndex, rowId: `text:${itemKey}`, domain: "text" } : null,
+            );
+          }}
+          onOpenMotion={(itemKey) => openDrill(`text.motion:${itemKey}`)}
+          onEditFont={(itemKey) => openDrill(`text.font:${itemKey}`)}
+          onEditColour={(itemKey) => openDrill(`text.colour:${itemKey}`)}
+          confirmTakeover={confirmManagedTextTakeover}
+          writeDoc={writeManagedText}
+          recentIcons={textIconRecents}
+          resolveIconPreview={(value) =>
+            value.startsWith("assets/") ? inspectorAssetUrl(project.id, value) : undefined
+          }
+          onOpenEmoji={chooseTextEmoji}
+          onChooseImage={chooseTextImage}
+          onIconCommitted={(value) => setTextIconRecents(storeTextIconRecent(value))}
+          mutateIcon={mutateLegacyIcon}
+          notice={error}
+          disabled={textTakeoverBusy}
+        />
+        {mediaModal}
+      </>
+    );
+  }
+  if (drillIn?.startsWith("text.motion:") && doc) {
+    const key = drillIn.slice("text.motion:".length);
+    const item = managedTextModel?.items.find((candidate) => candidate.key === key);
+    if (!item) {
+      return (
+        <div className="inspector-drill">
+          <DrillBack label={backLabel} title="Text motion" onClick={closeDrill} />
+          <p className="inspector-stub-note">This text line is no longer in the scene.</p>
+        </div>
+      );
+    }
+    const label =
+      item.type === "bullets"
+        ? "Bullets"
+        : item.type === "icon"
+          ? "Icon"
+          : item.text?.trim() || (item.type === "title" ? "Title" : "Subtitle");
+    return (
+      <TextMotionDrill
+        key={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}\u0000${item.key}`}
+        doc={doc}
+        itemKey={item.key}
+        itemType={item.type}
+        itemLabel={label}
+        resolvedItemMotion={managedTextModel?.textAnimationOverrides?.[item.key]}
+        codedMotionNames={codedTextMotionNames(sceneIndex)}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        writeDoc={writeManagedText}
+      />
+    );
+  }
+  if (drillIn?.startsWith("text.colour:") && doc) {
+    const key = drillIn.slice("text.colour:".length);
+    const item = managedTextModel?.items.find((candidate) => candidate.key === key);
+    if (!item || item.type === "icon") {
+      return (
+        <div className="inspector-drill">
+          <DrillBack label={backLabel} title="Text colour" onClick={closeDrill} />
+          <p className="inspector-stub-note">This text colour is no longer available.</p>
+        </div>
+      );
+    }
+    const firstLine = item.text?.trim().split(/\r?\n/, 1)[0];
+    const label =
+      item.type === "bullets"
+        ? "Bullets"
+        : firstLine
+          ? `${firstLine.slice(0, 30)}${firstLine.length > 30 ? "…" : ""}`
+          : item.type === "subtitle"
+            ? "Subtitle"
+            : "Title";
+    const styleKey = `${key}Color`;
+    const textTheme = sceneTheme ?? project.theme;
+    const resolveColour = (value: string) =>
+      value === "text" || value === "muted" || value === "accent" ? textTheme.colors[value] : value;
+    const virtualColour = managedTextModel?.textStyle?.[styleKey];
+    const defaultColour =
+      typeof virtualColour === "string"
+        ? resolveColour(virtualColour)
+        : item.type === "subtitle"
+          ? textTheme.colors.muted
+          : textTheme.colors.text;
+    const override = doc.textStyle?.[styleKey];
+    const current = typeof override === "string" ? resolveColour(override) : defaultColour;
+    const commitColour = (value: string | undefined) =>
+      void patchDoc(
+        (next) => {
+          const style = { ...(next.textStyle ?? {}) };
+          if (value === undefined) delete style[styleKey];
+          else style[styleKey] = value;
+          next.textStyle = Object.keys(style).length > 0 ? style : undefined;
+        },
+        { history: `${label.toLowerCase()} colour` },
+      );
+    return (
+      <div className="inspector-drill">
+        <DrillBack label={backLabel} title={`${label} colour`} onClick={closeDrill} />
+        <div className="inspector-drill-body">
+          <div className="popover-row">
+            <span className="action-row-icon">
+              <SceneRowIcon id="frame.colour" />
+            </span>
+            <span className="popover-inline">Colour</span>
+            <span className="action-row-value">{current.toUpperCase()}</span>
+            <ColourPicker
+              value={current}
+              defaultValue={defaultColour}
+              label={`${label} colour`}
+              onCommit={(hex) => commitColour(hex)}
+              onReset={typeof override === "string" ? () => commitColour(undefined) : undefined}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (drillIn?.startsWith("text.font:") && doc) {
     const key = drillIn.slice("text.font:".length);
-    const label = key === "headline" && !doc.text?.title ? "Title" : key;
-    const themeFace = (sceneTheme ?? project.theme).typography.headline;
+    const item = managedTextModel?.items.find((candidate) => candidate.key === key);
+    if (!item || item.type === "icon") {
+      return (
+        <div className="inspector-drill">
+          <DrillBack label={backLabel} title="Text font" onClick={closeDrill} />
+          <p className="inspector-stub-note">This text font is no longer available.</p>
+        </div>
+      );
+    }
+    const firstLine = item.text?.trim().split(/\r?\n/, 1)[0];
+    const label =
+      item.type === "bullets"
+        ? "Bullets"
+        : firstLine
+          ? `${firstLine.slice(0, 30)}${firstLine.length > 30 ? "…" : ""}`
+          : item.type === "subtitle"
+            ? "Subtitle"
+            : "Title";
+    const themeFace = (sceneTheme ?? project.theme).typography[
+      item.type === "subtitle" || item.type === "bullets" ? "body" : "headline"
+    ];
     const override = doc.textStyle?.[`${key}Font`];
-    const currentRef = typeof override === "string" ? parseFontString(override) : themeFace;
+    const virtualFont = managedTextModel?.textStyle?.[`${key}Font`];
+    const themeFont = formatFontString(themeFace);
+    const currentRef =
+      typeof override === "string"
+        ? parseFontString(override)
+        : typeof virtualFont === "string"
+          ? parseFontString(virtualFont)
+          : themeFace;
     const commitFont = (value: string | undefined) =>
-      void patchDoc(
+      patchDocResult(
         (next) => {
           const style = { ...(next.textStyle ?? {}) };
           if (value === undefined) delete style[`${key}Font`];
@@ -5445,6 +5975,10 @@ export function SceneTab({
         },
         { history: `${label.toLowerCase()} font` },
       );
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedRoute = drillIn;
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -5453,15 +5987,18 @@ export function SceneTab({
           onClick={() => closeDrill()}
         />
         <div className="inspector-drill-body">
-          {typeof override === "string" && (
-            <button
-              type="button"
-              className="btn text-font-reset"
-              onClick={() => commitFont(undefined)}
-            >
-              Use theme font
-            </button>
-          )}
+          {(typeof override === "string" || typeof virtualFont === "string") &&
+            (typeof override === "string" ? override : virtualFont) !== themeFont && (
+              <button
+                type="button"
+                className="btn text-font-reset"
+                onClick={() =>
+                  void commitFont(typeof virtualFont === "string" ? themeFont : undefined)
+                }
+              >
+                Use theme font
+              </button>
+            )}
           <FontPicker
             value={currentRef}
             onPick={(ref, opts) => {
@@ -5469,9 +6006,18 @@ export function SceneTab({
               void (async () => {
                 await ensureFontRefsPinned([ref]);
                 await preloadAppFonts([ref]);
-                commitFont(formatFontString(ref));
+                const succeeded = await commitFont(formatFontString(ref));
                 // A recent chip is a committed choice, so step straight back to Edit text.
-                if (opts?.fromRecent) closeDrill();
+                if (
+                  succeeded &&
+                  opts?.fromRecent &&
+                  projectIdRef.current === expectedProjectId &&
+                  sceneIndexRef.current === expectedSceneIndex &&
+                  sceneFileRef.current === expectedSceneFile &&
+                  useUiStore.getState().inspector.drillIn === expectedRoute
+                ) {
+                  closeDrill();
+                }
               })();
             }}
           />
@@ -5528,394 +6074,6 @@ export function SceneTab({
             System fonts are pinned into your workspace on first use, so exports never drift with
             macOS updates.
           </p>
-        </div>
-      </div>
-    );
-  }
-  if (drillIn === "text" && doc) {
-    const textKeys = Object.keys(doc.text ?? {});
-    const consumed = textKeysConsumedBy(sceneIndex);
-    const useHeadline =
-      consumed.includes("headline") && !consumed.includes("title") && !textKeys.includes("title");
-    const baseKeys = useHeadline ? ["headline"] : ["title", "subtitle"];
-    if (sceneFrame) baseKeys.push("bullets");
-    const fieldKeys = [...baseKeys, ...textKeys.filter((k) => !baseKeys.includes(k)).sort()];
-    const fieldLabels: Record<string, string> = {
-      title: "Title",
-      subtitle: "Subtitle",
-      headline: textKeys.includes("title") ? "Headline" : "Title",
-      bullets: "Bullets",
-    };
-    // One smart alignment: the overlay's own align on overlay scenes, the scene-text align otherwise.
-    const align = sceneFrame
-      ? (sceneFrame.textAlign ?? "left")
-      : (doc.textLayout?.align ?? "center");
-    const setAlign = (a: SceneTextAlign) =>
-      void patchDoc(
-        (next) => {
-          if (sceneFrame) {
-            next.frame = { ...(next.frame ?? {}) };
-            if (a === "left") delete next.frame.textAlign;
-            else next.frame.textAlign = a;
-          } else {
-            next.textLayout = { ...(next.textLayout ?? {}), align: a };
-          }
-        },
-        { history: "text alignment" },
-      );
-    // Header icon: the overlay's icon on overlay scenes, else the plain scene's headerIcon (drawn above the fallback headline).
-    const headerIcon = sceneFrame ? (sceneFrame.icon ?? "") : (doc.headerIcon ?? "");
-    const writeHeaderIcon = (next: SceneDoc, v: string | undefined) => {
-      if (sceneFrame) {
-        next.frame = { ...(next.frame ?? {}) };
-        if (v) next.frame.icon = v;
-        else delete next.frame.icon;
-      } else if (v) next.headerIcon = v;
-      else delete next.headerIcon;
-    };
-    // Emoji tiles commit instantly; the free-text field live-previews on the text-field debounce and finalises to one undo on blur.
-    const setHeaderIcon = (v: string | undefined) =>
-      void patchDoc((next) => writeHeaderIcon(next, v));
-    const liveHeaderIcon = (value: string) => {
-      setIconDraft(value);
-      if (!iconEditBaseline.current) iconEditBaseline.current = structuredClone(doc);
-      if (iconEditTimer.current !== null) window.clearTimeout(iconEditTimer.current);
-      const id = window.setTimeout(() => {
-        if (iconEditTimer.current === id) iconEditTimer.current = null;
-        void patchDoc((next) => writeHeaderIcon(next, value.trim() || undefined), {
-          history: false,
-        });
-      }, 200);
-      iconEditTimer.current = id;
-    };
-    const flushHeaderIcon = () => {
-      if (iconEditTimer.current !== null) {
-        window.clearTimeout(iconEditTimer.current);
-        iconEditTimer.current = null;
-      }
-      const baseline = iconEditBaseline.current;
-      const value = (iconDraft ?? headerIcon).trim() || undefined;
-      iconEditBaseline.current = null;
-      setIconDraft(null);
-      if (!baseline) return;
-      void commitFromBaseline(baseline, (next) => writeHeaderIcon(next, value));
-    };
-    const textTheme = sceneTheme ?? project.theme;
-    const colourDefaults = textKeyColorDefaults(sceneIndex);
-    const styleCapable = textKeyStyleCapable(sceneIndex);
-    const resolveFillToken = (fill: string): string =>
-      fill === "text" || fill === "muted" || fill === "accent" ? textTheme.colors[fill] : fill;
-    const styleStr = (k: string): string | undefined => {
-      const v = doc.textStyle?.[k];
-      return typeof v === "string" ? v : undefined;
-    };
-    const styleNum = (k: string): number | undefined => {
-      const v = doc.textStyle?.[k];
-      return typeof v === "number" ? v : undefined;
-    };
-    const writeStyle = (k: string, value: string | number | undefined) => (next: SceneDoc) => {
-      const style = { ...(next.textStyle ?? {}) };
-      if (value === undefined) delete style[k];
-      else style[k] = value;
-      next.textStyle = Object.keys(style).length > 0 ? style : undefined;
-    };
-    const patchStyle = (history: string, k: string, value: string | number | undefined) =>
-      void patchDoc(writeStyle(k, value), { history });
-    // Slider drags write live (history-less) and record ONE entry on release, the lighting/position drill pattern.
-    const liveStyle = (k: string, value: string | number | undefined) => {
-      if (!lineDragBaseline.current) lineDragBaseline.current = structuredClone(doc);
-      void patchDoc(writeStyle(k, value), { history: false });
-    };
-    const commitStyle = (history: string, k: string, value: string | number | undefined) => {
-      const baseline = lineDragBaseline.current;
-      lineDragBaseline.current = null;
-      if (baseline) void commitFromBaseline(baseline, writeStyle(k, value));
-      else patchStyle(history, k, value);
-    };
-    // Snap to the 0.05 grid so the slider's own float drift can't write 1.2000000000000002 (which would also miss the clear-at-Normal test).
-    const lineSpacing = (n: number): number | undefined => {
-      const v = Math.round(n * 20) / 20;
-      return v === LINE_SPACING_NORMAL ? undefined : v;
-    };
-    const clearAllText = () => {
-      // Drop pending live edits first so a focused field can't write itself back.
-      if (textEditTimer.current !== null) {
-        window.clearTimeout(textEditTimer.current);
-        textEditTimer.current = null;
-      }
-      textEditBaseline.current = null;
-      setTextValues({});
-      if (iconEditTimer.current !== null) {
-        window.clearTimeout(iconEditTimer.current);
-        iconEditTimer.current = null;
-      }
-      iconEditBaseline.current = null;
-      setIconDraft(null);
-      // Blank every key the doc holds or the scene consumes, never delete: an absent key
-      // resurfaces the TSX fallback in the preview.
-      const keys = new Set([...baseKeys, ...textKeys, ...consumed]);
-      void patchDoc(
-        (next) => {
-          next.text = Object.fromEntries([...keys].map((k) => [k, ""]));
-          writeHeaderIcon(next, undefined);
-        },
-        { history: "clear text" },
-      );
-    };
-    return (
-      <div className="inspector-drill">
-        <DrillBack
-          label={backLabel}
-          title="Text"
-          onClick={() => {
-            flushText();
-            closeDrill();
-          }}
-        />
-        <div className="inspector-drill-body">
-          <div className="popover-row">
-            <button
-              type="button"
-              className="btn inspector-clear-text"
-              title="Blank every text field on this scene (undoable)"
-              onClick={clearAllText}
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M8.5 16.5H4.8L3 14.7a1.5 1.5 0 010-2.1l8.1-8.1a1.5 1.5 0 012.1 0l3.4 3.4a1.5 1.5 0 010 2.1l-6.6 6.5z" />
-                <path d="M7.3 7.6l5.6 5.6" />
-                <path d="M11 16.5h6" />
-              </svg>
-              Clear text
-            </button>
-          </div>
-          <div className="wizard-field">
-            <span className="wizard-label">Alignment</span>
-            <div className="inspector-tabs" role="tablist">
-              {ALIGN_OPTIONS.map((o) => (
-                <button
-                  type="button"
-                  key={o.id}
-                  role="tab"
-                  aria-selected={align === o.id}
-                  className={`inspector-tab${align === o.id ? " active" : ""}`}
-                  onClick={() => setAlign(o.id)}
-                >
-                  <AlignIcon id={o.id} />
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {fieldKeys.map((key) => {
-            const label = fieldLabels[key] ?? key;
-            const colour =
-              colourDefaults[key] !== undefined
-                ? { key: `${key}Color`, token: resolveFillToken(colourDefaults[key]) }
-                : undefined;
-            const fontOverride = styleStr(`${key}Font`);
-            return (
-              <div
-                key={key}
-                ref={(el) => {
-                  textFieldRefs.current[key] = el;
-                }}
-                className={`text-field-group${selectedTextKey === key ? " selected" : ""}`}
-                onFocusCapture={() => {
-                  if (selectedTextKey !== key) {
-                    useTextEditStore.getState().select({ sceneIndex, key });
-                  }
-                }}
-              >
-                <TextFieldRow
-                  label={label}
-                  value={textValues[key] ?? doc.text?.[key] ?? ""}
-                  placeholder={key === "bullets" ? "one bullet per line" : undefined}
-                  onChange={(text) => liveText(key, text)}
-                  onBlur={flushText}
-                  colour={
-                    colour
-                      ? {
-                          value: styleStr(colour.key) ?? colour.token,
-                          defaultValue: colour.token,
-                          onReset: () =>
-                            patchStyle(`${label.toLowerCase()} colour`, colour.key, undefined),
-                          onCommit: (hex) =>
-                            patchStyle(`${label.toLowerCase()} colour`, colour.key, hex),
-                        }
-                      : undefined
-                  }
-                />
-                {styleCapable.has(key) && (
-                  <div className="text-style-row">
-                    <span className="text-style-fontfield">
-                      <button
-                        type="button"
-                        className={`text-style-font${fontOverride ? " overridden" : ""}`}
-                        title={`${label} font`}
-                        onClick={() => openDrill(`text.font:${key}`)}
-                      >
-                        <span className="text-style-font-name">
-                          {fontOverride ? parseFontString(fontOverride).family : "Theme font"}
-                        </span>
-                        <span className="text-style-font-chevron" aria-hidden>
-                          ›
-                        </span>
-                      </button>
-                      <span className="inspector-pose-caption">Font</span>
-                    </span>
-                    <NumberField
-                      label="Size %"
-                      value={Math.round((styleNum(`${key}Size`) ?? 1) * 100)}
-                      decimals={0}
-                      onCommit={(n) =>
-                        patchStyle(
-                          `${label.toLowerCase()} size`,
-                          `${key}Size`,
-                          n === 100 || n <= 0 ? undefined : Math.min(1000, n) / 100,
-                        )
-                      }
-                    />
-                    <NumberField
-                      label="X"
-                      value={styleNum(`${key}OffsetX`) ?? 0}
-                      decimals={2}
-                      onCommit={(n) =>
-                        patchStyle(
-                          `${label.toLowerCase()} position`,
-                          `${key}OffsetX`,
-                          n === 0 ? undefined : n,
-                        )
-                      }
-                    />
-                    <NumberField
-                      label="Y"
-                      value={styleNum(`${key}OffsetY`) ?? 0}
-                      decimals={2}
-                      onCommit={(n) =>
-                        patchStyle(
-                          `${label.toLowerCase()} position`,
-                          `${key}OffsetY`,
-                          n === 0 ? undefined : n,
-                        )
-                      }
-                    />
-                    <NumberField
-                      label="Rotate °"
-                      value={styleNum(`${key}RotationDeg`) ?? 0}
-                      decimals={1}
-                      onCommit={(n) =>
-                        patchStyle(
-                          `${label.toLowerCase()} rotation`,
-                          `${key}RotationDeg`,
-                          textRotationWrite(n),
-                        )
-                      }
-                    />
-                  </div>
-                )}
-                {styleCapable.has(key) && (
-                  <div className="popover-row text-style-line-row">
-                    <span className="popover-inline slider-row-label">Line spacing</span>
-                    <DebouncedRange
-                      label={`${label} line spacing`}
-                      value={styleNum(`${key}LineHeight`) ?? LINE_SPACING_NORMAL}
-                      min={TEXT_LINE_HEIGHT_MIN}
-                      max={TEXT_LINE_HEIGHT_MAX}
-                      step={0.05}
-                      onInput={(n) => liveStyle(`${key}LineHeight`, lineSpacing(n))}
-                      onCommit={(n) =>
-                        commitStyle(
-                          `${label.toLowerCase()} line spacing`,
-                          `${key}LineHeight`,
-                          lineSpacing(n),
-                        )
-                      }
-                    />
-                    {styleNum(`${key}LineHeight`) !== undefined && (
-                      <button
-                        type="button"
-                        className="inspector-reset-btn"
-                        title="Back to the font's normal line spacing"
-                        onClick={() =>
-                          patchStyle(
-                            `${label.toLowerCase()} line spacing`,
-                            `${key}LineHeight`,
-                            undefined,
-                          )
-                        }
-                      >
-                        Normal
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <HeaderIconField
-            value={iconDraft ?? headerIcon}
-            selected={headerIcon}
-            hint={
-              sceneFrame
-                ? "Drawn above the panel title. An emoji, or a project image path."
-                : "Drawn above the headline. An emoji, or a project image path."
-            }
-            slug={slug}
-            projectPath={workspaceProjectPath(slug) ?? ""}
-            onChange={liveHeaderIcon}
-            onBlur={flushHeaderIcon}
-            onPick={setHeaderIcon}
-          />
-          {(iconDraft ?? headerIcon).trim() !== "" && (
-            <div className="text-style-row text-style-icon">
-              <NumberField
-                label="Size %"
-                value={Math.round((styleNum("iconSize") ?? 1) * 100)}
-                decimals={0}
-                onCommit={(n) =>
-                  patchStyle(
-                    "header icon size",
-                    "iconSize",
-                    n === 100 || n <= 0 ? undefined : Math.min(1000, n) / 100,
-                  )
-                }
-              />
-            </div>
-          )}
-          <TextMotionPanel
-            current={doc.textAnimation}
-            theme={sceneTheme}
-            codedMotion={codedMotion}
-            force={doc.textAnimationForce === true}
-            onLive={(spec) =>
-              void patchDoc(
-                (next) => {
-                  if (spec) next.textAnimation = spec;
-                  else delete next.textAnimation;
-                },
-                { history: "text motion" },
-              )
-            }
-            onForce={(on) =>
-              void patchDoc(
-                (next) => {
-                  if (on) next.textAnimationForce = true;
-                  else delete next.textAnimationForce;
-                },
-                { history: "text motion" },
-              )
-            }
-          />
         </div>
       </div>
     );
@@ -6825,10 +6983,8 @@ export function SceneTab({
   }
   if (drillIn === "device.change" && device) {
     return (
-      <DeviceDrillIn
-        model={(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId}
-        colour={device.colour ?? DEVICE_CATALOG["iphone-15-pro"].defaultColour}
-        motion={device.motion?.preset ?? "none"}
+      <DeviceModelDrillIn
+        model={(device.model in DEVICE_CATALOG ? device.model : DEVICE_FALLBACK_ID) as DeviceId}
         deviceCount={devices.length}
         deviceLabel={`Device ${
           Math.max(
@@ -6836,20 +6992,108 @@ export function SceneTab({
             devices.findIndex((d) => d.id === deviceId),
           ) + 1
         }`}
-        onBack={() => closeDrill()}
+        onBack={closeDrill}
         backLabel={backLabel}
-        onSave={(model, colour, motion, applyAll) => {
-          closeDrill();
-          void patchDoc((next) => {
-            for (const d of next.devices ?? []) {
-              if (!applyAll && d.id !== deviceId) continue;
-              d.model = model;
-              d.colour = colour;
-              d.motion = { ...d.motion, preset: motion };
-            }
-          });
+        onSelectModel={(model, applyAll) => {
+          if (!deviceId) return;
+          const expectedProjectId = project.id;
+          const expectedSceneIndex = sceneIndex;
+          const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+          const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+          void changeFirstClassDeviceModel(patchDocResult, deviceId, model, applyAll).then(
+            (succeeded) => {
+              const inspector = useUiStore.getState().inspector;
+              if (
+                !succeeded ||
+                projectIdRef.current !== expectedProjectId ||
+                sceneIndexRef.current !== expectedSceneIndex ||
+                sceneFileRef.current !== expectedSceneFile ||
+                !deviceSelectionOwnsAction(
+                  useDeviceEditStore.getState().selected,
+                  expectedSceneIndex,
+                  deviceId,
+                ) ||
+                inspector.tab !== "scene" ||
+                inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+              ) {
+                return;
+              }
+              closeDrill();
+            },
+          );
         }}
       />
+    );
+  }
+  if (drillIn === "device" && doc && device && deviceId) {
+    const resolvedMeta =
+      deviceMediaMeta && deviceMediaMeta.src === device.media?.src
+        ? deviceMediaMeta.meta
+        : undefined;
+    const screenMediaPreviewUrl = device.media
+      ? device.media.kind === "image"
+        ? inspectorAssetUrl(project.id, device.media.src)
+        : resolvedMeta?.posterPath
+          ? fsUrl(resolvedMeta.posterPath)
+          : undefined
+      : undefined;
+    const dimensions =
+      resolvedMeta && resolvedMeta.width > 0 && resolvedMeta.height > 0
+        ? `${resolvedMeta.width}×${resolvedMeta.height}`
+        : undefined;
+    const screenMediaDetail = device.media
+      ? device.media.kind === "video"
+        ? [resolvedMeta ? formatMediaDuration(resolvedMeta.durationMs) : undefined, dimensions]
+            .filter(Boolean)
+            .join(" · ") || "Video"
+        : (dimensions ?? "Image")
+      : undefined;
+    return (
+      <>
+        <DeviceDrillIn
+          key={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}\u0000device`}
+          doc={doc}
+          deviceId={deviceId}
+          backLabel={backLabel}
+          screenMediaPreviewUrl={screenMediaPreviewUrl}
+          screenMediaDetail={screenMediaDetail}
+          mapShadows={deviceMapShadows}
+          onBack={closeDrill}
+          onSelectDevice={(id) => {
+            pickDevice(id);
+            setOverviewSelection({ sceneIndex, rowId: `device:${id}`, domain: "devices" });
+          }}
+          onChangeDevice={(id) => {
+            pickDevice(id);
+            openDrill("device.change");
+          }}
+          onChangeScreenMedia={(id) => {
+            setMediaTarget({ kind: "device", deviceId: id });
+            setModal("media");
+          }}
+          onEditScreenMedia={
+            device.media?.kind === "video"
+              ? (id) => {
+                  const target = devices.find((candidate) => candidate.id === id);
+                  if (target?.media?.kind === "video") {
+                    onOpenEditVideo(sceneIndex, target.media.src, "device", target.id);
+                  }
+                }
+              : undefined
+          }
+          onOpenArrangement={(id) => {
+            pickDevice(id);
+            openDrill("device.position");
+          }}
+          onDuplicate={duplicateSceneDevice}
+          onRemove={removeSceneDevice}
+          patchDoc={patchDoc}
+          patchDocResult={patchDocResult}
+          commitFromBaseline={commitFromBaseline}
+          notice={error}
+        />
+        {mediaModal}
+      </>
     );
   }
 
@@ -7030,7 +7274,9 @@ export function SceneTab({
         onSelectDevice={pickDevice}
         onOpenDevice={(id) => {
           pickDevice(id);
-          openDrill("device");
+          const stack = useUiStore.getState().inspector.drillStack;
+          if (stack.at(-2) === "device") closeDrill();
+          else openDrill("device");
         }}
         patchDoc={patchDoc}
         commitFromBaseline={commitFromBaseline}
@@ -7158,10 +7404,7 @@ export function SceneTab({
             return;
           }
           setConfirmRemove(false);
-          pickDevice(null);
-          void patchDoc((next) => {
-            next.devices = (next.devices ?? []).filter((x) => x.id !== deviceId);
-          });
+          if (deviceId) removeSceneDevice(deviceId);
         },
         "motion.transition": () => {
           void listCachedSceneThumbs(project).then(setThumbs);
@@ -7189,7 +7432,7 @@ export function SceneTab({
         "text.motion": doc?.textAnimation ? describeSpec(doc.textAnimation) : "Theme default",
         "device.change": device
           ? DEVICE_CATALOG[
-              (device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId
+              (device.model in DEVICE_CATALOG ? device.model : DEVICE_FALLBACK_ID) as DeviceId
             ].name
           : undefined,
         "device.position": doc?.deviceLayout
@@ -7253,12 +7496,13 @@ export function SceneTab({
       />
     );
   }
-  if (drillIn === "lighting" && doc) {
-    // The after target hands the section a doc VIEW whose `lighting` is side B's, with write wrappers transplanting the field back; the section itself never learns about comparisons.
+  const lightingScreen = drillIn ? LIGHTING_ROUTES[drillIn] : undefined;
+  if (lightingScreen && doc) {
+    // The after target hands the section a doc view whose lighting is side B's, with write wrappers transplanting the field back.
     const forAfter = lightingTarget === "compareB" && !!doc.compare;
     return (
-      <LightingSectionBody
-        doc={forAfter ? { ...doc, lighting: doc.compare?.b?.lighting } : doc}
+      <LightingInspectorSection
+        doc={forAfter ? comparisonLightingEditorDoc(doc) : doc}
         theme={
           forAfter
             ? (project.compareBThemes[sceneIndex] ?? sceneTheme ?? project.theme)
@@ -7268,14 +7512,23 @@ export function SceneTab({
         projectLighting={project.projectLighting}
         slot={scene}
         backLabel={backLabel}
+        screen={lightingScreen}
         onBack={closeDrill}
+        onScreenChange={(screen) => {
+          if (screen === "overview") closeDrill();
+          else openDrill(LIGHTING_ROUTE_FOR_SCREEN[screen]);
+        }}
         patchDoc={forAfter ? patchLightingDoc : patchDoc}
+        patchDocResult={forAfter ? patchLightingDocResult : patchDocResult}
         commitFromBaseline={forAfter ? commitLightingFromBaseline : commitFromBaseline}
+        animationScope={lightingAnimationScope}
+        onAnimationScopeChange={setLightingAnimationScope}
+        onSeek={(globalMs) => useClockStore.getState().setCurrentMs(globalMs)}
       />
     );
   }
   const groupSection =
-    drillIn && drillIn !== "camera" && drillIn !== "lighting"
+    drillIn && drillIn !== "camera" && !drillIn.startsWith("lighting")
       ? sections.find((s) => s.id === drillIn)
       : undefined;
   if (groupSection) {
@@ -7289,14 +7542,6 @@ export function SceneTab({
           }
           onClick={closeDrill}
         />
-        {groupSection.id === "device" && devices.length > 1 && (
-          <SegmentedRow
-            className="subtabs-compact"
-            options={devicePillOptions}
-            value={deviceId ?? devices[0].id}
-            onChange={pickDevice}
-          />
-        )}
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
         {mediaModal}
         {objectPickerOpen && (
@@ -7314,6 +7559,10 @@ export function SceneTab({
     themeName: sceneTheme?.name ?? project.theme.name,
     transitionValue,
     fallbackText: derivedName ?? undefined,
+    textItems:
+      managedTextModel?.ownership === "managed" || (managedTextModel?.items.length ?? 0) > 0
+        ? managedTextModel?.items
+        : undefined,
   });
   const hasContent = sceneOverview.groups.length > 0 || sceneOverview.standalone.length > 0;
 
@@ -7571,6 +7820,157 @@ export function SceneTab({
     focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, null);
   };
 
+  const applyManagedTextContentAction = async (
+    row: SceneOverviewRowModel,
+    action: Extract<ManagedTextStructuralAction, { type: "duplicate-item" | "remove-item" }>,
+    expectedProjectId: string,
+    expectedSceneIndex: number,
+    expectedSceneFile: string | null,
+  ) => {
+    const target = row.selectionTarget;
+    const currentDoc = docRef.current;
+    if (
+      target?.kind !== "text" ||
+      !currentDoc ||
+      contentActionPendingRef.current ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+    ) {
+      return;
+    }
+    const token = Symbol("managed-text-content-action");
+    contentActionPendingRef.current = {
+      token,
+      projectId: expectedProjectId,
+      sceneIndex: expectedSceneIndex,
+      sceneFile: expectedSceneFile,
+    };
+    let succeeded = false;
+    let selectedItemKey: string | null = null;
+    try {
+      await performManagedTextStructuralAction({
+        doc: currentDoc,
+        registrations: textRegistrations,
+        virtualOptions: textVirtualOptionsForDoc(currentDoc),
+        action,
+        confirmTakeover: confirmManagedTextTakeover,
+        commit: async (result, history) => {
+          selectedItemKey = result.selectedItemKey;
+          const outcome = await writeManagedText({
+            preview: result.doc,
+            baseline: currentDoc,
+            history,
+            applyToCurrent: (current) => {
+              const applied = applyManagedTextStructuralAction(
+                current,
+                action,
+                textRegistrations,
+                textVirtualOptionsForDoc(current),
+              );
+              if (!applied) return current;
+              selectedItemKey = applied.selectedItemKey;
+              return applied.doc;
+            },
+          });
+          succeeded = outcome !== false;
+        },
+      });
+    } finally {
+      if (contentActionPendingRef.current?.token === token) {
+        contentActionPendingRef.current = null;
+      }
+    }
+    if (
+      !succeeded ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+    ) {
+      return;
+    }
+    const selection = useUiStore.getState().inspector.overviewSelection;
+    if (selection?.sceneIndex !== expectedSceneIndex || selection.rowId !== row.id) return;
+    if (selectedItemKey) {
+      const rowId = `text:${selectedItemKey}`;
+      useTextEditStore.getState().select({ sceneIndex: expectedSceneIndex, key: selectedItemKey });
+      setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId, domain: "text" });
+      focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, rowId);
+    } else {
+      useTextEditStore.getState().select(null);
+      setOverviewSelection(null);
+      focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, null);
+    }
+  };
+
+  const addManagedTextOverviewItem = async () => {
+    const currentDoc = docRef.current;
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    if (
+      !currentDoc ||
+      contentActionPendingRef.current ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+    ) {
+      return;
+    }
+    const action: ManagedTextStructuralAction = {
+      type: "add-item",
+      itemType: "title",
+      afterKey: selectedTextKey ?? undefined,
+    };
+    const token = Symbol("add-managed-text");
+    contentActionPendingRef.current = {
+      token,
+      projectId: expectedProjectId,
+      sceneIndex: expectedSceneIndex,
+      sceneFile: expectedSceneFile,
+    };
+    let succeeded = false;
+    let selectedItemKey: string | null = null;
+    try {
+      await performManagedTextStructuralAction({
+        doc: currentDoc,
+        registrations: textRegistrations,
+        virtualOptions: textVirtualOptionsForDoc(currentDoc),
+        action,
+        confirmTakeover: confirmManagedTextTakeover,
+        commit: async (result, history) => {
+          selectedItemKey = result.selectedItemKey;
+          const outcome = await writeManagedText({
+            preview: result.doc,
+            baseline: currentDoc,
+            history,
+            applyToCurrent: (current) => {
+              const applied = applyManagedTextStructuralAction(
+                current,
+                action,
+                textRegistrations,
+                textVirtualOptionsForDoc(current),
+              );
+              if (!applied) return current;
+              selectedItemKey = applied.selectedItemKey;
+              return applied.doc;
+            },
+          });
+          succeeded = outcome !== false;
+        },
+      });
+    } finally {
+      if (contentActionPendingRef.current?.token === token) {
+        contentActionPendingRef.current = null;
+      }
+    }
+    if (
+      !succeeded ||
+      !selectedItemKey ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+    ) {
+      return;
+    }
+    const rowId = `text:${selectedItemKey}`;
+    useTextEditStore.getState().select({ sceneIndex: expectedSceneIndex, key: selectedItemKey });
+    setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId, domain: "text" });
+    focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, rowId);
+  };
+
   const openContentMenu = (row: SceneOverviewRowModel, request: SceneOverviewContextRequest) => {
     if (!doc) return;
     selectOverviewRow(row);
@@ -7580,6 +7980,7 @@ export function SceneTab({
     const context = { doc, resolvedDecorations: sceneFrame?.decorations };
     const duplicatePlan = planContentDuplicate(row, context);
     const deletePlan = planContentDelete(row, context);
+    const managedTextTarget = row.selectionTarget?.kind === "text";
     const items: ContextMenuState["items"] = [];
     for (const action of contentMenuActions(row)) {
       const label: Record<ContentMenuAction, string> = {
@@ -7602,21 +8003,32 @@ export function SceneTab({
             }
           },
         });
-      } else if (action === "duplicate" && duplicatePlan) {
+      } else if (action === "duplicate" && (duplicatePlan || managedTextTarget)) {
         items.push({
           id: `${row.id}:duplicate`,
           label: label[action],
           icon: <SceneRowIcon id="content.duplicate" />,
-          onSelect: () =>
-            void applyCurrentContentPlan(
-              row,
-              "duplicate",
-              menuProjectId,
-              menuSceneIndex,
-              menuSceneFile,
-            ),
+          onSelect: () => {
+            if (row.selectionTarget?.kind === "text") {
+              void applyManagedTextContentAction(
+                row,
+                { type: "duplicate-item", itemKey: row.selectionTarget.id },
+                menuProjectId,
+                menuSceneIndex,
+                menuSceneFile,
+              );
+            } else {
+              void applyCurrentContentPlan(
+                row,
+                "duplicate",
+                menuProjectId,
+                menuSceneIndex,
+                menuSceneFile,
+              );
+            }
+          },
         });
-      } else if (action === "delete" && deletePlan) {
+      } else if (action === "delete" && (deletePlan || managedTextTarget)) {
         if (items.length > 0) items.push("separator");
         items.push({
           id: `${row.id}:delete`,
@@ -7624,14 +8036,25 @@ export function SceneTab({
           icon: <SceneRowIcon id="content.delete" />,
           danger: true,
           confirmLabel: "Really delete?",
-          onSelect: () =>
-            void applyCurrentContentPlan(
-              row,
-              "delete",
-              menuProjectId,
-              menuSceneIndex,
-              menuSceneFile,
-            ),
+          onSelect: () => {
+            if (row.selectionTarget?.kind === "text") {
+              void applyManagedTextContentAction(
+                row,
+                { type: "remove-item", itemKey: row.selectionTarget.id },
+                menuProjectId,
+                menuSceneIndex,
+                menuSceneFile,
+              );
+            } else {
+              void applyCurrentContentPlan(
+                row,
+                "delete",
+                menuProjectId,
+                menuSceneIndex,
+                menuSceneFile,
+              );
+            }
+          },
         });
       }
     }
@@ -7659,7 +8082,7 @@ export function SceneTab({
         addDevice();
         break;
       case "text":
-        openDrill("text");
+        void addManagedTextOverviewItem();
         break;
       case "image":
         setImagePickError(null);

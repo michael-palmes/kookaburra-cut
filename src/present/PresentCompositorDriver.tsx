@@ -31,6 +31,7 @@ import {
   resolveAt,
   resolveTransitionParams,
 } from "../engine/sceneTimeline";
+import { useSceneStageFloors } from "../engine/stageRegistry";
 import { sampleLoopedSceneCamera, sampleLoopedSceneRig } from "./cameraLoop";
 import { type DerivedHold, derivePresentHold } from "./holdPoint";
 import { usePresentStore } from "./presentStore";
@@ -66,9 +67,10 @@ export function PresentCompositorDriver({
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
   const format = useFormat();
+  const sceneFloorYs = useSceneStageFloors(project.slots.length);
   const sceneTracks = useMemo(
-    () => buildSceneCameraTracks(project.sceneDocs, format),
-    [project, format],
+    () => buildSceneCameraTracks(project.sceneDocs, format, sceneFloorYs),
+    [project, format, sceneFloorYs],
   );
   const lightingTracks = useMemo(
     () => buildLightingTracks(project.sceneThemes, project.projectLighting, project.sceneDocs),

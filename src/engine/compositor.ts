@@ -62,7 +62,7 @@ import { previewDofOff, previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
 import { COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
 import type { SceneHostHandle } from "./sceneHostRegistry";
-import type { FrameLightingPlan } from "./sceneLighting";
+import { type FrameLightingPlan, lightingSampleForCompareSide } from "./sceneLighting";
 import {
   applySceneRenderState,
   type FrameSceneStatePlan,
@@ -762,17 +762,19 @@ export function renderComposited(
 
     // One camera pose (and so one dof) serves both comparison sides; each side renders through the dof side composer when the pose carries dof, so the divider blends two focus-graded halves.
     const sideDof = dofUnion && cameras?.solo?.dof ? cameras.solo.dof : null;
+    const soloLightingA = lightingSampleForCompareSide(lighting, "solo", "a");
+    const soloLightingB = lightingSampleForCompareSide(lighting, "solo", "b");
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     showOnly(idx);
     if (soloCompare.stateA) applyState(soloCompare.stateA);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
-    applyFrameLighting(scene, lighting?.solo);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null, soloLightingA);
+    applyFrameLighting(scene, soloLightingA);
     renderCompareSide(gl, scene, camera, sideDof, tgtA, size.x, size.y, dofUnion, dofOnly, hdrLane);
 
     showOnly(idx, "b");
     if (soloCompare.stateB) applyState(soloCompare.stateB);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
-    applyFrameLighting(scene, lighting?.solo);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null, soloLightingB);
+    applyFrameLighting(scene, soloLightingB);
     renderCompareSide(gl, scene, camera, sideDof, tgtB, size.x, size.y, dofUnion, dofOnly, hdrLane);
 
     // The dominant side's state backs the persistent-overlay draw (the transition dominance rule).
@@ -839,7 +841,7 @@ export function renderComposited(
     if (cameras?.solo) applyCameraPose(camera as PerspectiveCamera, cameras.solo);
     if (states?.solo) applyState(states.solo);
     // Camera/subject-space lights resolve AFTER the camera pose lands, per render target (a no-op when none are mounted); keyframed lighting applies last so its env overrides win.
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.solo ?? null, lighting?.solo);
     applyFrameLighting(scene, lighting?.solo);
     const overlay = overlays?.[idx] ?? null;
     if (overlay) {
@@ -917,11 +919,13 @@ export function renderComposited(
 
   const sideDofA = dofUnion && cameras?.a?.dof ? cameras.a.dof : null;
   if (planA && compA) {
+    const lightingA = lightingSampleForCompareSide(lighting, "a", "a");
+    const lightingB = lightingSampleForCompareSide(lighting, "a", "b");
     if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
     showOnly(tr.fromIndex);
     if (planA.stateA) applyState(planA.stateA);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
-    applyFrameLighting(scene, lighting?.a);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lightingA);
+    applyFrameLighting(scene, lightingA);
     renderCompareSide(
       gl,
       scene,
@@ -936,8 +940,8 @@ export function renderComposited(
     );
     showOnly(tr.fromIndex, "b");
     if (planA.stateB) applyState(planA.stateB);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
-    applyFrameLighting(scene, lighting?.a);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lightingB);
+    applyFrameLighting(scene, lightingB);
     renderCompareSide(
       gl,
       scene,
@@ -961,7 +965,7 @@ export function renderComposited(
     if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
     if (states?.a) applyState(states.a);
     // Target A resolves its own relative lights and its own sampled lighting: A and B use different cameras AND different scene-local times on a transition frame.
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.a ?? null, lighting?.a);
     applyFrameLighting(scene, lighting?.a);
     if (overlayA) {
       renderFramedScene(gl, scene, camera, st, overlayA, size.x, size.y, tgtA);
@@ -983,11 +987,13 @@ export function renderComposited(
 
   const sideDofB = dofUnion && cameras?.b?.dof ? cameras.b.dof : null;
   if (planB && compB) {
+    const lightingA = lightingSampleForCompareSide(lighting, "b", "a");
+    const lightingB = lightingSampleForCompareSide(lighting, "b", "b");
     if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
     showOnly(tr.toIndex);
     if (planB.stateA) applyState(planB.stateA);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
-    applyFrameLighting(scene, lighting?.b);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lightingA);
+    applyFrameLighting(scene, lightingA);
     renderCompareSide(
       gl,
       scene,
@@ -1002,8 +1008,8 @@ export function renderComposited(
     );
     showOnly(tr.toIndex, "b");
     if (planB.stateB) applyState(planB.stateB);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
-    applyFrameLighting(scene, lighting?.b);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lightingB);
+    applyFrameLighting(scene, lightingB);
     renderCompareSide(
       gl,
       scene,
@@ -1026,7 +1032,7 @@ export function renderComposited(
     showOnly(tr.toIndex);
     if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);
     if (states?.b) applyState(states.b);
-    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null);
+    applyRelativeLights(camera as PerspectiveCamera, cameras?.b ?? null, lighting?.b);
     applyFrameLighting(scene, lighting?.b);
     if (overlayB) {
       renderFramedScene(gl, scene, camera, st, overlayB, size.x, size.y, tgtB);
@@ -1047,7 +1053,7 @@ export function renderComposited(
   // The composite quad ignores `camera`; sets the dominant scene's pose here so both overlay branches below render the persistent layer with it, and the same for render state (which also feeds the dip-colour fallback in setCompositeUniforms below).
   if (cameras?.overlay) applyCameraPose(camera as PerspectiveCamera, cameras.overlay);
   if (states?.overlay) applyState(states.overlay);
-  applyRelativeLights(camera as PerspectiveCamera, cameras?.overlay ?? null);
+  applyRelativeLights(camera as PerspectiveCamera, cameras?.overlay ?? null, lighting?.overlay);
   applyFrameLighting(scene, lighting?.overlay);
 
   gl.toneMapping = prevToneMapping;

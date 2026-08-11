@@ -52,7 +52,10 @@ placement pose (float, spin and the intro presets ride between them), so
 sibling of the device root, which does. The drag flows back through React state
 (the clock re-renders `Device` every frame and would stomp a mutated group), and
 the proxy re-syncs only when the COMMITTED placement changes, so the handles hold
-the drag across the async sidecar write instead of snapping back for it.
+the drag across the async sidecar write instead of snapping back for it. The
+write result is acknowledged by commit id: success releases the matching local
+preview after the committed document lands, and failure restores only that
+device. A comparison's B side cannot consume the acknowledgement.
 
 `Gizmo2D` (`src/ui/gizmo/Gizmo2D.tsx`) draws a box per item, four corner resize
 handles, a rotate knob and the guides, and owns the pointer plumbing. It owns no
@@ -215,6 +218,9 @@ box's screen angle, so a tilt the scene itself authored stays out of the sidecar
 - Image motion is neutralised on all mounted editor sides while the Image domain
   owns the Stage, keeping comparison renders, outlines, hit areas and handles on
   the authored placement. Leaving the domain restores sampled motion immediately.
+- Device motion is neutralised on all mounted editor sides while the Device
+  domain owns the Stage for the same reason. Export always samples the authored
+  motion.
 - Other 2D hosts share `useGizmoDocWrite`: every tick previews in memory (no disk
   write, no history) so the item tracks the pointer, and pointer-up lands one
   `writeSceneDoc` plus one `pushHistory` against the doc the drag STARTED from, so
@@ -224,6 +230,11 @@ A press that never moved a handle costs nothing anywhere: the 3D hosts
 check a dragging flag set on the first `onObjectChange` (three-stdlib fires
 `mouseUp` for a zero-movement press too), and `Gizmo2D` ends with a null
 gesture.
+
+A grounded device stays clamped for X, Z, rotation and scale drags. Once a Y
+drag leaves the grounded start, the live preview follows the proxy and the one
+commit clears `placement.ground`. Both raw placement and layout-delta writes
+land at the exact visible Y.
 
 ## Export safety
 
@@ -235,9 +246,10 @@ Five independent guards keep gizmos out of exported pixels:
    selection and the section is open. The 2D layers mount only for a workspace
    project, with the matching section open, and never while exporting or in an
    autorun.
-2. **`exportPreamble` clears the selections** (objects, charts, devices, images)
-   explicitly, not incidentally, so a gizmo selected when an export starts cannot
-   reach a frame.
+2. **Export state is held before `exportPreamble` clears the selections**
+   (objects, charts, devices, images), so synchronous inspector repair cannot
+   reselect one before frame zero. The lifecycle transition restores inspector
+   selection after completion and releases safely on preload failure.
 3. **Layer discipline.** Outline brackets ride `HELPER_LAYER`, which the exporter
    disables on the camera for the whole run; the click-to-select mesh is
    `visible={false}`, which `WebGLRenderer.projectObject` returns on, so it never

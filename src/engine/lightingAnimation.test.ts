@@ -1,4 +1,4 @@
-import { AmbientLight, DirectionalLight, PointLight, Scene } from "three";
+import { AmbientLight, DirectionalLight, Group, PointLight, Scene } from "three";
 import { describe, expect, it } from "vitest";
 import { kelvinToHex } from "./kelvin";
 import {
@@ -74,5 +74,42 @@ describe("applyFrameLighting", () => {
       for (const cleanup of cleanups) cleanup();
     }
     expect(lightingAnimatableCount()).toBe(0);
+  });
+
+  it("moves a world fixture as one rigid rig and restores its base placement", () => {
+    const scene = new Scene();
+    const group = new Group();
+    const cleanup = registerLightingAnimatable("t:fixture", {
+      kind: "fixture",
+      sceneIndex: 0,
+      id: "tube",
+      base: {
+        id: "tube",
+        form: "tube",
+        size: [3, 0.06],
+        emissive: 3,
+        lightIntensity: 10,
+        placement: { mode: "point", position: [1, 2, 3] },
+      },
+      baseColor: "#ffffff",
+      instances: [],
+      meshes: [],
+      instanced: null,
+      pairedLights: [],
+      group,
+    });
+    try {
+      applyFrameLighting(scene, {
+        index: 0,
+        pose: {
+          fixtures: { tube: { placement: { mode: "point", position: [5, 6, 7] } } },
+        },
+      });
+      expect(group.position.toArray()).toEqual([5, 6, 7]);
+      applyFrameLighting(scene, { index: 0, pose: {} });
+      expect(group.position.toArray()).toEqual([1, 2, 3]);
+    } finally {
+      cleanup();
+    }
   });
 });

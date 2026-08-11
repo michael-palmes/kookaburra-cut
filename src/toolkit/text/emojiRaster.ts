@@ -198,6 +198,11 @@ export async function preloadEmojiRasters(
   for (const doc of sceneDocs) {
     const values = [
       ...Object.values(doc?.text ?? {}),
+      ...(doc?.managedText?.items.flatMap((item) => [
+        item.text,
+        item.icon,
+        ...(item.points ?? []).map((point) => point.text),
+      ]) ?? []),
       doc?.headerIcon,
       doc?.frame?.icon,
       doc?.frame?.chip?.icon,

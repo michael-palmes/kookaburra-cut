@@ -3,7 +3,6 @@ import type { RigDoc } from "../../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocObjectSpec } from "../../engine/sceneDocSchema";
 import { LAYERED_SCREENSHOT_AIM_ID, VIDEO_WINDOW_AIM_ID } from "../../engine/sceneRig";
 import { bakeRigBinding } from "../../engine/sceneRigConvert";
-import { DEVICE_CATALOG, isDeviceId } from "../../toolkit/device/catalog";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import type {
   SceneOverviewContentType,
@@ -11,6 +10,7 @@ import type {
   SceneOverviewSelectionTarget,
 } from "../inspectorOptions";
 import { nextNumberedContentId } from "./contentIds";
+import { duplicateDevice } from "./deviceEditorModel";
 import { deleteLegacyImage, duplicateImage, duplicateLegacyImage } from "./imageEditorModel";
 
 export type ContentMenuAction = "edit" | "duplicate" | "delete";
@@ -39,8 +39,6 @@ const CONTENT_TYPES = new Set<SceneOverviewContentType>([
   "comparison",
 ]);
 
-const DEVICE_STEP_X = 1.4;
-const LAPTOP_STEP_X = 3.6;
 export const OBJECT_DUPLICATE_NUDGE_X = 0.25;
 const TEXT_STYLE_SUFFIXES = [
   "Color",
@@ -56,10 +54,17 @@ export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuActio
   if (!CONTENT_TYPES.has(row.type as SceneOverviewContentType)) return [];
   const actions: ContentMenuAction[] = ["edit"];
   const kind = row.selectionTarget?.kind;
-  if (kind === "device" || kind === "image" || kind === "legacyImage" || kind === "object") {
+  if (
+    kind === "text" ||
+    kind === "device" ||
+    kind === "image" ||
+    kind === "legacyImage" ||
+    kind === "object"
+  ) {
     actions.push("duplicate");
   }
   if (
+    kind === "text" ||
     kind === "device" ||
     kind === "image" ||
     kind === "legacyImage" ||
@@ -92,24 +97,8 @@ export function planContentDuplicate(
       nextRowId: null,
       nextSelection: null,
       apply: (next) => {
-        const current = next.devices?.find((device) => device.id === target.id);
-        if (!current) return;
-        const id = nextNumberedContentId(
-          "d",
-          (next.devices ?? []).map((device) => device.id),
-        );
-        const copy = structuredClone(current);
-        copy.id = id;
-        const laptop = isDeviceId(current.model) && DEVICE_CATALOG[current.model].lid !== undefined;
-        const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (current.placement?.scale ?? 1);
-        const [px = 0, py = -0.3, pz = 0] = current.placement?.position ?? [];
-        const [rx = 0, ry = 0, rz = 0] = current.placement?.rotationDeg ?? [];
-        copy.placement = {
-          ...copy.placement,
-          position: [px === 0 ? step : -px, py, pz],
-          rotationDeg: [rx, -ry, rz],
-        };
-        next.devices = [...(next.devices ?? []), copy];
+        const id = duplicateDevice(next, target.id);
+        if (!id) return false;
         plan.nextRowId = `device:${id}`;
         plan.nextSelection = { kind: "device", id };
       },

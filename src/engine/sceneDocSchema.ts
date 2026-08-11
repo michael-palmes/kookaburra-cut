@@ -181,6 +181,36 @@ export type SceneDocDuration =
   | { mode: "manual" }
   | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
 
+export const MANAGED_TEXT_ITEM_TYPES = ["title", "subtitle", "bullets", "icon"] as const;
+export type SceneManagedTextItemType = (typeof MANAGED_TEXT_ITEM_TYPES)[number];
+
+export const MANAGED_TEXT_MARKERS = ["dot", "dash", "tick", "number", "none"] as const;
+export type SceneManagedTextMarker = (typeof MANAGED_TEXT_MARKERS)[number];
+
+export interface SceneManagedTextPoint {
+  key: string;
+  text: string;
+}
+
+/** One inspector-owned text item. Fields stay dormant when `type` changes, so switching back is lossless. */
+export interface SceneManagedTextItem {
+  key: string;
+  type: SceneManagedTextItemType;
+  text?: string;
+  points?: SceneManagedTextPoint[];
+  icon?: string;
+  marker?: SceneManagedTextMarker;
+  /** Extra vertical gap between bullet points, in world units. */
+  pointGap?: number;
+  /** Hanging-indent distance between a bullet marker and its copy, in world units. */
+  indent?: number;
+}
+
+/** Presence, including an empty `items` array, transfers scene-text ownership to the inspector. */
+export interface SceneManagedTextBlock {
+  items: SceneManagedTextItem[];
+}
+
 /** Orbit pose for the per-scene camera track. */
 export interface SceneDocCameraPose {
   target: [number, number, number];
@@ -404,6 +434,8 @@ export interface SceneDoc {
   textStyle?: Record<string, string | number>;
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
+  /** Inspector-owned ordered text. Absence preserves the authored renderer; present-empty intentionally renders no scene text. */
+  managedText?: SceneManagedTextBlock;
   devices?: SceneDocDeviceSpec[];
   /** Ordered, scene-owned still images that retain independent Stage and Overlay placements. */
   images?: SceneDocImageSpec[];
@@ -434,6 +466,8 @@ export interface SceneDoc {
   textAnimation?: TextAnimationSpec;
   /** Flips the resolution order for this scene (the panel's Override): text primitives ignore their own TSX animation props and follow the sidecar/theme spec instead (timing props like `from`/`to`/`outAt` still apply); written when the user overrides coded motion, absent means the normal prop-wins order. */
   textAnimationForce?: boolean;
+  /** Per-managed-item whole-spec motion exceptions, keyed by the item's stable key. */
+  textAnimationOverrides?: Record<string, TextAnimationSpec>;
   /** Partial lighting override: each present field fully replaces the layer below's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `sun` + `shadow` override rather than a whole new theme. Deep validation lives in `sceneLighting.ts`. */
   lighting?: LightingSpec;
   /** Overlay override: merges over the manifest's deck-wide `frame` for this scene (see `mergeFrameSpec`); `cutout` may be omitted to inherit the deck's shape, and `{enabled:false}` opts the scene out entirely. */
@@ -447,7 +481,7 @@ export interface SceneDoc {
   /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
   chart?: SceneDocChart;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
-  animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart";
+  animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
 }
 
 /** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
@@ -1324,6 +1358,83 @@ function validPresentLoop(raw: unknown): raw is SceneDocCameraPresentLoop {
   return true;
 }
 
+function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock | undefined {
+  if (!isRecord(raw) || !Array.isArray(raw.items)) {
+    console.warn(`[sceneDoc] ${source}: managedText needs an items array, dropped`);
+    return undefined;
+  }
+  const items: SceneManagedTextItem[] = [];
+  const itemKeys = new Set<string>();
+  for (const entry of raw.items as unknown[]) {
+    if (
+      !isRecord(entry) ||
+      typeof entry.key !== "string" ||
+      entry.key.trim().length === 0 ||
+      !MANAGED_TEXT_ITEM_TYPES.includes(entry.type as SceneManagedTextItemType)
+    ) {
+      console.warn(`[sceneDoc] ${source}: managedText item needs a key and known type, dropped`);
+      continue;
+    }
+    if (itemKeys.has(entry.key)) {
+      console.warn(`[sceneDoc] ${source}: duplicate managedText key "${entry.key}", dropped`);
+      continue;
+    }
+    itemKeys.add(entry.key);
+    const item: SceneManagedTextItem = {
+      key: entry.key,
+      type: entry.type as SceneManagedTextItemType,
+    };
+    if (typeof entry.text === "string") item.text = entry.text;
+    else if (entry.text !== undefined) {
+      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" text isn't a string`);
+    }
+    if (typeof entry.icon === "string") item.icon = entry.icon;
+    else if (entry.icon !== undefined) {
+      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" icon isn't a string`);
+    }
+    if (entry.points !== undefined) {
+      if (!Array.isArray(entry.points)) {
+        console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" points isn't an array`);
+      } else {
+        const points: SceneManagedTextPoint[] = [];
+        const pointKeys = new Set<string>();
+        for (const point of entry.points as unknown[]) {
+          if (
+            !isRecord(point) ||
+            typeof point.key !== "string" ||
+            point.key.trim().length === 0 ||
+            typeof point.text !== "string" ||
+            pointKeys.has(point.key)
+          ) {
+            console.warn(
+              `[sceneDoc] ${source}: managedText item "${entry.key}" point is malformed or duplicated, dropped`,
+            );
+            continue;
+          }
+          pointKeys.add(point.key);
+          points.push({ key: point.key, text: point.text });
+        }
+        item.points = points;
+      }
+    }
+    if (MANAGED_TEXT_MARKERS.includes(entry.marker as SceneManagedTextMarker)) {
+      item.marker = entry.marker as SceneManagedTextMarker;
+    } else if (entry.marker !== undefined) {
+      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" marker isn't known`);
+    }
+    if (finiteNum(entry.pointGap) && entry.pointGap >= 0) item.pointGap = entry.pointGap;
+    else if (entry.pointGap !== undefined) {
+      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" pointGap is invalid`);
+    }
+    if (finiteNum(entry.indent) && entry.indent >= 0) item.indent = entry.indent;
+    else if (entry.indent !== undefined) {
+      console.warn(`[sceneDoc] ${source}: managedText item "${entry.key}" indent is invalid`);
+    }
+    items.push(item);
+  }
+  return { items };
+}
+
 /** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */
 export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -1355,6 +1466,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       else console.warn(`[sceneDoc] ${source}: text["${key}"] isn't a string — dropped`);
     }
     out.text = text;
+  }
+  if (doc.managedText !== undefined) {
+    const managedText = parseManagedText(doc.managedText, source);
+    if (managedText) out.managedText = managedText;
   }
   if (
     typeof doc.textLayout === "object" &&
@@ -1495,6 +1610,16 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     if (textAnimation) out.textAnimation = textAnimation;
   }
   if (doc.textAnimationForce === true) out.textAnimationForce = true;
+  if (isRecord(doc.textAnimationOverrides)) {
+    const overrides: Record<string, TextAnimationSpec> = {};
+    for (const [key, value] of Object.entries(doc.textAnimationOverrides)) {
+      const spec = parseTextAnimationSpec(value, `${source} textAnimationOverrides.${key}`);
+      if (spec) overrides[key] = spec;
+    }
+    if (Object.keys(overrides).length > 0) out.textAnimationOverrides = overrides;
+  } else if (doc.textAnimationOverrides !== undefined) {
+    console.warn(`[sceneDoc] ${source}: textAnimationOverrides isn't an object, dropped`);
+  }
   if (doc.lighting !== undefined) {
     const lighting = normalizeLighting(doc.lighting, source);
     if (lighting) out.lighting = lighting;
@@ -1529,12 +1654,13 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     doc.animatedTrack === "camera" ||
     doc.animatedTrack === "layeredScreenshot" ||
     doc.animatedTrack === "compare" ||
-    doc.animatedTrack === "chart"
+    doc.animatedTrack === "chart" ||
+    doc.animatedTrack === "lighting"
   ) {
     out.animatedTrack = doc.animatedTrack;
   } else if (doc.animatedTrack !== undefined) {
     console.warn(
-      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare|chart, dropped`,
+      `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare|chart|lighting, dropped`,
     );
   }
   return out;

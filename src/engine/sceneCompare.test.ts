@@ -244,6 +244,20 @@ describe("deriveCompareBDoc", () => {
     expect(b?.images).not.toBe(base.images);
     expect(b?.images?.[0]).not.toBe(base.images[0]);
   });
+
+  it("inherits managed project-image icons without aliasing the managed block", () => {
+    const base = compareDoc({});
+    base.managedText = {
+      items: [{ key: "mark", type: "icon", icon: "assets/managed-mark.png" }],
+    };
+
+    const b = deriveCompareBDoc(base);
+
+    expect(b?.managedText).toEqual(base.managedText);
+    expect(b?.managedText).not.toBe(base.managedText);
+    expect(b?.managedText?.items[0]).not.toBe(base.managedText.items[0]);
+    expect(b?.managedText?.items[0]?.icon).toBe("assets/managed-mark.png");
+  });
 });
 
 describe("resolveCompareFrame", () => {

@@ -1,5 +1,5 @@
 import type { AspectName } from "../engine/format";
-import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
@@ -174,6 +174,8 @@ export interface SceneOverviewInput {
   lightingValue?: string;
   transitionValue?: string;
   fallbackText?: string;
+  /** Resolved managed or mounted virtual items. Present-empty intentionally suppresses fallback rows. */
+  textItems?: readonly SceneManagedTextItem[];
 }
 
 export interface SceneOverviewModel {
@@ -336,17 +338,43 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
 
   if (doc) {
     const textValue = textAlignmentValue(doc, frame);
-    for (const [key, value] of Object.entries(doc.text ?? {})) {
-      groupedRows.text.push({
-        id: `text:${key}`,
-        type: "text",
-        label: lineLabel(value, key),
-        value: textValue,
-        selectionTarget: { kind: "text", id: key },
-        openRoute: "text",
-      });
+    if (input.textItems !== undefined) {
+      for (const item of input.textItems) {
+        const copy =
+          item.type === "icon"
+            ? (item.icon ?? item.text ?? "")
+            : item.type === "bullets"
+              ? ((item.points ?? [])
+                  .map((point) => point.text)
+                  .filter(Boolean)
+                  .join(" · ") ?? "")
+              : (item.text ?? "");
+        groupedRows.text.push({
+          id: `text:${item.key}`,
+          type: "text",
+          label: lineLabel(copy, item.type === "icon" ? "Icon" : item.key),
+          value: textValue,
+          selectionTarget: { kind: "text", id: item.key },
+          openRoute: "text",
+        });
+      }
+    } else {
+      for (const [key, value] of Object.entries(doc.text ?? {})) {
+        groupedRows.text.push({
+          id: `text:${key}`,
+          type: "text",
+          label: lineLabel(value, key),
+          value: textValue,
+          selectionTarget: { kind: "text", id: key },
+          openRoute: "text",
+        });
+      }
     }
-    if (groupedRows.text.length === 0 && input.fallbackText?.trim()) {
+    if (
+      input.textItems === undefined &&
+      groupedRows.text.length === 0 &&
+      input.fallbackText?.trim()
+    ) {
       groupedRows.text.push({
         id: "text:fallback",
         type: "text",
@@ -688,6 +716,13 @@ export interface SceneDrillCapability {
 /** True for the screens that FOLLOW the playhead across a scene change: sections and settings whose editor reads only the scene's own doc, so the same screen over a new scene simply shows the new scene's values. Detail screens carrying a scene-scoped selection or session (device, overlay, comparison and object editors, media pickers, the transition boundary) are deliberately absent, so they pop back to their section. */
 export function drillFollowsScene(id: string, scene: SceneDrillCapability): boolean {
   if (id.startsWith("text.font:")) return scene.textKeys.includes(id.slice("text.font:".length));
+  if (id.startsWith("text.colour:")) {
+    return scene.textKeys.includes(id.slice("text.colour:".length));
+  }
+  if (id.startsWith("text.motion:")) {
+    return scene.textKeys.includes(id.slice("text.motion:".length));
+  }
+  if (id.startsWith("lighting.")) return scene.hasDoc;
   switch (id) {
     case "camera":
       return true;

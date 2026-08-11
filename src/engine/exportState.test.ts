@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isExporting, setExporting } from "./exportState";
+import { isExporting, setExporting, subscribeExporting, withExporting } from "./exportState";
 
 describe("exportState", () => {
   it("raises and releases a single hold", () => {
@@ -29,5 +29,44 @@ describe("exportState", () => {
     setExporting(true);
     expect(isExporting()).toBe(true);
     setExporting(false);
+  });
+
+  it("holds before synchronous preamble work and through frame zero", async () => {
+    const phases: Array<[string, boolean]> = [];
+
+    await withExporting(async () => {
+      phases.push(["selection clear", isExporting()]);
+      await Promise.resolve();
+      phases.push(["frame zero", isExporting()]);
+    });
+
+    expect(phases).toEqual([
+      ["selection clear", true],
+      ["frame zero", true],
+    ]);
+    expect(isExporting()).toBe(false);
+  });
+
+  it("releases the lifecycle hold when preparation fails", async () => {
+    await expect(
+      withExporting(async () => {
+        expect(isExporting()).toBe(true);
+        throw new Error("preload failed");
+      }),
+    ).rejects.toThrow("preload failed");
+    expect(isExporting()).toBe(false);
+  });
+
+  it("notifies subscribers only when the nested lifecycle enters or leaves export", () => {
+    const states: boolean[] = [];
+    const unsubscribe = subscribeExporting(() => states.push(isExporting()));
+
+    setExporting(true);
+    setExporting(true);
+    setExporting(false);
+    setExporting(false);
+    unsubscribe();
+
+    expect(states).toEqual([true, false]);
   });
 });

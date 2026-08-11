@@ -171,6 +171,32 @@ describe("ArrangeDevicesDrill", () => {
     });
   });
 
+  it("clears raw ground when Up-down writes a layout delta", () => {
+    const doc = multiDeviceDoc();
+    if (doc.devices?.[1]) doc.devices[1].placement = { ground: true };
+    const committed: SceneDoc[] = [];
+
+    renderToStaticMarkup(
+      <ArrangeDevicesDrill
+        {...idleProps(doc)}
+        selectedDeviceId="d2"
+        patchDoc={() => Promise.resolve()}
+        commitFromBaseline={(baseline, patch) => {
+          const next = structuredClone(baseline);
+          patch(next);
+          committed.push(next);
+          return Promise.resolve();
+        }}
+      />,
+    );
+    const upDown = capturedSliders.find((candidate) => candidate.label === "Up-down");
+    upDown?.onInput?.(0.7);
+    upDown?.onCommit(0.7);
+
+    expect(committed[0]?.deviceLayout?.devices?.d2?.offset).toEqual([0.1, 0.7, -0.3]);
+    expect(committed[0]?.devices?.[1].placement?.ground).toBeUndefined();
+  });
+
   it("writes a one-device nudge to raw placement without disturbing its rotation", () => {
     const doc: SceneDoc = {
       version: 1,

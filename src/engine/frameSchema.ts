@@ -258,7 +258,7 @@ export function parseFrameOverride(raw: unknown, source: string): FrameOverrideS
     const background = parsePanelBackground(raw.background, source);
     if (background !== undefined) out.background = background;
   }
-  if (typeof raw.icon === "string" && raw.icon.length > 0) out.icon = raw.icon;
+  if (typeof raw.icon === "string") out.icon = raw.icon;
   if (TEXT_ALIGNS.includes(raw.textAlign as SceneTextAlign)) {
     out.textAlign = raw.textAlign as SceneTextAlign;
   }

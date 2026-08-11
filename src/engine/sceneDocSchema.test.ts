@@ -323,7 +323,7 @@ describe("parseSceneDoc", () => {
 
   it("keeps only the known animatedTrack values", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    for (const track of ["camera", "layeredScreenshot", "compare", "chart"]) {
+    for (const track of ["camera", "layeredScreenshot", "compare", "chart", "lighting"]) {
       expect(parseSceneDoc({ version: 1, animatedTrack: track }, "test")?.animatedTrack).toBe(
         track,
       );

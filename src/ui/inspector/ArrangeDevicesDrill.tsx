@@ -237,13 +237,18 @@ function setNudgeAxis(next: SceneDoc, deviceId: string, axis: 0 | 1 | 2, value: 
       offset[axis] = value;
       delta.offset = offset;
     });
-    return;
+  } else {
+    mutatePlacement(next, deviceId, (placement) => {
+      const position: V3 = [...(placement.position ?? [0, 0, 0])];
+      position[axis] = value;
+      placement.position = position;
+    });
   }
-  mutatePlacement(next, deviceId, (placement) => {
-    const position: V3 = [...(placement.position ?? [0, 0, 0])];
-    position[axis] = value;
-    placement.position = position;
-  });
+  if (axis === 1) {
+    mutatePlacement(next, deviceId, (placement) => {
+      delete placement.ground;
+    });
+  }
 }
 
 function setNudgeScale(next: SceneDoc, deviceId: string, value: number) {

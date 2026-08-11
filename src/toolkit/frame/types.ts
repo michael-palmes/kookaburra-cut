@@ -91,7 +91,7 @@ export interface FrameSpec {
   cutout: FrameCutoutSpec;
   /** The panel fill: a theme token id, a hex override, or a `FramePanelBackground` object. Absent takes the neutral panel the theme suits. */
   background?: string | FramePanelBackground;
-  /** Emoji or asset path, drawn above the title. */
+  /** Emoji or asset path, drawn above the title. Empty explicitly hides a deck-inherited icon. */
   icon?: string;
   chip?: FrameChipSpec;
   /** Hosts the scene's panel-mounted chart in the column; absent means the panel is text only. */

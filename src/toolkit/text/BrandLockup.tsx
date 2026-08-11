@@ -1,4 +1,7 @@
+import { useContext, useId, useLayoutEffect } from "react";
 import { useFormat } from "../../engine/format";
+import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { AnimatedGroup } from "../group/AnimatedGroup";
 import { ImageCard } from "../media/ImageCard";
 import type { V3 } from "../types";
@@ -42,6 +45,29 @@ export function BrandLockup(props: BrandLockupProps) {
     iconWidth = 1.4,
   } = props;
   const format = useFormat();
+  const doc = useContext(SceneDocContext);
+  const sceneIndex = useSceneContext()?.index;
+  const iconMountId = useId();
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined || doc?.managedText !== undefined || !icon) return;
+    useTextKeyRegistry.getState().register(sceneIndex, "icon", iconMountId, {
+      resolvedText: "",
+      managedType: "icon",
+      icon,
+      styleCapable: true,
+      style: { size: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 },
+      codedMotion: {
+        in: "fade-scale",
+        out: "none",
+        staggerMs: 0,
+        durationMs: Math.max(1, to - from),
+        startScale: 0.9,
+        shine: true,
+      },
+    });
+    return () => useTextKeyRegistry.getState().unregister(sceneIndex, "icon", iconMountId);
+  }, [sceneIndex, doc?.managedText, icon, iconMountId, from, to]);
+  if (doc?.managedText !== undefined) return null;
 
   // A horizontal lockup is widest in 16:9; shrink it to fit square and portrait frames.
   const scale = format.aspect >= 1.4 ? 1 : format.aspect >= 0.9 ? 0.7 : 0.48;

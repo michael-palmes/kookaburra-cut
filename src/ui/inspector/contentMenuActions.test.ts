@@ -36,7 +36,7 @@ function apply(plan: ReturnType<typeof planContentDuplicate>, doc: SceneDoc): Sc
 
 describe("contentMenuActions", () => {
   const cases: Array<[SceneOverviewRowModel, ContentMenuAction[]]> = [
-    [row("text", { kind: "text", id: "title" }), ["edit"]],
+    [row("text", { kind: "text", id: "title" }), ["edit", "duplicate", "delete"]],
     [row("text"), ["edit"]],
     [row("device", { kind: "device", id: "d1" }), ["edit", "duplicate", "delete"]],
     [row("image", { kind: "legacyImage", id: "logo" }), ["edit", "duplicate", "delete"]],
@@ -81,6 +81,9 @@ describe("planContentDuplicate", () => {
         { id: "d2", model: "iphone-17-pro" },
       ],
       deviceLayout: { preset: "row", devices: { d1: { offset: [0.2, 0, 0] } } },
+      compare: {
+        b: { media: { d1: { src: "assets/after.mp4", kind: "video", startMs: 250 } } },
+      },
     };
     const plan = planContentDuplicate(row("device", { kind: "device", id: "d1" }), { doc });
     const next = apply(plan, doc);
@@ -92,7 +95,14 @@ describe("planContentDuplicate", () => {
       id: "d3",
       placement: { position: [-2, -0.3, 0.4], rotationDeg: [3, 14, 2], scale: 0.8 },
     });
-    expect(next.deviceLayout?.devices).toEqual({ d1: { offset: [0.2, 0, 0] } });
+    expect(next.deviceLayout?.devices).toEqual({
+      d1: { offset: [0.2, 0, 0] },
+      d3: { offset: [0.2, 0, 0] },
+    });
+    expect(next.compare?.b?.media).toEqual({
+      d1: { src: "assets/after.mp4", kind: "video", startMs: 250 },
+      d3: { src: "assets/after.mp4", kind: "video", startMs: 250 },
+    });
     expect(doc.devices).toHaveLength(2);
   });
 
