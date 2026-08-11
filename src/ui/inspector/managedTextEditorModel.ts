@@ -1,3 +1,4 @@
+import { frameTextAlign } from "../../engine/framePanelLayout";
 import {
   deriveManagedTextModel,
   materialiseManagedText,
@@ -9,6 +10,7 @@ import type {
   SceneManagedTextItem,
   SceneManagedTextItemType,
   SceneManagedTextMarker,
+  SceneTextAlign,
 } from "../../engine/sceneDocSchema";
 import type { TextAnimationSpec } from "../../theme/tokens";
 import type { FrameSpec } from "../../toolkit/frame/types";
@@ -65,6 +67,51 @@ export function managedTextVirtualOptionsForFrame(
 ): VirtualManagedTextOptions {
   if (!frame || frame.enabled === false || frame.claimsSceneText === false) return {};
   return { icon: frame.icon ?? "", iconKey: "icon" };
+}
+
+function claimingTextFrame(frame: FrameSpec | undefined): frame is FrameSpec {
+  return !!frame && frame.enabled !== false && frame.claimsSceneText !== false;
+}
+
+export function managedTextAlignment(doc: SceneDoc, frame?: FrameSpec): SceneTextAlign {
+  if (claimingTextFrame(frame)) return frameTextAlign(frame);
+  return doc.textLayout?.align ?? "center";
+}
+
+export function setManagedTextAlignment(
+  doc: SceneDoc,
+  align: SceneTextAlign,
+  frame?: FrameSpec,
+): SceneDoc | null {
+  if (managedTextAlignment(doc, frame) === align) return null;
+  const next = structuredClone(doc);
+  if (claimingTextFrame(frame)) {
+    next.frame = { ...(next.frame ?? {}), textAlign: align };
+  } else {
+    next.textLayout = { ...(next.textLayout ?? {}), align };
+  }
+  return next;
+}
+
+export function setLegacyManagedTextIcon(
+  doc: SceneDoc,
+  itemKey: string,
+  value: string | undefined,
+  frame?: FrameSpec,
+): SceneDoc | null {
+  if (itemKey !== "icon") return null;
+  const nextValue = value ?? "";
+  const current = claimingTextFrame(frame) ? (frame.icon ?? "") : (doc.headerIcon ?? "");
+  if (current === nextValue) return null;
+  const next = structuredClone(doc);
+  if (claimingTextFrame(frame)) {
+    next.frame = { ...(next.frame ?? {}), icon: nextValue };
+  } else if (value) {
+    next.headerIcon = value;
+  } else {
+    delete next.headerIcon;
+  }
+  return next;
 }
 
 const STYLE_SUFFIXES = [

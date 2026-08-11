@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useLightingEditStore } from "../../engine/lightingEditStore";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { Theme } from "../../theme/tokens";
+import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";
 import {
   effectiveLightingPoseForScope,
   LIGHTING_EASING_OPTIONS,
@@ -167,6 +168,31 @@ describe("LightingInspectorSection", () => {
     expect(html).toContain("changes");
     expect(html).toContain("lighting-thumbs/soft-studio.jpg");
     expect(html).toContain('data-lighting-screen="overview"');
+  });
+
+  it("counts changes against the resolved selected look", () => {
+    const inheritedTheme = structuredClone(theme);
+    if (!inheritedTheme.lighting) throw new Error("Expected theme lighting");
+    inheritedTheme.lighting.fills = [{ azimuthDeg: -120, elevationDeg: 20, intensity: 0.7 }];
+    const softStudio = LIGHTING_PRESETS.find((look) => look.id === "soft-studio");
+    if (!softStudio) throw new Error("Expected Soft studio");
+    const sceneDoc: SceneDoc = {
+      version: 1,
+      lighting: structuredClone({ ...softStudio.spec, preset: softStudio.id }),
+    };
+
+    const exact = renderToStaticMarkup(
+      <LightingInspectorSection {...props("overview", sceneDoc)} theme={inheritedTheme} />,
+    );
+    expect(exact).toContain("Tuned look");
+    expect(exact).not.toContain("1 change");
+
+    if (!sceneDoc.lighting?.sun) throw new Error("Expected preset sun");
+    sceneDoc.lighting.sun.intensity += 0.1;
+    const changed = renderToStaticMarkup(
+      <LightingInspectorSection {...props("overview", sceneDoc)} theme={inheritedTheme} />,
+    );
+    expect(changed).toContain("1 change");
   });
 
   it("keeps every tuned look actionable when the scene has no resolved lighting", () => {

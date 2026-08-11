@@ -4,6 +4,7 @@ import { resolveFixturePlan } from "../../engine/fixtures";
 import { registerLightingAnimatable } from "../../engine/lightingAnimation";
 import { sunPosition } from "../../engine/orbit";
 import {
+  AnimatedFixtureLightIdsContext,
   ProjectLightingContext,
   SceneDocContext,
   useSceneContext,
@@ -50,6 +51,7 @@ export function SceneStage({
 }) {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
+  const animatedFixtureLightIds = useContext(AnimatedFixtureLightIdsContext);
   const projectLighting = useContext(ProjectLightingContext);
   const lighting = useMemo(
     () => mergeLighting(theme.lighting, projectLighting ?? undefined, doc?.lighting),
@@ -130,6 +132,7 @@ export function SceneStage({
     const fixtures = resolveFixturePlan(
       lighting.fixtures,
       MAX_SCENE_LIGHTS - sunSlot - b.lights.length,
+      animatedFixtureLightIds,
     );
     if (b.droppedLights > 0) {
       console.warn(
@@ -152,7 +155,7 @@ export function SceneStage({
       );
     }
     return { ...b, fixtures };
-  }, [lighting, sunCasts, sceneIndex]);
+  }, [lighting, sunCasts, sceneIndex, animatedFixtureLightIds]);
 
   return (
     <SceneStageContext.Provider value={stageState}>

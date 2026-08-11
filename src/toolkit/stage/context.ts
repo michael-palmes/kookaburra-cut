@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 
 /** Stage state for the mounted scene: non-null inside a `<SceneStage>` whose theme (merged with the sidecar's staging overrides) actively lights the scene; created inside the canvas subtree (bridges within the r3f reconciler, the SceneContext rule). */
 export interface SceneStageState {
-  /** True when the stage's key light casts real shadow maps (the hybrid decision: a floor/backdrop is present AND the shadow technique is "map"); staged primitives set `castShadow`/`receiveShadow` from this, and `Device`'s procedural blob shadow defaults to "none" so the two systems never double-shadow. */
+  /** True when the stage casts real shadow maps; staged primitives participate while their presentation shadows remain independent. */
   mapShadows: boolean;
   /** World y of the staged floor plane when the resolved backdrop is a floor, else null (nothing to ground on). */
   floorY: number | null;

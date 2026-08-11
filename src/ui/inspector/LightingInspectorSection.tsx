@@ -287,6 +287,8 @@ export function LightingInspectorSection({
   };
   const resolveNext = (next: SceneDoc) =>
     resolveLighting(theme.lighting, projectLighting, next.lighting);
+  const resolveLook = (look: LightingSpec) =>
+    resolveLighting(theme.lighting, projectLighting, look) ?? look;
   const writeLighting = (mutate: (lighting: LightingSpec) => void) => (next: SceneDoc) => {
     const lighting = structuredClone(next.lighting ?? {});
     mutate(lighting);
@@ -364,7 +366,7 @@ export function LightingInspectorSection({
   if (screen === "overview") {
     const selectedLook = LIGHTING_PRESETS.find((look) => look.id === doc.lighting?.preset);
     const changeCount = selectedLook
-      ? lightingLookChangeCount(resolved ?? doc.lighting, selectedLook.spec)
+      ? lightingLookChangeCount(resolved, resolveLook(selectedLook.spec))
       : 0;
     const sun = resolved?.sun;
     const sunEnabled = !!sun && sun.enabled !== false;
@@ -396,7 +398,12 @@ export function LightingInspectorSection({
                 selected={doc.lighting?.preset === look.id}
                 onSelect={() =>
                   commit((next) => {
-                    next.lighting = applyLightingLook(next.lighting, look.spec, look.id);
+                    next.lighting = applyLightingLook(
+                      next.lighting,
+                      look.spec,
+                      look.id,
+                      resolveLook(look.spec),
+                    );
                   })
                 }
               />

@@ -163,7 +163,7 @@ describe("deriveSceneOverview", () => {
     );
     expect(rows["text:headline"]).toMatchObject({
       label: "Your App · 3.1.5",
-      value: "Centre",
+      value: "Left",
       selectionTarget: { kind: "text", id: "headline" },
       openRoute: "text",
     });

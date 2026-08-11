@@ -705,9 +705,9 @@ camera exactly:
   a material only when a shadow-CASTING light lights it; and the only casting
   light is `<SceneStage>`'s key, which casts ONLY when the scene stages a
   floor/backdrop AND the theme's shadow technique is `"map"`. Every unstaged
-  project is therefore untouched; the procedural blob shadows remain the default,
-  and `Device`'s blob flips to `"none"` on map-shadowed stages so the two systems
-  never stack.
+  project is therefore untouched. Procedural presentation shadows remain
+  independent: `Device` still defaults to `"soft"` while its meshes also
+  cast and receive real shadows when the map rig is active.
 - **The shadow rig is export contract.** Theme tokens (mapSize, softness→radius,
   bias, catcher opacity/tint) plus the fixed constants in SceneStage
   (LIGHT_RADIUS, the ortho shadow frustum ±8 / near 0.5 / far 30, radius scale 8,

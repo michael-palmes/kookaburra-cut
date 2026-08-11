@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { brandLockupManagedMotion } from "../toolkit/text/brandLockupLayout";
 import { deriveManagedTextModel, materialiseManagedText } from "./managedText";
 import {
   codedTextMotionNames,
@@ -115,6 +116,58 @@ describe("mounted text takeover registration", () => {
       iconOffsetY: 0,
       iconRotationDeg: 0,
     });
+  });
+
+  it("retains a BrandLockup parent reveal on its title and subtitle after takeover", () => {
+    const motion = brandLockupManagedMotion(200, 1100);
+    const registry = useTextKeyRegistry.getState();
+    registry.register(1, "title", "brand-title", {
+      resolvedText: "Kookaburra Cut",
+      codedMotion: motion,
+    });
+    registry.register(1, "subtitle", "brand-subtitle", {
+      resolvedText: "1.0",
+      codedMotion: motion,
+    });
+
+    const takenOver = materialiseManagedText(
+      { version: 1 },
+      deriveManagedTextModel({ version: 1 }, virtualManagedTextRegistrations(1)),
+    );
+
+    expect(takenOver.managedText?.items.map(({ key }) => key)).toEqual(["title", "subtitle"]);
+    expect(takenOver.textAnimationOverrides).toEqual({ title: motion, subtitle: motion });
+  });
+
+  it("excludes embedded and managed render mounts from virtual takeover", () => {
+    const registry = useTextKeyRegistry.getState();
+    registry.register(4, "beforeLabel", "compare-chip", {
+      resolvedText: "Before",
+      codedMotion: { in: "fade", out: "none", staggerMs: 0 },
+      managedTextRole: "embedded",
+    });
+    registry.register(4, "ls-caption", "screenshot-copy", {
+      resolvedText: "Embedded caption",
+      managedTextRole: "embedded",
+    });
+    registry.register(4, "ls-caption", "screenshot-primitive", {
+      resolvedText: "Embedded caption",
+      style: { color: "text", font: "Inter@500" },
+      managedTextRole: "embedded",
+    });
+    registry.register(4, "managed-title", "managed-renderer", {
+      resolvedText: "Managed",
+      codedMotion: { in: "fade-up", out: "none", staggerMs: 0 },
+      managedTextRole: "managed",
+    });
+    registry.register(4, "title", "scene-copy", {
+      resolvedText: "Scene title",
+      managedTextRole: "scene",
+    });
+
+    expect(textKeysConsumedBy(4)).toEqual(["beforeLabel", "ls-caption", "managed-title", "title"]);
+    expect(virtualManagedTextRegistrations(4)).toEqual([{ key: "title", text: "Scene title" }]);
+    expect(codedTextMotionNames(4)).toEqual([]);
   });
 
   it("removes one mount's metadata without dropping a surviving copy consumer", () => {

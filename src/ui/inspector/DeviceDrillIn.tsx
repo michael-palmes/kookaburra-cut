@@ -11,10 +11,11 @@ import {
   type DeviceId,
   isDeviceId,
 } from "../../toolkit/device/catalog";
-import type {
-  DeviceMotionPreset,
-  DevicePlacement,
-  DeviceShadowMode,
+import {
+  type DeviceMotionPreset,
+  type DevicePlacement,
+  type DeviceShadowMode,
+  effectiveDeviceShadowMode,
 } from "../../toolkit/device/Device";
 import type { V3 } from "../../toolkit/types";
 import { ColourPicker } from "../colour/ColourPicker";
@@ -53,7 +54,6 @@ export interface DeviceDrillInProps {
   backLabel?: string;
   screenMediaPreviewUrl?: string;
   screenMediaDetail?: string;
-  mapShadows?: boolean;
   settingsDisabled?: boolean;
   duplicateDisabled?: boolean;
   removeDisabled?: boolean;
@@ -125,13 +125,6 @@ const LAYOUT_LABELS = {
   hero: "Hero",
   "depth-pair": "Depth",
 } as const;
-
-export function effectiveDeviceShadowMode(
-  shadow: DeviceShadowMode | undefined,
-  mapShadows: boolean,
-): DeviceShadowMode {
-  return shadow ?? (mapShadows ? "none" : "soft");
-}
 
 export function deviceNavigationFocusTarget(
   direction: "previous" | "next",
@@ -510,7 +503,6 @@ export function DeviceDrillIn({
   backLabel = "Scene",
   screenMediaPreviewUrl,
   screenMediaDetail,
-  mapShadows = false,
   settingsDisabled = false,
   duplicateDisabled = false,
   removeDisabled = false,
@@ -1014,7 +1006,7 @@ export function DeviceDrillIn({
                   key={shadow.id}
                   label={shadow.label}
                   image={optionPreviewStill(`shadow-${shadow.id}`)}
-                  selected={effectiveDeviceShadowMode(device.shadow, mapShadows) === shadow.id}
+                  selected={effectiveDeviceShadowMode(device.shadow) === shadow.id}
                   onSelect={() =>
                     patchDevice((_next, candidate) => {
                       candidate.shadow = shadow.id;

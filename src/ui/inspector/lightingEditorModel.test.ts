@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
+import { resolveLighting } from "../../engine/sceneLighting";
 import type { LightingSpec } from "../../theme/tokens";
 import {
   adjacentLightingKey,
@@ -145,6 +146,45 @@ describe("lighting editor model", () => {
     expect(next.preset).toBe("soft-studio");
     expect(next.animationEnabled).toBe(false);
     expect(next.keys?.[0].pose).toEqual({ ambient: 0.2, lights: { fill: { intensity: 5 } } });
+  });
+
+  it("uses the resolved look to retain inherited key targets and drop replaced ones", () => {
+    const inheritedFixture = {
+      id: "inherited-fixture",
+      form: "tube" as const,
+      size: [2, 0.05] as [number, number],
+      emissive: 2,
+      lightIntensity: 8,
+      placement: { mode: "point" as const, position: [0, 2, 0] as [number, number, number] },
+    };
+    const compatibleRig = resolveLighting(undefined, { fixtures: [inheritedFixture] }, look);
+    if (!compatibleRig) throw new Error("Expected a resolved look");
+    const next = applyLightingLook(
+      {
+        keys: [
+          {
+            id: "k1",
+            tMs: 0,
+            pose: {
+              lights: { fill: { intensity: 5 }, replaced: { intensity: 9 } },
+              fixtures: {
+                "inherited-fixture": { emissive: 4 },
+                replaced: { emissive: 6 },
+              },
+            },
+          },
+        ],
+      },
+      look,
+      "soft-studio",
+      compatibleRig,
+    );
+
+    expect(next.fixtures).toBeUndefined();
+    expect(next.keys?.[0].pose).toEqual({
+      lights: { fill: { intensity: 5 } },
+      fixtures: { "inherited-fixture": { emissive: 4 } },
+    });
   });
 
   it("filters a captured pose to one light or fixture", () => {

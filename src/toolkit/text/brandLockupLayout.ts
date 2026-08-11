@@ -1,3 +1,5 @@
+import type { TextAnimationSpec } from "../../theme/tokens";
+
 /** Advance in em for the overflow fit; deliberately wide so estimates err toward shrinking, never clipping. */
 const FIT_ADVANCE_EM = 0.55;
 /** Typical advance in em for centring; wide estimates here would lean the block left. */
@@ -14,6 +16,18 @@ export interface LockupLayout {
   fit: number;
   /** Estimated block width, world units (drives the shine extent). */
   width: number;
+}
+
+/** Effective group reveal retained on each text row if the inspector takes ownership. */
+export function brandLockupManagedMotion(from: number, to: number): TextAnimationSpec {
+  return {
+    in: "fade-scale",
+    out: "none",
+    staggerMs: 0,
+    durationMs: Math.max(1, to - from),
+    startScale: 0.9,
+    shine: true,
+  };
 }
 
 /** Longest line's character count; sidecar strings may carry `\n`. */

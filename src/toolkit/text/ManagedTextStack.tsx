@@ -14,7 +14,13 @@ export function ManagedTextStack({ region }: ManagedTextStackProps) {
   const doc = useSceneDoc();
   const format = useFormat();
   const theme = useTheme();
-  const plan = resolveManagedTextRenderPlan(doc, format, theme.typography.scale, region);
+  const plan = resolveManagedTextRenderPlan(
+    doc,
+    format,
+    theme.typography.scale,
+    region,
+    theme.textAnimation,
+  );
   if (!plan.ownsSceneText || plan.nodes.length === 0) return null;
   return (
     <>

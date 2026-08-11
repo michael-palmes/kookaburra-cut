@@ -1,4 +1,5 @@
 import type { AspectName } from "../engine/format";
+import { frameTextAlign } from "../engine/framePanelLayout";
 import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
@@ -220,9 +221,10 @@ function lineLabel(value: string, fallback: string): string {
 }
 
 function textAlignmentValue(doc: SceneDoc, frame: FrameSpec | undefined): string {
-  const alignment = frame?.claimsSceneText
-    ? (frame.textAlign ?? (frame.cutout.shape === "none" ? "center" : "left"))
-    : (doc.textLayout?.align ?? "center");
+  const alignment =
+    frame && frame.enabled !== false && frame.claimsSceneText !== false
+      ? frameTextAlign(frame)
+      : (doc.textLayout?.align ?? "center");
   return alignment === "center" ? "Centre" : sentenceCase(alignment);
 }
 

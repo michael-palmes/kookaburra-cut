@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { TextAnimationSpec } from "../theme/tokens";
-import type { VirtualManagedTextRegistration } from "./managedText";
+import type { ManagedTextRenderRole, VirtualManagedTextRegistration } from "./managedText";
 import type { SceneManagedTextItemType } from "./sceneDocSchema";
 
 export interface TextKeyResolvedStyle {
@@ -21,6 +21,8 @@ export interface TextKeyMountRegistration {
   styleCapable?: boolean;
   style?: TextKeyResolvedStyle;
   codedMotion?: TextAnimationSpec;
+  /** Only scene-level registrations may become rows in a managed takeover. */
+  managedTextRole?: ManagedTextRenderRole;
 }
 
 interface TextKeyEntry {
@@ -65,6 +67,17 @@ function mergedEntry(mounts: Record<string, TextKeyMountRegistration>): TextKeyE
     ...(style !== undefined ? { style } : {}),
     ...(codedMotion !== undefined ? { codedMotion } : {}),
   };
+}
+
+function sceneOwnedEntry(entry: TextKeyEntry): TextKeyEntry {
+  return mergedEntry(
+    Object.fromEntries(
+      Object.entries(entry.mounts).filter(
+        ([, registration]) =>
+          registration.managedTextRole === undefined || registration.managedTextRole === "scene",
+      ),
+    ),
+  );
 }
 
 /** Mounted text metadata is editor-only. Export never reads this store. */
@@ -137,22 +150,26 @@ export function textKeyStyleCapable(index: number): Set<string> {
 export function virtualManagedTextRegistrations(index: number): VirtualManagedTextRegistration[] {
   const scene = useTextKeyRegistry.getState().keys[index] ?? {};
   return Object.entries(scene)
-    .filter(([, entry]) => entry.resolvedText !== undefined || entry.icon !== undefined)
-    .map(([key, entry]) => ({
-      key,
-      text: entry.resolvedText ?? "",
-      ...(entry.managedType ? { type: entry.managedType } : {}),
-      ...(entry.icon !== undefined ? { icon: entry.icon } : {}),
-      ...(entry.style ? { style: structuredClone(entry.style) } : {}),
-      ...(entry.codedMotion ? { motion: structuredClone(entry.codedMotion) } : {}),
-    }));
+    .map(([key, entry]) => {
+      const sceneEntry = sceneOwnedEntry(entry);
+      if (sceneEntry.resolvedText === undefined && sceneEntry.icon === undefined) return null;
+      return {
+        key,
+        text: sceneEntry.resolvedText ?? "",
+        ...(sceneEntry.managedType ? { type: sceneEntry.managedType } : {}),
+        ...(sceneEntry.icon !== undefined ? { icon: sceneEntry.icon } : {}),
+        ...(sceneEntry.style ? { style: structuredClone(sceneEntry.style) } : {}),
+        ...(sceneEntry.codedMotion ? { motion: structuredClone(sceneEntry.codedMotion) } : {}),
+      } satisfies VirtualManagedTextRegistration;
+    })
+    .filter((entry): entry is VirtualManagedTextRegistration => entry !== null);
 }
 
 /** Stable names for the mounted lines whose own TSX motion can outrank inspector motion. */
 export function codedTextMotionNames(index: number): string[] {
   const scene = useTextKeyRegistry.getState().keys[index] ?? {};
   return Object.entries(scene)
-    .filter(([, entry]) => entry.codedMotion !== undefined)
+    .filter(([, entry]) => sceneOwnedEntry(entry).codedMotion !== undefined)
     .map(([key]) =>
       key
         .split(/[-_]/)

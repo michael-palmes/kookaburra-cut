@@ -77,7 +77,6 @@ import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
-import { mergeLighting } from "../../theme/schema";
 import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import {
   DEVICE_CATALOG,
@@ -120,7 +119,6 @@ import {
   type ShaderBackgroundPreset,
   themePresetAnchor,
 } from "../../toolkit/stage/shaders";
-import { stageMapShadowsEnabled } from "../../toolkit/stage/shadowRig";
 import {
   emojiRasterVersion,
   subscribeEmojiRasters,
@@ -143,7 +141,11 @@ import {
   type SceneSectionModel,
   sceneSections,
 } from "../inspectorOptions";
-import { sceneInspectorScreenTitle } from "../inspectorTitles";
+import {
+  chartInspectorScreenForRoute,
+  chartSeriesInspectorRoute,
+  sceneInspectorScreenTitle,
+} from "../inspectorTitles";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
 import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
@@ -177,10 +179,14 @@ import {
   applyManagedTextStructuralAction,
   type ManagedTextStructuralAction,
   type ManagedTextTakeoverRequest,
+  managedTextAlignment,
   managedTextVirtualOptionsForFrame,
   performManagedTextStructuralAction,
+  setLegacyManagedTextIcon,
+  setManagedTextAlignment,
 } from "./managedTextEditorModel";
 import { TextMotionDrill } from "./TextMotionDrill";
+import { loadTextIconRecents, storeTextIconRecent } from "./textIconRecents";
 
 /** Sideways step between newly added phones. */
 const DEVICE_STEP_X = 1.4;
@@ -211,32 +217,6 @@ const LIGHTING_ROUTE_FOR_SCREEN: Record<LightingInspectorScreen, string> = {
   shadows: "lighting.shadows",
   animation: "lighting.animation",
 };
-
-const TEXT_ICON_RECENTS_KEY = "kookaburra:text-icon-recents";
-
-function loadTextIconRecents(): string[] {
-  try {
-    const stored = JSON.parse(localStorage.getItem(TEXT_ICON_RECENTS_KEY) ?? "[]");
-    return Array.isArray(stored)
-      ? stored.filter((value): value is string => typeof value === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function storeTextIconRecent(value: string): string[] {
-  const next = [value, ...loadTextIconRecents().filter((candidate) => candidate !== value)].slice(
-    0,
-    10,
-  );
-  try {
-    localStorage.setItem(TEXT_ICON_RECENTS_KEY, JSON.stringify(next));
-  } catch {
-    return next;
-  }
-  return next;
-}
 
 function overwriteSceneDoc(target: SceneDoc, replacement: SceneDoc): void {
   const record = target as unknown as Record<string, unknown>;
@@ -2174,7 +2154,14 @@ export function SceneTab({
   const textImageResolverRef = useRef<((value: string | undefined) => void) | null>(null);
   const textTakeoverRef = useRef<symbol | null>(null);
   const [textEmojiDraft, setTextEmojiDraft] = useState("");
-  const [textIconRecents, setTextIconRecents] = useState(loadTextIconRecents);
+  const [textIconRecentState, setTextIconRecentState] = useState(() => ({
+    projectId: project.id,
+    values: loadTextIconRecents(project.id),
+  }));
+  const textIconRecents =
+    textIconRecentState.projectId === project.id
+      ? textIconRecentState.values
+      : loadTextIconRecents(project.id);
   const [textTakeoverBusy, setTextTakeoverBusy] = useState(false);
   const comparisonLightingBaselineARef = useRef<SceneDoc["lighting"] | null>(null);
   useEffect(() => {
@@ -2234,7 +2221,7 @@ export function SceneTab({
     });
   }, []);
   useEffect(() => {
-    void project.id;
+    setTextIconRecentState({ projectId: project.id, values: loadTextIconRecents(project.id) });
     return () => {
       textEmojiResolverRef.current?.(undefined);
       textEmojiResolverRef.current = null;
@@ -2349,15 +2336,6 @@ export function SceneTab({
   const [backingTabOverride, setBackingTabOverride] = useState<"gradient" | "shader" | null>(null);
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
-  const resolvedSceneLighting = mergeLighting(
-    (sceneTheme ?? project.theme).lighting,
-    project.projectLighting,
-    doc?.lighting,
-  );
-  const deviceMapShadows = stageMapShadowsEnabled(
-    stagedBackdrop !== null && stagedBackdrop !== "none",
-    resolvedSceneLighting?.shadow,
-  );
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
@@ -3090,6 +3068,86 @@ export function SceneTab({
     });
     setOverviewSelection({ sceneIndex, rowId: "chart", domain: "chart" });
     jumpDrill(["chart.edit"]);
+  };
+  const addChartSeries = () => {
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    let createdId: string | null = null;
+    void patchDocResult(
+      (next) => {
+        if (!next.chart) return false;
+        const rows = next.chart.data.series;
+        const used = new Set(rows.map((series) => series.id));
+        let n = rows.length + 1;
+        while (used.has(`s${n}`)) n += 1;
+        createdId = `s${n}`;
+        next.chart.data = {
+          ...next.chart.data,
+          series: [
+            ...rows,
+            {
+              id: createdId,
+              name: `Series ${rows.length + 1}`,
+              values: next.chart.data.categories.map(() => 0),
+            },
+          ],
+        };
+      },
+      { history: "chart series" },
+    ).then((succeeded) => {
+      const id = createdId;
+      const currentUi = useUiStore.getState();
+      if (
+        !succeeded ||
+        !id ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        currentUi.inspectorNavigation.sequence !== expectedNavigationSequence ||
+        currentUi.inspector.tab !== "scene" ||
+        currentUi.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        return;
+      }
+      openDrill(chartSeriesInspectorRoute(id));
+    });
+  };
+  const removeChartSeries = (seriesId: string) => {
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    void patchDocResult(
+      (next) => {
+        if (!next.chart || next.chart.data.series.length <= 1) return false;
+        const series = [...next.chart.data.series];
+        const index = series.findIndex((candidate) => candidate.id === seriesId);
+        if (index < 0) return false;
+        series.splice(index, 1);
+        next.chart.data = { ...next.chart.data, series };
+      },
+      { history: "chart series" },
+    ).then((succeeded) => {
+      const currentUi = useUiStore.getState();
+      if (
+        !succeeded ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        currentUi.inspectorNavigation.sequence !== expectedNavigationSequence ||
+        currentUi.inspector.tab !== "scene" ||
+        currentUi.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        return;
+      }
+      closeDrill();
+    });
   };
   const addOverlay = () =>
     void patchDoc((next) => {
@@ -5783,22 +5841,7 @@ export function SceneTab({
     );
   }
   if (drillIn === "text" && doc) {
-    const mutateLegacyIcon = (
-      source: SceneDoc,
-      itemKey: string,
-      value: string | undefined,
-    ): SceneDoc | null => {
-      if (itemKey !== "icon") return null;
-      const next = structuredClone(source);
-      const frame = mergeFrameSpec(project.deckFrame, source.frame);
-      if (frame && frame.enabled !== false) {
-        next.frame = { ...(next.frame ?? {}) };
-        if (value) next.frame.icon = value;
-        else next.frame.icon = "";
-      } else if (value) next.headerIcon = value;
-      else delete next.headerIcon;
-      return next;
-    };
+    const resolvedTextFrame = (source: SceneDoc) => mergeFrameSpec(project.deckFrame, source.frame);
     return (
       <>
         <ManagedTextDrill
@@ -5827,8 +5870,19 @@ export function SceneTab({
           }
           onOpenEmoji={chooseTextEmoji}
           onChooseImage={chooseTextImage}
-          onIconCommitted={(value) => setTextIconRecents(storeTextIconRecent(value))}
-          mutateIcon={mutateLegacyIcon}
+          onIconCommitted={(value) =>
+            setTextIconRecentState({
+              projectId: project.id,
+              values: storeTextIconRecent(project.id, value),
+            })
+          }
+          alignment={managedTextAlignment(doc, resolvedTextFrame(doc))}
+          mutateAlignment={(source, align) =>
+            setManagedTextAlignment(source, align, resolvedTextFrame(source))
+          }
+          mutateIcon={(source, itemKey, value) =>
+            setLegacyManagedTextIcon(source, itemKey, value, resolvedTextFrame(source))
+          }
           notice={error}
           disabled={textTakeoverBusy}
         />
@@ -7057,7 +7111,6 @@ export function SceneTab({
           backLabel={backLabel}
           screenMediaPreviewUrl={screenMediaPreviewUrl}
           screenMediaDetail={screenMediaDetail}
-          mapShadows={deviceMapShadows}
           onBack={closeDrill}
           onSelectDevice={(id) => {
             pickDevice(id);
@@ -7284,15 +7337,21 @@ export function SceneTab({
     );
   }
 
-  if (drillIn === "chart.edit" && doc?.chart) {
+  const chartInspectorScreen = chartInspectorScreenForRoute(drillIn);
+  if (chartInspectorScreen && doc?.chart) {
     return (
       <ChartDrillIn
         doc={doc}
         theme={sceneTheme ?? project.theme}
         hasPanel={sceneFrame !== undefined}
         panelHostsChart={!!sceneFrame?.chart && sceneFrame.chart.enabled !== false}
+        screen={chartInspectorScreen}
         backLabel={backLabel}
         onBack={closeDrill}
+        onAddSeries={addChartSeries}
+        onOpenFont={() => openDrill("chart.font")}
+        onOpenSeries={(seriesId) => openDrill(chartSeriesInspectorRoute(seriesId))}
+        onRemoveSeries={removeChartSeries}
         onOpenPosition={() => openDrill("chart.position")}
         patchDoc={patchDoc}
         commitFromBaseline={commitFromBaseline}

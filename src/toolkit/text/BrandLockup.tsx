@@ -1,4 +1,4 @@
-import { useContext, useId, useLayoutEffect } from "react";
+import { useContext, useId, useLayoutEffect, useMemo } from "react";
 import { useFormat } from "../../engine/format";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
@@ -6,7 +6,7 @@ import { AnimatedGroup } from "../group/AnimatedGroup";
 import { ImageCard } from "../media/ImageCard";
 import type { V3 } from "../types";
 import { AnimatedHeadline } from "./AnimatedHeadline";
-import { lockupLayout } from "./brandLockupLayout";
+import { brandLockupManagedMotion, lockupLayout } from "./brandLockupLayout";
 
 /** Title label size, world units. */
 const TITLE_SIZE = 0.36;
@@ -48,6 +48,7 @@ export function BrandLockup(props: BrandLockupProps) {
   const doc = useContext(SceneDocContext);
   const sceneIndex = useSceneContext()?.index;
   const iconMountId = useId();
+  const managedMotion = useMemo(() => brandLockupManagedMotion(from, to), [from, to]);
   useLayoutEffect(() => {
     if (sceneIndex === undefined || doc?.managedText !== undefined || !icon) return;
     useTextKeyRegistry.getState().register(sceneIndex, "icon", iconMountId, {
@@ -56,17 +57,10 @@ export function BrandLockup(props: BrandLockupProps) {
       icon,
       styleCapable: true,
       style: { size: 1, offsetX: 0, offsetY: 0, rotationDeg: 0 },
-      codedMotion: {
-        in: "fade-scale",
-        out: "none",
-        staggerMs: 0,
-        durationMs: Math.max(1, to - from),
-        startScale: 0.9,
-        shine: true,
-      },
+      codedMotion: managedMotion,
     });
     return () => useTextKeyRegistry.getState().unregister(sceneIndex, "icon", iconMountId);
-  }, [sceneIndex, doc?.managedText, icon, iconMountId, from, to]);
+  }, [sceneIndex, doc?.managedText, icon, iconMountId, managedMotion]);
   if (doc?.managedText !== undefined) return null;
 
   // A horizontal lockup is widest in 16:9; shrink it to fit square and portrait frames.
@@ -105,6 +99,7 @@ export function BrandLockup(props: BrandLockupProps) {
           textAlign="left"
           color={props.titleColor}
           defaultColor="muted"
+          managedTextCodedMotion={managedMotion}
         />
         <AnimatedHeadline
           text={subtitle}
@@ -117,6 +112,7 @@ export function BrandLockup(props: BrandLockupProps) {
           anchorX="left"
           textAlign="left"
           color={props.subtitleColor}
+          managedTextCodedMotion={managedMotion}
         />
       </AnimatedGroup>
     </group>

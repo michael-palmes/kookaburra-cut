@@ -109,11 +109,15 @@ export function applyLightingLook(
   current: LightingSpec | undefined,
   look: LightingSpec,
   presetId: string,
+  compatibleRig: LightingSpec = look,
 ): LightingSpec {
   const next: LightingSpec = structuredClone({ ...look, preset: presetId });
   if (current?.animationEnabled !== undefined) next.animationEnabled = current.animationEnabled;
   if (current?.keys?.length) {
-    next.keys = current.keys.map((key) => ({ ...key, pose: compatiblePose(key.pose, look) }));
+    next.keys = current.keys.map((key) => ({
+      ...key,
+      pose: compatiblePose(key.pose, compatibleRig),
+    }));
     next.segments = chainLightingSegments(next.keys, current.segments);
   }
   return next;

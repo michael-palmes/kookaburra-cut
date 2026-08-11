@@ -108,6 +108,8 @@ export interface AnimatedHeadlineProps {
   lineHeight?: number;
   /** Scene text stands down when `managedText` is present. Embedded composition text opts out; managed renderer nodes opt back in. */
   managedTextRole?: ManagedTextRenderRole;
+  /** Effective coded parent motion to retain if the inspector takes ownership of this line. */
+  managedTextCodedMotion?: TextAnimationSpec;
 }
 
 /** Layout props forwarded to troika; spread-conditional so an unset prop can never disturb troika's own defaults (the legacy byte contract). */
@@ -223,6 +225,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const lineHeight = styleOf("LineHeight");
   const rotRaw = styleOf("RotationDeg");
   const textRegistryMountId = useId();
+  const registrationMotion = props.managedTextCodedMotion ?? codedMotion;
   const registrationColor = fill ?? "text";
   const registrationFont = formatFontString(
     typeof fontValue === "string"
@@ -248,7 +251,8 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
             : {}),
         rotationDeg: typeof rotRaw === "number" ? rotRaw : 0,
       },
-      ...(codedMotion ? { codedMotion } : {}),
+      ...(registrationMotion ? { codedMotion: registrationMotion } : {}),
+      managedTextRole: props.managedTextRole ?? "scene",
     });
     return () => useTextKeyRegistry.getState().unregister(sceneIndex, textKey, textRegistryMountId);
   }, [
@@ -265,7 +269,8 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     offY,
     lineHeight,
     rotRaw,
-    codedMotion,
+    registrationMotion,
+    props.managedTextRole,
   ]);
   // Sidecar font/size/offset/line-height overrides fold into the dispatched props; absent overrides pass the originals through untouched (null-for-legacy).
   // Rotation is deliberately NOT folded into `styled`: it changes no layout input, so the title cascade and the panel column never reflow around a tilt.

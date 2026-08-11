@@ -274,7 +274,7 @@ function ScreenVideoCard({
 
 function TextCard({ item, rect }: { item: LayeredScreenshotTextItem; rect: SolvedItemRect }) {
   const textKey = `ls-${item.id}`;
-  const text = useSceneText(textKey, "Label");
+  const text = useSceneText(textKey, "Label", "embedded");
   return (
     <AnimatedHeadline
       text={text}

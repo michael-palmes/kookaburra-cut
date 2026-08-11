@@ -107,6 +107,12 @@ beforeEach(() => {
   captures.segments.length = 0;
 });
 
+function segmentWith(label: string): CapturedSegmentProps | undefined {
+  return captures.segments.find((segment) =>
+    segment.options.some((option) => option.label === label),
+  );
+}
+
 describe("ManagedTextDrill", () => {
   it("restores modal activator focus after the closing frame only while it remains mounted", () => {
     const focus = vi.fn();
@@ -150,7 +156,12 @@ describe("ManagedTextDrill", () => {
     expect(html).toContain("Duplicate");
     expect(html).toContain("Remove");
     expect(html).toContain("Fade Up · This line");
-    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+    expect(segmentWith("Left")?.options.map((option) => option.label)).toEqual([
+      "Left",
+      "Centre",
+      "Right",
+    ]);
+    expect(segmentWith("Bullets")?.options.map((option) => option.label)).toEqual([
       "Title",
       "Subtitle",
       "Bullets",
@@ -172,6 +183,25 @@ describe("ManagedTextDrill", () => {
     expect(captures.numbers.slice(1).map((field) => field.value)).toEqual([0.25, 0, -3]);
     expect(html).toContain(">Font<");
     expect(html).toContain(">Colour<");
+  });
+
+  it("writes text alignment as one rebased document edit", () => {
+    const doc = { ...managedDoc(), textLayout: { align: "left" as const } };
+    const writeDoc = vi.fn<ManagedTextWrite>();
+    renderToStaticMarkup(<ManagedTextDrill {...props(doc)} writeDoc={writeDoc} />);
+
+    segmentWith("Centre")?.onChange("right" as never);
+
+    expect(writeDoc).toHaveBeenCalledTimes(1);
+    const [request] = writeDoc.mock.calls[0] ?? [];
+    expect(request.history).toBe("text alignment");
+    expect(request.preview.textLayout).toEqual({ align: "right" });
+    expect(
+      request.applyToCurrent({ ...doc, background: { type: "color", color: "#123456" } }),
+    ).toMatchObject({
+      textLayout: { align: "right" },
+      background: { type: "color", color: "#123456" },
+    });
   });
 
   it("renders emoji and project-image icon affordances with accessible recents", () => {
@@ -292,7 +322,7 @@ describe("ManagedTextDrill", () => {
       />,
     );
 
-    captures.segments[0]?.onChange("subtitle" as never);
+    segmentWith("Bullets")?.onChange("subtitle" as never);
     await vi.waitFor(() => expect(confirmTakeover).toHaveBeenCalledTimes(1));
     expect(writeDoc).not.toHaveBeenCalled();
   });
@@ -313,7 +343,7 @@ describe("ManagedTextDrill", () => {
       />,
     );
 
-    captures.segments[0]?.onChange("subtitle" as never);
+    segmentWith("Bullets")?.onChange("subtitle" as never);
     await vi.waitFor(() => expect(writeDoc).toHaveBeenCalledTimes(1));
     const [request] = writeDoc.mock.calls[0] ?? [];
     expect(request.preview.managedText?.items).toEqual([

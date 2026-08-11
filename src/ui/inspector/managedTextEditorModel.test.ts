@@ -1,15 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
+import { bindHistory, pushHistory, takeRedo, takeUndo } from "../../engine/history";
 import type { VirtualManagedTextRegistration } from "../../engine/managedText";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { FrameSpec } from "../../toolkit/frame/types";
 import {
   applyManagedTextStructuralAction,
   describeManagedTextMotion,
+  managedTextAlignment,
   managedTextStyleValue,
   managedTextVirtualOptionsForFrame,
   nextManagedTextKey,
   performManagedTextStructuralAction,
   rebaseTextMotionSpec,
+  setLegacyManagedTextIcon,
+  setManagedTextAlignment,
   setManagedTextCopy,
   setManagedTextIcon,
   setManagedTextPointCopy,
@@ -43,6 +47,53 @@ describe("managed text editor model", () => {
     expect(managedTextVirtualOptionsForFrame(frame)).toEqual({ icon: "🚀", iconKey: "icon" });
     expect(managedTextVirtualOptionsForFrame({ ...frame, claimsSceneText: false })).toEqual({});
     expect(managedTextVirtualOptionsForFrame({ ...frame, enabled: false })).toEqual({});
+  });
+
+  it("writes alignment to the frame only while that frame claims scene text", () => {
+    const doc: SceneDoc = { version: 1, textLayout: { align: "left" } };
+    const frame: FrameSpec = {
+      cutout: { shape: "rounded-rect", side: "end", size: 0.34 },
+      textAlign: "right",
+    };
+
+    expect(managedTextAlignment(doc)).toBe("left");
+    expect(setManagedTextAlignment(doc, "center")).toMatchObject({
+      textLayout: { align: "center" },
+    });
+    expect(managedTextAlignment(doc, frame)).toBe("right");
+    expect(setManagedTextAlignment(doc, "left", frame)).toMatchObject({
+      textLayout: { align: "left" },
+      frame: { textAlign: "left" },
+    });
+
+    const unclaimed = { ...frame, claimsSceneText: false };
+    expect(managedTextAlignment(doc, unclaimed)).toBe("left");
+    expect(setManagedTextAlignment(doc, "right", unclaimed)).toMatchObject({
+      textLayout: { align: "right" },
+    });
+  });
+
+  it("routes legacy icon writes to the icon source projected by the managed editor", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      headerIcon: "🚀",
+      frame: { icon: "assets/scene-frame.png" },
+    };
+    const frame: FrameSpec = {
+      cutout: { shape: "rounded-rect", side: "end", size: 0.34 },
+      icon: "assets/resolved-frame.png",
+    };
+
+    const frameWrite = setLegacyManagedTextIcon(doc, "icon", "✨", frame);
+    expect(frameWrite?.frame?.icon).toBe("✨");
+    expect(frameWrite?.headerIcon).toBe("🚀");
+
+    const headerWrite = setLegacyManagedTextIcon(doc, "icon", "✨", {
+      ...frame,
+      claimsSceneText: false,
+    });
+    expect(headerWrite?.headerIcon).toBe("✨");
+    expect(headerWrite?.frame?.icon).toBe("assets/scene-frame.png");
   });
 
   it("mints stable readable keys without collisions", () => {
@@ -96,6 +147,64 @@ describe("managed text editor model", () => {
     expect(result.doc.textStyle).toMatchObject({ titleSize: 1.15, titleOffsetX: 0.2 });
     expect(result.doc.textAnimationOverrides?.title?.in).toBe("fade-up");
     expect(original.managedText).toBeUndefined();
+  });
+
+  it("records one takeover edge whose Undo restores code ownership and Redo restores the overlay projection", async () => {
+    const original: SceneDoc = {
+      version: 1,
+      text: { title: "Code title" },
+      textLayout: { align: "right" },
+    };
+    const frame = {
+      cutout: { shape: "rounded-rect", side: "end", size: 0.34 },
+      icon: "assets/frame-mark.png",
+    } as FrameSpec;
+    bindHistory(null);
+    bindHistory("ws:managed-text-takeover");
+    try {
+      const status = await performManagedTextStructuralAction({
+        doc: original,
+        registrations: registrations.slice(0, 1),
+        virtualOptions: managedTextVirtualOptionsForFrame(frame),
+        action: { type: "take-over", itemKey: "icon" },
+        confirmTakeover: async () => true,
+        commit: (result, history) => {
+          pushHistory({
+            label: history,
+            changes: [
+              {
+                kind: "sceneDoc",
+                slug: "managed-text-takeover",
+                file: "scenes/01-lockup.tsx",
+                sceneIndex: 0,
+                before: original,
+                after: result.doc,
+              },
+            ],
+          });
+        },
+      });
+
+      expect(status).toBe("committed");
+      const undo = takeUndo();
+      expect(undo?.label).toBe("take over scene text");
+      const undoChange = undo?.changes[0];
+      expect(undoChange?.kind).toBe("sceneDoc");
+      if (undoChange?.kind !== "sceneDoc") throw new Error("missing Undo edge");
+      expect(undoChange.before).toEqual(original);
+      expect(undoChange.before?.managedText).toBeUndefined();
+
+      const redo = takeRedo();
+      const redoChange = redo?.changes[0];
+      expect(redoChange?.kind).toBe("sceneDoc");
+      if (redoChange?.kind !== "sceneDoc") throw new Error("missing Redo edge");
+      expect(redoChange.after?.managedText?.items).toEqual([
+        { key: "icon", type: "icon", icon: "assets/frame-mark.png" },
+        { key: "title", type: "title", text: "Code title" },
+      ]);
+    } finally {
+      bindHistory(null);
+    }
   });
 
   it("materialises a code-owned icon before exposing controls with no legacy write path", async () => {

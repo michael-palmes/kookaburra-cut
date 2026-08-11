@@ -47,6 +47,19 @@ describe("managed text ownership", () => {
     });
   });
 
+  it("leaves a supplied overlay region on the exact code-authored fallback path", () => {
+    const authored: SceneDoc = { version: 1, text: { title: "Overlay-owned title" } };
+    expect(
+      resolveManagedTextRenderPlan(authored, landscape, 1.25, {
+        left: -2,
+        top: 1,
+        bottom: -1,
+        width: 1.4,
+        align: "left",
+      }),
+    ).toEqual({ ownsSceneText: false, nodes: [], fit: 1 });
+  });
+
   it("derives resolved registrations, fallback-only copy, an icon and bullet structure in order", () => {
     const doc: SceneDoc = {
       version: 1,
@@ -182,6 +195,84 @@ describe("managed text render data", () => {
     expect(plan.nodes.find((node) => node.key === "points:first:marker")?.text).toBe("1.");
     expect(plan.nodes.find((node) => node.key === "points:second:marker")?.text).toBe("2.");
     expect(plan.nodes.find((node) => node.key === "points:second:text")?.itemKey).toBe("points");
+  });
+
+  it("uses resolved by-line stagger across items and pairs bullet markers with their text", () => {
+    const withByLine: SceneDoc = {
+      ...doc,
+      textAnimation: {
+        in: "fade-up",
+        out: "none",
+        staggerMs: 125,
+        delivery: "by-paragraph",
+      },
+    };
+    const byLine = resolveManagedTextRenderPlan(withByLine, landscape, 1.25);
+    const firstTitle = byLine.nodes.find((node) => node.key === "title-a");
+    const secondTitle = byLine.nodes.find((node) => node.key === "title-b");
+    const subtitle = byLine.nodes.find((node) => node.key === "subtitle");
+    const first = byLine.nodes.find((node) => node.key === "points:first:text");
+    const second = byLine.nodes.find((node) => node.key === "points:second:text");
+    const firstMarker = byLine.nodes.find((node) => node.key === "points:first:marker");
+    const secondMarker = byLine.nodes.find((node) => node.key === "points:second:marker");
+    expect((secondTitle?.from ?? 0) - (firstTitle?.from ?? 0)).toBe(125);
+    expect((subtitle?.from ?? 0) - (secondTitle?.from ?? 0)).toBe(125);
+    expect((first?.from ?? 0) - (subtitle?.from ?? 0)).toBe(125);
+    expect((second?.from ?? 0) - (first?.from ?? 0)).toBe(125);
+    expect((second?.to ?? 0) - (first?.to ?? 0)).toBe(125);
+    expect(firstMarker?.from).toBe(first?.from);
+    expect(firstMarker?.to).toBe(first?.to);
+    expect(secondMarker?.from).toBe(second?.from);
+    expect(secondMarker?.to).toBe(second?.to);
+  });
+
+  it("keeps every managed item simultaneous for all-at-once delivery", () => {
+    const allAtOnce = resolveManagedTextRenderPlan(
+      {
+        ...doc,
+        textAnimation: { in: "fade", out: "none", staggerMs: 900, delivery: "all-at-once" },
+      },
+      landscape,
+      1.25,
+    );
+    expect(new Set(allAtOnce.nodes.map((node) => node.from))).toEqual(new Set([200]));
+    expect(new Set(allAtOnce.nodes.map((node) => node.to))).toEqual(new Set([900]));
+  });
+
+  it("inherits by-line delivery from the theme and retains an item exception", () => {
+    const plan = resolveManagedTextRenderPlan(doc, landscape, 1.25, undefined, {
+      in: "fade-up",
+      out: "none",
+      staggerMs: 90,
+      delivery: "by-paragraph",
+    });
+    const firstTitle = plan.nodes.find((node) => node.key === "title-a");
+    const secondTitle = plan.nodes.find((node) => node.key === "title-b");
+    const first = plan.nodes.find((node) => node.key === "points:first:text");
+    const second = plan.nodes.find((node) => node.key === "points:second:text");
+    expect((secondTitle?.from ?? 0) - (firstTitle?.from ?? 0)).toBe(90);
+    expect((second?.from ?? 0) - (first?.from ?? 0)).toBe(90);
+
+    const excepted = resolveManagedTextRenderPlan(
+      {
+        ...doc,
+        textAnimationOverrides: {
+          points: { in: "fade", out: "none", staggerMs: 900, delivery: "all-at-once" },
+        },
+      },
+      landscape,
+      1.25,
+      undefined,
+      {
+        in: "fade-up",
+        out: "none",
+        staggerMs: 90,
+        delivery: "by-paragraph",
+      },
+    );
+    const bulletNodes = excepted.nodes.filter((node) => node.itemKey === "points");
+    expect(new Set(bulletNodes.map((node) => node.from))).toEqual(new Set([200]));
+    expect(new Set(bulletNodes.map((node) => node.to))).toEqual(new Set([900]));
   });
 
   it("fits landscape and portrait plans inside their safe vertical regions deterministically", () => {

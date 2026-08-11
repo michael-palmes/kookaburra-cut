@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { namedInspectorTitle, sceneInspectorScreenTitle } from "./inspectorTitles";
+import {
+  chartInspectorScreenForRoute,
+  chartSeriesInspectorRoute,
+  namedInspectorTitle,
+  sceneInspectorScreenTitle,
+} from "./inspectorTitles";
 
 describe("sceneInspectorScreenTitle", () => {
   it("names nested destinations and follows the device-group plurality", () => {
@@ -8,8 +13,40 @@ describe("sceneInspectorScreenTitle", () => {
     expect(sceneInspectorScreenTitle("image.edit")).toBe("Image");
     expect(sceneInspectorScreenTitle("legacyImage.edit")).toBe("Image");
     expect(sceneInspectorScreenTitle("device.position")).toBe("Arrange devices");
+    expect(sceneInspectorScreenTitle("chart.font")).toBe("Chart font");
+    expect(sceneInspectorScreenTitle(chartSeriesInspectorRoute("s1"))).toBe("Series");
     expect(sceneInspectorScreenTitle("device", { deviceCount: 1 })).toBe("Device");
     expect(sceneInspectorScreenTitle("device", { deviceCount: 3 })).toBe("Devices");
+  });
+});
+
+describe("chart inspector routes", () => {
+  it("maps the overview, font and stable encoded series routes", () => {
+    const seriesRoute = chartSeriesInspectorRoute("revenue/APAC:2026");
+
+    expect(seriesRoute).toMatch(/^chart\.series:u16:(?:[0-9a-f]{4})+$/);
+    expect(seriesRoute).not.toContain("/");
+    expect(chartInspectorScreenForRoute("chart.edit")).toEqual({ kind: "overview" });
+    expect(chartInspectorScreenForRoute("chart.font")).toEqual({ kind: "font" });
+    expect(chartInspectorScreenForRoute(seriesRoute)).toEqual({
+      kind: "series",
+      seriesId: "revenue/APAC:2026",
+    });
+  });
+
+  it("round-trips every string, including empty and lone surrogates", () => {
+    for (const seriesId of ["", `before\ud800after\udfff`]) {
+      const route = chartSeriesInspectorRoute(seriesId);
+
+      expect(chartInspectorScreenForRoute(route)).toEqual({ kind: "series", seriesId });
+    }
+  });
+
+  it("rejects non-chart and malformed series routes", () => {
+    expect(chartInspectorScreenForRoute("chart.position")).toBeNull();
+    expect(chartInspectorScreenForRoute("chart.series:u16:123")).toBeNull();
+    expect(chartInspectorScreenForRoute("chart.series:u16:xyz1")).toBeNull();
+    expect(chartInspectorScreenForRoute(null)).toBeNull();
   });
 });
 

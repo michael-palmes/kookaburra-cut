@@ -93,6 +93,10 @@ export interface DevicePlacement {
 
 export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
 
+export function effectiveDeviceShadowMode(shadow: DeviceShadowMode | undefined): DeviceShadowMode {
+  return shadow ?? "soft";
+}
+
 export interface DeviceProps {
   /** Scene-document id: sidecar devices carry it (it is what the inspector and the gizmo select on), hand-authored ones do not. */
   id?: string;
@@ -103,7 +107,7 @@ export interface DeviceProps {
   media?: DeviceMediaSpec;
   placement?: DevicePlacement;
   motion?: DeviceMotionSpec;
-  /** Ground shadow: defaults to `"soft"`, or `"none"` under a map-shadowed `<SceneStage>` since the real shadow replaces the procedural blob; an explicit value wins. */
+  /** Presentation shadow: defaults to `"soft"` and remains independent from real `<SceneStage>` map shadows; an explicit value wins. */
   shadow?: DeviceShadowMode;
   /** Bundle the lit set (rig + one-shot environment); defaults true, or false under a lighting `<SceneStage>` since the stage lights the scene; an explicit value wins. */
   lit?: boolean;
@@ -598,10 +602,10 @@ export function Device(props: DeviceProps) {
   // Staged scenes light themselves; the bundled lit set stands down by default.
   const staged = useSceneStaged();
   const isLit = lit ?? !staged;
-  // Map-shadowed stages: the device casts (and receives, VSM wants casters receiving) real shadows, and the procedural blob default flips off so the two systems never stack; explicit props win.
+  // Map-shadowed stages add real cast/receive shadows; the independent presentation shadow remains governed only by shadow.
   const mapShadows = useStageMapShadows();
   const stageFloorY = useStageFloorY();
-  const shadowMode = shadow ?? (mapShadows ? "none" : "soft");
+  const shadowMode = effectiveDeviceShadowMode(shadow);
 
   const spec = DEVICE_CATALOG[model];
   // A bad scene document must degrade, never tear down the canvas tree (bootTrap lesson).

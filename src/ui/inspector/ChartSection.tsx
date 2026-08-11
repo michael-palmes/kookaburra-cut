@@ -52,6 +52,7 @@ import { closeChartDataModal, openChartDataModal } from "../chartDataModalStore"
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
 import { CHART_TYPE_IDS, CHART_TYPE_LABELS } from "../inspectorOptions";
+import type { ChartInspectorScreen } from "../inspectorTitles";
 import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
 import {
@@ -390,8 +391,13 @@ export function ChartDrillIn({
   theme,
   hasPanel,
   panelHostsChart,
+  screen,
   backLabel,
   onBack,
+  onAddSeries,
+  onOpenFont,
+  onOpenSeries,
+  onRemoveSeries,
   onOpenPosition,
   patchDoc,
   commitFromBaseline,
@@ -403,16 +409,19 @@ export function ChartDrillIn({
   hasPanel: boolean;
   /** That panel already opens a chart slot; without one the panel mount would draw nothing, so picking it opens the slot in the same write. */
   panelHostsChart: boolean;
+  screen: ChartInspectorScreen;
   backLabel: string;
   onBack: () => void;
+  onAddSeries: () => void;
+  onOpenFont: () => void;
+  onOpenSeries: (seriesId: string) => void;
+  onRemoveSeries: (seriesId: string) => void;
   onOpenPosition: () => void;
   patchDoc: (patch: (next: SceneDoc) => void, opts?: { history?: string | false }) => Promise<void>;
   commitFromBaseline: (baseline: SceneDoc, patch: (next: SceneDoc) => void) => Promise<void>;
 }) {
   const [tab, setTab] = useState<ChartTab>("graph");
   const [axisTab, setAxisTab] = useState<"value" | "category">("value");
-  const [seriesId, setSeriesId] = useState<string | null>(null);
-  const [fontOpen, setFontOpen] = useState(false);
   const [hoverCard, setHoverCard] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -490,15 +499,23 @@ export function ChartDrillIn({
   const dataSummary = `${series.length} series, ${categories.length} categor${
     categories.length === 1 ? "y" : "ies"
   }`;
-  const selected = seriesId ? series.find((s) => s.id === seriesId) : undefined;
+  const selected =
+    screen.kind === "series" ? series.find((s) => s.id === screen.seriesId) : undefined;
   const selectedIndex = selected ? series.indexOf(selected) : -1;
 
-  // The detail of a list (the LightEditor pattern): a full screen inside the drill, popped by its own back bar.
-  if (selected) {
+  if (screen.kind === "series") {
+    if (!selected) {
+      return (
+        <div className="inspector-drill chart-drill">
+          <DrillBack label={backLabel} title="Chart series" onClick={onBack} />
+          <p className="inspector-stub-note">This series is no longer in the chart.</p>
+        </div>
+      );
+    }
     const override = doc.chart.data.series.find((s) => s.id === selected.id)?.colour;
     return (
       <div className="inspector-drill chart-drill">
-        <DrillBack label="Chart" title={selected.name} onClick={() => setSeriesId(null)} />
+        <DrillBack label={backLabel} title={selected.name} onClick={onBack} />
         <div className="inspector-drill-body inspector-section-body">
           <TextRow
             label="Name"
@@ -572,13 +589,7 @@ export function ChartDrillIn({
             chevron={false}
             danger
             disabled={series.length <= 1}
-            onClick={() => {
-              setSeriesId(null);
-              writeSeries((rows) => {
-                const at = rows.findIndex((s) => s.id === selected.id);
-                if (at >= 0) rows.splice(at, 1);
-              });
-            }}
+            onClick={() => onRemoveSeries(selected.id)}
           />
         </div>
       </div>
@@ -592,11 +603,10 @@ export function ChartDrillIn({
     ? parseFontString(fontOverride).family
     : (projectFont?.family ?? "Theme font");
 
-  // The font screen, the series-detail idiom: a full screen inside the drill with its own back bar.
-  if (fontOpen) {
+  if (screen.kind === "font") {
     return (
       <div className="inspector-drill chart-drill">
-        <DrillBack label="Chart" title="Chart font" onClick={() => setFontOpen(false)} />
+        <DrillBack label={backLabel} title="Chart font" onClick={onBack} />
         <div className="inspector-drill-body">
           {fontOverride && (
             <button
@@ -801,7 +811,7 @@ export function ChartDrillIn({
             type="button"
             className={`text-style-font${fontOverride ? " overridden" : ""}`}
             title="Chart font"
-            onClick={() => setFontOpen(true)}
+            onClick={onOpenFont}
           >
             <span className="text-style-font-name">{fontLabel}</span>
             <span className="text-style-font-chevron" aria-hidden>
@@ -1318,7 +1328,7 @@ export function ChartDrillIn({
                     type="button"
                     title="Series options"
                     aria-label={`Edit ${s.name}`}
-                    onClick={() => setSeriesId(s.id)}
+                    onClick={() => onOpenSeries(s.id)}
                   >
                     ›
                   </button>
@@ -1327,24 +1337,7 @@ export function ChartDrillIn({
             );
           })}
         </ul>
-        <ActionRow
-          label="Add series"
-          chevron={false}
-          onClick={() => {
-            const used = new Set(series.map((s) => s.id));
-            let n = series.length + 1;
-            while (used.has(`s${n}`)) n += 1;
-            const id = `s${n}`;
-            writeSeries((rows) =>
-              rows.push({
-                id,
-                name: `Series ${rows.length + 1}`,
-                values: categories.map(() => 0),
-              }),
-            );
-            setSeriesId(id);
-          }}
-        />
+        <ActionRow label="Add series" chevron={false} onClick={onAddSeries} />
         {chart.type === "pie" && (
           <span className="drill-group-hint">
             Only the first series draws on a pie; the greyed rows keep their data.

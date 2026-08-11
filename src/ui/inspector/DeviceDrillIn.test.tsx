@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
+import { effectiveDeviceShadowMode } from "../../toolkit/device/Device";
 import {
   armDeviceRemoveConfirmation,
   changeFirstClassDeviceModel,
@@ -11,7 +12,6 @@ import {
   type DevicePatchDocResult,
   deviceNavigationFocusTarget,
   duplicateFirstClassDevice,
-  effectiveDeviceShadowMode,
   removeFirstClassDevice,
 } from "./DeviceDrillIn";
 
@@ -335,21 +335,20 @@ describe("DeviceDrillIn", () => {
     );
   });
 
-  it("shows the renderer's inherited shadow default without materialising it", () => {
+  it("keeps the inherited presentation shadow independent from real stage shadows", () => {
     const doc: SceneDoc = {
       version: 1,
       devices: [{ id: "d1", model: "iphone-17-pro" }],
     };
 
-    renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" mapShadows />);
+    renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" />);
 
-    expect(captures.options.find((option) => option.label === "None")?.selected).toBe(true);
-    expect(captures.options.find((option) => option.label === "Soft contact")?.selected).toBe(
-      false,
-    );
+    expect(captures.options.find((option) => option.label === "None")?.selected).toBe(false);
+    expect(captures.options.find((option) => option.label === "Soft contact")?.selected).toBe(true);
     expect(doc.devices?.[0].shadow).toBeUndefined();
-    expect(effectiveDeviceShadowMode(undefined, false)).toBe("soft");
-    expect(effectiveDeviceShadowMode("long", true)).toBe("long");
+    expect(effectiveDeviceShadowMode(undefined)).toBe("soft");
+    expect(effectiveDeviceShadowMode("long")).toBe("long");
+    expect(effectiveDeviceShadowMode("none")).toBe("none");
   });
 
   it("identifies an unknown model with the same legacy fallback as the renderer", () => {

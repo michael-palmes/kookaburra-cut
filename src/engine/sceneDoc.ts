@@ -9,6 +9,7 @@ import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
+import type { ManagedTextRenderRole } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import {
   isWorkspaceProjectId,
@@ -64,7 +65,11 @@ export function useSceneDoc(): SceneDoc | null {
 }
 
 /** A user-visible string from the scene document's text map; the authoring skill mandates all user-visible strings route through this so "Edit text" works on any scene, falling back when the doc, map, or key is absent. */
-export function useSceneText(key: string, fallback = ""): string {
+export function useSceneText(
+  key: string,
+  fallback = "",
+  managedTextRole: ManagedTextRenderRole = "scene",
+): string {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
   const mountId = useId();
@@ -72,9 +77,11 @@ export function useSceneText(key: string, fallback = ""): string {
   // Layout effect so TextFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
-    useTextKeyRegistry.getState().register(sceneIndex, key, mountId, { resolvedText: resolved });
+    useTextKeyRegistry
+      .getState()
+      .register(sceneIndex, key, mountId, { resolvedText: resolved, managedTextRole });
     return () => useTextKeyRegistry.getState().unregister(sceneIndex, key, mountId);
-  }, [sceneIndex, key, mountId, resolved]);
+  }, [sceneIndex, key, mountId, resolved, managedTextRole]);
   return resolved;
 }
 

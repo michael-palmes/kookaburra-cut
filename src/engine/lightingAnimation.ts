@@ -115,6 +115,9 @@ export function applyFrameLighting(
           handle.light.position.set(
             ...placementPosition(placement, handle.base.target ?? [0, 0, 0]),
           );
+          if (handle.base.type === "area") {
+            handle.light.lookAt(...(handle.base.target ?? [0, 0, 0]));
+          }
         }
         break;
       }

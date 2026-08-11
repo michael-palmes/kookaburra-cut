@@ -764,6 +764,23 @@ interface SceneDocLike {
   compare?: { b?: { lighting?: LightingSpec } };
 }
 
+/** Fixture ids whose accepted normalised track can raise a zero-base paired light above zero. */
+const NO_ANIMATED_FIXTURE_LIGHT_IDS: ReadonlySet<string> = new Set();
+
+export function animatedFixtureLightIds(
+  track: LightingTrack | null | undefined,
+): ReadonlySet<string> {
+  if (!track?.keys.length) return NO_ANIMATED_FIXTURE_LIGHT_IDS;
+  const ids = new Set<string>();
+  for (const key of track.keys) {
+    if (!key.pose.fixtures) continue;
+    for (const [id, entry] of Object.entries(key.pose.fixtures)) {
+      if (entry.lightIntensity !== undefined && entry.lightIntensity > 0) ids.add(id);
+    }
+  }
+  return ids.size > 0 ? ids : NO_ANIMATED_FIXTURE_LIGHT_IDS;
+}
+
 export function hasLightingTracks(
   tracks: readonly (LightingTrack | null)[] | null | undefined,
 ): boolean {

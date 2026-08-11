@@ -274,6 +274,7 @@ export function resolveManagedTextRenderPlan(
   format: FormatInfo,
   themeScale: number,
   suppliedRegion?: ManagedTextRegion,
+  themeMotion?: TextAnimationSpec,
 ): ManagedTextRenderPlan {
   if (doc?.managedText === undefined) return { ownsSceneText: false, nodes: [], fit: 1 };
   const align = suppliedRegion?.align ?? doc.textLayout?.align ?? "center";
@@ -331,12 +332,17 @@ export function resolveManagedTextRenderPlan(
         ? region.left + region.width
         : region.left + region.width / 2;
   const nodes: ManagedTextRenderNode[] = [];
-  for (let itemIndex = 0; itemIndex < measures.length; itemIndex++) {
-    const measure = measures[itemIndex];
+  let deliveryLineIndex = 0;
+  for (const measure of measures) {
     const { item } = measure;
     const size = measure.size * fit;
-    const from = 200 + itemIndex * 120;
-    const to = 900 + itemIndex * 120;
+    const motion = doc.textAnimationOverrides?.[item.key] ?? doc.textAnimation ?? themeMotion;
+    const lineStagger =
+      motion?.delivery === "by-paragraph" || motion?.delivery === "by-paragraph-group"
+        ? Math.max(0, motion.staggerMs)
+        : 0;
+    const from = 200 + deliveryLineIndex * lineStagger;
+    const to = 900 + deliveryLineIndex * lineStagger;
     if (item.type === "icon") {
       const icon = item.icon ?? item.text ?? "";
       if (icon) {
@@ -362,8 +368,8 @@ export function resolveManagedTextRenderPlan(
         if (!point) continue;
         const marker = markerText(item.marker, pointIndex);
         const bulletX = region.left;
-        const pointFrom = from + pointIndex * 80;
-        const pointTo = to + pointIndex * 80;
+        const pointFrom = from + pointIndex * lineStagger;
+        const pointTo = to + pointIndex * lineStagger;
         if (marker) {
           nodes.push({
             key: `${item.key}:${point.key}:marker`,
@@ -415,6 +421,7 @@ export function resolveManagedTextRenderPlan(
       }
     }
     cursor -= measure.height * fit + gap * fit;
+    deliveryLineIndex += item.type === "bullets" ? Math.max(1, item.points?.length ?? 0) : 1;
   }
   return { ownsSceneText: true, nodes, fit };
 }

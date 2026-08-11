@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "name": "Images and managed text",
+  "backdrop": {
+    "type": "floor",
+    "color": "#0a0e1a",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "sun": {
+      "azimuthDeg": -35,
+      "elevationDeg": 46,
+      "intensity": 1.8,
+      "kelvin": 5200,
+      "angularDeg": 5,
+      "castShadow": true
+    },
+    "ambient": 0.3,
+    "ambientColor": "#dbe7ff",
+    "shadow": {
+      "technique": "map",
+      "enabled": true,
+      "catchBackdrop": false,
+      "softness": 0.5,
+      "opacity": 0.34,
+      "mapSize": 2048,
+      "bias": -0.0005,
+      "color": "#111827"
+    }
+  },
+  "frame": {
+    "cutout": {
+      "shape": "rounded-rect",
+      "side": "start",
+      "size": 0.56,
+      "radius": 0.12
+    }
+  },
+  "images": [
+    {
+      "id": "stage-mark",
+      "src": "assets/app-icon.png",
+      "host": "stage",
+      "stage": {
+        "position": [0, -0.28, 0],
+        "size": 1.15,
+        "rotationDeg": [-4, 10, 0]
+      },
+      "overlay": {
+        "position": [0.78, -0.72],
+        "size": 0.12,
+        "rotationDeg": 0,
+        "shape": "none",
+        "layer": "above"
+      },
+      "motion": {
+        "preset": "float",
+        "amplitude": 0.08,
+        "hz": 0.6
+      },
+      "castShadow": true
+    },
+    {
+      "id": "overlay-mark",
+      "src": "assets/app-icon.png",
+      "host": "overlay",
+      "stage": {
+        "position": [0.7, -0.5, 0],
+        "size": 0.7,
+        "rotationDeg": [0, 0, 8]
+      },
+      "overlay": {
+        "position": [0.82, -0.76],
+        "size": 0.09,
+        "rotationDeg": 8,
+        "shape": "none",
+        "layer": "above"
+      },
+      "motion": {
+        "preset": "push-in",
+        "durationMs": 650
+      },
+      "castShadow": false
+    }
+  ],
+  "managedText": {
+    "items": [
+      {
+        "key": "headline",
+        "type": "title",
+        "text": "Inspector-ready content"
+      },
+      {
+        "key": "supporting-copy",
+        "type": "subtitle",
+        "text": "Stage and Overlay stay independent."
+      },
+      {
+        "key": "benefits",
+        "type": "bullets",
+        "marker": "tick",
+        "pointGap": 0.06,
+        "indent": 0.2,
+        "points": [
+          { "key": "stage", "text": "Transparent Stage card" },
+          { "key": "overlay", "text": "Frame-relative Overlay mark" }
+        ]
+      },
+      {
+        "key": "project-icon",
+        "type": "icon",
+        "icon": "assets/app-icon.png"
+      }
+    ]
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 80,
+    "delivery": "by-paragraph",
+    "durationMs": 560,
+    "distance": 0.5,
+    "ease": "outCubic"
+  },
+  "textAnimationOverrides": {
+    "benefits": {
+      "in": "slide",
+      "out": "fade",
+      "staggerMs": 110,
+      "delivery": "by-paragraph",
+      "durationMs": 520,
+      "distance": 0.45,
+      "ease": "outCubic"
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LightingSpec, LightSpec, Placement } from "../theme/tokens";
 import {
+  animatedFixtureLightIds,
   buildCompareBLightingTracks,
   buildLightingTracks,
   captureLightingPose,
@@ -780,6 +781,59 @@ describe("lighting keyframes (v9 · PR 6)", () => {
     };
     expect(buildLightingTracks([theme], undefined, [{ lighting }])).toEqual([null]);
     expect(lighting.keys).toHaveLength(1);
+  });
+
+  it("derives zero-base paired-light reservations from the active comparison-side track", () => {
+    const lighting = (id: string, lightIntensity: number, animationEnabled?: boolean) => ({
+      fixtures: [
+        {
+          id,
+          form: "tube" as const,
+          size: [2, 0.05] as [number, number],
+          emissive: 2,
+          lightIntensity: 0,
+          placement: { mode: "point" as const, position: [0, 2, 0] as [number, number, number] },
+        },
+      ],
+      keys: [{ id: "k1", tMs: 0, pose: { fixtures: { [id]: { lightIntensity } } } }],
+      ...(animationEnabled === undefined ? {} : { animationEnabled }),
+    });
+    const before = lighting("before", 8);
+    const after = lighting("after", 12);
+    const sharedAfter = { ...after, keys: undefined };
+    const theme = { colors: COLORS } as unknown as Parameters<
+      typeof buildLightingTracks
+    >[0][number];
+    const sceneTracks = buildLightingTracks([theme], undefined, [{ lighting: before }]);
+
+    expect(animatedFixtureLightIds(sceneTracks[0])).toEqual(new Set(["before"]));
+    expect(animatedFixtureLightIds(null)).toBe(animatedFixtureLightIds(undefined));
+    expect(animatedFixtureLightIds(normalizeLightingTrack({ ...before, keys: [] }, "empty"))).toBe(
+      animatedFixtureLightIds(undefined),
+    );
+
+    const explicitAfter = buildCompareBLightingTracks([theme], [theme], undefined, [
+      { lighting: before, compare: { b: { lighting: after } } },
+    ]);
+    expect(explicitAfter.owned).toEqual([true]);
+    expect(animatedFixtureLightIds(explicitAfter.tracks[0])).toEqual(new Set(["after"]));
+
+    const inheritedAfter = buildCompareBLightingTracks([theme], [theme], undefined, [
+      { lighting: before, compare: { b: { lighting: sharedAfter } } },
+    ]);
+    expect(inheritedAfter.owned).toEqual([false]);
+    expect(
+      animatedFixtureLightIds(inheritedAfter.owned[0] ? inheritedAfter.tracks[0] : sceneTracks[0]),
+    ).toEqual(new Set(["before"]));
+
+    const mutedAfter = buildCompareBLightingTracks([theme], [theme], undefined, [
+      {
+        lighting: before,
+        compare: { b: { lighting: lighting("muted-after", 12, false) } },
+      },
+    ]);
+    expect(mutedAfter.owned).toEqual([true]);
+    expect(animatedFixtureLightIds(mutedAfter.tracks[0])).toEqual(new Set());
   });
 
   it("captureLightingPose diffs the scene layer against the theme+project base", () => {

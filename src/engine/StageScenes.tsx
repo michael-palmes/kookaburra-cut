@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { ChartFallback } from "../toolkit/chart/ChartFallback";
 import { CompareChips } from "../toolkit/compare/CompareChips";
 import { DevicesFallback } from "../toolkit/device/Device";
@@ -14,9 +14,38 @@ import { PersistentLayer } from "./PersistentLayer";
 import { type LoadedProject, sceneMountKey } from "./project";
 import { SceneHost } from "./SceneHost";
 import { ProjectIdContext, ProjectLightingContext } from "./sceneContext";
+import {
+  animatedFixtureLightIds,
+  buildCompareBLightingTracks,
+  buildLightingTracks,
+} from "./sceneLighting";
 
 /** The canvas scene tree both windows mount: scene hosts (plus comparison side-B twins), the persistent layer and the overlay frame panels, moved verbatim from App so the editor and the hidden render window cannot drift. Window-specific companions (PreviewClock, CompositorDriver, the commit stamps) mount beside it, never inside. */
 export function StageScenes({ project }: { project: LoadedProject | null }) {
+  const animatedFixtureLightSets = useMemo(
+    () =>
+      (() => {
+        if (!project) return null;
+        const tracks = buildLightingTracks(
+          project.sceneThemes,
+          project.projectLighting,
+          project.sceneDocs,
+        );
+        const afterTracks = buildCompareBLightingTracks(
+          project.sceneThemes,
+          project.compareBThemes,
+          project.projectLighting,
+          project.sceneDocs,
+        );
+        return {
+          a: tracks.map(animatedFixtureLightIds),
+          b: tracks.map((track, index) =>
+            animatedFixtureLightIds(afterTracks.owned[index] ? afterTracks.tracks[index] : track),
+          ),
+        };
+      })(),
+    [project],
+  );
   return (
     <ProjectIdContext.Provider value={project?.id ?? null}>
       <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
@@ -34,6 +63,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                 doc={project.sceneDocs[i]}
                 theme={project.sceneThemes[i]}
                 frame={project.sceneFrames[i]}
+                animatedFixtureLightIds={animatedFixtureLightSets?.a[i]}
               >
                 {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
                 <AssetBoundary label={`scene ${i + 1}`}>
@@ -70,6 +100,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                 doc={bDoc}
                 theme={project.compareBThemes[i]}
                 frame={project.sceneFrames[i]}
+                animatedFixtureLightIds={animatedFixtureLightSets?.b[i]}
               >
                 <AssetBoundary label={`scene ${i + 1} after`}>
                   <SceneBackground />

@@ -9,6 +9,7 @@ import type {
   SceneManagedTextItem,
   SceneManagedTextItemType,
   SceneManagedTextMarker,
+  SceneTextAlign,
 } from "../../engine/sceneDocSchema";
 import {
   applyManagedTextStructuralAction,
@@ -17,6 +18,7 @@ import {
   type ManagedTextStructuralAction,
   managedTextStyleValue,
   performManagedTextStructuralAction,
+  setManagedTextAlignment,
   setManagedTextCopy,
   setManagedTextIcon,
   setManagedTextPointCopy,
@@ -82,6 +84,9 @@ export interface ManagedTextDrillProps {
   onOpenEmoji?: (itemKey: string) => Promise<string | undefined> | string | undefined;
   onChooseImage?: (itemKey: string) => Promise<string | undefined> | string | undefined;
   onIconCommitted?: (value: string) => void;
+  alignment?: SceneTextAlign;
+  /** Overlay integrations can replace the default `textLayout` alignment write. */
+  mutateAlignment?: (doc: SceneDoc, align: SceneTextAlign) => SceneDoc | null;
   /** Overlay integrations can replace the default `headerIcon` legacy write. */
   mutateIcon?: (doc: SceneDoc, itemKey: string, value: string | undefined) => SceneDoc | null;
   notice?: string | null;
@@ -93,6 +98,12 @@ const TYPE_OPTIONS: SegmentedOption<SceneManagedTextItemType>[] = [
   { value: "subtitle", label: "Subtitle" },
   { value: "bullets", label: "Bullets" },
   { value: "icon", label: "Icon" },
+];
+
+const ALIGNMENT_OPTIONS: SegmentedOption<SceneTextAlign>[] = [
+  { value: "left", label: "Left" },
+  { value: "center", label: "Centre" },
+  { value: "right", label: "Right" },
 ];
 
 const MARKERS: readonly { value: SceneManagedTextMarker; label: string; preview: string }[] = [
@@ -291,6 +302,8 @@ export function ManagedTextDrill({
   onOpenEmoji,
   onChooseImage,
   onIconCommitted,
+  alignment,
+  mutateAlignment,
   mutateIcon,
   notice,
   disabled = false,
@@ -313,6 +326,7 @@ export function ManagedTextDrill({
   const displayedTextStyle =
     model.textStyle || doc.textStyle ? { ...model.textStyle, ...doc.textStyle } : undefined;
   const displayedDoc = displayedTextStyle ? { ...doc, textStyle: displayedTextStyle } : doc;
+  const displayedAlignment = alignment ?? doc.textLayout?.align ?? "center";
   useEffect(() => {
     if (!pendingPointFocus) return;
     const frame = window.requestAnimationFrame(() => {
@@ -438,6 +452,20 @@ export function ManagedTextDrill({
     }
   };
 
+  const commitAlignment = (align: SceneTextAlign) => {
+    if (disabled) return;
+    const update = (source: SceneDoc) =>
+      mutateAlignment ? mutateAlignment(source, align) : setManagedTextAlignment(source, align);
+    const next = update(doc);
+    if (!next) return;
+    void writeDoc({
+      preview: next,
+      history: "text alignment",
+      baseline: doc,
+      applyToCurrent: (current) => update(current) ?? current,
+    });
+  };
+
   const styleControl = (
     field: "size" | "x" | "y" | "rotation" | "spacing",
     value: number,
@@ -527,6 +555,14 @@ export function ManagedTextDrill({
       <DrillBack label={backLabel} title="Text" onClick={onBack} />
       <div className="inspector-drill-scroll text-inspector-scroll">
         {notice && <p className="inspector-error">{notice}</p>}
+        <DrillGroup label="Alignment">
+          <SegmentedRow
+            className="text-inspector-alignment-segments"
+            options={ALIGNMENT_OPTIONS}
+            value={displayedAlignment}
+            onChange={commitAlignment}
+          />
+        </DrillGroup>
         <section className="text-inspector-copy-sheet" aria-labelledby={copyHeadingId}>
           <div className="text-inspector-section-heading">
             <span id={copyHeadingId} className="drill-group-label">
