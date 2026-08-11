@@ -12,7 +12,7 @@ import {
 const icon = createElement("svg", { "aria-hidden": true });
 
 describe("SceneOverview semantic markup", () => {
-  it("keeps entity selection and opening as separate labelled controls", () => {
+  it("keeps the entity body and chevron as separate labelled open controls", () => {
     const html = renderToStaticMarkup(
       createElement(SceneOverviewEntityRow, {
         rowId: "device-1",
@@ -21,7 +21,6 @@ describe("SceneOverview semantic markup", () => {
         value: "iPhone 17 Pro",
         leading: icon,
         selected: true,
-        onSelect: vi.fn(),
         onOpen: vi.fn(),
       }),
     );
@@ -40,26 +39,24 @@ describe("SceneOverview semantic markup", () => {
     expect(html).toContain("iPhone 17 Pro");
   });
 
-  it("labels an unselected entity body as a selection action", () => {
+  it("labels an unselected entity body as an open action", () => {
     const html = renderToStaticMarkup(
       createElement(SceneOverviewEntityRow, {
         rowId: "device-1",
         domain: "devices",
         label: "Main iPhone",
         selected: false,
-        onSelect: vi.fn(),
         onOpen: vi.fn(),
       }),
     );
 
     expect(html).toContain(
-      'class="inspector-scene-overview-entity-body" aria-label="Select Main iPhone"',
+      'class="inspector-scene-overview-entity-body" aria-label="Open Main iPhone"',
     );
     expect(html).not.toContain("aria-current");
   });
 
-  it("opens a selected entity body and selects an unselected one", () => {
-    const onSelect = vi.fn();
+  it("opens the entity body whether or not it is already selected", () => {
     const onOpen = vi.fn();
     const clickBody = (selected: boolean) => {
       const row = SceneOverviewEntityRow({
@@ -67,7 +64,6 @@ describe("SceneOverview semantic markup", () => {
         domain: "devices",
         label: "Main iPhone",
         selected,
-        onSelect,
         onOpen,
       });
       const [body] = row.props.children as ReactElement<{ onClick: () => void }>[];
@@ -75,12 +71,10 @@ describe("SceneOverview semantic markup", () => {
     };
 
     clickBody(false);
-    expect(onSelect).toHaveBeenCalledOnce();
-    expect(onOpen).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledOnce();
 
     clickBody(true);
-    expect(onSelect).toHaveBeenCalledOnce();
-    expect(onOpen).toHaveBeenCalledOnce();
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
   it("exposes pointer and keyboard context-menu entry on both row controls", () => {
@@ -91,7 +85,6 @@ describe("SceneOverview semantic markup", () => {
         domain: "devices",
         label: "Main iPhone",
         selected: false,
-        onSelect: vi.fn(),
         onOpen: vi.fn(),
         onContextMenu,
       }),
@@ -104,7 +97,6 @@ describe("SceneOverview semantic markup", () => {
       domain: "devices",
       label: "Main iPhone",
       selected: false,
-      onSelect: vi.fn(),
       onOpen: vi.fn(),
       onContextMenu,
     });

@@ -141,7 +141,6 @@ export function SceneOverviewEntityRow({
   value,
   leading,
   selected,
-  onSelect,
   onOpen,
   onContextMenu,
 }: {
@@ -151,7 +150,6 @@ export function SceneOverviewEntityRow({
   value?: string;
   leading?: ReactNode;
   selected: boolean;
-  onSelect: () => void;
   onOpen: () => void;
   onContextMenu?: (request: SceneOverviewContextRequest) => void;
 }) {
@@ -186,10 +184,10 @@ export function SceneOverviewEntityRow({
       <button
         type="button"
         className="inspector-scene-overview-entity-body"
-        aria-label={`${selected ? "Open" : "Select"} ${label}`}
+        aria-label={`Open ${label}`}
         aria-current={selected ? "true" : undefined}
         aria-keyshortcuts={onContextMenu ? "Shift+F10" : undefined}
-        onClick={selected ? onOpen : onSelect}
+        onClick={onOpen}
         onContextMenu={requestPointerMenu}
         onKeyDown={requestKeyboardMenu}
       >

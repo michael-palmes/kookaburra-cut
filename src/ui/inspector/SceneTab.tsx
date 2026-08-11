@@ -8276,7 +8276,6 @@ export function SceneTab({
       value={row.value}
       leading={overviewRowLeading(row)}
       selected={overviewSelection?.rowId === row.id}
-      onSelect={() => selectOverviewRow(row)}
       onOpen={() => openOverviewRow(row)}
       onContextMenu={(request) => openContentMenu(row, request)}
     />
