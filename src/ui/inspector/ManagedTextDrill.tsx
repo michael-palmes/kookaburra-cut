@@ -94,10 +94,10 @@ export interface ManagedTextDrillProps {
 }
 
 const TYPE_OPTIONS: SegmentedOption<SceneManagedTextItemType>[] = [
-  { value: "title", label: "Title" },
-  { value: "subtitle", label: "Subtitle" },
-  { value: "bullets", label: "Bullets" },
-  { value: "icon", label: "Icon" },
+  { value: "title", label: "Title", icon: <TextTypeIcon type="title" /> },
+  { value: "subtitle", label: "Subtitle", icon: <TextTypeIcon type="subtitle" /> },
+  { value: "bullets", label: "Bullets", icon: <TextTypeIcon type="bullets" /> },
+  { value: "icon", label: "Icon", icon: <TextTypeIcon type="icon" /> },
 ];
 
 const ALIGNMENT_OPTIONS: SegmentedOption<SceneTextAlign>[] = [
@@ -113,6 +113,46 @@ const MARKERS: readonly { value: SceneManagedTextMarker; label: string; preview:
   { value: "number", label: "Number", preview: "1." },
   { value: "none", label: "None", preview: "∅" },
 ];
+
+function TextTypeIcon({ type }: { type: SceneManagedTextItemType }) {
+  const glyph =
+    type === "title" ? (
+      <path d="M3.2 4.2h9.6M8 4.2v8.6" />
+    ) : type === "subtitle" ? (
+      <path d="M5.2 6.4h5.6M8 6.4v6.2" />
+    ) : type === "bullets" ? (
+      <>
+        <circle cx="3.2" cy="4.6" r="1.1" fill="currentColor" stroke="none" />
+        <circle cx="3.2" cy="8" r="1.1" fill="currentColor" stroke="none" />
+        <circle cx="3.2" cy="11.4" r="1.1" fill="currentColor" stroke="none" />
+        <path d="M6.2 4.6h7.2M6.2 8h7.2M6.2 11.4h5" />
+      </>
+    ) : (
+      <>
+        <circle cx="8" cy="8" r="5.6" />
+        <circle cx="6.1" cy="6.6" r="0.75" fill="currentColor" stroke="none" />
+        <circle cx="9.9" cy="6.6" r="0.75" fill="currentColor" stroke="none" />
+        <path d="M5.8 9.4a2.9 2.9 0 0 0 4.4 0" />
+      </>
+    );
+
+  return (
+    <svg
+      data-text-type-icon={type}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {glyph}
+    </svg>
+  );
+}
 
 function TextControlIcon({
   type,

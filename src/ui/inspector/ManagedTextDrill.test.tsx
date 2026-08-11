@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { VirtualManagedTextRegistration } from "../../engine/managedText";
@@ -25,7 +26,7 @@ interface CapturedNumberProps {
 }
 
 interface CapturedSegmentProps {
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; icon?: ReactNode }>;
   value: string;
   onChange: (value: never) => void;
 }
@@ -52,7 +53,12 @@ vi.mock("./rows", async () => {
       captures.segments.push(props);
       return (
         <div data-segmented={props.options.map((option) => option.label).join(",")}>
-          {props.options.map((option) => option.label).join(" ")}
+          {props.options.map((option) => (
+            <span key={option.value}>
+              {option.icon}
+              {option.label}
+            </span>
+          ))}
         </div>
       );
     },
@@ -167,6 +173,9 @@ describe("ManagedTextDrill", () => {
       "Bullets",
       "Icon",
     ]);
+    expect(segmentWith("Bullets")?.options.every((option) => option.icon !== undefined)).toBe(true);
+    expect(html.match(/data-text-type-icon=/g)).toHaveLength(4);
+    expect(html.match(/data-text-type-icon="(?:title|subtitle|bullets|icon)"/g)).toHaveLength(4);
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
       "Point gap",
       "Indent",
