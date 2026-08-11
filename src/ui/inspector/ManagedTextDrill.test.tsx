@@ -167,6 +167,9 @@ describe("ManagedTextDrill", () => {
       "Centre",
       "Right",
     ]);
+    expect(segmentWith("Left")?.options.every((option) => option.icon !== undefined)).toBe(true);
+    expect(html.match(/data-text-alignment-icon=/g)).toHaveLength(3);
+    expect(html.match(/data-text-alignment-icon="(?:left|center|right)"/g)).toHaveLength(3);
     expect(segmentWith("Bullets")?.options.map((option) => option.label)).toEqual([
       "Title",
       "Subtitle",

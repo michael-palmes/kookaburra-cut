@@ -8362,11 +8362,13 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   padding-inline: var(--space-2);
 }
 
-.text-inspector-type-segments .inspector-subtab {
+.text-inspector-type-segments .inspector-subtab,
+.text-inspector-alignment-segments .inspector-subtab {
   gap: var(--space-2);
 }
 
-.text-inspector-type-segments .inspector-subtab svg {
+.text-inspector-type-segments .inspector-subtab svg,
+.text-inspector-alignment-segments .inspector-subtab svg {
   width: 16px;
   height: 16px;
   flex: none;

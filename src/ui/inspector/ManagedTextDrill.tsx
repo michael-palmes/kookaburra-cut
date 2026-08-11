@@ -101,9 +101,9 @@ const TYPE_OPTIONS: SegmentedOption<SceneManagedTextItemType>[] = [
 ];
 
 const ALIGNMENT_OPTIONS: SegmentedOption<SceneTextAlign>[] = [
-  { value: "left", label: "Left" },
-  { value: "center", label: "Centre" },
-  { value: "right", label: "Right" },
+  { value: "left", label: "Left", icon: <TextAlignmentIcon align="left" /> },
+  { value: "center", label: "Centre", icon: <TextAlignmentIcon align="center" /> },
+  { value: "right", label: "Right", icon: <TextAlignmentIcon align="right" /> },
 ];
 
 const MARKERS: readonly { value: SceneManagedTextMarker; label: string; preview: string }[] = [
@@ -150,6 +150,29 @@ function TextTypeIcon({ type }: { type: SceneManagedTextItemType }) {
       aria-hidden="true"
     >
       {glyph}
+    </svg>
+  );
+}
+
+function TextAlignmentIcon({ align }: { align: SceneTextAlign }) {
+  const middleLine =
+    align === "left" ? "M2.6 8h6.6" : align === "center" ? "M4.7 8h6.6" : "M6.8 8h6.6";
+
+  return (
+    <svg
+      data-text-alignment-icon={align}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.6 4.4h10.8M2.6 11.6h10.8" />
+      <path d={middleLine} />
     </svg>
   );
 }
