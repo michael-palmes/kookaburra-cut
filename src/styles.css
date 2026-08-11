@@ -4117,6 +4117,60 @@ button.beat-status {
   max-height: 62vh;
 }
 
+.image-host-modal {
+  width: min(30rem, calc(100% - 2rem));
+}
+
+.image-host-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.image-host-option {
+  align-items: flex-start;
+  justify-content: flex-start;
+  height: auto;
+  min-height: 76px;
+  padding: var(--space-5);
+  text-align: left;
+}
+
+.image-host-option > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.image-host-option > span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.image-host-option strong {
+  font-size: var(--text-base);
+  font-weight: 590;
+}
+
+.image-host-option small {
+  font-size: var(--text-xs);
+  font-weight: 510;
+  line-height: var(--lh-xs);
+  color: var(--text-tertiary);
+}
+
+.image-host-option.disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.image-host-reason {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
 /* The wizards' media step: room for two full rows. */
 .wizard-media-wide {
   width: min(56rem, calc(100% - 2rem));
@@ -4167,6 +4221,14 @@ button.beat-status {
 .slider-row-label {
   min-width: 116px;
   flex-shrink: 0;
+}
+.inspector-slider-row-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
 }
 /* The number beside a slider. It reserves a 1px TRANSPARENT border so double-clicking to
    type only flips the border colour + background (via .range-value-edit) — the box never
@@ -6245,15 +6307,14 @@ button.beat-status {
 
 /* ── Inspector panel (v13 · M3, §8.4) ─────────────────────────────────────── */
 
-/* The 342px right column — the chrome's ONLY scroll container (312px in the
-   design mock; +30px from the M5 live round so options breathe). */
+/* The fixed right rail. Its page presenter owns scrolling below the pinned tabs. */
 .inspector {
   display: flex;
   flex-direction: column;
   flex: none;
   width: 342px;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
   background: var(--surface-panel);
   border-left: 1px solid var(--border-default);
 }
@@ -6299,6 +6360,84 @@ button.beat-status {
   font-weight: 590;
   color: var(--text-primary);
   background: var(--surface-raised);
+}
+
+.inspector-nav-shell {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.inspector-nav-page,
+.inspector-nav-ghost-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface-panel);
+}
+
+.inspector-nav-page {
+  position: relative;
+  z-index: 1;
+}
+
+.inspector-nav-page:has(> .inspector-drill),
+.inspector-nav-page:has(> .inspector-scene-overview) {
+  overflow: hidden;
+}
+
+.inspector-nav-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.inspector-nav-ghost-page {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.inspector-nav-overlay:has(.inspector-nav-exiting) {
+  z-index: 2;
+}
+
+.inspector-nav-entering {
+  animation: inspector-page-enter var(--dur-base) var(--ease-standard) both;
+}
+
+.inspector-nav-exiting {
+  animation: inspector-page-exit var(--dur-base) var(--ease-standard) both;
+  pointer-events: none;
+}
+
+@keyframes inspector-page-enter {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes inspector-page-exit {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
 }
 
 .inspector-rows {
@@ -6742,70 +6881,508 @@ img.inspector-scene-thumb {
   object-fit: cover;
 }
 
-/* Drill-in views (push navigation): back bar + title + body [+ pinned footer].
-   Full height (M5 live round): the drill owns the panel's remaining height, the
-   body is the scroll region, and `.inspector-drill-actions` pins to the bottom. */
-.inspector-drill {
+.inspector-scene-overview {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.inspector-scene-overview > .inspector-scene-identity {
+  gap: var(--space-4);
+  width: 100%;
+  height: 42px;
+  padding: 4px 10px;
+}
+
+.inspector-scene-overview > .inspector-scene-identity .inspector-scene-id {
+  flex: 1;
+  overflow: hidden;
+}
+
+.inspector-scene-overview-content {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 32px;
+}
+
+.inspector-scene-overview-content-head {
+  position: relative;
+  z-index: 2;
+  flex: none;
+}
+
+.inspector-scene-overview-content-scroll {
   flex: 1;
   min-height: 0;
-  animation: inspector-drill-in var(--dur-base) var(--ease-standard);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
 }
 
-@keyframes inspector-drill-in {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+.inspector-scene-overview-section {
+  padding: 0 8px 8px;
 }
 
-/* The back affordance: a full-width eye-catching bar with a real hit area
-   (M5 live round — the old text-link back was easy to miss). */
-.inspector-drill-back {
+.inspector-scene-overview-section.inspector-scene-overview-content {
+  padding-bottom: 0;
+}
+
+.inspector-scene-overview-section + .inspector-scene-overview-section {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.inspector-scene-overview-section-header,
+.inspector-scene-overview-group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  min-width: 0;
+  height: 24px;
+}
+
+.inspector-scene-overview-section-header {
+  height: 32px;
+  padding: 4px 2px 4px 6px;
+}
+
+.inspector-scene-overview-settings {
   flex: none;
-  width: 100%;
-  min-height: 42px;
-  margin-bottom: 8px;
-  padding: 10px 14px;
-  font: inherit;
-  font-size: var(--text-base);
-  font-weight: 550;
-  text-align: left;
-  color: var(--accent-text);
-  background: var(--accent-subtle);
+  background: var(--surface-panel);
+}
+
+.inspector-scene-overview-section-label,
+.inspector-scene-overview-group-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  font-weight: 590;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.inspector-scene-overview-add,
+.inspector-scene-overview-group-add,
+.inspector-scene-overview-entity-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  color: var(--text-tertiary);
+  background: transparent;
   border: none;
-  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
   cursor: pointer;
 }
 
-.inspector-drill-back:hover {
+.inspector-scene-overview-add,
+.inspector-scene-overview-group-add {
   color: var(--accent-text);
-  background: var(--accent-muted, var(--surface-hover));
 }
 
-.inspector-drill-back-chev {
+.inspector-scene-overview-add,
+.inspector-scene-overview-group-add {
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+}
+
+.inspector-scene-overview-add:hover:not(:disabled),
+.inspector-scene-overview-group-add:hover:not(:disabled),
+.inspector-scene-overview-entity-open:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.inspector-scene-overview-add:disabled,
+.inspector-scene-overview-group-add:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.inspector-scene-overview-groups,
+.inspector-scene-overview-group,
+.inspector-scene-overview-group-rows,
+.inspector-scene-overview-standalone,
+.inspector-scene-overview-setting-rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.inspector-scene-overview-group + .inspector-scene-overview-group {
+  margin-top: var(--space-2);
+}
+
+.inspector-scene-overview-group-header {
+  padding: 0 2px 0 6px;
+}
+
+.inspector-scene-overview-group-main {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+}
+
+button.inspector-scene-overview-group-main {
+  cursor: pointer;
+}
+
+.inspector-scene-overview-group-icon,
+.inspector-scene-overview-entity-leading,
+.inspector-scene-overview-setting-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.inspector-scene-overview-group-icon {
+  width: 17px;
+  margin-right: var(--space-3);
+}
+
+button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group-icon,
+button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group-label {
+  color: var(--text-primary);
+}
+
+.inspector-scene-overview-group-icon svg,
+.inspector-scene-overview-entity-leading svg,
+.inspector-scene-overview-setting-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.inspector-scene-overview-entity {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 26px;
+  color: var(--text-secondary);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.inspector-scene-overview-entity:hover {
+  background: var(--surface-hover);
+}
+
+.inspector-scene-overview-entity.selected {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.inspector-scene-overview-entity-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 0 6px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.inspector-scene-overview-group-rows .inspector-scene-overview-entity-body {
+  padding-left: 24px;
+}
+
+.inspector-scene-overview-entity-leading {
+  width: 20px;
+  height: 18px;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+}
+
+.inspector-scene-overview-thumbnail {
+  display: block;
+  width: 20px;
+  height: 14px;
+  object-fit: cover;
+}
+
+.inspector-scene-overview-entity-label,
+.inspector-scene-overview-entity-value,
+.inspector-scene-overview-setting-label,
+.inspector-scene-overview-setting-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-scene-overview-entity-label,
+.inspector-scene-overview-setting-label {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.inspector-scene-overview-entity.selected .inspector-scene-overview-entity-label {
+  font-weight: 590;
+}
+
+.inspector-scene-overview-entity-value,
+.inspector-scene-overview-setting-value {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.inspector-scene-overview-entity-open {
+  width: 26px;
+  height: 26px;
+}
+
+.inspector-scene-overview-setting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  padding: 0 6px;
+  font: inherit;
+  text-align: left;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.inspector-scene-overview-setting:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.inspector-scene-overview-setting:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.inspector-scene-overview-setting:disabled .inspector-scene-overview-setting-icon,
+.inspector-scene-overview-setting:disabled .inspector-scene-overview-setting-label,
+.inspector-scene-overview-setting:disabled .inspector-scene-overview-setting-value {
+  color: var(--text-disabled);
+}
+
+.inspector-scene-overview-setting-icon {
+  width: 20px;
+}
+
+.inspector-scene-overview-setting-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.inspector-scene-overview-duration {
+  height: 30px;
+  min-width: 0;
+}
+
+.inspector-scene-overview-empty {
+  padding: 12px 6px;
+  text-align: center;
+}
+
+.inspector-scene-overview-empty-title {
+  font-size: var(--text-sm);
+  font-weight: 590;
+  color: var(--text-primary);
+}
+
+.inspector-scene-overview-empty-description {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-base);
+  color: var(--text-tertiary);
+}
+
+.inspector-scene-overview-picker {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 8;
+  max-height: calc(100dvh - var(--titlebar-h) - 96px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-popover);
+}
+
+.inspector-scene-overview-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.inspector-scene-overview-picker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 6px;
+  font: inherit;
+  text-align: left;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.inspector-scene-overview-picker-item:hover:not([aria-disabled="true"]) {
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.inspector-scene-overview-picker-item[aria-disabled="true"] {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.inspector-scene-overview-picker-icon {
   display: inline-flex;
   flex: none;
 }
 
-.inspector-drill-title {
-  /* Flex so a trailing control (Background's preset Reset) can sit right; inert for plain text titles. */
+.inspector-scene-overview-picker-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.inspector-scene-overview-picker-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.inspector-scene-overview-picker-label,
+.inspector-scene-overview-picker-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-scene-overview-picker-label {
+  font-size: var(--text-sm);
+}
+
+.inspector-scene-overview-picker-status {
+  font-size: var(--text-2xs);
+  color: var(--text-tertiary);
+}
+
+.inspector-scene-overview-delete-footer {
+  flex: none;
+  padding: 8px;
+  background: var(--surface-panel);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.inspector-scene-overview-delete-footer .inspector-rows {
+  padding: 0;
+}
+
+.inspector-scene-overview-delete-footer .action-row {
+  padding-block: 5px;
+}
+
+/* Drill-in views (push navigation): back bar + title + body [+ pinned footer].
+   Full height (M5 live round): the drill owns the panel's remaining height, the
+   body is the scroll region, and `.inspector-drill-actions` pins to the bottom. */
+.inspector-drill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* The back bar holds the return destination left and the current screen right. */
+.inspector-drill-back {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  font-size: var(--text-md);
+  gap: 9px;
+  flex: none;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 8px;
+  font: inherit;
+  font-size: var(--text-base);
   font-weight: 590;
+  text-align: left;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: none;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  cursor: pointer;
+}
+
+.inspector-drill-back:hover {
   color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-hover);
+}
+
+.inspector-drill-back-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: var(--text-primary);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.inspector-drill-destination,
+.inspector-drill-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-drill-destination {
+  max-width: calc(50% - 34px);
+}
+
+.inspector-drill-current {
+  margin-left: auto;
+  max-width: 50%;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-tertiary);
 }
 
 .inspector-drill-body {
@@ -7220,6 +7797,16 @@ img.inspector-scene-thumb {
   color: var(--text-tertiary);
 }
 
+.inspector-scene-overview-duration .inspector-duration-row {
+  height: 30px;
+  padding: 2px 6px;
+}
+
+.inspector-scene-overview-duration .inspector-seconds {
+  width: 52px;
+  height: 22px;
+}
+
 .inspector-error {
   margin: 0;
   padding: 8px 16px;
@@ -7347,6 +7934,70 @@ img.inspector-scene-thumb {
   border-color: var(--accent);
 }
 
+.arrange-devices-summary {
+  min-height: 42px;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.arrange-layout-choice {
+  min-height: 54px;
+  justify-content: center;
+}
+
+.arrange-layout-diagram {
+  flex: none;
+}
+
+.arrange-device-picker {
+  margin-bottom: var(--space-2);
+}
+
+.arrange-device-choice {
+  min-height: 58px;
+  justify-content: center;
+}
+
+.arrange-device-thumbnail {
+  flex: none;
+}
+
+.arrange-selected-device-label {
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arrange-selected-device-label span {
+  color: var(--text-tertiary);
+}
+
+.arrange-device-sliders {
+  display: flex;
+  flex-direction: column;
+}
+
+.arrange-device-actions {
+  margin-top: 0;
+}
+
+.arrange-reset-all {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+
+.image-host-options {
+  min-inline-size: 0;
+  margin: 0;
+  padding-block: 0;
+  border: 0;
+}
+
 .option-grid.three-up {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -7412,6 +8063,52 @@ img.inspector-scene-thumb {
   display: block;
 }
 
+.image-drill-identity {
+  min-height: 52px;
+  padding: 9px 12px;
+}
+
+.image-drill-identity .inspector-scene-preview {
+  width: 56px;
+  height: 32px;
+  aspect-ratio: auto;
+}
+
+.image-drill-identity .inspector-scene-preview img {
+  object-fit: contain;
+}
+
+.image-drill-identity .inspector-scene-id {
+  flex: 1;
+}
+
+.image-drill-identity > .wizard-presets {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+}
+
+.image-drill-identity > .wizard-presets .chip {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+}
+
+.image-settings-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.image-settings-fieldset > .visually-hidden + .drill-group {
+  margin-top: var(--space-4);
+}
+
 .inspector-scene-title-btn {
   display: block;
   max-width: 100%;
@@ -7436,6 +8133,16 @@ img.inspector-scene-thumb {
   font: inherit;
   font-size: var(--text-base);
   font-weight: 590;
+}
+
+.inspector-scene-overview > .inspector-scene-identity .inspector-scene-preview {
+  width: 56px;
+  height: 32px;
+  aspect-ratio: auto;
+}
+
+.inspector-scene-overview > .inspector-scene-identity .inspector-scene-title-btn {
+  width: 100%;
 }
 
 /* ── Context menu (M5 live round — right-click as a first-class pattern) ──── */
@@ -7477,6 +8184,29 @@ img.inspector-scene-thumb {
 
 .context-menu-item.danger {
   color: var(--danger);
+}
+
+.context-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-right: var(--space-3);
+}
+
+.context-menu-item-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.context-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .context-menu-separator {

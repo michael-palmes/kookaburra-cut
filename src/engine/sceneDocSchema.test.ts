@@ -555,6 +555,113 @@ describe("parseSceneDoc", () => {
     vi.restoreAllMocks();
   });
 
+  it("parses ordered scene images with both host placements retained", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        images: [
+          {
+            id: "hero",
+            src: "assets/launch/hero.png",
+            host: "stage",
+            stage: { position: [1, -0.5, 0.4], size: 1.8, rotationDeg: [10, 20, 370] },
+            overlay: {
+              position: [-0.6, 0.5],
+              size: 0.3,
+              rotationDeg: -370,
+              shape: "circle",
+              layer: "below",
+            },
+            castShadow: true,
+          },
+          {
+            id: "logo",
+            src: "assets/logo.webp",
+            host: "overlay",
+            stage: { position: [0, 0, 1], size: 1, rotationDeg: [0, 180, 0] },
+            overlay: {
+              position: [0.7, -0.7],
+              size: 0.12,
+              rotationDeg: 0,
+              shape: "none",
+              layer: "above",
+            },
+          },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.images?.map((image) => image.id)).toEqual(["hero", "logo"]);
+    expect(doc?.images?.[0]).toEqual({
+      id: "hero",
+      src: "assets/launch/hero.png",
+      host: "stage",
+      stage: { position: [1, -0.5, 0.4], size: 1.8, rotationDeg: [10, 20, 10] },
+      overlay: {
+        position: [-0.6, 0.5],
+        size: 0.3,
+        rotationDeg: -10,
+        shape: "circle",
+        layer: "below",
+      },
+      castShadow: true,
+    });
+    expect(doc?.images?.[1]?.host).toBe("overlay");
+  });
+
+  it("defaults incomplete image placements without writing a migration", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        images: [{ id: "logo", src: "assets/logo.jpg", stage: {}, overlay: {} }],
+      },
+      "test",
+    );
+
+    expect(doc?.images).toEqual([
+      {
+        id: "logo",
+        src: "assets/logo.jpg",
+        host: "stage",
+        stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+        overlay: {
+          position: [0, 0],
+          size: 0.25,
+          rotationDeg: 0,
+          shape: "none",
+          layer: "above",
+        },
+      },
+    ]);
+    expect(parseSceneDoc({ version: 1, images: [] }, "test")?.images).toEqual([]);
+    expect(parseSceneDoc({ version: 1 }, "test")?.images).toBeUndefined();
+  });
+
+  it("drops unsafe image sources, malformed entries and later duplicate ids", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        images: [
+          { id: "safe", src: "assets/safe.jpeg" },
+          { id: "safe", src: "assets/duplicate.png" },
+          { id: "escape", src: "assets/../outside.png" },
+          { id: "video", src: "assets/clip.mp4" },
+          { id: "absolute", src: "/tmp/image.png" },
+          { src: "assets/no-id.png" },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.images?.map(({ id, src }) => ({ id, src }))).toEqual([
+      { id: "safe", src: "assets/safe.jpeg" },
+    ]);
+    expect(parseSceneDoc({ version: 1, images: "nope" }, "test")?.images).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
   it("round-trips a full chart block, dropping only the null series colour", () => {
     const block = {
       type: "stackedColumn",

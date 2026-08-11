@@ -158,13 +158,28 @@ export function useSceneChart(): ResolvedChart | null {
 
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
 
+const sceneDocWriteQueues = new Map<string, Promise<void>>();
+
 /** Atomic, version-guarded sidecar write via the native command. */
 export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneDoc): Promise<void> {
-  await invoke("write_scene_doc", {
-    slug,
-    file: sceneFile.replace(/\.tsx$/, ".json"),
-    text: JSON.stringify(doc, null, 2),
-  });
+  const file = sceneFile.replace(/\.tsx$/, ".json");
+  const key = `${slug}\u0000${file}`;
+  const previous = sceneDocWriteQueues.get(key) ?? Promise.resolve();
+  const write = previous
+    .catch(() => {})
+    .then(async () => {
+      await invoke("write_scene_doc", {
+        slug,
+        file,
+        text: JSON.stringify(doc, null, 2),
+      });
+    });
+  sceneDocWriteQueues.set(key, write);
+  try {
+    await write;
+  } finally {
+    if (sceneDocWriteQueues.get(key) === write) sceneDocWriteQueues.delete(key);
+  }
 }
 
 /** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene) AND onto the manifest as `appliedBackground`, so new scenes scaffold with the same look: one compound undo entry covering both, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */

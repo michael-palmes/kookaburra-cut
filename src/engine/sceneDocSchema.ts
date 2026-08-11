@@ -71,6 +71,52 @@ export interface SceneDocDeviceSpec {
   lidDeg?: number;
 }
 
+export type SceneImageHost = "stage" | "overlay";
+
+export interface SceneImageStagePlacement {
+  position: [number, number, number];
+  /** World-unit width. */
+  size: number;
+  rotationDeg: [number, number, number];
+}
+
+export interface SceneImageOverlayPlacement {
+  /** Frame-relative centre, matching overlay decoration coordinates. */
+  position: [number, number];
+  /** Width as a fraction of the frame width. */
+  size: number;
+  /** Clockwise screen rotation. */
+  rotationDeg: number;
+  shape: "none" | "circle";
+  layer: "below" | "above";
+}
+
+export interface SceneDocImageSpec {
+  id: string;
+  /** Project-relative still image under `assets/`. */
+  src: string;
+  host: SceneImageHost;
+  /** Both placements remain authored when the active host changes. */
+  stage: SceneImageStagePlacement;
+  overlay: SceneImageOverlayPlacement;
+  /** Absent is off. */
+  castShadow?: boolean;
+}
+
+export const DEFAULT_SCENE_IMAGE_STAGE: SceneImageStagePlacement = {
+  position: [0, 0, 0],
+  size: 1,
+  rotationDeg: [0, 0, 0],
+};
+
+export const DEFAULT_SCENE_IMAGE_OVERLAY: SceneImageOverlayPlacement = {
+  position: [0, 0],
+  size: 0.25,
+  rotationDeg: 0,
+  shape: "none",
+  layer: "above",
+};
+
 /** Multi-device layout presets, resolved to per-aspect placements in `toolkit/device/layout.ts`. */
 export const DEVICE_LAYOUT_PRESETS = [
   "row",
@@ -333,6 +379,8 @@ export interface SceneDoc {
   /** Header icon for a plain (non-overlay) scene's text: an emoji or an `assets/` image path, drawn above the headline by `TextFallback`/`TitleBlock`. Overlay scenes carry their icon on `frame.icon` instead; both scale by `textStyle.iconSize`. */
   headerIcon?: string;
   devices?: SceneDocDeviceSpec[];
+  /** Ordered, scene-owned still images that retain independent Stage and Overlay placements. */
+  images?: SceneDocImageSpec[];
   /** The live multi-device layout block; see `SceneDocDeviceLayout`. */
   deviceLayout?: SceneDocDeviceLayout;
   /** Staged 3D objects from the object library, rendered by `ObjectsFallback` on any scene. */
@@ -528,10 +576,100 @@ function validVideoWindow(raw: unknown): raw is SceneDocVideoWindow {
 const finiteV3 = (v: unknown): v is [number, number, number] =>
   Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === "number" && Number.isFinite(n));
 
+const finiteV2 = (v: unknown): v is [number, number] =>
+  Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number" && Number.isFinite(n));
+
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+const SCENE_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
+
+export function isSceneImageSource(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parts = value.split("/");
+  if (parts[0] !== "assets" || parts.length < 2) return false;
+  if (parts.some((part) => part.length === 0 || part === "." || part === "..")) return false;
+  const extension = parts.at(-1)?.split(".").at(-1)?.toLowerCase();
+  return extension !== undefined && SCENE_IMAGE_EXTENSIONS.has(extension);
+}
+
+function parseSceneImageStage(raw: unknown): SceneImageStagePlacement {
+  if (!isRecord(raw)) {
+    return {
+      position: [...DEFAULT_SCENE_IMAGE_STAGE.position],
+      size: DEFAULT_SCENE_IMAGE_STAGE.size,
+      rotationDeg: [...DEFAULT_SCENE_IMAGE_STAGE.rotationDeg],
+    };
+  }
+  return {
+    position: finiteV3(raw.position) ? [...raw.position] : [...DEFAULT_SCENE_IMAGE_STAGE.position],
+    size: finiteNum(raw.size) && raw.size > 0 ? raw.size : DEFAULT_SCENE_IMAGE_STAGE.size,
+    rotationDeg: finiteV3(raw.rotationDeg)
+      ? (raw.rotationDeg.map(normaliseDeg) as [number, number, number])
+      : [...DEFAULT_SCENE_IMAGE_STAGE.rotationDeg],
+  };
+}
+
+function parseSceneImageOverlay(raw: unknown): SceneImageOverlayPlacement {
+  if (!isRecord(raw)) {
+    return {
+      position: [...DEFAULT_SCENE_IMAGE_OVERLAY.position],
+      size: DEFAULT_SCENE_IMAGE_OVERLAY.size,
+      rotationDeg: DEFAULT_SCENE_IMAGE_OVERLAY.rotationDeg,
+      shape: DEFAULT_SCENE_IMAGE_OVERLAY.shape,
+      layer: DEFAULT_SCENE_IMAGE_OVERLAY.layer,
+    };
+  }
+  return {
+    position: finiteV2(raw.position)
+      ? [...raw.position]
+      : [...DEFAULT_SCENE_IMAGE_OVERLAY.position],
+    size: finiteNum(raw.size) && raw.size > 0 ? raw.size : DEFAULT_SCENE_IMAGE_OVERLAY.size,
+    rotationDeg: finiteNum(raw.rotationDeg)
+      ? normaliseDeg(raw.rotationDeg)
+      : DEFAULT_SCENE_IMAGE_OVERLAY.rotationDeg,
+    shape: raw.shape === "circle" ? "circle" : "none",
+    layer: raw.layer === "below" ? "below" : "above",
+  };
+}
+
+function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | undefined {
+  if (!Array.isArray(raw)) {
+    console.warn(`[sceneDoc] ${source}: images isn't an array, dropped`);
+    return undefined;
+  }
+  const images: SceneDocImageSpec[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of raw.entries()) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length === 0) {
+      console.warn(`[sceneDoc] ${source}: images[${index}] needs a non-empty string id, dropped`);
+      continue;
+    }
+    if (seen.has(entry.id)) {
+      console.warn(`[sceneDoc] ${source}: duplicate image id "${entry.id}", later entry dropped`);
+      continue;
+    }
+    if (!isSceneImageSource(entry.src)) {
+      console.warn(
+        `[sceneDoc] ${source}: images[${index}].src isn't a supported project image, dropped`,
+      );
+      continue;
+    }
+    seen.add(entry.id);
+    const image: SceneDocImageSpec = {
+      id: entry.id,
+      src: entry.src,
+      host: entry.host === "overlay" ? "overlay" : "stage",
+      stage: parseSceneImageStage(entry.stage),
+      overlay: parseSceneImageOverlay(entry.overlay),
+    };
+    if (typeof entry.castShadow === "boolean") image.castShadow = entry.castShadow;
+    images.push(image);
+  }
+  return images;
+}
 
 const CHART_COLOUR_TOKENS = ["background", "text", "accent", "muted"];
 const CHART_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -1213,6 +1351,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       }
     }
     out.devices = devices;
+  }
+  if (doc.images !== undefined) {
+    const images = parseSceneImages(doc.images, source);
+    if (images) out.images = images;
   }
   if (doc.deviceLayout !== undefined) {
     const deviceLayout = parseDeviceLayout(doc.deviceLayout, source);

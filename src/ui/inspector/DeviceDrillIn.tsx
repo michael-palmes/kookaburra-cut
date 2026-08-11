@@ -9,7 +9,6 @@ import {
 import type { DeviceMotionPreset } from "../../toolkit/device/Device";
 import { ColourPicker } from "../colour/ColourPicker";
 import { MOTION_OPTIONS } from "../SceneWizards";
-import { useEscapeClose } from "../useEscapeClose";
 import { DrillBack } from "./rows";
 
 /** Change-device as an inspector drill-in: the EditBar modal's content (model switcher + catalog card + colour swatches + motion presets, applied on Save) re-laid for the 312px panel. With several devices the save targets all of them by default (the implicit link); switch the pill to change just the selected one, which is how mixed setups happen. */
@@ -38,12 +37,10 @@ export function DeviceDrillIn({
   const [c, setC] = useState(colour);
   const [mo, setMo] = useState<DeviceMotionPreset>(motion);
   const [applyAll, setApplyAll] = useState(true);
-  useEscapeClose(onBack);
   const spec = DEVICE_CATALOG[m];
   return (
     <div className="inspector-drill">
-      <DrillBack label={backLabel} onClick={onBack} />
-      <div className="inspector-drill-title">Change device</div>
+      <DrillBack label={backLabel} title="Change device" onClick={onBack} />
       <div className="inspector-drill-body">
         {deviceCount > 1 && (
           <div className="wizard-presets" role="radiogroup" aria-label="Apply to">

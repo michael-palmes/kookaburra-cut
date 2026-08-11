@@ -10,6 +10,7 @@ import {
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "../engine/environments";
+import { useFormat } from "../engine/format";
 import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
@@ -64,7 +65,11 @@ export function PresentCompositorDriver({
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
-  const sceneTracks = useMemo(() => buildSceneCameraTracks(project.sceneDocs), [project]);
+  const format = useFormat();
+  const sceneTracks = useMemo(
+    () => buildSceneCameraTracks(project.sceneDocs, format),
+    [project, format],
+  );
   const lightingTracks = useMemo(
     () => buildLightingTracks(project.sceneThemes, project.projectLighting, project.sceneDocs),
     [project],

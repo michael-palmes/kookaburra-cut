@@ -2,10 +2,13 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
+import { flushSync } from "react-dom";
 import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
@@ -16,20 +19,28 @@ import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useFormat } from "../../engine/format";
 import type { GizmoMode } from "../../engine/gizmoMode";
+import type { GizmoDomain } from "../../engine/gizmoRegistry";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { pushHistory } from "../../engine/history";
+import { useImageEditStore } from "../../engine/imageEditStore";
+import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
-import { type LoadedProject, sceneFileStem, workspaceProjectPath } from "../../engine/project";
+import {
+  type LoadedProject,
+  resolveAssetPath,
+  sceneFileStem,
+  workspaceProjectPath,
+} from "../../engine/project";
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
 import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
 import {
-  DEVICE_LAYOUT_PRESETS,
   type DeviceLayoutPreset,
+  isSceneImageSource,
   type SceneDoc,
   type SceneDocCameraPose,
   type SceneDocDeviceLayoutDelta,
@@ -40,6 +51,7 @@ import {
   TEXT_LINE_HEIGHT_MIN,
   type VideoWindowMotionPreset,
 } from "../../engine/sceneDocSchema";
+import { createSceneImage } from "../../engine/sceneImage";
 import { defaultRigPose } from "../../engine/sceneRig";
 import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/sceneRigConvert";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
@@ -55,6 +67,7 @@ import {
   textKeysConsumedBy,
 } from "../../engine/textKeyRegistry";
 import { useSceneHasCodedTextMotion } from "../../engine/textMotionRegistry";
+import { TRANSITION_CATALOG } from "../../engine/transitionCatalog";
 import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
@@ -103,6 +116,7 @@ import {
 } from "../../toolkit/text/emojiRaster";
 import { prepareEmojiText } from "../../toolkit/text/emojiText";
 import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
+import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
 import { FontPicker } from "../FontPicker";
@@ -110,39 +124,39 @@ import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
 import { textRotationWrite } from "../gizmo/textGizmoWrite";
 import {
-  chartRowValue,
+  deriveSceneOverview,
   drillStackForScene,
   objectRowLabel,
+  type SceneOverviewContentType,
+  type SceneOverviewRowModel,
   type SceneSectionModel,
   sceneSections,
 } from "../inspectorOptions";
+import { sceneInspectorScreenTitle } from "../inspectorTitles";
 import { detectWindowRecording } from "../windowRecordingDetect";
+import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
 import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
+import { nextNumberedContentId } from "./contentIds";
+import {
+  type ContentDocActionPlan,
+  type ContentMenuAction,
+  contentMenuActions,
+  planContentDelete,
+  planContentDuplicate,
+} from "./contentMenuActions";
+import { ImageDrillIn, type ImageMutation, type ImageMutationOptions } from "./ImageDrillIn";
+import {
+  duplicateImage,
+  promoteLegacyImage,
+  reconcileImageEditor,
+  removeImage,
+} from "./imageEditorModel";
 import { LightingSectionBody } from "./LightingSection";
 
 /** Sideways step between devices: a phone auto-fits 2.6 world units tall (~1.26 wide at scale 1), a laptop width-fits to 3.4, so these clear one footprint with margin. */
 const DEVICE_STEP_X = 1.4;
 const LAPTOP_STEP_X = 3.6;
 
-/** Titles the DrillBack shows for the screen one level down: the group/detail screens that own children. */
-const SCREEN_TITLES: Record<string, string> = {
-  text: "Text",
-  device: "Device",
-  frame: "Overlay",
-  camera: "Animations",
-  lighting: "Lighting",
-  motion: "Timing",
-  "text.edit": "Edit text",
-  "style.background": "Background",
-  "frame.panel": "Panel",
-  "videoWindow.edit": "Video window",
-  "compare.edit": "Comparison",
-  "chart.edit": "Chart",
-  "chart.position": "Position",
-  "device.position": "Position",
-};
-
-/** Layout presets for the Position drill's chips; ids match `DEVICE_LAYOUT_PRESETS`. */
 const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: string }> = {
   row: { label: "Row", title: "A flat line-up facing the camera" },
   "toe-in": { label: "Toe-in", title: "A row with outer devices turned toward centre" },
@@ -151,15 +165,6 @@ const LAYOUT_PRESET_LABELS: Record<DeviceLayoutPreset, { label: string; title: s
   hero: { label: "Hero", title: "Device 1 forward, the rest flanking behind" },
   "depth-pair": { label: "Depth", title: "Two devices split front and back" },
 };
-
-/** Preset poses for a device's absolute rotation (block-less scenes): Front on is the glb's authored identity. */
-const ROTATION_PRESETS: { id: string; label: string; value: V3 }[] = [
-  { id: "front", label: "Front on", value: [0, 0, 0] },
-  { id: "editorial", label: "Editorial", value: [3, -14, 0] },
-  { id: "mirrored", label: "Mirrored", value: [3, 14, 0] },
-];
-
-const ROTATION_AXIS_LABELS = ["tilt x °", "turn y °", "roll z °"] as const;
 
 /** The Position drill's two write branches, module-scoped so the sliders and the preview gizmo share one write path: with a `deviceLayout` block an edit lands on that device's DELTA (0 = on the preset), without one on its raw placement. */
 function mutateDelta(
@@ -239,7 +244,6 @@ function AlignIcon({ id }: { id: SceneTextAlign }) {
   );
 }
 
-import type { V3 } from "../../toolkit/types";
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
@@ -266,6 +270,7 @@ import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
 import { DeviceDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
+import { ImageHostPicker } from "./ImageHostPicker";
 import {
   ActionRow,
   DrillBack,
@@ -279,6 +284,15 @@ import {
   ToggleRow,
   useDragScrub,
 } from "./rows";
+import {
+  type SceneOverviewContextRequest,
+  SceneOverviewEntityRow,
+  SceneOverviewGroupHeader,
+  SceneOverviewPicker,
+  type SceneOverviewPickerItem,
+  SceneOverviewSectionHeader,
+  SceneOverviewSettingRow,
+} from "./SceneOverview";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
 
@@ -494,6 +508,38 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M15 11v6M12 14h6" />
         </svg>
       );
+    case "content.edit":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 16l.7-3.3L13.2 4.2a1.4 1.4 0 012 0l.6.6a1.4 1.4 0 010 2l-8.5 8.5L4 16z" />
+          <path d="M12.2 5.2l2.6 2.6M4.7 12.7l2.6 2.6" />
+        </svg>
+      );
+    case "content.duplicate":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" />
+          <rect x="7.5" y="7.5" width="9" height="9" rx="1.5" />
+        </svg>
+      );
     case "device.duplicate":
       return (
         <svg
@@ -619,6 +665,7 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M3 15h14" />
         </svg>
       );
+    case "content.delete":
     case "device.remove":
       return (
         <svg
@@ -1634,8 +1681,7 @@ function CameraSectionBody({
 
   return (
     <div className="inspector-drill">
-      <DrillBack label="Scene" onClick={onBack} />
-      <div className="inspector-drill-title">Animations</div>
+      <DrillBack label="Scene" title="Camera" onClick={onBack} />
       {keyCount > 0 && (
         <div className="inspector-drill-reset">
           <button
@@ -1847,6 +1893,23 @@ function applyVideoWindowMedia(
   }
 }
 
+function inspectorAssetUrl(projectId: string, src: string): string {
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(src)) return src;
+  try {
+    return fsUrl(resolveAssetPath(projectId, src));
+  } catch {
+    return src;
+  }
+}
+
+interface LegacyImagePromotionSession {
+  decorationId: string;
+  baseline: SceneDoc;
+  resolvedDecorations: FrameDecorationSpec[];
+  imageId: string | null;
+  draftImage?: NonNullable<SceneDoc["images"]>[number];
+}
+
 export function SceneTab({
   project,
   sceneIndex,
@@ -1882,19 +1945,43 @@ export function SceneTab({
   /** Trash-recoverable scene removal (the bottom Delete row; Rust guards the last scene). */
   onDeleteScene: (sceneIndex: number) => void;
 }) {
-  const { slug, doc, scene, error, setError, patchDoc, commitFromBaseline, commitDuration } =
-    useSceneDocPatch(project, sceneIndex, onDocChanged, onTimingChanged);
+  const {
+    slug,
+    doc,
+    scene,
+    error,
+    setError,
+    patchDoc,
+    patchDocResult,
+    commitFromBaseline,
+    commitFromBaselineResult,
+    commitDuration,
+  } = useSceneDocPatch(project, sceneIndex, onDocChanged, onTimingChanged);
   const drillIn = useUiStore((s) => s.inspector.drillIn);
   const drillStack = useUiStore((s) => s.inspector.drillStack);
   // The back bar names the screen it pops to: the parent group (or a detail with children), else the row list.
   const backLabel =
-    drillStack.length > 1 ? (SCREEN_TITLES[drillStack[drillStack.length - 2]] ?? "Scene") : "Scene";
+    drillStack.length > 1
+      ? (sceneInspectorScreenTitle(drillStack[drillStack.length - 2], {
+          deviceCount: doc?.devices?.length,
+        }) ?? "Scene")
+      : "Scene";
   const openDrill = useUiStore((s) => s.openInspectorDrill);
   const jumpDrill = useUiStore((s) => s.jumpInspectorDrill);
+  const replaceDrill = useUiStore((s) => s.replaceInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const resetDrill = useUiStore((s) => s.resetInspectorDrill);
-  const selectedDecoId = useDecorationEditStore((s) => s.selectedId);
+  const overviewSelection = useUiStore((s) =>
+    s.inspector.overviewSelection?.sceneIndex === sceneIndex ? s.inspector.overviewSelection : null,
+  );
+  const setOverviewSelection = useUiStore((s) => s.setInspectorOverviewSelection);
+  const selectedDecoId = useDecorationEditStore((s) =>
+    s.sceneIndex === sceneIndex ? s.selectedId : null,
+  );
   const selectDeco = useDecorationEditStore((s) => s.select);
+  const selectedImageId = useImageEditStore((s) =>
+    s.selected?.sceneIndex === sceneIndex ? s.selected.imageId : null,
+  );
   // The text gizmo's selection, reflected both ways: touching a key's fields shows its handles, and a canvas click scrolls the drill to that key.
   const selectedTextKey = useTextEditStore((s) =>
     s.selected?.sceneIndex === sceneIndex ? s.selected.key : null,
@@ -1917,10 +2004,14 @@ export function SceneTab({
     requestDecoMedia(null);
   }, [decoMediaRequestId, requestDecoMedia]);
 
-  const [modal, setModal] = useState<"media" | null>(null);
-  // What a media pick targets: a scene device by id, or a decoration (append, or replace one by id).
+  const [modal, setModal] = useState<"media" | "imageHost" | null>(null);
+  const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
+  const [imagePickError, setImagePickError] = useState<string | null>(null);
+  // What a media pick targets: a scene device, a first-class Image, or a legacy decoration.
   const [mediaTarget, setMediaTarget] = useState<
-    { kind: "device"; deviceId?: string } | { kind: "decoration"; replaceId?: string }
+    | { kind: "device"; deviceId?: string }
+    | { kind: "image"; replaceId?: string; legacyId?: string }
+    | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
   // Which device the device rows act on; null (or a stale id) falls back to the first device. Store-held (the objectEditStore idiom) so a preview gizmo can attach to the same selection.
   const pickedDeviceId = useDeviceEditStore((s) =>
@@ -1931,9 +2022,9 @@ export function SceneTab({
       useDeviceEditStore.getState().select(id ? { sceneIndex, deviceId: id } : null),
     [sceneIndex],
   );
-  const deviceGizmoMode = useDeviceEditStore((s) => s.gizmoMode);
   // Outlines, click-to-select and the handles all follow the open section, not one deep drill.
   const devicesSectionOpen = useGizmoSectionOpen("devices");
+  const imagesSectionOpen = useGizmoSectionOpen("images");
   const objectsSectionOpen = useGizmoSectionOpen("objects");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   // Which staged object the placement drill targets, plus the library picker modal.
@@ -1952,10 +2043,63 @@ export function SceneTab({
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
+  const [contentPickerOpen, setContentPickerOpen] = useState(false);
+  const [contentMenu, setContentMenu] = useState<(ContextMenuState & { key: string }) | null>(null);
+  const contentPickerAnchorRef = useRef<HTMLDivElement>(null);
+  const contentPickerButtonRef = useRef<HTMLButtonElement>(null);
+  const imageSourceButtonRef = useRef<HTMLButtonElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const overviewRootRef = useRef<HTMLDivElement>(null);
+  const sceneIndexRef = useRef(sceneIndex);
+  const projectIdRef = useRef(project.id);
+  const sceneFileRef = useRef(project.sceneFiles[sceneIndex] ?? null);
+  const docRef = useRef(doc);
+  const resolvedDecorationsRef = useRef(project.sceneFrames[sceneIndex]?.decorations);
+  const patchDocResultRef = useRef(patchDocResult);
+  const legacyImagePromotionRef = useRef<LegacyImagePromotionSession | null>(null);
+  const legacyImageOperationRef = useRef<symbol | null>(null);
+  const [legacyImageNotice, setLegacyImageNotice] = useState<string | null>(null);
+  const [legacyImageBusy, setLegacyImageBusy] = useState(false);
+  const contentActionPendingRef = useRef<{
+    token: symbol;
+    projectId: string;
+    sceneIndex: number;
+    sceneFile: string | null;
+  } | null>(null);
+  sceneIndexRef.current = sceneIndex;
+  projectIdRef.current = project.id;
+  sceneFileRef.current = project.sceneFiles[sceneIndex] ?? null;
+  docRef.current = doc;
+  resolvedDecorationsRef.current = project.sceneFrames[sceneIndex]?.decorations;
+  patchDocResultRef.current = patchDocResult;
+  useEffect(() => {
+    if (drillIn === "legacyImage.edit") return;
+    legacyImagePromotionRef.current = null;
+    setLegacyImageNotice(null);
+  }, [drillIn]);
+  const beginLegacyImageOperation = () => {
+    if (legacyImageOperationRef.current) return null;
+    const token = Symbol("legacy-image-operation");
+    legacyImageOperationRef.current = token;
+    setLegacyImageBusy(true);
+    return token;
+  };
+  const endLegacyImageOperation = (token: symbol) => {
+    if (legacyImageOperationRef.current !== token) return;
+    legacyImageOperationRef.current = null;
+    setLegacyImageBusy(false);
+  };
+  const restoreImageSourceFocus = () => {
+    window.requestAnimationFrame(() =>
+      imageSourceButtonRef.current?.focus({ preventScroll: true }),
+    );
+  };
+  const closeContentPicker = useCallback((restoreFocus = false) => {
+    setContentPickerOpen(false);
+    if (restoreFocus) contentPickerButtonRef.current?.focus({ preventScroll: true });
+  }, []);
   // Snapshot of the doc at the start of a videoWindow slider drag: live ticks write history-less, release records one entry.
   const vwDragBaseline = useRef<SceneDoc | null>(null);
-  // The Position drill's drag baseline (same pattern).
-  const posDragBaseline = useRef<SceneDoc | null>(null);
   // The Text drill's line-spacing drag baseline (same pattern).
   const lineDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
@@ -2034,6 +2178,7 @@ export function SceneTab({
   }));
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
+  const imageIds = useMemo(() => (doc?.images ?? []).map((image) => image.id), [doc?.images]);
   // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
   const patchDocRef = useRef(patchDoc);
   patchDocRef.current = patchDoc;
@@ -2050,6 +2195,112 @@ export function SceneTab({
       });
     });
   }, [sceneIndex]);
+  useEffect(() => {
+    return useImageEditStore.subscribe((state) => {
+      const commit = state.pendingCommit;
+      if (!commit) return;
+      useImageEditStore.getState().clearCommit();
+      if (commit.sceneIndex !== sceneIndex) return;
+      void patchDocRef.current((next) => {
+        const image = next.images?.find((candidate) => candidate.id === commit.imageId);
+        if (!image) return;
+        if (commit.kind === "stage") image.stage = commit.placement;
+        else image.overlay = commit.placement;
+      });
+    });
+  }, [sceneIndex]);
+  useEffect(() => {
+    const store = useImageEditStore.getState();
+    const firstImageId = imageIds[0];
+    if (!imagesSectionOpen) {
+      if (store.selected?.sceneIndex === sceneIndex) store.select(null);
+      return;
+    }
+    if (firstImageId === undefined) return;
+    const ensure = () => {
+      const current = useImageEditStore.getState();
+      const selected = current.selected;
+      if (selected?.sceneIndex === sceneIndex) return;
+      current.select({ sceneIndex, imageId: firstImageId });
+    };
+    ensure();
+    return useImageEditStore.subscribe(ensure);
+  }, [imageIds, imagesSectionOpen, sceneIndex]);
+  useEffect(() => {
+    const inspector = useUiStore.getState().inspector;
+    const currentSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const decorations =
+      doc?.frame?.decorations ?? project.sceneFrames[sceneIndex]?.decorations ?? [];
+    const imageDecorationIds = decorations
+      .filter((decoration) => decoration.src !== undefined)
+      .map((decoration) => decoration.id);
+    const activePromotionId = legacyImagePromotionRef.current?.decorationId;
+    if (activePromotionId && !imageDecorationIds.includes(activePromotionId)) {
+      imageDecorationIds.push(activePromotionId);
+    }
+    const reconciliation = reconcileImageEditor({
+      drillIn: inspector.drillIn,
+      overviewRowId: inspector.overviewSelection?.rowId ?? null,
+      selectedImageId,
+      selectedDecorationId: selectedDecoId,
+      imageIds,
+      imageDecorationIds,
+      origins: useImageReconciliationStore.getState().originsFor(project.id, currentSceneFile),
+    });
+    if (reconciliation.kind === "switch-to-legacy") {
+      useImageEditStore.getState().select(null);
+      const decorationStore = useDecorationEditStore.getState();
+      decorationStore.setScene(sceneIndex);
+      decorationStore.select(reconciliation.decorationId);
+      setOverviewSelection({
+        sceneIndex,
+        rowId: reconciliation.overviewRowId,
+        domain: "decorations",
+      });
+      if (reconciliation.replaceDrill) replaceDrill("legacyImage.edit");
+      return;
+    }
+    if (reconciliation.kind === "switch-to-image") {
+      useDecorationEditStore.getState().select(null);
+      useImageEditStore.getState().select({ sceneIndex, imageId: reconciliation.imageId });
+      setOverviewSelection({
+        sceneIndex,
+        rowId: reconciliation.overviewRowId,
+        domain: "images",
+      });
+      if (reconciliation.replaceDrill) replaceDrill("image.edit");
+      return;
+    }
+    if (reconciliation.kind === "select-image") {
+      useDecorationEditStore.getState().select(null);
+      useImageEditStore.getState().select({ sceneIndex, imageId: reconciliation.imageId });
+      setOverviewSelection({
+        sceneIndex,
+        rowId: reconciliation.overviewRowId,
+        domain: "images",
+      });
+      return;
+    }
+    if (reconciliation.kind === "close-stale-editor") {
+      if (reconciliation.editor === "image") useImageEditStore.getState().select(null);
+      else useDecorationEditStore.getState().select(null);
+      setOverviewSelection(null);
+      closeDrill();
+    }
+  }, [
+    closeDrill,
+    doc?.frame?.decorations,
+    imageIds,
+    project.id,
+    project.sceneFiles,
+    replaceDrill,
+    project.sceneFrames,
+    sceneIndex,
+    selectedDecoId,
+    selectedImageId,
+    setOverviewSelection,
+  ]);
+  useEffect(() => () => useImageEditStore.getState().select(null), []);
   // The preview gizmo follows the open Objects section; leaving it (or the scene) deselects.
   const stagedObjectId = stagedObject?.id;
   useEffect(() => {
@@ -2067,6 +2318,34 @@ export function SceneTab({
   useEffect(() => {
     if (selectedObjectId) setPickedObjectId(selectedObjectId);
   }, [selectedObjectId]);
+  useEffect(() => {
+    if (drillIn !== null || !overviewSelection) return;
+    const rowId =
+      overviewSelection.domain === "devices" && pickedDeviceId
+        ? `device:${pickedDeviceId}`
+        : overviewSelection.domain === "objects" && selectedObjectId
+          ? `object:${selectedObjectId}`
+          : overviewSelection.domain === "images" && selectedImageId
+            ? `image:${selectedImageId}`
+            : overviewSelection.domain === "text" && selectedTextKey
+              ? `text:${selectedTextKey}`
+              : overviewSelection.domain === "decorations" && selectedDecoId
+                ? `image:legacy:${selectedDecoId}`
+                : null;
+    if (rowId && rowId !== overviewSelection.rowId) {
+      setOverviewSelection({ sceneIndex, rowId, domain: overviewSelection.domain });
+    }
+  }, [
+    drillIn,
+    overviewSelection,
+    pickedDeviceId,
+    sceneIndex,
+    selectedDecoId,
+    selectedImageId,
+    selectedObjectId,
+    selectedTextKey,
+    setOverviewSelection,
+  ]);
   // The staged chart's gizmo, same contract: it posts finished drags here, and follows its own drill.
   useEffect(() => {
     return useChartEditStore.subscribe((s) => {
@@ -2184,11 +2463,21 @@ export function SceneTab({
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-scene
   useEffect(() => {
     setModal(null);
+    setPendingImageSrc(null);
+    setImagePickError(null);
+    legacyImagePromotionRef.current = null;
+    legacyImageOperationRef.current = null;
+    setLegacyImageBusy(false);
+    setLegacyImageNotice(null);
     setConfirmRemove(false);
     pickDevice(null);
+    useImageEditStore.getState().select(null);
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setConfirmRemoveCompare(false);
+    setOverviewSelection(null);
+    setContentPickerOpen(false);
+    setContentMenu(null);
     setBgTarget("scene");
     setLightingTarget("scene");
     // Text drafts are keyed by field name, not by scene, so a leftover would shadow the new
@@ -2220,7 +2509,15 @@ export function SceneTab({
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
-  }, [sceneIndex, resetDrill, jumpDrill]);
+  }, [sceneIndex, resetDrill, jumpDrill, setOverviewSelection]);
+
+  useLayoutEffect(() => {
+    void sceneIndex;
+    if (contentScrollRef.current) contentScrollRef.current.scrollTop = 0;
+  }, [sceneIndex]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: every document replacement invalidates any armed menu action
+  useEffect(() => setContentMenu(null), [doc]);
 
   // The remove confirmation disarms itself (the EditBar pattern).
   useEffect(() => {
@@ -2245,9 +2542,38 @@ export function SceneTab({
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm on scene change
   useEffect(() => setConfirmApplyAll(false), [sceneIndex]);
 
-  // Drill-ins + inline modals close on Esc, popping one level like the back bar.
-  useEscapeClose(() => closeDrill(), drillIn !== null);
-  useEscapeClose(() => setModal(null), modal === "media");
+  // Inline layers close before the shell-owned drill Escape handler.
+  useEscapeClose(() => {
+    const restoreImageFocus =
+      mediaTarget.kind === "image" &&
+      (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
+    setModal(null);
+    setPendingImageSrc(null);
+    setImagePickError(null);
+    if (restoreImageFocus) restoreImageSourceFocus();
+  }, modal !== null);
+  useEscapeClose(() => closeContentPicker(true), drillIn === null && contentPickerOpen);
+  useEffect(() => {
+    if (drillIn !== null || !contentPickerOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      contentPickerAnchorRef.current
+        ?.querySelector<HTMLButtonElement>(
+          '.inspector-scene-overview-picker-item:not([aria-disabled="true"])',
+        )
+        ?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [contentPickerOpen, drillIn]);
+  useEffect(() => {
+    if (drillIn !== null || !contentPickerOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && contentPickerAnchorRef.current?.contains(target)) return;
+      closeContentPicker();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+  }, [closeContentPicker, contentPickerOpen, drillIn]);
 
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
   useEffect(() => {
@@ -2293,71 +2619,151 @@ export function SceneTab({
       if (d) fn(d);
     });
 
-  const freshDeviceId = () => {
-    const used = new Set(devices.map((d) => d.id));
-    let n = 1;
-    while (used.has(`d${n}`)) n += 1;
-    return `d${n}`;
-  };
   const addDevice = () => {
-    const id = freshDeviceId();
-    // Later devices step outward alternately so a new one never lands inside an existing device.
-    const k = devices.length;
-    const x = k === 0 ? 0 : DEVICE_STEP_X * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
-    void patchDoc((next) => {
-      // The Rust scaffolder's device defaults, byte for byte (the first device lands centred).
-      next.devices = [
-        ...(next.devices ?? []),
-        {
-          id,
-          model: "iphone-17-pro",
-          colour: "silver",
-          placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
-          motion: { preset: "none" },
-          shadow: "soft",
-        },
-      ];
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    let createdId: string | null = null;
+    void patchDocResult(
+      (next) => {
+        const currentDevices = next.devices ?? [];
+        const id = nextNumberedContentId(
+          "d",
+          currentDevices.map((candidate) => candidate.id),
+        );
+        const k = currentDevices.length;
+        const x = k === 0 ? 0 : DEVICE_STEP_X * Math.ceil(k / 2) * (k % 2 === 1 ? 1 : -1);
+        createdId = id;
+        next.devices = [
+          ...currentDevices,
+          {
+            id,
+            model: "iphone-17-pro",
+            colour: "silver",
+            placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
+            motion: { preset: "none" },
+            shadow: "soft",
+          },
+        ];
+      },
+      { history: "add device" },
+    ).then((succeeded) => {
+      const id = createdId;
+      const inspector = useUiStore.getState().inspector;
+      if (
+        !succeeded ||
+        !id ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        inspector.tab !== "scene" ||
+        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        return;
+      }
+      pickDevice(id);
+      setOverviewSelection({
+        sceneIndex: expectedSceneIndex,
+        rowId: `device:${id}`,
+        domain: "devices",
+      });
     });
-    pickDevice(id);
   };
   const duplicateDevice = () => {
     if (!deviceId) return;
-    const id = freshDeviceId();
-    void patchDoc((next) => {
-      const src = next.devices?.find((x) => x.id === deviceId);
-      if (!src) return;
-      const copy = structuredClone(src);
-      copy.id = id;
-      // Mirror across centre: flip x (a centred device steps one footprint aside) and the y rotation.
-      const laptop = isDeviceId(src.model) && DEVICE_CATALOG[src.model].lid !== undefined;
-      const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (src.placement?.scale ?? 1);
-      const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
-      const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
-      copy.placement = {
-        ...copy.placement,
-        position: [px === 0 ? step : -px, py, pz],
-        rotationDeg: [rx, -ry, rz],
-      };
-      next.devices = [...(next.devices ?? []), copy];
+    const sourceId = deviceId;
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    let createdId: string | null = null;
+    void patchDocResult(
+      (next) => {
+        const src = next.devices?.find((candidate) => candidate.id === sourceId);
+        if (!src) return;
+        const id = nextNumberedContentId(
+          "d",
+          (next.devices ?? []).map((candidate) => candidate.id),
+        );
+        const copy = structuredClone(src);
+        copy.id = id;
+        const laptop = isDeviceId(src.model) && DEVICE_CATALOG[src.model].lid !== undefined;
+        const step = (laptop ? LAPTOP_STEP_X : DEVICE_STEP_X) * (src.placement?.scale ?? 1);
+        const [px = 0, py = -0.3, pz = 0] = src.placement?.position ?? [];
+        const [rx = 0, ry = 0, rz = 0] = src.placement?.rotationDeg ?? [];
+        copy.placement = {
+          ...copy.placement,
+          position: [px === 0 ? step : -px, py, pz],
+          rotationDeg: [rx, -ry, rz],
+        };
+        createdId = id;
+        next.devices = [...(next.devices ?? []), copy];
+      },
+      { history: "duplicate device" },
+    ).then((succeeded) => {
+      const id = createdId;
+      const inspector = useUiStore.getState().inspector;
+      if (
+        !succeeded ||
+        !id ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        inspector.tab !== "scene" ||
+        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        return;
+      }
+      pickDevice(id);
     });
-    pickDevice(id);
-  };
-  const freshObjectId = () => {
-    const used = new Set(objects.map((o) => o.id));
-    let n = 1;
-    while (used.has(`o${n}`)) n += 1;
-    return `o${n}`;
   };
   const addObjectFromPicker = (objectId: string) => {
-    const id = freshObjectId();
-    // Beside the device when one is staged, else grounded at centre; a starting point to nudge from.
-    const placement = device ? besideDevicePlacement(device, "right") : floorCentrePlacement();
-    void patchDoc((next) => {
-      next.objects = [...(next.objects ?? []), { id, objectId, placement }];
-    });
-    setPickedObjectId(id);
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    const selectedDeviceId = deviceId;
+    let createdId: string | null = null;
     setObjectPickerOpen(false);
-    openDrill("objects.placement");
+    void patchDocResult(
+      (next) => {
+        const currentObjects = next.objects ?? [];
+        const id = nextNumberedContentId(
+          "o",
+          currentObjects.map((candidate) => candidate.id),
+        );
+        const currentDevice =
+          next.devices?.find((candidate) => candidate.id === selectedDeviceId) ?? next.devices?.[0];
+        const placement = currentDevice
+          ? besideDevicePlacement(currentDevice, "right")
+          : floorCentrePlacement();
+        createdId = id;
+        next.objects = [...currentObjects, { id, objectId, placement }];
+      },
+      { history: "add object" },
+    ).then((succeeded) => {
+      const id = createdId;
+      const inspector = useUiStore.getState().inspector;
+      if (
+        !succeeded ||
+        !id ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        inspector.tab !== "scene" ||
+        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        return;
+      }
+      setPickedObjectId(id);
+      setOverviewSelection({
+        sceneIndex: expectedSceneIndex,
+        rowId: `object:${id}`,
+        domain: "objects",
+      });
+      openDrill("objects.placement");
+    });
   };
   /** Mutate the drill's staged object in place; a no-op when the scene has none. */
   const patchObject = (fn: (o: NonNullable<SceneDoc["objects"]>[number]) => void) =>
@@ -2376,12 +2782,14 @@ export function SceneTab({
         chrome: { line: { width: 4, colour: "accent" }, chips: true },
       };
     });
+    setOverviewSelection({ sceneIndex, rowId: "comparison", domain: null });
     openDrill("compare.edit");
   };
   const addChart = () => {
     void patchDoc((next) => {
       next.chart = newChartBlock();
     });
+    setOverviewSelection({ sceneIndex, rowId: "chart", domain: "chart" });
     jumpDrill(["chart.edit"]);
   };
   const addOverlay = () =>
@@ -2391,9 +2799,12 @@ export function SceneTab({
     });
   // The row edits this scene's EXIT (boundary index = the outgoing scene); the last scene remaps to its entrance so the row always means something.
   const boundaryIndex = Math.max(0, Math.min(sceneIndex, project.slots.length - 2));
+  const transitionSpec = project.slots[boundaryIndex + 1]?.transitionIn;
   const transitionValue =
     project.slots.length > 1
-      ? (project.slots[boundaryIndex + 1]?.transitionIn?.type ?? "none")
+      ? transitionSpec
+        ? `${TRANSITION_CATALOG.find((entry) => entry.type === transitionSpec.type)?.label ?? transitionSpec.type} · ${(transitionSpec.durationMs / 1000).toFixed(1)} s`
+        : "None"
       : undefined;
   const durationMode =
     doc?.duration?.mode === "manual"
@@ -2501,7 +2912,7 @@ export function SceneTab({
   };
 
   const header = (
-    <div className="inspector-scene-head">
+    <div className="inspector-scene-head inspector-scene-identity">
       <div className="inspector-scene-preview">
         {previewSrc && <img src={previewSrc} alt="" draggable={false} />}
       </div>
@@ -2541,9 +2952,127 @@ export function SceneTab({
     </div>
   );
 
+  const promoteLegacyImageOnce = async (
+    decorationId: string,
+    mutate: ImageMutation,
+    history: string,
+  ): Promise<string | null> => {
+    const resolved = structuredClone(resolvedDecorationsRef.current ?? []);
+    let promotedId: string | null = null;
+    const succeeded = await patchDocResultRef.current(
+      (next) => {
+        const result = promoteLegacyImage(next, resolved, decorationId, mutate);
+        if (!result) return false;
+        Object.assign(next, result.doc);
+        promotedId = result.imageId;
+      },
+      { history },
+    );
+    if (!succeeded || !promotedId) {
+      setLegacyImageNotice(
+        "This inherited image could not be taken over. Choose a PNG, JPEG or WebP source first.",
+      );
+      return null;
+    }
+    setLegacyImageNotice(null);
+    return promotedId;
+  };
+
+  const finishLegacyImagePromotion = (
+    imageId: string,
+    decorationId: string,
+    operationToken: symbol,
+    expectedProjectId: string,
+    expectedSceneIndex: number,
+    expectedSceneFile: string | null,
+  ) => {
+    const inspector = useUiStore.getState().inspector;
+    useImageReconciliationStore.getState().recordOrigin(expectedProjectId, expectedSceneFile, {
+      kind: "legacy-promotion",
+      decorationId,
+      imageId,
+    });
+    if (
+      projectIdRef.current !== expectedProjectId ||
+      sceneIndexRef.current !== expectedSceneIndex ||
+      sceneFileRef.current !== expectedSceneFile
+    ) {
+      return;
+    }
+    const decorationState = useDecorationEditStore.getState();
+    if (
+      legacyImageOperationRef.current !== operationToken ||
+      decorationState.sceneIndex !== expectedSceneIndex ||
+      decorationState.selectedId !== decorationId
+    ) {
+      return;
+    }
+    if (inspector.tab !== "scene" || inspector.drillIn !== "legacyImage.edit") return;
+    useDecorationEditStore.getState().select(null);
+    useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId });
+    setOverviewSelection({
+      sceneIndex: expectedSceneIndex,
+      rowId: `image:${imageId}`,
+      domain: "images",
+    });
+    replaceDrill("image.edit");
+  };
+
   // The media picker, shared by the device-media row and the decorations drill-in. Defined here
   // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
   const pickMediaModal = (rel: string, meta: MediaMeta | null) => {
+    if (mediaTarget.kind === "image") {
+      if (meta && meta.kind !== "image") return;
+      if (!isSceneImageSource(rel)) {
+        setImagePickError("Stage and Overlay Images support PNG, JPEG and WebP files.");
+        return;
+      }
+      setImagePickError(null);
+      if (mediaTarget.legacyId) {
+        const operationToken = beginLegacyImageOperation();
+        if (!operationToken) return;
+        const legacyId = mediaTarget.legacyId;
+        const expectedProjectId = project.id;
+        const expectedSceneIndex = sceneIndex;
+        const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+        setModal(null);
+        restoreImageSourceFocus();
+        void promoteLegacyImageOnce(
+          legacyId,
+          (image) => {
+            image.src = rel;
+          },
+          "replace image source",
+        )
+          .then((imageId) => {
+            if (imageId) {
+              finishLegacyImagePromotion(
+                imageId,
+                legacyId,
+                operationToken,
+                expectedProjectId,
+                expectedSceneIndex,
+                expectedSceneFile,
+              );
+            }
+          })
+          .finally(() => endLegacyImageOperation(operationToken));
+        return;
+      }
+      if (mediaTarget.replaceId) {
+        const replaceId = mediaTarget.replaceId;
+        setModal(null);
+        restoreImageSourceFocus();
+        void patchDoc((next) => {
+          const image = next.images?.find((candidate) => candidate.id === replaceId);
+          if (image) image.src = rel;
+        });
+      } else {
+        setPendingImageSrc(rel);
+        setModal("imageHost");
+      }
+      return;
+    }
     setModal(null);
     if (mediaTarget.kind === "device") {
       const isVideo = meta?.kind !== "image";
@@ -2563,62 +3092,160 @@ export function SceneTab({
       );
       return;
     }
-    const decos = sceneFrame?.decorations ?? [];
+    const resolvedDecorations = structuredClone(sceneFrame?.decorations ?? []);
     const { replaceId } = mediaTarget;
-    // A pick always lands an IMAGE decoration, so a text one switching type drops its text fields.
-    const nextDecos: FrameDecorationSpec[] = replaceId
-      ? decos.map((d) =>
-          d.id === replaceId
-            ? { ...d, src: rel, text: undefined, colour: undefined, face: undefined }
-            : d,
-        )
-      : [
-          ...decos,
-          {
-            id: nextDecorationId(rel, new Set(decos.map((d) => d.id))),
-            src: rel,
-            position: [0.45, -0.5],
-            size: 0.15,
-            shape: "none",
-            layer: "above",
-          },
-        ];
     void patchDoc((next) => {
+      const current = next.frame?.decorations ?? resolvedDecorations;
+      const nextDecos: FrameDecorationSpec[] = replaceId
+        ? current.map((decoration) =>
+            decoration.id === replaceId
+              ? {
+                  ...decoration,
+                  src: rel,
+                  text: undefined,
+                  colour: undefined,
+                  face: undefined,
+                }
+              : decoration,
+          )
+        : [
+            ...current,
+            {
+              id: nextDecorationId(rel, new Set(current.map((decoration) => decoration.id))),
+              src: rel,
+              position: [0.45, -0.5],
+              size: 0.15,
+              shape: "none",
+              layer: "above",
+            },
+          ];
       next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
     });
   };
-  const mediaModal = modal === "media" && (
-    <div className="modal-overlay" role="dialog" aria-modal="true">
-      <div className="modal wizard-wide media-modal-wide">
-        <div className="modal-title-row">
-          <h2>{mediaTarget.kind === "decoration" ? "Choose image" : "Change video"}</h2>
-        </div>
-        <div className="wizard-media-host">
-          <MediaBrowser
-            slug={slug}
-            projectPath={workspaceProjectPath(slug) ?? ""}
-            kinds={mediaTarget.kind === "decoration" ? ["image"] : undefined}
-            kindToggle={mediaTarget.kind === "device"}
-            globalToggle
-            refreshKey={mediaRefreshKey + mediaRefresh}
-            onPick={pickMediaModal}
-            cardMenu={mediaCardMenu({
-              slug,
-              primaryLabel: "Select",
-              onPrimary: pickMediaModal,
-              onChanged: () => setMediaRefresh((n) => n + 1),
-              onError: setError,
-            })}
-          />
-        </div>
-        <div className="modal-actions">
-          <button type="button" className="btn" onClick={() => setModal(null)}>
-            Cancel
-          </button>
+  const addPendingImage = (host: "stage" | "overlay") => {
+    const src = pendingImageSrc;
+    if (!src || (host === "overlay" && !sceneFrame)) return;
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    let createdId: string | null = null;
+    setModal(null);
+    setPendingImageSrc(null);
+    void patchDocResult(
+      (next) => {
+        const images = next.images ?? [];
+        const id = nextNumberedContentId(
+          "img",
+          images.map((image) => image.id),
+        );
+        createdId = id;
+        next.images = [...images, createSceneImage(id, src, host)];
+      },
+      { history: "add image" },
+    ).then((succeeded) => {
+      const id = createdId;
+      const inspector = useUiStore.getState().inspector;
+      if (
+        !succeeded ||
+        !id ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        inspector.tab !== "scene" ||
+        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        return;
+      }
+      setOverviewSelection({
+        sceneIndex: expectedSceneIndex,
+        rowId: `image:${id}`,
+        domain: "images",
+      });
+      useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });
+    });
+  };
+  const mediaModal =
+    modal === "media" ? (
+      <div className="modal-overlay" role="dialog" aria-modal="true">
+        <div className="modal wizard-wide media-modal-wide">
+          <div className="modal-title-row">
+            <h2>{mediaTarget.kind === "device" ? "Change video" : "Choose image"}</h2>
+          </div>
+          {mediaTarget.kind === "image" && imagePickError && (
+            <p className="modal-error">{imagePickError}</p>
+          )}
+          <div className="wizard-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={workspaceProjectPath(slug) ?? ""}
+              kinds={mediaTarget.kind === "device" ? undefined : ["image"]}
+              kindToggle={mediaTarget.kind === "device"}
+              globalToggle
+              refreshKey={mediaRefreshKey + mediaRefresh}
+              onPick={pickMediaModal}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: pickMediaModal,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setError,
+              })}
+            />
+          </div>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                const restoreImageFocus =
+                  mediaTarget.kind === "image" &&
+                  (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
+                setModal(null);
+                setPendingImageSrc(null);
+                setImagePickError(null);
+                if (restoreImageFocus) restoreImageSourceFocus();
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    ) : modal === "imageHost" && pendingImageSrc ? (
+      <div
+        className="modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="image-host-title"
+      >
+        <div className="modal image-host-modal">
+          <div className="modal-title-row">
+            <h2 id="image-host-title">Place image</h2>
+          </div>
+          <p className="muted">Choose where this image belongs. You can switch hosts later.</p>
+          <ImageHostPicker
+            stageIcon={<SceneRowIcon id="objects.edit" />}
+            overlayIcon={<SceneRowIcon id="frame" />}
+            overlayAvailable={sceneFrame !== undefined}
+            onPick={addPendingImage}
+          />
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setModal(null);
+                setPendingImageSrc(null);
+                setImagePickError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   // ── Drill-in views ────────────────────────────────────────────────────────
   if (drillIn === "style.theme" && doc) {
@@ -2630,8 +3257,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Scene theme</div>
+        <DrillBack label={backLabel} title="Scene theme" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="font-slot-row">
             <button
@@ -2677,8 +3303,7 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Cutout</div>
+        <DrillBack label={backLabel} title="Cutout" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="bg-type-grid" role="tablist" aria-label="Cutout shape">
             {FRAME_SHAPES.map((s) => (
@@ -2792,8 +3417,7 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Panel background</div>
+        <DrillBack label={backLabel} title="Panel background" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="bg-type-grid" role="tablist" aria-label="Panel fill type">
             {types.map((t) => (
@@ -2892,8 +3516,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Panel image</div>
+        <DrillBack label={backLabel} title="Panel image" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="inspector-media-host">
             <MediaBrowser
@@ -2938,8 +3561,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Chip</div>
+        <DrillBack label={backLabel} title="Chip" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           {chip ? (
             <>
@@ -3027,13 +3649,18 @@ export function SceneTab({
   }
   if (drillIn === "frame.decorations" && sceneFrame) {
     const decos = sceneFrame.decorations ?? [];
-    // The override replaces the whole array, so materialise the resolved decorations then patch.
-    const writeDecos = (nextDecos: FrameDecorationSpec[]) =>
+    const writeDecos = (update: (current: FrameDecorationSpec[]) => FrameDecorationSpec[]) =>
       void patchDoc((next) => {
+        const current = structuredClone(next.frame?.decorations ?? decos);
+        const nextDecos = update(current);
         next.frame = { ...(next.frame ?? {}), decorations: nextDecos };
       });
     const patchDeco = (id: string, change: Partial<FrameDecorationSpec>) =>
-      writeDecos(decos.map((d) => (d.id === id ? { ...d, ...change } : d)));
+      writeDecos((current) =>
+        current.map((decoration) =>
+          decoration.id === id ? { ...decoration, ...change } : decoration,
+        ),
+      );
     const openImagePicker = (replaceId?: string) => {
       setMediaTarget({ kind: "decoration", replaceId });
       setModal("media");
@@ -3042,10 +3669,10 @@ export function SceneTab({
     const makeText = (d: FrameDecorationSpec) =>
       patchDeco(d.id, { text: d.text ?? "Text", src: undefined, shape: undefined });
     const addText = () =>
-      writeDecos([
-        ...decos,
+      writeDecos((current) => [
+        ...current,
         {
-          id: uniqueDecorationId("text", new Set(decos.map((d) => d.id))),
+          id: uniqueDecorationId("text", new Set(current.map((decoration) => decoration.id))),
           text: "Text",
           position: [0.45, -0.5],
           size: 0.05,
@@ -3073,8 +3700,7 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Decorations</div>
+        <DrillBack label={backLabel} title="Decorations" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           {decos.length === 0 && (
             <p className="modal-hint">
@@ -3099,7 +3725,11 @@ export function SceneTab({
                     className="deco-remove"
                     title="Remove decoration"
                     aria-label="Remove decoration"
-                    onClick={() => writeDecos(decos.filter((x) => x.id !== d.id))}
+                    onClick={() =>
+                      writeDecos((current) =>
+                        current.filter((decoration) => decoration.id !== d.id),
+                      )
+                    }
                   >
                     Remove
                   </button>
@@ -3307,8 +3937,7 @@ export function SceneTab({
     const claimed = sceneFrame.claimsSceneText !== false;
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Scene text</div>
+        <DrillBack label={backLabel} title="Scene text" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <ToggleRow
             label="Use scene text in the panel"
@@ -3329,8 +3958,7 @@ export function SceneTab({
   if (drillIn === "style.shadow" && doc && device) {
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Device shadow</div>
+        <DrillBack label={backLabel} title="Device shadow" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="option-grid">
             {SHADOW_OPTIONS.map((o) => (
@@ -3381,10 +4009,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          <span>Recording</span>
-        </div>
+        <DrillBack label={backLabel} title="Recording" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="inspector-media-host">
             <MediaBrowser
@@ -3481,14 +4106,12 @@ export function SceneTab({
       <div className="inspector-drill">
         <DrillBack
           label="Scene"
+          title="Video window"
           onClick={() => {
             setConfirmRemoveVideoWindow(false);
             closeDrill();
           }}
         />
-        <div className="inspector-drill-title">
-          <span>Video window</span>
-        </div>
         <div className="inspector-drill-body">
           {!vw ? (
             <>
@@ -3834,10 +4457,11 @@ export function SceneTab({
     const selectBg = kind === "video" ? selectVideoBackground : selectImageBackground;
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          {kind === "video" ? "Background video" : "Background image"}
-        </div>
+        <DrillBack
+          label={backLabel}
+          title={kind === "video" ? "Background video" : "Background image"}
+          onClick={() => closeDrill()}
+        />
         <div className="inspector-drill-body">
           <div className="inspector-media-host">
             <MediaBrowser
@@ -4010,21 +4634,20 @@ export function SceneTab({
     ];
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          <span>Background</span>
-          {bgTab === "shader" && selectedShaderPreset && (
-            <button
-              type="button"
-              className="inspector-reset-btn"
-              title={`Back to the ${selectedShaderPreset.name} preset's colours and motion`}
-              onClick={() => applyShaderPreset(selectedShaderPreset)}
-            >
-              Reset
-            </button>
-          )}
-        </div>
+        <DrillBack label={backLabel} title="Background" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
+          {bgTab === "shader" && selectedShaderPreset && (
+            <div className="popover-row">
+              <button
+                type="button"
+                className="btn"
+                title={`Back to the ${selectedShaderPreset.name} preset's colours and motion`}
+                onClick={() => applyShaderPreset(selectedShaderPreset)}
+              >
+                Reset {selectedShaderPreset.name}
+              </button>
+            </div>
+          )}
           {docTab === "default" ? (
             <p className="modal-hint">
               Following the theme's background. Pick a fill type to override it for this scene.
@@ -4727,8 +5350,11 @@ export function SceneTab({
       project.sceneDocs[boundaryIndex + 1]?.compare !== undefined;
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">{`Transition out of scene ${boundaryIndex + 1}`}</div>
+        <DrillBack
+          label={backLabel}
+          title={`Transition out of scene ${boundaryIndex + 1}`}
+          onClick={() => closeDrill()}
+        />
         {boundaryHasCompare && (
           <p className="inspector-stub-note">
             A comparison sits on this boundary: during the transition window it blends its Before
@@ -4805,10 +5431,11 @@ export function SceneTab({
       );
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          {label.charAt(0).toUpperCase() + label.slice(1)} font
-        </div>
+        <DrillBack
+          label={backLabel}
+          title={`${label.charAt(0).toUpperCase() + label.slice(1)} font`}
+          onClick={() => closeDrill()}
+        />
         <div className="inspector-drill-body">
           {typeof override === "string" && (
             <button
@@ -4858,8 +5485,7 @@ export function SceneTab({
       );
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Decoration font</div>
+        <DrillBack label={backLabel} title="Decoration font" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           {deco?.font !== undefined && (
             <button
@@ -5024,38 +5650,38 @@ export function SceneTab({
       <div className="inspector-drill">
         <DrillBack
           label={backLabel}
+          title="Text"
           onClick={() => {
             flushText();
             closeDrill();
           }}
         />
-        <div className="inspector-drill-title">
-          Text
-          <button
-            type="button"
-            className="inspector-reset-btn inspector-clear-text"
-            title="Blank every text field on this scene (undoable)"
-            onClick={clearAllText}
-          >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M8.5 16.5H4.8L3 14.7a1.5 1.5 0 010-2.1l8.1-8.1a1.5 1.5 0 012.1 0l3.4 3.4a1.5 1.5 0 010 2.1l-6.6 6.5z" />
-              <path d="M7.3 7.6l5.6 5.6" />
-              <path d="M11 16.5h6" />
-            </svg>
-            Clear text
-          </button>
-        </div>
         <div className="inspector-drill-body">
+          <div className="popover-row">
+            <button
+              type="button"
+              className="btn inspector-clear-text"
+              title="Blank every text field on this scene (undoable)"
+              onClick={clearAllText}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M8.5 16.5H4.8L3 14.7a1.5 1.5 0 010-2.1l8.1-8.1a1.5 1.5 0 012.1 0l3.4 3.4a1.5 1.5 0 010 2.1l-6.6 6.5z" />
+                <path d="M7.3 7.6l5.6 5.6" />
+                <path d="M11 16.5h6" />
+              </svg>
+              Clear text
+            </button>
+          </div>
           <div className="wizard-field">
             <span className="wizard-label">Alignment</span>
             <div className="inspector-tabs" role="tablist">
@@ -5296,8 +5922,7 @@ export function SceneTab({
     };
     return (
       <div className="inspector-drill">
-        <DrillBack label="Comparison" onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">After screen</div>
+        <DrillBack label="Comparison" title="After screen" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           {current && (
             <ActionRow
@@ -5349,8 +5974,7 @@ export function SceneTab({
     const bThemeId = doc.compare.b?.themeId ?? "";
     return (
       <div className="inspector-drill">
-        <DrillBack label="Comparison" onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">After theme</div>
+        <DrillBack label="Comparison" title="After theme" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <div className="font-slot-row">
             <button
@@ -5411,8 +6035,7 @@ export function SceneTab({
       : "Same as before";
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">Comparison</div>
+        <DrillBack label={backLabel} title="Comparison" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <SegmentedRow
             options={COMPARE_MASK_CATALOG.map((e) => ({
@@ -5804,6 +6427,385 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "legacyImage.edit" && doc && sceneFrame) {
+    const activeSession = legacyImagePromotionRef.current;
+    const legacyId =
+      activeSession?.decorationId ??
+      selectedDecoId ??
+      sceneFrame.decorations?.find((decoration) => decoration.src)?.id ??
+      null;
+    const resolvedDecoration = sceneFrame.decorations?.find(
+      (decoration) => decoration.id === legacyId && decoration.src !== undefined,
+    );
+    let displayImage = activeSession?.imageId
+      ? doc.images?.find((image) => image.id === activeSession.imageId)
+      : undefined;
+    if (!displayImage && resolvedDecoration?.src) {
+      displayImage = createSceneImage(
+        `legacy:${resolvedDecoration.id}`,
+        resolvedDecoration.src,
+        "overlay",
+      );
+      displayImage.overlay = {
+        position: [...resolvedDecoration.position],
+        size: resolvedDecoration.size,
+        rotationDeg: resolvedDecoration.rotationDeg ?? 0,
+        shape: resolvedDecoration.shape ?? "none",
+        layer: resolvedDecoration.layer ?? "above",
+      };
+    }
+    const syntheticDoc: SceneDoc = {
+      ...doc,
+      images: displayImage ? [displayImage] : [],
+    };
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const mutateLegacyImage = async (
+      mutate: ImageMutation,
+      options: ImageMutationOptions,
+    ): Promise<void> => {
+      if (!legacyId || legacyImageOperationRef.current) return;
+      let session = legacyImagePromotionRef.current;
+      if (!session || session.decorationId !== legacyId) {
+        session = {
+          decorationId: legacyId,
+          baseline: structuredClone(docRef.current ?? doc),
+          resolvedDecorations: structuredClone(resolvedDecorationsRef.current ?? []),
+          imageId: null,
+        };
+        legacyImagePromotionRef.current = session;
+      }
+      if (options.history === false) {
+        const succeeded = await patchDocResultRef.current(
+          (next) => {
+            if (session.imageId) {
+              const image = next.images?.find((candidate) => candidate.id === session.imageId);
+              if (!image) return false;
+              mutate(image);
+              session.draftImage = structuredClone(image);
+              return;
+            }
+            const result = promoteLegacyImage(
+              next,
+              session.resolvedDecorations,
+              session.decorationId,
+              mutate,
+            );
+            if (!result) return false;
+            Object.assign(next, result.doc);
+            session.imageId = result.imageId;
+            session.draftImage = structuredClone(
+              result.doc.images?.find((image) => image.id === result.imageId),
+            );
+          },
+          { history: false },
+        );
+        if (!succeeded || !session.imageId) {
+          if (!succeeded && session.imageId) {
+            const liveImage = docRef.current?.images?.find((image) => image.id === session.imageId);
+            session.draftImage = liveImage ? structuredClone(liveImage) : undefined;
+            if (!liveImage) session.imageId = null;
+          }
+          setLegacyImageNotice(
+            "This inherited image could not be taken over. Choose a PNG, JPEG or WebP source first.",
+          );
+        } else {
+          setLegacyImageNotice(null);
+        }
+        return;
+      }
+
+      const operationToken = beginLegacyImageOperation();
+      if (!operationToken) return;
+      const baselineSession = session;
+      let promotedId: string | null = null;
+      try {
+        const succeeded = await commitFromBaselineResult(baselineSession.baseline, (next) => {
+          const result = promoteLegacyImage(
+            next,
+            baselineSession.resolvedDecorations,
+            baselineSession.decorationId,
+            (image) => {
+              if (baselineSession.draftImage) {
+                const id = image.id;
+                Object.assign(image, structuredClone(baselineSession.draftImage), { id });
+              }
+              mutate(image);
+            },
+          );
+          if (!result) return false;
+          Object.assign(next, result.doc);
+          promotedId = result.imageId;
+          baselineSession.draftImage = structuredClone(
+            result.doc.images?.find((image) => image.id === result.imageId),
+          );
+        });
+        if (!succeeded || !promotedId) {
+          const liveImage = baselineSession.imageId
+            ? docRef.current?.images?.find((image) => image.id === baselineSession.imageId)
+            : undefined;
+          if (liveImage) {
+            baselineSession.draftImage = structuredClone(liveImage);
+          } else {
+            baselineSession.imageId = null;
+            baselineSession.draftImage = undefined;
+          }
+          legacyImagePromotionRef.current = baselineSession;
+          setLegacyImageNotice(
+            "This inherited image could not be taken over. Choose a PNG, JPEG or WebP source first.",
+          );
+          return;
+        }
+        legacyImagePromotionRef.current = null;
+        setLegacyImageNotice(null);
+        finishLegacyImagePromotion(
+          promotedId,
+          baselineSession.decorationId,
+          operationToken,
+          expectedProjectId,
+          expectedSceneIndex,
+          expectedSceneFile,
+        );
+      } finally {
+        endLegacyImageOperation(operationToken);
+      }
+    };
+    const duplicateLegacyImage = () => {
+      if (!legacyId || legacyImageOperationRef.current) return;
+      const row: SceneOverviewRowModel = {
+        id: `image:legacy:${legacyId}`,
+        type: "image",
+        label: resolvedDecoration?.src?.split("/").at(-1) ?? "Image",
+        selectionTarget: { kind: "legacyImage", id: legacyId },
+        openRoute: "legacyImage.edit",
+        readOnly: true,
+      };
+      const plan = planContentDuplicate(row, {
+        doc: docRef.current ?? doc,
+        resolvedDecorations: resolvedDecorationsRef.current,
+      });
+      if (!plan) return;
+      const operationToken = beginLegacyImageOperation();
+      if (!operationToken) return;
+      void patchDocResultRef
+        .current(plan.apply, { history: plan.history })
+        .then((succeeded) => {
+          const selection = plan.nextSelection;
+          const inspector = useUiStore.getState().inspector;
+          if (succeeded) {
+            for (const origin of plan.imageOrigins ?? []) {
+              useImageReconciliationStore
+                .getState()
+                .recordOrigin(expectedProjectId, expectedSceneFile, origin);
+            }
+          }
+          if (
+            !succeeded ||
+            legacyImageOperationRef.current !== operationToken ||
+            selection?.kind !== "image" ||
+            projectIdRef.current !== expectedProjectId ||
+            sceneIndexRef.current !== expectedSceneIndex ||
+            sceneFileRef.current !== expectedSceneFile ||
+            inspector.drillIn !== "legacyImage.edit" ||
+            useDecorationEditStore.getState().selectedId !== legacyId
+          ) {
+            return;
+          }
+          legacyImagePromotionRef.current = null;
+          useDecorationEditStore.getState().select(null);
+          useImageEditStore
+            .getState()
+            .select({ sceneIndex: expectedSceneIndex, imageId: selection.id });
+          setOverviewSelection({
+            sceneIndex: expectedSceneIndex,
+            rowId: plan.nextRowId ?? `image:${selection.id}`,
+            domain: "images",
+          });
+          replaceDrill("image.edit");
+        })
+        .finally(() => endLegacyImageOperation(operationToken));
+    };
+    const removeLegacyImage = () => {
+      if (!legacyId || legacyImageOperationRef.current) return;
+      const row: SceneOverviewRowModel = {
+        id: `image:legacy:${legacyId}`,
+        type: "image",
+        label: resolvedDecoration?.src?.split("/").at(-1) ?? "Image",
+        selectionTarget: { kind: "legacyImage", id: legacyId },
+        openRoute: "legacyImage.edit",
+        readOnly: true,
+      };
+      const plan = planContentDelete(row, {
+        doc: docRef.current ?? doc,
+        resolvedDecorations: resolvedDecorationsRef.current,
+      });
+      if (!plan) return;
+      const operationToken = beginLegacyImageOperation();
+      if (!operationToken) return;
+      void patchDocResultRef
+        .current(plan.apply, { history: plan.history })
+        .then((succeeded) => {
+          const inspector = useUiStore.getState().inspector;
+          if (
+            !succeeded ||
+            legacyImageOperationRef.current !== operationToken ||
+            projectIdRef.current !== expectedProjectId ||
+            sceneIndexRef.current !== expectedSceneIndex ||
+            sceneFileRef.current !== expectedSceneFile ||
+            inspector.drillIn !== "legacyImage.edit" ||
+            useDecorationEditStore.getState().selectedId !== legacyId
+          ) {
+            return;
+          }
+          useDecorationEditStore.getState().select(null);
+          closeDrill();
+        })
+        .finally(() => endLegacyImageOperation(operationToken));
+    };
+    const unsupportedSource = displayImage ? !isSceneImageSource(displayImage.src) : false;
+    return (
+      <>
+        <ImageDrillIn
+          key={`${project.id}\u0000${expectedSceneFile ?? expectedSceneIndex}\u0000legacy:${legacyId ?? "missing"}`}
+          doc={syntheticDoc}
+          imageId={displayImage?.id ?? ""}
+          sourcePreviewUrl={
+            displayImage ? inspectorAssetUrl(project.id, displayImage.src) : undefined
+          }
+          overlayAvailable
+          backLabel={backLabel}
+          onBack={closeDrill}
+          onSelectImage={() => {}}
+          onChangeSource={() => {
+            if (!legacyId || legacyImageBusy) return;
+            setImagePickError(null);
+            setMediaTarget({ kind: "image", legacyId });
+            setModal("media");
+          }}
+          mutateImage={mutateLegacyImage}
+          sourceButtonRef={imageSourceButtonRef}
+          sourceDisabled={legacyImageBusy}
+          settingsDisabled={legacyImageBusy || unsupportedSource}
+          duplicateDisabled={legacyImageBusy || unsupportedSource}
+          removeDisabled={legacyImageBusy}
+          onDuplicate={duplicateLegacyImage}
+          onRemove={removeLegacyImage}
+          patchDoc={patchDoc}
+          commitFromBaseline={commitFromBaseline}
+          notice={
+            error ??
+            legacyImageNotice ??
+            (unsupportedSource
+              ? "This inherited source must be changed to PNG, JPEG or WebP before other Image edits can take over."
+              : "This inherited Overlay image remains unchanged until your first edit.")
+          }
+        />
+        {mediaModal}
+      </>
+    );
+  }
+  if (drillIn === "image.edit" && doc) {
+    const currentImageId =
+      selectedImageId === null
+        ? (doc.images?.[0]?.id ?? null)
+        : doc.images?.some((image) => image.id === selectedImageId)
+          ? selectedImageId
+          : null;
+    const currentImage = doc.images?.find((image) => image.id === currentImageId);
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const stillEditingImage = () => {
+      const inspector = useUiStore.getState().inspector;
+      return (
+        projectIdRef.current === expectedProjectId &&
+        sceneIndexRef.current === expectedSceneIndex &&
+        sceneFileRef.current === expectedSceneFile &&
+        inspector.tab === "scene" &&
+        inspector.drillIn === "image.edit"
+      );
+    };
+    const duplicateCurrentImage = () => {
+      if (!currentImageId) return;
+      let duplicateId: string | null = null;
+      void patchDocResult(
+        (next) => {
+          duplicateId = duplicateImage(next, currentImageId);
+        },
+        { history: "duplicate image" },
+      ).then((succeeded) => {
+        const createdId = duplicateId;
+        if (!succeeded || !createdId) return;
+        useImageReconciliationStore.getState().recordOrigin(expectedProjectId, expectedSceneFile, {
+          kind: "duplicate",
+          imageId: createdId,
+          sourceImageId: currentImageId,
+        });
+        if (!stillEditingImage()) return;
+        const selected = useImageEditStore.getState().selected;
+        if (selected?.sceneIndex !== expectedSceneIndex || selected.imageId !== currentImageId) {
+          return;
+        }
+        useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: createdId });
+      });
+    };
+    const removeCurrentImage = () => {
+      if (!currentImageId) return;
+      let nextImageId: string | null = null;
+      void patchDocResult(
+        (next) => {
+          nextImageId = removeImage(next, currentImageId);
+        },
+        { history: "remove image" },
+      ).then((succeeded) => {
+        if (!succeeded || !stillEditingImage()) return;
+        const selected = useImageEditStore.getState().selected;
+        if (
+          selected &&
+          (selected.sceneIndex !== expectedSceneIndex || selected.imageId !== currentImageId)
+        ) {
+          return;
+        }
+        if (nextImageId) {
+          useImageEditStore
+            .getState()
+            .select({ sceneIndex: expectedSceneIndex, imageId: nextImageId });
+        } else {
+          useImageEditStore.getState().select(null);
+          closeDrill();
+        }
+      });
+    };
+    return (
+      <>
+        <ImageDrillIn
+          key={`${project.id}\u0000${expectedSceneFile ?? expectedSceneIndex}\u0000image:${currentImageId ?? "missing"}`}
+          doc={doc}
+          imageId={currentImageId ?? ""}
+          sourcePreviewUrl={
+            currentImage ? inspectorAssetUrl(project.id, currentImage.src) : undefined
+          }
+          overlayAvailable={sceneFrame !== undefined}
+          backLabel={backLabel}
+          onBack={closeDrill}
+          onSelectImage={(imageId) => useImageEditStore.getState().select({ sceneIndex, imageId })}
+          onChangeSource={(imageId) => {
+            setImagePickError(null);
+            setMediaTarget({ kind: "image", replaceId: imageId });
+            setModal("media");
+          }}
+          onDuplicate={duplicateCurrentImage}
+          onRemove={removeCurrentImage}
+          sourceButtonRef={imageSourceButtonRef}
+          patchDoc={patchDoc}
+          commitFromBaseline={commitFromBaseline}
+          notice={error}
+        />
+        {mediaModal}
+      </>
+    );
+  }
   if (drillIn === "device.change" && device) {
     return (
       <DeviceDrillIn
@@ -5860,8 +6862,11 @@ export function SceneTab({
       });
     return (
       <>
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">{objectRowLabel(stagedObject.objectId)}</div>
+        <DrillBack
+          label={backLabel}
+          title={objectRowLabel(stagedObject.objectId)}
+          onClick={() => closeDrill()}
+        />
         <div className="inspector-section-body object-drill">
           <DrillGroup label="Gizmo">
             <SegmentedRow
@@ -5998,265 +7003,21 @@ export function SceneTab({
   }
 
   if (drillIn === "device.position" && doc && devices.length > 0) {
-    const layout = doc.deviceLayout;
-    const posLive = (mutate: (next: SceneDoc) => void) => {
-      if (!posDragBaseline.current) posDragBaseline.current = structuredClone(doc);
-      void patchDoc(mutate, { history: false });
-    };
-    const posCommit = (mutate: (next: SceneDoc) => void) => {
-      const baseline = posDragBaseline.current;
-      posDragBaseline.current = null;
-      if (baseline) void commitFromBaseline(baseline, mutate);
-      else void patchDoc(mutate);
-    };
-    const offsetSlider = (
-      id: string,
-      label: string,
-      axis: 0 | 1 | 2,
-      value: number,
-      min: number,
-      max: number,
-    ) => {
-      const write = (next: SceneDoc, val: number) => {
-        if (layout) {
-          mutateDelta(next, id, (delta) => {
-            const offset: V3 = [...(delta.offset ?? [0, 0, 0])];
-            offset[axis] = val;
-            delta.offset = offset;
-          });
-        } else {
-          mutatePlacement(next, id, (p) => {
-            const position: V3 = [...(p.position ?? [0, -0.3, 0])];
-            position[axis] = val;
-            p.position = position;
-          });
-        }
-      };
-      return (
-        <div className="popover-row" key={`${id}.${label}`}>
-          <span className="popover-inline slider-row-label">{label}</span>
-          <DebouncedRange
-            value={value}
-            min={min}
-            max={max}
-            step={0.01}
-            label={label}
-            onInput={(val) => posLive((next) => write(next, val))}
-            onCommit={(val) => posCommit((next) => write(next, val))}
-          />
-        </div>
-      );
-    };
     return (
-      <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={() => closeDrill()} />
-        <div className="inspector-drill-title">
-          <span>Position</span>
-        </div>
-        <div className="inspector-drill-body">
-          <DrillGroup label="Gizmo">
-            {devices.length > 1 && (
-              <SegmentedRow
-                className="subtabs-compact"
-                options={devicePillOptions}
-                value={deviceId ?? devices[0].id}
-                onChange={pickDevice}
-              />
-            )}
-            <SegmentedRow
-              options={GIZMO_MODE_OPTIONS}
-              value={deviceGizmoMode}
-              onChange={(mode) => useDeviceEditStore.getState().setGizmoMode(mode)}
-            />
-            <span className="drill-group-hint">
-              Drag the gizmo in the preview; Scale resizes evenly.
-            </span>
-          </DrillGroup>
-          {devices.length > 1 && (
-            <DrillGroup label="Layout">
-              <div className="wizard-presets">
-                {DEVICE_LAYOUT_PRESETS.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`chip${layout?.preset === p ? " selected" : ""}`}
-                    title={LAYOUT_PRESET_LABELS[p].title}
-                    onClick={() =>
-                      void patchDoc((next) => {
-                        // A preset tap overrides the per-device tuning below: deltas reset, gap survives.
-                        next.deviceLayout = {
-                          preset: p,
-                          ...(next.deviceLayout?.gap !== undefined
-                            ? { gap: next.deviceLayout.gap }
-                            : {}),
-                        };
-                      })
-                    }
-                  >
-                    {LAYOUT_PRESET_LABELS[p].label}
-                  </button>
-                ))}
-              </div>
-              {layout && (
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Gap</span>
-                  <DebouncedRange
-                    value={layout.gap ?? 0.35}
-                    min={-0.5}
-                    max={2}
-                    step={0.01}
-                    label="Gap"
-                    onInput={(val) =>
-                      posLive((next) => {
-                        if (next.deviceLayout) next.deviceLayout.gap = val;
-                      })
-                    }
-                    onCommit={(val) =>
-                      posCommit((next) => {
-                        if (next.deviceLayout) next.deviceLayout.gap = val;
-                      })
-                    }
-                  />
-                </div>
-              )}
-            </DrillGroup>
-          )}
-          {devices.map((d, i) => {
-            const delta = layout?.devices?.[d.id] ?? {};
-            const offset = layout
-              ? (delta.offset ?? [0, 0, 0])
-              : (d.placement?.position ?? [0, -0.3, 0]);
-            const rotation = layout
-              ? (delta.rotationDeg ?? [0, 0, 0])
-              : (d.placement?.rotationDeg ?? [0, 0, 0]);
-            const scale = layout ? (delta.scale ?? 1) : (d.placement?.scale ?? 1);
-            const modelName = isDeviceId(d.model) ? DEVICE_CATALOG[d.model].name : d.model;
-            const writeRotation = (next: SceneDoc, rotationDeg: V3) => {
-              if (layout) {
-                mutateDelta(next, d.id, (dd) => {
-                  dd.rotationDeg = rotationDeg;
-                });
-              } else {
-                mutatePlacement(next, d.id, (p) => {
-                  p.rotationDeg = rotationDeg;
-                });
-              }
-            };
-            const matches = (v: V3) => v.every((n, k) => Math.abs(n - rotation[k]) < 0.05);
-            return (
-              <DrillGroup
-                key={d.id}
-                label={devices.length > 1 ? `Device ${i + 1} · ${modelName}` : modelName}
-              >
-                {offsetSlider(d.id, "Left-right", 0, offset[0], -3, 3)}
-                {offsetSlider(d.id, "Up-down", 1, offset[1], -1.5, 1.5)}
-                {offsetSlider(d.id, "Depth", 2, offset[2], -2, 2)}
-                {!layout && (
-                  <div className="wizard-presets">
-                    {ROTATION_PRESETS.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={`chip${matches(p.value) ? " selected" : ""}`}
-                        onClick={() => void patchDoc((next) => writeRotation(next, [...p.value]))}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <div className="inspector-pose-grid">
-                  {ROTATION_AXIS_LABELS.map((label, axis) => (
-                    <NumberField
-                      key={label}
-                      label={label}
-                      value={rotation[axis]}
-                      decimals={1}
-                      onCommit={(n) =>
-                        void patchDoc((next) => {
-                          const rotationDeg: V3 = [...rotation];
-                          rotationDeg[axis] = n;
-                          writeRotation(next, rotationDeg);
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Scale</span>
-                  <DebouncedRange
-                    value={scale}
-                    min={0.4}
-                    max={2}
-                    step={0.01}
-                    label="Scale"
-                    onInput={(val) =>
-                      posLive((next) => {
-                        if (layout) {
-                          mutateDelta(next, d.id, (dd) => {
-                            dd.scale = val;
-                          });
-                        } else {
-                          mutatePlacement(next, d.id, (p) => {
-                            p.scale = val;
-                          });
-                        }
-                      })
-                    }
-                    onCommit={(val) =>
-                      posCommit((next) => {
-                        if (layout) {
-                          mutateDelta(next, d.id, (dd) => {
-                            dd.scale = val;
-                          });
-                        } else {
-                          mutatePlacement(next, d.id, (p) => {
-                            p.scale = val;
-                          });
-                        }
-                      })
-                    }
-                  />
-                </div>
-                <ToggleRow
-                  label="Ground"
-                  description="Rests the device on the staged floor; inert without one."
-                  checked={d.placement?.ground === true}
-                  onChange={(on) =>
-                    void patchDoc((next) =>
-                      mutatePlacement(next, d.id, (p) => {
-                        if (on) p.ground = true;
-                        else delete p.ground;
-                      }),
-                    )
-                  }
-                />
-                <ActionRow
-                  label={layout ? "Back to layout" : "Reset position"}
-                  chevron={false}
-                  onClick={() =>
-                    void patchDoc((next) => {
-                      if (next.deviceLayout) {
-                        if (next.deviceLayout.devices) {
-                          delete next.deviceLayout.devices[d.id];
-                          if (Object.keys(next.deviceLayout.devices).length === 0)
-                            delete next.deviceLayout.devices;
-                        }
-                      } else {
-                        mutatePlacement(next, d.id, (p) => {
-                          p.position = [0, -0.3, 0];
-                          p.rotationDeg = [0, 0, 0];
-                          p.scale = 1;
-                        });
-                      }
-                    })
-                  }
-                />
-              </DrillGroup>
-            );
-          })}
-        </div>
-      </div>
+      <ArrangeDevicesDrill
+        doc={doc}
+        sceneIdentity={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}`}
+        selectedDeviceId={deviceId ?? null}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        onSelectDevice={pickDevice}
+        onOpenDevice={(id) => {
+          pickDevice(id);
+          openDrill("device");
+        }}
+        patchDoc={patchDoc}
+        commitFromBaseline={commitFromBaseline}
+      />
     );
   }
 
@@ -6489,6 +7250,7 @@ export function SceneTab({
         projectId={project.id}
         projectLighting={project.projectLighting}
         slot={scene}
+        backLabel={backLabel}
         onBack={closeDrill}
         patchDoc={forAfter ? patchLightingDoc : patchDoc}
         commitFromBaseline={forAfter ? commitLightingFromBaseline : commitFromBaseline}
@@ -6502,12 +7264,14 @@ export function SceneTab({
   if (groupSection) {
     return (
       <div className="inspector-drill">
-        <DrillBack label={backLabel} onClick={closeDrill} />
-        <div className="inspector-drill-title">
-          {groupSection.id === "device"
-            ? groupSection.label
-            : (SCREEN_TITLES[groupSection.id] ?? groupSection.label)}
-        </div>
+        <DrillBack
+          label={backLabel}
+          title={
+            sceneInspectorScreenTitle(groupSection.id, { deviceCount: devices.length }) ??
+            groupSection.label
+          }
+          onClick={closeDrill}
+        />
         {groupSection.id === "device" && devices.length > 1 && (
           <SegmentedRow
             className="subtabs-compact"
@@ -6525,314 +7289,643 @@ export function SceneTab({
     );
   }
 
-  const deviceName = device
-    ? DEVICE_CATALOG[(device.model in DEVICE_CATALOG ? device.model : "iphone-15-pro") as DeviceId]
-        .name
-    : undefined;
-  const bgLabel = doc
-    ? doc.background === undefined
-      ? "Theme default"
-      : {
-          none: "None",
-          color: "Colour",
-          gradient: "Gradient",
-          shader: "Animated",
-          scene3d: "3D",
-          image: "Image",
-          video: "Video",
-        }[doc.background.type]
-    : undefined;
-  // The Scene tab's top level, in three divided sections: what the scene HAS (with the
-  // Change/Edit video pair adjacent), what can be ADDED, then the scene settings; the
-  // Delete row keeps its own bottom section. Gating mirrors sceneSections; icons reuse
-  // the SceneRowIcon glyphs.
-  interface TopEntry {
-    key: string;
-    label: string;
-    icon: string;
-    value?: string;
-    /** False for instant in-place actions that open nothing (Add device). */
-    chevron?: boolean;
-    onClick: () => void;
-  }
-  const contentEntries: TopEntry[] = [];
-  const addEntries: TopEntry[] = [];
-  const settingEntries: TopEntry[] = [];
-  if (doc)
-    contentEntries.push({
-      key: "text",
-      label: "Text",
-      icon: "text.edit",
-      onClick: () => openDrill("text"),
+  const sceneOverview = deriveSceneOverview({
+    doc,
+    frame: sceneFrame,
+    durationMs: scene.durationMs,
+    slotsCount: project.slots.length,
+    themeName: sceneTheme?.name ?? project.theme.name,
+    transitionValue,
+    fallbackText: derivedName ?? undefined,
+  });
+  const hasContent = sceneOverview.groups.length > 0 || sceneOverview.standalone.length > 0;
+
+  const overviewDomain = (row: SceneOverviewRowModel): GizmoDomain | null => {
+    switch (row.selectionTarget?.kind) {
+      case "text":
+        return "text";
+      case "device":
+        return "devices";
+      case "image":
+        return "images";
+      case "legacyImage":
+        return "decorations";
+      case "object":
+        return "objects";
+      case "chart":
+        return "chart";
+      default:
+        return null;
+    }
+  };
+
+  const selectOverviewRow = (row: SceneOverviewRowModel) => {
+    setOverviewSelection({ sceneIndex, rowId: row.id, domain: overviewDomain(row) });
+    const target = row.selectionTarget;
+    if (!target) return;
+    switch (target.kind) {
+      case "text":
+        useTextEditStore.getState().select({ sceneIndex, key: target.id });
+        break;
+      case "device":
+        pickDevice(target.id);
+        break;
+      case "image":
+        useImageEditStore.getState().select({ sceneIndex, imageId: target.id });
+        break;
+      case "legacyImage": {
+        const store = useDecorationEditStore.getState();
+        store.setScene(sceneIndex);
+        store.select(target.id);
+        break;
+      }
+      case "object":
+        setPickedObjectId(target.id);
+        useObjectEditStore.getState().select({ sceneIndex, objectId: target.id });
+        break;
+      case "chart":
+        useChartEditStore.getState().select({ sceneIndex });
+        break;
+      case "videoWindow":
+      case "screenshotStack":
+      case "comparison":
+        break;
+    }
+  };
+
+  const openOverviewRow = (row: SceneOverviewRowModel) => {
+    selectOverviewRow(row);
+    if (contentPickerOpen) flushSync(() => setContentPickerOpen(false));
+    if (row.openRoute) openDrill(row.openRoute);
+  };
+
+  const selectPlannedContent = (plan: ContentDocActionPlan) => {
+    const target = plan.nextSelection;
+    if (!target || !plan.nextRowId) return;
+    const domain: GizmoDomain | null =
+      target.kind === "text"
+        ? "text"
+        : target.kind === "device"
+          ? "devices"
+          : target.kind === "image"
+            ? "images"
+            : target.kind === "legacyImage"
+              ? "decorations"
+              : target.kind === "object"
+                ? "objects"
+                : target.kind === "chart"
+                  ? "chart"
+                  : null;
+    setOverviewSelection({ sceneIndex, rowId: plan.nextRowId, domain });
+    switch (target.kind) {
+      case "text":
+        useTextEditStore.getState().select({ sceneIndex, key: target.id });
+        break;
+      case "device":
+        pickDevice(target.id);
+        break;
+      case "image":
+        useImageEditStore.getState().select({ sceneIndex, imageId: target.id });
+        break;
+      case "legacyImage": {
+        const store = useDecorationEditStore.getState();
+        store.setScene(sceneIndex);
+        store.select(target.id);
+        break;
+      }
+      case "object":
+        setPickedObjectId(target.id);
+        useObjectEditStore.getState().select({ sceneIndex, objectId: target.id });
+        break;
+      case "chart":
+        useChartEditStore.getState().select({ sceneIndex });
+        break;
+      case "videoWindow":
+      case "screenshotStack":
+      case "comparison":
+        break;
+    }
+  };
+
+  const clearOverviewRowSelection = (row: SceneOverviewRowModel) => {
+    setOverviewSelection(null);
+    const target = row.selectionTarget;
+    if (!target) return;
+    switch (target.kind) {
+      case "text":
+        useTextEditStore.getState().select(null);
+        break;
+      case "device":
+        pickDevice(null);
+        break;
+      case "image":
+        useImageEditStore.getState().select(null);
+        break;
+      case "legacyImage":
+        useDecorationEditStore.getState().select(null);
+        break;
+      case "object":
+        setPickedObjectId(null);
+        useObjectEditStore.getState().select(null);
+        break;
+      case "chart":
+        useChartEditStore.getState().select(null);
+        break;
+      case "screenshotStack":
+        useLayeredScreenshotEditStore.getState().reset();
+        break;
+      case "videoWindow":
+      case "comparison":
+        break;
+    }
+  };
+
+  const isCurrentOverview = (
+    expectedProjectId: string,
+    expectedSceneIndex: number,
+    expectedSceneFile: string | null,
+  ) => {
+    const inspector = useUiStore.getState().inspector;
+    return (
+      projectIdRef.current === expectedProjectId &&
+      sceneIndexRef.current === expectedSceneIndex &&
+      sceneFileRef.current === expectedSceneFile &&
+      inspector.tab === "scene" &&
+      inspector.drillStack.length === 0
+    );
+  };
+
+  const focusOverviewAfterMutation = (
+    expectedProjectId: string,
+    expectedSceneIndex: number,
+    expectedSceneFile: string | null,
+    rowId: string | null,
+  ) => {
+    window.requestAnimationFrame(() => {
+      if (!isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)) return;
+      if (!rowId) {
+        contentPickerButtonRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      const matchingRow = [
+        ...(overviewRootRef.current?.querySelectorAll<HTMLElement>("[data-overview-row-id]") ?? []),
+      ].find((element) => element.dataset.overviewRowId === rowId);
+      matchingRow
+        ?.querySelector<HTMLButtonElement>(".inspector-scene-overview-entity-body")
+        ?.focus({ preventScroll: true });
     });
-  const deviceVideo = device?.media?.kind === "video" ? device.media.src : undefined;
-  const windowVideo = doc?.videoWindow?.media.src;
-  if (device)
-    contentEntries.push({
-      key: "device",
-      label: devices.length > 1 ? "Devices" : "Device",
-      icon: "device.change",
-      value: devices.length > 1 ? `${devices.length}` : deviceName,
-      onClick: () => openDrill("device"),
+  };
+
+  const applyCurrentContentPlan = async (
+    row: SceneOverviewRowModel,
+    action: "duplicate" | "delete",
+    expectedProjectId: string,
+    expectedSceneIndex: number,
+    expectedSceneFile: string | null,
+  ) => {
+    const pending = contentActionPendingRef.current;
+    if (
+      (pending?.projectId === expectedProjectId &&
+        pending.sceneIndex === expectedSceneIndex &&
+        pending.sceneFile === expectedSceneFile) ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+    ) {
+      return;
+    }
+    const currentDoc = docRef.current;
+    if (!currentDoc) return;
+    const context = {
+      doc: currentDoc,
+      resolvedDecorations: resolvedDecorationsRef.current,
+    };
+    const plan =
+      action === "duplicate" ? planContentDuplicate(row, context) : planContentDelete(row, context);
+    if (!plan) return;
+    const actionToken = Symbol("content action");
+    contentActionPendingRef.current = {
+      token: actionToken,
+      projectId: expectedProjectId,
+      sceneIndex: expectedSceneIndex,
+      sceneFile: expectedSceneFile,
+    };
+    let succeeded = false;
+    try {
+      succeeded = await patchDocResultRef.current(plan.apply, { history: plan.history });
+    } finally {
+      if (contentActionPendingRef.current?.token === actionToken) {
+        contentActionPendingRef.current = null;
+      }
+    }
+    if (succeeded && action === "duplicate") {
+      if (plan.imageOrigins) {
+        for (const origin of plan.imageOrigins) {
+          useImageReconciliationStore
+            .getState()
+            .recordOrigin(expectedProjectId, expectedSceneFile, origin);
+        }
+      } else if (row.selectionTarget?.kind === "image" && plan.nextSelection?.kind === "image") {
+        useImageReconciliationStore.getState().recordOrigin(expectedProjectId, expectedSceneFile, {
+          kind: "duplicate",
+          imageId: plan.nextSelection.id,
+          sourceImageId: row.selectionTarget.id,
+        });
+      }
+    }
+    if (
+      !succeeded ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+    ) {
+      return;
+    }
+    const selection = useUiStore.getState().inspector.overviewSelection;
+    if (selection?.sceneIndex !== expectedSceneIndex || selection.rowId !== row.id) return;
+    if (action === "duplicate") {
+      if (!plan.nextSelection || !plan.nextRowId) return;
+      selectPlannedContent(plan);
+      focusOverviewAfterMutation(
+        expectedProjectId,
+        expectedSceneIndex,
+        expectedSceneFile,
+        plan.nextRowId,
+      );
+      return;
+    }
+    clearOverviewRowSelection(row);
+    focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, null);
+  };
+
+  const openContentMenu = (row: SceneOverviewRowModel, request: SceneOverviewContextRequest) => {
+    if (!doc) return;
+    selectOverviewRow(row);
+    const menuProjectId = project.id;
+    const menuSceneIndex = sceneIndex;
+    const menuSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const context = { doc, resolvedDecorations: sceneFrame?.decorations };
+    const duplicatePlan = planContentDuplicate(row, context);
+    const deletePlan = planContentDelete(row, context);
+    const items: ContextMenuState["items"] = [];
+    for (const action of contentMenuActions(row)) {
+      const label: Record<ContentMenuAction, string> = {
+        edit: "Edit",
+        duplicate: "Duplicate",
+        delete: "Delete",
+      };
+      if (action === "edit") {
+        items.push({
+          id: `${row.id}:edit`,
+          label: label[action],
+          icon: <SceneRowIcon id="content.edit" />,
+          onSelect: () => {
+            if (
+              projectIdRef.current === menuProjectId &&
+              sceneIndexRef.current === menuSceneIndex &&
+              sceneFileRef.current === menuSceneFile
+            ) {
+              openOverviewRow(row);
+            }
+          },
+        });
+      } else if (action === "duplicate" && duplicatePlan) {
+        items.push({
+          id: `${row.id}:duplicate`,
+          label: label[action],
+          icon: <SceneRowIcon id="content.duplicate" />,
+          onSelect: () =>
+            void applyCurrentContentPlan(
+              row,
+              "duplicate",
+              menuProjectId,
+              menuSceneIndex,
+              menuSceneFile,
+            ),
+        });
+      } else if (action === "delete" && deletePlan) {
+        if (items.length > 0) items.push("separator");
+        items.push({
+          id: `${row.id}:delete`,
+          label: label[action],
+          icon: <SceneRowIcon id="content.delete" />,
+          danger: true,
+          confirmLabel: "Really delete?",
+          onSelect: () =>
+            void applyCurrentContentPlan(
+              row,
+              "delete",
+              menuProjectId,
+              menuSceneIndex,
+              menuSceneFile,
+            ),
+        });
+      }
+    }
+    setContentMenu({
+      key: `${sceneIndex}:${row.id}`,
+      x: request.x,
+      y: request.y,
+      returnFocus: request.returnFocus,
+      items,
     });
-  else if (doc)
-    addEntries.push({
-      key: "device.add",
-      label: "Add device",
-      icon: "device.add",
-      chevron: false,
-      onClick: addDevice,
-    });
-  if (doc?.layeredScreenshot)
-    contentEntries.push({
-      key: "stack",
-      label: "Screenshot stack",
-      icon: "layeredScreenshot.edit",
-      onClick: () => openDrill("layeredScreenshot.edit"),
-    });
-  else if (doc)
-    addEntries.push({
-      key: "stack",
-      label: "Add screenshot stack",
-      icon: "layeredScreenshot.edit",
-      onClick: () => openDrill("layeredScreenshot.edit"),
-    });
-  if (doc?.videoWindow)
-    contentEntries.push({
-      key: "vw",
-      label: "Video window",
-      icon: "videoWindow.edit",
-      onClick: () => openDrill("videoWindow.edit"),
-    });
-  else if (doc)
-    addEntries.push({
-      key: "vw",
-      label: "Add video window",
-      icon: "videoWindow.edit",
-      onClick: () => openDrill("videoWindow.edit"),
-    });
-  if (doc?.compare)
-    contentEntries.push({
-      key: "compare",
-      label: "Comparison",
-      icon: "compare.edit",
-      onClick: () => openDrill("compare.edit"),
-    });
-  else if (doc)
-    addEntries.push({
-      key: "compare.add",
-      label: "Add comparison",
-      icon: "compare.edit",
-      onClick: addCompare,
-    });
-  if (doc?.chart)
-    contentEntries.push({
-      key: "chart",
-      label: "Chart",
-      icon: "chart.edit",
-      value: chartRowValue(doc.chart),
-      onClick: () => openDrill("chart.edit"),
-    });
-  else if (doc)
-    addEntries.push({
-      key: "chart.add",
-      label: "Add chart",
-      icon: "chart.add",
-      chevron: false,
-      onClick: addChart,
-    });
-  if (objects.length > 0)
-    contentEntries.push({
-      key: "objects",
-      label: objects.length > 1 ? "Objects" : "Object",
-      icon: "objects.edit",
-      value: objects.length > 1 ? `${objects.length}` : objectRowLabel(objects[0].objectId),
-      onClick: () => openDrill("objects"),
-    });
-  else if (doc)
-    addEntries.push({
-      key: "objects.add",
-      label: "Add object",
-      icon: "objects.add",
-      onClick: () => setObjectPickerOpen(true),
-    });
-  // The video pair closes the content section, always adjacent: Change video first (the
-  // device's picker wins when a scene has both surfaces), its edit right under.
-  if (device || doc?.videoWindow)
-    contentEntries.push({
-      key: "changeVideo",
-      label: "Change video",
-      icon: "device.media",
-      onClick: device
-        ? () => {
-            setMediaTarget({ kind: "device", deviceId });
-            setModal("media");
-          }
-        : () => openDrill("videoWindow.media"),
-    });
-  if (deviceVideo)
-    contentEntries.push({
-      key: "editVideo.device",
-      label: windowVideo ? "Edit device video" : "Edit video",
-      icon: "device.editVideo",
-      chevron: false,
-      onClick: () => onOpenEditVideo(sceneIndex, deviceVideo, "device", device?.id),
-    });
-  else if (windowVideo)
-    contentEntries.push({
-      key: "editVideo.vw",
-      label: "Edit video",
-      icon: "device.editVideo",
-      chevron: false,
-      onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
-    });
-  if (deviceVideo && windowVideo)
-    contentEntries.push({
-      key: "editVideo.vw",
-      label: "Edit recording",
-      icon: "device.editVideo",
-      chevron: false,
-      onClick: () => onOpenEditVideo(sceneIndex, windowVideo, "videoWindow"),
-    });
-  if (project.deckFrame !== undefined || doc?.frame?.cutout !== undefined)
-    contentEntries.push({
-      key: "frame",
-      label: "Overlay",
-      icon: "frame",
-      onClick: () => openDrill("frame"),
-    });
-  else if (doc)
-    addEntries.push({
-      key: "frame.add",
-      label: "Add overlay",
-      icon: "frame.add",
-      chevron: false,
-      onClick: addOverlay,
-    });
-  if (doc) {
-    const themeId = doc.themeId ?? "";
-    settingEntries.push({
-      key: "theme",
-      label: "Theme",
-      icon: "style.theme",
-      value: sceneTheme?.name,
-      onClick: () => {
-        setThemeDraft(themeId);
-        openDrill("style.theme");
-      },
-    });
-    settingEntries.push({
-      key: "background",
-      label: "Background",
-      icon: "style.background",
-      value: bgLabel,
-      onClick: () => {
+  };
+
+  const addOptionFor = (type: SceneOverviewContentType) =>
+    sceneOverview.addOptions.find((option) => option.id === type);
+
+  const addOverviewContent = (type: SceneOverviewContentType) => {
+    const option = addOptionFor(type);
+    if (!option || option.disabled) return;
+    if (contentPickerOpen) {
+      flushSync(() => setContentPickerOpen(false));
+      contentPickerButtonRef.current?.focus({ preventScroll: true });
+    }
+    switch (type) {
+      case "device":
+        addDevice();
+        break;
+      case "text":
+        openDrill("text");
+        break;
+      case "image":
+        setImagePickError(null);
+        setMediaTarget({ kind: "image" });
+        setModal("media");
+        break;
+      case "video":
+        openDrill("videoWindow.edit");
+        break;
+      case "object":
+        setObjectPickerOpen(true);
+        break;
+      case "chart":
+        addChart();
+        break;
+      case "screenshotStack":
+        openDrill("layeredScreenshot.edit");
+        break;
+      case "comparison":
+        addCompare();
+        break;
+    }
+  };
+
+  const overviewContentIcon = (type: SceneOverviewContentType): ReactNode => {
+    switch (type) {
+      case "text":
+        return <SceneRowIcon id="text.edit" />;
+      case "device":
+        return <SceneRowIcon id="device.change" />;
+      case "image":
+        return <SceneRowIcon id="frame.decorations" />;
+      case "video":
+        return <SceneRowIcon id="videoWindow.edit" />;
+      case "object":
+        return <SceneRowIcon id="objects.edit" />;
+      case "chart":
+        return <SceneRowIcon id="chart.edit" />;
+      case "screenshotStack":
+        return <SceneRowIcon id="layeredScreenshot.edit" />;
+      case "comparison":
+        return <SceneRowIcon id="compare.edit" />;
+    }
+  };
+
+  const overviewRowLeading = (row: SceneOverviewRowModel): ReactNode => {
+    const mediaSrc = row.thumbnail ?? row.mediaHint?.src;
+    if (mediaSrc && (row.thumbnail || row.mediaHint?.kind === "image")) {
+      const src = inspectorAssetUrl(project.id, mediaSrc);
+      return (
+        <img
+          className="inspector-scene-overview-thumbnail"
+          src={src}
+          width={20}
+          height={14}
+          alt=""
+          draggable={false}
+        />
+      );
+    }
+    const target = row.selectionTarget;
+    if (target?.kind === "device") {
+      const matched = devices.find((candidate) => candidate.id === target.id);
+      if (matched) return <DevicePillIcon model={matched.model} />;
+    }
+    return overviewContentIcon(row.type as SceneOverviewContentType);
+  };
+
+  const overviewSettingIcon = (row: SceneOverviewRowModel): ReactNode => {
+    switch (row.type) {
+      case "overlay":
+        return <SceneRowIcon id="frame" />;
+      case "theme":
+        return <SceneRowIcon id="style.theme" />;
+      case "background":
+        return <SceneRowIcon id="style.background" />;
+      case "camera":
+        return <SceneRowIcon id="camera.animate" />;
+      case "lighting":
+        return <SceneRowIcon id="lighting" />;
+      case "transition":
+        return <SceneRowIcon id="motion.transition" />;
+      default:
+        return <SceneRowIcon id="motion.duration" />;
+    }
+  };
+
+  const openOverviewSetting = (row: SceneOverviewRowModel) => {
+    if (!row.openRoute) return;
+    if (contentPickerOpen) flushSync(() => setContentPickerOpen(false));
+    switch (row.type) {
+      case "overlay":
+        if (!sceneFrame) addOverlay();
+        break;
+      case "theme":
+        setThemeDraft(doc?.themeId ?? "");
+        break;
+      case "background":
         setBgTabOverride(null);
         setBgTarget("scene");
-        openDrill("style.background");
-      },
-    });
-  }
-  settingEntries.push({
-    key: "camera",
-    label: "Animations",
-    icon: "camera.animate",
-    onClick: () => openDrill("camera"),
-  });
-  if (doc)
-    settingEntries.push({
-      key: "lighting",
-      label: "Lighting",
-      icon: "lighting",
-      onClick: () => {
+        break;
+      case "lighting":
         setLightingTarget("scene");
-        openDrill("lighting");
-      },
-    });
-  if (project.slots.length > 1) {
-    settingEntries.push({
-      key: "transition",
-      label: "Transition",
-      icon: "motion.transition",
-      value: transitionValue,
-      onClick: () => {
+        break;
+      case "transition":
         void listCachedSceneThumbs(project).then(setThumbs);
-        openDrill("motion.transition");
-      },
-    });
-  }
-  const renderEntry = (entry: TopEntry) => (
-    <ActionRow
-      key={entry.key}
-      icon={<SceneRowIcon id={entry.icon} />}
-      label={entry.label}
-      value={entry.value}
-      chevron={entry.chevron ?? true}
-      onClick={entry.onClick}
+        break;
+    }
+    openDrill(row.openRoute);
+  };
+
+  const pickerItems: SceneOverviewPickerItem[] = sceneOverview.addOptions.map((option) => ({
+    id: option.id,
+    label: option.label,
+    icon: overviewContentIcon(option.id),
+    disabledReason: option.disabledReason,
+    onPick: () => addOverviewContent(option.id),
+  }));
+
+  const settingDisabledReason = (row: SceneOverviewRowModel): string | undefined => {
+    if (row.openRoute) return undefined;
+    if (row.type === "transition") return "Add another scene first";
+    return "Scene document unavailable";
+  };
+
+  const renderOverviewEntity = (row: SceneOverviewRowModel) => (
+    <SceneOverviewEntityRow
+      key={row.id}
+      rowId={row.id}
+      domain={row.selectionTarget?.kind ?? row.type}
+      label={row.label}
+      value={row.value}
+      leading={overviewRowLeading(row)}
+      selected={overviewSelection?.rowId === row.id}
+      onSelect={() => selectOverviewRow(row)}
+      onOpen={() => openOverviewRow(row)}
+      onContextMenu={(request) => openContentMenu(row, request)}
     />
   );
 
   return (
-    <>
+    <div ref={overviewRootRef} className="inspector-scene-overview">
       {header}
-      {unrenderableChars.size > 0 && (
-        <p className="inspector-text-warning">
-          {`Some characters can't render in this scene's fonts: ${[...unrenderableChars].join("  ")}`}
-        </p>
-      )}
-      {!doc && (
-        <p className="inspector-stub-note">
-          This scene has no scene document yet, so its text, media and style can't be edited here.
-          Ask Claude to add one in the terminal, or edit the scene file directly.
-        </p>
-      )}
-      {contentEntries.length > 0 && (
-        <>
-          <div className="inspector-rows">{contentEntries.map(renderEntry)}</div>
-          <div className="inspector-section-divider" />
-        </>
-      )}
-      {addEntries.length > 0 && (
-        <>
-          <div className="inspector-rows inspector-section-body">{addEntries.map(renderEntry)}</div>
-          <div className="inspector-section-divider" />
-        </>
-      )}
-      <div className="inspector-rows inspector-section-body">
-        {settingEntries.map(renderEntry)}
-        <DurationRow
-          durationMs={scene.durationMs}
-          mode={durationMode}
-          onCommit={(ms) => void commitDuration(ms)}
-        />
-      </div>
-      {error && <p className="inspector-error">{error}</p>}
-
-      {/* Scene management (the wizard's Arrange delete, re-homed): files move to the Trash; the last scene is protected (the Rust guard, mirrored as disabled); deliberately outside the pinned sceneSections model, bottom-of-panel chrome like the error line. */}
-      <div className="inspector-section-divider" />
-      <div className="inspector-rows inspector-section-body">
-        <ActionRow
-          icon={<SceneRowIcon id="device.remove" />}
-          label={confirmDeleteScene ? "Really delete?" : "Delete scene…"}
-          chevron={false}
-          danger
-          disabled={project.slots.length <= 1}
-          onClick={() => {
-            if (!confirmDeleteScene) {
-              setConfirmDeleteScene(true);
-              return;
-            }
-            setConfirmDeleteScene(false);
-            onDeleteScene(sceneIndex);
+      <section className="inspector-scene-overview-section inspector-scene-overview-content">
+        <div
+          className="inspector-scene-overview-content-head"
+          ref={contentPickerAnchorRef}
+          onBlurCapture={(event) => {
+            const next = event.relatedTarget;
+            if (next instanceof Node && event.currentTarget.contains(next)) return;
+            closeContentPicker();
           }}
-        />
+        >
+          <SceneOverviewSectionHeader
+            label="Content"
+            addLabel={contentPickerOpen ? "Close content picker" : "Add content"}
+            expanded={contentPickerOpen}
+            controls="scene-content-picker"
+            addButtonRef={contentPickerButtonRef}
+            onAdd={() => setContentPickerOpen((open) => !open)}
+          />
+          {contentPickerOpen && (
+            <SceneOverviewPicker id="scene-content-picker" items={pickerItems} />
+          )}
+        </div>
+        <div className="inspector-scene-overview-content-scroll" ref={contentScrollRef}>
+          {unrenderableChars.size > 0 && (
+            <p className="inspector-text-warning">
+              {`Some characters can't render in this scene's fonts: ${[...unrenderableChars].join("  ")}`}
+            </p>
+          )}
+          {!doc && (
+            <p className="inspector-stub-note">
+              This scene has no scene document yet, so its text, media and style can't be edited
+              here. Ask Claude to add one in the terminal, or edit the scene file directly.
+            </p>
+          )}
+          {!hasContent && (
+            <div className="inspector-scene-overview-empty">
+              <div className="inspector-scene-overview-empty-title">Nothing in this scene yet</div>
+              <div className="inspector-scene-overview-empty-description">
+                Add something and it appears here for selection and editing.
+              </div>
+            </div>
+          )}
+          <div className="inspector-scene-overview-groups">
+            {sceneOverview.groups.map((group) => {
+              const addOption = addOptionFor(group.addType);
+              return (
+                <div
+                  key={group.id}
+                  className={`inspector-scene-overview-group inspector-scene-overview-group-${group.id}`}
+                >
+                  <SceneOverviewGroupHeader
+                    label={group.label}
+                    icon={overviewContentIcon(group.addType)}
+                    onOpen={group.id === "devices" ? () => openDrill("device.position") : undefined}
+                    openLabel={group.id === "devices" ? "Arrange devices" : undefined}
+                    addLabel={`Add ${addOption?.label.toLowerCase() ?? group.label.toLowerCase()}`}
+                    addDisabled={addOption?.disabled}
+                    addTitle={addOption?.disabledReason}
+                    onAdd={() => addOverviewContent(group.addType)}
+                  />
+                  <div className="inspector-scene-overview-group-rows">
+                    {group.rows.map(renderOverviewEntity)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {sceneOverview.standalone.length > 0 && (
+            <div className="inspector-scene-overview-standalone">
+              {sceneOverview.standalone.map(renderOverviewEntity)}
+            </div>
+          )}
+          {error && <p className="inspector-error">{error}</p>}
+        </div>
+      </section>
+
+      <section className="inspector-scene-overview-section inspector-scene-overview-settings">
+        <SceneOverviewSectionHeader label="Scene" />
+        <div className="inspector-scene-overview-setting-rows">
+          {sceneOverview.settings.map((row) =>
+            row.type === "duration" ? (
+              <div
+                key={row.id}
+                className="inspector-scene-overview-duration"
+                data-overview-row-id={row.id}
+                data-overview-domain="duration"
+              >
+                <DurationRow
+                  durationMs={scene.durationMs}
+                  mode={durationMode}
+                  onCommit={(ms) => void commitDuration(ms)}
+                />
+              </div>
+            ) : (
+              <SceneOverviewSettingRow
+                key={row.id}
+                rowId={row.id}
+                label={row.label}
+                value={row.value}
+                icon={overviewSettingIcon(row)}
+                disabled={row.openRoute === null}
+                disabledReason={settingDisabledReason(row)}
+                onOpen={() => openOverviewSetting(row)}
+              />
+            ),
+          )}
+        </div>
+      </section>
+
+      <div className="inspector-scene-overview-delete-footer">
+        <div className="inspector-rows inspector-section-body">
+          <ActionRow
+            icon={<SceneRowIcon id="device.remove" />}
+            label={confirmDeleteScene ? "Really delete?" : "Delete scene…"}
+            chevron={false}
+            danger
+            disabled={project.slots.length <= 1}
+            onClick={() => {
+              if (!confirmDeleteScene) {
+                setConfirmDeleteScene(true);
+                return;
+              }
+              setConfirmDeleteScene(false);
+              onDeleteScene(sceneIndex);
+            }}
+          />
+        </div>
       </div>
 
-      {/* ── Modals (the EditBar's hosting, re-homed) ─────────────────────── */}
       {mediaModal}
       {objectPickerOpen && (
         <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
       )}
-    </>
+      {contentMenu && (
+        <ContextMenu
+          key={contentMenu.key}
+          menu={contentMenu}
+          onClose={() => setContentMenu(null)}
+        />
+      )}
+    </div>
   );
 }

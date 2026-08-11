@@ -1,7 +1,9 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import type { GizmoMode } from "../../engine/gizmoMode";
 import type { ChartType } from "../../toolkit/chart/types";
+import { DebouncedRange } from "../TextAnimationPicker";
 import { isTypingIn } from "../textEditFocus";
+import { useInspectorNavigation } from "./InspectorNavigationShell";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
 
@@ -152,6 +154,44 @@ export function NumberField({
       />
       <span className="inspector-pose-caption">{label}</span>
     </label>
+  );
+}
+
+export function InspectorSliderRow({
+  icon,
+  label,
+  value,
+  min,
+  max,
+  step,
+  onCommit,
+  onInput,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onCommit: (value: number) => void;
+  onInput?: (value: number) => void;
+}) {
+  return (
+    <div className="popover-row inspector-slider-row">
+      <span className="popover-inline slider-row-label">
+        <span className="inspector-slider-row-icon">{icon}</span>
+        {label}
+      </span>
+      <DebouncedRange
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        label={label}
+        onCommit={onCommit}
+        onInput={onInput}
+      />
+    </div>
   );
 }
 
@@ -530,10 +570,26 @@ export function ToggleFieldset({ control, children }: { control: ReactNode; chil
   );
 }
 
-/** The drill-in back bar: a full-width, eye-catching affordance at the top of every drill-in, accent wash, real hit area, "Back to <context>". */
-export function DrillBack({ label, onClick }: { label: string; onClick: () => void }) {
+export function DrillBack({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  const navigation = useInspectorNavigation();
   return (
-    <button type="button" className="inspector-drill-back" onClick={onClick}>
+    <button
+      type="button"
+      className="inspector-drill-back"
+      aria-label={`Back to ${label} from ${title}`}
+      onClick={() => {
+        if (navigation) navigation.requestBack(onClick);
+        else onClick();
+      }}
+    >
       <span className="inspector-drill-back-chev">
         <svg
           width="15"
@@ -547,7 +603,8 @@ export function DrillBack({ label, onClick }: { label: string; onClick: () => vo
           <path d="M12 5l-5 5 5 5" />
         </svg>
       </span>
-      {`Back to ${label}`}
+      <span className="inspector-drill-destination">{label}</span>
+      <span className="inspector-drill-current">{title}</span>
     </button>
   );
 }

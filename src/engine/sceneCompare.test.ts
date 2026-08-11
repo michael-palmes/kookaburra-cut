@@ -219,6 +219,31 @@ describe("deriveCompareBDoc", () => {
     deriveCompareBDoc(base);
     expect(base).toEqual(before);
   });
+
+  it("inherits scene images without aliasing them or adding side-specific overrides", () => {
+    const base = compareDoc({});
+    base.images = [
+      {
+        id: "hero",
+        src: "assets/hero.png",
+        host: "stage",
+        stage: { position: [0, 0, 0], size: 1.5, rotationDeg: [0, 12, 0] },
+        overlay: {
+          position: [0.5, -0.5],
+          size: 0.2,
+          rotationDeg: 4,
+          shape: "none",
+          layer: "above",
+        },
+      },
+    ];
+
+    const b = deriveCompareBDoc(base);
+
+    expect(b?.images).toEqual(base.images);
+    expect(b?.images).not.toBe(base.images);
+    expect(b?.images?.[0]).not.toBe(base.images[0]);
+  });
 });
 
 describe("resolveCompareFrame", () => {

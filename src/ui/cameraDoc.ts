@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { type CameraPose, sampleCameraTrack } from "../engine/cameraTrack";
+import { useFormat } from "../engine/format";
 import { pushHistory } from "../engine/history";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
 import {
@@ -32,6 +33,7 @@ export function useCameraDoc(
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   const slot = project.slots[sceneIndex];
+  const format = useFormat();
   // The in-flight (or just-committed, pre-reload) camera slice; cleared when the reload lands.
   const [localDraft, setLocalDraft] = useState<{
     mode: CameraMode;
@@ -55,12 +57,12 @@ export function useCameraDoc(
         sceneIndex,
         track: sceneCameraTracks(
           normalizeSceneCamera(next.camera, "camera-edit"),
-          next.mode === "rig" ? normalizeSceneRig(next.rig, "camera-edit", doc) : null,
+          next.mode === "rig" ? normalizeSceneRig(next.rig, "camera-edit", doc, format) : null,
         ),
         committed,
       });
     },
-    [project.id, sceneIndex, doc],
+    [project.id, sceneIndex, doc, format],
   );
 
   /** Write the camera slice to the sidecar (creating a minimal doc for doc-less scenes) and hand the written doc to the host for the in-memory patch. Empty blocks are omitted entirely (`camera` included, so a rig-only scene never grows an empty orbit stub), keeping legacy sidecars byte-identical. */
@@ -129,7 +131,7 @@ export function useCameraDoc(
   const appliedViewAt = useCallback(
     (localT: number): CameraPose => {
       if (mode === "rig" && rig.keys.length > 0) {
-        const norm = normalizeSceneRig(rig, "camera-edit", doc);
+        const norm = normalizeSceneRig(rig, "camera-edit", doc, format);
         if (norm) {
           const s = sampleSceneRig(norm, localT);
           return {
@@ -149,7 +151,7 @@ export function useCameraDoc(
       }
       return sampleCameraTrack(project.cameraTrack ?? [], slot.startMs + localT);
     },
-    [mode, rig, camera, doc, inheritedFov, project.cameraTrack, slot.startMs],
+    [mode, rig, camera, doc, format, inheritedFov, project.cameraTrack, slot.startMs],
   );
 
   /** The applied pose as an ORBIT pose: Add-animation and lone-key seeds sample this so an edit never visibly moves the camera until the user drags. */

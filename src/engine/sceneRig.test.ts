@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import type { FormatInfo } from "../toolkit/types";
+import { computeFormat, FORMATS } from "./format";
 import type { SceneDoc, SceneDocRigPose } from "./sceneDocSchema";
 import {
   defaultRigPose,
@@ -24,8 +27,12 @@ const pose = (position: V3, over: Partial<SceneDocRigPose> = {}): SceneDocRigPos
   ...over,
 });
 
-const track = (raw: NonNullable<SceneDoc["cameraRig"]>, doc?: SceneDoc): SceneRigTrack => {
-  const t = normalizeSceneRig(raw, "test", doc);
+const track = (
+  raw: NonNullable<SceneDoc["cameraRig"]>,
+  doc?: SceneDoc,
+  format?: FormatInfo,
+): SceneRigTrack => {
+  const t = normalizeSceneRig(raw, "test", doc, format);
   if (!t) throw new Error("rig track expected");
   return t;
 };
@@ -200,6 +207,44 @@ describe("normalizeSceneRig", () => {
       doc,
     );
     expect(t.keys[0].pose.aim.at).toEqual([1, 2, 3]);
+  });
+
+  it("resolves an arranged device aim against its per-aspect rendered placement", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "left", model: "iphone-15-pro" },
+        { id: "right", model: "iphone-15-pro" },
+      ],
+      deviceLayout: {
+        preset: "row",
+        gap: 0.6,
+        devices: { right: { offset: [0.25, 0.1, -0.2] } },
+      },
+    };
+    const format = computeFormat(FORMATS["9:16"]);
+    const layout = doc.deviceLayout;
+    if (!layout) throw new Error("device layout expected");
+    const expected = resolveDeviceLayout(doc.devices ?? [], layout, format)[1].position;
+    const t = track(
+      {
+        keys: [
+          {
+            id: "a",
+            tMs: 0,
+            pose: {
+              position: [0, 0, 5],
+              aim: { mode: "object", id: "right", at: [0, 0, 0] },
+            },
+          },
+        ],
+        segments: [],
+      },
+      doc,
+      format,
+    );
+
+    expect(t.keys[0].pose.aim.at).toEqual(expected);
   });
 
   it("resolves the two singleton bindables", () => {

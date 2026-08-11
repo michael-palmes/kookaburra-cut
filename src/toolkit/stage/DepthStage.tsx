@@ -34,10 +34,11 @@ export function useDepthBand(): DepthBand | null {
 /** The scene's normalised rig track, or null when it has no rig. Derived from the scene doc already in context, so preview and export resolve it identically by construction rather than by a plumbing rule. */
 export function useRigTrack(): SceneRigTrack | null {
   const doc = useContext(SceneDocContext);
+  const format = useFormat();
   return useMemo(() => {
     if (doc?.cameraMode !== "rig") return null;
-    return normalizeSceneRig(doc.cameraRig, "rig-envelope", doc);
-  }, [doc]);
+    return normalizeSceneRig(doc.cameraRig, "rig-envelope", doc, format);
+  }, [doc, format]);
 }
 
 export function DepthStage({

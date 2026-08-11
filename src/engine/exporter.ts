@@ -43,6 +43,7 @@ import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
 import { setExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
+import { useImageEditStore } from "./imageEditStore";
 import { HELPER_LAYER } from "./lightEditStore";
 import { yieldMacrotask } from "./macrotask";
 import { useObjectEditStore } from "./objectEditStore";
@@ -302,10 +303,11 @@ async function exportPreamble(
   onStep?: (step: number) => void,
 ): Promise<void> {
   configureDeterministicEngine();
-  // Explicit, not incidental: an object, chart or device gizmo selected when an export starts must never reach a frame.
+  // Explicit, not incidental: an object, chart, device or image gizmo selected when an export starts must never reach a frame.
   useObjectEditStore.getState().select(null);
   useChartEditStore.getState().select(null);
   useDeviceEditStore.getState().select(null);
+  useImageEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
@@ -468,7 +470,7 @@ export async function exportProject(
   });
 
   // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
-  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? [], computeFormat(opts.format));
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
     : null;
@@ -602,11 +604,13 @@ export async function captureFrameRgba(
     object: useObjectEditStore.getState().selected,
     chart: useChartEditStore.getState().selected,
     device: useDeviceEditStore.getState().selected,
+    image: useImageEditStore.getState().selected,
   };
   const restoreSelection = () => {
     useObjectEditStore.getState().select(prevSelection.object);
     useChartEditStore.getState().select(prevSelection.chart);
     useDeviceEditStore.getState().select(prevSelection.device);
+    useImageEditStore.getState().select(prevSelection.image);
   };
   try {
     await exportPreamble(opts, gl);
@@ -633,7 +637,7 @@ export async function captureFrameRgba(
     cam.updateProjectionMatrix();
   }
 
-  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? [], computeFormat(opts.format));
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
     : null;

@@ -1,4 +1,7 @@
 /** Per-SCENE camera RIG: free-flight pose keyframes stored in a scene's sidecar `cameraRig` block and sampled in SCENE-LOCAL time. A separate block behind `cameraMode`, so the orbit sampler (sceneCamera.ts) is untouched and projects without a rig render byte-identically. Pure (no three.js, no clock reads) like every sampler here, with hand-rolled directional maths: poses interpolate through a CANONICAL form (position + unit forward + aim distance), which is what lets a 180 degree pan-in-place turn without the look point sweeping through the camera. See docs/determinism.md. */
+
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import type { FormatInfo } from "../toolkit/types";
 import { viewBasis } from "./cameraProject";
 import {
   carryDof,
@@ -233,10 +236,22 @@ function validRigPose(raw: unknown): raw is SceneDocRigPose {
 }
 
 /** Where a bound object sits in the scene: a device by its own id, else the two singletons. Placement is read, never written: rebaking `at` when the object moves is the inspector's job (`sceneRigConvert.ts`), so the engine stays pure. */
-export function resolveAimTarget(id: string, doc: SceneDoc | undefined): V3 | null {
+export function resolveAimTarget(
+  id: string,
+  doc: SceneDoc | undefined,
+  format?: FormatInfo,
+): V3 | null {
   if (!doc) return null;
-  const device = doc.devices?.find((d) => d.id === id);
+  const deviceIndex = doc.devices?.findIndex((d) => d.id === id) ?? -1;
+  const device = deviceIndex >= 0 ? doc.devices?.[deviceIndex] : undefined;
   if (device) {
+    if (doc.deviceLayout && format) {
+      const placement = resolveDeviceLayout(doc.devices ?? [], doc.deviceLayout, format)[
+        deviceIndex
+      ];
+      const at = placement?.position;
+      if (finite3(at)) return [at[0], at[1], at[2]];
+    }
     const at = device.placement?.position;
     return finite3(at) ? [at[0], at[1], at[2]] : [0, 0, 0];
   }
@@ -253,6 +268,7 @@ export function normalizeSceneRig(
   raw: SceneDoc["cameraRig"],
   source: string,
   doc?: SceneDoc,
+  format?: FormatInfo,
 ): SceneRigTrack | null {
   if (!raw) return null;
   const keys: SceneDocRigKey[] = [];
@@ -284,7 +300,7 @@ export function normalizeSceneRig(
       }
     }
     if (pose.aim.mode === "object") {
-      const at = resolveAimTarget(pose.aim.id, doc);
+      const at = resolveAimTarget(pose.aim.id, doc, format);
       if (at) {
         pose.aim = { ...pose.aim, at };
       } else if (!warnedBindings.has(pose.aim.id)) {

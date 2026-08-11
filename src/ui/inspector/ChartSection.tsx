@@ -498,8 +498,7 @@ export function ChartDrillIn({
     const override = doc.chart.data.series.find((s) => s.id === selected.id)?.colour;
     return (
       <div className="inspector-drill chart-drill">
-        <DrillBack label="Chart" onClick={() => setSeriesId(null)} />
-        <div className="inspector-drill-title">{selected.name}</div>
+        <DrillBack label="Chart" title={selected.name} onClick={() => setSeriesId(null)} />
         <div className="inspector-drill-body inspector-section-body">
           <TextRow
             label="Name"
@@ -597,8 +596,7 @@ export function ChartDrillIn({
   if (fontOpen) {
     return (
       <div className="inspector-drill chart-drill">
-        <DrillBack label="Chart" onClick={() => setFontOpen(false)} />
-        <div className="inspector-drill-title">Chart font</div>
+        <DrillBack label="Chart" title="Chart font" onClick={() => setFontOpen(false)} />
         <div className="inspector-drill-body">
           {fontOverride && (
             <button
@@ -1530,8 +1528,7 @@ export function ChartDrillIn({
 
   return (
     <div className="inspector-drill chart-drill">
-      <DrillBack label={backLabel} onClick={onBack} />
-      <div className="inspector-drill-title">Chart</div>
+      <DrillBack label={backLabel} title="Chart" onClick={onBack} />
       <div className="inspector-drill-body">
         <ToggleFieldset
           control={
@@ -1632,8 +1629,7 @@ export function ChartPlacementDrillIn({
 
   return (
     <div className="inspector-drill chart-drill">
-      <DrillBack label={backLabel} onClick={onBack} />
-      <div className="inspector-drill-title">Position</div>
+      <DrillBack label={backLabel} title="Position" onClick={onBack} />
       <div className="inspector-drill-body inspector-section-body">
         <DrillGroup label="Gizmo">
           <SegmentedRow

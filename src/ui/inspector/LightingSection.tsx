@@ -32,6 +32,7 @@ import type {
 } from "../../theme/tokens";
 import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";
 import { ColourPicker } from "../colour/ColourPicker";
+import { namedInspectorTitle } from "../inspectorTitles";
 import { OptionCard } from "../OptionCard";
 import { DebouncedRange } from "../TextAnimationPicker";
 import { ActionRow, DrillBack, DrillGroup, NumberField, ToggleRow } from "./rows";
@@ -394,6 +395,7 @@ export function LightingSectionBody({
   projectId,
   projectLighting,
   slot,
+  backLabel,
   onBack,
   patchDoc,
   commitFromBaseline,
@@ -404,6 +406,7 @@ export function LightingSectionBody({
   projectLighting: LightingSpec | undefined;
   /** The scene's timeline placement, for "Add key at playhead". */
   slot: { startMs: number; durationMs: number };
+  backLabel: string;
   onBack: () => void;
   patchDoc: (patch: (next: SceneDoc) => void, opts?: { history?: string | false }) => Promise<void>;
   commitFromBaseline: (baseline: SceneDoc, patch: (next: SceneDoc) => void) => Promise<void>;
@@ -600,8 +603,7 @@ export function LightingSectionBody({
 
   return (
     <div className="inspector-drill">
-      <DrillBack label="Scene" onClick={onBack} />
-      <div className="inspector-drill-title">Lighting</div>
+      <DrillBack label={backLabel} title="Lighting" onClick={onBack} />
       <div className="inspector-drill-body inspector-section-body">
         {!resolved ? (
           <>
@@ -1121,8 +1123,11 @@ function LightEditor({
 
   return (
     <div className="inspector-drill">
-      <DrillBack label="Lighting" onClick={onBack} />
-      <div className="inspector-drill-title">{light.name ?? TYPE_LABEL[light.type]}</div>
+      <DrillBack
+        label="Lighting"
+        title={namedInspectorTitle(light.name, TYPE_LABEL[light.type])}
+        onClick={onBack}
+      />
       <div className="inspector-drill-body inspector-section-body">
         <input
           key={light.id}
@@ -1545,8 +1550,11 @@ function FixtureEditor({
 
   return (
     <div className="inspector-drill">
-      <DrillBack label="Lighting" onClick={onBack} />
-      <div className="inspector-drill-title">{fixture.name ?? FORM_LABEL[fixture.form]}</div>
+      <DrillBack
+        label="Lighting"
+        title={namedInspectorTitle(fixture.name, FORM_LABEL[fixture.form])}
+        onClick={onBack}
+      />
       <div className="inspector-drill-body inspector-section-body">
         <div className="camera-loop-modes">
           {(Object.keys(FORM_LABEL) as FixtureSpec["form"][]).map((form) => (

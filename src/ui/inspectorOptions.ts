@@ -98,6 +98,440 @@ export function objectRowLabel(objectId: string): string {
   return words ? words[0].toUpperCase() + words.slice(1) : "Object";
 }
 
+export type SceneOverviewGroupId = "text" | "devices" | "images" | "videos" | "objects";
+
+export type SceneOverviewContentType =
+  | "text"
+  | "device"
+  | "image"
+  | "video"
+  | "object"
+  | "chart"
+  | "screenshotStack"
+  | "comparison";
+
+export type SceneOverviewSettingType =
+  | "overlay"
+  | "theme"
+  | "background"
+  | "camera"
+  | "lighting"
+  | "transition"
+  | "duration";
+
+export type SceneOverviewSelectionTarget =
+  | { kind: "text"; id: string }
+  | { kind: "device"; id: string }
+  | { kind: "image"; id: string }
+  | { kind: "legacyImage"; id: string }
+  | { kind: "videoWindow" }
+  | { kind: "object"; id: string }
+  | { kind: "chart" }
+  | { kind: "screenshotStack" }
+  | { kind: "comparison" };
+
+export interface SceneOverviewMediaHint {
+  kind: "image" | "video";
+  src: string;
+}
+
+export interface SceneOverviewRowModel {
+  id: string;
+  type: SceneOverviewContentType | SceneOverviewSettingType;
+  label: string;
+  value?: string;
+  thumbnail?: string;
+  mediaHint?: SceneOverviewMediaHint;
+  selectionTarget?: SceneOverviewSelectionTarget;
+  openRoute: string | null;
+  readOnly?: boolean;
+}
+
+export interface SceneOverviewGroupModel {
+  id: SceneOverviewGroupId;
+  label: string;
+  addType: Extract<SceneOverviewContentType, "text" | "device" | "image" | "video" | "object">;
+  rows: SceneOverviewRowModel[];
+}
+
+export interface SceneOverviewAddOptionModel {
+  id: SceneOverviewContentType;
+  label: string;
+  singleton: boolean;
+  disabled: boolean;
+  disabledReason?: "Already in scene" | "Create an overlay first" | "Scene document unavailable";
+}
+
+export interface SceneOverviewInput {
+  doc: SceneDoc | undefined;
+  frame?: FrameSpec;
+  durationMs: number;
+  slotsCount: number;
+  themeName?: string;
+  overlayValue?: string;
+  backgroundValue?: string;
+  cameraValue?: string;
+  lightingValue?: string;
+  transitionValue?: string;
+  fallbackText?: string;
+}
+
+export interface SceneOverviewModel {
+  groups: SceneOverviewGroupModel[];
+  standalone: SceneOverviewRowModel[];
+  settings: SceneOverviewRowModel[];
+  addOptions: SceneOverviewAddOptionModel[];
+}
+
+const OVERVIEW_GROUP_LABELS: Record<SceneOverviewGroupId, string> = {
+  text: "Text",
+  devices: "Devices",
+  images: "Images",
+  videos: "Videos",
+  objects: "Objects",
+};
+
+const DEVICE_LAYOUT_LABELS: Record<NonNullable<SceneDoc["deviceLayout"]>["preset"], string> = {
+  row: "Row",
+  "toe-in": "Toe-in",
+  arc: "Arc",
+  cascade: "Cascade",
+  hero: "Hero",
+  "depth-pair": "Depth",
+};
+
+function assetBasename(src: string): string {
+  return src.split("/").pop() || src;
+}
+
+function sentenceCase(value: string): string {
+  const words = value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .trim();
+  return words ? words[0].toUpperCase() + words.slice(1) : "Untitled";
+}
+
+function lineLabel(value: string, fallback: string): string {
+  const line = value.split("\n")[0]?.replace(/\s+/g, " ").trim();
+  return line || sentenceCase(fallback);
+}
+
+function textAlignmentValue(doc: SceneDoc, frame: FrameSpec | undefined): string {
+  const alignment = frame?.claimsSceneText
+    ? (frame.textAlign ?? (frame.cutout.shape === "none" ? "center" : "left"))
+    : (doc.textLayout?.align ?? "center");
+  return alignment === "center" ? "Centre" : sentenceCase(alignment);
+}
+
+function deviceOverviewValue(
+  doc: SceneDoc,
+  device: NonNullable<SceneDoc["devices"]>[number],
+): string | undefined {
+  if (device.media?.src) return assetBasename(device.media.src);
+  if (doc.deviceLayout) return DEVICE_LAYOUT_LABELS[doc.deviceLayout.preset];
+  if (!isDeviceId(device.model)) return undefined;
+  const spec = DEVICE_CATALOG[device.model];
+  return spec.colours.find((colour) => colour.id === (device.colour ?? spec.defaultColour))?.name;
+}
+
+function deviceOverviewThumbnail(
+  device: NonNullable<SceneDoc["devices"]>[number],
+): string | undefined {
+  if (!isDeviceId(device.model)) return undefined;
+  const spec = DEVICE_CATALOG[device.model];
+  return spec.previews[device.colour ?? spec.defaultColour] ?? spec.previews[spec.defaultColour];
+}
+
+function placementValue(placement: NonNullable<SceneDoc["objects"]>[number]["placement"]): string {
+  if (placement?.ground) return "Floor";
+  const x = placement?.position?.[0] ?? 0;
+  if (x < -0.15) return "Left";
+  if (x > 0.15) return "Right";
+  return "Centre";
+}
+
+function chartOverviewValue(chart: SceneDocChart): string {
+  const series = chart.data.series.length;
+  return `${CHART_TYPE_LABELS[chart.type]} · ${series} series`;
+}
+
+function comparisonOverviewValue(doc: SceneDoc): string | undefined {
+  const type = doc.compare?.mask?.type;
+  if (!type) return "Before and after";
+  return {
+    linear: "Linear wipe",
+    circle: "Circle reveal",
+    radial: "Radial reveal",
+    blend: "Blend",
+  }[type];
+}
+
+function overlayOverviewValue(frame: FrameSpec | undefined): string {
+  if (!frame) return "Off";
+  if (frame.cutout.shape === "none") return "Full panel";
+  const side = frame.cutout.side === "end" ? "End" : "Start";
+  const size = Math.round((frame.cutout.size ?? 0.55) * 100);
+  return `${side} · ${size}%`;
+}
+
+function backgroundOverviewValue(doc: SceneDoc | undefined): string {
+  if (!doc || doc.background === undefined) return "Theme default";
+  return {
+    none: "None",
+    color: "Colour",
+    gradient: "Gradient",
+    shader: "Animated",
+    scene3d: "3D",
+    image: "Image",
+    video: "Video",
+  }[doc.background.type];
+}
+
+function durationOverviewValue(durationMs: number): string {
+  return `${(durationMs / 1000).toFixed(2)} s`;
+}
+
+function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
+  const definitions: Array<{
+    id: SceneOverviewContentType;
+    label: string;
+    singleton: boolean;
+    present: boolean;
+  }> = [
+    { id: "device", label: "Device", singleton: false, present: false },
+    { id: "text", label: "Text", singleton: false, present: false },
+    { id: "image", label: "Image", singleton: false, present: false },
+    { id: "video", label: "Video", singleton: true, present: !!doc?.videoWindow },
+    { id: "object", label: "Object", singleton: false, present: false },
+    { id: "chart", label: "Chart", singleton: true, present: !!doc?.chart },
+    {
+      id: "screenshotStack",
+      label: "Screenshot stack",
+      singleton: true,
+      present: !!doc?.layeredScreenshot,
+    },
+    { id: "comparison", label: "Comparison", singleton: true, present: !!doc?.compare },
+  ];
+  return definitions.map(({ id, label, singleton, present }) => {
+    const disabledReason = !doc
+      ? "Scene document unavailable"
+      : singleton && present
+        ? "Already in scene"
+        : undefined;
+    return { id, label, singleton, disabled: disabledReason !== undefined, disabledReason };
+  });
+}
+
+/** The redesigned Scene overview as deterministic data: empty groups are omitted and row order never depends on edit recency. */
+export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewModel {
+  const { doc, frame } = input;
+  const groupedRows: Record<SceneOverviewGroupId, SceneOverviewRowModel[]> = {
+    text: [],
+    devices: [],
+    images: [],
+    videos: [],
+    objects: [],
+  };
+
+  if (doc) {
+    const textValue = textAlignmentValue(doc, frame);
+    for (const [key, value] of Object.entries(doc.text ?? {})) {
+      groupedRows.text.push({
+        id: `text:${key}`,
+        type: "text",
+        label: lineLabel(value, key),
+        value: textValue,
+        selectionTarget: { kind: "text", id: key },
+        openRoute: "text",
+      });
+    }
+    if (groupedRows.text.length === 0 && input.fallbackText?.trim()) {
+      groupedRows.text.push({
+        id: "text:fallback",
+        type: "text",
+        label: lineLabel(input.fallbackText, "Text"),
+        value: textValue,
+        openRoute: "text",
+        readOnly: true,
+      });
+    }
+
+    for (const [index, device] of (doc.devices ?? []).entries()) {
+      const id = device.id || `device-${index + 1}`;
+      const mediaHint = device.media?.src
+        ? { kind: device.media.kind, src: device.media.src }
+        : undefined;
+      groupedRows.devices.push({
+        id: `device:${id}`,
+        type: "device",
+        label: isDeviceId(device.model)
+          ? DEVICE_CATALOG[device.model].name
+          : sentenceCase(device.model),
+        value: deviceOverviewValue(doc, device),
+        thumbnail: deviceOverviewThumbnail(device),
+        mediaHint,
+        selectionTarget: { kind: "device", id },
+        openRoute: "device",
+      });
+    }
+
+    if (doc.videoWindow) {
+      groupedRows.videos.push({
+        id: "video:window",
+        type: "video",
+        label: assetBasename(doc.videoWindow.media.src),
+        value: "Window",
+        mediaHint: { kind: "video", src: doc.videoWindow.media.src },
+        selectionTarget: { kind: "videoWindow" },
+        openRoute: "videoWindow.edit",
+      });
+    }
+
+    for (const object of doc.objects ?? []) {
+      groupedRows.objects.push({
+        id: `object:${object.id}`,
+        type: "object",
+        label: objectRowLabel(object.objectId),
+        value: placementValue(object.placement),
+        selectionTarget: { kind: "object", id: object.id },
+        openRoute: "objects.placement",
+      });
+    }
+  }
+
+  for (const image of doc?.images ?? []) {
+    groupedRows.images.push({
+      id: `image:${image.id}`,
+      type: "image",
+      label: assetBasename(image.src),
+      value: image.host === "stage" ? "Stage" : "Overlay",
+      thumbnail: image.src,
+      mediaHint: { kind: "image", src: image.src },
+      selectionTarget: { kind: "image", id: image.id },
+      openRoute: "image.edit",
+    });
+  }
+
+  for (const decoration of frame?.decorations ?? []) {
+    if (!decoration.src) continue;
+    groupedRows.images.push({
+      id: `image:legacy:${decoration.id}`,
+      type: "image",
+      label: assetBasename(decoration.src),
+      value: `${Math.round(decoration.size * 100)}%`,
+      thumbnail: decoration.src,
+      mediaHint: { kind: "image", src: decoration.src },
+      selectionTarget: { kind: "legacyImage", id: decoration.id },
+      openRoute: "legacyImage.edit",
+      readOnly: true,
+    });
+  }
+
+  const groupOrder: Array<{
+    id: SceneOverviewGroupId;
+    addType: SceneOverviewGroupModel["addType"];
+  }> = [
+    { id: "text", addType: "text" },
+    { id: "devices", addType: "device" },
+    { id: "images", addType: "image" },
+    { id: "videos", addType: "video" },
+    { id: "objects", addType: "object" },
+  ];
+  const groups = groupOrder.flatMap(({ id, addType }) =>
+    groupedRows[id].length > 0
+      ? [{ id, label: OVERVIEW_GROUP_LABELS[id], addType, rows: groupedRows[id] }]
+      : [],
+  );
+
+  const standalone: SceneOverviewRowModel[] = [];
+  if (doc?.chart) {
+    standalone.push({
+      id: "chart",
+      type: "chart",
+      label: "Chart",
+      value: chartOverviewValue(doc.chart),
+      selectionTarget: { kind: "chart" },
+      openRoute: "chart.edit",
+    });
+  }
+  if (doc?.layeredScreenshot) {
+    const layers = doc.layeredScreenshot.layers.length;
+    standalone.push({
+      id: "screenshotStack",
+      type: "screenshotStack",
+      label: "Screenshot stack",
+      value: `${layers} layer${layers === 1 ? "" : "s"}`,
+      selectionTarget: { kind: "screenshotStack" },
+      openRoute: "layeredScreenshot.edit",
+    });
+  }
+  if (doc?.compare) {
+    standalone.push({
+      id: "comparison",
+      type: "comparison",
+      label: "Comparison",
+      value: comparisonOverviewValue(doc),
+      selectionTarget: { kind: "comparison" },
+      openRoute: "compare.edit",
+    });
+  }
+
+  const settings: SceneOverviewRowModel[] = [
+    {
+      id: "overlay",
+      type: "overlay",
+      label: "Overlay",
+      value: input.overlayValue ?? overlayOverviewValue(frame),
+      openRoute: doc ? "frame" : null,
+    },
+    {
+      id: "theme",
+      type: "theme",
+      label: "Theme",
+      value: input.themeName ?? doc?.themeId ?? "Project theme",
+      openRoute: doc ? "style.theme" : null,
+    },
+    {
+      id: "background",
+      type: "background",
+      label: "Background",
+      value: input.backgroundValue ?? backgroundOverviewValue(doc),
+      openRoute: doc ? "style.background" : null,
+    },
+    {
+      id: "camera",
+      type: "camera",
+      label: "Camera",
+      value: input.cameraValue ?? (doc?.cameraMode === "rig" ? "Free" : "Orbit"),
+      openRoute: "camera",
+    },
+    {
+      id: "lighting",
+      type: "lighting",
+      label: "Lighting",
+      value: input.lightingValue ?? (doc?.lighting ? "Custom" : "Theme"),
+      openRoute: doc ? "lighting" : null,
+    },
+    {
+      id: "transition",
+      type: "transition",
+      label: "Transition",
+      value: input.transitionValue ?? "None",
+      openRoute: input.slotsCount > 1 ? "motion.transition" : null,
+    },
+    {
+      id: "duration",
+      type: "duration",
+      label: "Duration",
+      value: durationOverviewValue(input.durationMs),
+      openRoute: null,
+    },
+  ];
+
+  return { groups, standalone, settings, addOptions: addOptions(doc) };
+}
+
 export interface SceneRowModel {
   id: string;
   label: string;
@@ -158,7 +592,7 @@ export function sceneSections(input: {
     }
     rows.push(
       { id: "device.change", label: "Change device", chevron: true },
-      { id: "device.position", label: "Position", chevron: true },
+      { id: "device.position", label: "Arrangement", chevron: true },
     );
     if (isDeviceId(device.model) && DEVICE_CATALOG[device.model].lid) {
       rows.push({ id: "device.lid", label: "Lid angle", chevron: false });

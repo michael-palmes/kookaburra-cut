@@ -144,7 +144,6 @@ export function LayeredScreenshotBuilder({
   /** Change media renders as a docked sub-screen (the stage stays live behind it), not a modal. */
   const [changingMedia, setChangingMedia] = useState(false);
   useEscapeClose(() => setAdding(null), adding !== null);
-  useEscapeClose(() => setChangingMedia(false), changingMedia);
 
   // A block with no layers still opens: seed the first layer so the panel is never a dead end.
   const empty = ordered.length === 0;
@@ -280,8 +279,11 @@ export function LayeredScreenshotBuilder({
   if (changingMedia && item?.kind === "screen") {
     return (
       <div className="inspector-drill">
-        <DrillBack label="Screenshot stack" onClick={() => setChangingMedia(false)} />
-        <div className="inspector-drill-title">Change media</div>
+        <DrillBack
+          label="Screenshot stack"
+          title="Change media"
+          onClick={() => setChangingMedia(false)}
+        />
         <div className="inspector-drill-body">
           {mediaError && <p className="modal-error">{mediaError}</p>}
           <div className="inspector-media-host">
@@ -310,8 +312,7 @@ export function LayeredScreenshotBuilder({
 
   return (
     <div className="inspector-drill">
-      <DrillBack label={backLabel} onClick={onBack} />
-      <div className="inspector-drill-title">Screenshot stack</div>
+      <DrillBack label={backLabel} title="Screenshot stack" onClick={onBack} />
       <div className="ls-builder">
         <div className="ls-builder-section">
           <div className="inspector-tabs" role="tablist">

@@ -443,6 +443,7 @@ fn remap_layered_text_keys(doc: &mut Value, items: &HashMap<String, String>) {
 /// Re-mint every scene-local id in a COPIED sidecar so a duplicate is a genuinely new scene rather than a second document wearing the source's ids: each namespace renumbers from 1 in document order (stable and diffable, these files are committed) and every cross-reference follows its target in the same pass, so a rig aim still finds its device and a segment still finds its keys. Two things deliberately do NOT move: `assets/…` paths (references to files, not ids), and lighting light/fixture ids, which `resolveLighting` merges whole-field across theme, project and scene, so a scene's lighting keys may name ids this document doesn't own.
 fn remint_scene_doc_ids(doc: &mut Value) {
     let devices = renumber_ids(doc.get_mut("devices"), "d");
+    renumber_ids(doc.get_mut("images"), "img");
     // Nothing in the document references a staged object, so its map is dropped.
     renumber_ids(doc.get_mut("objects"), "o");
     remap_field(doc.get_mut("duration"), "sourceDeviceId", &devices);
@@ -616,7 +617,17 @@ pub fn duplicate_scene(
     })
 }
 
-/// Every `assets/...` path a scene's TSX or sidecar text mentions; over-capture is harmless because callers gate on the file existing in the source project.
+fn is_project_asset_ref(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix("assets/") else {
+        return false;
+    };
+    !rest.is_empty()
+        && value
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+/// Every `assets/...` path a scene's TSX mentions; over-capture is harmless because callers gate on the file existing in the source project.
 fn scan_asset_refs(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut found: Vec<String> = Vec::new();
@@ -640,16 +651,102 @@ fn scan_asset_refs(text: &str) -> Vec<String> {
             }
         }
         let rel = text[start..end].trim_end_matches([' ', '.']);
-        if standalone
-            && rel.len() > "assets/".len()
-            && !rel.contains("..")
-            && !found.iter().any(|f| f == rel)
-        {
+        if standalone && is_project_asset_ref(rel) && !found.iter().any(|f| f == rel) {
             found.push(rel.to_string());
         }
         from = end.max(start + 1);
     }
     found
+}
+
+fn collect_json_asset_refs(value: &Value) -> Vec<String> {
+    fn walk(value: &Value, found: &mut Vec<String>, seen: &mut HashSet<String>) {
+        match value {
+            Value::String(path) if is_project_asset_ref(path) => {
+                if seen.insert(path.clone()) {
+                    found.push(path.clone());
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    walk(value, found, seen);
+                }
+            }
+            Value::Object(values) => {
+                for value in values.values() {
+                    walk(value, found, seen);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut found = Vec::new();
+    let mut seen = HashSet::new();
+    walk(value, &mut found, &mut seen);
+    found
+}
+
+fn rewrite_json_asset_refs(value: &mut Value, replacements: &[(String, String)]) {
+    match value {
+        Value::String(path) => {
+            if let Some((_, replacement)) = replacements.iter().find(|(source, _)| source == path) {
+                *path = replacement.clone();
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                rewrite_json_asset_refs(value, replacements);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                rewrite_json_asset_refs(value, replacements);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn rewrite_text_asset_refs(text: &str, replacements: &[(String, String)]) -> String {
+    fn path_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/' | b' ')
+    }
+
+    fn find_standalone(text: &str, from: usize, source: &str) -> Option<usize> {
+        let bytes = text.as_bytes();
+        let mut search_from = from;
+        while let Some(offset) = text[search_from..].find(source) {
+            let start = search_from + offset;
+            let end = start + source.len();
+            let starts_clean = start == 0 || !path_byte(bytes[start - 1]);
+            let ends_clean = end == bytes.len() || !path_byte(bytes[end]);
+            if starts_clean && ends_clean {
+                return Some(start);
+            }
+            search_from = end;
+        }
+        None
+    }
+
+    let mut rewritten = String::with_capacity(text.len());
+    let mut from = 0;
+    while from < text.len() {
+        let next = replacements
+            .iter()
+            .filter_map(|(source, replacement)| {
+                find_standalone(text, from, source).map(|start| (start, source, replacement))
+            })
+            .min_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.len().cmp(&a.1.len())));
+        let Some((start, source, replacement)) = next else {
+            rewritten.push_str(&text[from..]);
+            break;
+        };
+        rewritten.push_str(&text[from..start]);
+        rewritten.push_str(replacement);
+        from = start + source.len();
+    }
+    rewritten
 }
 
 /// First free sibling name for `name` in `dir`: stem-2.ext, stem-3.ext, …
@@ -669,6 +766,56 @@ fn free_sibling_name(dir: &Path, name: &str) -> String {
             return candidate;
         }
     }
+}
+
+fn copy_scene_assets(
+    project: &Path,
+    dest: &Path,
+    tsx: &mut String,
+    doc: &mut Option<Value>,
+) -> Result<(), String> {
+    let mut refs = scan_asset_refs(tsx);
+    if let Some(doc) = doc.as_ref() {
+        for rel in collect_json_asset_refs(doc) {
+            if !refs.iter().any(|existing| existing == &rel) {
+                refs.push(rel);
+            }
+        }
+    }
+
+    let mut replacements = Vec::new();
+    for rel in refs {
+        let src_path = project.join(&rel);
+        if !src_path.is_file() {
+            continue;
+        }
+        let (dir_rel, name) = rel.rsplit_once('/').unwrap_or(("assets", rel.as_str()));
+        let dest_dir = dest.join(dir_rel);
+        let mut dest_path = dest_dir.join(name);
+        if dest_path.is_file() {
+            let same = std::fs::read(&src_path)
+                .and_then(|a| std::fs::read(&dest_path).map(|b| a == b))
+                .unwrap_or(false);
+            if same {
+                continue;
+            }
+            let free = free_sibling_name(&dest_dir, name);
+            let new_rel = format!("{dir_rel}/{free}");
+            dest_path = dest_dir.join(&free);
+            replacements.push((rel.clone(), new_rel));
+        }
+        std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+        std::fs::copy(&src_path, &dest_path).map_err(|e| format!("copying {rel}: {e}"))?;
+        workspace::touch_now(&dest_path);
+    }
+
+    if !replacements.is_empty() {
+        *tsx = rewrite_text_asset_refs(tsx, &replacements);
+        if let Some(doc) = doc.as_mut() {
+            rewrite_json_asset_refs(doc, &replacements);
+        }
+    }
+    Ok(())
 }
 
 /// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination (and a sidecar re-minted by `remint_scene_doc_ids`), every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
@@ -715,56 +862,16 @@ pub fn copy_scene_to_project(
     let mut tsx =
         std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
     let doc_file_src = file.replace(".tsx", ".json");
-    let mut doc_text = match std::fs::read_to_string(project.join(&doc_file_src)) {
-        Ok(text) => Some(text),
+    let mut doc = match std::fs::read_to_string(project.join(&doc_file_src)) {
+        Ok(text) => Some(
+            serde_json::from_str::<Value>(&text)
+                .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
+        ),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
     };
 
-    // Dependency copy: everything the scene text references and the source actually has.
-    let mut refs = scan_asset_refs(&tsx);
-    if let Some(t) = &doc_text {
-        for rel in scan_asset_refs(t) {
-            if !refs.iter().any(|r| r == &rel) {
-                refs.push(rel);
-            }
-        }
-    }
-    for rel in refs {
-        let src_path = project.join(&rel);
-        if !src_path.is_file() {
-            continue;
-        }
-        let (dir_rel, name) = rel.rsplit_once('/').unwrap_or(("assets", rel.as_str()));
-        let dest_dir = dest.join(dir_rel);
-        let mut dest_path = dest_dir.join(name);
-        if dest_path.is_file() {
-            let same = std::fs::read(&src_path)
-                .and_then(|a| std::fs::read(&dest_path).map(|b| a == b))
-                .unwrap_or(false);
-            if same {
-                continue;
-            }
-            let free = free_sibling_name(&dest_dir, name);
-            let new_rel = format!("{dir_rel}/{free}");
-            dest_path = dest_dir.join(&free);
-            tsx = tsx.replace(rel.as_str(), &new_rel);
-            if let Some(t) = doc_text.take() {
-                doc_text = Some(t.replace(rel.as_str(), &new_rel));
-            }
-        }
-        std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-        std::fs::copy(&src_path, &dest_path).map_err(|e| format!("copying {rel}: {e}"))?;
-        workspace::touch_now(&dest_path);
-    }
-
-    let mut doc = match &doc_text {
-        Some(t) => Some(
-            serde_json::from_str::<Value>(t)
-                .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
-        ),
-        None => None,
-    };
+    copy_scene_assets(&project, &dest, &mut tsx, &mut doc)?;
 
     // Fresh stem in the destination, keeping the source's display name.
     let scenes_dir = dest.join("scenes");
@@ -1804,23 +1911,116 @@ mod applied_background_tests {
 
 #[cfg(test)]
 mod asset_scan_tests {
-    use super::scan_asset_refs;
+    use super::{collect_json_asset_refs, copy_scene_assets, scan_asset_refs};
+    use serde_json::json;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "kookaburra-scene-assets-{label}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
 
     #[test]
-    fn finds_refs_in_code_and_json() {
+    fn keeps_valid_tsx_scanning_unchanged() {
         let tsx = r#"const clip = "assets/feature.mp4"; useTexture(`assets/logo dark.png`)"#;
         assert_eq!(
             scan_asset_refs(tsx),
             vec!["assets/feature.mp4", "assets/logo dark.png"]
         );
-        let json = r#"{ "media": { "src": "assets/screen-2.png" } }"#;
-        assert_eq!(scan_asset_refs(json), vec!["assets/screen-2.png"]);
     }
 
     #[test]
     fn skips_traversal_dedupes_and_longer_segments() {
         let text = r#""assets/a.png" and again "assets/a.png"; "my-assets/no.png"; "assets/../x""#;
         assert_eq!(scan_asset_refs(text), vec!["assets/a.png"]);
+    }
+
+    #[test]
+    fn sidecar_walk_keeps_exact_first_class_image_paths() {
+        let doc = json!({
+            "images": [
+                { "id": "img1", "src": "assets/Kākāpō @2 (final).png" },
+                { "id": "img2", "src": "assets/Kākāpō @2 (final).png" },
+                { "id": "img3", "src": "assets/nested/画面 @home.webp" },
+            ],
+            "unsafe": [
+                "assets/../outside.png",
+                "assets/./same.png",
+                "assets//empty.png",
+                "prefix assets/not-a-path.png",
+            ],
+        });
+        assert_eq!(
+            collect_json_asset_refs(&doc),
+            vec![
+                "assets/Kākāpō @2 (final).png",
+                "assets/nested/画面 @home.webp"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_sidecar_image_collision_copies_and_rewrites_the_exact_path() {
+        let root = temp_dir("collision");
+        let project = root.join("source");
+        let dest = root.join("destination");
+        std::fs::create_dir_all(project.join("assets")).unwrap();
+        std::fs::create_dir_all(dest.join("assets")).unwrap();
+        let name = "Kākāpō @2 (final).png";
+        std::fs::write(project.join("assets").join(name), b"source bytes").unwrap();
+        std::fs::write(dest.join("assets").join(name), b"destination bytes").unwrap();
+        let mut tsx = "export default defineScene({ id: 'image' })".to_string();
+        let mut doc = Some(json!({
+            "version": 1,
+            "images": [{ "id": "img1", "src": format!("assets/{name}") }],
+            "note": format!("Preview assets/{name} here"),
+        }));
+
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+
+        let rewritten = format!("assets/Kākāpō @2 (final)-2.png");
+        assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
+        assert_eq!(
+            doc.as_ref().unwrap()["note"],
+            json!(format!("Preview assets/{name} here"))
+        );
+        assert_eq!(
+            std::fs::read(dest.join("assets/Kākāpō @2 (final)-2.png")).unwrap(),
+            b"source bytes"
+        );
+        assert_eq!(
+            std::fs::read(dest.join("assets").join(name)).unwrap(),
+            b"destination bytes"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_collision_does_not_rewrite_an_embedded_tsx_substring() {
+        let root = temp_dir("tsx-boundary");
+        let project = root.join("source");
+        let dest = root.join("destination");
+        std::fs::create_dir_all(project.join("assets")).unwrap();
+        std::fs::create_dir_all(dest.join("assets")).unwrap();
+        std::fs::write(project.join("assets/foo.png"), b"source bytes").unwrap();
+        std::fs::write(dest.join("assets/foo.png"), b"destination bytes").unwrap();
+        let mut tsx =
+            r#"const image = "assets/foo.png"; const unrelated = "my-assets/foo.png";"#.to_string();
+        let mut doc = None;
+
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+
+        assert_eq!(
+            tsx,
+            r#"const image = "assets/foo-2.png"; const unrelated = "my-assets/foo.png";"#
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -1840,6 +2040,10 @@ mod remint_tests {
             "devices": [
                 { "id": "d7", "model": "iphone-17-pro", "media": { "src": "assets/a.mp4", "kind": "video" } },
                 { "id": "d3", "model": "iphone-17-pro" },
+            ],
+            "images": [
+                { "id": "hero-7", "src": "assets/hero.png", "host": "stage" },
+                { "id": "logo-2", "src": "assets/logo-mark.webp", "host": "overlay" },
             ],
             "deviceLayout": {
                 "preset": "row",
@@ -1957,6 +2161,7 @@ mod remint_tests {
     fn every_namespace_renumbers_from_one_in_document_order() {
         let doc = minted(&scene());
         assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(ids(&doc["images"]), ["img1", "img2"]);
         assert_eq!(ids(&doc["objects"]), ["o1", "o2"]);
         assert_eq!(ids(&doc["camera"]["keys"]), ["k1", "k2"]);
         assert_eq!(ids(&doc["cameraRig"]["keys"]), ["k1", "k2", "k3"]);
@@ -2025,6 +2230,8 @@ mod remint_tests {
         let source = scene();
         let doc = minted(&source);
         assert_eq!(asset_paths(&doc), asset_paths(&source));
+        assert_eq!(doc["images"][0]["src"], json!("assets/hero.png"));
+        assert_eq!(doc["images"][1]["src"], json!("assets/logo-mark.webp"));
         assert_eq!(doc["objects"][0]["objectId"], json!("lantern"));
         assert_eq!(doc["objects"][1]["objectId"], json!("plant"));
         assert_eq!(doc["chart"]["palette"], json!("ocean"));

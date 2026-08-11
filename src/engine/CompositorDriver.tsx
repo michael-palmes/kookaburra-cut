@@ -21,6 +21,7 @@ import {
 } from "./environments";
 import { isCapturingPreview, stampCommittedProject } from "./exportBridge";
 import { isExporting } from "./exportState";
+import { useFormat } from "./format";
 import { HELPER_LAYER } from "./lightEditStore";
 import { resolveOverlays } from "./overlayPlan";
 import {
@@ -70,6 +71,7 @@ export function CompositorDriver({
   commitStamp?: unknown;
 }) {
   const invalidate = useThree((s) => s.invalidate);
+  const format = useFormat();
 
   // Stamps synchronously with this canvas-tree commit: once the stamp equals a LoadedProject, every scene has committed under that project's themes.
   useLayoutEffect(() => {
@@ -77,7 +79,10 @@ export function CompositorDriver({
   }, [commitStamp]);
 
   // Normalized once per project load; null entries for scenes without a camera track.
-  const sceneTracks = useMemo(() => buildSceneCameraTracks(sceneDocs ?? []), [sceneDocs]);
+  const sceneTracks = useMemo(
+    () => buildSceneCameraTracks(sceneDocs ?? [], format),
+    [sceneDocs, format],
+  );
 
   // Lighting keyframe tracks (scene-doc layer only); null-for-legacy when nothing keys.
   const lightingTracks = useMemo(
