@@ -73,6 +73,28 @@ export interface SceneDocDeviceSpec {
 
 export type SceneImageHost = "stage" | "overlay";
 
+export const SCENE_IMAGE_MOTION_PRESETS = [
+  "none",
+  "turntable",
+  "float",
+  "tilt-reveal",
+  "push-in",
+] as const;
+export type SceneImageMotionPreset = (typeof SCENE_IMAGE_MOTION_PRESETS)[number];
+
+/** One shared preset follows the image when its active host changes. */
+export interface SceneImageMotionSpec {
+  preset: SceneImageMotionPreset;
+  /** `turntable`: rotation rate in degrees per second. */
+  degPerSec?: number;
+  /** `float`: Stage world units before the Overlay host adaptation. */
+  amplitude?: number;
+  /** `float`: cycles per second. */
+  hz?: number;
+  /** `tilt-reveal` / `push-in`: intro length in ms. */
+  durationMs?: number;
+}
+
 export interface SceneImageStagePlacement {
   position: [number, number, number];
   /** World-unit width. */
@@ -89,6 +111,8 @@ export interface SceneImageOverlayPlacement {
   rotationDeg: number;
   shape: "none" | "circle";
   layer: "below" | "above";
+  /** Optional stable ordering metadata used when inherited decorations are materialised. */
+  stackOrder?: number;
 }
 
 export interface SceneDocImageSpec {
@@ -99,6 +123,8 @@ export interface SceneDocImageSpec {
   /** Both placements remain authored when the active host changes. */
   stage: SceneImageStagePlacement;
   overlay: SceneImageOverlayPlacement;
+  /** Shared by both hosts; absent preserves the static legacy path. */
+  motion?: SceneImageMotionSpec;
   /** Absent is off. */
   castShadow?: boolean;
 }
@@ -612,7 +638,11 @@ function parseSceneImageStage(raw: unknown): SceneImageStagePlacement {
   };
 }
 
-function parseSceneImageOverlay(raw: unknown): SceneImageOverlayPlacement {
+function parseSceneImageOverlay(
+  raw: unknown,
+  source: string,
+  index: number,
+): SceneImageOverlayPlacement {
   if (!isRecord(raw)) {
     return {
       position: [...DEFAULT_SCENE_IMAGE_OVERLAY.position],
@@ -622,7 +652,7 @@ function parseSceneImageOverlay(raw: unknown): SceneImageOverlayPlacement {
       layer: DEFAULT_SCENE_IMAGE_OVERLAY.layer,
     };
   }
-  return {
+  const overlay: SceneImageOverlayPlacement = {
     position: finiteV2(raw.position)
       ? [...raw.position]
       : [...DEFAULT_SCENE_IMAGE_OVERLAY.position],
@@ -633,6 +663,48 @@ function parseSceneImageOverlay(raw: unknown): SceneImageOverlayPlacement {
     shape: raw.shape === "circle" ? "circle" : "none",
     layer: raw.layer === "below" ? "below" : "above",
   };
+  if (finiteNum(raw.stackOrder)) overlay.stackOrder = raw.stackOrder;
+  else if (raw.stackOrder !== undefined) {
+    console.warn(
+      `[sceneDoc] ${source}: images[${index}].overlay.stackOrder isn't a finite number, dropped`,
+    );
+  }
+  return overlay;
+}
+
+function parseSceneImageMotion(
+  raw: unknown,
+  source: string,
+  index: number,
+): SceneImageMotionSpec | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: images[${index}].motion isn't an object, dropped`);
+    return undefined;
+  }
+
+  let preset: SceneImageMotionPreset = "none";
+  if (SCENE_IMAGE_MOTION_PRESETS.includes(raw.preset as SceneImageMotionPreset)) {
+    preset = raw.preset as SceneImageMotionPreset;
+  } else {
+    console.warn(`[sceneDoc] ${source}: images[${index}].motion.preset isn't known, using none`);
+  }
+
+  const motion: SceneImageMotionSpec = { preset };
+  const fields = ["degPerSec", "amplitude", "hz", "durationMs"] as const;
+  for (const field of fields) {
+    const value = raw[field];
+    if (value === undefined) continue;
+    const valid =
+      finiteNum(value) &&
+      (field === "degPerSec" || (field === "durationMs" ? value > 0 : value >= 0));
+    if (valid) motion[field] = value;
+    else
+      console.warn(
+        `[sceneDoc] ${source}: images[${index}].motion.${field} isn't a valid number, dropped`,
+      );
+  }
+  return motion;
 }
 
 function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | undefined {
@@ -663,8 +735,10 @@ function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | u
       src: entry.src,
       host: entry.host === "overlay" ? "overlay" : "stage",
       stage: parseSceneImageStage(entry.stage),
-      overlay: parseSceneImageOverlay(entry.overlay),
+      overlay: parseSceneImageOverlay(entry.overlay, source, index),
     };
+    const motion = parseSceneImageMotion(entry.motion, source, index);
+    if (motion) image.motion = motion;
     if (typeof entry.castShadow === "boolean") image.castShadow = entry.castShadow;
     images.push(image);
   }

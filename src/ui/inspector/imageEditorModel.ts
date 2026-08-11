@@ -207,6 +207,7 @@ export function duplicateImage(next: SceneDoc, imageId: string): string | null {
   );
   const copy = structuredClone(current);
   copy.id = id;
+  delete copy.overlay.stackOrder;
   if (current.host === "stage") {
     const [x, y, z] = current.stage.position;
     copy.stage = { ...copy.stage, position: [x + 0.25, y, z] };
@@ -234,7 +235,12 @@ export function promoteLegacyImage(
   mutate: (image: SceneDocImageSpec) => void,
 ): LegacyImagePromotionResult | null {
   const next = structuredClone(doc);
-  const decorations = next.frame?.decorations ?? structuredClone([...resolvedDecorations]);
+  const decorations = (next.frame?.decorations ?? structuredClone([...resolvedDecorations])).map(
+    (decoration, index) => ({
+      ...decoration,
+      stackOrder: decoration.stackOrder ?? index,
+    }),
+  );
   const selectedIndex = decorations.findIndex((decoration) => decoration.id === decorationId);
   const selected = decorations[selectedIndex];
   if (!selected?.src || selected.text !== undefined) return null;
@@ -250,6 +256,7 @@ export function promoteLegacyImage(
     rotationDeg: selected.rotationDeg ?? 0,
     shape: selected.shape ?? "none",
     layer: selected.layer ?? "above",
+    stackOrder: selected.stackOrder,
   };
   mutate(promoted);
   if (!isSceneImageSource(promoted.src)) return null;
@@ -279,7 +286,12 @@ export function deleteLegacyImage(
   decorationId: string,
 ): SceneDoc | null {
   const next = structuredClone(doc);
-  const decorations = next.frame?.decorations ?? structuredClone([...resolvedDecorations]);
+  const decorations = (next.frame?.decorations ?? structuredClone([...resolvedDecorations])).map(
+    (decoration, index) => ({
+      ...decoration,
+      stackOrder: decoration.stackOrder ?? index,
+    }),
+  );
   const selectedIndex = decorations.findIndex(
     (decoration) =>
       decoration.id === decorationId &&

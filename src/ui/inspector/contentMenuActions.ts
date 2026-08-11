@@ -11,7 +11,7 @@ import type {
   SceneOverviewSelectionTarget,
 } from "../inspectorOptions";
 import { nextNumberedContentId } from "./contentIds";
-import { deleteLegacyImage, duplicateLegacyImage } from "./imageEditorModel";
+import { deleteLegacyImage, duplicateImage, duplicateLegacyImage } from "./imageEditorModel";
 
 export type ContentMenuAction = "edit" | "duplicate" | "delete";
 
@@ -125,22 +125,8 @@ export function planContentDuplicate(
       nextRowId: null,
       nextSelection: null,
       apply: (next) => {
-        const current = next.images?.find((image) => image.id === target.id);
-        if (!current) return;
-        const id = nextNumberedContentId(
-          "img",
-          (next.images ?? []).map((image) => image.id),
-        );
-        const copy = structuredClone(current);
-        copy.id = id;
-        if (current.host === "stage") {
-          const [x, y, z] = current.stage.position;
-          copy.stage = { ...copy.stage, position: [x + 0.25, y, z] };
-        } else {
-          const [x, y] = current.overlay.position;
-          copy.overlay = { ...copy.overlay, position: [x + 0.05, y - 0.05] };
-        }
-        next.images = [...(next.images ?? []), copy];
+        const id = duplicateImage(next, target.id);
+        if (!id) return false;
         plan.nextRowId = `image:${id}`;
         plan.nextSelection = { kind: "image", id };
       },

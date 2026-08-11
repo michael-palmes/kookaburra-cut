@@ -45,7 +45,7 @@ import {
 import { getLoadedEnvironment } from "./environments";
 import { isExporting } from "./exportState";
 import { FPS, MSAA_SAMPLES } from "./format";
-import { getFramePanels } from "./framePanelRegistry";
+import { comparisonFramePanel, getFramePanels } from "./framePanelRegistry";
 import { applyFrameLighting } from "./lightingAnimation";
 import { applyRelativeLights } from "./lightingState";
 import { panelGradientTexture, panelImageTexture } from "./overlayPanelTexture";
@@ -705,6 +705,8 @@ export function renderComposited(
   const prevFramePanelVisible = framePanels.map((p) => p.group.visible);
   const panelFor = (index: number): Group | null =>
     framePanels.find((p) => p.index === index)?.group ?? null;
+  const comparisonPanelFor = (index: number): Group | null =>
+    comparisonFramePanel(framePanels, index);
   // Visibility gating is side-aware: without `side`, the plain host shows (a comparison's side-B host stays hidden, so every legacy path renders side A only); `side: "b"` shows exactly the side-B host.
   const showOnly = (idx: number, side?: "b") => {
     for (const h of hosts) {
@@ -734,7 +736,7 @@ export function renderComposited(
   const hdrLane = !!fx && !dofOnly;
   const seed = fx ? grainSeed(useClockStore.getState().currentMs, FPS) : 0;
 
-  // Comparison path (solo frames): the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep), overlays are not composed here (a framed comparison renders full-bleed). Transition frames take the transition path below, which pre-composites each comparing scene into a flat pooled target so the divider rides through the blend.
+  // Comparison path (solo frames): the active scene's side hosts render to the A/B pair and blend under the divider mask. Structure mirrors the transition path (per-side state, persistent layers drawn once, snapshot/restore); one camera pose serves both sides (lockstep). The frame panel draws once over the completed comparison, never once per side. Transition frames take the transition path below, which pre-composites each comparing scene into a flat pooled target so the divider rides through the blend.
   const soloCompare =
     resolved.active.length === 1
       ? (plans.find((p) => p.index === resolved.active[0].index) ?? null)
@@ -818,6 +820,8 @@ export function renderComposited(
         scene.background = prevBackground;
       }
     }
+    const panel = comparisonPanelFor(idx);
+    if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
     gl.autoClear = prevAutoClear;
     gl.setRenderTarget(prevTarget);
     releaseIdlePools({ sdr: !hdrLane, hdr: hdrLane, composer: !!fx });
@@ -950,6 +954,8 @@ export function renderComposited(
     setCompareUniforms(compareMat, planA, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
     gl.setRenderTarget(compA);
     gl.render(st.quadScene, st.quadCamera);
+    const panelA = comparisonPanelFor(tr.fromIndex);
+    if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, compA);
   } else {
     showOnly(tr.fromIndex);
     if (cameras?.a) applyCameraPose(camera as PerspectiveCamera, cameras.a);
@@ -1014,6 +1020,8 @@ export function renderComposited(
     setCompareUniforms(compareMat, planB, tgtA.texture, tgtB.texture, st.size.x / st.size.y);
     gl.setRenderTarget(compB);
     gl.render(st.quadScene, st.quadCamera);
+    const panelB = comparisonPanelFor(tr.toIndex);
+    if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, compB);
   } else {
     showOnly(tr.toIndex);
     if (cameras?.b) applyCameraPose(camera as PerspectiveCamera, cameras.b);

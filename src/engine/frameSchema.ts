@@ -208,6 +208,12 @@ function parseDecoration(
   if (rotationDeg !== undefined) {
     decoration.rotationDeg = rotationDeg;
   }
+  const stackOrder = num(raw.stackOrder);
+  if (stackOrder !== undefined) {
+    decoration.stackOrder = stackOrder;
+  } else if (raw.stackOrder !== undefined) {
+    console.warn(`[frame] ${source}: ${where}.stackOrder needs a finite number, dropped`);
+  }
   return decoration;
 }
 

@@ -20,6 +20,7 @@ import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";
 import { StageFixtures } from "../lighting/Fixture";
 import { LightHelpers } from "../lighting/LightHelpers";
+import { StageSceneImages } from "../media/SceneImage";
 import { DEFAULT_FLOOR_Y, StageBackdrop } from "./backdrops";
 import { SceneStageContext, type SceneStageState } from "./context";
 import { StageLights } from "./StageLights";
@@ -196,6 +197,7 @@ export function SceneStage({
       {backdrop && (
         <StageBackdrop spec={backdrop} shadow={mapShadows ? shadow : undefined} floorY={floorY} />
       )}
+      <StageSceneImages />
       {children}
     </SceneStageContext.Provider>
   );

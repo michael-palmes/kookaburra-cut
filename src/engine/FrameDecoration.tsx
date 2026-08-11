@@ -8,13 +8,11 @@ import type { FrameDecorationSpec } from "../toolkit/frame/types";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { FormatInfo } from "../toolkit/types";
+import { frameLayerRenderOrder } from "./frameLayerOrder";
 import { useHeldLocalMs } from "./presentHold";
 import { resolveAssetUrl } from "./project";
 import { ProjectIdContext } from "./sceneContext";
 import { useTimeline } from "./timeline";
-
-/** Layer draw order: "below" tucks behind the panel's editorial text, "above" (the default) draws over everything and may cross the cutout edge (the breakout). Both draw over the composited slide, so a decoration always sits above the cutout scene; true behind-the-cutout layering would need the slide pass split and is deferred (docs/overlays.md). The band base plus the array index gives each decoration a distinct order so array position controls front/back stacking within a layer (equal renderOrder would fall to object-creation id, which array reorders don't change). A text decoration carries the band on its wrapping GROUP, whose order the render list sorts ahead of renderOrder, so text sits over an image in the same band. */
-const RENDER_ORDER = { below: -1000, above: 1000 };
 
 /** Crops a square plane to a disc via an SDF alpha on the raw plane uv (not the map uv), the `ImageCard` shine precedent; a pure function of uv, so AA is compile-stable. A circle decoration expects a roughly square source. */
 function applyCircleMask(material: MeshBasicMaterial): void {
@@ -44,8 +42,7 @@ function placement(
     y: (decoration.position[1] * format.frame.height) / 2,
     // Clockwise on screen is negative about +z (the viewer looks down -z); 0/absent leaves the mesh upright.
     rotZ: decoration.rotationDeg ? (-decoration.rotationDeg * Math.PI) / 180 : 0,
-    renderOrder:
-      (decoration.layer === "below" ? RENDER_ORDER.below : RENDER_ORDER.above) + (order ?? 0),
+    renderOrder: frameLayerRenderOrder(decoration.layer, decoration.stackOrder ?? order ?? 0),
   };
 }
 

@@ -21,6 +21,7 @@ import { ChartFallback } from "../toolkit/chart/ChartFallback";
 import { DevicesFallback } from "../toolkit/device/Device";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
+import { StageSceneImagesFallback } from "../toolkit/media/SceneImage";
 import { VideoWindowFallback } from "../toolkit/media/VideoWindow";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
@@ -358,6 +359,7 @@ export function PresentApp() {
                       <AssetBoundary label={`scene ${i + 1}`}>
                         <SceneBackground />
                         <SceneComponent />
+                        <StageSceneImagesFallback />
                         <DevicesFallback />
                         <ObjectsFallback />
                         <LayeredScreenshotFallback />

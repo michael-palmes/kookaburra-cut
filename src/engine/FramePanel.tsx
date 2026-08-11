@@ -4,12 +4,14 @@ import { useTheme } from "../theme";
 import type { Theme } from "../theme/tokens";
 import { MountedChart } from "../toolkit/chart/Chart";
 import type { FrameSpec } from "../toolkit/frame/types";
+import { OverlaySceneImages } from "../toolkit/media/SceneImage";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import type { V3 } from "../toolkit/types";
 import { FrameChip } from "./FrameChip";
 import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
+import { nextFrameStackOrder } from "./frameLayerOrder";
 import {
   framePanelChartReplaces,
   framePanelChartSlot,
@@ -70,6 +72,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const format = useFormat();
   const theme = useTheme();
   const decorations = frame.decorations ?? [];
+  const overlayImages = (doc?.images ?? []).filter((image) => image.host === "overlay");
   const hosted = !!frame.chart && frame.chart.enabled !== false;
   const chart = useMemo(() => (hosted ? panelChart(doc) : null), [hosted, doc]);
   // The measured fixpoint: the cache fills async (pre-warmed by the export preamble); each landing bumps the store, re-solving until nothing is pending.
@@ -97,7 +100,16 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const icon = replaced ? undefined : frame.icon;
   const chip = replaced ? undefined : frame.chip;
   const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
-  if (!hasText && !icon && !chip && decorations.length === 0 && !chart) return null;
+  if (
+    !hasText &&
+    !icon &&
+    !chip &&
+    decorations.length === 0 &&
+    overlayImages.length === 0 &&
+    !chart
+  ) {
+    return null;
+  }
 
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
   const { fit, titleH, subH, bulletHeights, bulletIndent } = solution;
@@ -264,6 +276,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
         />
       )}
       {chart && slot && <MountedChart chart={chart} panel={slot.rect} />}
+      <OverlaySceneImages orderStart={nextFrameStackOrder(decorations)} />
       {decorations.map((decoration, i) => (
         <FrameDecoration
           key={decoration.id}
@@ -296,13 +309,14 @@ export function FramePanel({
 }) {
   const key = useId();
   const groupRef = useRef<Group>(null);
+  const hasSceneImages = doc?.images?.some((image) => image.host === "overlay") ?? false;
 
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    registerFramePanel(key, { index, group });
+    registerFramePanel(key, { index, group, hasSceneImages });
     return () => unregisterFramePanel(key);
-  }, [key, index]);
+  }, [key, index, hasSceneImages]);
 
   return (
     <SceneContext.Provider value={{ index, startMs, durationMs }}>

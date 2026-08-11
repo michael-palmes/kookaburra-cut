@@ -147,6 +147,7 @@ import { openChartDataModal } from "./ui/chartDataModalStore";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
+import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
@@ -1438,8 +1439,9 @@ export default function App() {
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
-  // The three 2D gizmo layers arm with their inspector section, through the one drill-family map.
+  // The 2D gizmo layers arm with their inspector section, through the one drill-family map.
   const decorationEditOpen = useGizmoSectionOpen("decorations");
+  const imageSectionOpen = useGizmoSectionOpen("images");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -2120,6 +2122,13 @@ export default function App() {
                       aspect={format.width / format.height}
                       onDocChanged={handleDocChanged}
                     />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  imageSectionOpen && (
+                    <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
                   )}
                 {project &&
                   isWorkspaceProjectId(project.id) &&

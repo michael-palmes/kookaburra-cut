@@ -185,8 +185,9 @@ describe("planContentDuplicate", () => {
       ...doc.images?.[0],
       id: "img3",
       stage: { position: [1.25, 2, 3], size: 1.4, rotationDeg: [4, 5, 6] },
+      overlay: doc.images?.[0]?.overlay,
     });
-    expect(next.images?.[2]?.overlay).toEqual(doc.images?.[0]?.overlay);
+    expect(next.images?.[2]?.overlay.position).toEqual(doc.images?.[0]?.overlay.position);
   });
 
   it("clones an Overlay image from execution-time state and retains its Stage placement", () => {
@@ -518,7 +519,7 @@ describe("planContentDelete", () => {
       }),
       doc,
     );
-    expect(next.frame?.decorations).toEqual([resolved[1]]);
+    expect(next.frame?.decorations).toEqual([{ ...resolved[1], stackOrder: 1 }]);
   });
 
   it("deletes from execution-time decorations without clobbering queued changes", () => {
@@ -559,7 +560,10 @@ describe("planContentDelete", () => {
 
     expect(next.frame).toEqual({
       background: "accent",
-      decorations: [currentBadge, queued],
+      decorations: [
+        { ...currentBadge, stackOrder: 1 },
+        { ...queued, stackOrder: 2 },
+      ],
     });
   });
 

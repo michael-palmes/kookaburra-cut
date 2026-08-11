@@ -4,6 +4,7 @@ import { CompareChips } from "../toolkit/compare/CompareChips";
 import { DevicesFallback } from "../toolkit/device/Device";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
+import { StageSceneImagesFallback } from "../toolkit/media/SceneImage";
 import { VideoWindowFallback } from "../toolkit/media/VideoWindow";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
@@ -39,6 +40,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                   {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
                   <SceneBackground />
                   <SceneComponent />
+                  <StageSceneImagesFallback />
                   {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
                   <DevicesFallback />
                   <ObjectsFallback />
@@ -72,6 +74,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                 <AssetBoundary label={`scene ${i + 1} after`}>
                   <SceneBackground />
                   <SceneComponent />
+                  <StageSceneImagesFallback />
                   <DevicesFallback />
                   <ObjectsFallback />
                   <LayeredScreenshotFallback />

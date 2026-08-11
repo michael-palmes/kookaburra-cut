@@ -571,7 +571,9 @@ describe("parseSceneDoc", () => {
               rotationDeg: -370,
               shape: "circle",
               layer: "below",
+              stackOrder: 4,
             },
+            motion: { preset: "float", amplitude: 0.2, hz: 0.5 },
             castShadow: true,
           },
           {
@@ -604,7 +606,9 @@ describe("parseSceneDoc", () => {
         rotationDeg: -10,
         shape: "circle",
         layer: "below",
+        stackOrder: 4,
       },
+      motion: { preset: "float", amplitude: 0.2, hz: 0.5 },
       castShadow: true,
     });
     expect(doc?.images?.[1]?.host).toBe("overlay");
@@ -636,6 +640,46 @@ describe("parseSceneDoc", () => {
     ]);
     expect(parseSceneDoc({ version: 1, images: [] }, "test")?.images).toEqual([]);
     expect(parseSceneDoc({ version: 1 }, "test")?.images).toBeUndefined();
+  });
+
+  it("degrades malformed image motion field-by-field without migrating absent motion", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        images: [
+          {
+            id: "unknown",
+            src: "assets/unknown.png",
+            motion: {
+              preset: "wobble",
+              degPerSec: -12,
+              amplitude: -1,
+              hz: Number.NaN,
+              durationMs: 0,
+            },
+          },
+          {
+            id: "malformed",
+            src: "assets/malformed.png",
+            overlay: { stackOrder: Number.POSITIVE_INFINITY },
+            motion: "float",
+          },
+          { id: "static", src: "assets/static.png" },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.images?.[0]?.motion).toEqual({ preset: "none", degPerSec: -12 });
+    expect(doc?.images?.[1]?.motion).toBeUndefined();
+    expect(doc?.images?.[1]?.overlay.stackOrder).toBeUndefined();
+    expect(doc?.images?.[2]?.motion).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("motion.preset"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("motion.amplitude"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("motion isn't an object"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("overlay.stackOrder"));
+    warn.mockRestore();
   });
 
   it("drops unsafe image sources, malformed entries and later duplicate ids", () => {

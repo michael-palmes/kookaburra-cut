@@ -72,6 +72,8 @@ export interface FrameDecorationSpec {
   /** Images only: `circle` crops the plane to a disc. */
   shape?: FrameDecorationShape;
   layer?: FrameDecorationLayer;
+  /** Stable order inside the layer band, materialised when inherited images become first-class. */
+  stackOrder?: number;
 }
 
 /** The panel fill, beyond the flat colour a plain string still means: a baked gradient, a cover-fit project image, or nothing at all (`transparent` paints no panel, so the scene fills the frame behind the overlay's content). Mirrors the stage's `ThemeBackground` vocabulary for the types it shares. */

@@ -4,6 +4,7 @@ import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
   armImageRemoveConfirmation,
   duplicateFirstClassImage,
+  duplicateImage,
   ImageDrillIn,
   type ImageDrillInProps,
   type ImageMutation,
@@ -33,7 +34,7 @@ interface CapturedToggleProps {
 }
 
 interface CapturedSegmentProps {
-  options: Array<{ value: string; label: string }>;
+  options: Array<{ value: string; label: string; title?: string }>;
   value: string;
   onChange: (value: never) => void;
 }
@@ -176,7 +177,14 @@ describe("ImageDrillIn", () => {
       "Scale",
     ]);
     expect(captures.toggles.map((toggle) => toggle.label)).toContain("Cast shadow");
-    expect(html).not.toContain("Motion");
+    expect(html).toContain("Motion");
+    expect(captures.segments[1]?.options.map((option) => option.label)).toEqual([
+      "None",
+      "Turn",
+      "Float",
+      "Tilt",
+      "Push",
+    ]);
   });
 
   it("independently disables source, settings and structural actions", () => {
@@ -187,7 +195,6 @@ describe("ImageDrillIn", () => {
         sourceDisabled
         settingsDisabled
         duplicateDisabled
-        motionContent={<button type="button">Float</button>}
         patchDoc={patchDoc}
       />,
     );
@@ -215,9 +222,7 @@ describe("ImageDrillIn", () => {
   });
 
   it("renders Overlay placement, crop, layer and optional motion without Stage controls", () => {
-    const html = renderToStaticMarkup(
-      <ImageDrillIn {...props(imageDoc(), "img2")} motionContent={<span>Float</span>} />,
-    );
+    const html = renderToStaticMarkup(<ImageDrillIn {...props(imageDoc(), "img2")} />);
 
     expect(html).toContain("avatar.webp");
     expect(html).toContain("Image 2 of 2");
@@ -227,6 +232,7 @@ describe("ImageDrillIn", () => {
     expect(captures.segments[0]?.options.map((option) => option.label)).toEqual(["Above", "Below"]);
     expect(html).toContain("Motion");
     expect(html).toContain("Float");
+    expect(captures.segments[1]?.options[1]?.title).toBe("Slow turntable");
     expect(html).not.toContain("Cast shadow");
   });
 
@@ -300,17 +306,22 @@ describe("ImageDrillIn", () => {
     captures.segments
       .find((segment) => segment.options.some((option) => option.label === "Below"))
       ?.onChange("below" as never);
+    captures.segments
+      .find((segment) => segment.options.some((option) => option.label === "Push"))
+      ?.onChange("push-in" as never);
 
     expect(writes.map((write) => write.opts.history)).toEqual([
       false,
       "image size",
       "image crop",
       "image layer",
+      "image motion",
     ]);
     expect(writes[1]?.opts.baseline).toEqual(doc);
     expect(writes[1]?.image.overlay.size).toBe(0.34);
     expect(writes[2]?.image.overlay.shape).toBe("circle");
     expect(writes[3]?.image.overlay.layer).toBe("below");
+    expect(writes[4]?.image.motion).toEqual({ preset: "push-in" });
   });
 });
 
@@ -349,6 +360,18 @@ describe("Image inspector structural actions", () => {
     expect(working.images?.map((image) => image.id)).toEqual(["img1", "img2", "img3"]);
     expect(working.images?.[2].stage.position).toEqual([0.65, -0.2, 0.8]);
     expect(working.images?.[2].overlay).toEqual(working.images?.[0].overlay);
+  });
+
+  it("leaves a duplicate unnumbered so the renderer places it after inherited ordering", () => {
+    const next = imageDoc();
+    const source = next.images?.[0];
+    if (!source) throw new Error("image fixture missing");
+    source.overlay.stackOrder = 100;
+
+    const duplicateId = duplicateImage(next, source.id);
+
+    expect(duplicateId).toBe("img3");
+    expect(next.images?.[2]?.overlay.stackOrder).toBeUndefined();
   });
 
   it("removes once, deletes an empty images block and runs the return callback", async () => {

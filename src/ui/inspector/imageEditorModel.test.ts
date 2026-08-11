@@ -323,13 +323,17 @@ describe("promoteLegacyImage", () => {
               rotationDeg: -17,
               shape: "circle",
               layer: "below",
+              stackOrder: 0,
             },
           },
         ],
         frame: {
           background: "accent",
           claimsSceneText: true,
-          decorations: [resolved[1], resolved[2]],
+          decorations: [
+            { ...resolved[1], stackOrder: 1 },
+            { ...resolved[2], stackOrder: 2 },
+          ],
         },
       },
     });
@@ -368,6 +372,7 @@ describe("promoteLegacyImage", () => {
         rotationDeg: 0,
         shape: "none",
         layer: "above",
+        stackOrder: 0,
       },
       castShadow: true,
     });
@@ -425,7 +430,7 @@ describe("promoteLegacyImage", () => {
         shape: "circle",
       },
     });
-    expect(result?.doc.frame?.decorations).toEqual([currentBadge]);
+    expect(result?.doc.frame?.decorations).toEqual([{ ...currentBadge, stackOrder: 1 }]);
   });
 
   it("rejects an unsafe final source without changing the document", () => {
@@ -548,7 +553,15 @@ describe("legacy structural Image actions", () => {
     expect(result?.doc.images?.[2]?.overlay.position[1]).toBeCloseTo(0.55);
     expect(result?.doc.frame).toEqual({
       background: "accent",
-      decorations: [{ id: "badge", src: "assets/badge.png", position: [0.2, 0.1], size: 0.1 }],
+      decorations: [
+        {
+          id: "badge",
+          src: "assets/badge.png",
+          position: [0.2, 0.1],
+          size: 0.1,
+          stackOrder: 1,
+        },
+      ],
     });
     expect(doc).toEqual(before);
   });
@@ -564,7 +577,10 @@ describe("legacy structural Image actions", () => {
 
     expect(result).toEqual({
       version: 1,
-      frame: { background: "muted", decorations: [resolved[1]] },
+      frame: {
+        background: "muted",
+        decorations: [{ ...resolved[1], stackOrder: 1 }],
+      },
     });
     expect(doc).toEqual({ version: 1, frame: { background: "muted" } });
   });

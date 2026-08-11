@@ -1,6 +1,11 @@
 import { type ReactNode, type Ref, useCallback, useEffect, useId, useRef, useState } from "react";
 import { useImageEditStore } from "../../engine/imageEditStore";
-import type { SceneDoc, SceneDocImageSpec, SceneImageHost } from "../../engine/sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocImageSpec,
+  SceneImageHost,
+  SceneImageMotionPreset,
+} from "../../engine/sceneDocSchema";
 import { duplicateImage, removeImage } from "./imageEditorModel";
 import {
   ActionRow,
@@ -44,7 +49,6 @@ export interface ImageDrillInProps {
   patchDoc: ImagePatchDoc;
   commitFromBaseline: (baseline: SceneDoc, patch: ImageDocPatch) => Promise<void>;
   notice?: ReactNode;
-  motionContent?: ReactNode;
 }
 
 export type ImageMutation = (image: SceneDocImageSpec) => void;
@@ -125,6 +129,67 @@ function NavigationIcon({ direction }: { direction: "previous" | "next" }) {
     </svg>
   );
 }
+
+function ImageMotionIcon({ preset }: { preset: SceneImageMotionPreset }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {preset === "none" ? (
+        <rect x="4.5" y="5.5" width="11" height="9" rx="1.5" />
+      ) : preset === "turntable" ? (
+        <>
+          <path d="M4 9.8c0-2.8 2.7-5 6-5 2.6 0 4.8 1.3 5.6 3.2" />
+          <path d="m13.3 6.8 2.5 1.5.7-2.8" />
+          <path d="M16 10.2c0 2.8-2.7 5-6 5-2.6 0-4.8-1.3-5.6-3.2" />
+        </>
+      ) : preset === "float" ? (
+        <>
+          <rect x="4.5" y="6.5" width="11" height="7" rx="1.5" />
+          <path d="M10 2.5v2M10 15.5v2" />
+        </>
+      ) : preset === "tilt-reveal" ? (
+        <path d="M5 4.5l10.5 2v7L5 15.5z" />
+      ) : (
+        <>
+          <rect x="3.5" y="5" width="13" height="10" rx="1.5" />
+          <rect x="6.5" y="7.5" width="7" height="5" rx="1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+const IMAGE_MOTION_OPTIONS: SegmentedOption<SceneImageMotionPreset>[] = [
+  { value: "none", label: "None", icon: <ImageMotionIcon preset="none" /> },
+  {
+    value: "turntable",
+    label: "Turn",
+    title: "Slow turntable",
+    icon: <ImageMotionIcon preset="turntable" />,
+  },
+  { value: "float", label: "Float", icon: <ImageMotionIcon preset="float" /> },
+  {
+    value: "tilt-reveal",
+    label: "Tilt",
+    title: "Tilt reveal",
+    icon: <ImageMotionIcon preset="tilt-reveal" />,
+  },
+  {
+    value: "push-in",
+    label: "Push",
+    title: "Push-in settle",
+    icon: <ImageMotionIcon preset="push-in" />,
+  },
+];
 
 function FooterIcon({ type }: { type: "duplicate" | "remove" }) {
   return (
@@ -210,7 +275,6 @@ export function ImageDrillIn({
   patchDoc,
   commitFromBaseline,
   notice,
-  motionContent,
 }: ImageDrillInProps) {
   const overlayReasonId = `image-overlay-${useId().replaceAll(":", "")}`;
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -683,7 +747,18 @@ export function ImageDrillIn({
             </>
           )}
 
-          {motionContent != null && <DrillGroup label="Motion">{motionContent}</DrillGroup>}
+          <DrillGroup label="Motion">
+            <SegmentedRow
+              className="subtabs-compact"
+              options={IMAGE_MOTION_OPTIONS}
+              value={image.motion?.preset ?? "none"}
+              onChange={(preset) =>
+                patchImage((candidate) => {
+                  candidate.motion = { preset };
+                }, "image motion")
+              }
+            />
+          </DrillGroup>
         </fieldset>
       </div>
 

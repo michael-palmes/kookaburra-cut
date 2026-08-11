@@ -22,7 +22,7 @@ import type { GizmoMode } from "../../engine/gizmoMode";
 import type { GizmoDomain } from "../../engine/gizmoRegistry";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { pushHistory } from "../../engine/history";
-import { useImageEditStore } from "../../engine/imageEditStore";
+import { imageEditCommitMatches, useImageEditStore } from "../../engine/imageEditStore";
 import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { fsUrl, type MediaMeta } from "../../engine/media";
@@ -2200,13 +2200,29 @@ export function SceneTab({
       const commit = state.pendingCommit;
       if (!commit) return;
       useImageEditStore.getState().clearCommit();
-      if (commit.sceneIndex !== sceneIndex) return;
-      void patchDocRef.current((next) => {
-        const image = next.images?.find((candidate) => candidate.id === commit.imageId);
-        if (!image) return;
-        if (commit.kind === "stage") image.stage = commit.placement;
-        else image.overlay = commit.placement;
-      });
+      const clearFailedPreview = () => {
+        const store = useImageEditStore.getState();
+        if (store.previewPlacement && imageEditCommitMatches(store.previewPlacement, commit)) {
+          store.clearPreview();
+        }
+      };
+      if (commit.sceneIndex !== sceneIndex) {
+        clearFailedPreview();
+        return;
+      }
+      void patchDocResultRef
+        .current(
+          (next) => {
+            const image = next.images?.find((candidate) => candidate.id === commit.imageId);
+            if (!image) return false;
+            if (commit.kind === "stage") image.stage = commit.placement;
+            else image.overlay = commit.placement;
+          },
+          { history: commit.kind === "stage" ? "transform image" : "place image" },
+        )
+        .then((succeeded) => {
+          if (!succeeded) clearFailedPreview();
+        });
     });
   }, [sceneIndex]);
   useEffect(() => {
@@ -2970,7 +2986,7 @@ export function SceneTab({
     );
     if (!succeeded || !promotedId) {
       setLegacyImageNotice(
-        "This inherited image could not be taken over. Choose a PNG, JPEG or WebP source first.",
+        "This inherited image could not be taken over. Choose a still PNG, JPEG or WebP source first.",
       );
       return null;
     }
@@ -3024,7 +3040,7 @@ export function SceneTab({
     if (mediaTarget.kind === "image") {
       if (meta && meta.kind !== "image") return;
       if (!isSceneImageSource(rel)) {
-        setImagePickError("Stage and Overlay Images support PNG, JPEG and WebP files.");
+        setImagePickError("Stage and Overlay Images support still PNG, JPEG and WebP files.");
         return;
       }
       setImagePickError(null);
@@ -6452,6 +6468,7 @@ export function SceneTab({
         rotationDeg: resolvedDecoration.rotationDeg ?? 0,
         shape: resolvedDecoration.shape ?? "none",
         layer: resolvedDecoration.layer ?? "above",
+        stackOrder: resolvedDecoration.stackOrder,
       };
     }
     const syntheticDoc: SceneDoc = {
@@ -6508,7 +6525,7 @@ export function SceneTab({
             if (!liveImage) session.imageId = null;
           }
           setLegacyImageNotice(
-            "This inherited image could not be taken over. Choose a PNG, JPEG or WebP source first.",
+            "This inherited image could not be taken over. Choose a still PNG, JPEG or WebP source first.",
           );
         } else {
           setLegacyImageNotice(null);
@@ -6553,7 +6570,7 @@ export function SceneTab({
           }
           legacyImagePromotionRef.current = baselineSession;
           setLegacyImageNotice(
-            "This inherited image could not be taken over. Choose a PNG, JPEG or WebP source first.",
+            "This inherited image could not be taken over. Choose a still PNG, JPEG or WebP source first.",
           );
           return;
         }
@@ -6697,7 +6714,7 @@ export function SceneTab({
             error ??
             legacyImageNotice ??
             (unsupportedSource
-              ? "This inherited source must be changed to PNG, JPEG or WebP before other Image edits can take over."
+              ? "This inherited source must be changed to a still PNG, JPEG or WebP before other Image edits can take over."
               : "This inherited Overlay image remains unchanged until your first edit.")
           }
         />

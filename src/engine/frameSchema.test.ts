@@ -167,6 +167,16 @@ describe("parseFrameSpec decorations", () => {
     ).toEqual([deco]);
   });
 
+  it("keeps a finite stack order and drops a non-finite one", () => {
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...deco, stackOrder: 4.5 }] }, "t")?.decorations,
+    ).toEqual([{ ...deco, stackOrder: 4.5 }]);
+    expect(
+      parseFrameSpec({ ...valid, decorations: [{ ...deco, stackOrder: Number.NaN }] }, "t")
+        ?.decorations,
+    ).toEqual([deco]);
+  });
+
   it("drops only the bad entries", () => {
     const spec = parseFrameSpec(
       {

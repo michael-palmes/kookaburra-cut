@@ -4,6 +4,8 @@ import type { Group } from "three";
 export interface FramePanelHandle {
   index: number;
   group: Group;
+  /** Comparison panels opt in only when first-class Overlay images need the one-after-composite draw. */
+  hasSceneImages: boolean;
 }
 
 // Keyed by a per-instance id (React useId) so a project swap's unmount/mount churn can't clobber entries by index.
@@ -20,4 +22,11 @@ export function unregisterFramePanel(key: string): void {
 /** Current overlay panels. Empty for every project with no framed scene, so the compositor's panel pass is a hard no-op there. */
 export function getFramePanels(): FramePanelHandle[] {
   return [...panels.values()];
+}
+
+export function comparisonFramePanel(
+  handles: readonly FramePanelHandle[],
+  index: number,
+): Group | null {
+  return handles.find((panel) => panel.index === index && panel.hasSceneImages)?.group ?? null;
 }
