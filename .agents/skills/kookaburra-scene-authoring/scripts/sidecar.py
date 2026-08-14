@@ -8,7 +8,8 @@ Run from a project folder:
 
 Examples:
     sidecar.py 01-hero get
-    sidecar.py 01-hero set text.title "Make it move"
+    sidecar.py 01-hero get managedText
+    sidecar.py 01-hero set managedText '{"layout":"template","items":[{"key":"title","type":"title","text":"Make it move"}]}'
     sidecar.py 01-hero set textStyle.titleSize 1.25
     sidecar.py 01-hero set background '{"type": "color", "color": "#101418"}'
     sidecar.py 01-hero unset textStyle.titleColor

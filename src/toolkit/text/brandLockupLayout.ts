@@ -30,6 +30,10 @@ export function brandLockupManagedMotion(from: number, to: number): TextAnimatio
   };
 }
 
+export function brandLockupItemMotionTiming(active: boolean, from: number, to: number) {
+  return active ? { from, to } : { from: 0, to: 1, preset: "none" as const };
+}
+
 /** Longest line's character count; sidecar strings may carry `\n`. */
 function longestLine(s: string): number {
   return s.split("\n").reduce((max, line) => Math.max(max, line.length), 0);

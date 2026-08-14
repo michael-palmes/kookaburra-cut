@@ -17,6 +17,8 @@ export interface ImageCardProps {
   position?: V3;
   /** World-unit width; height follows the image's aspect ratio. */
   width?: number;
+  /** Optional world-unit height cap; both dimensions shrink together to contain the image. */
+  maxHeight?: number;
   /** Optional linear fade-in window, ms (local scene time). Absent = always opaque. */
   from?: number;
   to?: number;
@@ -24,7 +26,7 @@ export interface ImageCardProps {
 
 /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */
 export function ImageCard(props: ImageCardProps) {
-  const { src, position = [0, 0, 0], width = 1, from, to } = props;
+  const { src, position = [0, 0, 0], width = 1, maxHeight, from, to } = props;
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;
@@ -41,7 +43,14 @@ export function ImageCard(props: ImageCardProps) {
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={src}>
-      <LoadedImageCard url={url} position={position} width={width} from={from} to={to} />
+      <LoadedImageCard
+        url={url}
+        position={position}
+        width={width}
+        maxHeight={maxHeight}
+        from={from}
+        to={to}
+      />
     </AssetBoundary>
   );
 }
@@ -146,12 +155,14 @@ function LoadedImageCard({
   url,
   position,
   width,
+  maxHeight,
   from,
   to,
 }: {
   url: string;
   position: V3;
   width: number;
+  maxHeight?: number;
   from?: number;
   to?: number;
 }) {
@@ -196,7 +207,7 @@ function LoadedImageCard({
   useLayoutEffect(() => () => material.dispose(), [material]);
 
   const img = texture.image as { width: number; height: number };
-  const height = width * (img.height / img.width);
+  const contained = containImageDimensions(img.width, img.height, width, maxHeight);
   const opacity =
     from === undefined || to === undefined || to <= from
       ? 1
@@ -210,10 +221,10 @@ function LoadedImageCard({
     } else {
       shineUniforms.uGanShine.value.set(0, 1, 0, 0);
     }
-    shineUniforms.uGanSize.value.set(width, height);
+    shineUniforms.uGanSize.value.set(contained.width, contained.height);
   }
   if (motionUniforms) {
-    const effects = groupImageEffects(group, width, height);
+    const effects = groupImageEffects(group, contained.width, contained.height);
     if (effects) {
       motionUniforms.uGanImageBlur.value.fromArray(effects.blur);
       motionUniforms.uGanImageMask.value.fromArray(effects.mask);
@@ -222,7 +233,22 @@ function LoadedImageCard({
 
   return (
     <mesh position={position} material={material}>
-      <planeGeometry args={[width, height]} />
+      <planeGeometry args={[contained.width, contained.height]} />
     </mesh>
   );
+}
+
+export function containImageDimensions(
+  sourceWidth: number,
+  sourceHeight: number,
+  width: number,
+  maxHeight?: number,
+): { width: number; height: number } {
+  const aspect = sourceWidth > 0 && sourceHeight > 0 ? sourceHeight / sourceWidth : 1;
+  const naturalHeight = width * aspect;
+  if (!(maxHeight !== undefined && maxHeight >= 0) || naturalHeight <= maxHeight) {
+    return { width, height: naturalHeight };
+  }
+  const scale = naturalHeight > 0 ? maxHeight / naturalHeight : 1;
+  return { width: width * scale, height: maxHeight };
 }

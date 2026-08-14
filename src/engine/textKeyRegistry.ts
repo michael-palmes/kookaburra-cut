@@ -121,9 +121,45 @@ export function useSceneConsumesAnyTextKey(
   );
 }
 
+/** True only for code-owned scene mounts, excluding embedded and host-managed renderers. */
+export function sceneOwnsAnyTextKey(
+  entries: Record<string, TextKeyEntry> | undefined,
+  keys: readonly string[],
+): boolean {
+  return keys.some((key) => {
+    const entry = entries?.[key];
+    return entry ? sceneOwnedEntry(entry).count > 0 : false;
+  });
+}
+
+export function useSceneOwnsAnyTextKey(
+  index: number | undefined,
+  keys: readonly string[],
+): boolean {
+  return useTextKeyRegistry((state) =>
+    index === undefined ? false : sceneOwnsAnyTextKey(state.keys[index], keys),
+  );
+}
+
 /** Non-hook read for UI handlers: the text keys the mounted scene consumes. */
 export function textKeysConsumedBy(index: number): string[] {
   return Object.keys(useTextKeyRegistry.getState().keys[index] ?? {});
+}
+
+/** Mounted code-owned scene keys only, excluding host-managed and embedded renderers. */
+export function sceneTextKeysConsumedBy(index: number): string[] {
+  const scene = useTextKeyRegistry.getState().keys[index] ?? {};
+  return Object.entries(scene)
+    .filter(([, entry]) => sceneOwnedEntry(entry).count > 0)
+    .map(([key]) => key);
+}
+
+/** Keys mounted only as embedded or managed composition text. */
+export function nonSceneTextKeys(index: number): string[] {
+  const scene = useTextKeyRegistry.getState().keys[index] ?? {};
+  return Object.entries(scene)
+    .filter(([, entry]) => entry.count > 0 && sceneOwnedEntry(entry).count === 0)
+    .map(([key]) => key);
 }
 
 /** Non-hook read for UI handlers: each colour-capable text key's mounted default fill. */

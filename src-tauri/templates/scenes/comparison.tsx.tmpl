@@ -3,7 +3,7 @@ import { AnimatedHeadline, Device, defineScene, resolveDeviceLayout, SceneStage,
 /**
  * __NAME__: scaffolded comparison. The COMPOSITION lives here (layout, extra elements,
  * anything creative); everything machine-editable lives in the sidecar
- * `scenes/__STEM__.json` (name, text map incl. beforeLabel/afterLabel, devices, the
+ * `scenes/__STEM__.json` (name, managed scene text, embedded before/after labels, devices, the
  * deviceLayout block, camera, duration mode): edit that, in the app or by hand, rather
  * than hard-coding values here. See the kookaburra-scene-authoring skill ("Scene documents").
  */
@@ -16,7 +16,10 @@ export default defineScene({
     const portrait = format.aspect < 1;
     const title = useSceneText("title");
     const subtitle = useSceneText("subtitle");
-    const labels = [useSceneText("beforeLabel"), useSceneText("afterLabel")];
+    const labels = [
+      useSceneText("beforeLabel", "", "embedded"),
+      useSceneText("afterLabel", "", "embedded"),
+    ];
     const labelKeys = ["beforeLabel", "afterLabel"];
     const devices = useSceneDevices();
     const doc = useSceneDoc();
@@ -59,6 +62,7 @@ export default defineScene({
                 <AnimatedHeadline
                   text={label}
                   textKey={labelKeys[i]}
+                  managedTextRole="embedded"
                   face="body"
                   defaultColor={i === 0 ? "muted" : "accent"}
                   from={350 + i * 150}

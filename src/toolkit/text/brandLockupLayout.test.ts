@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lockupLayout } from "./brandLockupLayout";
+import { brandLockupItemMotionTiming, lockupLayout } from "./brandLockupLayout";
 
 const base = {
   title: "Swyftx App",
@@ -42,5 +42,17 @@ describe("lockupLayout", () => {
     const l = lockupLayout({ ...base, title: "", subtitle: "" });
     expect(l.width).toBeCloseTo(1.7, 10);
     expect(l.fit).toBe(1);
+  });
+
+  it("retains the static child baseline unless inspector motion owns the item", () => {
+    expect(brandLockupItemMotionTiming(false, 200, 1100)).toEqual({
+      from: 0,
+      to: 1,
+      preset: "none",
+    });
+    expect(brandLockupItemMotionTiming(true, 200, 1100)).toEqual({
+      from: 200,
+      to: 1100,
+    });
   });
 });

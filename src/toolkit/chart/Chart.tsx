@@ -6,6 +6,7 @@ import { useChartEditStore } from "../../engine/chartEditStore";
 import { useFormat } from "../../engine/format";
 import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
+import { resolveSpecialisedTextCopy } from "../../engine/managedText";
 import { SceneGizmo } from "../../engine/SceneGizmo";
 import { SceneOutline } from "../../engine/SceneOutline";
 import type { ResolvedChart } from "../../engine/sceneChart";
@@ -138,7 +139,7 @@ export function MountedChart(props: MountedChartProps) {
     look,
     reveal: reveal ?? sampler ?? undefined,
     enter: chartEnterOffset(chart, dims, sampler),
-    title: doc?.text?.title ?? "",
+    title: resolveSpecialisedTextCopy(doc, "title", doc?.text?.title ?? ""),
     opacity,
   };
 

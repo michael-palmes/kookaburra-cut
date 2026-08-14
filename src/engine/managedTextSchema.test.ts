@@ -16,6 +16,18 @@ describe("managed text scene schema", () => {
     });
   });
 
+  it("preserves the template layout without changing generic managed blocks", () => {
+    expect(
+      parseSceneDoc({ version: 1, managedText: { layout: "template", items: [] } }, "test")
+        ?.managedText,
+    ).toEqual({ layout: "template", items: [] });
+    expect(
+      parseSceneDoc({ version: 1, managedText: { layout: "unknown", items: [] } }, "test")
+        ?.managedText,
+    ).toEqual({ items: [] });
+    expect(warn).toHaveBeenCalled();
+  });
+
   it("parses all item fields and retains dormant settings", () => {
     const doc = parseSceneDoc(
       {
@@ -47,6 +59,45 @@ describe("managed text scene schema", () => {
       pointGap: 0.08,
       indent: 0.22,
     });
+  });
+
+  it("parses valid groups while dropping malformed, duplicate and unknown references", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        managedText: {
+          groups: [
+            { key: "hero", itemKeys: ["title"], align: "right" },
+            { key: "missing-items" },
+            { key: "hero", itemKeys: ["subtitle"] },
+            {
+              key: "supporting",
+              itemKeys: ["subtitle", "unknown", "title"],
+              align: "diagonal",
+            },
+          ],
+          items: [
+            { key: "title", type: "title", text: "Title" },
+            { key: "subtitle", type: "subtitle", text: "Subtitle" },
+            { key: "orphan", type: "title", text: "Still retained" },
+          ],
+        },
+      },
+      "test",
+    );
+
+    expect(doc?.managedText).toEqual({
+      groups: [
+        { key: "hero", itemKeys: ["title"], align: "right" },
+        { key: "supporting", itemKeys: ["subtitle"] },
+      ],
+      items: [
+        { key: "title", type: "title", text: "Title" },
+        { key: "subtitle", type: "subtitle", text: "Subtitle" },
+        { key: "orphan", type: "title", text: "Still retained" },
+      ],
+    });
+    expect(warn).toHaveBeenCalled();
   });
 
   it("drops malformed and duplicate entries without dropping valid siblings", () => {

@@ -1447,6 +1447,139 @@ fn inherit_applied_background(doc: &mut Value, stamp: Option<&Value>) {
     }
 }
 
+fn resolved_claimed_frame_icon(doc: &Value, deck_frame: Option<&Value>) -> Option<String> {
+    fn valid_frame(value: Option<&Value>) -> Option<&serde_json::Map<String, Value>> {
+        value.and_then(Value::as_object).filter(|frame| {
+            frame
+                .get("cutout")
+                .and_then(Value::as_object)
+                .and_then(|cutout| cutout.get("shape"))
+                .and_then(Value::as_str)
+                .is_some_and(|shape| {
+                    matches!(
+                        shape,
+                        "rect" | "rounded-rect" | "squircle" | "circle" | "capsule" | "none"
+                    )
+                })
+        })
+    }
+
+    let deck = valid_frame(deck_frame);
+    let scene = doc.get("frame").and_then(Value::as_object);
+    if valid_frame(doc.get("frame")).is_none() && deck.is_none() {
+        return None;
+    }
+    let enabled = scene
+        .and_then(|frame| frame.get("enabled"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            deck.and_then(|frame| frame.get("enabled"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(true);
+    if !enabled {
+        return None;
+    }
+    let claims_scene_text = scene
+        .and_then(|frame| frame.get("claimsSceneText"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            deck.and_then(|frame| frame.get("claimsSceneText"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(true);
+    if !claims_scene_text {
+        return None;
+    }
+    Some(
+        scene
+            .and_then(|frame| frame.get("icon"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                deck.and_then(|frame| frame.get("icon"))
+                    .and_then(Value::as_str)
+            })
+            .unwrap_or("")
+            .to_string(),
+    )
+}
+
+fn scaffold_managed_text(kind: &str, doc: &Value, deck_frame: Option<&Value>) -> Option<Value> {
+    fn item(key: &str, item_type: &str, text: &str) -> Value {
+        json!({ "key": key, "type": item_type, "text": text })
+    }
+
+    let text = doc.get("text").and_then(Value::as_object);
+    let title = text
+        .and_then(|values| values.get("title"))
+        .and_then(Value::as_str);
+    let subtitle = text
+        .and_then(|values| values.get("subtitle"))
+        .and_then(Value::as_str);
+    let claimed_frame_icon = resolved_claimed_frame_icon(doc, deck_frame);
+    let mut items = match kind {
+        "title" | "overlaystart" | "overlayend" | "overlaypanel" | "device" | "comparison"
+        | "videowindow" => vec![
+            item("title", "title", title.unwrap_or("")),
+            item("subtitle", "subtitle", subtitle.unwrap_or("")),
+        ],
+        "titleicon" => vec![
+            json!({
+                "key": "icon",
+                "type": "icon",
+                "icon": doc
+                    .get("headerIcon")
+                    .and_then(Value::as_str)
+                    .unwrap_or("🚀"),
+            }),
+            item("title", "title", title.unwrap_or("")),
+            item("subtitle", "subtitle", subtitle.unwrap_or("")),
+        ],
+        "appversion" => vec![
+            json!({ "key": "icon", "type": "icon", "icon": "assets/app-icon.png" }),
+            item("title", "subtitle", title.unwrap_or("Your App")),
+            item("subtitle", "title", subtitle.unwrap_or("1.0")),
+        ],
+        "chart" | "blank" | "layeredscreenshot" => {
+            vec![item("title", "title", title.unwrap_or(""))]
+        }
+        _ => return None,
+    };
+
+    if let Some(icon) = claimed_frame_icon {
+        items.insert(
+            0,
+            json!({ "key": "frameIcon", "type": "icon", "icon": icon }),
+        );
+    }
+
+    if matches!(kind, "overlaystart" | "overlayend" | "overlaypanel") {
+        if let Some(bullets) = text
+            .and_then(|values| values.get("bullets"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            let points = bullets
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .enumerate()
+                .map(|(index, line)| {
+                    json!({ "key": format!("bullets-point-{}", index + 1), "text": line })
+                })
+                .collect::<Vec<_>>();
+            items.push(json!({
+                "key": "bullets",
+                "type": "bullets",
+                "text": bullets,
+                "points": points,
+            }));
+        }
+    }
+
+    Some(json!({ "layout": "template", "items": items }))
+}
+
 /// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), everything else gets the 4000ms wizard default.
 #[tauri::command]
 pub async fn scaffold_scene(
@@ -1458,16 +1591,24 @@ pub async fn scaffold_scene(
     let root = workspace::require_root(&app, &state)?;
     workspace::validate_slug(&slug)?;
     let project = root.join(&slug);
-    if !project.join(MANIFEST_FILENAME).is_file() {
+    let manifest_path = project.join(MANIFEST_FILENAME);
+    if !manifest_path.is_file() {
         return Err(format!("project \"{slug}\" has no project.json"));
     }
-    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; read tolerantly (absent, or any non-object, means new scenes follow the theme).
-    let applied_background: Option<Value> =
-        std::fs::read_to_string(project.join(MANIFEST_FILENAME))
-            .ok()
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .and_then(|manifest| manifest.get("appliedBackground").cloned())
-            .filter(Value::is_object);
+    let scaffold_manifest = std::fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; absent, or any non-object, means new scenes follow the theme.
+    let applied_background = scaffold_manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("appliedBackground"))
+        .cloned()
+        .filter(Value::is_object);
+    let deck_frame = scaffold_manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("frame"))
+        .cloned()
+        .filter(Value::is_object);
 
     let template = match options.kind.as_str() {
         "device" | "deviceonly" => TSX_DEVICE,
@@ -1645,6 +1786,9 @@ pub async fn scaffold_scene(
         }
         doc["frame"] = frame;
     }
+    if let Some(managed_text) = scaffold_managed_text(&options.kind, &doc, deck_frame.as_ref()) {
+        doc["managedText"] = managed_text;
+    }
     if options.kind == "videowindow" {
         if let Some(rel) = &options.media_rel {
             let mut media = json!({ "src": rel });
@@ -1818,7 +1962,6 @@ pub async fn scaffold_scene(
     atomic_write_json(&scene_doc_path(&root, &slug, &doc_file)?, &doc)?;
 
     // Register in project.json (atomic), at `position` when given (in range), else appended.
-    let manifest_path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
@@ -1906,6 +2049,365 @@ mod applied_background_tests {
         inherit_applied_background(&mut doc, Some(&json!({ "backdrop": { "type": "none" } })));
         assert!(doc.get("background").is_none());
         assert_eq!(doc["backdrop"]["type"], json!("none"));
+    }
+}
+
+#[cfg(test)]
+mod scaffold_managed_text_tests {
+    use super::scaffold_managed_text;
+    use serde_json::{json, Value};
+
+    fn template(items: Value) -> Value {
+        json!({ "layout": "template", "items": items })
+    }
+
+    #[test]
+    fn every_text_bearing_kind_gets_its_exact_managed_block() {
+        let cases = vec![
+            (
+                "title",
+                json!({ "text": { "title": "", "subtitle": "" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "titleicon",
+                json!({
+                    "text": { "title": "Launch", "subtitle": "Today" },
+                    "headerIcon": "🪄",
+                }),
+                template(json!([
+                    { "key": "icon", "type": "icon", "icon": "🪄" },
+                    { "key": "title", "type": "title", "text": "Launch" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Today" },
+                ])),
+            ),
+            (
+                "overlaystart",
+                json!({
+                    "text": {
+                        "title": "Launch",
+                        "subtitle": "Today",
+                        "bullets": " First point \n\nSecond point  ",
+                    },
+                }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Launch" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Today" },
+                    {
+                        "key": "bullets",
+                        "type": "bullets",
+                        "text": " First point \n\nSecond point  ",
+                        "points": [
+                            { "key": "bullets-point-1", "text": "First point" },
+                            { "key": "bullets-point-2", "text": "Second point" },
+                        ],
+                    },
+                ])),
+            ),
+            (
+                "overlayend",
+                json!({ "text": { "title": "End", "subtitle": "Right" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "End" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Right" },
+                ])),
+            ),
+            (
+                "overlaypanel",
+                json!({ "text": { "title": "Your title", "subtitle": "" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Your title" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "device",
+                json!({ "text": { "title": "Phone", "subtitle": "Silver" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Phone" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Silver" },
+                ])),
+            ),
+            (
+                "comparison",
+                json!({
+                    "text": {
+                        "title": "Then and now",
+                        "subtitle": "",
+                        "beforeLabel": "Before",
+                        "afterLabel": "After",
+                    },
+                }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Then and now" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "appversion",
+                json!({ "text": { "title": "Kookaburra", "subtitle": "3.1.5" } }),
+                template(json!([
+                    { "key": "icon", "type": "icon", "icon": "assets/app-icon.png" },
+                    { "key": "title", "type": "subtitle", "text": "Kookaburra" },
+                    { "key": "subtitle", "type": "title", "text": "3.1.5" },
+                ])),
+            ),
+            (
+                "videowindow",
+                json!({ "text": { "title": "", "subtitle": "" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "chart",
+                json!({ "text": { "title": "Quarterly revenue" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Quarterly revenue" },
+                ])),
+            ),
+            (
+                "blank",
+                json!({ "text": { "title": "A blank beginning" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "A blank beginning" },
+                ])),
+            ),
+            (
+                "layeredscreenshot",
+                json!({ "text": { "title": "Three screens" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Three screens" },
+                ])),
+            ),
+        ];
+
+        for (kind, doc, expected) in cases {
+            assert_eq!(
+                scaffold_managed_text(kind, &doc, None),
+                Some(expected),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_text_scaffold_captures_a_claimed_frame_icon_in_its_own_slot() {
+        let doc = json!({ "text": { "title": "Launch", "subtitle": "Today" } });
+        let claimed = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "icon": "assets/deck-mark.png",
+        });
+        let expected_with_icon = template(json!([
+            { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+            { "key": "title", "type": "title", "text": "Launch" },
+            { "key": "subtitle", "type": "subtitle", "text": "Today" },
+        ]));
+        for kind in [
+            "title",
+            "overlaystart",
+            "overlayend",
+            "overlaypanel",
+            "device",
+            "comparison",
+            "videowindow",
+        ] {
+            assert_eq!(
+                scaffold_managed_text(kind, &doc, Some(&claimed)),
+                Some(expected_with_icon.clone()),
+                "{kind}",
+            );
+        }
+
+        let title_icon = json!({
+            "text": { "title": "Launch", "subtitle": "Today" },
+            "headerIcon": "🪄",
+        });
+        assert_eq!(
+            scaffold_managed_text("titleicon", &title_icon, Some(&claimed)),
+            Some(template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+                { "key": "icon", "type": "icon", "icon": "🪄" },
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))),
+        );
+        assert_eq!(
+            scaffold_managed_text(
+                "appversion",
+                &json!({ "text": { "title": "Kookaburra", "subtitle": "3.1.5" } }),
+                Some(&claimed),
+            ),
+            Some(template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+                { "key": "icon", "type": "icon", "icon": "assets/app-icon.png" },
+                { "key": "title", "type": "subtitle", "text": "Kookaburra" },
+                { "key": "subtitle", "type": "title", "text": "3.1.5" },
+            ]))),
+        );
+        for kind in ["chart", "blank", "layeredscreenshot"] {
+            assert_eq!(
+                scaffold_managed_text(
+                    kind,
+                    &json!({ "text": { "title": "Optional title" } }),
+                    Some(&claimed),
+                ),
+                Some(template(json!([
+                    { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+                    { "key": "title", "type": "title", "text": "Optional title" },
+                ]))),
+                "{kind}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_scene_frame_preserves_an_explicit_empty_icon_override() {
+        let doc = json!({
+            "text": { "title": "Launch", "subtitle": "Today" },
+            "frame": {
+                "cutout": { "shape": "rounded-rect", "side": "start" },
+                "icon": "",
+            },
+        });
+        let deck = json!({
+            "cutout": { "shape": "rounded-rect", "side": "end" },
+            "icon": "assets/deck-mark.png",
+        });
+        assert_eq!(
+            scaffold_managed_text("overlaystart", &doc, Some(&deck)),
+            Some(template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": "" },
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))),
+        );
+    }
+
+    #[test]
+    fn scene_frame_flags_override_deck_opt_outs_field_by_field() {
+        let title = |frame: Value| {
+            json!({
+                "text": { "title": "Launch", "subtitle": "Today" },
+                "frame": frame,
+            })
+        };
+        let managed = |icon: &str| {
+            template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": icon },
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))
+        };
+        let disabled = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "enabled": false,
+            "icon": "assets/deck.png",
+        });
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({ "enabled": true, "icon": "assets/scene.png" })),
+                Some(&disabled),
+            ),
+            Some(managed("assets/scene.png")),
+        );
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({ "icon": "assets/scene.png" })),
+                Some(&disabled),
+            ),
+            Some(template(json!([
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))),
+        );
+
+        let unclaimed = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "claimsSceneText": false,
+            "icon": "assets/deck.png",
+        });
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({
+                    "claimsSceneText": true,
+                    "icon": "assets/scene.png",
+                })),
+                Some(&unclaimed),
+            ),
+            Some(managed("assets/scene.png")),
+        );
+
+        let deck = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "icon": "assets/deck.png",
+        });
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({ "icon": "assets/scene.png" })),
+                Some(&deck),
+            ),
+            Some(managed("assets/scene.png")),
+        );
+    }
+
+    #[test]
+    fn unclaimed_or_disabled_frames_add_no_frame_icon_item() {
+        let doc = json!({ "text": { "title": "Launch", "subtitle": "Today" } });
+
+        let expected_embedded_icon = template(json!([
+            { "key": "title", "type": "title", "text": "Launch" },
+            { "key": "subtitle", "type": "subtitle", "text": "Today" },
+        ]));
+        for frame in [
+            json!({
+                "cutout": { "shape": "rounded-rect" },
+                "icon": "assets/deck-mark.png",
+                "claimsSceneText": false,
+            }),
+            json!({
+                "cutout": { "shape": "rounded-rect" },
+                "icon": "assets/deck-mark.png",
+                "enabled": false,
+            }),
+            json!({
+                "cutout": { "shape": "unknown" },
+                "icon": "assets/deck-mark.png",
+            }),
+        ] {
+            assert_eq!(
+                scaffold_managed_text("overlaystart", &doc, Some(&frame)),
+                Some(expected_embedded_icon.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn textless_kinds_stay_unmanaged_and_optional_title_kinds_own_their_slot() {
+        for kind in ["deviceonly", "video", "image"] {
+            assert_eq!(
+                scaffold_managed_text(kind, &json!({}), None),
+                None,
+                "{kind}"
+            );
+        }
+        for kind in ["chart", "blank", "layeredscreenshot"] {
+            assert_eq!(
+                scaffold_managed_text(kind, &json!({ "text": { "title": "  " } }), None,),
+                Some(template(json!([
+                    { "key": "title", "type": "title", "text": "  " },
+                ]))),
+                "{kind}",
+            );
+        }
     }
 }
 

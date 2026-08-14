@@ -65,6 +65,23 @@ describe("resolveGroupAnimation", () => {
     expect(anim?.preset).toBe("fade-up");
     expect(anim?.params.shine).toBe(false);
   });
+
+  it("can preserve a coded group reveal independently of scene motion", () => {
+    const props = { preset: "fade-scale" as const, startScale: 0.9, shine: true };
+    const doc = {
+      textAnimation: {
+        in: "slide" as const,
+        out: "fade" as const,
+        staggerMs: 0,
+        durationMs: 1450,
+      },
+    };
+
+    expect(resolveGroupAnimation(props, baseTheme, doc)?.durationMs).toBe(1450);
+    expect(resolveGroupAnimation(props, baseTheme, doc, undefined, true)).toEqual(
+      resolveGroupAnimation(props, baseTheme),
+    );
+  });
 });
 
 describe("groupShineBand", () => {

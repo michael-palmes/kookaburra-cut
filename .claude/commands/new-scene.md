@@ -15,8 +15,10 @@ window (window on the start or end side), `overlaypanel` for a full panel with n
 window (content centres), `rig` for a free-camera fly-through, else `title`; `blank` only
 when asked).
 
-The app's native scaffolder (`scaffold_scene` in `src-tauri/src/scene_doc.rs`) and this
-command emit IDENTICAL scenes from the SAME templates — never invent a different shape.
+For the 15 native kinds, the app's scaffolder (`scaffold_scene` in
+`src-tauri/src/scene_doc.rs`) and this command emit identical scenes from the same
+templates. `rig` is the one command-only kind and intentionally extends the title
+template with a free-camera track.
 
 Steps:
 
@@ -33,13 +35,42 @@ Steps:
    the human name, `__DURATION_MS__` = the duration (step 5). Write it to
    `projects/$1/scenes/<stem>.tsx`.
 4. Write the sidecar `projects/$1/scenes/<stem>.json` per the skill's schema: `version: 1`,
-   `name`, `duration` (step 5), `text` — the title/titleicon/overlay/device/comparison/
-   videowindow
-   kinds seed `title` (the user's copy, else `""`) AND `subtitle: ""` (empty strings keep
-   the panel fields visible; TitleBlock recentres); the appversion kind seeds `title`
-   (app name, else `"Your App"`) AND `subtitle` (version, else `"1.0"`); other kinds get
-   `title`/`subtitle` only when the user gave copy (`headline` is the legacy key on old
-   scenes; never write it for new ones). Then per kind:
+   `name`, `duration` (step 5), and the compatibility `text` map. The
+   title/titleicon/overlay/device/comparison/videowindow kinds seed `title` (the user's
+   copy, else `""`) AND `subtitle: ""` (empty strings keep both inspector rows visible);
+   appversion seeds `title` (app name, else `"Your App"`) and `subtitle` (version, else
+   `"1.0"`). `chart`, `layeredscreenshot`, `blank` and `rig` scenes write only `title`,
+   and only when the user supplied copy. `deviceonly`, `video` and `image` scenes write
+   no text keys.
+   Never write the legacy `headline` key for a new scene.
+
+   A new scene that intentionally ships scene text also gets inspector-owned
+   `managedText: { "layout": "template", "items": [...] }`. `layout: "template"`
+   preserves the TSX template's specialised placement for copy/style/motion edits. The
+   inspector removes the flag when a structural edit needs the generic responsive stack.
+   Use this exact ordered mapping, with every item carrying its own authoritative value:
+   - title: Title `title`, Subtitle `subtitle` (retain explicit empty items)
+   - titleicon: Icon `icon` from `headerIcon`, then Title `title`, Subtitle `subtitle`
+   - overlaystart/overlayend/overlaypanel: Title, Subtitle, then optional Bullets
+     `bullets`; keep the original newline string in `text` and split trimmed non-empty
+     lines into stable `points` keyed `bullets-point-1`, `bullets-point-2`, and so on
+   - device and comparison: Title `title`, Subtitle `subtitle`
+   - appversion: Icon `icon` = `assets/app-icon.png`, Subtitle `title` (small app name),
+     then Title `subtitle` (hero version)
+   - videowindow: Title `title`, Subtitle `subtitle`
+   - chart, layeredscreenshot and blank: one Title item, including an empty slot when copy is omitted
+   - rig: one Title item only when copy was supplied
+   - deviceonly, video and image: no managed block because they ship no scene text;
+     their first Add Text operation has zero legacy items and does not ask for takeover
+
+   Keep comparison `beforeLabel`/`afterLabel` only in `text`. They are embedded device
+   annotations, not managed scene lines. For an overlay kind, merge its frame over the
+   project-level frame. A resolved claiming frame owns the stable managed `frameIcon`
+   item, including explicit `icon: ""` precedence that removes an inherited frame icon.
+   A scene template's own icon remains the stable managed `icon` item. When both exist,
+   keep both visible and editable at their specialised placements. A frame with
+   `claimsSceneText: false` keeps its icon as embedded panel chrome instead. Then per
+   kind:
    - device/deviceonly: one `devices[0]` entry (`id: "d1"`, catalog `model`/`colour`,
      `media` if given, `motion: { "preset": "none" }`) and NO `shadow` key for either
      kind, so Device auto-resolves it (map shadows over a staged floor, soft blob when
@@ -62,12 +93,12 @@ Steps:
    - overlaystart/overlayend: `frame` = `{ "cutout": { "shape": "rounded-rect", "side":
      "start"|"end" }, "background": "background" }`; NO starter chip (the panel fill and
      its cutout paint whether or not the panel carries content); user bullet lines (one
-     per line) go to `text.bullets`.
+     per line) go to the managed Bullets item and its `text.bullets` compatibility mirror.
    - overlaypanel: `frame` = `{ "cutout": { "shape": "none" } }`; no scene shows through
      and content centres by default (the `"none"` shape's alignment default). With no
      window to read, a copy-less panel would be a flat fill, so `text.title` seeds
-     `"Your title"` when the user gave none. User bullet lines go to `text.bullets` here
-     too.
+     `"Your title"` when the user gave none. User bullet lines use the same managed
+     Bullets item and compatibility mirror as the cutout variants.
    - layeredscreenshot: a `layeredScreenshot` block with one layer (`{ "id": "l1",
      "visible": true, "z": 0, "items": [...] }`, the first screen as `{ "id": "i1",
      "kind": "screen", "src": "assets/<file>", "media": "image"|"video", "attach": null }`
@@ -92,17 +123,23 @@ Steps:
    - image: no text keys and a `background` block `{ "type": "image", "src":
      "assets/<file>" }` when an image was given; without one the scene keeps the theme
      background (no bundled sample image).
-   - rig: uses `title.tsx.tmpl` (in-app only; the native scaffolder has no rig kind, the
-     inspector's camera presets cover it there) and seeds `cameraMode: "rig"` plus a
+   - rig: uses `title.tsx.tmpl` (command only; the native scaffolder has no rig kind, and
+     the inspector's camera presets cover the same workflow in the app) and seeds
+     `cameraMode: "rig"` plus a
      `cameraRig` block from the fly-through preset shape relative to the base camera at
      `[0, 0, 5]`: four tangent-aim keys spread across the duration (positions
      `[-1.2,0.5,6.6]`, `[-0.5,0.2,4.6]`, `[0.4,0,2.8]`, `[1.0,0.1,1.4]`, each key's `at`
      baked to the NEXT position), segments `linear`, default smoothing (no `smooth`
      field). See `docs/camera.md`.
    - videowindow: a `videoWindow` block `{ "media": { "src": "assets/<file>", "aspect":
-     <width/height when known> }, "stage": { "type": "color", "color": <the theme's
-     background hex> }, "radius": "macos" }` (media defaults to the bundled laptop
-     sample; omit `border`/`shadow`/`motion`/`scale` so engine defaults apply).
+     <width/height when known> }, "radius": "macos", "border": { "enabled": false,
+     "color": "#ffffff", "width": 0.0035, "opacity": 0.12 } }` (media defaults to the
+     bundled laptop sample). Add `recording: true` only when the media is detected as a
+     raw macOS window recording. When title and subtitle are both non-empty, add
+     `scale: 0.65` and `offset: [0, -0.08]`; when exactly one is non-empty, add only
+     `offset: [0, -0.05]`; with no copy, omit both fields so engine defaults apply. Add
+     `backdrop: { "type": "none" }` to the sidecar so staged scenery cannot clip the
+     floating window's shadow. Keep `shadow` and `motion` absent for engine defaults.
    Then, when the kind wrote NO `background` of its own (every kind but video, and image
    with a pick), copy `project.json`'s `appliedBackground` blocks into the sidecar: its
    `background`, and its `backdrop` unless the kind already wrote one. Absent stamp = the

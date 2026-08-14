@@ -5,5 +5,25 @@
     "title": "Ship faster",
     "subtitle": "Make it yours"
   },
-  "headerIcon": "🚀"
+  "headerIcon": "🚀",
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "icon",
+        "type": "icon",
+        "icon": "🚀"
+      },
+      {
+        "key": "title",
+        "type": "title",
+        "text": "Ship faster"
+      },
+      {
+        "key": "subtitle",
+        "type": "subtitle",
+        "text": "Make it yours"
+      }
+    ]
+  }
 }

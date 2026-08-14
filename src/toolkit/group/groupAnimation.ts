@@ -21,8 +21,14 @@ export function resolveGroupAnimation(
   theme: Theme,
   doc?: TextAnimationDocFields | null,
   textKey?: string,
+  ignoreSceneMotion = false,
 ): ResolvedTextAnimation | null {
-  const resolved = resolveTextAnimationWithDoc(props, theme, doc, textKey);
+  const resolved = resolveTextAnimationWithDoc(
+    props,
+    theme,
+    ignoreSceneMotion ? null : doc,
+    textKey,
+  );
   return resolved === null ? null : { ...resolved, granularity: null };
 }
 

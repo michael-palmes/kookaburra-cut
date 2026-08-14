@@ -26,7 +26,10 @@ export default defineScene({
     const portrait = format.aspect < 1;
     const title = useSceneText("title");
     const subtitle = useSceneText("subtitle");
-    const labels = [useSceneText("beforeLabel"), useSceneText("afterLabel")];
+    const labels = [
+      useSceneText("beforeLabel", "", "embedded"),
+      useSceneText("afterLabel", "", "embedded"),
+    ];
     const labelKeys = ["beforeLabel", "afterLabel"];
     const devices = useSceneDevices();
     const doc = useSceneDoc();
@@ -68,6 +71,7 @@ export default defineScene({
                 <AnimatedHeadline
                   text={label}
                   textKey={labelKeys[i]}
+                  managedTextRole="embedded"
                   face="body"
                   defaultColor={i === 0 ? "muted" : "accent"}
                   from={350 + i * 150}

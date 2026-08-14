@@ -296,10 +296,11 @@ describe("parseFrameSpec chart slot", () => {
 });
 
 describe("parseFrameSpec flags", () => {
-  it("records only an explicit opt-out, so absent means on", () => {
+  it("retains explicit booleans while absent still means on", () => {
     expect(parseFrameSpec({ ...valid, enabled: false }, "t")?.enabled).toBe(false);
-    expect(parseFrameSpec({ ...valid, enabled: true }, "t")?.enabled).toBeUndefined();
+    expect(parseFrameSpec({ ...valid, enabled: true }, "t")?.enabled).toBe(true);
     expect(parseFrameSpec({ ...valid, claimsSceneText: false }, "t")?.claimsSceneText).toBe(false);
+    expect(parseFrameSpec({ ...valid, claimsSceneText: true }, "t")?.claimsSceneText).toBe(true);
     expect(parseFrameSpec(valid, "t")?.claimsSceneText).toBeUndefined();
   });
 
@@ -384,5 +385,21 @@ describe("mergeFrameSpec", () => {
   it("lets a scene opt out of an inherited deck frame", () => {
     const merged = mergeFrameSpec(base, parseFrameOverride({ enabled: false }, "t"));
     expect(merged?.enabled).toBe(false);
+  });
+
+  it("lets explicit scene flags override inherited opt-outs", () => {
+    const optedOut = parseFrameSpec({ ...valid, enabled: false, claimsSceneText: false }, "t");
+    const inherited = mergeFrameSpec(optedOut, parseFrameOverride({ icon: "scene" }, "t"));
+    expect(inherited?.enabled).toBe(false);
+    expect(inherited?.claimsSceneText).toBe(false);
+
+    const restored = mergeFrameSpec(
+      optedOut,
+      parseFrameOverride({ enabled: true, claimsSceneText: true, icon: "scene" }, "t"),
+    );
+    expect(restored?.enabled).toBe(true);
+    expect(restored?.claimsSceneText).toBe(true);
+    expect(restored?.icon).toBe("scene");
+    expect(restored?.cutout).toEqual(optedOut?.cutout);
   });
 });

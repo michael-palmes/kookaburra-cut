@@ -9,7 +9,7 @@ import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
-import type { ManagedTextRenderRole } from "./managedText";
+import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import {
   isWorkspaceProjectId,
@@ -64,7 +64,7 @@ export function useSceneDoc(): SceneDoc | null {
   return useContext(SceneDocContext);
 }
 
-/** A user-visible string from the scene document's text map; the authoring skill mandates all user-visible strings route through this so "Edit text" works on any scene, falling back when the doc, map, or key is absent. */
+/** Resolves code-owned or embedded copy, plus the matching item while a managed scaffold retains its template layout. */
 export function useSceneText(
   key: string,
   fallback = "",
@@ -73,7 +73,9 @@ export function useSceneText(
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
   const mountId = useId();
-  const resolved = doc?.text?.[key] ?? fallback;
+  const authored = doc?.text?.[key] ?? fallback;
+  const resolved =
+    managedTextRole === "scene" ? resolveTemplateManagedTextCopy(doc, key, authored) : authored;
   // Layout effect so TextFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;

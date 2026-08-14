@@ -180,6 +180,19 @@ describe("bundled templates", () => {
     expect(templateIds).toContain(BLANK_TEMPLATE_ID);
   });
 
+  it("ships Blank's starter headline as template-managed text", () => {
+    expect(sceneDocs(template(BLANK_TEMPLATE_ID)).docs[0]?.managedText).toEqual({
+      layout: "template",
+      items: [
+        {
+          key: "headline",
+          type: "title",
+          text: "Your video starts here",
+        },
+      ],
+    });
+  });
+
   it("keeps template.json off the preview labs and the spikes", () => {
     const offenders = [...Object.keys(manifestGlob), ...Object.keys(fixtureManifestGlob)]
       .filter((key) => isDevFixture(folderId(key)))

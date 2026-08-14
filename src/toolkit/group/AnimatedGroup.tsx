@@ -49,6 +49,8 @@ export interface AnimatedGroupProps {
   extent?: readonly [number, number];
   /** Stable managed-text key used to resolve an item-level motion exception. */
   textKey?: string;
+  /** Keep this coded group reveal independent of the scene motion fields. */
+  ignoreSceneMotion?: boolean;
   /** Lets managed image icons participate in blur-in and mask-reveal. */
   imageEffects?: boolean;
   children?: ReactNode;
@@ -72,7 +74,13 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
     return () => useTextMotionRegistry.getState().unregister(sceneIndex);
   }, [coded, sceneIndex]);
 
-  const anim = resolveGroupAnimation(props, theme, doc, props.textKey);
+  const anim = resolveGroupAnimation(
+    props,
+    theme,
+    doc,
+    props.textKey,
+    props.ignoreSceneMotion === true,
+  );
   const effectiveTo = anim ? textAnimationEndMs(from, to, anim) : to;
   const hasOut = anim !== null && textPresetHasMotion(anim.outPreset) && outAt !== undefined;
   const animated = anim !== null && (textPresetHasMotion(anim.preset) || hasOut);

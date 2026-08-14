@@ -3,6 +3,9 @@ import { brandLockupManagedMotion } from "../toolkit/text/brandLockupLayout";
 import { deriveManagedTextModel, materialiseManagedText } from "./managedText";
 import {
   codedTextMotionNames,
+  nonSceneTextKeys,
+  sceneOwnsAnyTextKey,
+  sceneTextKeysConsumedBy,
   textKeyColorDefaults,
   textKeyStyleCapable,
   textKeysConsumedBy,
@@ -166,8 +169,14 @@ describe("mounted text takeover registration", () => {
     });
 
     expect(textKeysConsumedBy(4)).toEqual(["beforeLabel", "ls-caption", "managed-title", "title"]);
+    expect(sceneTextKeysConsumedBy(4)).toEqual(["title"]);
+    expect(nonSceneTextKeys(4)).toEqual(["beforeLabel", "ls-caption", "managed-title"]);
     expect(virtualManagedTextRegistrations(4)).toEqual([{ key: "title", text: "Scene title" }]);
     expect(codedTextMotionNames(4)).toEqual([]);
+    expect(sceneOwnsAnyTextKey(useTextKeyRegistry.getState().keys[4], ["managed-title"])).toBe(
+      false,
+    );
+    expect(sceneOwnsAnyTextKey(useTextKeyRegistry.getState().keys[4], ["title"])).toBe(true);
   });
 
   it("removes one mount's metadata without dropping a surviving copy consumer", () => {

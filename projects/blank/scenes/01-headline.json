@@ -3,5 +3,15 @@
   "name": "Headline",
   "text": {
     "headline": "Your video starts here"
+  },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "headline",
+        "type": "title",
+        "text": "Your video starts here"
+      }
+    ]
   }
 }

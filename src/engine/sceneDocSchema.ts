@@ -206,8 +206,19 @@ export interface SceneManagedTextItem {
   indent?: number;
 }
 
+/** One atomic Text row in Content. Copy leaves stay flat and globally keyed. */
+export interface SceneManagedTextGroup {
+  key: string;
+  itemKeys: string[];
+  align?: SceneTextAlign;
+}
+
 /** Presence, including an empty `items` array, transfers scene-text ownership to the inspector. */
 export interface SceneManagedTextBlock {
+  /** Keeps a scaffold's specialised TSX composition while its items remain inspector-owned. */
+  layout?: "template";
+  /** Optional Content-level grouping. Absence resolves every item into one implicit group. */
+  groups?: SceneManagedTextGroup[];
   items: SceneManagedTextItem[];
 }
 
@@ -426,7 +437,7 @@ export interface SceneDoc {
   /** Human name shown by pickers (scenes have no display name otherwise). */
   name?: string;
   duration?: SceneDocDuration;
-  /** Every user-visible string, keyed for `useSceneText` (the skill-mandated rule). */
+  /** Legacy and embedded copy keyed for `useSceneText`; managed items own scene copy when present. */
   text?: Record<string, string>;
   /** Layout for the scene's text block; consumed by TitleBlock (inert when a scene positions text by hand, the `backdrop` precedent). */
   textLayout?: { align?: SceneTextAlign };
@@ -1432,7 +1443,62 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
     }
     items.push(item);
   }
-  return { items };
+  const layout = raw.layout;
+  if (layout !== undefined && layout !== "template") {
+    console.warn(`[sceneDoc] ${source}: managedText.layout isn't known, dropped`);
+  }
+  let groups: SceneManagedTextGroup[] | undefined;
+  if (raw.groups !== undefined) {
+    if (!Array.isArray(raw.groups)) {
+      console.warn(`[sceneDoc] ${source}: managedText.groups isn't an array, dropped`);
+    } else {
+      groups = [];
+      const groupKeys = new Set<string>();
+      const claimedItems = new Set<string>();
+      for (const entry of raw.groups as unknown[]) {
+        if (
+          !isRecord(entry) ||
+          typeof entry.key !== "string" ||
+          entry.key.trim().length === 0 ||
+          groupKeys.has(entry.key) ||
+          !Array.isArray(entry.itemKeys)
+        ) {
+          console.warn(
+            `[sceneDoc] ${source}: managedText group is malformed or duplicated, dropped`,
+          );
+          continue;
+        }
+        const groupItemKeys: string[] = [];
+        for (const itemKey of entry.itemKeys) {
+          if (typeof itemKey !== "string" || !itemKeys.has(itemKey) || claimedItems.has(itemKey)) {
+            console.warn(
+              `[sceneDoc] ${source}: managedText group "${entry.key}" item key is unknown or duplicated, dropped`,
+            );
+            continue;
+          }
+          claimedItems.add(itemKey);
+          groupItemKeys.push(itemKey);
+        }
+        const align = entry.align;
+        if (align !== undefined && align !== "left" && align !== "center" && align !== "right") {
+          console.warn(
+            `[sceneDoc] ${source}: managedText group "${entry.key}" align isn't left|center|right, dropped`,
+          );
+        }
+        groupKeys.add(entry.key);
+        groups.push({
+          key: entry.key,
+          itemKeys: groupItemKeys,
+          ...(align === "left" || align === "center" || align === "right" ? { align } : {}),
+        });
+      }
+    }
+  }
+  return {
+    ...(layout === "template" ? { layout } : {}),
+    ...(groups ? { groups } : {}),
+    items,
+  };
 }
 
 /** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */

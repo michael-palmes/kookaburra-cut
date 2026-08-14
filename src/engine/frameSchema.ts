@@ -252,8 +252,8 @@ export function parseFrameOverride(raw: unknown, source: string): FrameOverrideS
     }
   }
 
-  if (raw.enabled === false) out.enabled = false;
-  if (raw.claimsSceneText === false) out.claimsSceneText = false;
+  if (typeof raw.enabled === "boolean") out.enabled = raw.enabled;
+  if (typeof raw.claimsSceneText === "boolean") out.claimsSceneText = raw.claimsSceneText;
   if (raw.background !== undefined) {
     const background = parsePanelBackground(raw.background, source);
     if (background !== undefined) out.background = background;

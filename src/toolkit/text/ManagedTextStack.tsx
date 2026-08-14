@@ -1,6 +1,10 @@
 import { FrameIcon } from "../../engine/FrameIcon";
 import { useFormat } from "../../engine/format";
-import { type ManagedTextRegion, resolveManagedTextRenderPlan } from "../../engine/managedText";
+import {
+  isTemplateManagedText,
+  type ManagedTextRegion,
+  resolveManagedTextRenderPlan,
+} from "../../engine/managedText";
 import { useSceneDoc } from "../../engine/sceneDoc";
 import { useTheme } from "../../theme";
 import { AnimatedHeadline } from "./AnimatedHeadline";
@@ -14,6 +18,7 @@ export function ManagedTextStack({ region }: ManagedTextStackProps) {
   const doc = useSceneDoc();
   const format = useFormat();
   const theme = useTheme();
+  if (isTemplateManagedText(doc)) return null;
   const plan = resolveManagedTextRenderPlan(
     doc,
     format,

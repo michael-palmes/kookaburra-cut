@@ -11,10 +11,17 @@ import {
 } from "react";
 import type { Object3D } from "three";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
-import { type ManagedTextRenderRole, shouldRenderManagedTextRole } from "../../engine/managedText";
+import {
+  type ManagedTextRenderRole,
+  shouldRenderManagedTextHeadline,
+} from "../../engine/managedText";
 import { useHeldLocalMs } from "../../engine/presentHold";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
-import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import {
+  SceneDocContext,
+  SceneTextClaimedContext,
+  useSceneContext,
+} from "../../engine/sceneContext";
 import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
@@ -90,6 +97,10 @@ export interface AnimatedHeadlineProps {
   color?: "text" | "muted" | "accent" | (string & {});
   /** The sidecar text key this headline renders (what `useSceneText` was called with): enables the app-editable fill (`textStyle.<textKey>Color` in the scene document) and registers the field's colour swatch in the inspector. */
   textKey?: string;
+  /** Compatibility-only style source when the stable managed key differs from an older sidecar style key. */
+  styleKey?: string;
+  /** Compatibility-only motion source when the stable managed key differs from an older keyed override. */
+  motionKey?: string;
   /** Fill when neither `color` nor the sidecar set one (default "text"): the token a scene wants as its design default while staying app-editable. */
   defaultColor?: "text" | "muted" | "accent" | (string & {});
   position?: V3;
@@ -139,8 +150,9 @@ function textStyle(theme: Theme, props: AnimatedHeadlineProps) {
 /** SDF headline rendered through troika (via drei `<Text>`); all motion is a pure function of the timeline, never the wall clock. Three render paths chosen once per mount: LEGACY (nothing configured, the original v0 linear fillOpacity ramp byte-for-byte, must not change), BLOCK (preset without stagger, whole-block opacity/offset/blur/clip via troika props), and STAGGERED (staggerMs > 0, one mesh with a per-glyph derived material). */
 export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   const doc = useContext(SceneDocContext);
+  const claimed = useContext(SceneTextClaimedContext);
   const role = props.managedTextRole ?? "scene";
-  if (!shouldRenderManagedTextRole(doc, role)) return null;
+  if (!shouldRenderManagedTextHeadline(doc, role, claimed)) return null;
   return <AnimatedHeadlineRenderer {...props} />;
 }
 
@@ -156,7 +168,7 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
     useTextMotionRegistry.getState().register(sceneIndex);
     return () => useTextMotionRegistry.getState().unregister(sceneIndex);
   }, [coded, sceneIndex]);
-  const anim = resolveTextAnimationWithDoc(props, theme, doc, props.textKey);
+  const anim = resolveTextAnimationWithDoc(props, theme, doc, props.motionKey ?? props.textKey);
   const animPreset = anim?.preset;
   const animOutPreset = anim?.outPreset;
   const animEase = anim?.ease;
@@ -214,9 +226,10 @@ function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   ]);
   // The app-editable fill: an explicit `color` prop pins the fill (prop-wins, the text-motion precedent), otherwise the sidecar's `textStyle.<textKey>Color` overrides the design default. Report the editable field to the registry so the Edit-text drill-in shows its swatch; a pinned fill registers nothing (the swatch would be dead).
   const { textKey, defaultColor } = props;
+  const styleKey = props.styleKey ?? textKey;
   const colorDefault = props.color === undefined && textKey ? (defaultColor ?? "text") : undefined;
   const styleOf = (suffix: string) =>
-    textKey ? doc?.textStyle?.[`${textKey}${suffix}`] : undefined;
+    styleKey ? doc?.textStyle?.[`${styleKey}${suffix}`] : undefined;
   const fill = props.color ?? (styleOf("Color") as string | undefined) ?? defaultColor;
   const fontValue = styleOf("Font");
   const sizeMul = styleOf("Size");

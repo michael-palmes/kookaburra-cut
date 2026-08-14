@@ -20,6 +20,7 @@ import {
   spreadZToLocal,
 } from "../../engine/layeredScreenshotLayout";
 import { useSceneConsumesLayeredScreenshot } from "../../engine/layeredScreenshotRegistry";
+import { resolveTemplateManagedTextCopy } from "../../engine/managedText";
 import { presentSlideshowActive } from "../../engine/presentMode";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
@@ -40,6 +41,8 @@ import { useTimeline } from "../../engine/timeline";
 import { useEditorStore } from "../../store/editorStore";
 import { type Theme, useTheme } from "../../theme";
 import { AnimatedHeadline } from "../text/AnimatedHeadline";
+import { TitleBlock } from "../text/TitleBlock";
+import type { FormatInfo } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
 
 const DEG2RAD = Math.PI / 180;
@@ -308,9 +311,11 @@ function useResolvedProjectId(): string {
 function StackRenderer({
   normalized,
   animatedTrack,
+  topInset = 0,
 }: {
   normalized: NormalizedLayeredScreenshot;
   animatedTrack: SceneDoc["animatedTrack"];
+  topInset?: number;
 }) {
   const { localMs } = useTimeline();
   const format = useFormat();
@@ -369,7 +374,8 @@ function StackRenderer({
   }, [images, textures, clipAspects]);
 
   const layouts = useMemo(() => layers.map((l) => solveLayerLayout(l, aspects)), [layers, aspects]);
-  const safeTop = format.frame.height / 2 - format.safe.top;
+  const rawTop = format.frame.height / 2 - format.safe.top;
+  const safeTop = rawTop - Math.max(0, topInset);
   const rawBottom = -format.frame.height / 2 + format.safe.bottom;
   const safeBottom =
     stagedBackdrop === "floor" ? Math.max(rawBottom, STAGE_FLOOR_Y + FLOOR_CLEARANCE) : rawBottom;
@@ -436,22 +442,52 @@ function StackRenderer({
 }
 
 export interface LayeredScreenshotProps {
-  /** Reserved: the primitive is sidecar-driven; props may later override the doc. */
-  _reserved?: never;
+  /** Optional specialised title, rendered in a reserved band above the stack. */
+  title?: string;
+}
+
+export function layeredScreenshotTitleLayout(
+  format: FormatInfo,
+  hasTitle: boolean,
+): { position: [number, number, number]; maxWidth: number; topInset: number } {
+  if (!hasTitle) return { position: [0, 0, 0], maxWidth: 0, topInset: 0 };
+  const topInset = format.aspect < 1 ? 0.95 : 1.1;
+  const safeTop = format.frame.height / 2 - format.safe.top;
+  return {
+    position: [0, safeTop - topInset / 2, 0],
+    maxWidth: format.frame.width - format.safe.left - format.safe.right,
+    topInset,
+  };
 }
 
 /** The scene document's layered-screenshot stack at its resolved pose (rest pose, or the sampled animation when the scene's animated track is the layered screenshot). Registers the scene as a consumer so the host-side fallback stands down. In-flight builder drafts merge here in React behind the store's export guard, so the export path only ever sees the sidecar. */
-export function LayeredScreenshot(_props: LayeredScreenshotProps = {}) {
+export function LayeredScreenshot({ title }: LayeredScreenshotProps = {}) {
   const fromDoc = useSceneLayeredScreenshot();
   const doc = useSceneDoc();
+  const format = useFormat();
   const sceneIndex = useSceneContext()?.index;
   const draft = useLayeredScreenshotDraft(useResolvedProjectId(), sceneIndex);
   const normalized = draft ? draft.normalized : fromDoc;
   if (!normalized) return null;
+  const resolvedTitle = resolveTemplateManagedTextCopy(doc, "title", title ?? "");
+  const titleLayout = layeredScreenshotTitleLayout(format, resolvedTitle.trim().length > 0);
   return (
-    <AssetBoundary key={stackImageKey(normalized)} label="layered screenshot">
-      <StackRenderer normalized={normalized} animatedTrack={doc?.animatedTrack} />
-    </AssetBoundary>
+    <>
+      {resolvedTitle.trim() && (
+        <TitleBlock
+          title={title ?? ""}
+          position={titleLayout.position}
+          maxWidth={titleLayout.maxWidth}
+        />
+      )}
+      <AssetBoundary key={stackImageKey(normalized)} label="layered screenshot">
+        <StackRenderer
+          normalized={normalized}
+          animatedTrack={doc?.animatedTrack}
+          topInset={titleLayout.topInset}
+        />
+      </AssetBoundary>
+    </>
   );
 }
 

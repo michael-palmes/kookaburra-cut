@@ -11,7 +11,7 @@ import {
 /**
  * Preview Lab: New-scene kind card for "Chart". DEV-ONLY, rendered by
  * `pnpm kookaburra:run --action option-previews` into the committed kind-picker stills;
- * mirrors the scaffolded chart scene (the sidecar's chart block under an optional title)
+ * mirrors the scaffolded chart scene (the sidecar's chart block under a managed optional title)
  * with the scaffolder's current defaults.
  */
 export default defineScene({

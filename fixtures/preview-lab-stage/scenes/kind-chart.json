@@ -4,6 +4,16 @@
   "text": {
     "title": "Revenue by quarter"
   },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "title",
+        "type": "title",
+        "text": "Revenue by quarter"
+      }
+    ]
+  },
   "chart": {
     "type": "column",
     "dimension": "3d",
