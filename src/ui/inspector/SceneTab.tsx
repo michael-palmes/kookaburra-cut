@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
   type ReactNode,
@@ -30,7 +29,7 @@ import { imageEditCommitMatches, useImageEditStore } from "../../engine/imageEdi
 import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "../../engine/lightingEditStore";
-import { deriveManagedTextModel } from "../../engine/managedText";
+import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/managedText";
 import { formatMediaDuration, fsUrl, type MediaMeta, mediaMeta } from "../../engine/media";
 import { useObjectEditStore } from "../../engine/objectEditStore";
 import { optionPreviewClip, optionPreviewStill } from "../../engine/optionPreviews";
@@ -69,6 +68,8 @@ import { ensureFontRefsPinned } from "../../engine/systemFonts";
 import { useTextEditStore } from "../../engine/textEditStore";
 import {
   codedTextMotionNames,
+  nonSceneTextKeys,
+  textKeyColorDefaults,
   useTextKeyRegistry,
   virtualManagedTextRegistrations,
 } from "../../engine/textKeyRegistry";
@@ -145,7 +146,10 @@ import {
   chartInspectorScreenForRoute,
   chartSeriesInspectorRoute,
   sceneInspectorScreenTitle,
+  textIconInspectorRoute,
+  textIconInspectorScreenForRoute,
 } from "../inspectorTitles";
+import { HEADER_EMOJIS } from "../SceneTextFields";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
 import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
@@ -179,12 +183,20 @@ import {
   applyManagedTextStructuralAction,
   type ManagedTextStructuralAction,
   type ManagedTextTakeoverRequest,
+  managedFrameIconValue,
   managedTextAlignment,
   managedTextVirtualOptionsForFrame,
   performManagedTextStructuralAction,
   setLegacyManagedTextIcon,
+  setManagedFrameIcon,
   setManagedTextAlignment,
+  setManagedTextIcon,
 } from "./managedTextEditorModel";
+import {
+  TextIconEmojiPickerDrill,
+  TextIconImagePickerDrill,
+  textIconPickerMountKey,
+} from "./TextIconPickerDrill";
 import { TextMotionDrill } from "./TextMotionDrill";
 import { loadTextIconRecents, storeTextIconRecent } from "./textIconRecents";
 
@@ -286,7 +298,7 @@ import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { ObjectPicker } from "../ObjectPicker";
 import { OptionCard } from "../OptionCard";
-import { HEADER_EMOJIS, TextFieldRow } from "../SceneTextFields";
+import { TextFieldRow } from "../SceneTextFields";
 import { SHADOW_OPTIONS } from "../SceneWizards";
 import { backgroundOptions, toggleDrift } from "../stageOptions";
 import { DebouncedRange } from "../TextAnimationPicker";
@@ -329,6 +341,7 @@ import {
   useDragScrub,
 } from "./rows";
 import {
+  deferSceneOverviewPickerAction,
   type SceneOverviewContextRequest,
   SceneOverviewEntityRow,
   SceneOverviewGroupHeader,
@@ -336,6 +349,7 @@ import {
   type SceneOverviewPickerItem,
   SceneOverviewSectionHeader,
   SceneOverviewSettingRow,
+  shouldCloseSceneOverviewPickerOnBlur,
 } from "./SceneOverview";
 
 /** The inspector's Scene tab: collapsible sections over the playhead's dominant scene, every edit riding the same `useSceneDocPatch` funnel the EditBar uses. Section/row structure comes from the pinned `sceneSections` model. The header thumb is read from `listCachedSceneThumbs` only, never a capture, to avoid the clock-borrow playhead-blip class. */
@@ -1428,6 +1442,7 @@ function CameraSectionBody({
   const modeControl = (
     <>
       <SegmentedRow
+        ariaLabel="Camera mode"
         options={[
           {
             value: "orbit" as const,
@@ -1744,6 +1759,7 @@ function CameraSectionBody({
             control={
               // One animated track per scene: the toggle stands one track down, never deletes keys.
               <SegmentedRow
+                ariaLabel="Animated track"
                 options={[
                   {
                     value: "camera",
@@ -2047,32 +2063,66 @@ export function SceneTab({
     void registeredText;
     return virtualManagedTextRegistrations(sceneIndex);
   }, [registeredText, sceneIndex]);
+  const excludedTextKeys = useMemo(() => {
+    void registeredText;
+    return nonSceneTextKeys(sceneIndex);
+  }, [registeredText, sceneIndex]);
+  const textColourDefaults = useMemo(() => {
+    void registeredText;
+    return textKeyColorDefaults(sceneIndex);
+  }, [registeredText, sceneIndex]);
   const textVirtualOptionsForDoc = useCallback(
-    (candidate: SceneDoc) =>
-      managedTextVirtualOptionsForFrame(mergeFrameSpec(project.deckFrame, candidate.frame)),
-    [project.deckFrame],
+    (candidate: SceneDoc) => ({
+      ...managedTextVirtualOptionsForFrame(mergeFrameSpec(project.deckFrame, candidate.frame)),
+      ...(excludedTextKeys.length > 0 ? { excludedKeys: excludedTextKeys } : {}),
+    }),
+    [project.deckFrame, excludedTextKeys],
   );
   const managedTextModel = useMemo(
     () =>
       doc ? deriveManagedTextModel(doc, textRegistrations, textVirtualOptionsForDoc(doc)) : null,
     [doc, textRegistrations, textVirtualOptionsForDoc],
   );
-  const managedTextKeysKey = managedTextModel?.items.map((item) => item.key).join("\u0000") ?? "";
+  const managedTextGroups = useMemo(
+    () =>
+      managedTextModel
+        ? resolveManagedTextGroups(managedTextModel.items, doc?.managedText?.groups)
+        : [],
+    [doc?.managedText?.groups, managedTextModel],
+  );
+  const explicitlySelectedTextGroupKey = overviewSelection
+    ? overviewSelection.domain === "text"
+      ? (managedTextGroups.find((group) => overviewSelection.rowId === `text:${group.key}`)?.key ??
+        null)
+      : null
+    : (managedTextGroups.find((group) => group.itemKeys.includes(selectedTextKey ?? ""))?.key ??
+      null);
+  const selectedTextGroupKey = explicitlySelectedTextGroupKey ?? managedTextGroups[0]?.key ?? null;
+  const managedTextKeys = useMemo(
+    () => managedTextGroups.flatMap((group) => group.itemKeys),
+    [managedTextGroups],
+  );
   useEffect(() => {
     const store = useTextEditStore.getState();
     if (!textSectionOpen) {
       if (store.selected?.sceneIndex === sceneIndex) store.select(null);
       return;
     }
-    const keys = managedTextKeysKey ? managedTextKeysKey.split("\u0000") : [];
+    const keys = managedTextKeys;
     if (keys.length === 0) {
       if (store.selected?.sceneIndex === sceneIndex) store.select(null);
       return;
     }
-    if (store.selected?.sceneIndex !== sceneIndex || !keys.includes(store.selected.key)) {
-      store.select({ sceneIndex, key: keys[0] ?? "" });
+    const group = managedTextGroups.find((candidate) => candidate.key === selectedTextGroupKey);
+    const preferredKeys = group ? group.itemKeys : keys;
+    if (preferredKeys.length === 0) {
+      if (store.selected?.sceneIndex === sceneIndex) store.select(null);
+      return;
     }
-  }, [managedTextKeysKey, sceneIndex, textSectionOpen]);
+    if (store.selected?.sceneIndex !== sceneIndex || !preferredKeys.includes(store.selected.key)) {
+      store.select({ sceneIndex, key: preferredKeys[0] ?? "" });
+    }
+  }, [managedTextGroups, managedTextKeys, sceneIndex, selectedTextGroupKey, textSectionOpen]);
   const textFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
   useEffect(() => {
     if (!selectedTextKey) return;
@@ -2091,14 +2141,13 @@ export function SceneTab({
     requestDecoMedia(null);
   }, [decoMediaRequestId, requestDecoMedia]);
 
-  const [modal, setModal] = useState<"media" | "imageHost" | "textEmoji" | null>(null);
+  const [modal, setModal] = useState<"media" | "imageHost" | null>(null);
   const [pendingImageSrc, setPendingImageSrc] = useState<string | null>(null);
   const [imagePickError, setImagePickError] = useState<string | null>(null);
   // What a media pick targets: a scene device, a first-class Image, or a legacy decoration.
   const [mediaTarget, setMediaTarget] = useState<
     | { kind: "device"; deviceId?: string }
     | { kind: "image"; replaceId?: string; legacyId?: string }
-    | { kind: "textIcon" }
     | { kind: "decoration"; replaceId?: string }
   >({ kind: "device" });
   // Which device the device rows act on; null (or a stale id) falls back to the first device. Store-held (the objectEditStore idiom) so a preview gizmo can attach to the same selection.
@@ -2135,25 +2184,35 @@ export function SceneTab({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
   const [contentPickerOpen, setContentPickerOpen] = useState(false);
+  const [contentActionBusy, setContentActionBusy] = useState(false);
   const [contentMenu, setContentMenu] = useState<(ContextMenuState & { key: string }) | null>(null);
+  const [pendingDeviceInspectorOpen, setPendingDeviceInspectorOpen] = useState<{
+    projectId: string;
+    sceneIndex: number;
+    sceneFile: string | null;
+    deviceId: string;
+    navigationSequence: number;
+  } | null>(null);
   const contentPickerAnchorRef = useRef<HTMLDivElement>(null);
   const contentPickerButtonRef = useRef<HTMLButtonElement>(null);
+  const contentPickerActionFrameRef = useRef<number | null>(null);
+  const contentPickerPointerDownRef = useRef(false);
+  const contentAddActivatorRef = useRef<HTMLElement | null>(null);
+  const imageMediaModalRef = useRef<HTMLDivElement>(null);
   const imageSourceButtonRef = useRef<HTMLButtonElement>(null);
-  const textEmojiInputRef = useRef<HTMLInputElement>(null);
-  const textEmojiActivatorRef = useRef<HTMLElement | null>(null);
-  const textImageActivatorRef = useRef<HTMLElement | null>(null);
+  const objectPickerActivatorRef = useRef<HTMLElement | null>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const overviewRootRef = useRef<HTMLDivElement>(null);
   const sceneIndexRef = useRef(sceneIndex);
   const projectIdRef = useRef(project.id);
   const sceneFileRef = useRef(project.sceneFiles[sceneIndex] ?? null);
+  const contentPickerSceneIdentity = `${project.id}\u0000${sceneIndex}\u0000${project.sceneFiles[sceneIndex] ?? ""}`;
   const docRef = useRef(doc);
   const resolvedDecorationsRef = useRef(project.sceneFrames[sceneIndex]?.decorations);
   const patchDocResultRef = useRef(patchDocResult);
-  const textEmojiResolverRef = useRef<((value: string | undefined) => void) | null>(null);
-  const textImageResolverRef = useRef<((value: string | undefined) => void) | null>(null);
   const textTakeoverRef = useRef<symbol | null>(null);
-  const [textEmojiDraft, setTextEmojiDraft] = useState("");
+  const textIconWriteRef = useRef<symbol | null>(null);
+  const [textIconWriteBusy, setTextIconWriteBusy] = useState(false);
   const [textIconRecentState, setTextIconRecentState] = useState(() => ({
     projectId: project.id,
     values: loadTextIconRecents(project.id),
@@ -2186,49 +2245,64 @@ export function SceneTab({
   resolvedDecorationsRef.current = project.sceneFrames[sceneIndex]?.decorations;
   patchDocResultRef.current = patchDocResult;
 
-  const finishTextEmoji = useCallback((value: string | undefined) => {
-    const picked = value?.trim() || undefined;
-    textEmojiResolverRef.current?.(picked);
-    textEmojiResolverRef.current = null;
-    setTextEmojiDraft("");
-    setModal(null);
-    restoreManagedTextActivatorFocus(textEmojiActivatorRef);
-  }, []);
-  const finishTextImage = useCallback((value: string | undefined) => {
-    textImageResolverRef.current?.(value);
-    textImageResolverRef.current = null;
-    setModal(null);
-    restoreManagedTextActivatorFocus(textImageActivatorRef);
-  }, []);
-  const chooseTextEmoji = useCallback(() => {
-    textEmojiResolverRef.current?.(undefined);
-    textEmojiActivatorRef.current =
+  useEffect(() => {
+    void contentPickerSceneIdentity;
+    contentActionPendingRef.current = null;
+    setContentActionBusy(false);
+    return () => {
+      if (contentPickerActionFrameRef.current !== null) {
+        window.cancelAnimationFrame(contentPickerActionFrameRef.current);
+        contentPickerActionFrameRef.current = null;
+      }
+      contentPickerPointerDownRef.current = false;
+      contentAddActivatorRef.current = null;
+    };
+  }, [contentPickerSceneIdentity]);
+
+  useEffect(() => {
+    if (!pendingDeviceInspectorOpen) return;
+    const currentUi = useUiStore.getState();
+    const identityMatches =
+      project.id === pendingDeviceInspectorOpen.projectId &&
+      sceneIndex === pendingDeviceInspectorOpen.sceneIndex &&
+      (project.sceneFiles[sceneIndex] ?? null) === pendingDeviceInspectorOpen.sceneFile;
+    const navigationMatches =
+      currentUi.inspector.tab === "scene" &&
+      currentUi.inspector.drillIn === null &&
+      currentUi.inspectorNavigation.sequence === pendingDeviceInspectorOpen.navigationSequence;
+    if (!identityMatches || !navigationMatches) {
+      setPendingDeviceInspectorOpen(null);
+      return;
+    }
+    if (!doc?.devices?.some((candidate) => candidate.id === pendingDeviceInspectorOpen.deviceId)) {
+      return;
+    }
+    if (
+      !deviceSelectionOwnsAction(
+        useDeviceEditStore.getState().selected,
+        pendingDeviceInspectorOpen.sceneIndex,
+        pendingDeviceInspectorOpen.deviceId,
+      )
+    ) {
+      setPendingDeviceInspectorOpen(null);
+      return;
+    }
+    setPendingDeviceInspectorOpen(null);
+    openDrill("device");
+  }, [doc, openDrill, pendingDeviceInspectorOpen, project.id, project.sceneFiles, sceneIndex]);
+
+  const openObjectPicker = useCallback(() => {
+    objectPickerActivatorRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    return new Promise<string | undefined>((resolve) => {
-      textEmojiResolverRef.current = resolve;
-      setTextEmojiDraft("");
-      setModal("textEmoji");
-    });
+    setObjectPickerOpen(true);
   }, []);
-  const chooseTextImage = useCallback(() => {
-    textImageResolverRef.current?.(undefined);
-    textImageActivatorRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    return new Promise<string | undefined>((resolve) => {
-      textImageResolverRef.current = resolve;
-      setMediaTarget({ kind: "textIcon" });
-      setModal("media");
-    });
+  const closeObjectPicker = useCallback(() => {
+    setObjectPickerOpen(false);
+    restoreManagedTextActivatorFocus(objectPickerActivatorRef);
   }, []);
   useEffect(() => {
     setTextIconRecentState({ projectId: project.id, values: loadTextIconRecents(project.id) });
     return () => {
-      textEmojiResolverRef.current?.(undefined);
-      textEmojiResolverRef.current = null;
-      textImageResolverRef.current?.(undefined);
-      textImageResolverRef.current = null;
-      textEmojiActivatorRef.current = null;
-      textImageActivatorRef.current = null;
       textTakeoverRef.current = null;
     };
   }, [project.id]);
@@ -2245,7 +2319,7 @@ export function SceneTab({
       setTextTakeoverBusy(true);
       try {
         const accepted = await ask(
-          `This scene's ${itemCount === 1 ? "text line is" : `${itemCount} text lines are`} controlled by its scene code. ${action.type === "add-item" ? "Adding a line" : action.type === "take-over" ? "Editing this icon" : "This structural edit"} lets the inspector take over the whole text block. Undo restores the exact coded version.`,
+          `This scene's ${itemCount === 1 ? "text line is" : `${itemCount} text lines are`} controlled by its scene code. ${action.type === "add-item" || action.type === "add-group" ? "Adding text" : action.type === "take-over" ? "Editing this icon" : "This structural edit"} lets the inspector take over the whole text block. Undo restores the exact coded version.`,
           {
             title: "Take over scene text?",
             kind: "warning",
@@ -2314,6 +2388,19 @@ export function SceneTab({
     setContentPickerOpen(false);
     if (restoreFocus) contentPickerButtonRef.current?.focus({ preventScroll: true });
   }, []);
+  const captureContentAddActivator = () => {
+    contentAddActivatorRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  const focusContentAddActivator = () => {
+    const activator = contentAddActivatorRef.current;
+    contentAddActivatorRef.current = null;
+    const target = activator?.isConnected ? activator : contentPickerButtonRef.current;
+    target?.focus({ preventScroll: true });
+  };
+  const restoreContentAddActivatorFocus = () => {
+    window.requestAnimationFrame(focusContentAddActivator);
+  };
   // Snapshot of the doc at the start of a videoWindow slider drag: live ticks write history-less, release records one entry.
   const vwDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
@@ -2530,8 +2617,8 @@ export function SceneTab({
           ? `object:${selectedObjectId}`
           : overviewSelection.domain === "images" && selectedImageId
             ? `image:${selectedImageId}`
-            : overviewSelection.domain === "text" && selectedTextKey
-              ? `text:${selectedTextKey}`
+            : overviewSelection.domain === "text" && selectedTextGroupKey
+              ? `text:${selectedTextGroupKey}`
               : overviewSelection.domain === "decorations" && selectedDecoId
                 ? `image:legacy:${selectedDecoId}`
                 : null;
@@ -2546,7 +2633,7 @@ export function SceneTab({
     selectedDecoId,
     selectedImageId,
     selectedObjectId,
-    selectedTextKey,
+    selectedTextGroupKey,
     setOverviewSelection,
   ]);
   // The staged chart's gizmo, same contract: it posts finished drags here, and follows its own drill.
@@ -2701,15 +2788,8 @@ export function SceneTab({
   // where the new scene has it (its editor reads the new doc), else it pops back a level.
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate reset-on-scene
   useEffect(() => {
-    textEmojiResolverRef.current?.(undefined);
-    textEmojiResolverRef.current = null;
-    textImageResolverRef.current?.(undefined);
-    textImageResolverRef.current = null;
-    textEmojiActivatorRef.current = null;
-    textImageActivatorRef.current = null;
     textTakeoverRef.current = null;
     setTextTakeoverBusy(false);
-    setTextEmojiDraft("");
     setModal(null);
     setPendingImageSrc(null);
     setImagePickError(null);
@@ -2784,14 +2864,6 @@ export function SceneTab({
 
   // Inline layers close before the shell-owned drill Escape handler.
   useEscapeClose(() => {
-    if (modal === "textEmoji") {
-      finishTextEmoji(undefined);
-      return;
-    }
-    if (mediaTarget.kind === "textIcon") {
-      finishTextImage(undefined);
-      return;
-    }
     const restoreImageFocus =
       mediaTarget.kind === "image" &&
       (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
@@ -2799,14 +2871,21 @@ export function SceneTab({
     setPendingImageSrc(null);
     setImagePickError(null);
     if (restoreImageFocus) restoreImageSourceFocus();
+    else if (mediaTarget.kind === "image") {
+      restoreContentAddActivatorFocus();
+    }
   }, modal !== null);
   useEffect(() => {
-    if (modal !== "textEmoji") return;
-    const frame = window.requestAnimationFrame(() =>
-      textEmojiInputRef.current?.focus({ preventScroll: true }),
-    );
+    if (modal !== "media" || mediaTarget.kind !== "image") return;
+    const frame = window.requestAnimationFrame(() => {
+      imageMediaModalRef.current
+        ?.querySelector<HTMLElement>(
+          'button:not(:disabled), [role="button"][tabindex="0"], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        )
+        ?.focus({ preventScroll: true });
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [modal]);
+  }, [mediaTarget, modal]);
   useEscapeClose(() => closeContentPicker(true), drillIn === null && contentPickerOpen);
   useEffect(() => {
     if (drillIn !== null || !contentPickerOpen) return;
@@ -2821,13 +2900,23 @@ export function SceneTab({
   }, [contentPickerOpen, drillIn]);
   useEffect(() => {
     if (drillIn !== null || !contentPickerOpen) return;
+    const clearInternalPointer = () => {
+      contentPickerPointerDownRef.current = false;
+    };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && contentPickerAnchorRef.current?.contains(target)) return;
+      clearInternalPointer();
       closeContentPicker();
     };
     window.addEventListener("pointerdown", onPointerDown, true);
-    return () => window.removeEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", clearInternalPointer, true);
+    window.addEventListener("pointercancel", clearInternalPointer, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", clearInternalPointer, true);
+      window.removeEventListener("pointercancel", clearInternalPointer, true);
+    };
   }, [closeContentPicker, contentPickerOpen, drillIn]);
 
   // Re-list theme choices when the drill opens or ThemeMode closes over it: Manage keeps the drill open, so edits must show in place.
@@ -2874,10 +2963,21 @@ export function SceneTab({
     });
 
   const addDevice = () => {
+    if (contentActionPendingRef.current) return;
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    const actionToken = Symbol("add-device");
+    contentActionPendingRef.current = {
+      token: actionToken,
+      projectId: expectedProjectId,
+      sceneIndex: expectedSceneIndex,
+      sceneFile: expectedSceneFile,
+    };
+    setContentActionBusy(true);
     let createdId: string | null = null;
     void patchDocResult(
       (next) => {
@@ -2902,27 +3002,46 @@ export function SceneTab({
         ];
       },
       { history: "add device" },
-    ).then((succeeded) => {
-      const id = createdId;
-      const inspector = useUiStore.getState().inspector;
-      if (
-        !succeeded ||
-        !id ||
-        projectIdRef.current !== expectedProjectId ||
-        sceneIndexRef.current !== expectedSceneIndex ||
-        sceneFileRef.current !== expectedSceneFile ||
-        inspector.tab !== "scene" ||
-        inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
-      ) {
-        return;
-      }
-      pickDevice(id);
-      setOverviewSelection({
-        sceneIndex: expectedSceneIndex,
-        rowId: `device:${id}`,
-        domain: "devices",
+    )
+      .then((succeeded) => {
+        const id = createdId;
+        const inspector = useUiStore.getState().inspector;
+        if (
+          !succeeded ||
+          !id ||
+          projectIdRef.current !== expectedProjectId ||
+          sceneIndexRef.current !== expectedSceneIndex ||
+          sceneFileRef.current !== expectedSceneFile ||
+          inspector.tab !== "scene" ||
+          useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence ||
+          inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+        ) {
+          contentAddActivatorRef.current = null;
+          return;
+        }
+        pickDevice(id);
+        setOverviewSelection({
+          sceneIndex: expectedSceneIndex,
+          rowId: `device:${id}`,
+          domain: "devices",
+        });
+        focusContentAddActivator();
+        if (expectedDrillStack.length === 0) {
+          setPendingDeviceInspectorOpen({
+            projectId: expectedProjectId,
+            sceneIndex: expectedSceneIndex,
+            sceneFile: expectedSceneFile,
+            deviceId: id,
+            navigationSequence: expectedNavigationSequence,
+          });
+        }
+      })
+      .finally(() => {
+        if (contentActionPendingRef.current?.token === actionToken) {
+          contentActionPendingRef.current = null;
+          setContentActionBusy(false);
+        }
       });
-    });
   };
   const duplicateSceneDevice = (sourceId: string) => {
     const expectedProjectId = project.id;
@@ -2999,7 +3118,9 @@ export function SceneTab({
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
     const selectedDeviceId = deviceId;
     let createdId: string | null = null;
     setObjectPickerOpen(false);
@@ -3029,8 +3150,21 @@ export function SceneTab({
         sceneIndexRef.current !== expectedSceneIndex ||
         sceneFileRef.current !== expectedSceneFile ||
         inspector.tab !== "scene" ||
+        useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence ||
         inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
       ) {
+        if (
+          !succeeded &&
+          projectIdRef.current === expectedProjectId &&
+          sceneIndexRef.current === expectedSceneIndex &&
+          sceneFileRef.current === expectedSceneFile &&
+          inspector.tab === "scene" &&
+          inspector.drillStack.join("\u0000") === expectedDrillStack.join("\u0000")
+        ) {
+          restoreManagedTextActivatorFocus(objectPickerActivatorRef);
+        } else {
+          objectPickerActivatorRef.current = null;
+        }
         return;
       }
       setPickedObjectId(id);
@@ -3039,6 +3173,10 @@ export function SceneTab({
         rowId: `object:${id}`,
         domain: "objects",
       });
+      useObjectEditStore.getState().select({ sceneIndex: expectedSceneIndex, objectId: id });
+      const activator = objectPickerActivatorRef.current;
+      objectPickerActivatorRef.current = null;
+      if (activator?.isConnected) activator.focus({ preventScroll: true });
       openDrill("objects.placement");
     });
   };
@@ -3050,24 +3188,74 @@ export function SceneTab({
     });
 
   const addCompare = () => {
-    void patchDoc((next) => {
-      // A visible starting point: line + chips on; the halves stay identical until the after side changes something.
-      next.compare = {
-        b: {},
-        mask: { type: "linear", angleDeg: 90 },
-        value: 0.5,
-        chrome: { line: { width: 4, colour: "accent" }, chips: true },
-      };
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    void patchDocResult(
+      (next) => {
+        if (next.compare) return false;
+        next.compare = {
+          b: {},
+          mask: { type: "linear", angleDeg: 90 },
+          value: 0.5,
+          chrome: { line: { width: 4, colour: "accent" }, chips: true },
+        };
+      },
+      { history: "add comparison" },
+    ).then((succeeded) => {
+      const state = useUiStore.getState();
+      if (
+        !succeeded ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        state.inspector.tab !== "scene" ||
+        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
+        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        contentAddActivatorRef.current = null;
+        return;
+      }
+      setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId: "comparison", domain: null });
+      focusContentAddActivator();
+      openDrill("compare.edit");
     });
-    setOverviewSelection({ sceneIndex, rowId: "comparison", domain: null });
-    openDrill("compare.edit");
   };
   const addChart = () => {
-    void patchDoc((next) => {
-      next.chart = newChartBlock();
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    void patchDocResult(
+      (next) => {
+        if (next.chart) return false;
+        next.chart = newChartBlock();
+      },
+      { history: "add chart" },
+    ).then((succeeded) => {
+      const state = useUiStore.getState();
+      if (
+        !succeeded ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        state.inspector.tab !== "scene" ||
+        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
+        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        contentAddActivatorRef.current = null;
+        return;
+      }
+      setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId: "chart", domain: "chart" });
+      useChartEditStore.getState().select({ sceneIndex: expectedSceneIndex });
+      focusContentAddActivator();
+      jumpDrill(["chart.edit"]);
     });
-    setOverviewSelection({ sceneIndex, rowId: "chart", domain: "chart" });
-    jumpDrill(["chart.edit"]);
   };
   const addChartSeries = () => {
     const expectedProjectId = project.id;
@@ -3380,11 +3568,6 @@ export function SceneTab({
   // The media picker, shared by the device-media row and the decorations drill-in. Defined here
   // (not only in the main return) so it renders over a drill-in too, whose early return skips the tail.
   const pickMediaModal = (rel: string, meta: MediaMeta | null) => {
-    if (mediaTarget.kind === "textIcon") {
-      if (meta && meta.kind !== "image") return;
-      finishTextImage(rel);
-      return;
-    }
     if (mediaTarget.kind === "image") {
       if (meta && meta.kind !== "image") return;
       if (!isSceneImageSource(rel)) {
@@ -3486,7 +3669,9 @@ export function SceneTab({
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const expectedDrillStack = [...useUiStore.getState().inspector.drillStack];
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
     let createdId: string | null = null;
     setModal(null);
     setPendingImageSrc(null);
@@ -3511,8 +3696,21 @@ export function SceneTab({
         sceneIndexRef.current !== expectedSceneIndex ||
         sceneFileRef.current !== expectedSceneFile ||
         inspector.tab !== "scene" ||
+        useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence ||
         inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
       ) {
+        if (
+          !succeeded &&
+          projectIdRef.current === expectedProjectId &&
+          sceneIndexRef.current === expectedSceneIndex &&
+          sceneFileRef.current === expectedSceneFile &&
+          inspector.tab === "scene" &&
+          inspector.drillStack.join("\u0000") === expectedDrillStack.join("\u0000")
+        ) {
+          restoreContentAddActivatorFocus();
+        } else {
+          contentAddActivatorRef.current = null;
+        }
         return;
       }
       setOverviewSelection({
@@ -3521,14 +3719,24 @@ export function SceneTab({
         domain: "images",
       });
       useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });
+      focusContentAddActivator();
+      openDrill("image.edit");
     });
   };
   const mediaModal =
     modal === "media" ? (
-      <div className="modal-overlay" role="dialog" aria-modal="true">
+      <div
+        ref={imageMediaModalRef}
+        className="modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="scene-media-picker-title"
+      >
         <div className="modal wizard-wide media-modal-wide">
           <div className="modal-title-row">
-            <h2>{mediaTarget.kind === "device" ? "Change video" : "Choose image"}</h2>
+            <h2 id="scene-media-picker-title">
+              {mediaTarget.kind === "device" ? "Change video" : "Choose image"}
+            </h2>
           </div>
           {mediaTarget.kind === "image" && imagePickError && (
             <p className="modal-error">{imagePickError}</p>
@@ -3556,10 +3764,6 @@ export function SceneTab({
               type="button"
               className="btn"
               onClick={() => {
-                if (mediaTarget.kind === "textIcon") {
-                  finishTextImage(undefined);
-                  return;
-                }
                 const restoreImageFocus =
                   mediaTarget.kind === "image" &&
                   (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
@@ -3567,6 +3771,9 @@ export function SceneTab({
                 setPendingImageSrc(null);
                 setImagePickError(null);
                 if (restoreImageFocus) restoreImageSourceFocus();
+                else if (mediaTarget.kind === "image") {
+                  restoreContentAddActivatorFocus();
+                }
               }}
             >
               Cancel
@@ -3600,74 +3807,10 @@ export function SceneTab({
                 setModal(null);
                 setPendingImageSrc(null);
                 setImagePickError(null);
+                restoreContentAddActivatorFocus();
               }}
             >
               Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    ) : modal === "textEmoji" ? (
-      <div
-        className="modal-overlay"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="text-emoji-title"
-      >
-        <div className="modal text-emoji-modal">
-          <div className="modal-title-row">
-            <h2 id="text-emoji-title">Choose emoji</h2>
-          </div>
-          <label className="wizard-field">
-            <span className="wizard-label">Emoji or symbol</span>
-            <input
-              ref={textEmojiInputRef}
-              className="modal-input"
-              value={textEmojiDraft}
-              onChange={(event) => setTextEmojiDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && textEmojiDraft.trim()) {
-                  event.preventDefault();
-                  finishTextEmoji(textEmojiDraft);
-                }
-              }}
-            />
-          </label>
-          <fieldset className="chip-icon-grid text-emoji-grid">
-            <legend className="visually-hidden">Quick emoji</legend>
-            {HEADER_EMOJIS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                title={emoji}
-                className="chip-icon-tile emoji"
-                onClick={() => finishTextEmoji(emoji)}
-              >
-                {emoji}
-              </button>
-            ))}
-          </fieldset>
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="btn btn-left"
-              onClick={() => {
-                textEmojiInputRef.current?.focus({ preventScroll: true });
-                void invoke("show_character_palette").catch((reason) => setError(String(reason)));
-              }}
-            >
-              More emoji…
-            </button>
-            <button type="button" className="btn" onClick={() => finishTextEmoji(undefined)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={!textEmojiDraft.trim()}
-              onClick={() => finishTextEmoji(textEmojiDraft)}
-            >
-              Use
             </button>
           </div>
         </div>
@@ -4360,6 +4503,114 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "frame.icon" && doc && sceneFrame) {
+    const icon = managedFrameIconValue(doc, sceneFrame);
+    const resolvedFrameFor = (source: SceneDoc) => mergeFrameSpec(project.deckFrame, source.frame);
+    const commitFrameIcon = async (value: string) => {
+      if (textIconWriteRef.current) return;
+      const next = setManagedFrameIcon(doc, value, resolvedFrameFor(doc));
+      if (!next) return;
+      const token = Symbol("panel-icon-write");
+      textIconWriteRef.current = token;
+      setTextIconWriteBusy(true);
+      const expectedProjectId = project.id;
+      const expectedSceneIndex = sceneIndex;
+      const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+      const expectedRoute = drillIn;
+      let succeeded: boolean | undefined;
+      try {
+        succeeded = await writeManagedText({
+          preview: next,
+          history: "change panel icon",
+          baseline: doc,
+          applyToCurrent: (current) =>
+            setManagedFrameIcon(current, value, resolvedFrameFor(current)) ?? current,
+        });
+      } finally {
+        if (textIconWriteRef.current === token) {
+          textIconWriteRef.current = null;
+          setTextIconWriteBusy(false);
+        }
+      }
+      if (
+        succeeded === false ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        useUiStore.getState().inspector.drillIn !== expectedRoute
+      ) {
+        return;
+      }
+      if (value) {
+        setTextIconRecentState({
+          projectId: expectedProjectId,
+          values: storeTextIconRecent(expectedProjectId, value),
+        });
+      }
+    };
+    const preview = icon.startsWith("assets/") ? inspectorAssetUrl(project.id, icon) : undefined;
+    return (
+      <div className="inspector-drill text-inspector-drill">
+        <DrillBack label={backLabel} title="Panel icon" onClick={closeDrill} />
+        <div className="inspector-drill-scroll text-inspector-scroll">
+          {error && (
+            <p className="inspector-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div
+            className="text-inspector-icon-preview"
+            role="img"
+            aria-label={icon ? `Panel icon preview: ${icon}` : "No panel icon selected"}
+          >
+            {preview ? <img src={preview} alt="" /> : <span>{icon || "No icon"}</span>}
+          </div>
+          <fieldset className="text-inspector-icon-recents" disabled={textIconWriteBusy}>
+            <legend>Quick emoji</legend>
+            <div className="text-inspector-icon-recent-grid text-inspector-icon-quick-grid">
+              {HEADER_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`Use emoji ${emoji}`}
+                  aria-pressed={icon === emoji}
+                  onClick={() => void commitFrameIcon(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <div className="text-inspector-icon-actions">
+            <button
+              type="button"
+              className="btn small"
+              disabled={textIconWriteBusy}
+              onClick={() => openDrill(textIconInspectorRoute("emoji", "frameIcon"))}
+            >
+              All emoji
+            </button>
+            <button
+              type="button"
+              className="btn small"
+              disabled={textIconWriteBusy}
+              onClick={() => openDrill(textIconInspectorRoute("image", "frameIcon"))}
+            >
+              Image…
+            </button>
+            <button
+              type="button"
+              className="btn small"
+              disabled={textIconWriteBusy || !icon}
+              onClick={() => void commitFrameIcon("")}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (drillIn === "frame.text" && sceneFrame) {
     const claimed = sceneFrame.claimsSceneText !== false;
     return (
@@ -4598,6 +4849,7 @@ export function SceneTab({
               />
               <DrillGroup label="Corners">
                 <SegmentedRow
+                  ariaLabel="Corner style"
                   className="subtabs-compact"
                   options={RADII.map((r) => ({
                     value: r.id,
@@ -4832,6 +5084,7 @@ export function SceneTab({
 
               <DrillGroup label="Motion">
                 <SegmentedRow
+                  ariaLabel="Video window motion"
                   className="subtabs-compact"
                   options={MOTIONS.map((m) => ({
                     value: m.id,
@@ -5840,6 +6093,124 @@ export function SceneTab({
       </div>
     );
   }
+  const textIconScreen = textIconInspectorScreenForRoute(drillIn);
+  if (textIconScreen && doc) {
+    const item =
+      textIconScreen.itemKey === "frameIcon" && sceneFrame
+        ? {
+            key: "frameIcon",
+            type: "icon" as const,
+            icon: managedFrameIconValue(doc, sceneFrame),
+          }
+        : managedTextModel?.items.find(
+            (candidate) => candidate.key === textIconScreen.itemKey && candidate.type === "icon",
+          );
+    if (!item) {
+      return (
+        <div className="inspector-drill">
+          <DrillBack label={backLabel} title="Icon" onClick={closeDrill} />
+          <p className="inspector-stub-note">This icon is no longer in the scene.</p>
+        </div>
+      );
+    }
+    const expectedRoute = drillIn ?? "";
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const itemIconValue = item.icon ?? item.text ?? "";
+    const isCurrentIconRoute = () =>
+      projectIdRef.current === expectedProjectId &&
+      sceneIndexRef.current === expectedSceneIndex &&
+      sceneFileRef.current === expectedSceneFile &&
+      useUiStore.getState().inspector.drillIn === expectedRoute;
+    const updateIcon = (source: SceneDoc, value: string) =>
+      item.key === "frameIcon"
+        ? setManagedFrameIcon(source, value, mergeFrameSpec(project.deckFrame, source.frame))
+        : source.managedText !== undefined
+          ? setManagedTextIcon(
+              source,
+              item.key,
+              value,
+              textRegistrations,
+              textVirtualOptionsForDoc(source),
+            )
+          : setLegacyManagedTextIcon(
+              source,
+              item.key,
+              value,
+              mergeFrameSpec(project.deckFrame, source.frame),
+            );
+    const commitIcon = async (value: string) => {
+      if (!isCurrentIconRoute() || textIconWriteRef.current) return;
+      const expectedNavigationSequence = useUiStore.getState().inspectorNavigation.sequence;
+      const next = updateIcon(doc, value);
+      const token = Symbol("text-icon-write");
+      textIconWriteRef.current = token;
+      setTextIconWriteBusy(true);
+      if (next) {
+        try {
+          const succeeded = await writeManagedText({
+            preview: next,
+            history: "change text icon",
+            baseline: doc,
+            applyToCurrent: (current) => updateIcon(current, value) ?? current,
+          });
+          if (succeeded === false) return;
+        } finally {
+          if (textIconWriteRef.current === token) {
+            textIconWriteRef.current = null;
+            setTextIconWriteBusy(false);
+          }
+        }
+      } else {
+        textIconWriteRef.current = null;
+        setTextIconWriteBusy(false);
+      }
+      if (
+        !isCurrentIconRoute() ||
+        useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence
+      ) {
+        return;
+      }
+      setTextIconRecentState({
+        projectId: expectedProjectId,
+        values: storeTextIconRecent(expectedProjectId, value),
+      });
+      closeDrill();
+    };
+    return textIconScreen.kind === "emoji" ? (
+      <TextIconEmojiPickerDrill
+        key={textIconPickerMountKey(
+          project.id,
+          expectedSceneFile ?? expectedSceneIndex,
+          expectedRoute,
+        )}
+        initialValue={itemIconValue}
+        backLabel={backLabel}
+        notice={error}
+        disabled={textIconWriteBusy}
+        onBack={closeDrill}
+        onPick={(value) => void commitIcon(value)}
+        onError={setError}
+      />
+    ) : (
+      <TextIconImagePickerDrill
+        key={textIconPickerMountKey(
+          project.id,
+          expectedSceneFile ?? expectedSceneIndex,
+          expectedRoute,
+        )}
+        slug={slug}
+        projectPath={workspaceProjectPath(slug) ?? ""}
+        refreshKey={mediaRefreshKey + mediaRefresh}
+        selectedRel={itemIconValue.startsWith("assets/") ? itemIconValue : null}
+        backLabel={backLabel}
+        disabled={textIconWriteBusy}
+        onBack={closeDrill}
+        onPick={(value) => void commitIcon(value)}
+      />
+    );
+  }
   if (drillIn === "text" && doc) {
     const resolvedTextFrame = (source: SceneDoc) => mergeFrameSpec(project.deckFrame, source.frame);
     return (
@@ -5850,26 +6221,36 @@ export function SceneTab({
           registrations={textRegistrations}
           virtualOptions={textVirtualOptionsForDoc(doc)}
           virtualOptionsForDoc={textVirtualOptionsForDoc}
+          selectedGroupKey={selectedTextGroupKey}
           selectedItemKey={selectedTextKey}
           backLabel={backLabel}
           onBack={closeDrill}
+          onSelectGroup={(groupKey) => {
+            setOverviewSelection(
+              groupKey ? { sceneIndex, rowId: `text:${groupKey}`, domain: "text" } : null,
+            );
+          }}
           onSelectItem={(itemKey) => {
             useTextEditStore.getState().select(itemKey ? { sceneIndex, key: itemKey } : null);
-            setOverviewSelection(
-              itemKey ? { sceneIndex, rowId: `text:${itemKey}`, domain: "text" } : null,
-            );
           }}
           onOpenMotion={(itemKey) => openDrill(`text.motion:${itemKey}`)}
           onEditFont={(itemKey) => openDrill(`text.font:${itemKey}`)}
-          onEditColour={(itemKey) => openDrill(`text.colour:${itemKey}`)}
+          theme={sceneTheme ?? project.theme}
+          colourDefaults={textColourDefaults}
           confirmTakeover={confirmManagedTextTakeover}
           writeDoc={writeManagedText}
           recentIcons={textIconRecents}
           resolveIconPreview={(value) =>
             value.startsWith("assets/") ? inspectorAssetUrl(project.id, value) : undefined
           }
-          onOpenEmoji={chooseTextEmoji}
-          onChooseImage={chooseTextImage}
+          onOpenEmoji={(itemKey) => {
+            openDrill(textIconInspectorRoute("emoji", itemKey));
+            return undefined;
+          }}
+          onChooseImage={(itemKey) => {
+            openDrill(textIconInspectorRoute("image", itemKey));
+            return undefined;
+          }}
           onIconCommitted={(value) =>
             setTextIconRecentState({
               projectId: project.id,
@@ -5920,71 +6301,6 @@ export function SceneTab({
         onBack={closeDrill}
         writeDoc={writeManagedText}
       />
-    );
-  }
-  if (drillIn?.startsWith("text.colour:") && doc) {
-    const key = drillIn.slice("text.colour:".length);
-    const item = managedTextModel?.items.find((candidate) => candidate.key === key);
-    if (!item || item.type === "icon") {
-      return (
-        <div className="inspector-drill">
-          <DrillBack label={backLabel} title="Text colour" onClick={closeDrill} />
-          <p className="inspector-stub-note">This text colour is no longer available.</p>
-        </div>
-      );
-    }
-    const firstLine = item.text?.trim().split(/\r?\n/, 1)[0];
-    const label =
-      item.type === "bullets"
-        ? "Bullets"
-        : firstLine
-          ? `${firstLine.slice(0, 30)}${firstLine.length > 30 ? "…" : ""}`
-          : item.type === "subtitle"
-            ? "Subtitle"
-            : "Title";
-    const styleKey = `${key}Color`;
-    const textTheme = sceneTheme ?? project.theme;
-    const resolveColour = (value: string) =>
-      value === "text" || value === "muted" || value === "accent" ? textTheme.colors[value] : value;
-    const virtualColour = managedTextModel?.textStyle?.[styleKey];
-    const defaultColour =
-      typeof virtualColour === "string"
-        ? resolveColour(virtualColour)
-        : item.type === "subtitle"
-          ? textTheme.colors.muted
-          : textTheme.colors.text;
-    const override = doc.textStyle?.[styleKey];
-    const current = typeof override === "string" ? resolveColour(override) : defaultColour;
-    const commitColour = (value: string | undefined) =>
-      void patchDoc(
-        (next) => {
-          const style = { ...(next.textStyle ?? {}) };
-          if (value === undefined) delete style[styleKey];
-          else style[styleKey] = value;
-          next.textStyle = Object.keys(style).length > 0 ? style : undefined;
-        },
-        { history: `${label.toLowerCase()} colour` },
-      );
-    return (
-      <div className="inspector-drill">
-        <DrillBack label={backLabel} title={`${label} colour`} onClick={closeDrill} />
-        <div className="inspector-drill-body">
-          <div className="popover-row">
-            <span className="action-row-icon">
-              <SceneRowIcon id="frame.colour" />
-            </span>
-            <span className="popover-inline">Colour</span>
-            <span className="action-row-value">{current.toUpperCase()}</span>
-            <ColourPicker
-              value={current}
-              defaultValue={defaultColour}
-              label={`${label} colour`}
-              onCommit={(hex) => commitColour(hex)}
-              onReset={typeof override === "string" ? () => commitColour(undefined) : undefined}
-            />
-          </div>
-        </div>
-      </div>
     );
   }
   if (drillIn?.startsWith("text.font:") && doc) {
@@ -6266,6 +6582,7 @@ export function SceneTab({
         <DrillBack label={backLabel} title="Comparison" onClick={() => closeDrill()} />
         <div className="inspector-drill-body">
           <SegmentedRow
+            ariaLabel="Comparison mask"
             options={COMPARE_MASK_CATALOG.map((e) => ({
               value: e.id,
               label: e.label,
@@ -6430,6 +6747,7 @@ export function SceneTab({
                   />
                 </div>
                 <SegmentedRow
+                  ariaLabel="Divider colour"
                   className="subtabs-compact"
                   options={lineTokens.map((t) => ({ value: t, label: t }))}
                   value={(cmp.chrome.line.colour ?? "accent") as (typeof lineTokens)[number]}
@@ -6468,6 +6786,7 @@ export function SceneTab({
           </DrillGroup>
           <DrillGroup label="After tint">
             <SegmentedRow
+              ariaLabel="After tint"
               className="subtabs-compact"
               options={[
                 { value: "none", label: "None" },
@@ -6514,6 +6833,7 @@ export function SceneTab({
           <ToggleFieldset
             control={
               <SegmentedRow
+                ariaLabel="Comparison side"
                 options={[
                   { value: "a" as const, label: "Before" },
                   { value: "b" as const, label: "After" },
@@ -7184,6 +7504,7 @@ export function SceneTab({
         <div className="inspector-section-body object-drill">
           <DrillGroup label="Gizmo">
             <SegmentedRow
+              ariaLabel="Object gizmo mode"
               options={GIZMO_MODE_OPTIONS}
               value={gizmoMode}
               onChange={(mode) => useObjectEditStore.getState().setGizmoMode(mode)}
@@ -7447,7 +7768,7 @@ export function SceneTab({
           device?.media && onOpenEditVideo(sceneIndex, device.media.src, "device", device.id),
         "device.change": () => openDrill("device.change"),
         "device.add": addDevice,
-        "objects.add": () => setObjectPickerOpen(true),
+        "objects.add": openObjectPicker,
         "device.duplicate": duplicateDevice,
         "frame.add": addOverlay,
         "device.position": () => openDrill("device.position"),
@@ -7525,7 +7846,8 @@ export function SceneTab({
             ? String(sceneFrame.decorations.length)
             : "None"
           : undefined,
-        "frame.icon": sceneFrame ? (sceneFrame.icon ?? "None") : undefined,
+        "frame.icon":
+          doc && sceneFrame ? managedFrameIconValue(doc, sceneFrame) || "None" : undefined,
         "frame.text": sceneFrame
           ? (ALIGN_OPTIONS.find((a) => a.id === (sceneFrame.textAlign ?? "left"))?.label ?? "Left")
           : undefined,
@@ -7604,7 +7926,7 @@ export function SceneTab({
         <div className="inspector-drill-body inspector-rows">{renderSectionRows(groupSection)}</div>
         {mediaModal}
         {objectPickerOpen && (
-          <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
+          <ObjectPicker onPick={addObjectFromPicker} onCancel={closeObjectPicker} />
         )}
       </div>
     );
@@ -7618,9 +7940,9 @@ export function SceneTab({
     themeName: sceneTheme?.name ?? project.theme.name,
     transitionValue,
     fallbackText: derivedName ?? undefined,
-    textItems:
+    textGroups:
       managedTextModel?.ownership === "managed" || (managedTextModel?.items.length ?? 0) > 0
-        ? managedTextModel?.items
+        ? managedTextGroups.filter((group) => !group.implicit || group.items.length > 0)
         : undefined,
   });
   const hasContent = sceneOverview.groups.length > 0 || sceneOverview.standalone.length > 0;
@@ -7649,9 +7971,11 @@ export function SceneTab({
     const target = row.selectionTarget;
     if (!target) return;
     switch (target.kind) {
-      case "text":
-        useTextEditStore.getState().select({ sceneIndex, key: target.id });
+      case "text": {
+        const itemKey = managedTextGroups.find((group) => group.key === target.id)?.itemKeys[0];
+        useTextEditStore.getState().select(itemKey ? { sceneIndex, key: itemKey } : null);
         break;
+      }
       case "device":
         pickDevice(target.id);
         break;
@@ -7833,12 +8157,14 @@ export function SceneTab({
       sceneIndex: expectedSceneIndex,
       sceneFile: expectedSceneFile,
     };
+    setContentActionBusy(true);
     let succeeded = false;
     try {
       succeeded = await patchDocResultRef.current(plan.apply, { history: plan.history });
     } finally {
       if (contentActionPendingRef.current?.token === actionToken) {
         contentActionPendingRef.current = null;
+        setContentActionBusy(false);
       }
     }
     if (succeeded && action === "duplicate") {
@@ -7881,7 +8207,7 @@ export function SceneTab({
 
   const applyManagedTextContentAction = async (
     row: SceneOverviewRowModel,
-    action: Extract<ManagedTextStructuralAction, { type: "duplicate-item" | "remove-item" }>,
+    action: Extract<ManagedTextStructuralAction, { type: "duplicate-group" | "remove-group" }>,
     expectedProjectId: string,
     expectedSceneIndex: number,
     expectedSceneFile: string | null,
@@ -7903,8 +8229,10 @@ export function SceneTab({
       sceneIndex: expectedSceneIndex,
       sceneFile: expectedSceneFile,
     };
+    setContentActionBusy(true);
     let succeeded = false;
     let selectedItemKey: string | null = null;
+    let selectedGroupKey: string | null = null;
     try {
       await performManagedTextStructuralAction({
         doc: currentDoc,
@@ -7914,6 +8242,7 @@ export function SceneTab({
         confirmTakeover: confirmManagedTextTakeover,
         commit: async (result, history) => {
           selectedItemKey = result.selectedItemKey;
+          selectedGroupKey = result.selectedGroupKey;
           const outcome = await writeManagedText({
             preview: result.doc,
             baseline: currentDoc,
@@ -7927,6 +8256,7 @@ export function SceneTab({
               );
               if (!applied) return current;
               selectedItemKey = applied.selectedItemKey;
+              selectedGroupKey = applied.selectedGroupKey;
               return applied.doc;
             },
           });
@@ -7936,6 +8266,7 @@ export function SceneTab({
     } finally {
       if (contentActionPendingRef.current?.token === token) {
         contentActionPendingRef.current = null;
+        setContentActionBusy(false);
       }
     }
     if (
@@ -7946,9 +8277,11 @@ export function SceneTab({
     }
     const selection = useUiStore.getState().inspector.overviewSelection;
     if (selection?.sceneIndex !== expectedSceneIndex || selection.rowId !== row.id) return;
-    if (selectedItemKey) {
-      const rowId = `text:${selectedItemKey}`;
-      useTextEditStore.getState().select({ sceneIndex: expectedSceneIndex, key: selectedItemKey });
+    if (selectedGroupKey) {
+      const rowId = `text:${selectedGroupKey}`;
+      useTextEditStore
+        .getState()
+        .select(selectedItemKey ? { sceneIndex: expectedSceneIndex, key: selectedItemKey } : null);
       setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId, domain: "text" });
       focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, rowId);
     } else {
@@ -7963,6 +8296,7 @@ export function SceneTab({
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedNavigationSequence = useUiStore.getState().inspectorNavigation.sequence;
     if (
       !currentDoc ||
       contentActionPendingRef.current ||
@@ -7971,9 +8305,8 @@ export function SceneTab({
       return;
     }
     const action: ManagedTextStructuralAction = {
-      type: "add-item",
-      itemType: "title",
-      afterKey: selectedTextKey ?? undefined,
+      type: "add-group",
+      afterKey: explicitlySelectedTextGroupKey ?? undefined,
     };
     const token = Symbol("add-managed-text");
     contentActionPendingRef.current = {
@@ -7982,8 +8315,10 @@ export function SceneTab({
       sceneIndex: expectedSceneIndex,
       sceneFile: expectedSceneFile,
     };
+    setContentActionBusy(true);
     let succeeded = false;
     let selectedItemKey: string | null = null;
+    let selectedGroupKey: string | null = null;
     try {
       await performManagedTextStructuralAction({
         doc: currentDoc,
@@ -7993,6 +8328,7 @@ export function SceneTab({
         confirmTakeover: confirmManagedTextTakeover,
         commit: async (result, history) => {
           selectedItemKey = result.selectedItemKey;
+          selectedGroupKey = result.selectedGroupKey;
           const outcome = await writeManagedText({
             preview: result.doc,
             baseline: currentDoc,
@@ -8006,6 +8342,7 @@ export function SceneTab({
               );
               if (!applied) return current;
               selectedItemKey = applied.selectedItemKey;
+              selectedGroupKey = applied.selectedGroupKey;
               return applied.doc;
             },
           });
@@ -8015,19 +8352,24 @@ export function SceneTab({
     } finally {
       if (contentActionPendingRef.current?.token === token) {
         contentActionPendingRef.current = null;
+        setContentActionBusy(false);
       }
     }
     if (
       !succeeded ||
       !selectedItemKey ||
-      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile)
+      !selectedGroupKey ||
+      !isCurrentOverview(expectedProjectId, expectedSceneIndex, expectedSceneFile) ||
+      useUiStore.getState().inspectorNavigation.sequence !== expectedNavigationSequence
     ) {
+      contentAddActivatorRef.current = null;
       return;
     }
-    const rowId = `text:${selectedItemKey}`;
+    const rowId = `text:${selectedGroupKey}`;
     useTextEditStore.getState().select({ sceneIndex: expectedSceneIndex, key: selectedItemKey });
     setOverviewSelection({ sceneIndex: expectedSceneIndex, rowId, domain: "text" });
-    focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, rowId);
+    focusContentAddActivator();
+    openDrill("text");
   };
 
   const openContentMenu = (row: SceneOverviewRowModel, request: SceneOverviewContextRequest) => {
@@ -8067,11 +8409,13 @@ export function SceneTab({
           id: `${row.id}:duplicate`,
           label: label[action],
           icon: <SceneRowIcon id="content.duplicate" />,
+          disabled: contentActionBusy,
+          title: contentActionBusy ? "Another content change is finishing" : undefined,
           onSelect: () => {
             if (row.selectionTarget?.kind === "text") {
               void applyManagedTextContentAction(
                 row,
-                { type: "duplicate-item", itemKey: row.selectionTarget.id },
+                { type: "duplicate-group", groupKey: row.selectionTarget.id },
                 menuProjectId,
                 menuSceneIndex,
                 menuSceneFile,
@@ -8095,11 +8439,13 @@ export function SceneTab({
           icon: <SceneRowIcon id="content.delete" />,
           danger: true,
           confirmLabel: "Really delete?",
+          disabled: contentActionBusy,
+          title: contentActionBusy ? "Another content change is finishing" : undefined,
           onSelect: () => {
             if (row.selectionTarget?.kind === "text") {
               void applyManagedTextContentAction(
                 row,
-                { type: "remove-item", itemKey: row.selectionTarget.id },
+                { type: "remove-group", groupKey: row.selectionTarget.id },
                 menuProjectId,
                 menuSceneIndex,
                 menuSceneFile,
@@ -8119,6 +8465,7 @@ export function SceneTab({
     }
     setContentMenu({
       key: `${sceneIndex}:${row.id}`,
+      ariaLabel: `Actions for ${row.label}`,
       x: request.x,
       y: request.y,
       returnFocus: request.returnFocus,
@@ -8131,39 +8478,75 @@ export function SceneTab({
 
   const addOverviewContent = (type: SceneOverviewContentType) => {
     const option = addOptionFor(type);
-    if (!option || option.disabled) return;
-    if (contentPickerOpen) {
-      flushSync(() => setContentPickerOpen(false));
-      contentPickerButtonRef.current?.focus({ preventScroll: true });
+    if (!option || option.disabled || contentActionBusy) return;
+    const run = () => {
+      switch (type) {
+        case "device":
+          captureContentAddActivator();
+          addDevice();
+          break;
+        case "text":
+          captureContentAddActivator();
+          void addManagedTextOverviewItem();
+          break;
+        case "image":
+          captureContentAddActivator();
+          setImagePickError(null);
+          setMediaTarget({ kind: "image" });
+          setModal("media");
+          break;
+        case "video":
+          openDrill("videoWindow.edit");
+          break;
+        case "object":
+          openObjectPicker();
+          break;
+        case "chart":
+          captureContentAddActivator();
+          addChart();
+          break;
+        case "screenshotStack":
+          openDrill("layeredScreenshot.edit");
+          break;
+        case "comparison":
+          captureContentAddActivator();
+          addCompare();
+          break;
+      }
+    };
+    if (!contentPickerOpen) {
+      run();
+      return;
     }
-    switch (type) {
-      case "device":
-        addDevice();
-        break;
-      case "text":
-        void addManagedTextOverviewItem();
-        break;
-      case "image":
-        setImagePickError(null);
-        setMediaTarget({ kind: "image" });
-        setModal("media");
-        break;
-      case "video":
-        openDrill("videoWindow.edit");
-        break;
-      case "object":
-        setObjectPickerOpen(true);
-        break;
-      case "chart":
-        addChart();
-        break;
-      case "screenshotStack":
-        openDrill("layeredScreenshot.edit");
-        break;
-      case "comparison":
-        addCompare();
-        break;
-    }
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    deferSceneOverviewPickerAction({
+      close: () => setContentPickerOpen(false),
+      restoreFocus: () => contentPickerButtonRef.current?.focus({ preventScroll: true }),
+      schedule: (action) => {
+        if (contentPickerActionFrameRef.current !== null) {
+          window.cancelAnimationFrame(contentPickerActionFrameRef.current);
+        }
+        contentPickerActionFrameRef.current = window.requestAnimationFrame(() => {
+          contentPickerActionFrameRef.current = null;
+          action();
+        });
+      },
+      action: () => {
+        const inspector = useUiStore.getState().inspector;
+        if (
+          projectIdRef.current !== expectedProjectId ||
+          sceneIndexRef.current !== expectedSceneIndex ||
+          sceneFileRef.current !== expectedSceneFile ||
+          inspector.tab !== "scene" ||
+          inspector.drillIn !== null
+        ) {
+          return;
+        }
+        run();
+      },
+    });
   };
 
   const overviewContentIcon = (type: SceneOverviewContentType): ReactNode => {
@@ -8257,7 +8640,9 @@ export function SceneTab({
     id: option.id,
     label: option.label,
     icon: overviewContentIcon(option.id),
-    disabledReason: option.disabledReason,
+    disabledReason: contentActionBusy
+      ? "Another content change is finishing"
+      : option.disabledReason,
     onPick: () => addOverviewContent(option.id),
   }));
 
@@ -8282,16 +8667,31 @@ export function SceneTab({
   );
 
   return (
-    <div ref={overviewRootRef} className="inspector-scene-overview">
+    <div
+      ref={overviewRootRef}
+      className="inspector-scene-overview"
+      aria-busy={contentActionBusy || undefined}
+    >
       {header}
       <section className="inspector-scene-overview-section inspector-scene-overview-content">
         <div
           className="inspector-scene-overview-content-head"
           ref={contentPickerAnchorRef}
+          onPointerDownCapture={() => {
+            contentPickerPointerDownRef.current = true;
+          }}
           onBlurCapture={(event) => {
+            const anchor = event.currentTarget;
             const next = event.relatedTarget;
-            if (next instanceof Node && event.currentTarget.contains(next)) return;
-            closeContentPicker();
+            const focusStaysInside = next instanceof Node && anchor.contains(next);
+            if (
+              shouldCloseSceneOverviewPickerOnBlur({
+                focusStaysInside,
+                internalPointerDown: contentPickerPointerDownRef.current,
+              })
+            ) {
+              closeContentPicker();
+            }
           }}
         >
           <SceneOverviewSectionHeader
@@ -8300,6 +8700,8 @@ export function SceneTab({
             expanded={contentPickerOpen}
             controls="scene-content-picker"
             addButtonRef={contentPickerButtonRef}
+            addDisabled={contentActionBusy}
+            addTitle={contentActionBusy ? "Another content change is finishing" : undefined}
             onAdd={() => setContentPickerOpen((open) => !open)}
           />
           {contentPickerOpen && (
@@ -8340,8 +8742,12 @@ export function SceneTab({
                     onOpen={group.id === "devices" ? () => openDrill("device.position") : undefined}
                     openLabel={group.id === "devices" ? "Arrange devices" : undefined}
                     addLabel={`Add ${addOption?.label.toLowerCase() ?? group.label.toLowerCase()}`}
-                    addDisabled={addOption?.disabled}
-                    addTitle={addOption?.disabledReason}
+                    addDisabled={contentActionBusy || addOption?.disabled}
+                    addTitle={
+                      contentActionBusy
+                        ? "Another content change is finishing"
+                        : addOption?.disabledReason
+                    }
                     onAdd={() => addOverviewContent(group.addType)}
                   />
                   <div className="inspector-scene-overview-group-rows">
@@ -8415,7 +8821,7 @@ export function SceneTab({
 
       {mediaModal}
       {objectPickerOpen && (
-        <ObjectPicker onPick={addObjectFromPicker} onCancel={() => setObjectPickerOpen(false)} />
+        <ObjectPicker onPick={addObjectFromPicker} onCancel={closeObjectPicker} />
       )}
       {contentMenu && (
         <ContextMenu

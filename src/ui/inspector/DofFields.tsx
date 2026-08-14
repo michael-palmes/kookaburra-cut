@@ -323,6 +323,7 @@ export function DofFields({
             </div>
           )}
           <SegmentedRow
+            ariaLabel="Focus mode"
             options={[
               {
                 value: "auto" as const,

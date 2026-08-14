@@ -123,7 +123,12 @@ export function CameraRigFields({
         Frame content
       </button>
 
-      <SegmentedRow options={AIM_OPTIONS} value={pose.aim.mode} onChange={setAimMode} />
+      <SegmentedRow
+        ariaLabel="Camera aim"
+        options={AIM_OPTIONS}
+        value={pose.aim.mode}
+        onChange={setAimMode}
+      />
 
       {pose.aim.mode === "point" && (
         <div className="inspector-pose-grid">

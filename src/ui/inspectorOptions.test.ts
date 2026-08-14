@@ -10,6 +10,7 @@ import {
   projectRows,
   sceneSections,
 } from "./inspectorOptions";
+import { textIconInspectorRoute } from "./inspectorTitles";
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {
@@ -269,6 +270,48 @@ describe("deriveSceneOverview", () => {
 
     const empty = overview(doc, { fallbackText: "Code fallback", textItems: [] });
     expect(empty.groups.find((group) => group.id === "text")).toBeUndefined();
+  });
+
+  it("projects one atomic Content row per managed Text group", () => {
+    const doc = docWith({ textLayout: { align: "center" } });
+    const model = overview(doc, {
+      textGroups: [
+        {
+          key: "text",
+          itemKeys: ["title", "subtitle"],
+          items: [
+            { key: "title", type: "title", text: "First group" },
+            { key: "subtitle", type: "subtitle", text: "Supporting copy" },
+          ],
+          align: "left",
+          implicit: false,
+        },
+        {
+          key: "text-2",
+          itemKeys: ["title-2"],
+          items: [{ key: "title-2", type: "title", text: "Second group" }],
+          align: "right",
+          implicit: false,
+        },
+      ],
+    });
+
+    expect(model.groups[0]?.rows).toEqual([
+      expect.objectContaining({
+        id: "text:text",
+        label: "Text 1: First group",
+        value: "Left",
+        selectionTarget: { kind: "text", id: "text" },
+        openRoute: "text",
+      }),
+      expect.objectContaining({
+        id: "text:text-2",
+        label: "Text 2: Second group",
+        value: "Right",
+        selectionTarget: { kind: "text", id: "text-2" },
+        openRoute: "text",
+      }),
+    ]);
   });
 
   it("pins heavy scenes to the specified group, standalone and setting order", () => {
@@ -587,6 +630,7 @@ describe("sceneSections Overlay section", () => {
       "frame.enabled",
       "frame.cutout",
       "frame.panel",
+      "frame.icon",
       "frame.chip",
       "frame.decorations",
       "frame.text",
@@ -625,6 +669,7 @@ describe("sceneSections Overlay section", () => {
       "frame.enabled",
       "frame.cutout",
       "frame.panel",
+      "frame.icon",
       "frame.chip",
       "frame.decorations",
       "frame.text",
@@ -703,6 +748,14 @@ describe("drillStackForScene (what the inspector keeps open across a scene chang
     expect(
       drillStackForScene(["text", "text.font:title"], { ...full, textKeys: ["headline"] }),
     ).toEqual(["text"]);
+  });
+
+  it("keeps a Text icon child only while its item key still exists", () => {
+    const route = textIconInspectorRoute("image", "title");
+    expect(drillStackForScene(["text", route], full)).toEqual(["text", route]);
+    expect(drillStackForScene(["text", route], { ...full, textKeys: ["headline"] })).toEqual([
+      "text",
+    ]);
   });
 
   it("a scene the section is missing from drops to the row list", () => {

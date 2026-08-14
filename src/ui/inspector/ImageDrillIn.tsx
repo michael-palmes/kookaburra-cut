@@ -465,6 +465,7 @@ export function ImageDrillIn({
             <>
               <DrillGroup label="Transform">
                 <SegmentedRow
+                  ariaLabel="Image transform"
                   options={GIZMO_OPTIONS}
                   value={gizmoMode}
                   onChange={(mode) => {
@@ -732,6 +733,7 @@ export function ImageDrillIn({
                   }
                 />
                 <SegmentedRow
+                  ariaLabel="Image layer"
                   options={[
                     { value: "above" as const, label: "Above" },
                     { value: "below" as const, label: "Below" },
@@ -750,6 +752,7 @@ export function ImageDrillIn({
           <DrillGroup label="Motion">
             <SegmentedRow
               className="subtabs-compact"
+              ariaLabel="Image motion"
               options={IMAGE_MOTION_OPTIONS}
               value={image.motion?.preset ?? "none"}
               onChange={(preset) =>

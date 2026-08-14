@@ -4,19 +4,42 @@ import {
   chartSeriesInspectorRoute,
   namedInspectorTitle,
   sceneInspectorScreenTitle,
+  textIconInspectorRoute,
+  textIconInspectorScreenForRoute,
 } from "./inspectorTitles";
 
 describe("sceneInspectorScreenTitle", () => {
   it("names nested destinations and follows the device-group plurality", () => {
     expect(sceneInspectorScreenTitle("frame.decorations")).toBe("Decorations");
+    expect(sceneInspectorScreenTitle("frame.icon")).toBe("Panel icon");
     expect(sceneInspectorScreenTitle("compare.edit")).toBe("Comparison");
     expect(sceneInspectorScreenTitle("image.edit")).toBe("Image");
     expect(sceneInspectorScreenTitle("legacyImage.edit")).toBe("Image");
     expect(sceneInspectorScreenTitle("device.position")).toBe("Arrange devices");
     expect(sceneInspectorScreenTitle("chart.font")).toBe("Chart font");
     expect(sceneInspectorScreenTitle(chartSeriesInspectorRoute("s1"))).toBe("Series");
+    expect(sceneInspectorScreenTitle(textIconInspectorRoute("emoji", "icon"))).toBe("Emoji");
+    expect(sceneInspectorScreenTitle(textIconInspectorRoute("image", "icon"))).toBe("Image");
     expect(sceneInspectorScreenTitle("device", { deviceCount: 1 })).toBe("Device");
     expect(sceneInspectorScreenTitle("device", { deviceCount: 3 })).toBe("Devices");
+  });
+});
+
+describe("text icon inspector routes", () => {
+  it("round-trips image and emoji item keys as total UTF-16", () => {
+    for (const itemKey of ["icon", "", `before\ud800after\udfff`]) {
+      for (const kind of ["emoji", "image"] as const) {
+        const route = textIconInspectorRoute(kind, itemKey);
+        expect(textIconInspectorScreenForRoute(route)).toEqual({ kind, itemKey });
+      }
+    }
+  });
+
+  it("rejects unrelated and malformed routes", () => {
+    expect(textIconInspectorScreenForRoute("text.icon.emoji:u16:123")).toBeNull();
+    expect(textIconInspectorScreenForRoute("text.icon.other:u16:0069")).toBeNull();
+    expect(textIconInspectorScreenForRoute("text.motion:icon")).toBeNull();
+    expect(textIconInspectorScreenForRoute(null)).toBeNull();
   });
 });
 

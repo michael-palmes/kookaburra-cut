@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { useTheme } from "../../theme";
+import type { Theme } from "../../theme/tokens";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { COLOUR_PRESET_GRID } from "./colourPresets";
@@ -31,6 +32,8 @@ export interface ColourPickerProps {
   disabled?: boolean;
   /** Optional toggle state when the swatch participates in a labelled choice group. */
   pressed?: boolean;
+  /** Scene-resolved theme for inspector pickers mounted outside SceneHost. */
+  theme?: Theme;
 }
 
 export function ColourPicker({
@@ -42,6 +45,7 @@ export function ColourPicker({
   size = "sm",
   disabled = false,
   pressed,
+  theme,
 }: ColourPickerProps) {
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -77,6 +81,7 @@ export function ColourPicker({
           defaultValue={defaultValue}
           onReset={onReset}
           anchorRef={triggerRef}
+          themeOverride={theme}
           onClose={() => setOpen(false)}
         />
       )}
@@ -99,6 +104,7 @@ function ColourPopover({
   defaultValue,
   onReset,
   anchorRef,
+  themeOverride,
   onClose,
 }: {
   value: string;
@@ -107,9 +113,11 @@ function ColourPopover({
   defaultValue?: string;
   onReset?: () => void;
   anchorRef: RefObject<HTMLButtonElement | null>;
+  themeOverride?: Theme;
   onClose: () => void;
 }) {
-  const theme = useTheme();
+  const contextTheme = useTheme();
+  const theme = themeOverride ?? contextTheme;
   const ref = useRef<HTMLDivElement>(null);
   const nativeRef = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState({ left: 0, top: 0 });

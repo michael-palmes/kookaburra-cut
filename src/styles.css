@@ -792,6 +792,11 @@ body {
   border-color: var(--text-tertiary);
 }
 
+.media-card-activate:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring);
+}
+
 /* A plain div (role=button), not a <button>: see MediaLibrary.tsx — WKWebView won't paint an
    <img> inside a real <button>. As a div it renders the image normally.
    Square (1:1) cell so landscape AND portrait posters both fit uniformly. */
@@ -4271,6 +4276,8 @@ button.beat-status {
   gap: var(--space-2);
 }
 .text-emoji-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -4288,6 +4295,10 @@ button.beat-status {
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   cursor: pointer;
+}
+.text-emoji-grid .chip-icon-tile {
+  height: 34px;
+  font-size: var(--text-base);
 }
 .chip-icon-tile:hover {
   color: var(--text-primary);
@@ -7157,8 +7168,13 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-scene-overview-entity-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
   width: 26px;
   height: 26px;
+  margin-left: 0;
 }
 
 .inspector-scene-overview-setting {
@@ -8214,6 +8230,13 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   border-radius: var(--radius-md);
 }
 
+.text-inspector-single-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .text-inspector-section-heading {
   display: flex;
   align-items: center;
@@ -8226,6 +8249,35 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 .text-inspector-add-line {
   margin-left: auto;
+}
+
+.text-inspector-icon-button,
+.text-inspector-line-menu {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  padding: 0;
+  font: inherit;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.text-inspector-icon-button:hover:not(:disabled),
+.text-inspector-line-menu:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.text-inspector-icon-button:disabled,
+.text-inspector-line-menu:disabled {
+  color: var(--text-disabled);
+  cursor: default;
 }
 
 .text-inspector-empty {
@@ -8250,7 +8302,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 
 .text-inspector-line {
   display: grid;
-  grid-template-columns: var(--hit-min) minmax(0, 1fr) auto;
+  grid-template-columns: var(--hit-min) minmax(0, 1fr) var(--hit-min);
   align-items: center;
   min-height: 38px;
   border-bottom: 1px solid var(--border-subtle);
@@ -8264,6 +8316,17 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 .text-inspector-line.active {
   background: var(--accent-subtle);
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.text-inspector-line.dragging,
+.text-inspector-point-row.dragging {
+  opacity: 0.55;
+}
+
+.text-inspector-line.drop-target,
+.text-inspector-point-row.drop-target {
+  background: var(--accent-subtle);
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .text-inspector-line-grip,
@@ -8284,6 +8347,17 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   border: 0;
   border-radius: var(--radius-xs);
   cursor: pointer;
+}
+
+.text-inspector-line-grip,
+.text-inspector-point-grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.text-inspector-line-grip:active,
+.text-inspector-point-grip:active {
+  cursor: grabbing;
 }
 
 .text-inspector-line-grip:hover:not(:disabled),
@@ -8328,13 +8402,6 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   white-space: nowrap;
 }
 
-.text-inspector-line-order {
-  display: flex;
-  align-items: center;
-  padding-right: var(--space-1);
-}
-
-.text-inspector-line-order button:disabled,
 .text-inspector-line-grip:disabled,
 .text-inspector-point-grip:disabled,
 .text-inspector-point-remove:disabled {
@@ -8343,6 +8410,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .text-inspector-type-segments,
+.text-inspector-alignment-segments,
 .text-motion-scope-segments,
 .text-motion-direction-segments {
   align-self: stretch;
@@ -8353,7 +8421,21 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   gap: var(--space-1);
 }
 
+.text-inspector-element-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.text-inspector-element-fields {
+  min-width: 0;
+}
+
 .text-inspector-type-segments .inspector-subtab,
+.text-inspector-alignment-segments .inspector-subtab,
 .text-motion-scope-segments .inspector-subtab,
 .text-motion-direction-segments .inspector-subtab {
   flex: 1;
@@ -8436,6 +8518,16 @@ textarea.text-inspector-copy-input {
   gap: var(--space-2);
 }
 
+.text-inspector-icon-quick-grid {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.text-inspector-icon-quick-grid button {
+  height: 34px;
+  font-size: var(--text-base);
+}
+
 .text-inspector-marker-grid button,
 .text-inspector-icon-recent-grid button {
   width: 100%;
@@ -8497,6 +8589,10 @@ textarea.text-inspector-copy-input {
 
 .text-inspector-icon-actions .btn,
 .text-inspector-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
 }
 
@@ -8613,7 +8709,8 @@ textarea.text-inspector-copy-input {
 
 .text-inspector-line-grip:focus-visible,
 .text-inspector-line-select:focus-visible,
-.text-inspector-line-order button:focus-visible,
+.text-inspector-line-menu:focus-visible,
+.text-inspector-icon-button:focus-visible,
 .text-inspector-point-grip:focus-visible,
 .text-inspector-point-remove:focus-visible,
 .text-inspector-marker-grid button:focus-visible,
@@ -9305,6 +9402,13 @@ textarea.text-inspector-copy-input {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+}
+
+.text-icon-image-picker-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 /* The compact editor panel's proven WKWebView recipe (max-content rows + start packs

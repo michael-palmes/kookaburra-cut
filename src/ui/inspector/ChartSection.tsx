@@ -700,6 +700,7 @@ export function ChartDrillIn({
       {chart.mount !== "panel" && (
         <DrillGroup label="Dimension">
           <SegmentedRow
+            ariaLabel="Chart dimension"
             options={[
               { value: "2d" as ChartDimension, label: "Flat", icon: <DimensionGlyph flat /> },
               { value: "3d" as ChartDimension, label: "3D", icon: <DimensionGlyph /> },
@@ -722,6 +723,7 @@ export function ChartDrillIn({
       >
         <SegmentedRow
           className="subtabs-compact"
+          ariaLabel="Chart mount"
           options={mountOptions}
           value={chart.mount}
           onChange={(mount) =>
@@ -989,6 +991,7 @@ export function ChartDrillIn({
         />
         <SegmentedRow
           className="subtabs-compact"
+          ariaLabel="Legend position"
           options={[
             { value: "top" as const, label: "Top" },
             { value: "bottom" as const, label: "Bottom" },
@@ -1035,12 +1038,14 @@ export function ChartDrillIn({
         ))}
         <SegmentedRow
           className="subtabs-compact"
+          ariaLabel="Chart animation delivery"
           options={DELIVERY_OPTIONS}
           value={chart.animation.delivery}
           onChange={(delivery) => writeAnimation({ delivery })}
         />
         <SegmentedRow
           className="subtabs-compact"
+          ariaLabel="Chart animation direction"
           options={FROM_OPTIONS}
           value={chart.animation.from}
           onChange={(from) => writeAnimation({ from })}
@@ -1079,6 +1084,7 @@ export function ChartDrillIn({
       <div className="chart-axis-subtabs">
         <SegmentedRow
           className="subtabs-compact"
+          ariaLabel="Chart axis"
           options={[
             { value: "value" as const, label: "Value (Y)" },
             { value: "category" as const, label: "Category (X)" },
@@ -1185,6 +1191,7 @@ export function ChartDrillIn({
             />
             <SegmentedRow
               className="subtabs-compact"
+              ariaLabel="Gridline style"
               options={GRIDLINE_OPTIONS}
               value={valueAxis.gridlines.style}
               onChange={(style) =>
@@ -1356,6 +1363,7 @@ export function ChartDrillIn({
         />
         <SegmentedRow
           className="subtabs-compact"
+          ariaLabel="Value label position"
           options={LABEL_LOCATIONS}
           value={values.location}
           onChange={(location) =>
@@ -1526,6 +1534,7 @@ export function ChartDrillIn({
         <ToggleFieldset
           control={
             <SegmentedRow
+              ariaLabel="Chart settings"
               options={[
                 { value: "graph" as const, label: "Graph" },
                 { value: "axis" as const, label: "Axis" },
@@ -1626,6 +1635,7 @@ export function ChartPlacementDrillIn({
       <div className="inspector-drill-body inspector-section-body">
         <DrillGroup label="Gizmo">
           <SegmentedRow
+            ariaLabel="Chart transform"
             options={[
               {
                 value: "translate" as const,

@@ -25,6 +25,8 @@ export interface ContextMenuState {
   x: number;
   y: number;
   items: (ContextMenuItem | "separator")[];
+  /** Accessible name for the menu surface. */
+  ariaLabel?: string;
   /** Exact control to refocus when the menu closes. Falls back to the active element at open. */
   returnFocus?: HTMLElement | null;
 }
@@ -169,6 +171,7 @@ export function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose
       ref={ref}
       className="context-menu"
       role="menu"
+      aria-label={menu.ariaLabel ?? "Actions"}
       tabIndex={-1}
       style={{ left: pos.x, top: pos.y }}
       onKeyDown={onKeyDown}

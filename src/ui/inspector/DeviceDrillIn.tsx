@@ -801,6 +801,7 @@ export function DeviceDrillIn({
           <legend className="visually-hidden">Device settings</legend>
           <DrillGroup label="Position">
             <SegmentedRow
+              ariaLabel="Device transform"
               options={GIZMO_OPTIONS}
               value={gizmoMode}
               onChange={(mode) => useDeviceEditStore.getState().setGizmoMode(mode)}

@@ -6,6 +6,34 @@ export interface SceneOverviewContextRequest {
   returnFocus: HTMLButtonElement;
 }
 
+export function deferSceneOverviewPickerAction({
+  close,
+  restoreFocus,
+  schedule,
+  action,
+}: {
+  close: () => void;
+  restoreFocus: () => void;
+  schedule: (action: () => void) => void;
+  action: () => void;
+}) {
+  close();
+  schedule(() => {
+    restoreFocus();
+    action();
+  });
+}
+
+export function shouldCloseSceneOverviewPickerOnBlur({
+  focusStaysInside,
+  internalPointerDown,
+}: {
+  focusStaysInside: boolean;
+  internalPointerDown: boolean;
+}): boolean {
+  return !focusStaysInside && !internalPointerDown;
+}
+
 function PlusIcon() {
   return (
     <svg
@@ -184,7 +212,7 @@ export function SceneOverviewEntityRow({
       <button
         type="button"
         className="inspector-scene-overview-entity-body"
-        aria-label={`Open ${label}`}
+        aria-label={`Open ${label}${value ? `, ${value}` : ""}`}
         aria-current={selected ? "true" : undefined}
         aria-keyshortcuts={onContextMenu ? "Shift+F10" : undefined}
         onClick={onOpen}
@@ -196,18 +224,9 @@ export function SceneOverviewEntityRow({
           {label}
         </span>
         {value && <span className="inspector-scene-overview-entity-value">{value}</span>}
-      </button>
-      <button
-        type="button"
-        className="inspector-scene-overview-entity-open"
-        aria-label={`Open ${label}`}
-        aria-keyshortcuts={onContextMenu ? "Shift+F10" : undefined}
-        title={`Open ${label}`}
-        onClick={onOpen}
-        onContextMenu={requestPointerMenu}
-        onKeyDown={requestKeyboardMenu}
-      >
-        <ChevronIcon />
+        <span className="inspector-scene-overview-entity-open" aria-hidden="true">
+          <ChevronIcon />
+        </span>
       </button>
     </div>
   );

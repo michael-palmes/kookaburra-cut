@@ -27,5 +27,15 @@ describe("inspector redesign styles", () => {
     expect(styles).toContain(".arrange-devices-body {");
     expect(styles).toMatch(/\.device-editor-preview-card\s*{[^}]*flex: none;/s);
     expect(styles).toContain(".text-inspector-icon-takeover {");
+    expect(styles).toMatch(
+      /\.text-inspector-type-segments,\s*\.text-inspector-alignment-segments,[^{]*\{[^}]*align-self: stretch;[^}]*margin: 0 8px;/s,
+    );
+    expect(styles).toMatch(
+      /\.text-inspector-alignment-segments \.inspector-subtab,[^{]*\{[^}]*flex: 1;/s,
+    );
+    expect(styles).toMatch(
+      /\.text-inspector-single-controls\s*\{[^}]*display: flex;[^}]*flex-direction: column;/s,
+    );
+    expect(styles).toMatch(/\.text-inspector-add-line\s*\{[^}]*margin-left: auto;/s);
   });
 });

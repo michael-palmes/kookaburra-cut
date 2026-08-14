@@ -1,5 +1,5 @@
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { renderObjectThumbnail } from "../engine/objectThumbnail";
 import { optionPreviewStill } from "../engine/optionPreviews";
 import {
@@ -9,6 +9,15 @@ import {
   writeObjectThumbnail,
 } from "../toolkit/objects/registry";
 import { useEscapeClose } from "./useEscapeClose";
+
+export function objectPickerFocusTarget(
+  objects: readonly ResolvedObjectAsset[] | null,
+  error: string | null,
+): "object" | "import" | null {
+  if (error) return "import";
+  if (objects === null) return null;
+  return objects.length > 0 ? "object" : "import";
+}
 
 /** The object library picker: bundled + workspace objects as thumbnail cards (a missing thumbnail degrades to a name card), plus the Import GLB flow (native-side copy into ~/Kookaburra Cut/objects). Picking hands the manifest id to the host, which writes the sidecar entry. */
 export function ObjectPicker({
@@ -21,6 +30,8 @@ export function ObjectPicker({
   const [objects, setObjects] = useState<ResolvedObjectAsset[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const firstObjectRef = useRef<HTMLButtonElement>(null);
+  const importButtonRef = useRef<HTMLButtonElement>(null);
   useEscapeClose(onCancel, !busy);
 
   useEffect(() => {
@@ -39,6 +50,17 @@ export function ObjectPicker({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (busy) return;
+    const target = objectPickerFocusTarget(objects, error);
+    if (!target) return;
+    const frame = window.requestAnimationFrame(() => {
+      const element = target === "object" ? firstObjectRef.current : importButtonRef.current;
+      element?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [objects, error, busy]);
 
   const handleImport = async () => {
     const picked = await openFilePicker({
@@ -78,9 +100,10 @@ export function ObjectPicker({
           <p className="muted">Reading your object library…</p>
         ) : (
           <div className="object-picker-grid">
-            {objects.map((o) => (
+            {objects.map((o, index) => (
               <button
                 key={o.manifest.id}
+                ref={index === 0 ? firstObjectRef : undefined}
                 type="button"
                 className="object-card"
                 disabled={busy}
@@ -104,6 +127,7 @@ export function ObjectPicker({
         {error && <p className="modal-error">{error}</p>}
         <div className="modal-actions">
           <button
+            ref={importButtonRef}
             type="button"
             className="btn btn-left"
             onClick={() => void handleImport()}

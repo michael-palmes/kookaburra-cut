@@ -2,17 +2,99 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  deferSceneOverviewPickerAction,
   SceneOverviewEntityRow,
   SceneOverviewGroupHeader,
   SceneOverviewPicker,
   SceneOverviewSectionHeader,
   SceneOverviewSettingRow,
+  shouldCloseSceneOverviewPickerOnBlur,
 } from "./SceneOverview";
 
 const icon = createElement("svg", { "aria-hidden": true });
 
+describe("SceneOverview picker actions", () => {
+  it("closes and restores focus before running the chosen action", () => {
+    const events: string[] = [];
+    const scheduled: Array<() => void> = [];
+
+    deferSceneOverviewPickerAction({
+      close: () => events.push("close"),
+      restoreFocus: () => events.push("focus"),
+      schedule: (action) => {
+        events.push("schedule");
+        scheduled.push(action);
+      },
+      action: () => events.push("action"),
+    });
+
+    expect(events).toEqual(["close", "schedule"]);
+    scheduled[0]?.();
+    expect(events).toEqual(["close", "schedule", "focus", "action"]);
+  });
+
+  it("keeps the picker mounted during WKWebView's pointer focus hand-off", () => {
+    expect(
+      shouldCloseSceneOverviewPickerOnBlur({
+        focusStaysInside: false,
+        internalPointerDown: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldCloseSceneOverviewPickerOnBlur({
+        focusStaysInside: true,
+        internalPointerDown: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldCloseSceneOverviewPickerOnBlur({
+        focusStaysInside: false,
+        internalPointerDown: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("dispatches each enabled option exactly once after focus moves between options", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const disabled = vi.fn();
+    const picker = SceneOverviewPicker({
+      id: "scene-content-picker",
+      items: [
+        { id: "text", label: "Text", icon, onPick: first },
+        { id: "device", label: "Device", icon, onPick: second },
+        {
+          id: "comparison",
+          label: "Comparison",
+          icon,
+          disabledReason: "Already in scene",
+          onPick: disabled,
+        },
+      ],
+    });
+    const grid = picker.props.children as ReactElement<{
+      children: ReactElement<{ onClick: () => void }>[];
+    }>;
+    const buttons = grid.props.children as ReactElement<{ onClick: () => void }>[];
+
+    expect(
+      shouldCloseSceneOverviewPickerOnBlur({
+        focusStaysInside: true,
+        internalPointerDown: false,
+      }),
+    ).toBe(false);
+    buttons[0]?.props.onClick();
+    buttons[1]?.props.onClick();
+    buttons[2]?.props.onClick();
+
+    expect(first).toHaveBeenCalledOnce();
+    expect(second).toHaveBeenCalledOnce();
+    expect(disabled).not.toHaveBeenCalled();
+  });
+});
+
 describe("SceneOverview semantic markup", () => {
-  it("keeps the entity body and chevron as separate labelled open controls", () => {
+  it("uses one labelled open control with a decorative chevron", () => {
     const html = renderToStaticMarkup(
       createElement(SceneOverviewEntityRow, {
         rowId: "device-1",
@@ -25,16 +107,14 @@ describe("SceneOverview semantic markup", () => {
       }),
     );
 
-    expect(html.match(/<button/g)).toHaveLength(2);
+    expect(html.match(/<button/g)).toHaveLength(1);
     expect(html).toContain('data-overview-row-id="device-1"');
     expect(html).toContain('data-overview-domain="devices"');
     expect(html).toContain('class="inspector-scene-overview-entity selected"');
     expect(html).toContain(
-      'class="inspector-scene-overview-entity-body" aria-label="Open Main iPhone" aria-current="true"',
+      'class="inspector-scene-overview-entity-body" aria-label="Open Main iPhone, iPhone 17 Pro" aria-current="true"',
     );
-    expect(html).toContain(
-      'class="inspector-scene-overview-entity-open" aria-label="Open Main iPhone"',
-    );
+    expect(html).toContain('class="inspector-scene-overview-entity-open" aria-hidden="true"');
     expect(html).toContain("Main iPhone");
     expect(html).toContain("iPhone 17 Pro");
   });
@@ -66,7 +146,7 @@ describe("SceneOverview semantic markup", () => {
         selected,
         onOpen,
       });
-      const [body] = row.props.children as ReactElement<{ onClick: () => void }>[];
+      const body = row.props.children as ReactElement<{ onClick: () => void }>;
       body.props.onClick();
     };
 
@@ -77,7 +157,7 @@ describe("SceneOverview semantic markup", () => {
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
-  it("exposes pointer and keyboard context-menu entry on both row controls", () => {
+  it("exposes pointer and keyboard context-menu entry on the row control", () => {
     const onContextMenu = vi.fn();
     const html = renderToStaticMarkup(
       createElement(SceneOverviewEntityRow, {
@@ -89,7 +169,7 @@ describe("SceneOverview semantic markup", () => {
         onContextMenu,
       }),
     );
-    expect(html.match(/aria-keyshortcuts="Shift\+F10"/g)).toHaveLength(2);
+    expect(html.match(/aria-keyshortcuts="Shift\+F10"/g)).toHaveLength(1);
     expect(html).not.toContain('aria-haspopup="menu"');
 
     const row = SceneOverviewEntityRow({
@@ -100,7 +180,7 @@ describe("SceneOverview semantic markup", () => {
       onOpen: vi.fn(),
       onContextMenu,
     });
-    const [body] = row.props.children as ReactElement<{
+    const body = row.props.children as ReactElement<{
       onContextMenu: (event: {
         preventDefault: () => void;
         stopPropagation: () => void;
@@ -115,7 +195,7 @@ describe("SceneOverview semantic markup", () => {
         stopPropagation: () => void;
         currentTarget: HTMLButtonElement;
       }) => void;
-    }>[];
+    }>;
     const trigger = {
       getBoundingClientRect: () => ({ left: 100, right: 180, bottom: 72 }),
     } as HTMLButtonElement;

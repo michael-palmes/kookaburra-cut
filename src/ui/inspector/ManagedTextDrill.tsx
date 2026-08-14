@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import {
   deriveManagedTextModel,
+  resolveManagedTextGroups,
   type VirtualManagedTextOptions,
   type VirtualManagedTextRegistration,
 } from "../../engine/managedText";
@@ -11,15 +12,23 @@ import type {
   SceneManagedTextMarker,
   SceneTextAlign,
 } from "../../engine/sceneDocSchema";
+import { defaultTheme } from "../../theme";
+import type { Theme } from "../../theme/tokens";
+import { ContextMenu, type ContextMenuState } from "../ContextMenu";
+import { ColourPicker } from "../colour/ColourPicker";
+import { HEADER_EMOJIS } from "../SceneTextFields";
 import {
   applyManagedTextStructuralAction,
   type ConfirmManagedTextTakeover,
   describeManagedTextMotion,
   type ManagedTextStructuralAction,
+  managedTextGroupAlignment,
   managedTextStyleValue,
   performManagedTextStructuralAction,
   setManagedTextAlignment,
+  setManagedTextColour,
   setManagedTextCopy,
+  setManagedTextGroupAlignment,
   setManagedTextIcon,
   setManagedTextPointCopy,
   setManagedTextStyle,
@@ -50,6 +59,28 @@ export type ManagedTextWrite = (
   request: ManagedTextWriteRequest,
 ) => Promise<boolean | undefined> | boolean | undefined;
 
+export interface PointerReorderRowBounds {
+  top: number;
+  bottom: number;
+}
+
+export function pointerReorderIndex(
+  clientY: number,
+  rows: readonly PointerReorderRowBounds[],
+): number | null {
+  if (rows.length === 0) return null;
+  let nearest = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const [index, row] of rows.entries()) {
+    const distance = Math.abs(clientY - (row.top + row.bottom) / 2);
+    if (distance < nearestDistance) {
+      nearest = index;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
 export function restoreManagedTextActivatorFocus(
   ref: { current: HTMLElement | null },
   schedule: (callback: () => void) => void = (callback) => {
@@ -70,13 +101,16 @@ export interface ManagedTextDrillProps {
   virtualOptions?: VirtualManagedTextOptions;
   /** Re-resolves doc-backed overlay icons when a queued write runs against a newer document. */
   virtualOptionsForDoc?: (doc: SceneDoc) => VirtualManagedTextOptions;
+  selectedGroupKey?: string | null;
   selectedItemKey?: string | null;
   backLabel?: string;
   onBack: () => void;
+  onSelectGroup?: (groupKey: string | null) => void;
   onSelectItem: (itemKey: string | null) => void;
   onOpenMotion: (itemKey: string) => void;
   onEditFont: (itemKey: string) => void;
-  onEditColour: (itemKey: string) => void;
+  theme?: Theme;
+  colourDefaults?: Readonly<Record<string, string>>;
   confirmTakeover?: ConfirmManagedTextTakeover;
   writeDoc: ManagedTextWrite;
   recentIcons?: readonly string[];
@@ -113,6 +147,30 @@ const MARKERS: readonly { value: SceneManagedTextMarker; label: string; preview:
   { value: "number", label: "Number", preview: "1." },
   { value: "none", label: "None", preview: "∅" },
 ];
+
+interface PointerReorderDrag {
+  pointerId: number;
+  key: string;
+  startY: number;
+  targetIndex: number;
+  active: boolean;
+}
+
+interface ManagedTextMenu {
+  key: string;
+  kind: "add" | "item";
+  state: ContextMenuState;
+}
+
+const POINTER_REORDER_THRESHOLD_PX = 4;
+
+function listRowBounds(list: HTMLOListElement | null): PointerReorderRowBounds[] {
+  if (!list) return [];
+  return Array.from(list.children).map((child) => {
+    const rect = child.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom };
+  });
+}
 
 function TextTypeIcon({ type }: { type: SceneManagedTextItemType }) {
   const glyph =
@@ -225,10 +283,19 @@ function TextControlIcon({
   );
 }
 
-function SmallIcon({ type }: { type: "add" | "grip" | "up" | "down" | "remove" }) {
+function SmallIcon({
+  type,
+}: {
+  type: "add" | "duplicate" | "grip" | "more" | "up" | "down" | "remove";
+}) {
   const glyph =
     type === "add" ? (
       <path d="M8 3v10M3 8h10" />
+    ) : type === "duplicate" ? (
+      <>
+        <rect x="5.5" y="5.5" width="7" height="7" rx="1" />
+        <path d="M3.5 10.5h-1v-7a1 1 0 0 1 1-1h7v1" />
+      </>
     ) : type === "grip" ? (
       <>
         <circle cx="5" cy="4" r="0.7" fill="currentColor" stroke="none" />
@@ -237,6 +304,12 @@ function SmallIcon({ type }: { type: "add" | "grip" | "up" | "down" | "remove" }
         <circle cx="11" cy="8" r="0.7" fill="currentColor" stroke="none" />
         <circle cx="5" cy="12" r="0.7" fill="currentColor" stroke="none" />
         <circle cx="11" cy="12" r="0.7" fill="currentColor" stroke="none" />
+      </>
+    ) : type === "more" ? (
+      <>
+        <circle cx="8" cy="3.5" r="1" fill="currentColor" stroke="none" />
+        <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+        <circle cx="8" cy="12.5" r="1" fill="currentColor" stroke="none" />
       </>
     ) : type === "up" ? (
       <path d="m4 10 4-4 4 4" />
@@ -270,7 +343,7 @@ function itemLabel(type: SceneManagedTextItemType): string {
 }
 
 function itemPreview(item: SceneManagedTextItem): string {
-  if (item.type === "icon") return item.icon || item.text || "No icon";
+  if (item.type === "icon") return (item.icon ?? item.text) || "No icon";
   if (item.type === "bullets") {
     return (
       item.points
@@ -351,13 +424,16 @@ export function ManagedTextDrill({
   registrations = [],
   virtualOptions = {},
   virtualOptionsForDoc,
+  selectedGroupKey: requestedGroupKey,
   selectedItemKey,
   backLabel = "Scene",
   onBack,
+  onSelectGroup = () => undefined,
   onSelectItem,
   onOpenMotion,
   onEditFont,
-  onEditColour,
+  theme = defaultTheme,
+  colourDefaults = {},
   confirmTakeover,
   writeDoc,
   recentIcons = [],
@@ -373,29 +449,68 @@ export function ManagedTextDrill({
 }: ManagedTextDrillProps) {
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
-  const selected =
-    model.items.find((item) => item.key === selectedItemKey) ?? model.items[0] ?? null;
+  const groups = resolveManagedTextGroups(model.items, doc.managedText?.groups);
+  const selectedGroup =
+    groups.find((group) => group.key === requestedGroupKey) ??
+    groups.find((group) => group.itemKeys.includes(selectedItemKey ?? "")) ??
+    groups[0] ??
+    null;
+  const groupItems = selectedGroup?.items ?? [];
+  const isSingleItemGroup = groupItems.length === 1;
+  const selected = groupItems.find((item) => item.key === selectedItemKey) ?? groupItems[0] ?? null;
   const resolvedVirtualOptions = optionsFor(doc);
   const legacyIcon = resolvedVirtualOptions.icon ?? doc.headerIcon;
   const legacyIconKey = legacyIcon ? (resolvedVirtualOptions.iconKey ?? "icon") : null;
   const selectedIconNeedsTakeover =
     model.ownership === "authored" && selected?.type === "icon" && selected.key !== legacyIconKey;
-  const draggedItem = useRef<string | null>(null);
-  const draggedPoint = useRef<string | null>(null);
+  const selectedIconValue = selected?.type === "icon" ? (selected.icon ?? selected.text ?? "") : "";
+  const itemListRef = useRef<HTMLOListElement | null>(null);
+  const pointListRef = useRef<HTMLOListElement | null>(null);
+  const addPointButtonRef = useRef<HTMLButtonElement | null>(null);
+  const addElementButtonRef = useRef<HTMLButtonElement | null>(null);
+  const itemButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const itemDrag = useRef<PointerReorderDrag | null>(null);
+  const pointDrag = useRef<PointerReorderDrag | null>(null);
   const baselines = useRef(new Map<string, SceneDoc>());
   const pointRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [pendingPointFocus, setPendingPointFocus] = useState<string | null>(null);
-  const copyHeadingId = useId();
+  const [pendingPointFocus, setPendingPointFocus] = useState<"add" | string | null>(null);
+  const [itemDragVisual, setItemDragVisual] = useState<PointerReorderDrag | null>(null);
+  const [pointDragVisual, setPointDragVisual] = useState<PointerReorderDrag | null>(null);
+  const [menu, setMenu] = useState<ManagedTextMenu | null>(null);
+  const [removeGroupArmedKey, setRemoveGroupArmedKey] = useState<string | null>(null);
+  const iconWriteRef = useRef<symbol | null>(null);
+  const [iconWriteBusy, setIconWriteBusy] = useState(false);
+  const mountedRef = useRef(true);
+  const elementsHeadingId = useId();
   const displayedTextStyle =
     model.textStyle || doc.textStyle ? { ...model.textStyle, ...doc.textStyle } : undefined;
   const displayedDoc = displayedTextStyle ? { ...doc, textStyle: displayedTextStyle } : doc;
-  const displayedAlignment = alignment ?? doc.textLayout?.align ?? "center";
+  const fallbackAlignment = alignment ?? doc.textLayout?.align ?? "center";
+  const displayedAlignment = selectedGroup
+    ? managedTextGroupAlignment(doc, selectedGroup.key, selectedGroup.align ?? fallbackAlignment)
+    : fallbackAlignment;
+  const resolveColour = (value: string) =>
+    value === "text" || value === "muted" || value === "accent" ? theme.colors[value] : value;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!removeGroupArmedKey) return;
+    const timeout = window.setTimeout(() => setRemoveGroupArmedKey(null), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [removeGroupArmedKey]);
   useEffect(() => {
     if (!pendingPointFocus) return;
     const frame = window.requestAnimationFrame(() => {
-      const input = pointRefs.current[pendingPointFocus];
-      if (!input) return;
-      input.focus({ preventScroll: true });
+      const target =
+        pendingPointFocus === "add"
+          ? addPointButtonRef.current
+          : pointRefs.current[pendingPointFocus];
+      if (!target) return;
+      target.focus({ preventScroll: true });
       setPendingPointFocus(null);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -405,6 +520,8 @@ export function ManagedTextDrill({
     action: ManagedTextStructuralAction,
     baseline = doc,
     historyBaseline?: SceneDoc,
+    focusPointAfterSuccess?: "add" | string,
+    focusItemAfterSuccess?: "add" | string,
   ) => {
     if (disabled) return;
     await performManagedTextStructuralAction({
@@ -415,6 +532,7 @@ export function ManagedTextDrill({
       confirmTakeover,
       commit: async (result, history) => {
         let selectedItemKey = result.selectedItemKey;
+        let selectedGroupKey = result.selectedGroupKey;
         let pointToFocus: string | null = null;
         const succeeded = await writeDoc({
           preview: result.doc,
@@ -441,15 +559,262 @@ export function ManagedTextDrill({
                   ?.points?.find((point) => !before.has(point.key))?.key ?? null;
             }
             selectedItemKey = applied.selectedItemKey;
+            selectedGroupKey = applied.selectedGroupKey;
             return applied.doc;
           },
         });
-        if (succeeded !== false) {
+        if (succeeded !== false && mountedRef.current) {
+          onSelectGroup(selectedGroupKey);
           onSelectItem(selectedItemKey);
-          if (pointToFocus) setPendingPointFocus(pointToFocus);
+          if (action.type === "remove-group" && selectedGroupKey === null) {
+            onBack();
+            return;
+          }
+          if (pointToFocus || focusPointAfterSuccess) {
+            setPendingPointFocus(pointToFocus ?? focusPointAfterSuccess ?? null);
+          }
+          const focusTarget =
+            focusItemAfterSuccess ??
+            (action.type === "duplicate-item" || action.type === "add-item"
+              ? (selectedItemKey ?? undefined)
+              : undefined);
+          if (focusTarget) {
+            window.requestAnimationFrame(() => {
+              const target =
+                focusTarget === "add"
+                  ? addElementButtonRef.current
+                  : itemButtonRefs.current[focusTarget];
+              const fallback = addElementButtonRef.current;
+              if (target?.isConnected) target.focus({ preventScroll: true });
+              else if (fallback?.isConnected) fallback.focus({ preventScroll: true });
+            });
+          }
         }
       },
     });
+  };
+
+  const openAddMenu = (button: HTMLButtonElement) => {
+    if (!selectedGroup || disabled) return;
+    const rect = button.getBoundingClientRect();
+    setMenu({
+      key: "add",
+      kind: "add",
+      state: {
+        x: rect.left,
+        y: rect.bottom + 4,
+        ariaLabel: "Add text element",
+        returnFocus: button,
+        items: TYPE_OPTIONS.map((option) => ({
+          id: `add-${option.value}`,
+          label: `Add ${option.label.toLowerCase()}`,
+          icon: option.icon,
+          onSelect: () => {
+            void runStructural({
+              type: "add-item",
+              groupKey: selectedGroup.key,
+              itemType: option.value,
+            });
+          },
+        })),
+      },
+    });
+  };
+
+  const openItemMenu = (
+    item: SceneManagedTextItem,
+    index: number,
+    position: { x: number; y: number },
+    returnFocus: HTMLElement | null,
+  ) => {
+    if (disabled) return;
+    onSelectItem(item.key);
+    const previous = groupItems[index - 1];
+    const next = groupItems[index + 1];
+    const accessibleItemLabel = `${itemLabel(item.type)} ${index + 1}: ${itemPreview(item)}`;
+    setMenu({
+      key: `item:${item.key}`,
+      kind: "item",
+      state: {
+        ...position,
+        ariaLabel: `Actions for ${accessibleItemLabel}`,
+        returnFocus,
+        items: [
+          {
+            id: "duplicate",
+            label: "Duplicate",
+            icon: <SmallIcon type="duplicate" />,
+            onSelect: () => void runStructural({ type: "duplicate-item", itemKey: item.key }),
+          },
+          "separator",
+          {
+            id: "move-up",
+            label: "Move up",
+            icon: <SmallIcon type="up" />,
+            disabled: !previous,
+            onSelect: () => {
+              if (!previous) return;
+              void runStructural({
+                type: "move-item",
+                itemKey: item.key,
+                toIndex: model.items.findIndex((candidate) => candidate.key === previous.key),
+              });
+            },
+          },
+          {
+            id: "move-down",
+            label: "Move down",
+            icon: <SmallIcon type="down" />,
+            disabled: !next,
+            onSelect: () => {
+              if (!next) return;
+              void runStructural({
+                type: "move-item",
+                itemKey: item.key,
+                toIndex: model.items.findIndex((candidate) => candidate.key === next.key),
+              });
+            },
+          },
+          "separator",
+          {
+            id: "delete",
+            label: "Delete",
+            confirmLabel: "Delete element?",
+            danger: true,
+            icon: <SmallIcon type="remove" />,
+            onSelect: () => {
+              const fallback = next?.key ?? previous?.key ?? "add";
+              void runStructural(
+                { type: "remove-item", itemKey: item.key },
+                doc,
+                undefined,
+                undefined,
+                fallback,
+              );
+            },
+          },
+        ],
+      },
+    });
+  };
+
+  const openItemMenuFromButton = (
+    button: HTMLButtonElement,
+    item: SceneManagedTextItem,
+    index: number,
+  ) => {
+    const rect = button.getBoundingClientRect();
+    openItemMenu(item, index, { x: rect.right, y: rect.bottom }, button);
+  };
+
+  const updatePointerDrag = (
+    clientY: number,
+    drag: PointerReorderDrag,
+    list: HTMLOListElement | null,
+  ): PointerReorderDrag => {
+    const active = drag.active || Math.abs(clientY - drag.startY) >= POINTER_REORDER_THRESHOLD_PX;
+    if (!active) return drag;
+    return {
+      ...drag,
+      active: true,
+      targetIndex: pointerReorderIndex(clientY, listRowBounds(list)) ?? drag.targetIndex,
+    };
+  };
+
+  const startItemDrag = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    key: string,
+    index: number,
+  ) => {
+    if (disabled || event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const drag = {
+      pointerId: event.pointerId,
+      key,
+      startY: event.clientY,
+      targetIndex: index,
+      active: false,
+    };
+    itemDrag.current = drag;
+    setItemDragVisual(drag);
+  };
+
+  const moveItemDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = itemDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const next = updatePointerDrag(event.clientY, drag, itemListRef.current);
+    itemDrag.current = next;
+    setItemDragVisual(next);
+  };
+
+  const finishItemDrag = (event: React.PointerEvent<HTMLButtonElement>, cancelled = false) => {
+    const drag = itemDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const finished = updatePointerDrag(event.clientY, drag, itemListRef.current);
+    itemDrag.current = null;
+    setItemDragVisual(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled || !finished.active) return;
+    const target = groupItems[finished.targetIndex];
+    const toIndex = target
+      ? model.items.findIndex((candidate) => candidate.key === target.key)
+      : -1;
+    if (toIndex >= 0 && finished.key !== target?.key) {
+      void runStructural({ type: "move-item", itemKey: finished.key, toIndex });
+    }
+  };
+
+  const startPointDrag = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    key: string,
+    index: number,
+  ) => {
+    if (disabled || event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const drag = {
+      pointerId: event.pointerId,
+      key,
+      startY: event.clientY,
+      targetIndex: index,
+      active: false,
+    };
+    pointDrag.current = drag;
+    setPointDragVisual(drag);
+  };
+
+  const movePointDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = pointDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const next = updatePointerDrag(event.clientY, drag, pointListRef.current);
+    pointDrag.current = next;
+    setPointDragVisual(next);
+  };
+
+  const finishPointDrag = (event: React.PointerEvent<HTMLButtonElement>, cancelled = false) => {
+    const drag = pointDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const finished = updatePointerDrag(event.clientY, drag, pointListRef.current);
+    pointDrag.current = null;
+    setPointDragVisual(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled || !finished.active || !selected) return;
+    const target = selected.points?.[finished.targetIndex];
+    if (target && finished.key !== target.key) {
+      void runStructural({
+        type: "move-point",
+        itemKey: selected.key,
+        pointKey: finished.key,
+        toIndex: finished.targetIndex,
+      });
+    }
   };
 
   const commitCopy = (item: SceneManagedTextItem, value: string) => {
@@ -496,29 +861,43 @@ export function ManagedTextDrill({
   };
 
   const commitIcon = (itemKey: string, value: string | undefined) => {
-    if (disabled) return;
+    if (disabled || iconWriteRef.current) return;
     const update = (source: SceneDoc) =>
       source.managedText !== undefined || !mutateIcon
         ? setManagedTextIcon(source, itemKey, value, registrations, optionsFor(source))
         : mutateIcon(source, itemKey, value);
     const next = update(doc);
     if (next) {
+      const token = Symbol("managed-text-icon-write");
+      iconWriteRef.current = token;
+      setIconWriteBusy(true);
       void (async () => {
-        const succeeded = await writeDoc({
-          preview: next,
-          history: "change text icon",
-          baseline: doc,
-          applyToCurrent: (current) => update(current) ?? current,
-        });
-        if (succeeded !== false && value) onIconCommitted?.(value);
+        try {
+          const succeeded = await writeDoc({
+            preview: next,
+            history: "change text icon",
+            baseline: doc,
+            applyToCurrent: (current) => update(current) ?? current,
+          });
+          if (succeeded !== false && value) onIconCommitted?.(value);
+        } finally {
+          if (iconWriteRef.current === token) {
+            iconWriteRef.current = null;
+            if (mountedRef.current) setIconWriteBusy(false);
+          }
+        }
       })();
     }
   };
 
   const commitAlignment = (align: SceneTextAlign) => {
-    if (disabled) return;
+    if (disabled || !selectedGroup) return;
     const update = (source: SceneDoc) =>
-      mutateAlignment ? mutateAlignment(source, align) : setManagedTextAlignment(source, align);
+      source.managedText
+        ? setManagedTextGroupAlignment(source, selectedGroup.key, align, optionsFor(source))
+        : mutateAlignment
+          ? mutateAlignment(source, align)
+          : setManagedTextAlignment(source, align);
     const next = update(doc);
     if (!next) return;
     void writeDoc({
@@ -526,6 +905,20 @@ export function ManagedTextDrill({
       history: "text alignment",
       baseline: doc,
       applyToCurrent: (current) => update(current) ?? current,
+    });
+  };
+
+  const commitColour = (itemKey: string, value: string | undefined) => {
+    if (disabled) return;
+    const next = setManagedTextColour(doc, itemKey, value, registrations, optionsFor(doc));
+    if (!next) return;
+    void writeDoc({
+      preview: next,
+      history: "text colour",
+      baseline: doc,
+      applyToCurrent: (current) =>
+        setManagedTextColour(current, itemKey, value, registrations, optionsFor(current)) ??
+        current,
     });
   };
 
@@ -580,14 +973,24 @@ export function ManagedTextDrill({
           baseline = doc;
           baselines.current.set(baselineKey, baseline);
         }
-        const result = applyManagedTextStructuralAction(baseline, action(nextValue));
+        const result = applyManagedTextStructuralAction(
+          baseline,
+          action(nextValue),
+          registrations,
+          optionsFor(baseline),
+        );
         if (result) {
           void writeDoc({
             preview: result.doc,
             history: false,
             baseline,
             applyToCurrent: (current) =>
-              applyManagedTextStructuralAction(current, action(nextValue))?.doc ?? current,
+              applyManagedTextStructuralAction(
+                current,
+                action(nextValue),
+                registrations,
+                optionsFor(current),
+              )?.doc ?? current,
           });
         }
       },
@@ -614,398 +1017,481 @@ export function ManagedTextDrill({
   }`;
 
   return (
-    <div className="inspector-drill text-inspector-drill">
+    <div className="inspector-drill text-inspector-drill" aria-busy={disabled || undefined}>
       <DrillBack label={backLabel} title="Text" onClick={onBack} />
       <div className="inspector-drill-scroll text-inspector-scroll">
-        {notice && <p className="inspector-error">{notice}</p>}
-        <DrillGroup label="Alignment">
-          <SegmentedRow
-            className="text-inspector-alignment-segments"
-            options={ALIGNMENT_OPTIONS}
-            value={displayedAlignment}
-            onChange={commitAlignment}
-          />
-        </DrillGroup>
-        <section className="text-inspector-copy-sheet" aria-labelledby={copyHeadingId}>
-          <div className="text-inspector-section-heading">
-            <span id={copyHeadingId} className="drill-group-label">
-              Copy
-            </span>
-            <button
-              type="button"
-              className="btn small text-inspector-add-line"
+        {notice && (
+          <p className="inspector-error" role="alert">
+            {notice}
+          </p>
+        )}
+        {isSingleItemGroup ? (
+          <section className="text-inspector-single-controls" aria-label="Text controls">
+            <div className="text-inspector-section-heading">
+              <span className="drill-group-label">Alignment</span>
+              <button
+                ref={addElementButtonRef}
+                type="button"
+                className="text-inspector-icon-button text-inspector-add-line"
+                aria-label="Add text element"
+                aria-haspopup="menu"
+                aria-expanded={menu?.kind === "add"}
+                title="Add text element"
+                disabled={disabled || !selectedGroup}
+                onClick={(event) => {
+                  if (menu?.kind === "add") setMenu(null);
+                  else openAddMenu(event.currentTarget);
+                }}
+              >
+                <SmallIcon type="add" />
+              </button>
+            </div>
+            <SegmentedRow
+              className="text-inspector-alignment-segments"
+              ariaLabel="Text alignment"
+              options={ALIGNMENT_OPTIONS}
+              value={displayedAlignment}
+              onChange={commitAlignment}
               disabled={disabled}
-              onClick={() =>
-                void runStructural({
-                  type: "add-item",
-                  itemType: "title",
-                  afterKey: selected?.key,
-                })
-              }
-            >
-              <SmallIcon type="add" />
-              Line
-            </button>
-          </div>
-          {model.items.length === 0 ? (
-            <p className="inspector-empty text-inspector-empty">No text lines</p>
-          ) : (
-            <ol className="text-inspector-line-list">
-              {model.items.map((item, index) => {
-                const active = item.key === selected?.key;
-                return (
-                  <li
-                    key={item.key}
-                    className={`text-inspector-line${active ? " active" : ""}`}
-                    draggable={!disabled}
-                    onDragStart={(event) => {
-                      draggedItem.current = item.key;
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", item.key);
-                    }}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const itemKey =
-                        draggedItem.current ?? event.dataTransfer.getData("text/plain");
-                      draggedItem.current = null;
-                      if (itemKey && itemKey !== item.key) {
-                        void runStructural({ type: "move-item", itemKey, toIndex: index });
-                      }
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="text-inspector-line-grip"
-                      aria-label={`Reorder ${itemLabel(item.type)} line`}
-                      disabled={disabled}
-                      onKeyDown={(event) => {
-                        if (event.key === "ArrowUp" && index > 0) {
-                          event.preventDefault();
-                          void runStructural({
-                            type: "move-item",
-                            itemKey: item.key,
-                            toIndex: index - 1,
-                          });
-                        }
-                        if (event.key === "ArrowDown" && index < model.items.length - 1) {
-                          event.preventDefault();
-                          void runStructural({
-                            type: "move-item",
-                            itemKey: item.key,
-                            toIndex: index + 1,
-                          });
-                        }
+            />
+          </section>
+        ) : (
+          <section className="text-inspector-copy-sheet" aria-labelledby={elementsHeadingId}>
+            <div className="text-inspector-section-heading">
+              <span id={elementsHeadingId} className="drill-group-label">
+                Text group
+              </span>
+              <button
+                ref={addElementButtonRef}
+                type="button"
+                className="text-inspector-icon-button text-inspector-add-line"
+                aria-label="Add text element"
+                aria-haspopup="menu"
+                aria-expanded={menu?.kind === "add"}
+                title="Add text element"
+                disabled={disabled || !selectedGroup}
+                onClick={(event) => {
+                  if (menu?.kind === "add") setMenu(null);
+                  else openAddMenu(event.currentTarget);
+                }}
+              >
+                <SmallIcon type="add" />
+              </button>
+            </div>
+            <SegmentedRow
+              className="text-inspector-alignment-segments"
+              ariaLabel="Text group alignment"
+              options={ALIGNMENT_OPTIONS}
+              value={displayedAlignment}
+              onChange={commitAlignment}
+              disabled={disabled}
+            />
+            {groupItems.length === 0 ? (
+              <p className="inspector-empty text-inspector-empty">No copy selected</p>
+            ) : (
+              <ol ref={itemListRef} className="text-inspector-line-list">
+                {groupItems.map((item, index) => {
+                  const active = item.key === selected?.key;
+                  const accessibleItemLabel = `${itemLabel(item.type)} ${index + 1}: ${itemPreview(item)}`;
+                  const dragging = itemDragVisual?.active && itemDragVisual.key === item.key;
+                  const dropTarget =
+                    itemDragVisual?.active && itemDragVisual.targetIndex === index && !dragging;
+                  return (
+                    <li
+                      key={item.key}
+                      className={`text-inspector-line${active ? " active" : ""}${
+                        dragging ? " dragging" : ""
+                      }${dropTarget ? " drop-target" : ""}`}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        openItemMenu(
+                          item,
+                          index,
+                          { x: event.clientX, y: event.clientY },
+                          itemButtonRefs.current[item.key],
+                        );
                       }}
                     >
-                      <SmallIcon type="grip" />
-                    </button>
-                    <button
-                      type="button"
-                      className="text-inspector-line-select"
-                      aria-pressed={active}
-                      onClick={() => onSelectItem(item.key)}
-                    >
-                      <span className="text-inspector-line-type">{itemLabel(item.type)}</span>
-                      <span className="text-inspector-line-preview" title={itemPreview(item)}>
-                        {itemPreview(item)}
-                      </span>
-                    </button>
-                    <span className="text-inspector-line-order">
                       <button
                         type="button"
-                        aria-label={`Move ${itemLabel(item.type)} line up`}
-                        disabled={disabled || index === 0}
-                        onClick={() =>
-                          void runStructural({
-                            type: "move-item",
-                            itemKey: item.key,
-                            toIndex: index - 1,
-                          })
-                        }
-                      >
-                        <SmallIcon type="up" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${itemLabel(item.type)} line down`}
-                        disabled={disabled || index === model.items.length - 1}
-                        onClick={() =>
-                          void runStructural({
-                            type: "move-item",
-                            itemKey: item.key,
-                            toIndex: index + 1,
-                          })
-                        }
-                      >
-                        <SmallIcon type="down" />
-                      </button>
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </section>
-
-        {selected && (
-          <>
-            <DrillGroup label="Selected line">
-              <SegmentedRow
-                className="text-inspector-type-segments"
-                options={TYPE_OPTIONS}
-                value={selected.type}
-                onChange={(itemType) =>
-                  void runStructural({
-                    type: "change-type",
-                    itemKey: selected.key,
-                    itemType,
-                  })
-                }
-              />
-              {(selected.type === "title" || selected.type === "subtitle") && (
-                <CopyField
-                  value={selected.text ?? ""}
-                  label={`${itemLabel(selected.type)} copy`}
-                  multiline
-                  disabled={disabled}
-                  onCommit={(value) => commitCopy(selected, value)}
-                />
-              )}
-              {selected.type === "bullets" && (
-                <div className="text-inspector-bullets">
-                  <ol className="text-inspector-point-list">
-                    {(selected.points ?? []).map((point, pointIndex) => (
-                      <li
-                        key={point.key}
-                        className="text-inspector-point-row"
-                        draggable={!disabled}
-                        onDragStart={(event) => {
-                          draggedPoint.current = point.key;
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", point.key);
-                        }}
-                        onDragOver={(event) => event.preventDefault()}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          const pointKey =
-                            draggedPoint.current ?? event.dataTransfer.getData("text/plain");
-                          draggedPoint.current = null;
-                          if (pointKey && pointKey !== point.key) {
+                        className="text-inspector-line-grip"
+                        aria-label={`Reorder ${accessibleItemLabel}`}
+                        disabled={disabled}
+                        onPointerDown={(event) => startItemDrag(event, item.key, index)}
+                        onPointerMove={moveItemDrag}
+                        onPointerUp={finishItemDrag}
+                        onPointerCancel={(event) => finishItemDrag(event, true)}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowUp" && index > 0) {
+                            event.preventDefault();
                             void runStructural({
-                              type: "move-point",
-                              itemKey: selected.key,
-                              pointKey,
-                              toIndex: pointIndex,
+                              type: "move-item",
+                              itemKey: item.key,
+                              toIndex: model.items.findIndex(
+                                (candidate) => candidate.key === groupItems[index - 1]?.key,
+                              ),
+                            });
+                          }
+                          if (event.key === "ArrowDown" && index < groupItems.length - 1) {
+                            event.preventDefault();
+                            const nextKey = groupItems[index + 1]?.key;
+                            const toIndex = model.items.findIndex(
+                              (candidate) => candidate.key === nextKey,
+                            );
+                            void runStructural({
+                              type: "move-item",
+                              itemKey: item.key,
+                              toIndex,
                             });
                           }
                         }}
                       >
-                        <button
-                          type="button"
-                          className="text-inspector-point-grip"
-                          aria-label={`Reorder point ${pointIndex + 1}`}
-                          disabled={disabled}
-                          onKeyDown={(event) => {
-                            if (event.key === "ArrowUp" && pointIndex > 0) {
-                              event.preventDefault();
-                              void runStructural({
-                                type: "move-point",
-                                itemKey: selected.key,
-                                pointKey: point.key,
-                                toIndex: pointIndex - 1,
-                              });
-                            }
-                            if (
-                              event.key === "ArrowDown" &&
-                              pointIndex < (selected.points?.length ?? 0) - 1
-                            ) {
-                              event.preventDefault();
-                              void runStructural({
-                                type: "move-point",
-                                itemKey: selected.key,
-                                pointKey: point.key,
-                                toIndex: pointIndex + 1,
-                              });
-                            }
-                          }}
-                        >
-                          <SmallIcon type="grip" />
-                        </button>
-                        <CopyField
-                          value={point.text}
-                          label={`Point ${pointIndex + 1}`}
-                          disabled={disabled}
-                          inputRef={(element) => {
-                            pointRefs.current[point.key] = element;
-                          }}
-                          onCommit={(value) => commitPointCopy(selected, point.key, value)}
-                          onReturn={(afterPointText) =>
-                            void runStructural({
-                              type: "add-point",
-                              itemKey: selected.key,
-                              afterPointKey: point.key,
-                              afterPointText,
-                            })
+                        <SmallIcon type="grip" />
+                      </button>
+                      <button
+                        ref={(element) => {
+                          itemButtonRefs.current[item.key] = element;
+                        }}
+                        type="button"
+                        className="text-inspector-line-select"
+                        aria-pressed={active}
+                        disabled={disabled}
+                        onClick={() => onSelectItem(item.key)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key !== "ContextMenu" &&
+                            !(event.shiftKey && event.key === "F10")
+                          ) {
+                            return;
                           }
-                        />
-                        <button
-                          type="button"
-                          className="text-inspector-point-remove"
-                          aria-label={`Remove point ${pointIndex + 1}`}
-                          disabled={disabled}
-                          onClick={() =>
-                            void runStructural({
-                              type: "remove-point",
-                              itemKey: selected.key,
-                              pointKey: point.key,
-                            })
-                          }
-                        >
-                          <SmallIcon type="remove" />
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                  <button
-                    type="button"
-                    className="btn small text-inspector-add-point"
-                    disabled={disabled}
-                    onClick={() => void runStructural({ type: "add-point", itemKey: selected.key })}
-                  >
-                    <SmallIcon type="add" />
-                    Point
-                  </button>
-                  <fieldset className="text-inspector-marker-fieldset" disabled={disabled}>
-                    <legend>Marker</legend>
-                    <div className="text-inspector-marker-grid">
-                      {MARKERS.map((marker) => (
-                        <button
-                          key={marker.value}
-                          type="button"
-                          aria-label={`${marker.label} marker`}
-                          aria-pressed={(selected.marker ?? "dot") === marker.value}
-                          title={marker.label}
-                          onClick={() =>
-                            void runStructural({
-                              type: "set-marker",
-                              itemKey: selected.key,
-                              marker: marker.value,
-                            })
-                          }
-                        >
-                          {marker.preview}
-                        </button>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <InspectorSliderRow
-                    icon={<TextControlIcon type="gap" />}
-                    label="Point gap"
-                    value={selected.pointGap ?? 0.14}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    {...bulletSlider("pointGap")}
-                  />
-                  <InspectorSliderRow
-                    icon={<TextControlIcon type="indent" />}
-                    label="Indent"
-                    value={selected.indent ?? 0.2}
-                    min={0}
-                    max={1.5}
-                    step={0.01}
-                    {...bulletSlider("indent")}
-                  />
-                </div>
-              )}
-              {selected.type === "icon" && (
-                <div className="text-inspector-icon-editor">
-                  <div className="text-inspector-icon-preview" role="img" aria-label="Icon preview">
-                    {selected.icon && resolveIconPreview?.(selected.icon) ? (
-                      <img src={resolveIconPreview(selected.icon)} alt="" />
-                    ) : (
-                      <span>{selected.icon || "No icon"}</span>
-                    )}
-                  </div>
-                  {selectedIconNeedsTakeover ? (
-                    <div className="text-inspector-icon-takeover">
-                      <p className="inspector-stub-note">
-                        This icon is controlled by scene code. Take over the text block before
-                        changing its source, placement or motion.
-                      </p>
+                          event.preventDefault();
+                          openItemMenuFromButton(event.currentTarget, item, index);
+                        }}
+                      >
+                        <span className="text-inspector-line-type">{itemLabel(item.type)}</span>
+                        <span className="text-inspector-line-preview" title={itemPreview(item)}>
+                          {itemPreview(item)}
+                        </span>
+                      </button>
                       <button
                         type="button"
-                        className="btn small"
+                        className="text-inspector-line-menu"
+                        aria-label={`More actions for ${accessibleItemLabel}`}
+                        aria-haspopup="menu"
+                        aria-expanded={menu?.key === `item:${item.key}`}
                         disabled={disabled}
-                        onClick={() =>
-                          void runStructural({ type: "take-over", itemKey: selected.key })
+                        onClick={(event) =>
+                          openItemMenuFromButton(event.currentTarget, item, index)
                         }
                       >
-                        Take over to edit
+                        <SmallIcon type="more" />
                       </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+        )}
+
+        {selected && (
+          <>
+            <section
+              className="text-inspector-element-editor"
+              aria-label={`${itemLabel(selected.type)} element`}
+            >
+              <SegmentedRow
+                className="text-inspector-type-segments"
+                ariaLabel="Element type"
+                options={TYPE_OPTIONS}
+                value={selected.type}
+                disabled={disabled}
+                onChange={(itemType) =>
+                  void runStructural({ type: "change-type", itemKey: selected.key, itemType })
+                }
+              />
+              <div className="text-inspector-element-fields">
+                {(selected.type === "title" || selected.type === "subtitle") && (
+                  <CopyField
+                    value={selected.text ?? ""}
+                    label={`${itemLabel(selected.type)} copy`}
+                    multiline
+                    disabled={disabled}
+                    onCommit={(value) => commitCopy(selected, value)}
+                  />
+                )}
+                {selected.type === "bullets" && (
+                  <div className="text-inspector-bullets">
+                    <ol ref={pointListRef} className="text-inspector-point-list">
+                      {(selected.points ?? []).map((point, pointIndex) => (
+                        <li
+                          key={point.key}
+                          className={`text-inspector-point-row${
+                            pointDragVisual?.active && pointDragVisual.key === point.key
+                              ? " dragging"
+                              : ""
+                          }${
+                            pointDragVisual?.active &&
+                            pointDragVisual.targetIndex === pointIndex &&
+                            pointDragVisual.key !== point.key
+                              ? " drop-target"
+                              : ""
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="text-inspector-point-grip"
+                            aria-label={`Reorder point ${pointIndex + 1}`}
+                            disabled={disabled}
+                            onPointerDown={(event) => startPointDrag(event, point.key, pointIndex)}
+                            onPointerMove={movePointDrag}
+                            onPointerUp={finishPointDrag}
+                            onPointerCancel={(event) => finishPointDrag(event, true)}
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowUp" && pointIndex > 0) {
+                                event.preventDefault();
+                                void runStructural({
+                                  type: "move-point",
+                                  itemKey: selected.key,
+                                  pointKey: point.key,
+                                  toIndex: pointIndex - 1,
+                                });
+                              }
+                              if (
+                                event.key === "ArrowDown" &&
+                                pointIndex < (selected.points?.length ?? 0) - 1
+                              ) {
+                                event.preventDefault();
+                                void runStructural({
+                                  type: "move-point",
+                                  itemKey: selected.key,
+                                  pointKey: point.key,
+                                  toIndex: pointIndex + 1,
+                                });
+                              }
+                            }}
+                          >
+                            <SmallIcon type="grip" />
+                          </button>
+                          <CopyField
+                            value={point.text}
+                            label={`Point ${pointIndex + 1}`}
+                            disabled={disabled}
+                            inputRef={(element) => {
+                              pointRefs.current[point.key] = element;
+                            }}
+                            onCommit={(value) => commitPointCopy(selected, point.key, value)}
+                            onReturn={(afterPointText) =>
+                              void runStructural({
+                                type: "add-point",
+                                itemKey: selected.key,
+                                afterPointKey: point.key,
+                                afterPointText,
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="text-inspector-point-remove"
+                            aria-label={`Remove point ${pointIndex + 1}`}
+                            disabled={disabled}
+                            onClick={() => {
+                              const focusAfterRemove =
+                                selected.points?.[pointIndex + 1]?.key ??
+                                selected.points?.[pointIndex - 1]?.key ??
+                                "add";
+                              void runStructural(
+                                {
+                                  type: "remove-point",
+                                  itemKey: selected.key,
+                                  pointKey: point.key,
+                                },
+                                doc,
+                                undefined,
+                                focusAfterRemove,
+                              );
+                            }}
+                          >
+                            <SmallIcon type="remove" />
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                    <button
+                      ref={addPointButtonRef}
+                      type="button"
+                      className="btn small text-inspector-add-point"
+                      disabled={disabled}
+                      onClick={() =>
+                        void runStructural({ type: "add-point", itemKey: selected.key })
+                      }
+                    >
+                      <SmallIcon type="add" />
+                      Point
+                    </button>
+                    <fieldset className="text-inspector-marker-fieldset" disabled={disabled}>
+                      <legend>Marker</legend>
+                      <div className="text-inspector-marker-grid">
+                        {MARKERS.map((marker) => (
+                          <button
+                            key={marker.value}
+                            type="button"
+                            aria-label={`${marker.label} marker`}
+                            aria-pressed={(selected.marker ?? "dot") === marker.value}
+                            title={marker.label}
+                            onClick={() =>
+                              void runStructural({
+                                type: "set-marker",
+                                itemKey: selected.key,
+                                marker: marker.value,
+                              })
+                            }
+                          >
+                            {marker.preview}
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+                    <InspectorSliderRow
+                      icon={<TextControlIcon type="gap" />}
+                      label="Point gap"
+                      value={selected.pointGap ?? 0.14}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={disabled}
+                      {...bulletSlider("pointGap")}
+                    />
+                    <InspectorSliderRow
+                      icon={<TextControlIcon type="indent" />}
+                      label="Indent"
+                      value={selected.indent ?? 0.2}
+                      min={0}
+                      max={1.5}
+                      step={0.01}
+                      disabled={disabled}
+                      {...bulletSlider("indent")}
+                    />
+                  </div>
+                )}
+                {selected.type === "icon" && (
+                  <div className="text-inspector-icon-editor">
+                    <div
+                      className="text-inspector-icon-preview"
+                      role="img"
+                      aria-label={
+                        selectedIconValue
+                          ? `Icon preview: ${selectedIconValue}`
+                          : "No icon selected"
+                      }
+                    >
+                      {selectedIconValue && resolveIconPreview?.(selectedIconValue) ? (
+                        <img src={resolveIconPreview(selectedIconValue)} alt="" />
+                      ) : (
+                        <span>{selectedIconValue || "No icon"}</span>
+                      )}
                     </div>
-                  ) : (
-                    <>
-                      <div className="text-inspector-icon-actions">
+                    {selectedIconNeedsTakeover ? (
+                      <div className="text-inspector-icon-takeover">
+                        <p className="inspector-stub-note">
+                          This icon is controlled by scene code. Take over the text block before
+                          changing its source, placement or motion.
+                        </p>
                         <button
                           type="button"
                           className="btn small"
-                          disabled={disabled || !onOpenEmoji}
-                          onClick={async () => {
-                            const value = await onOpenEmoji?.(selected.key);
-                            if (value !== undefined) commitIcon(selected.key, value);
-                          }}
+                          disabled={disabled}
+                          onClick={() =>
+                            void runStructural({ type: "take-over", itemKey: selected.key })
+                          }
                         >
-                          All emoji
-                        </button>
-                        <button
-                          type="button"
-                          className="btn small"
-                          disabled={disabled || !onChooseImage}
-                          onClick={async () => {
-                            const value = await onChooseImage?.(selected.key);
-                            if (value !== undefined) commitIcon(selected.key, value);
-                          }}
-                        >
-                          Image…
-                        </button>
-                        <button
-                          type="button"
-                          className="btn small"
-                          disabled={disabled || !selected.icon}
-                          onClick={() => commitIcon(selected.key, undefined)}
-                        >
-                          Clear
+                          Take over to edit
                         </button>
                       </div>
-                      {recentIcons.length > 0 && (
-                        <fieldset className="text-inspector-icon-recents" disabled={disabled}>
-                          <legend>Recent</legend>
-                          <div className="text-inspector-icon-recent-grid">
-                            {recentIcons.map((icon) => (
+                    ) : (
+                      <>
+                        <fieldset
+                          className="text-inspector-icon-recents"
+                          disabled={disabled || iconWriteBusy}
+                        >
+                          <legend>Quick emoji</legend>
+                          <div className="text-inspector-icon-recent-grid text-inspector-icon-quick-grid">
+                            {HEADER_EMOJIS.map((emoji) => (
                               <button
-                                key={icon}
+                                key={emoji}
                                 type="button"
-                                aria-label={`Use recent icon ${icon}`}
-                                aria-pressed={selected.icon === icon}
-                                onClick={() => commitIcon(selected.key, icon)}
+                                aria-label={`Use emoji ${emoji}`}
+                                aria-pressed={selectedIconValue === emoji}
+                                onClick={() => commitIcon(selected.key, emoji)}
                               >
-                                {resolveIconPreview?.(icon) ? (
-                                  <img src={resolveIconPreview(icon)} alt="" />
-                                ) : (
-                                  icon
-                                )}
+                                {emoji}
                               </button>
                             ))}
                           </div>
                         </fieldset>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </DrillGroup>
+                        <div className="text-inspector-icon-actions">
+                          <button
+                            type="button"
+                            className="btn small"
+                            disabled={disabled || iconWriteBusy || !onOpenEmoji}
+                            onClick={async () => {
+                              const value = await onOpenEmoji?.(selected.key);
+                              if (value !== undefined) commitIcon(selected.key, value);
+                            }}
+                          >
+                            All emoji
+                          </button>
+                          <button
+                            type="button"
+                            className="btn small"
+                            disabled={disabled || iconWriteBusy || !onChooseImage}
+                            onClick={async () => {
+                              const value = await onChooseImage?.(selected.key);
+                              if (value !== undefined) commitIcon(selected.key, value);
+                            }}
+                          >
+                            Image…
+                          </button>
+                          <button
+                            type="button"
+                            className="btn small"
+                            disabled={disabled || iconWriteBusy || !selectedIconValue}
+                            onClick={() => commitIcon(selected.key, undefined)}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        {recentIcons.length > 0 && (
+                          <fieldset
+                            className="text-inspector-icon-recents"
+                            disabled={disabled || iconWriteBusy}
+                          >
+                            <legend>Recent</legend>
+                            <div className="text-inspector-icon-recent-grid">
+                              {recentIcons.map((icon) => (
+                                <button
+                                  key={icon}
+                                  type="button"
+                                  aria-label={`Use recent icon ${icon}`}
+                                  aria-pressed={selectedIconValue === icon}
+                                  onClick={() => commitIcon(selected.key, icon)}
+                                >
+                                  {resolveIconPreview?.(icon) ? (
+                                    <img src={resolveIconPreview(icon)} alt="" />
+                                  ) : (
+                                    icon
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </fieldset>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
 
             {selected.type !== "icon" && (
               <DrillGroup label="Style">
@@ -1020,17 +1506,45 @@ export function ManagedTextDrill({
                   disabled={disabled}
                   onClick={() => onEditFont(selected.key)}
                 />
-                <ActionRow
-                  icon={<TextControlIcon type="colour" />}
-                  label="Colour"
-                  value={
-                    typeof displayedTextStyle?.[`${selected.key}Color`] === "string"
-                      ? String(displayedTextStyle[`${selected.key}Color`])
-                      : "Theme"
-                  }
-                  disabled={disabled}
-                  onClick={() => onEditColour(selected.key)}
-                />
+                {(() => {
+                  const styleKey = `${selected.key}Color`;
+                  const override = doc.textStyle?.[styleKey];
+                  const virtualColour = model.textStyle?.[styleKey];
+                  const defaultToken =
+                    colourDefaults[selected.key] ??
+                    (selected.type === "subtitle" ? "muted" : "text");
+                  const defaultColour = resolveColour(defaultToken);
+                  const currentColour = resolveColour(
+                    typeof override === "string"
+                      ? override
+                      : typeof virtualColour === "string"
+                        ? virtualColour
+                        : defaultToken,
+                  );
+                  return (
+                    <div className="popover-row text-inspector-colour-row">
+                      <span className="action-row-icon">
+                        <TextControlIcon type="colour" />
+                      </span>
+                      <span className="popover-inline">Colour</span>
+                      <span className="action-row-value">{currentColour.toUpperCase()}</span>
+                      <ColourPicker
+                        key={selected.key}
+                        value={currentColour}
+                        defaultValue={defaultColour}
+                        label={`${itemLabel(selected.type)} colour`}
+                        disabled={disabled}
+                        theme={theme}
+                        onCommit={(hex) => commitColour(selected.key, hex)}
+                        onReset={
+                          typeof override === "string"
+                            ? () => commitColour(selected.key, undefined)
+                            : undefined
+                        }
+                      />
+                    </div>
+                  );
+                })()}
               </DrillGroup>
             )}
 
@@ -1043,6 +1557,7 @@ export function ManagedTextDrill({
                     min={10}
                     max={400}
                     step={1}
+                    disabled={disabled}
                     {...styleControl(
                       "size",
                       managedTextStyleValue(displayedDoc, selected.key, "size") * 100,
@@ -1061,6 +1576,7 @@ export function ManagedTextDrill({
                     min={-10}
                     max={10}
                     step={0.01}
+                    disabled={disabled}
                     {...styleControl(
                       "x",
                       managedTextStyleValue(displayedDoc, selected.key, "x"),
@@ -1073,6 +1589,7 @@ export function ManagedTextDrill({
                     min={-10}
                     max={10}
                     step={0.01}
+                    disabled={disabled}
                     {...styleControl(
                       "y",
                       managedTextStyleValue(displayedDoc, selected.key, "y"),
@@ -1085,6 +1602,7 @@ export function ManagedTextDrill({
                     min={-180}
                     max={180}
                     step={0.5}
+                    disabled={disabled}
                     {...styleControl(
                       "rotation",
                       managedTextStyleValue(displayedDoc, selected.key, "rotation"),
@@ -1099,6 +1617,7 @@ export function ManagedTextDrill({
                     min={0.8}
                     max={2}
                     step={0.05}
+                    disabled={disabled}
                     {...styleControl(
                       "spacing",
                       managedTextStyleValue(displayedDoc, selected.key, "spacing"),
@@ -1120,30 +1639,56 @@ export function ManagedTextDrill({
                 />
               </DrillGroup>
             )}
-
-            <div className="text-inspector-footer">
-              <button
-                type="button"
-                className="btn"
-                disabled={disabled}
-                onClick={() =>
-                  void runStructural({ type: "duplicate-item", itemKey: selected.key })
-                }
-              >
-                Duplicate
-              </button>
-              <button
-                type="button"
-                className="btn danger"
-                disabled={disabled}
-                onClick={() => void runStructural({ type: "remove-item", itemKey: selected.key })}
-              >
-                Remove
-              </button>
-            </div>
           </>
         )}
+        {selectedGroup && (
+          <div className="text-inspector-footer">
+            <button
+              type="button"
+              className="btn"
+              aria-label={isSingleItemGroup ? "Duplicate text group" : undefined}
+              disabled={disabled}
+              onClick={() =>
+                void runStructural({ type: "duplicate-group", groupKey: selectedGroup.key })
+              }
+            >
+              <SmallIcon type="duplicate" />
+              {isSingleItemGroup ? "Duplicate" : "Duplicate group"}
+            </button>
+            <button
+              type="button"
+              className="btn danger"
+              aria-label={
+                isSingleItemGroup
+                  ? removeGroupArmedKey === selectedGroup.key
+                    ? "Confirm remove text group"
+                    : "Remove text group"
+                  : undefined
+              }
+              disabled={disabled}
+              onClick={() => {
+                const removeGroupArmed = removeGroupArmedKey === selectedGroup.key;
+                if (!removeGroupArmed) {
+                  setRemoveGroupArmedKey(selectedGroup.key);
+                  return;
+                }
+                setRemoveGroupArmedKey(null);
+                void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
+              }}
+            >
+              <SmallIcon type="remove" />
+              {removeGroupArmedKey === selectedGroup.key
+                ? isSingleItemGroup
+                  ? "Remove?"
+                  : "Remove group?"
+                : isSingleItemGroup
+                  ? "Remove"
+                  : "Remove group"}
+            </button>
+          </div>
+        )}
       </div>
+      {menu && <ContextMenu key={menu.key} menu={menu.state} onClose={() => setMenu(null)} />}
     </div>
   );
 }

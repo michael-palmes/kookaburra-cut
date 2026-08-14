@@ -67,6 +67,7 @@ describe("ContextMenu semantic markup", () => {
         menu: {
           x: 12,
           y: 20,
+          ariaLabel: "Layer actions",
           items: [
             {
               id: "edit",
@@ -90,7 +91,9 @@ describe("ContextMenu semantic markup", () => {
       }),
     );
 
-    expect(html).toContain('class="context-menu" role="menu" tabindex="-1"');
+    expect(html).toContain(
+      'class="context-menu" role="menu" aria-label="Layer actions" tabindex="-1"',
+    );
     expect(html).toContain('role="menuitem" class="context-menu-item"');
     expect(html).toContain('class="context-menu-item-icon" aria-hidden="true"');
     expect(html).toContain('<span class="context-menu-item-label">Edit</span>');

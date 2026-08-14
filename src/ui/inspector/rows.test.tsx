@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DrillBack, InspectorSliderRow } from "./rows";
+import { DrillBack, InspectorSliderRow, SegmentedRow, segmentedKeyTarget } from "./rows";
 
 describe("DrillBack", () => {
   it("renders the return destination and current screen in one labelled button", () => {
@@ -36,5 +36,71 @@ describe("InspectorSliderRow", () => {
     expect(html).toContain('class="range-value"');
     expect(html).toContain("0.25");
     expect(html.match(/type="range"/g)).toHaveLength(1);
+  });
+});
+
+describe("SegmentedRow", () => {
+  const options = [
+    { value: "left", label: "Left" },
+    { value: "center", label: "Centre" },
+    { value: "right", label: "Right" },
+  ];
+
+  it("renders an accessible labelled radio setting", () => {
+    const html = renderToStaticMarkup(
+      <SegmentedRow
+        ariaLabel="Alignment"
+        options={options}
+        value="center"
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('role="radiogroup" aria-label="Alignment"');
+    expect(html).toContain('role="radio" aria-checked="true" tabindex="0"');
+    expect(html.match(/tabindex="-1"/g)).toHaveLength(2);
+  });
+
+  it("supports arrow, Home and End navigation", () => {
+    expect(segmentedKeyTarget(options, "center", "ArrowRight")).toBe("right");
+    expect(segmentedKeyTarget(options, "right", "ArrowRight")).toBe("left");
+    expect(segmentedKeyTarget(options, "left", "ArrowLeft")).toBe("right");
+    expect(segmentedKeyTarget(options, "center", "Home")).toBe("left");
+    expect(segmentedKeyTarget(options, "center", "End")).toBe("right");
+    expect(segmentedKeyTarget(options, "center", "Enter")).toBeNull();
+  });
+
+  it("removes disabled settings from the tab order", () => {
+    const html = renderToStaticMarkup(
+      <SegmentedRow
+        ariaLabel="Alignment"
+        options={options}
+        value="center"
+        disabled
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(html.match(/disabled=""/g)).toHaveLength(3);
+    expect(html.match(/tabindex="-1"/g)).toHaveLength(3);
+    expect(html).not.toContain('tabindex="0"');
+  });
+
+  it("keeps the first enabled option tabbable when the value is unmatched", () => {
+    const html = renderToStaticMarkup(
+      <SegmentedRow<string>
+        ariaLabel="Alignment"
+        options={[{ ...options[0], disabled: true }, options[1], options[2]]}
+        value="justify"
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain('aria-checked="true"');
+    expect(html).toContain(
+      'role="radio" aria-checked="false" tabindex="-1" class="inspector-subtab" disabled=""',
+    );
+    expect(html).toContain('role="radio" aria-checked="false" tabindex="0"');
+    expect(html.match(/tabindex="0"/g)).toHaveLength(1);
   });
 });

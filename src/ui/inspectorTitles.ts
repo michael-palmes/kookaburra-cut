@@ -13,6 +13,7 @@ const SCENE_INSPECTOR_SCREEN_TITLES: Record<string, string> = {
   "text.edit": "Edit text",
   "style.background": "Background",
   "frame.panel": "Panel",
+  "frame.icon": "Panel icon",
   "frame.decorations": "Decorations",
   "videoWindow.edit": "Video window",
   "compare.edit": "Comparison",
@@ -26,18 +27,39 @@ const SCENE_INSPECTOR_SCREEN_TITLES: Record<string, string> = {
 };
 
 const CHART_SERIES_ROUTE_PREFIX = "chart.series:u16:";
+const TEXT_ICON_ROUTE_PREFIX = "text.icon.";
 
 export type ChartInspectorScreen =
   | { kind: "overview" }
   | { kind: "font" }
   | { kind: "series"; seriesId: string };
 
-export function chartSeriesInspectorRoute(seriesId: string): string {
+export type TextIconInspectorScreen = {
+  kind: "emoji" | "image";
+  itemKey: string;
+};
+
+function encodeUtf16(value: string): string {
   let encoded = "";
-  for (let index = 0; index < seriesId.length; index++) {
-    encoded += seriesId.charCodeAt(index).toString(16).padStart(4, "0");
+  for (let index = 0; index < value.length; index++) {
+    encoded += value.charCodeAt(index).toString(16).padStart(4, "0");
   }
-  return `${CHART_SERIES_ROUTE_PREFIX}${encoded}`;
+  return encoded;
+}
+
+function decodeUtf16(value: string): string | null {
+  if (value.length % 4 !== 0) return null;
+  let decoded = "";
+  for (let index = 0; index < value.length; index += 4) {
+    const codeUnit = value.slice(index, index + 4);
+    if (!/^[0-9a-f]{4}$/i.test(codeUnit)) return null;
+    decoded += String.fromCharCode(Number.parseInt(codeUnit, 16));
+  }
+  return decoded;
+}
+
+export function chartSeriesInspectorRoute(seriesId: string): string {
+  return `${CHART_SERIES_ROUTE_PREFIX}${encodeUtf16(seriesId)}`;
 }
 
 export function chartInspectorScreenForRoute(route: string | null): ChartInspectorScreen | null {
@@ -45,14 +67,26 @@ export function chartInspectorScreenForRoute(route: string | null): ChartInspect
   if (route === "chart.font") return { kind: "font" };
   if (!route?.startsWith(CHART_SERIES_ROUTE_PREFIX)) return null;
   const encodedId = route.slice(CHART_SERIES_ROUTE_PREFIX.length);
-  if (encodedId.length % 4 !== 0) return null;
-  let seriesId = "";
-  for (let index = 0; index < encodedId.length; index += 4) {
-    const codeUnit = encodedId.slice(index, index + 4);
-    if (!/^[0-9a-f]{4}$/i.test(codeUnit)) return null;
-    seriesId += String.fromCharCode(Number.parseInt(codeUnit, 16));
-  }
+  const seriesId = decodeUtf16(encodedId);
+  if (seriesId === null) return null;
   return { kind: "series", seriesId };
+}
+
+export function textIconInspectorRoute(
+  kind: TextIconInspectorScreen["kind"],
+  itemKey: string,
+): string {
+  return `${TEXT_ICON_ROUTE_PREFIX}${kind}:u16:${encodeUtf16(itemKey)}`;
+}
+
+export function textIconInspectorScreenForRoute(
+  route: string | null,
+): TextIconInspectorScreen | null {
+  const match = route?.match(/^text\.icon\.(emoji|image):u16:(.*)$/);
+  if (!match) return null;
+  const kind = match[1] as TextIconInspectorScreen["kind"];
+  const itemKey = decodeUtf16(match[2] ?? "");
+  return itemKey === null ? null : { kind, itemKey };
 }
 
 export function sceneInspectorScreenTitle(
@@ -61,6 +95,9 @@ export function sceneInspectorScreenTitle(
 ): string | undefined {
   if (route === "device") return (options.deviceCount ?? 0) > 1 ? "Devices" : "Device";
   if (chartInspectorScreenForRoute(route)?.kind === "series") return "Series";
+  const textIconScreen = textIconInspectorScreenForRoute(route);
+  if (textIconScreen?.kind === "emoji") return "Emoji";
+  if (textIconScreen?.kind === "image") return "Image";
   return SCENE_INSPECTOR_SCREEN_TITLES[route];
 }
 

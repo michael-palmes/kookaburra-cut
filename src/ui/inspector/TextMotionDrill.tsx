@@ -280,6 +280,7 @@ export function TextMotionDrill({
         <DrillGroup label="Apply to">
           <SegmentedRow
             className="text-motion-scope-segments"
+            ariaLabel="Text motion scope"
             options={SCOPE_OPTIONS}
             value={scopeChoice}
             onChange={setScopeChoice}
@@ -535,6 +536,7 @@ export function TextMotionDrill({
                 {meta?.hasDirection && (
                   <SegmentedRow
                     className="text-motion-direction-segments"
+                    ariaLabel="Text motion direction"
                     options={DIRECTION_OPTIONS}
                     value={current.direction ?? "from-left"}
                     onChange={(direction) =>

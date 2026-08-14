@@ -91,6 +91,7 @@ export function NumberField({
   max,
   step,
   dragScale,
+  disabled = false,
 }: {
   label: string;
   value: number;
@@ -103,6 +104,7 @@ export function NumberField({
   step?: number;
   /** Value change per horizontal pixel (default: the field's finest unit); Shift drags at 0.1x. */
   dragScale?: number;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(value.toFixed(decimals));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -141,6 +143,7 @@ export function NumberField({
         className="modal-input inspector-num inspector-num-drag"
         value={text}
         inputMode="decimal"
+        disabled={disabled}
         onPointerDown={onPointerDown}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
@@ -166,6 +169,7 @@ export function InspectorSliderRow({
   step,
   onCommit,
   onInput,
+  disabled = false,
 }: {
   icon: ReactNode;
   label: string;
@@ -175,6 +179,7 @@ export function InspectorSliderRow({
   step: number;
   onCommit: (value: number) => void;
   onInput?: (value: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="popover-row inspector-slider-row">
@@ -188,6 +193,7 @@ export function InspectorSliderRow({
         max={max}
         step={step}
         label={label}
+        disabled={disabled}
         onCommit={onCommit}
         onInput={onInput}
       />
@@ -521,6 +527,31 @@ export interface SegmentedOption<T extends string> {
   icon?: ReactNode;
   /** Tooltip; useful where the label alone undersells the consequence of switching. */
   title?: string;
+  disabled?: boolean;
+}
+
+export function segmentedKeyTarget<T extends string>(
+  options: readonly SegmentedOption<T>[],
+  value: T,
+  key: string,
+): T | null {
+  const enabledOptions = options.filter((option) => !option.disabled);
+  if (enabledOptions.length === 0) return null;
+  const current = Math.max(
+    0,
+    enabledOptions.findIndex((option) => option.value === value),
+  );
+  const nextIndex =
+    key === "ArrowRight" || key === "ArrowDown"
+      ? (current + 1) % enabledOptions.length
+      : key === "ArrowLeft" || key === "ArrowUp"
+        ? (current - 1 + enabledOptions.length) % enabledOptions.length
+        : key === "Home"
+          ? 0
+          : key === "End"
+            ? enabledOptions.length - 1
+            : null;
+  return nextIndex === null ? null : (enabledOptions[nextIndex]?.value ?? null);
 }
 
 /** The shared segmented toggle (the camera drill's subtabs, promoted): 2-5 exclusive options as one compact pill. Clicking the active option is a no-op. Pair with ToggleFieldset to straddle a bordered section's top edge. */
@@ -529,27 +560,55 @@ export function SegmentedRow<T extends string>({
   value,
   onChange,
   className,
+  ariaLabel,
+  disabled = false,
 }: {
   options: SegmentedOption<T>[];
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  ariaLabel: string;
+  disabled?: boolean;
 }) {
+  const selectedEnabled = options.some((option) => option.value === value && !option.disabled);
+  const fallbackValue = options.find((option) => !option.disabled)?.value;
+
   return (
     <div
       className={className ? `inspector-subtabs ${className}` : "inspector-subtabs"}
-      role="tablist"
+      role="radiogroup"
+      aria-label={ariaLabel}
     >
       {options.map((o) => (
+        // biome-ignore lint/a11y/useSemanticElements: styled buttons implement the complete roving radio keyboard pattern
         <button
           key={o.value}
           type="button"
-          role="tab"
-          aria-selected={o.value === value}
+          role="radio"
+          aria-checked={o.value === value}
+          tabIndex={
+            !disabled &&
+            !o.disabled &&
+            (o.value === value || (!selectedEnabled && o.value === fallbackValue))
+              ? 0
+              : -1
+          }
           className={`inspector-subtab${o.value === value ? " active" : ""}`}
           title={o.title}
+          disabled={disabled || o.disabled}
           onClick={() => {
             if (o.value !== value) onChange(o.value);
+          }}
+          onKeyDown={(event) => {
+            const next = segmentedKeyTarget(options, o.value, event.key);
+            if (!next) return;
+            event.preventDefault();
+            if (next !== o.value) onChange(next);
+            const index = options.findIndex((option) => option.value === next);
+            event.currentTarget.parentElement
+              ?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+              .item(index)
+              .focus();
           }}
         >
           {o.icon}

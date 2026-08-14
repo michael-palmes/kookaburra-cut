@@ -1,9 +1,11 @@
 import type { AspectName } from "../engine/format";
 import { frameTextAlign } from "../engine/framePanelLayout";
+import type { ResolvedManagedTextGroup } from "../engine/managedText";
 import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
+import { textIconInspectorScreenForRoute } from "./inspectorTitles";
 
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
 
@@ -177,6 +179,8 @@ export interface SceneOverviewInput {
   fallbackText?: string;
   /** Resolved managed or mounted virtual items. Present-empty intentionally suppresses fallback rows. */
   textItems?: readonly SceneManagedTextItem[];
+  /** Content-level Text groups. When present, each group becomes one atomic overview row. */
+  textGroups?: readonly ResolvedManagedTextGroup[];
 }
 
 export interface SceneOverviewModel {
@@ -226,6 +230,31 @@ function textAlignmentValue(doc: SceneDoc, frame: FrameSpec | undefined): string
       ? frameTextAlign(frame)
       : (doc.textLayout?.align ?? "center");
   return alignment === "center" ? "Centre" : sentenceCase(alignment);
+}
+
+function groupTextAlignmentValue(group: ResolvedManagedTextGroup, fallback: string): string {
+  return group.align ? (group.align === "center" ? "Centre" : sentenceCase(group.align)) : fallback;
+}
+
+function managedTextGroupLabel(group: ResolvedManagedTextGroup): string {
+  const item =
+    group.items.find((candidate) => candidate.type === "title" && candidate.text?.trim()) ??
+    group.items.find((candidate) => candidate.type === "subtitle" && candidate.text?.trim()) ??
+    group.items.find(
+      (candidate) =>
+        candidate.type === "bullets" && candidate.points?.some((point) => point.text.trim()),
+    ) ??
+    group.items.find(
+      (candidate) => candidate.type === "icon" && (candidate.icon ?? candidate.text)?.trim(),
+    );
+  if (!item) return "Text";
+  const copy =
+    item.type === "bullets"
+      ? (item.points?.find((point) => point.text.trim())?.text ?? "")
+      : item.type === "icon"
+        ? (item.icon ?? item.text ?? "")
+        : (item.text ?? "");
+  return lineLabel(copy, "Text");
 }
 
 function deviceOverviewValue(
@@ -340,7 +369,19 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
 
   if (doc) {
     const textValue = textAlignmentValue(doc, frame);
-    if (input.textItems !== undefined) {
+    if (input.textGroups !== undefined) {
+      for (const [index, group] of input.textGroups.entries()) {
+        const preview = managedTextGroupLabel(group);
+        groupedRows.text.push({
+          id: `text:${group.key}`,
+          type: "text",
+          label: `Text ${index + 1}: ${preview}`,
+          value: groupTextAlignmentValue(group, textValue),
+          selectionTarget: { kind: "text", id: group.key },
+          openRoute: "text",
+        });
+      }
+    } else if (input.textItems !== undefined) {
       for (const item of input.textItems) {
         const copy =
           item.type === "icon"
@@ -373,6 +414,7 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
       }
     }
     if (
+      input.textGroups === undefined &&
       input.textItems === undefined &&
       groupedRows.text.length === 0 &&
       input.fallbackText?.trim()
@@ -674,6 +716,7 @@ export function sceneSections(input: {
       rows.push(
         { id: "frame.cutout", label: "Cutout", chevron: true },
         { id: "frame.panel", label: "Panel", chevron: true },
+        { id: "frame.icon", label: "Panel icon", chevron: true },
         { id: "frame.chip", label: "Chip", chevron: true },
         { id: "frame.decorations", label: "Decorations", chevron: true },
         { id: "frame.text", label: "Scene text", chevron: true },
@@ -718,12 +761,11 @@ export interface SceneDrillCapability {
 /** True for the screens that FOLLOW the playhead across a scene change: sections and settings whose editor reads only the scene's own doc, so the same screen over a new scene simply shows the new scene's values. Detail screens carrying a scene-scoped selection or session (device, overlay, comparison and object editors, media pickers, the transition boundary) are deliberately absent, so they pop back to their section. */
 export function drillFollowsScene(id: string, scene: SceneDrillCapability): boolean {
   if (id.startsWith("text.font:")) return scene.textKeys.includes(id.slice("text.font:".length));
-  if (id.startsWith("text.colour:")) {
-    return scene.textKeys.includes(id.slice("text.colour:".length));
-  }
   if (id.startsWith("text.motion:")) {
     return scene.textKeys.includes(id.slice("text.motion:".length));
   }
+  const textIconScreen = textIconInspectorScreenForRoute(id);
+  if (textIconScreen) return scene.textKeys.includes(textIconScreen.itemKey);
   if (id.startsWith("lighting.")) return scene.hasDoc;
   switch (id) {
     case "camera":

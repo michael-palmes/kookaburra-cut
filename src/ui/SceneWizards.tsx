@@ -858,6 +858,7 @@ export function NewSceneWizard({
             </Field>
             <Field label="Look">
               <SegmentedRow<ChartDimension>
+                ariaLabel="Chart dimension"
                 options={[
                   { value: "2d", label: "2D", title: "A flat chart, drawn face on" },
                   { value: "3d", label: "3D", title: "Extruded marks on a staged floor" },
@@ -868,6 +869,7 @@ export function NewSceneWizard({
             </Field>
             <Field label="Starter data">
               <SegmentedRow
+                ariaLabel="Chart starter data"
                 options={CHART_STARTER_DATA.map((d) => ({ value: d.id, label: d.label }))}
                 value={chartData}
                 onChange={setChartData}
