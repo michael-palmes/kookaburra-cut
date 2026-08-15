@@ -45,6 +45,8 @@ const kindStageFixtures = import.meta.glob<{
   backdrop?: Record<string, unknown>;
 }>("../../fixtures/preview-lab-stage/scenes/kind-*.json", { eager: true, import: "default" });
 
+const kindStageAssets = import.meta.glob("../../fixtures/preview-lab-stage/assets/*");
+
 const kindVideoWindowSource = import.meta.glob<string>(
   "../../fixtures/preview-lab-stage/scenes/kind-videowindow.tsx",
   { eager: true, query: "?raw", import: "default" },
@@ -200,6 +202,22 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
         ],
       },
     });
+  });
+
+  it("ships every managed image icon referenced by a wizard kind fixture", () => {
+    const availableAssets = new Set(
+      Object.keys(kindStageAssets).map((path) =>
+        path.replace("../../fixtures/preview-lab-stage/", ""),
+      ),
+    );
+    const imageIcons = Object.values(kindStageFixtures)
+      .flatMap((doc) => doc.managedText?.items ?? [])
+      .flatMap((item) =>
+        item.type === "icon" && item.icon?.startsWith("assets/") ? [item.icon] : [],
+      );
+
+    expect([...new Set(imageIcons)].sort()).toEqual(["assets/app-icon.png"]);
+    for (const icon of imageIcons) expect(availableAssets.has(icon), icon).toBe(true);
   });
 
   it("keeps the video-window card on the shipped composition and two-line placement", () => {
