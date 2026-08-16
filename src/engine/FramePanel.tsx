@@ -4,12 +4,15 @@ import { useTheme } from "../theme";
 import type { Theme } from "../theme/tokens";
 import { MountedChart } from "../toolkit/chart/Chart";
 import type { FrameSpec } from "../toolkit/frame/types";
+import { OverlaySceneImages } from "../toolkit/media/SceneImage";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
+import { ManagedTextStack } from "../toolkit/text/ManagedTextStack";
 import type { V3 } from "../toolkit/types";
 import { FrameChip } from "./FrameChip";
 import { FrameDecoration } from "./FrameDecoration";
 import { FrameIcon } from "./FrameIcon";
 import { useFormat } from "./format";
+import { nextFrameStackOrder } from "./frameLayerOrder";
 import {
   framePanelChartReplaces,
   framePanelChartSlot,
@@ -23,22 +26,33 @@ import {
   BULLET_OF_TITLE,
   CHIP_GAP,
   CHIP_HEIGHT_FRAC,
+  FRAME_ICON_TEXT_KEY,
   HEADER_BODY_GAP,
   headerIconScale,
   ICON_GAP,
   ICON_SIZE,
   ICON_TEXT_KEY,
+  managedPanelTextRegion,
   panelMeasureVersion,
   requestPanelTextMeasure,
   SUBTITLE_OF_TITLE,
   solvePanelLayout,
-  splitBullets,
   subscribePanelMeasures,
   TITLE_GAP,
   TITLE_HEIGHT_FRACTION,
   TITLE_WIDTH_FRACTION,
 } from "./framePanelMeasure";
 import { registerFramePanel, unregisterFramePanel } from "./framePanelRegistry";
+import {
+  frameIconMotionKey,
+  frameIconRenderRole,
+  frameIconStyleKey,
+  isTemplateManagedText,
+  resolveTemplateManagedFrameIcon,
+  resolveTemplateManagedTextBullets,
+  resolveTemplateManagedTextCopy,
+  usesSpecialisedTextRenderer,
+} from "./managedText";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
@@ -70,6 +84,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const format = useFormat();
   const theme = useTheme();
   const decorations = frame.decorations ?? [];
+  const overlayImages = (doc?.images ?? []).filter((image) => image.host === "overlay");
   const hosted = !!frame.chart && frame.chart.enabled !== false;
   const chart = useMemo(() => (hosted ? panelChart(doc) : null), [hosted, doc]);
   // The measured fixpoint: the cache fills async (pre-warmed by the export preamble); each landing bumps the store, re-solving until nothing is pending.
@@ -91,23 +106,56 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const replaced = !!chart && framePanelChartReplaces(frame.chart);
   // When the frame doesn't claim the scene text, the in-world headline shows instead, so the panel omits it.
   const claimed = frame.claimsSceneText !== false && !replaced;
-  const title = claimed ? (doc?.text?.title ?? "") : "";
-  const subtitle = claimed ? (doc?.text?.subtitle ?? "") : "";
-  const bullets = claimed ? splitBullets(doc?.text?.bullets) : [];
-  const icon = replaced ? undefined : frame.icon;
+  const managed = claimed && doc?.managedText !== undefined;
+  const templateManaged = managed && isTemplateManagedText(doc);
+  const stackManaged = managed && !templateManaged;
+  const specialised = usesSpecialisedTextRenderer(doc);
+  const title =
+    claimed && specialised
+      ? resolveTemplateManagedTextCopy(doc, "title", doc?.text?.title ?? "")
+      : "";
+  const subtitle =
+    claimed && specialised
+      ? resolveTemplateManagedTextCopy(doc, "subtitle", doc?.text?.subtitle ?? "")
+      : "";
+  const bullets =
+    claimed && specialised
+      ? resolveTemplateManagedTextBullets(doc, "bullets", doc?.text?.bullets)
+      : [];
+  const icon = replaced
+    ? undefined
+    : claimed
+      ? resolveTemplateManagedFrameIcon(doc, frame.icon)
+      : frame.icon;
+  const iconKey = claimed ? FRAME_ICON_TEXT_KEY : ICON_TEXT_KEY;
+  const iconStyleKey = frameIconStyleKey(doc);
+  const iconMotionKey = frameIconMotionKey(doc);
   const chip = replaced ? undefined : frame.chip;
   const hasText = title.trim() || subtitle.trim() || bullets.length > 0;
-  if (!hasText && !icon && !chip && decorations.length === 0 && !chart) return null;
+  const hasManagedText = stackManaged && (doc?.managedText?.items.length ?? 0) > 0;
+  if (
+    !hasText &&
+    !hasManagedText &&
+    !icon &&
+    !chip &&
+    decorations.length === 0 &&
+    overlayImages.length === 0 &&
+    !chart
+  ) {
+    return null;
+  }
 
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
-  const { fit, titleH, subH, bulletHeights, bulletIndent } = solution;
+  const { fit, titleH, subH } = solution;
+  const bulletHeights = stackManaged ? [] : solution.bulletHeights;
+  const bulletIndent = stackManaged ? 0 : solution.bulletIndent;
 
   const titleSize = baseTitle * fit;
   const subtitleSize = baseTitle * SUBTITLE_OF_TITLE * fit;
   const bulletSize = baseTitle * BULLET_OF_TITLE * fit;
   // The nominal icon box; FrameIcon applies the sidecar multiplier to the mark itself, so only the stacking budget below scales it here.
   const iconSize = baseTitle * ICON_SIZE * fit;
-  const iconScale = headerIconScale(doc ?? undefined);
+  const iconScale = headerIconScale(doc ?? undefined, iconStyleKey);
   const chipHeight = CHIP_HEIGHT_FRAC * format.frame.height * fit;
   // Text alignment: the anchor x sits at the column's left (nudged), centre or right edge, with the
   // headlines and chip anchored to match. Default "left" reproduces the original contentX exactly.
@@ -156,10 +204,28 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
       cursor -= h + bulletGap;
     }
   }
-  const chipBottom = bodyTop - bulletsHeight - chipGap - chipHeight;
+  const chipBottom =
+    stackManaged && chip ? textBottom : bodyTop - bulletsHeight - chipGap - chipHeight;
+  const managedRegion = managedPanelTextRegion(
+    col.top,
+    textBottom,
+    icon ? iconSize * iconScale + ICON_GAP * titleSize : 0,
+    chip ? chipHeight + bodyGap : 0,
+  );
 
   return (
     <>
+      {stackManaged && (
+        <ManagedTextStack
+          region={{
+            left: col.left,
+            top: managedRegion.top,
+            bottom: managedRegion.bottom,
+            width: col.width,
+            align,
+          }}
+        />
+      )}
       {icon && (
         <FrameIcon
           icon={icon}
@@ -168,7 +234,10 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           from={150}
           to={700}
           anchorX={align}
-          textKey={ICON_TEXT_KEY}
+          textKey={iconKey}
+          styleKey={iconStyleKey}
+          motionKey={iconMotionKey}
+          managedTextRole={frameIconRenderRole(doc, claimed)}
         />
       )}
       {title.trim() && (
@@ -264,6 +333,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
         />
       )}
       {chart && slot && <MountedChart chart={chart} panel={slot.rect} />}
+      <OverlaySceneImages orderStart={nextFrameStackOrder(decorations)} />
       {decorations.map((decoration, i) => (
         <FrameDecoration
           key={decoration.id}
@@ -296,13 +366,14 @@ export function FramePanel({
 }) {
   const key = useId();
   const groupRef = useRef<Group>(null);
+  const hasSceneImages = doc?.images?.some((image) => image.host === "overlay") ?? false;
 
   useEffect(() => {
     const group = groupRef.current;
     if (!group) return;
-    registerFramePanel(key, { index, group });
+    registerFramePanel(key, { index, group, hasSceneImages });
     return () => unregisterFramePanel(key);
-  }, [key, index]);
+  }, [key, index, hasSceneImages]);
 
   return (
     <SceneContext.Provider value={{ index, startMs, durationMs }}>

@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "name": "Animated lighting rig",
+  "backdrop": {
+    "type": "floor",
+    "color": "#121827",
+    "filletRadius": 2.5
+  },
+  "lighting": {
+    "ambient": 0.16,
+    "ambientColor": "#cfdcff",
+    "sun": {
+      "azimuthDeg": 28,
+      "elevationDeg": 42,
+      "intensity": 1.1,
+      "kelvin": 4800,
+      "angularDeg": 3,
+      "castShadow": true
+    },
+    "lights": [
+      {
+        "id": "moving-area",
+        "type": "area",
+        "intensity": 3,
+        "kelvin": 3400,
+        "width": 2.2,
+        "height": 1.3,
+        "placement": {
+          "mode": "point",
+          "position": [-2.1, 1.5, 2.4]
+        },
+        "target": [0, -0.2, 0]
+      }
+    ],
+    "fixtures": [
+      {
+        "id": "moving-rig",
+        "form": "tube",
+        "size": [2.2, 0.06],
+        "kelvin": 5600,
+        "emissive": 1.4,
+        "lightIntensity": 0,
+        "placement": {
+          "mode": "point",
+          "position": [1, 2.2, -1.2]
+        },
+        "rotationDeg": [-90, 0, 0],
+        "repeat": {
+          "count": 3,
+          "spacing": 1.3,
+          "axis": "z",
+          "mirrorAxis": "x"
+        }
+      }
+    ],
+    "shadow": {
+      "technique": "map",
+      "enabled": false,
+      "catchBackdrop": true,
+      "softness": 0.36,
+      "opacity": 0.38,
+      "mapSize": 2048,
+      "bias": -0.0005
+    },
+    "animationEnabled": true,
+    "keys": [
+      {
+        "id": "start",
+        "tMs": 0,
+        "pose": {
+          "lights": {
+            "moving-area": {
+              "intensity": 3,
+              "placement": {
+                "mode": "point",
+                "position": [-2.1, 1.5, 2.4]
+              }
+            }
+          },
+          "fixtures": {
+            "moving-rig": {
+              "emissive": 1.4,
+              "lightIntensity": 0,
+              "placement": {
+                "mode": "point",
+                "position": [1, 2.2, -1.2]
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "finish",
+        "tMs": 1600,
+        "pose": {
+          "lights": {
+            "moving-area": {
+              "intensity": 7,
+              "placement": {
+                "mode": "point",
+                "position": [2.1, 1, 2.2]
+              }
+            }
+          },
+          "fixtures": {
+            "moving-rig": {
+              "emissive": 4.2,
+              "lightIntensity": 12,
+              "placement": {
+                "mode": "point",
+                "position": [1.5, 1.75, -0.2]
+              }
+            }
+          }
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "start",
+        "to": "finish",
+        "ease": "inOutSine"
+      }
+    ]
+  }
+}

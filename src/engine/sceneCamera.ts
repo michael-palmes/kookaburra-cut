@@ -1,4 +1,7 @@
 /** Per-SCENE camera track: orbit-pose keyframes stored in a scene's sidecar document, sampled in SCENE-LOCAL time. Pure (no three.js, no clock reads), mirroring sceneTimeline.ts, so preview and export agree by construction. A pose orbits a target (`fov` is deliberately not part of it, the project-level track owns fov); segments join keys by id with an ease, and outside a segment the camera holds the latest key at/before `t`. Byte-identity invariant: `resolveFrameCameras` returns null when no scene declares a track, so projects without scene tracks render byte-identically. See docs/determinism.md. */
+
+import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
+import type { FormatInfo } from "../toolkit/types";
 import {
   baseCameraPose,
   type CameraKeyframe,
@@ -266,6 +269,8 @@ export function finalScenePose(
  * A rig whose earliest key sets `continueFromPrevious` has that key's pose REPLACED at load with the previous scene's final applied pose. It is a load-time substitution and nothing else: `resolveFrameCameras`, the compositor and the export loop are all untouched. The walk runs forward, so a chain of continuing scenes resolves correctly and cannot cycle. */
 export function buildSceneCameraTracks(
   sceneDocs: readonly (SceneDoc | undefined)[],
+  format?: FormatInfo,
+  floorYs?: readonly DeviceFloorY[],
 ): (SceneCameraTracks | null)[] {
   const tracks: (SceneCameraTracks | null)[] = [];
   for (let i = 0; i < sceneDocs.length; i++) {
@@ -287,7 +292,9 @@ export function buildSceneCameraTracks(
         rigRaw = withEarliestKeyPose(rigRaw, previous);
       }
     }
-    tracks.push(sceneCameraTracks(orbit, normalizeSceneRig(rigRaw, source, doc)));
+    tracks.push(
+      sceneCameraTracks(orbit, normalizeSceneRig(rigRaw, source, doc, format, floorYs?.[i])),
+    );
   }
   return tracks;
 }

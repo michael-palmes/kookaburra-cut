@@ -53,6 +53,10 @@ export interface ThemeLightSpec {
 /** Shadow-map tokens: fixed values are an EXPORT CONTRACT (the GSAA σ²/κ precedent). Shadows render only when a scene stages a floor/backdrop (hybrid decision); the v7 procedural blob shadows remain the default everywhere else. */
 export interface ThemeShadowSpec {
   technique: "map" | "none";
+  /** False disables real cast shadows and catchers while retaining the configured style. */
+  enabled?: boolean;
+  /** False keeps floor catching but disables vertical backdrop catching. */
+  catchBackdrop?: boolean;
   /** 0..1 penumbra scale (drives the light's shadow radius). */
   softness: number;
   /** 0..1 darkening of the shadow catcher. */
@@ -199,10 +203,10 @@ export interface LightingPose {
   environmentIntensity?: number;
   environmentRotationDeg?: number;
   sun?: { azimuthDeg?: number; elevationDeg?: number; intensity?: number; kelvin?: number };
-  /** By light id. Keyed placement drives WORLD lights only (camera/subject placements resolve at the seam). */
+  /** By light id. Camera/subject placements resolve per render target at the compositor seam. */
   lights?: Record<string, { intensity?: number; kelvin?: number; placement?: Placement }>;
   /** By fixture id. */
-  fixtures?: Record<string, { emissive?: number; lightIntensity?: number }>;
+  fixtures?: Record<string, { emissive?: number; lightIntensity?: number; placement?: Placement }>;
 }
 
 export interface LightingKey {
@@ -224,6 +228,8 @@ export interface LightingSpec {
   environment?: EnvironmentSpec;
   sun?: SunSpec;
   ambient?: number;
+  /** Ambient-light tint; absent remains white. */
+  ambientColor?: string;
   /** Legacy v8 fills, kept so existing themes parse unchanged. New work uses `lights`. */
   fills?: ThemeLightSpec[];
   lights?: LightSpec[];
@@ -231,6 +237,8 @@ export interface LightingSpec {
   shadow?: ThemeShadowSpec;
   /** Bundled preset id last applied by the picker. The renderer never reads it. */
   preset?: string;
+  /** False mutes the scene track without deleting keys or segments. */
+  animationEnabled?: boolean;
   /** The scene's lighting keyframe track (SCENE-DOC layer only; themes and project defaults never animate). Raw here like the camera's sidecar block; deep validation lives in `normalizeLightingTrack`. */
   keys?: LightingKey[];
   segments?: LightingSegment[];
@@ -312,6 +320,12 @@ export interface TextAnimationSpec {
   direction?: "from-left" | "from-right";
   /** all-at-once forces the block path; paragraphs split on `\n`, groups on blank lines. */
   delivery?: "all-at-once" | "by-paragraph" | "by-paragraph-group";
+  /** Optional in/out window length. Absent keeps each primitive's authored timing. */
+  durationMs?: number;
+  /** Optional preset travel distance in em. Absent keeps each preset's tuned distance. */
+  distance?: number;
+  /** An engine/ease.ts name. Absent keeps the theme's standard easing. */
+  ease?: string;
 }
 
 /** Card surfaces (layered-screenshot screens): corner radius as a fraction of the card's short edge, clamped 0..0.5 at parse. Absent themes take the toolkit's tuned constant. */

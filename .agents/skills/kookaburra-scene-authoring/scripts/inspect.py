@@ -45,8 +45,32 @@ def main() -> int:
         if entry.get("transition"):
             line += f"  transition={entry['transition'].get('type', '?')}"
         print(line)
+        managed = doc.get("managedText") or {}
+        managed_items = managed.get("items") if isinstance(managed, dict) else None
+        managed_keys = set()
+        if isinstance(managed_items, list):
+            for item in managed_items:
+                if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+                    continue
+                key = item["key"]
+                managed_keys.add(key)
+                kind = item.get("type", "?")
+                if kind == "bullets":
+                    points = item.get("points") or []
+                    value = "\n".join(
+                        point.get("text", "") for point in points if isinstance(point, dict)
+                    )
+                elif kind == "icon":
+                    value = item.get("icon", "")
+                else:
+                    value = item.get("text", "")
+                flat = str(value).replace("\n", "\\n")
+                shown = flat if len(flat) <= 60 else flat[:57] + "..."
+                print(f'      managedText.{key} ({kind}) = "{shown}"')
         text = doc.get("text") or {}
         for key, value in text.items():
+            if key in managed_keys:
+                continue
             flat = value.replace("\n", "\\n")
             shown = flat if len(flat) <= 60 else flat[:57] + "..."
             print(f"      text.{key} = \"{shown}\"")

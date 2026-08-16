@@ -28,7 +28,7 @@ import {
   Vector3,
 } from "three";
 import { useClipTexture } from "../../engine/clipTexture";
-import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import { deviceAcknowledgementMatches, useDeviceEditStore } from "../../engine/deviceEditStore";
 import { useSceneConsumesDevices } from "../../engine/deviceRegistry";
 import { ease } from "../../engine/ease";
 import { isExporting } from "../../engine/exportState";
@@ -47,11 +47,12 @@ import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
-import { DEVICE_CATALOG, type DeviceId, deviceColour } from "./catalog";
+import { DEVICE_CATALOG, DEVICE_FALLBACK_ID, type DeviceId, deviceColour } from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
-import type { DevicePose } from "./gizmoCommit";
+import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
+import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
 export interface DeviceMediaSpec {
@@ -92,6 +93,10 @@ export interface DevicePlacement {
 
 export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
 
+export function effectiveDeviceShadowMode(shadow: DeviceShadowMode | undefined): DeviceShadowMode {
+  return shadow ?? "soft";
+}
+
 export interface DeviceProps {
   /** Scene-document id: sidecar devices carry it (it is what the inspector and the gizmo select on), hand-authored ones do not. */
   id?: string;
@@ -102,12 +107,43 @@ export interface DeviceProps {
   media?: DeviceMediaSpec;
   placement?: DevicePlacement;
   motion?: DeviceMotionSpec;
-  /** Ground shadow: defaults to `"soft"`, or `"none"` under a map-shadowed `<SceneStage>` since the real shadow replaces the procedural blob; an explicit value wins. */
+  /** Presentation shadow: defaults to `"soft"` and remains independent from real `<SceneStage>` map shadows; an explicit value wins. */
   shadow?: DeviceShadowMode;
   /** Bundle the lit set (rig + one-shot environment); defaults true, or false under a lighting `<SceneStage>` since the stage lights the scene; an explicit value wins. */
   lit?: boolean;
   /** Laptop lid opening in degrees (0 closed, default the model's authored angle); ignored by devices with no hinge. */
   lidDeg?: number;
+}
+
+export function shouldNeutraliseDeviceMotion(sectionOpen: boolean, exporting: boolean): boolean {
+  return sectionOpen && !exporting;
+}
+
+export function deviceMotionForRender(
+  motion: DeviceMotionSpec,
+  sectionOpen: boolean,
+  exporting: boolean,
+): DeviceMotionSpec {
+  return shouldNeutraliseDeviceMotion(sectionOpen, exporting) ? { preset: "none" } : motion;
+}
+
+export function deviceAcknowledgementDisposition(
+  acknowledgement: Parameters<typeof deviceAcknowledgementMatches>[0],
+  commitId: number,
+  sceneIndex: number | undefined,
+  deviceId: string | undefined,
+  editable: boolean,
+  requestedCommitIds: ReadonlySet<number>,
+  activeCommitId: number | null,
+): "ignore" | "consume" | "clear-preview" {
+  if (
+    !editable ||
+    !requestedCommitIds.has(commitId) ||
+    !deviceAcknowledgementMatches(acknowledgement, sceneIndex, deviceId)
+  ) {
+    return "ignore";
+  }
+  return activeCommitId === commitId ? "clear-preview" : "consume";
 }
 
 const DEG2RAD = Math.PI / 180;
@@ -494,28 +530,64 @@ export function Device(props: DeviceProps) {
   const sceneIndex = ctx?.index;
   // The gizmo drives the pose through state, not the group directly: the clock re-renders this component every frame, which would stomp a mutated group. Never reaches an export (the gizmo unmounts when `exportPreamble` clears the selection, and `isExporting` is the belt to that brace).
   const [drag, setDrag] = useState<DevicePose | null>(null);
+  const [gizmoResetKey, setGizmoResetKey] = useState(0);
+  const activeCommitId = useRef<number | null>(null);
+  const requestedCommitIds = useRef(new Set<number>());
   const selected = useDeviceEditStore((s) => s.selected);
+  const acknowledgements = useDeviceEditStore((s) => s.acknowledgements);
   const sectionOpen = useGizmoSectionOpen("devices");
+  const exporting = isExporting();
   // What a click selects, or null for a hand-authored device and for a comparison's B side (which edits through the compare drill, so a write would land on the wrong doc).
   const editTarget =
     id !== undefined && sceneIndex !== undefined && ctx?.side === undefined
       ? { sceneIndex, deviceId: id }
       : null;
+  const editable = editTarget !== null;
   const gizmoOn =
+    !exporting &&
     editTarget !== null &&
     sectionOpen &&
     selected?.sceneIndex === editTarget.sceneIndex &&
     selected.deviceId === editTarget.deviceId;
-  const dragged = drag && !isExporting() ? drag : null;
+  const dragged = drag && !exporting ? drag : null;
   const committed: DevicePose = { position, rotationDeg, scale };
   const raw = dragged ?? committed;
   // `patchDoc` is async, so the drag pose holds until the COMMITTED placement changes (a commit, a slider, a preset or an undo), never on pointer-up.
   const poseKey = `${position.join()}|${rotationDeg.join()}|${scale}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the committed pose IS the clear signal
-  useEffect(() => setDrag(null), [poseKey]);
   useEffect(() => {
-    if (!gizmoOn) setDrag(null);
+    setDrag(null);
+  }, [poseKey]);
+  useEffect(() => {
+    if (!gizmoOn) {
+      activeCommitId.current = null;
+      setDrag(null);
+    }
   }, [gizmoOn]);
+  useEffect(() => {
+    if (!editable) return;
+    for (const [rawCommitId, acknowledgement] of Object.entries(acknowledgements)) {
+      const commitId = Number(rawCommitId);
+      const disposition = deviceAcknowledgementDisposition(
+        acknowledgement,
+        commitId,
+        sceneIndex,
+        id,
+        editable,
+        requestedCommitIds.current,
+        activeCommitId.current,
+      );
+      if (disposition === "ignore") continue;
+      requestedCommitIds.current.delete(commitId);
+      if (disposition === "clear-preview") {
+        activeCommitId.current = null;
+        setDrag(null);
+        setGizmoResetKey((key) => key + 1);
+      }
+      useDeviceEditStore.getState().clearAcknowledgement(commitId);
+    }
+  }, [acknowledgements, editable, id, sceneIndex]);
+  const renderedMotion = deviceMotionForRender(motion, sectionOpen, exporting);
   const introMs =
     motion.preset === "tilt-reveal"
       ? (motion.durationMs ?? 1000)
@@ -530,17 +602,17 @@ export function Device(props: DeviceProps) {
   // Staged scenes light themselves; the bundled lit set stands down by default.
   const staged = useSceneStaged();
   const isLit = lit ?? !staged;
-  // Map-shadowed stages: the device casts (and receives, VSM wants casters receiving) real shadows, and the procedural blob default flips off so the two systems never stack; explicit props win.
+  // Map-shadowed stages add real cast/receive shadows; the independent presentation shadow remains governed only by shadow.
   const mapShadows = useStageMapShadows();
   const stageFloorY = useStageFloorY();
-  const shadowMode = shadow ?? (mapShadows ? "none" : "soft");
+  const shadowMode = effectiveDeviceShadowMode(shadow);
 
   const spec = DEVICE_CATALOG[model];
   // A bad scene document must degrade, never tear down the canvas tree (bootTrap lesson).
   if (!spec) console.error(`Device: unknown model "${model}"`);
 
-  const { scene } = useGLTF((spec ?? DEVICE_CATALOG["iphone-15-pro"]).glbUrl);
-  const activeSpec = spec ?? DEVICE_CATALOG["iphone-15-pro"];
+  const { scene } = useGLTF((spec ?? DEVICE_CATALOG[DEVICE_FALLBACK_ID]).glbUrl);
+  const activeSpec = spec ?? DEVICE_CATALOG[DEVICE_FALLBACK_ID];
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
@@ -553,7 +625,7 @@ export function Device(props: DeviceProps) {
   useLayoutEffect(() => () => screenMaterial.dispose(), [screenMaterial]);
 
   // Clone once per (model, colour) since drei's glTF cache is shared: hide helper nodes, swap the display material, and give every lit material a private clone (Object3D.clone shares materials) so colour overrides and GSAA apply without touching the shared cache that DeviceMockup/HeroObject also read; then recentre + auto-fit.
-  const { root, fit, screens, aspect, fittedHeight, lidNode, lidBaseX, bodySize } = useMemo(() => {
+  const { root, fit, screens, aspect, lidNode, lidBaseX, bodySize } = useMemo(() => {
     const clone = scene.clone(true);
     const screens: Mesh[] = [];
     const hide: Object3D[] = [];
@@ -606,8 +678,6 @@ export function Device(props: DeviceProps) {
         : size.y > 1e-6
           ? fitTarget / size.y
           : 1;
-    // The fitted world height (pre-placement-scale); grounds shadows for any fit axis. Height fit uses the target directly so the legacy path stays byte-identical (size.y * (t / size.y) need not equal t in floating point).
-    const fittedHeight = fitAxis === "width" ? size.y * fit : fitTarget;
     // The fitted body's width/height ratio; the sun shadow's silhouette footprint.
     const aspect = size.y > 1e-6 ? size.x / size.y : 0.5;
     // The hinge's authored rotation; the lid effect scales it by lidDeg / openDeg.
@@ -619,12 +689,12 @@ export function Device(props: DeviceProps) {
       fit,
       screens,
       aspect,
-      fittedHeight,
       lidNode,
       lidBaseX,
       bodySize: [size.x, size.y, size.z] as V3,
     };
   }, [scene, activeSpec, colourSpec, screenMaterial]);
+  const fittedHeight = deviceFittedHeight(activeSpec.id);
 
   // Lid angle: a static pose from the doc (pure data, no clock), applied pre-paint.
   useLayoutEffect(() => {
@@ -651,9 +721,9 @@ export function Device(props: DeviceProps) {
   let introScale = 1;
   let introRotX = 0;
   let introRotY = 0;
-  switch (motion.preset) {
+  switch (renderedMotion.preset) {
     case "turntable": {
-      const rate = (motion.degPerSec ?? 18) * DEG2RAD;
+      const rate = (renderedMotion.degPerSec ?? 18) * DEG2RAD;
       // Slideshow holds are open-ended, where an endless 360 spin distracts; sway 45 degrees each way instead, with the peak sway speed matching the authored spin rate. Video playback and export keep the true turntable.
       spinY = presentSlideshowActive()
         ? TURNTABLE_SWAY_RAD * Math.sin((rate / TURNTABLE_SWAY_RAD) * t)
@@ -662,18 +732,21 @@ export function Device(props: DeviceProps) {
     }
     case "float":
       // Rises from the resting pose to amplitude and back, never below it: devices sit on the stage floor, so the old symmetric sine clipped through on the down half.
-      floatY = (motion.amplitude ?? 0.12) * 0.5 * (1 - Math.cos(TWO_PI * (motion.hz ?? 0.4) * t));
+      floatY =
+        (renderedMotion.amplitude ?? 0.12) *
+        0.5 *
+        (1 - Math.cos(TWO_PI * (renderedMotion.hz ?? 0.4) * t));
       break;
     case "tilt-reveal": {
       // Entrance: eases from tilted-away to the resting pose, then holds.
-      const p = ease("outCubic", Math.min(1, localMs / (motion.durationMs ?? 1000)));
+      const p = ease("outCubic", Math.min(1, localMs / (renderedMotion.durationMs ?? 1000)));
       introRotX = (1 - p) * -14 * DEG2RAD;
       introRotY = (1 - p) * -40 * DEG2RAD;
       break;
     }
     case "push-in": {
       // Entrance: slightly small and angled, easing up to full framing.
-      const p = ease("outCubic", Math.min(1, localMs / (motion.durationMs ?? 1200)));
+      const p = ease("outCubic", Math.min(1, localMs / (renderedMotion.durationMs ?? 1200)));
       introScale = 0.86 + 0.14 * p;
       introRotY = (1 - p) * -8 * DEG2RAD;
       break;
@@ -683,13 +756,16 @@ export function Device(props: DeviceProps) {
   }
 
   const groundY = -(fittedHeight / 2) * raw.scale - GROUND_EPSILON;
-  // Grounded placement: the fitted base rests on the staged floor; no floor leaves the authored position byte-identical.
-  const floorTop = ground && stageFloorY !== null ? stageFloorY : null;
+  // Grounded placement: the pure anchor resolver is shared with object-bound camera aims.
   const grounded = (pose: DevicePose): V3 =>
-    floorTop === null
-      ? pose.position
-      : [pose.position[0], floorTop + (fittedHeight / 2) * pose.scale, pose.position[2]];
-  const groupPosition = grounded(raw);
+    resolveDeviceWorldAnchor(
+      { model: activeSpec.id },
+      { position: pose.position, rotationDeg: pose.rotationDeg, scale: pose.scale, ground },
+      stageFloorY,
+    ) ?? pose.position;
+  const renderedCommitted = { ...committed, position: grounded(committed) };
+  const groupPosition =
+    dragged && deviceGizmoMovedY(dragged, renderedCommitted) ? dragged.position : grounded(raw);
 
   return (
     <>
@@ -757,13 +833,21 @@ export function Device(props: DeviceProps) {
           </AssetBoundary>
         )}
       </group>
-      {editTarget && gizmoOn && (
+      {editTarget && gizmoOn && !exporting && (
         <DeviceGizmo
           deviceId={editTarget.deviceId}
           sceneIndex={editTarget.sceneIndex}
           committed={committed}
-          rendered={{ ...committed, position: grounded(committed) }}
-          onDrag={setDrag}
+          rendered={renderedCommitted}
+          resetKey={gizmoResetKey}
+          onDrag={(pose) => {
+            if (pose) activeCommitId.current = null;
+            setDrag(pose);
+          }}
+          onCommitRequested={(commitId) => {
+            requestedCommitIds.current.add(commitId);
+            activeCommitId.current = commitId;
+          }}
         />
       )}
     </>

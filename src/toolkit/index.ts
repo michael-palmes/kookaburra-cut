@@ -5,7 +5,7 @@ export { useFormat } from "../engine/format";
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
 // The resolved sidecar chart block: every default baked and the data track sorted.
 export type { ResolvedChart } from "../engine/sceneChart";
-// Scene-document hooks: the sidecar-driven text map, devices array, layered-screenshot and chart blocks.
+// Scene-document hooks: sidecar-driven text ownership, devices, layered screenshots and charts.
 export {
   type SceneDeviceProps,
   useSceneChart,
@@ -131,6 +131,7 @@ export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCount
 export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
 // Horizontal app-icon + title/subtitle lockup revealed as one unit.
 export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
+export { ManagedTextStack, type ManagedTextStackProps } from "./text/ManagedTextStack";
 // Text-animation presets: theme `textAnimation` defaults + per-primitive overrides.
 export {
   isTextPresetName,

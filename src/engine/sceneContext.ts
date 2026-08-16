@@ -25,6 +25,9 @@ export const ProjectIdContext = createContext<string | null>(null);
 /** The mounted scene's sidecar document, supplied by `<SceneHost>` from `LoadedProject.sceneDocs` and read by `useSceneText`/`useSceneDevices`; null when the scene has no sidecar, which then renders exactly as before. */
 export const SceneDocContext = createContext<SceneDoc | null>(null);
 
+/** Fixture ids that must reserve paired lights because this host's active lighting track can raise them above zero. */
+export const AnimatedFixtureLightIdsContext = createContext<ReadonlySet<string>>(new Set());
+
 /** The project-default lighting layer (`LoadedProject.projectLighting`), the middle layer of theme -> project -> scene; provided beside `ProjectIdContext` inside the canvas so `SceneStage` resolves it per scene. Null when the manifest declares none, which resolves exactly as before. */
 export const ProjectLightingContext = createContext<LightingSpec | null>(null);
 

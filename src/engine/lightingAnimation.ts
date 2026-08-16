@@ -1,6 +1,7 @@
 import {
   Color,
   type DirectionalLight,
+  type Group,
   type InstancedMesh,
   type Light,
   MathUtils,
@@ -52,6 +53,8 @@ interface FixtureHandle {
   instanced: InstancedMesh | null;
   /** Paired lights in thinned-instance order. */
   pairedLights: Light[];
+  /** Root of the complete fixture rig, including repeated/mirrored instances. */
+  group: Group;
 }
 
 type Handle = SunHandle | AmbientHandle | LightHandle | FixtureHandle;
@@ -112,6 +115,9 @@ export function applyFrameLighting(
           handle.light.position.set(
             ...placementPosition(placement, handle.base.target ?? [0, 0, 0]),
           );
+          if (handle.base.type === "area") {
+            handle.light.lookAt(...(handle.base.target ?? [0, 0, 0]));
+          }
         }
         break;
       }
@@ -119,6 +125,10 @@ export function applyFrameLighting(
         const entry = pose.fixtures?.[handle.id];
         const emissive = entry?.emissive ?? handle.base.emissive;
         const lightIntensity = entry?.lightIntensity ?? handle.base.lightIntensity;
+        if ((handle.base.space ?? "world") === "world") {
+          const placement = entry?.placement ?? handle.base.placement;
+          handle.group.position.set(...placementPosition(placement));
+        }
         if (handle.instanced) {
           handle.instances.forEach((inst, i) => {
             _color.set(handle.baseColor).multiplyScalar(emissive * inst.emissiveScale);

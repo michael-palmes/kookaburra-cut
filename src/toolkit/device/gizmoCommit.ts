@@ -1,6 +1,7 @@
-import type { DeviceEditCommit } from "../../engine/deviceEditStore";
+import type { DeviceEditCommitPayload } from "../../engine/deviceEditStore";
 import type { SceneDocDeviceLayoutDelta } from "../../engine/sceneDocSchema";
 import type { V3 } from "../types";
+import type { DevicePlacement } from "./Device";
 
 /** Turns a finished device gizmo drag into exactly what the Position drill's sliders would write, so a laid-out scene keeps editing its `deviceLayout` delta and a block-less one keeps editing raw placement. One rule for both branches: `committed = authored + (dragged - rendered)`, positions and rotations adding, scale multiplying. Differencing against the RENDERED pose (what the gizmo started from) is what survives everything the render does on top: DevicesFallback's portrait scale factor, templates' frozen multipliers, the layout resolver's own composition and the ground clamp. */
 
@@ -17,8 +18,10 @@ export interface DeviceCommitInput {
   dragged: DevicePose;
   /** The pose the proxy started from: the committed placement as rendered. */
   rendered: DevicePose;
+  /** The committed placement before a staged floor replaces its y. */
+  committed: DevicePose;
   /** `devices[i].placement` from the doc: what the sliders themselves read and write. */
-  authored: { position?: V3; rotationDeg?: V3; scale?: number };
+  authored: DevicePlacement;
   /** This device's current `deviceLayout` delta; present only while a block is live, which is the branch the sliders take. */
   delta?: SceneDocDeviceLayoutDelta;
 }
@@ -44,18 +47,25 @@ const resized = (old: number, dragged: number, rendered: number): number => {
   return round(Math.max(MIN_SCALE, old * factor), 3);
 };
 
-export function deviceGizmoCommit(input: DeviceCommitInput): DeviceEditCommit {
-  const { deviceId, sceneIndex, dragged, rendered, authored, delta } = input;
+export function deviceGizmoMovedY(dragged: DevicePose, rendered: DevicePose): boolean {
+  return Math.abs(dragged.position[1] - rendered.position[1]) > 0.0001;
+}
+
+export function deviceGizmoCommit(input: DeviceCommitInput): DeviceEditCommitPayload {
+  const { deviceId, sceneIndex, dragged, rendered, committed, authored, delta } = input;
+  const clearGround = authored.ground === true && deviceGizmoMovedY(dragged, rendered);
+  const positionBase = clearGround ? committed : rendered;
   if (delta) {
     return {
       sceneIndex,
       deviceId,
       kind: "delta",
       delta: {
-        offset: moved(delta.offset ?? ZERO, dragged.position, rendered.position, 3),
+        offset: moved(delta.offset ?? ZERO, dragged.position, positionBase.position, 3),
         rotationDeg: moved(delta.rotationDeg ?? ZERO, dragged.rotationDeg, rendered.rotationDeg, 1),
         scale: resized(delta.scale ?? 1, dragged.scale, rendered.scale),
       },
+      ...(clearGround ? { clearGround: true as const } : {}),
     };
   }
   return {
@@ -66,7 +76,7 @@ export function deviceGizmoCommit(input: DeviceCommitInput): DeviceEditCommit {
       position: moved(
         authored.position ?? DEFAULT_POSITION,
         dragged.position,
-        rendered.position,
+        positionBase.position,
         3,
       ),
       rotationDeg: moved(
@@ -77,5 +87,6 @@ export function deviceGizmoCommit(input: DeviceCommitInput): DeviceEditCommit {
       ),
       scale: resized(authored.scale ?? 1, dragged.scale, rendered.scale),
     },
+    ...(clearGround ? { clearGround: true as const } : {}),
   };
 }

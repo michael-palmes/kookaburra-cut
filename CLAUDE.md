@@ -88,7 +88,7 @@ When creating or editing anything under `projects/*/scenes/`, **use the `kookabu
 4. Colours/type/motion only via `useTheme()` tokens, never hard-coded.
 5. Lay out against `useFormat()` (`aspect`, `safe`) so one scene serves all aspect ratios.
 6. Assets live in the project's `assets/` folder, referenced by relative path. No absolute paths or remote URLs.
-7. User-visible strings come from the scene's sidecar via `useSceneText`; sidecar `background`/`textAnimation`/`camera` blocks are the app-editable surface.
+7. User-visible strings come from the scene's sidecar. Code-owned scene copy uses `useSceneText`; inspector-owned scene copy uses `managedText`, while embedded labels remain in `text`. Sidecar `background`/`textAnimation`/`camera` blocks are the app-editable surface.
 
 ## Skills & commands in this repo
 

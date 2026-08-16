@@ -5,6 +5,7 @@ import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
 import { resolveCutoutRender } from "./frameFormat";
 import {
+  AnimatedFixtureLightIdsContext,
   FormatContext,
   SceneContext,
   SceneDocContext,
@@ -13,6 +14,8 @@ import {
 } from "./sceneContext";
 import type { SceneDoc } from "./sceneDocSchema";
 import { registerSceneHost, unregisterSceneHost } from "./sceneHostRegistry";
+
+const NO_ANIMATED_FIXTURE_LIGHT_IDS: ReadonlySet<string> = new Set();
 
 interface SceneHostProps {
   index: number;
@@ -27,6 +30,8 @@ interface SceneHostProps {
   frame?: FrameSpec;
   /** A comparison's side-B host: same index and timing as the base host, its own doc/theme; the compositor gates the pair by side. */
   side?: "b";
+  /** Zero-base fixtures whose active side-specific track can animate paired lights above zero. */
+  animatedFixtureLightIds?: ReadonlySet<string>;
   children: ReactNode;
 }
 
@@ -40,6 +45,7 @@ export function SceneHost({
   theme,
   frame,
   side,
+  animatedFixtureLightIds,
   children,
 }: SceneHostProps) {
   const key = useId();
@@ -65,13 +71,17 @@ export function SceneHost({
   return (
     <SceneContext.Provider value={{ index, startMs, durationMs, side }}>
       <SceneDocContext.Provider value={doc ?? null}>
-        <SceneThemeContext.Provider value={theme ?? null}>
-          <FormatContext.Provider value={cutoutFormat}>
-            <SceneTextClaimedContext.Provider value={textClaimed}>
-              <group ref={groupRef}>{children}</group>
-            </SceneTextClaimedContext.Provider>
-          </FormatContext.Provider>
-        </SceneThemeContext.Provider>
+        <AnimatedFixtureLightIdsContext.Provider
+          value={animatedFixtureLightIds ?? NO_ANIMATED_FIXTURE_LIGHT_IDS}
+        >
+          <SceneThemeContext.Provider value={theme ?? null}>
+            <FormatContext.Provider value={cutoutFormat}>
+              <SceneTextClaimedContext.Provider value={textClaimed}>
+                <group ref={groupRef}>{children}</group>
+              </SceneTextClaimedContext.Provider>
+            </FormatContext.Provider>
+          </SceneThemeContext.Provider>
+        </AnimatedFixtureLightIdsContext.Provider>
       </SceneDocContext.Provider>
     </SceneContext.Provider>
   );

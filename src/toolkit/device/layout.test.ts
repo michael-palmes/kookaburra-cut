@@ -47,13 +47,27 @@ describe("resolveDeviceLayout", () => {
     expect(Math.sign(w1.position?.[0] ?? 0)).toBe(-Math.sign(w2.position?.[0] ?? 0));
   });
 
-  it("depth-pair splits front and back; any other count falls back to toe-in", () => {
+  it("Depth preserves the two-device endpoints and steps any larger group through them", () => {
     const [front, back] = resolveDeviceLayout(phones(2), layout({ preset: "depth-pair" }), wide);
-    expect(front.position?.[2]).toBeGreaterThan(0);
-    expect(back.position?.[2]).toBeLessThan(0);
-    const three = resolveDeviceLayout(phones(3), layout({ preset: "depth-pair" }), wide);
-    expect(three[2].position?.[2]).toBeCloseTo(0);
-    expect(three[0].rotationDeg?.[1]).toBeGreaterThan(0);
+    expect(front.position?.[2]).toBeCloseTo(0.25);
+    expect(front.rotationDeg?.[1]).toBeCloseTo(8);
+    expect(back.position?.[2]).toBeCloseTo(-0.5);
+    expect(back.rotationDeg?.[1]).toBeCloseTo(-8);
+
+    const four = resolveDeviceLayout(phones(4), layout({ preset: "depth-pair" }), wide);
+    expect(four).toHaveLength(4);
+    expect(four.map((device) => device.position?.[2])).toEqual([
+      expect.closeTo(0.25),
+      expect.closeTo(0),
+      expect.closeTo(-0.25),
+      expect.closeTo(-0.5),
+    ]);
+    expect(four.map((device) => device.rotationDeg?.[1])).toEqual([
+      expect.closeTo(8),
+      expect.closeTo(8 / 3),
+      expect.closeTo(-8 / 3),
+      expect.closeTo(-8),
+    ]);
   });
 
   it("a narrow aspect compresses positions and scales together, wide does not", () => {

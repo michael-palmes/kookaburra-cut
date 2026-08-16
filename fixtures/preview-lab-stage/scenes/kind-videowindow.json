@@ -1,9 +1,31 @@
 {
   "version": 1,
   "name": "Kind: video window",
-  "text": {},
+  "text": {
+    "title": "Show the whole flow",
+    "subtitle": "A focused window for your screen recording"
+  },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "title",
+        "type": "title",
+        "text": "Show the whole flow"
+      },
+      {
+        "key": "subtitle",
+        "type": "subtitle",
+        "text": "A focused window for your screen recording"
+      }
+    ]
+  },
   "videoWindow": {
     "media": { "src": "assets/sample-laptop-recording.mp4", "aspect": 1.5468277945619335 },
-    "radius": "macos"
-  }
+    "radius": "macos",
+    "border": { "enabled": false, "color": "#ffffff", "width": 0.0035, "opacity": 0.12 },
+    "scale": 0.65,
+    "offset": [0, -0.08]
+  },
+  "backdrop": { "type": "none" }
 }

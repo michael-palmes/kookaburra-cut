@@ -325,7 +325,7 @@ export function TransitionModal({
 }) {
   const existing = project.slots[boundaryIndex + 1]?.transitionIn ?? null;
   const [draft, setDraft] = useState<TransitionSpec | null>(existing ? { ...existing } : null);
-  useEscapeClose(onCancel);
+  useEscapeClose(onCancel, !embedded);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

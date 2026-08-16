@@ -443,6 +443,7 @@ fn remap_layered_text_keys(doc: &mut Value, items: &HashMap<String, String>) {
 /// Re-mint every scene-local id in a COPIED sidecar so a duplicate is a genuinely new scene rather than a second document wearing the source's ids: each namespace renumbers from 1 in document order (stable and diffable, these files are committed) and every cross-reference follows its target in the same pass, so a rig aim still finds its device and a segment still finds its keys. Two things deliberately do NOT move: `assets/…` paths (references to files, not ids), and lighting light/fixture ids, which `resolveLighting` merges whole-field across theme, project and scene, so a scene's lighting keys may name ids this document doesn't own.
 fn remint_scene_doc_ids(doc: &mut Value) {
     let devices = renumber_ids(doc.get_mut("devices"), "d");
+    renumber_ids(doc.get_mut("images"), "img");
     // Nothing in the document references a staged object, so its map is dropped.
     renumber_ids(doc.get_mut("objects"), "o");
     remap_field(doc.get_mut("duration"), "sourceDeviceId", &devices);
@@ -616,7 +617,17 @@ pub fn duplicate_scene(
     })
 }
 
-/// Every `assets/...` path a scene's TSX or sidecar text mentions; over-capture is harmless because callers gate on the file existing in the source project.
+fn is_project_asset_ref(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix("assets/") else {
+        return false;
+    };
+    !rest.is_empty()
+        && value
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+/// Every `assets/...` path a scene's TSX mentions; over-capture is harmless because callers gate on the file existing in the source project.
 fn scan_asset_refs(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut found: Vec<String> = Vec::new();
@@ -640,16 +651,102 @@ fn scan_asset_refs(text: &str) -> Vec<String> {
             }
         }
         let rel = text[start..end].trim_end_matches([' ', '.']);
-        if standalone
-            && rel.len() > "assets/".len()
-            && !rel.contains("..")
-            && !found.iter().any(|f| f == rel)
-        {
+        if standalone && is_project_asset_ref(rel) && !found.iter().any(|f| f == rel) {
             found.push(rel.to_string());
         }
         from = end.max(start + 1);
     }
     found
+}
+
+fn collect_json_asset_refs(value: &Value) -> Vec<String> {
+    fn walk(value: &Value, found: &mut Vec<String>, seen: &mut HashSet<String>) {
+        match value {
+            Value::String(path) if is_project_asset_ref(path) => {
+                if seen.insert(path.clone()) {
+                    found.push(path.clone());
+                }
+            }
+            Value::Array(values) => {
+                for value in values {
+                    walk(value, found, seen);
+                }
+            }
+            Value::Object(values) => {
+                for value in values.values() {
+                    walk(value, found, seen);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut found = Vec::new();
+    let mut seen = HashSet::new();
+    walk(value, &mut found, &mut seen);
+    found
+}
+
+fn rewrite_json_asset_refs(value: &mut Value, replacements: &[(String, String)]) {
+    match value {
+        Value::String(path) => {
+            if let Some((_, replacement)) = replacements.iter().find(|(source, _)| source == path) {
+                *path = replacement.clone();
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                rewrite_json_asset_refs(value, replacements);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                rewrite_json_asset_refs(value, replacements);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn rewrite_text_asset_refs(text: &str, replacements: &[(String, String)]) -> String {
+    fn path_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/' | b' ')
+    }
+
+    fn find_standalone(text: &str, from: usize, source: &str) -> Option<usize> {
+        let bytes = text.as_bytes();
+        let mut search_from = from;
+        while let Some(offset) = text[search_from..].find(source) {
+            let start = search_from + offset;
+            let end = start + source.len();
+            let starts_clean = start == 0 || !path_byte(bytes[start - 1]);
+            let ends_clean = end == bytes.len() || !path_byte(bytes[end]);
+            if starts_clean && ends_clean {
+                return Some(start);
+            }
+            search_from = end;
+        }
+        None
+    }
+
+    let mut rewritten = String::with_capacity(text.len());
+    let mut from = 0;
+    while from < text.len() {
+        let next = replacements
+            .iter()
+            .filter_map(|(source, replacement)| {
+                find_standalone(text, from, source).map(|start| (start, source, replacement))
+            })
+            .min_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.len().cmp(&a.1.len())));
+        let Some((start, source, replacement)) = next else {
+            rewritten.push_str(&text[from..]);
+            break;
+        };
+        rewritten.push_str(&text[from..start]);
+        rewritten.push_str(replacement);
+        from = start + source.len();
+    }
+    rewritten
 }
 
 /// First free sibling name for `name` in `dir`: stem-2.ext, stem-3.ext, …
@@ -669,6 +766,56 @@ fn free_sibling_name(dir: &Path, name: &str) -> String {
             return candidate;
         }
     }
+}
+
+fn copy_scene_assets(
+    project: &Path,
+    dest: &Path,
+    tsx: &mut String,
+    doc: &mut Option<Value>,
+) -> Result<(), String> {
+    let mut refs = scan_asset_refs(tsx);
+    if let Some(doc) = doc.as_ref() {
+        for rel in collect_json_asset_refs(doc) {
+            if !refs.iter().any(|existing| existing == &rel) {
+                refs.push(rel);
+            }
+        }
+    }
+
+    let mut replacements = Vec::new();
+    for rel in refs {
+        let src_path = project.join(&rel);
+        if !src_path.is_file() {
+            continue;
+        }
+        let (dir_rel, name) = rel.rsplit_once('/').unwrap_or(("assets", rel.as_str()));
+        let dest_dir = dest.join(dir_rel);
+        let mut dest_path = dest_dir.join(name);
+        if dest_path.is_file() {
+            let same = std::fs::read(&src_path)
+                .and_then(|a| std::fs::read(&dest_path).map(|b| a == b))
+                .unwrap_or(false);
+            if same {
+                continue;
+            }
+            let free = free_sibling_name(&dest_dir, name);
+            let new_rel = format!("{dir_rel}/{free}");
+            dest_path = dest_dir.join(&free);
+            replacements.push((rel.clone(), new_rel));
+        }
+        std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+        std::fs::copy(&src_path, &dest_path).map_err(|e| format!("copying {rel}: {e}"))?;
+        workspace::touch_now(&dest_path);
+    }
+
+    if !replacements.is_empty() {
+        *tsx = rewrite_text_asset_refs(tsx, &replacements);
+        if let Some(doc) = doc.as_mut() {
+            rewrite_json_asset_refs(doc, &replacements);
+        }
+    }
+    Ok(())
 }
 
 /// Copy a scene into ANOTHER workspace project: the TSX + sidecar land under a freshly numbered stem carrying an id unique in the destination (and a sidecar re-minted by `remint_scene_doc_ids`), every referenced `assets/` file copies along (identical bytes reuse the destination's file; a clash with different bytes free-names the copy and the scene text re-points), and the manifest entry appends with `durationMs` and `effects` (no outgoing transition: the scene lands last). Files write before the manifest, the duplicate_scene ordering.
@@ -715,56 +862,16 @@ pub fn copy_scene_to_project(
     let mut tsx =
         std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {file}: {e}"))?;
     let doc_file_src = file.replace(".tsx", ".json");
-    let mut doc_text = match std::fs::read_to_string(project.join(&doc_file_src)) {
-        Ok(text) => Some(text),
+    let mut doc = match std::fs::read_to_string(project.join(&doc_file_src)) {
+        Ok(text) => Some(
+            serde_json::from_str::<Value>(&text)
+                .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
+        ),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(format!("reading {doc_file_src}: {e}")),
     };
 
-    // Dependency copy: everything the scene text references and the source actually has.
-    let mut refs = scan_asset_refs(&tsx);
-    if let Some(t) = &doc_text {
-        for rel in scan_asset_refs(t) {
-            if !refs.iter().any(|r| r == &rel) {
-                refs.push(rel);
-            }
-        }
-    }
-    for rel in refs {
-        let src_path = project.join(&rel);
-        if !src_path.is_file() {
-            continue;
-        }
-        let (dir_rel, name) = rel.rsplit_once('/').unwrap_or(("assets", rel.as_str()));
-        let dest_dir = dest.join(dir_rel);
-        let mut dest_path = dest_dir.join(name);
-        if dest_path.is_file() {
-            let same = std::fs::read(&src_path)
-                .and_then(|a| std::fs::read(&dest_path).map(|b| a == b))
-                .unwrap_or(false);
-            if same {
-                continue;
-            }
-            let free = free_sibling_name(&dest_dir, name);
-            let new_rel = format!("{dir_rel}/{free}");
-            dest_path = dest_dir.join(&free);
-            tsx = tsx.replace(rel.as_str(), &new_rel);
-            if let Some(t) = doc_text.take() {
-                doc_text = Some(t.replace(rel.as_str(), &new_rel));
-            }
-        }
-        std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-        std::fs::copy(&src_path, &dest_path).map_err(|e| format!("copying {rel}: {e}"))?;
-        workspace::touch_now(&dest_path);
-    }
-
-    let mut doc = match &doc_text {
-        Some(t) => Some(
-            serde_json::from_str::<Value>(t)
-                .map_err(|e| format!("scene doc isn't valid JSON: {e}"))?,
-        ),
-        None => None,
-    };
+    copy_scene_assets(&project, &dest, &mut tsx, &mut doc)?;
 
     // Fresh stem in the destination, keeping the source's display name.
     let scenes_dir = dest.join("scenes");
@@ -1340,6 +1447,139 @@ fn inherit_applied_background(doc: &mut Value, stamp: Option<&Value>) {
     }
 }
 
+fn resolved_claimed_frame_icon(doc: &Value, deck_frame: Option<&Value>) -> Option<String> {
+    fn valid_frame(value: Option<&Value>) -> Option<&serde_json::Map<String, Value>> {
+        value.and_then(Value::as_object).filter(|frame| {
+            frame
+                .get("cutout")
+                .and_then(Value::as_object)
+                .and_then(|cutout| cutout.get("shape"))
+                .and_then(Value::as_str)
+                .is_some_and(|shape| {
+                    matches!(
+                        shape,
+                        "rect" | "rounded-rect" | "squircle" | "circle" | "capsule" | "none"
+                    )
+                })
+        })
+    }
+
+    let deck = valid_frame(deck_frame);
+    let scene = doc.get("frame").and_then(Value::as_object);
+    if valid_frame(doc.get("frame")).is_none() && deck.is_none() {
+        return None;
+    }
+    let enabled = scene
+        .and_then(|frame| frame.get("enabled"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            deck.and_then(|frame| frame.get("enabled"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(true);
+    if !enabled {
+        return None;
+    }
+    let claims_scene_text = scene
+        .and_then(|frame| frame.get("claimsSceneText"))
+        .and_then(Value::as_bool)
+        .or_else(|| {
+            deck.and_then(|frame| frame.get("claimsSceneText"))
+                .and_then(Value::as_bool)
+        })
+        .unwrap_or(true);
+    if !claims_scene_text {
+        return None;
+    }
+    Some(
+        scene
+            .and_then(|frame| frame.get("icon"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                deck.and_then(|frame| frame.get("icon"))
+                    .and_then(Value::as_str)
+            })
+            .unwrap_or("")
+            .to_string(),
+    )
+}
+
+fn scaffold_managed_text(kind: &str, doc: &Value, deck_frame: Option<&Value>) -> Option<Value> {
+    fn item(key: &str, item_type: &str, text: &str) -> Value {
+        json!({ "key": key, "type": item_type, "text": text })
+    }
+
+    let text = doc.get("text").and_then(Value::as_object);
+    let title = text
+        .and_then(|values| values.get("title"))
+        .and_then(Value::as_str);
+    let subtitle = text
+        .and_then(|values| values.get("subtitle"))
+        .and_then(Value::as_str);
+    let claimed_frame_icon = resolved_claimed_frame_icon(doc, deck_frame);
+    let mut items = match kind {
+        "title" | "overlaystart" | "overlayend" | "overlaypanel" | "device" | "comparison"
+        | "videowindow" => vec![
+            item("title", "title", title.unwrap_or("")),
+            item("subtitle", "subtitle", subtitle.unwrap_or("")),
+        ],
+        "titleicon" => vec![
+            json!({
+                "key": "icon",
+                "type": "icon",
+                "icon": doc
+                    .get("headerIcon")
+                    .and_then(Value::as_str)
+                    .unwrap_or("🚀"),
+            }),
+            item("title", "title", title.unwrap_or("")),
+            item("subtitle", "subtitle", subtitle.unwrap_or("")),
+        ],
+        "appversion" => vec![
+            json!({ "key": "icon", "type": "icon", "icon": "assets/app-icon.png" }),
+            item("title", "subtitle", title.unwrap_or("Your App")),
+            item("subtitle", "title", subtitle.unwrap_or("1.0")),
+        ],
+        "chart" | "blank" | "layeredscreenshot" => {
+            vec![item("title", "title", title.unwrap_or(""))]
+        }
+        _ => return None,
+    };
+
+    if let Some(icon) = claimed_frame_icon {
+        items.insert(
+            0,
+            json!({ "key": "frameIcon", "type": "icon", "icon": icon }),
+        );
+    }
+
+    if matches!(kind, "overlaystart" | "overlayend" | "overlaypanel") {
+        if let Some(bullets) = text
+            .and_then(|values| values.get("bullets"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            let points = bullets
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .enumerate()
+                .map(|(index, line)| {
+                    json!({ "key": format!("bullets-point-{}", index + 1), "text": line })
+                })
+                .collect::<Vec<_>>();
+            items.push(json!({
+                "key": "bullets",
+                "type": "bullets",
+                "text": bullets,
+                "points": points,
+            }));
+        }
+    }
+
+    Some(json!({ "layout": "template", "items": items }))
+}
+
 /// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), everything else gets the 4000ms wizard default.
 #[tauri::command]
 pub async fn scaffold_scene(
@@ -1351,16 +1591,24 @@ pub async fn scaffold_scene(
     let root = workspace::require_root(&app, &state)?;
     workspace::validate_slug(&slug)?;
     let project = root.join(&slug);
-    if !project.join(MANIFEST_FILENAME).is_file() {
+    let manifest_path = project.join(MANIFEST_FILENAME);
+    if !manifest_path.is_file() {
         return Err(format!("project \"{slug}\" has no project.json"));
     }
-    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; read tolerantly (absent, or any non-object, means new scenes follow the theme).
-    let applied_background: Option<Value> =
-        std::fs::read_to_string(project.join(MANIFEST_FILENAME))
-            .ok()
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .and_then(|manifest| manifest.get("appliedBackground").cloned())
-            .filter(Value::is_object);
+    let scaffold_manifest = std::fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    // The project-wide stamp the inspector's "Apply everywhere" leaves behind; absent, or any non-object, means new scenes follow the theme.
+    let applied_background = scaffold_manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("appliedBackground"))
+        .cloned()
+        .filter(Value::is_object);
+    let deck_frame = scaffold_manifest
+        .as_ref()
+        .and_then(|manifest| manifest.get("frame"))
+        .cloned()
+        .filter(Value::is_object);
 
     let template = match options.kind.as_str() {
         "device" | "deviceonly" => TSX_DEVICE,
@@ -1538,6 +1786,9 @@ pub async fn scaffold_scene(
         }
         doc["frame"] = frame;
     }
+    if let Some(managed_text) = scaffold_managed_text(&options.kind, &doc, deck_frame.as_ref()) {
+        doc["managedText"] = managed_text;
+    }
     if options.kind == "videowindow" {
         if let Some(rel) = &options.media_rel {
             let mut media = json!({ "src": rel });
@@ -1711,7 +1962,6 @@ pub async fn scaffold_scene(
     atomic_write_json(&scene_doc_path(&root, &slug, &doc_file)?, &doc)?;
 
     // Register in project.json (atomic), at `position` when given (in range), else appended.
-    let manifest_path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
@@ -1803,24 +2053,493 @@ mod applied_background_tests {
 }
 
 #[cfg(test)]
-mod asset_scan_tests {
-    use super::scan_asset_refs;
+mod scaffold_managed_text_tests {
+    use super::scaffold_managed_text;
+    use serde_json::{json, Value};
+
+    fn template(items: Value) -> Value {
+        json!({ "layout": "template", "items": items })
+    }
 
     #[test]
-    fn finds_refs_in_code_and_json() {
+    fn every_text_bearing_kind_gets_its_exact_managed_block() {
+        let cases = vec![
+            (
+                "title",
+                json!({ "text": { "title": "", "subtitle": "" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "titleicon",
+                json!({
+                    "text": { "title": "Launch", "subtitle": "Today" },
+                    "headerIcon": "🪄",
+                }),
+                template(json!([
+                    { "key": "icon", "type": "icon", "icon": "🪄" },
+                    { "key": "title", "type": "title", "text": "Launch" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Today" },
+                ])),
+            ),
+            (
+                "overlaystart",
+                json!({
+                    "text": {
+                        "title": "Launch",
+                        "subtitle": "Today",
+                        "bullets": " First point \n\nSecond point  ",
+                    },
+                }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Launch" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Today" },
+                    {
+                        "key": "bullets",
+                        "type": "bullets",
+                        "text": " First point \n\nSecond point  ",
+                        "points": [
+                            { "key": "bullets-point-1", "text": "First point" },
+                            { "key": "bullets-point-2", "text": "Second point" },
+                        ],
+                    },
+                ])),
+            ),
+            (
+                "overlayend",
+                json!({ "text": { "title": "End", "subtitle": "Right" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "End" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Right" },
+                ])),
+            ),
+            (
+                "overlaypanel",
+                json!({ "text": { "title": "Your title", "subtitle": "" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Your title" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "device",
+                json!({ "text": { "title": "Phone", "subtitle": "Silver" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Phone" },
+                    { "key": "subtitle", "type": "subtitle", "text": "Silver" },
+                ])),
+            ),
+            (
+                "comparison",
+                json!({
+                    "text": {
+                        "title": "Then and now",
+                        "subtitle": "",
+                        "beforeLabel": "Before",
+                        "afterLabel": "After",
+                    },
+                }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Then and now" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "appversion",
+                json!({ "text": { "title": "Kookaburra", "subtitle": "3.1.5" } }),
+                template(json!([
+                    { "key": "icon", "type": "icon", "icon": "assets/app-icon.png" },
+                    { "key": "title", "type": "subtitle", "text": "Kookaburra" },
+                    { "key": "subtitle", "type": "title", "text": "3.1.5" },
+                ])),
+            ),
+            (
+                "videowindow",
+                json!({ "text": { "title": "", "subtitle": "" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "" },
+                    { "key": "subtitle", "type": "subtitle", "text": "" },
+                ])),
+            ),
+            (
+                "chart",
+                json!({ "text": { "title": "Quarterly revenue" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Quarterly revenue" },
+                ])),
+            ),
+            (
+                "blank",
+                json!({ "text": { "title": "A blank beginning" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "A blank beginning" },
+                ])),
+            ),
+            (
+                "layeredscreenshot",
+                json!({ "text": { "title": "Three screens" } }),
+                template(json!([
+                    { "key": "title", "type": "title", "text": "Three screens" },
+                ])),
+            ),
+        ];
+
+        for (kind, doc, expected) in cases {
+            assert_eq!(
+                scaffold_managed_text(kind, &doc, None),
+                Some(expected),
+                "{kind}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_text_scaffold_captures_a_claimed_frame_icon_in_its_own_slot() {
+        let doc = json!({ "text": { "title": "Launch", "subtitle": "Today" } });
+        let claimed = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "icon": "assets/deck-mark.png",
+        });
+        let expected_with_icon = template(json!([
+            { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+            { "key": "title", "type": "title", "text": "Launch" },
+            { "key": "subtitle", "type": "subtitle", "text": "Today" },
+        ]));
+        for kind in [
+            "title",
+            "overlaystart",
+            "overlayend",
+            "overlaypanel",
+            "device",
+            "comparison",
+            "videowindow",
+        ] {
+            assert_eq!(
+                scaffold_managed_text(kind, &doc, Some(&claimed)),
+                Some(expected_with_icon.clone()),
+                "{kind}",
+            );
+        }
+
+        let title_icon = json!({
+            "text": { "title": "Launch", "subtitle": "Today" },
+            "headerIcon": "🪄",
+        });
+        assert_eq!(
+            scaffold_managed_text("titleicon", &title_icon, Some(&claimed)),
+            Some(template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+                { "key": "icon", "type": "icon", "icon": "🪄" },
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))),
+        );
+        assert_eq!(
+            scaffold_managed_text(
+                "appversion",
+                &json!({ "text": { "title": "Kookaburra", "subtitle": "3.1.5" } }),
+                Some(&claimed),
+            ),
+            Some(template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+                { "key": "icon", "type": "icon", "icon": "assets/app-icon.png" },
+                { "key": "title", "type": "subtitle", "text": "Kookaburra" },
+                { "key": "subtitle", "type": "title", "text": "3.1.5" },
+            ]))),
+        );
+        for kind in ["chart", "blank", "layeredscreenshot"] {
+            assert_eq!(
+                scaffold_managed_text(
+                    kind,
+                    &json!({ "text": { "title": "Optional title" } }),
+                    Some(&claimed),
+                ),
+                Some(template(json!([
+                    { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+                    { "key": "title", "type": "title", "text": "Optional title" },
+                ]))),
+                "{kind}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_scene_frame_preserves_an_explicit_empty_icon_override() {
+        let doc = json!({
+            "text": { "title": "Launch", "subtitle": "Today" },
+            "frame": {
+                "cutout": { "shape": "rounded-rect", "side": "start" },
+                "icon": "",
+            },
+        });
+        let deck = json!({
+            "cutout": { "shape": "rounded-rect", "side": "end" },
+            "icon": "assets/deck-mark.png",
+        });
+        assert_eq!(
+            scaffold_managed_text("overlaystart", &doc, Some(&deck)),
+            Some(template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": "" },
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))),
+        );
+    }
+
+    #[test]
+    fn scene_frame_flags_override_deck_opt_outs_field_by_field() {
+        let title = |frame: Value| {
+            json!({
+                "text": { "title": "Launch", "subtitle": "Today" },
+                "frame": frame,
+            })
+        };
+        let managed = |icon: &str| {
+            template(json!([
+                { "key": "frameIcon", "type": "icon", "icon": icon },
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))
+        };
+        let disabled = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "enabled": false,
+            "icon": "assets/deck.png",
+        });
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({ "enabled": true, "icon": "assets/scene.png" })),
+                Some(&disabled),
+            ),
+            Some(managed("assets/scene.png")),
+        );
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({ "icon": "assets/scene.png" })),
+                Some(&disabled),
+            ),
+            Some(template(json!([
+                { "key": "title", "type": "title", "text": "Launch" },
+                { "key": "subtitle", "type": "subtitle", "text": "Today" },
+            ]))),
+        );
+
+        let unclaimed = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "claimsSceneText": false,
+            "icon": "assets/deck.png",
+        });
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({
+                    "claimsSceneText": true,
+                    "icon": "assets/scene.png",
+                })),
+                Some(&unclaimed),
+            ),
+            Some(managed("assets/scene.png")),
+        );
+
+        let deck = json!({
+            "cutout": { "shape": "rounded-rect" },
+            "icon": "assets/deck.png",
+        });
+        assert_eq!(
+            scaffold_managed_text(
+                "title",
+                &title(json!({ "icon": "assets/scene.png" })),
+                Some(&deck),
+            ),
+            Some(managed("assets/scene.png")),
+        );
+    }
+
+    #[test]
+    fn unclaimed_or_disabled_frames_add_no_frame_icon_item() {
+        let doc = json!({ "text": { "title": "Launch", "subtitle": "Today" } });
+
+        let expected_embedded_icon = template(json!([
+            { "key": "title", "type": "title", "text": "Launch" },
+            { "key": "subtitle", "type": "subtitle", "text": "Today" },
+        ]));
+        for frame in [
+            json!({
+                "cutout": { "shape": "rounded-rect" },
+                "icon": "assets/deck-mark.png",
+                "claimsSceneText": false,
+            }),
+            json!({
+                "cutout": { "shape": "rounded-rect" },
+                "icon": "assets/deck-mark.png",
+                "enabled": false,
+            }),
+            json!({
+                "cutout": { "shape": "unknown" },
+                "icon": "assets/deck-mark.png",
+            }),
+        ] {
+            assert_eq!(
+                scaffold_managed_text("overlaystart", &doc, Some(&frame)),
+                Some(expected_embedded_icon.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn textless_kinds_stay_unmanaged_and_optional_title_kinds_own_their_slot() {
+        for kind in ["deviceonly", "video", "image"] {
+            assert_eq!(
+                scaffold_managed_text(kind, &json!({}), None),
+                None,
+                "{kind}"
+            );
+        }
+        for kind in ["chart", "blank", "layeredscreenshot"] {
+            assert_eq!(
+                scaffold_managed_text(kind, &json!({ "text": { "title": "  " } }), None,),
+                Some(template(json!([
+                    { "key": "title", "type": "title", "text": "  " },
+                ]))),
+                "{kind}",
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod asset_scan_tests {
+    use super::{collect_json_asset_refs, copy_scene_assets, scan_asset_refs};
+    use serde_json::json;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    fn temp_dir(label: &str) -> std::path::PathBuf {
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "kookaburra-scene-assets-{label}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn keeps_valid_tsx_scanning_unchanged() {
         let tsx = r#"const clip = "assets/feature.mp4"; useTexture(`assets/logo dark.png`)"#;
         assert_eq!(
             scan_asset_refs(tsx),
             vec!["assets/feature.mp4", "assets/logo dark.png"]
         );
-        let json = r#"{ "media": { "src": "assets/screen-2.png" } }"#;
-        assert_eq!(scan_asset_refs(json), vec!["assets/screen-2.png"]);
     }
 
     #[test]
     fn skips_traversal_dedupes_and_longer_segments() {
         let text = r#""assets/a.png" and again "assets/a.png"; "my-assets/no.png"; "assets/../x""#;
         assert_eq!(scan_asset_refs(text), vec!["assets/a.png"]);
+    }
+
+    #[test]
+    fn sidecar_walk_keeps_exact_first_class_image_paths() {
+        let doc = json!({
+            "images": [
+                { "id": "img1", "src": "assets/Kākāpō @2 (final).png" },
+                { "id": "img2", "src": "assets/Kākāpō @2 (final).png" },
+                { "id": "img3", "src": "assets/nested/画面 @home.webp" },
+            ],
+            "unsafe": [
+                "assets/../outside.png",
+                "assets/./same.png",
+                "assets//empty.png",
+                "prefix assets/not-a-path.png",
+            ],
+        });
+        assert_eq!(
+            collect_json_asset_refs(&doc),
+            vec![
+                "assets/Kākāpō @2 (final).png",
+                "assets/nested/画面 @home.webp"
+            ]
+        );
+    }
+
+    #[test]
+    fn sidecar_walk_includes_managed_project_image_icons() {
+        let doc = json!({
+            "managedText": {
+                "items": [
+                    { "key": "emoji", "type": "icon", "icon": "🪄" },
+                    { "key": "mark", "type": "icon", "icon": "assets/managed-mark.png" },
+                ],
+            },
+        });
+
+        assert_eq!(
+            collect_json_asset_refs(&doc),
+            vec!["assets/managed-mark.png"]
+        );
+    }
+
+    #[test]
+    fn a_sidecar_image_collision_copies_and_rewrites_the_exact_path() {
+        let root = temp_dir("collision");
+        let project = root.join("source");
+        let dest = root.join("destination");
+        std::fs::create_dir_all(project.join("assets")).unwrap();
+        std::fs::create_dir_all(dest.join("assets")).unwrap();
+        let name = "Kākāpō @2 (final).png";
+        std::fs::write(project.join("assets").join(name), b"source bytes").unwrap();
+        std::fs::write(dest.join("assets").join(name), b"destination bytes").unwrap();
+        let mut tsx = "export default defineScene({ id: 'image' })".to_string();
+        let mut doc = Some(json!({
+            "version": 1,
+            "images": [{ "id": "img1", "src": format!("assets/{name}") }],
+            "note": format!("Preview assets/{name} here"),
+        }));
+
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+
+        let rewritten = "assets/Kākāpō @2 (final)-2.png";
+        assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
+        assert_eq!(
+            doc.as_ref().unwrap()["note"],
+            json!(format!("Preview assets/{name} here"))
+        );
+        assert_eq!(
+            std::fs::read(dest.join("assets/Kākāpō @2 (final)-2.png")).unwrap(),
+            b"source bytes"
+        );
+        assert_eq!(
+            std::fs::read(dest.join("assets").join(name)).unwrap(),
+            b"destination bytes"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_collision_does_not_rewrite_an_embedded_tsx_substring() {
+        let root = temp_dir("tsx-boundary");
+        let project = root.join("source");
+        let dest = root.join("destination");
+        std::fs::create_dir_all(project.join("assets")).unwrap();
+        std::fs::create_dir_all(dest.join("assets")).unwrap();
+        std::fs::write(project.join("assets/foo.png"), b"source bytes").unwrap();
+        std::fs::write(dest.join("assets/foo.png"), b"destination bytes").unwrap();
+        let mut tsx =
+            r#"const image = "assets/foo.png"; const unrelated = "my-assets/foo.png";"#.to_string();
+        let mut doc = None;
+
+        copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
+
+        assert_eq!(
+            tsx,
+            r#"const image = "assets/foo-2.png"; const unrelated = "my-assets/foo.png";"#
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
 
@@ -1837,9 +2556,18 @@ mod remint_tests {
             "duration": { "mode": "follow-media", "sourceDeviceId": "d7" },
             "text": { "title": "Hi", "ls-i9": "Label", "ls-i4": "Other" },
             "textStyle": { "titleSize": 1.2, "ls-i9Color": "#ffffff", "ls-i4OffsetY": 0.1 },
+            "managedText": {
+                "items": [
+                    { "key": "mark", "type": "icon", "icon": "assets/managed-mark.png" },
+                ],
+            },
             "devices": [
                 { "id": "d7", "model": "iphone-17-pro", "media": { "src": "assets/a.mp4", "kind": "video" } },
                 { "id": "d3", "model": "iphone-17-pro" },
+            ],
+            "images": [
+                { "id": "hero-7", "src": "assets/hero.png", "host": "stage" },
+                { "id": "logo-2", "src": "assets/logo-mark.webp", "host": "overlay" },
             ],
             "deviceLayout": {
                 "preset": "row",
@@ -1957,6 +2685,7 @@ mod remint_tests {
     fn every_namespace_renumbers_from_one_in_document_order() {
         let doc = minted(&scene());
         assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
+        assert_eq!(ids(&doc["images"]), ["img1", "img2"]);
         assert_eq!(ids(&doc["objects"]), ["o1", "o2"]);
         assert_eq!(ids(&doc["camera"]["keys"]), ["k1", "k2"]);
         assert_eq!(ids(&doc["cameraRig"]["keys"]), ["k1", "k2", "k3"]);
@@ -2025,6 +2754,12 @@ mod remint_tests {
         let source = scene();
         let doc = minted(&source);
         assert_eq!(asset_paths(&doc), asset_paths(&source));
+        assert_eq!(doc["images"][0]["src"], json!("assets/hero.png"));
+        assert_eq!(doc["images"][1]["src"], json!("assets/logo-mark.webp"));
+        assert_eq!(
+            doc["managedText"]["items"][0]["icon"],
+            json!("assets/managed-mark.png")
+        );
         assert_eq!(doc["objects"][0]["objectId"], json!("lantern"));
         assert_eq!(doc["objects"][1]["objectId"], json!("plant"));
         assert_eq!(doc["chart"]["palette"], json!("ocean"));

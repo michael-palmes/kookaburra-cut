@@ -14,11 +14,13 @@ import {
   SCATTER_ROLL_MIN_RAD,
   SCATTER_TILT_RAD,
   SHINE_HALF_W,
+  STATIC_TEXT_PRESET,
   sampleTextUnit,
   shineBand,
   type TextAnimTiming,
   TWIST_RAD,
   TWIST_START_SCALE,
+  textAnimationEndMs,
   unitHash01,
   unitIndexForKey,
 } from "./presets";
@@ -163,6 +165,38 @@ describe("resolveTextAnimation", () => {
       resolveTextAnimation({}, baseTheme, { in: "fade", out: "none", staggerMs: 0 }),
     ).not.toBeNull();
   });
+
+  it("resolves duration, distance and easing without changing their absent defaults", () => {
+    const legacy = resolveTextAnimation({}, themed);
+    expect(legacy?.durationMs).toBeUndefined();
+    expect(legacy?.distance).toBeUndefined();
+    const anim = resolveTextAnimation({}, baseTheme, {
+      in: "fade-up",
+      out: "none",
+      staggerMs: 0,
+      durationMs: 450,
+      distance: 0.3,
+      ease: "inOutCubic",
+    });
+    expect(anim).toMatchObject({ durationMs: 450, distance: 0.3, ease: "inOutCubic" });
+    if (!anim || !legacy) throw new Error("expected resolved text animation");
+    expect(textAnimationEndMs(200, 1100, anim)).toBe(650);
+    expect(textAnimationEndMs(200, 1100, legacy)).toBe(1100);
+  });
+
+  it("selects a keyed exception while retaining the scene-wide base for other items", () => {
+    const doc = {
+      textAnimation: { in: "fade", out: "none", staggerMs: 0 },
+      textAnimationOverrides: {
+        hero: { in: "slide", out: "none", staggerMs: 0, distance: 0.25 },
+      },
+    };
+    expect(resolveTextAnimationWithDoc({}, baseTheme, doc, "hero")).toMatchObject({
+      preset: "slide",
+      distance: 0.25,
+    });
+    expect(resolveTextAnimationWithDoc({}, baseTheme, doc, "subtitle")?.preset).toBe("fade");
+  });
 });
 
 function timing(overrides: Partial<TextAnimTiming["anim"]> = {}, outAt?: number): TextAnimTiming {
@@ -207,6 +241,14 @@ describe("sampleTextUnit", () => {
     expect(sampleTextUnit(t, 0, 100).dyEm).toBeCloseTo(-0.35, 12);
     expect(sampleTextUnit(t, 0, 300).dyEm).toBeCloseTo(-0.175, 12);
     expect(sampleTextUnit(t, 0, 500).dyEm).toBe(-0);
+  });
+
+  it("uses an authored travel distance and keeps static fully visible", () => {
+    const distance = timing({ preset: "fade-up", distance: 0.3 });
+    expect(sampleTextUnit(distance, 0, 100).dyEm).toBeCloseTo(-0.3, 12);
+    const staticTiming = timing({ preset: STATIC_TEXT_PRESET });
+    expect(sampleTextUnit(staticTiming, 0, 0).alpha).toBe(1);
+    expect(sampleTextUnit(staticTiming, 0, 300).alpha).toBe(1);
   });
 
   it("mask-reveal sweeps the right edge with full alpha", () => {
@@ -315,6 +357,20 @@ describe("sampleTextUnit", () => {
       params: { startScale: 0.8, shine: false, twistDir: -1 },
     });
     expect(sampleTextUnit(right, 0, 100).rotYRad).toBeCloseTo(-TWIST_RAD, 12);
+  });
+
+  it("twist-scale honours an explicitly authored start size and shine", () => {
+    const resolved = resolveTextAnimation(
+      { preset: "twist-scale", startScale: 0.7, shine: true },
+      baseTheme,
+    );
+    expect(resolved?.params.twistStartScale).toBe(0.7);
+    expect(
+      sampleTextUnit(timing({ preset: "twist-scale", params: resolved?.params }), 0, 100),
+    ).toMatchObject({
+      scale: 0.7,
+      shineU: 0,
+    });
   });
 
   it("twist-scale out turns back toward the entry side", () => {

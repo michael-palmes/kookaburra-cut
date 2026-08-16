@@ -11,6 +11,8 @@ import {
   type TextAnimTiming,
   type TextDirection,
   type TextPresetName,
+  textAnimationEndMs,
+  textPresetHasMotion,
 } from "../text/presets";
 import type { EaseName, V3 } from "../types";
 import { GroupAnimationContext, type GroupAnimationState } from "./context";
@@ -36,7 +38,7 @@ export interface AnimatedGroupProps {
   ease?: EaseName;
   /** fade-scale: starting scale, landing at 1. */
   startScale?: number;
-  /** fade-scale: sweep the soft white shine band once across the whole lockup. */
+  /** fade-scale and twist-scale: sweep the soft white shine band once across the whole lockup. */
   shine?: boolean;
   /** twist-scale: the side the card turns in from. */
   direction?: TextDirection;
@@ -45,6 +47,12 @@ export interface AnimatedGroupProps {
   em?: number;
   /** Group extent [width, height] the shine band sweeps, group-local units. */
   extent?: readonly [number, number];
+  /** Stable managed-text key used to resolve an item-level motion exception. */
+  textKey?: string;
+  /** Keep this coded group reveal independent of the scene motion fields. */
+  ignoreSceneMotion?: boolean;
+  /** Lets managed image icons participate in blur-in and mask-reveal. */
+  imageEffects?: boolean;
   children?: ReactNode;
 }
 
@@ -66,25 +74,43 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
     return () => useTextMotionRegistry.getState().unregister(sceneIndex);
   }, [coded, sceneIndex]);
 
-  const anim = resolveGroupAnimation(props, theme, doc);
-  const hasOut = anim !== null && anim.outPreset !== "none" && outAt !== undefined;
-  const animated = anim !== null && (anim.preset !== "none" || hasOut);
+  const anim = resolveGroupAnimation(
+    props,
+    theme,
+    doc,
+    props.textKey,
+    props.ignoreSceneMotion === true,
+  );
+  const effectiveTo = anim ? textAnimationEndMs(from, to, anim) : to;
+  const hasOut = anim !== null && textPresetHasMotion(anim.outPreset) && outAt !== undefined;
+  const animated = anim !== null && (textPresetHasMotion(anim.preset) || hasOut);
   const holdOutMs = hasOut ? outAt : undefined;
   useEffect(() => {
     if (!animated || sceneIndex === undefined) return;
-    return registerPresentTiming(sceneIndex, { kind: "group", toMs: to, outAtMs: holdOutMs });
-  }, [animated, sceneIndex, to, holdOutMs]);
-  if (anim === null || (anim.preset === "none" && !hasOut)) {
+    return registerPresentTiming(sceneIndex, {
+      kind: "group",
+      toMs: effectiveTo,
+      outAtMs: holdOutMs,
+    });
+  }, [animated, sceneIndex, effectiveTo, holdOutMs]);
+  if (anim === null || (!textPresetHasMotion(anim.preset) && !hasOut)) {
     // Plain positioned group; a parent group's context (if any) passes straight through.
     return <group position={position}>{children}</group>;
   }
 
   const em = props.em ?? DEFAULT_GROUP_EM;
-  const timing: TextAnimTiming = { anim, from, to, outAt };
+  const timing: TextAnimTiming = { anim, from, to: effectiveTo, outAt };
   const sample = sampleTextUnit(timing, 0, localMs);
 
-  // Shine is a fade-scale scale-in feature (the headline rule); capability is mount-stable since the resolved animation cannot change without a scene remount.
-  const shineCapable = anim.params.shine && anim.preset === "fade-scale";
+  // Capability is mount-stable since the resolved animation cannot change without a scene remount.
+  const shineCapable =
+    anim.params.shine && (anim.preset === "fade-scale" || anim.preset === "twist-scale");
+  const imageEffectsCapable =
+    props.imageEffects === true &&
+    (anim.preset === "blur-in" ||
+      anim.outPreset === "blur-in" ||
+      anim.preset === "mask-reveal" ||
+      anim.outPreset === "mask-reveal");
   const band = shineCapable
     ? groupShineBand(props.extent ?? DEFAULT_GROUP_EXTENT, sample.shineU)
     : null;
@@ -93,6 +119,13 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
     alpha: sample.alpha * (parent?.alpha ?? 1),
     band,
     shineCapable,
+    ...(imageEffectsCapable
+      ? {
+          imageEffectsCapable: true,
+          imageBlurWorld: sample.blurEm * em,
+          imageSweep: sample.sweep,
+        }
+      : {}),
   };
 
   return (

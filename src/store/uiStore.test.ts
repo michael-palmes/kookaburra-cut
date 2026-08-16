@@ -63,3 +63,85 @@ describe("free camera warning dismissal", () => {
     expect(store.getState().freeCameraWarningDismissed).toBe(true);
   });
 });
+
+describe("inspector drill navigation", () => {
+  it("pushes and pops exactly one canonical level", async () => {
+    const store = await freshStore();
+    store.getState().openInspectorDrill("lighting");
+    store.getState().openInspectorDrill("lighting.shadows");
+
+    expect(store.getState().inspector).toEqual({
+      tab: "scene",
+      drillStack: ["lighting", "lighting.shadows"],
+      drillIn: "lighting.shadows",
+      overviewSelection: null,
+    });
+
+    store.getState().closeInspectorDrill();
+    expect(store.getState().inspector.drillStack).toEqual(["lighting"]);
+    expect(store.getState().inspector.drillIn).toBe("lighting");
+    expect(store.getState().inspectorNavigation.kind).toBe("pop");
+  });
+
+  it("resets the path on tab changes and explicit resets", async () => {
+    const store = await freshStore();
+    store.getState().openInspectorDrill("lighting");
+    store.getState().setInspectorTab("project");
+    expect(store.getState().inspector).toEqual({
+      tab: "project",
+      drillStack: [],
+      drillIn: null,
+      overviewSelection: null,
+    });
+    expect(store.getState().inspectorNavigation.kind).toBe("reset");
+
+    store.getState().openInspectorDrill("project.scenes");
+    store.getState().resetInspectorDrill();
+    expect(store.getState().inspector.drillStack).toEqual([]);
+    expect(store.getState().inspector.drillIn).toBeNull();
+  });
+
+  it("copies an external jump path and keeps its top mirror in sync", async () => {
+    const store = await freshStore();
+    const path = ["chart.edit", "chart.position"];
+    store.getState().jumpInspectorDrill(path);
+    path.push("mutated-outside");
+
+    expect(store.getState().inspector.drillStack).toEqual(["chart.edit", "chart.position"]);
+    expect(store.getState().inspector.drillIn).toBe("chart.position");
+    expect(store.getState().inspectorNavigation.kind).toBe("jump");
+  });
+
+  it("replaces the current drill without changing its depth", async () => {
+    const store = await freshStore();
+    store.getState().openInspectorDrill("legacyImage.edit");
+    store.getState().replaceInspectorDrill("image.edit");
+
+    expect(store.getState().inspector.drillStack).toEqual(["image.edit"]);
+    expect(store.getState().inspector.drillIn).toBe("image.edit");
+    expect(store.getState().inspectorNavigation.kind).toBe("replace");
+
+    store.getState().closeInspectorDrill();
+    expect(store.getState().inspector.drillStack).toEqual([]);
+  });
+
+  it("does not emit a pop when already at the overview", async () => {
+    const store = await freshStore();
+    const before = store.getState().inspectorNavigation.sequence;
+    store.getState().closeInspectorDrill();
+    expect(store.getState().inspectorNavigation.sequence).toBe(before);
+  });
+
+  it("keeps overview selection through a drill round trip and clears it on reset", async () => {
+    const store = await freshStore();
+    const selection = { sceneIndex: 2, rowId: "device:phone", domain: "devices" as const };
+    store.getState().setInspectorOverviewSelection(selection);
+    store.getState().openInspectorDrill("device");
+    store.getState().closeInspectorDrill();
+
+    expect(store.getState().inspector.overviewSelection).toEqual(selection);
+
+    store.getState().resetInspectorDrill();
+    expect(store.getState().inspector.overviewSelection).toBeNull();
+  });
+});

@@ -63,7 +63,10 @@ import {
   takeRedo,
   takeUndo,
 } from "./engine/history";
+import { useImageEditStore } from "./engine/imageEditStore";
+import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
+import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
 import {
@@ -145,11 +148,13 @@ import { openChartDataModal } from "./ui/chartDataModalStore";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
+import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
+import { LightingAnimationLane } from "./ui/LightingAnimationLane";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
@@ -168,7 +173,11 @@ import {
 } from "./ui/Titlebar";
 import { hasPendingTextEdit } from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
-import { commitSceneDuration, resolveDocPatchIndex } from "./ui/useSceneDocPatch";
+import {
+  commitSceneDuration,
+  docPatchMatchesProject,
+  resolveDocPatchIndex,
+} from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
 
 /** A recessed matte over the letterboxed stage while a freshly-opened project settles, with an honest step-based progress bar (no fabricated animation); never rendered in autorun. */
@@ -524,9 +533,10 @@ export default function App() {
 
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
   const handleDocChanged = useCallback(
-    (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => {
+    (sceneIndex: number, doc: SceneDoc, sceneFile?: string, writtenProjectId?: string) => {
       setProject((prev) => {
         if (!prev) return prev;
+        if (!docPatchMatchesProject(prev.id, writtenProjectId)) return prev;
         // The written FILE addresses the slot, never the captured index: a write awaits real IPC, and an insert or reorder landing first shifts every later scene (the phantom-device bug).
         const at = resolveDocPatchIndex(prev.sceneFiles, sceneIndex, sceneFile);
         if (at === null) return prev;
@@ -1425,13 +1435,16 @@ export default function App() {
   useEffect(() => {
     void loadedProjectId;
     useCameraEditStore.getState().reset();
+    useImageEditStore.getState().reset();
     useLayeredScreenshotEditStore.getState().reset();
+    useLightingEditStore.getState().reset();
   }, [loadedProjectId]);
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
-  // The three 2D gizmo layers arm with their inspector section, through the one drill-family map.
+  // The 2D gizmo layers arm with their inspector section, through the one drill-family map.
   const decorationEditOpen = useGizmoSectionOpen("decorations");
+  const imageSectionOpen = useGizmoSectionOpen("images");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -1449,7 +1462,8 @@ export default function App() {
   // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
   const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
   const chartLaneOpen = useChartTrackEditStore((s) => s.open);
-  const stackedLanes = comparePresent || chartPresent;
+  const lightingLaneOpen = useLightingEditStore((state) => state.open);
+  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen;
 
   // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
@@ -1626,6 +1640,9 @@ export default function App() {
   /** Bounded replay (the text-motion panel's live preview): play [startMs, endMs) once and auto-pause, seeking back to where the playhead sat when the panel session began (`replayReturnMsRef`), cleared when manual transport takes over. */
   const playUntilRef = useRef<number | null>(null);
   const replayReturnMsRef = useRef<number | null>(null);
+  useEffect(() => {
+    useImageReconciliationStore.getState().bindProject(projectId);
+  }, [projectId]);
   const projectIdLoaded = project?.id;
   // A real project switch orphans any armed return position (never seek another project's clock); keyed on the id since in-memory doc patches swap the project object per pick.
   useEffect(() => {
@@ -2114,6 +2131,13 @@ export default function App() {
                   isWorkspaceProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
+                  imageSectionOpen && (
+                    <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
                   textSectionOpen && (
                     <TextGizmo
                       project={project}
@@ -2306,6 +2330,7 @@ export default function App() {
           connectorActive={
             (comparePresent && compareLaneOpen) ||
             (chartPresent && chartLaneOpen) ||
+            lightingLaneOpen ||
             (lsActive ? lsLaneOpen : cameraEditOpen)
           }
           activeIndex={camSceneIndex}
@@ -2322,6 +2347,14 @@ export default function App() {
                 )}
                 {chartPresent && (
                   <ChartAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {lightingLaneOpen && (
+                  <LightingAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}

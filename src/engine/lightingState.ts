@@ -3,6 +3,7 @@ import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLigh
 import type { LightSpace, Placement } from "../theme/tokens";
 import type { CameraPose } from "./cameraTrack";
 import { placementPosition } from "./orbit";
+import type { SceneLightingSample } from "./sceneLighting";
 
 /** Camera/subject-space lights, resolved at the compositor seam (mirrors sceneState.ts). A registry of mounted relative lights (populated by the stage's light components) plus `applyRelativeLights(camera, pose)`, called at EACH of renderComposited's four camera-apply sites immediately after the camera pose lands and before `gl.render`. On a transition frame targets A and B use different cameras, so each target resolves its own transforms; resolving anywhere else (a React effect, a shared "current camera") produces the bug that appears only on transition frames. An empty registry is a hard no-op, the null-for-legacy path.
 
@@ -36,6 +37,8 @@ interface RelativeLightEntry {
   /** True for fixtures: the whole group also takes the space's rotation, so a camera-space fixture rides the camera rigidly rather than translating only. */
   orient?: boolean;
   spec: RelativeLightSpec;
+  /** Stable scene entity identity used to read the matching sampled placement. */
+  target?: { sceneIndex: number; kind: "light" | "fixture"; id: string };
 }
 
 const entries = new Map<string, RelativeLightEntry>();
@@ -65,7 +68,11 @@ const _camPos = new Vector3();
 const WORLD_UP = new Vector3(0, 1, 0);
 
 /** Recompute every registered relative light's transform from the camera applied for THIS render target. `pose` is the applied CameraPose when the frame has a camera plan (its lookAt is the subject); null on the legacy path, where the subject falls back to the world origin. Transforms are plain writes recomputed per target per frame; nothing accumulates and nothing persists (a pure function of camera + spec). */
-export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose | null): void {
+export function applyRelativeLights(
+  camera: PerspectiveCamera,
+  pose: CameraPose | null,
+  sample?: SceneLightingSample | null,
+): void {
   if (entries.size === 0) return;
   camera.updateMatrixWorld();
   _camPos.setFromMatrixPosition(camera.matrixWorld);
@@ -73,7 +80,7 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
   // Both the subject basis and every defaulted aim resolve from it.
   _origin.set(...(pose ? pose.lookAt : ([0, 0, 0] as [number, number, number])));
 
-  for (const { object, targetObject, aimSelf, orient, spec } of entries.values()) {
+  for (const { object, targetObject, aimSelf, orient, spec, target } of entries.values()) {
     if (spec.space === "camera") {
       // The camera's own frame, rigid: local placement coordinates map through matrixWorld.
       _basis.copy(camera.matrixWorld);
@@ -94,7 +101,15 @@ export function applyRelativeLights(camera: PerspectiveCamera, pose: CameraPose 
       _basis.makeBasis(_x, _y, _z).setPosition(_origin);
     }
 
-    _pos.set(...placementPosition(spec.placement, spec.target)).applyMatrix4(_basis);
+    const sampledPlacement =
+      target && sample?.index === target.sceneIndex
+        ? target.kind === "light"
+          ? sample.pose.lights?.[target.id]?.placement
+          : sample.pose.fixtures?.[target.id]?.placement
+        : undefined;
+    _pos
+      .set(...placementPosition(sampledPlacement ?? spec.placement, spec.target))
+      .applyMatrix4(_basis);
     // An explicit target reads in the light's own space; a defaulted one is the subject in WORLD
     // space, so a camera-space rim aims at the product rather than back at the lens.
     if (spec.target) _aim.set(...spec.target).applyMatrix4(_basis);
