@@ -2503,7 +2503,7 @@ mod asset_scan_tests {
 
         copy_scene_assets(&project, &dest, &mut tsx, &mut doc).unwrap();
 
-        let rewritten = format!("assets/Kākāpō @2 (final)-2.png");
+        let rewritten = "assets/Kākāpō @2 (final)-2.png";
         assert_eq!(doc.as_ref().unwrap()["images"][0]["src"], json!(rewritten));
         assert_eq!(
             doc.as_ref().unwrap()["note"],
