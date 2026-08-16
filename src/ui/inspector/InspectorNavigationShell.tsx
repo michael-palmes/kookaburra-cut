@@ -44,6 +44,24 @@ const FOCUSABLE =
   'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 const TRANSITION_MS = 160;
 const snapshotScrollState = new WeakMap<HTMLElement, Array<[HTMLElement, number, number]>>();
+const TEXT_ENTRY_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "email",
+  "url",
+  "tel",
+  "password",
+  "number",
+]);
+
+export function textInspectorEditorOwnsEscape(element: Element | null): boolean {
+  if (!element?.closest(".text-inspector-drill")) return false;
+  if (element.hasAttribute("disabled") || element.hasAttribute("readonly")) return false;
+  if (element.getAttribute("contenteditable") === "true") return true;
+  if (element.tagName === "TEXTAREA") return true;
+  if (element.tagName !== "INPUT") return false;
+  return TEXT_ENTRY_INPUT_TYPES.has((element.getAttribute("type") ?? "text").toLowerCase());
+}
 
 export function useInspectorNavigation(): InspectorNavigationContextValue | null {
   return useContext(InspectorNavigationContext);
@@ -489,6 +507,11 @@ export function InspectorNavigationShell({
   );
 
   const clickCurrentBack = useCallback(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && textInspectorEditorOwnsEscape(active)) {
+      active.blur();
+      return;
+    }
     pageRef.current?.querySelector<HTMLButtonElement>(".inspector-drill-back")?.click();
   }, []);
 

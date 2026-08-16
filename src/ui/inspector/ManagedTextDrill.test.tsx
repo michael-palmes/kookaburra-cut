@@ -227,8 +227,9 @@ describe("ManagedTextDrill", () => {
     expect(html).toContain('aria-label="Tick marker"');
     expect(html).toContain('aria-label="Number marker"');
     expect(html).toContain('aria-label="None marker"');
-    expect(html).toContain("Duplicate group");
-    expect(html).toContain("Remove group");
+    expect(html).toContain('aria-label="Duplicate text group"');
+    expect(html).toContain('aria-label="Remove text group"');
+    expect(html).not.toContain("text-inspector-footer");
     expect(html).toContain("Fade Up · This line");
     expect(segmentWith("Left")?.options.map((option) => option.label)).toEqual([
       "Left",
@@ -283,8 +284,7 @@ describe("ManagedTextDrill", () => {
     expect(html).toContain('aria-label="Add text element"');
     expect(html).toContain('aria-label="Duplicate text group"');
     expect(html).toContain('aria-label="Remove text group"');
-    expect(html).toContain(">Duplicate<");
-    expect(html).toContain(">Remove<");
+    expect(html).toContain('class="inspector-drill-header-actions"');
     expect(captures.segments.some((segment) => segment.ariaLabel === "Text alignment")).toBe(true);
     expect(html).toContain('aria-label="Title copy"');
     expect(html).toContain(">Text</textarea>");
@@ -350,6 +350,31 @@ describe("ManagedTextDrill", () => {
     expect(html).not.toContain('class="text-inspector-line active"');
     expect(segmentWith("Right")?.value).toBe("right");
     expect(segmentWith("Subtitle")?.value).toBe("subtitle");
+  });
+
+  it("follows a canvas-selected item into a different text group", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      managedText: {
+        items: [
+          { key: "title", type: "title", text: "Grouped title" },
+          { key: "subtitle", type: "subtitle", text: "Grouped subtitle" },
+          { key: "standalone", type: "title", text: "Standalone text" },
+        ],
+        groups: [
+          { key: "text", itemKeys: ["title", "subtitle"] },
+          { key: "text-2", itemKeys: ["standalone"], align: "right" },
+        ],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <ManagedTextDrill {...props(doc, "standalone")} selectedGroupKey="text" />,
+    );
+
+    expect(html).toContain("Standalone text");
+    expect(html).not.toContain("Grouped title");
+    expect(html).not.toContain("Grouped subtitle");
+    expect(segmentWith("Right")?.value).toBe("right");
   });
 
   it("writes group alignment as one rebased document edit", () => {

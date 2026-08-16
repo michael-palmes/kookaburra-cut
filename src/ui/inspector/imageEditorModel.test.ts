@@ -3,11 +3,19 @@ import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { createSceneImage } from "../../engine/sceneImage";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import {
+  defaultSceneImageHost,
   deleteLegacyImage,
   duplicateLegacyImage,
   promoteLegacyImage,
   reconcileImageEditor,
 } from "./imageEditorModel";
+
+describe("defaultSceneImageHost", () => {
+  it("prefers an enabled Overlay and otherwise uses the Stage", () => {
+    expect(defaultSceneImageHost(true)).toBe("overlay");
+    expect(defaultSceneImageHost(false)).toBe("stage");
+  });
+});
 
 describe("reconcileImageEditor", () => {
   const origin = { kind: "legacy-promotion" as const, imageId: "img1", decorationId: "logo" };

@@ -3,6 +3,7 @@ import {
   isSceneImageSource,
   type SceneDoc,
   type SceneDocImageSpec,
+  type SceneImageHost,
 } from "../../engine/sceneDocSchema";
 import { createSceneImage } from "../../engine/sceneImage";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
@@ -25,6 +26,10 @@ export interface ImageEditorReconciliationInput {
   imageIds: readonly string[];
   imageDecorationIds: readonly string[];
   origins: readonly ImageReconciliationOrigin[];
+}
+
+export function defaultSceneImageHost(overlayAvailable: boolean): SceneImageHost {
+  return overlayAvailable ? "overlay" : "stage";
 }
 
 export type ImageEditorReconciliation =

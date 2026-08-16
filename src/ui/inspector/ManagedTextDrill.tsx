@@ -25,6 +25,7 @@ import {
   managedTextGroupAlignment,
   managedTextStyleValue,
   performManagedTextStructuralAction,
+  selectedManagedTextGroup,
   setManagedTextAlignment,
   setManagedTextColour,
   setManagedTextCopy,
@@ -37,6 +38,7 @@ import {
   ActionRow,
   DrillBack,
   DrillGroup,
+  DrillHeaderAction,
   InspectorSliderRow,
   NumberField,
   type SegmentedOption,
@@ -450,11 +452,7 @@ export function ManagedTextDrill({
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
   const groups = resolveManagedTextGroups(model.items, doc.managedText?.groups);
-  const selectedGroup =
-    groups.find((group) => group.key === requestedGroupKey) ??
-    groups.find((group) => group.itemKeys.includes(selectedItemKey ?? "")) ??
-    groups[0] ??
-    null;
+  const selectedGroup = selectedManagedTextGroup(groups, selectedItemKey, requestedGroupKey);
   const groupItems = selectedGroup?.items ?? [];
   const isSingleItemGroup = groupItems.length === 1;
   const selected = groupItems.find((item) => item.key === selectedItemKey) ?? groupItems[0] ?? null;
@@ -1018,7 +1016,44 @@ export function ManagedTextDrill({
 
   return (
     <div className="inspector-drill text-inspector-drill" aria-busy={disabled || undefined}>
-      <DrillBack label={backLabel} title="Text" onClick={onBack} />
+      <DrillBack
+        label={backLabel}
+        title="Text"
+        onClick={onBack}
+        actions={
+          selectedGroup ? (
+            <>
+              <DrillHeaderAction
+                kind="duplicate"
+                label="Duplicate text group"
+                disabled={disabled}
+                onClick={() =>
+                  void runStructural({ type: "duplicate-group", groupKey: selectedGroup.key })
+                }
+              />
+              <DrillHeaderAction
+                kind="remove"
+                label={
+                  removeGroupArmedKey === selectedGroup.key
+                    ? "Confirm remove text group"
+                    : "Remove text group"
+                }
+                disabled={disabled}
+                armed={removeGroupArmedKey === selectedGroup.key}
+                onClick={() => {
+                  const removeGroupArmed = removeGroupArmedKey === selectedGroup.key;
+                  if (!removeGroupArmed) {
+                    setRemoveGroupArmedKey(selectedGroup.key);
+                    return;
+                  }
+                  setRemoveGroupArmedKey(null);
+                  void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
+                }}
+              />
+            </>
+          ) : undefined
+        }
+      />
       <div className="inspector-drill-scroll text-inspector-scroll">
         {notice && (
           <p className="inspector-error" role="alert">
@@ -1640,52 +1675,6 @@ export function ManagedTextDrill({
               </DrillGroup>
             )}
           </>
-        )}
-        {selectedGroup && (
-          <div className="text-inspector-footer">
-            <button
-              type="button"
-              className="btn"
-              aria-label={isSingleItemGroup ? "Duplicate text group" : undefined}
-              disabled={disabled}
-              onClick={() =>
-                void runStructural({ type: "duplicate-group", groupKey: selectedGroup.key })
-              }
-            >
-              <SmallIcon type="duplicate" />
-              {isSingleItemGroup ? "Duplicate" : "Duplicate group"}
-            </button>
-            <button
-              type="button"
-              className="btn danger"
-              aria-label={
-                isSingleItemGroup
-                  ? removeGroupArmedKey === selectedGroup.key
-                    ? "Confirm remove text group"
-                    : "Remove text group"
-                  : undefined
-              }
-              disabled={disabled}
-              onClick={() => {
-                const removeGroupArmed = removeGroupArmedKey === selectedGroup.key;
-                if (!removeGroupArmed) {
-                  setRemoveGroupArmedKey(selectedGroup.key);
-                  return;
-                }
-                setRemoveGroupArmedKey(null);
-                void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
-              }}
-            >
-              <SmallIcon type="remove" />
-              {removeGroupArmedKey === selectedGroup.key
-                ? isSingleItemGroup
-                  ? "Remove?"
-                  : "Remove group?"
-                : isSingleItemGroup
-                  ? "Remove"
-                  : "Remove group"}
-            </button>
-          </div>
         )}
       </div>
       {menu && <ContextMenu key={menu.key} menu={menu.state} onClose={() => setMenu(null)} />}

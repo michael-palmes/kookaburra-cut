@@ -1,6 +1,7 @@
 /** Stable screen names used by Scene-inspector back bars. */
 const SCENE_INSPECTOR_SCREEN_TITLES: Record<string, string> = {
   text: "Text",
+  objects: "Objects",
   frame: "Overlay",
   camera: "Camera",
   lighting: "Lighting",
@@ -21,7 +22,9 @@ const SCENE_INSPECTOR_SCREEN_TITLES: Record<string, string> = {
   "chart.font": "Chart font",
   "chart.position": "Position",
   "image.edit": "Image",
+  "media.picker": "Choose image",
   "legacyImage.edit": "Image",
+  "objects.picker": "Choose object",
   "device.change": "Change device",
   "device.position": "Arrange devices",
 };

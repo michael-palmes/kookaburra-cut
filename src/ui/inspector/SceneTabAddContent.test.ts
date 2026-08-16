@@ -82,7 +82,7 @@ describe("SceneTab Add Content inspector routing", () => {
     expect(section).toMatch(/case "device":[\s\S]*?addDevice\(\);[\s\S]*?break;/);
     expect(section).toMatch(/case "text":[\s\S]*?addManagedTextOverviewItem\(\);[\s\S]*?break;/);
     expect(section).toMatch(
-      /case "image":[\s\S]*?setMediaTarget\(\{ kind: "image" \}\);[\s\S]*?setModal\("media"\);[\s\S]*?break;/,
+      /case "image":[\s\S]*?openMediaPicker\(\{ kind: "image" \}\);[\s\S]*?break;/,
     );
     expect(section).toMatch(/case "video":[\s\S]*?openDrill\("videoWindow\.edit"\);[\s\S]*?break;/);
     expect(section).toMatch(/case "object":[\s\S]*?openObjectPicker\(\);[\s\S]*?break;/);
@@ -101,7 +101,7 @@ describe("SceneTab Add Content inspector routing", () => {
       ),
       completion: "patchDocResult(",
       selection: "setPickedObjectId(id);",
-      route: 'openDrill("objects.placement");',
+      route: 'replaceDrill("objects.placement");',
     });
     expectSuccessfulInspectorOpen({
       section: sourceSection("  const addCompare = () => {", "  const addChart = () => {"),
@@ -117,13 +117,13 @@ describe("SceneTab Add Content inspector routing", () => {
     });
     expectSuccessfulInspectorOpen({
       section: sourceSection(
-        '  const addPendingImage = (host: "stage" | "overlay") => {',
-        "  const mediaModal =",
+        "  const addPickedImage = (src: string) => {",
+        "  const pickSceneMedia = (rel: string, meta: MediaMeta | null) => {",
       ),
       completion: "patchDocResult(",
       selection:
         "useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });",
-      route: 'openDrill("image.edit");',
+      route: 'jumpDrill(["image.edit"]);',
     });
     expectSuccessfulInspectorOpen({
       section: sourceSection(
@@ -238,5 +238,16 @@ describe("SceneTab Add Content inspector routing", () => {
     expect(selectionSection).toContain('overviewSelection.domain === "text"');
     expect(selectionSection).toMatch(/overviewSelection\.domain === "text"[\s\S]*?: null/);
     expect(addSection).toContain("afterKey: explicitlySelectedTextGroupKey ?? undefined");
+  });
+
+  it("lets a canvas-selected text item switch the active inspector group", () => {
+    const selectionSection = sourceSection(
+      "  const explicitlySelectedTextGroupKey = overviewSelection",
+      "  const managedTextKeys = useMemo(",
+    );
+
+    expect(selectionSection).toMatch(
+      /selectedManagedTextGroup\(\s*managedTextGroups,\s*selectedTextKey,\s*explicitlySelectedTextGroupKey,?\s*\)/,
+    );
   });
 });

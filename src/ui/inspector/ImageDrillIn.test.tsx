@@ -34,7 +34,13 @@ interface CapturedToggleProps {
 }
 
 interface CapturedSegmentProps {
-  options: Array<{ value: string; label: string; title?: string }>;
+  options: Array<{
+    value: string;
+    label: string;
+    title?: string;
+    icon?: unknown;
+    disabled?: boolean;
+  }>;
   value: string;
   onChange: (value: never) => void;
 }
@@ -165,20 +171,27 @@ describe("ImageDrillIn", () => {
     expect(html).toContain("Change source");
     expect(html).toContain('data-image-source-action="true"');
     expect(html).toContain('<legend class="visually-hidden">Image settings</legend>');
-    expect(html).toContain('<legend class="visually-hidden">Image host</legend>');
-    expect(html).toMatch(/aria-disabled="true" aria-describedby="image-overlay-[^"]+"/);
     expect(html).toContain("Add an Overlay to this scene before moving an image there.");
-    expect(html).toContain("Duplicate");
-    expect(html).toContain("Remove");
+    expect(html).toContain('aria-label="Duplicate image"');
+    expect(html).toContain('aria-label="Remove image"');
     expect(captures.sliders.map((slider) => slider.label)).toEqual(["X", "Y", "Depth"]);
     expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+      "Stage",
+      "Overlay",
+    ]);
+    expect(captures.segments[0]?.options.map((option) => Boolean(option.icon))).toEqual([
+      true,
+      true,
+    ]);
+    expect(captures.segments[0]?.options[1]?.disabled).toBe(true);
+    expect(captures.segments[1]?.options.map((option) => option.label)).toEqual([
       "Move",
       "Rotate",
       "Scale",
     ]);
     expect(captures.toggles.map((toggle) => toggle.label)).toContain("Cast shadow");
     expect(html).toContain("Motion");
-    expect(captures.segments[1]?.options.map((option) => option.label)).toEqual([
+    expect(captures.segments[2]?.options.map((option) => option.label)).toEqual([
       "None",
       "Turn",
       "Float",
@@ -201,9 +214,11 @@ describe("ImageDrillIn", () => {
 
     const sourceButton = html.match(/<button[^>]*class="action-row"[^>]*>[\s\S]*?<\/button>/)?.[0];
     const duplicateButton = html.match(
-      /<button[^>]*class="btn"[^>]*>[\s\S]*?Duplicate[\s\S]*?<\/button>/,
+      /<button[^>]*aria-label="Duplicate image"[^>]*>[\s\S]*?<\/button>/,
     )?.[0];
-    const removeButton = html.match(/<button[^>]*class="btn danger"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    const removeButton = html.match(
+      /<button[^>]*aria-label="Remove image"[^>]*>[\s\S]*?<\/button>/,
+    )?.[0];
     const settingsStart = html.indexOf('<fieldset class="image-settings-fieldset" disabled="">');
     const settingsEnd = html.indexOf("</fieldset>", html.lastIndexOf("Motion"));
 
@@ -213,10 +228,16 @@ describe("ImageDrillIn", () => {
     expect(settingsEnd).toBeGreaterThan(html.indexOf("Motion"));
     expect(duplicateButton).toContain('disabled=""');
     expect(removeButton).not.toContain('disabled=""');
+    expect(html).not.toContain('<div class="inspector-drill-actions">');
 
     captures.sliders.find((slider) => slider.label === "X")?.onInput?.(1.1);
     captures.sliders.find((slider) => slider.label === "X")?.onCommit(1.1);
-    captures.segments[0]?.onChange("rotate" as never);
+    captures.segments
+      .find((segment) => segment.options.some((option) => option.label === "Move"))
+      ?.onChange("rotate" as never);
+    captures.segments
+      .find((segment) => segment.options.some((option) => option.label === "Stage"))
+      ?.onChange("overlay" as never);
     expect(patchDoc).not.toHaveBeenCalled();
     expect(imageStore.gizmoMode).toBe("translate");
   });
@@ -226,13 +247,17 @@ describe("ImageDrillIn", () => {
 
     expect(html).toContain("avatar.webp");
     expect(html).toContain("Image 2 of 2");
-    expect(html).toMatch(/aria-pressed="true"[^>]*>Overlay/);
+    expect(captures.segments[0]?.value).toBe("overlay");
+    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+      "Stage",
+      "Overlay",
+    ]);
     expect(captures.sliders.map((slider) => slider.label)).toEqual(["X", "Y", "Size", "Roll"]);
     expect(captures.toggles.map((toggle) => toggle.label)).toEqual(["Circle crop"]);
-    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual(["Above", "Below"]);
+    expect(captures.segments[1]?.options.map((option) => option.label)).toEqual(["Above", "Below"]);
     expect(html).toContain("Motion");
     expect(html).toContain("Float");
-    expect(captures.segments[1]?.options[1]?.title).toBe("Slow turntable");
+    expect(captures.segments[2]?.options[1]?.title).toBe("Slow turntable");
     expect(html).not.toContain("Cast shadow");
   });
 
@@ -299,6 +324,9 @@ describe("ImageDrillIn", () => {
     };
 
     renderToStaticMarkup(<ImageDrillIn {...props(doc)} mutateImage={mutateImage} />);
+    captures.segments
+      .find((segment) => segment.options.some((option) => option.label === "Stage"))
+      ?.onChange("stage" as never);
     const size = captures.sliders.find((slider) => slider.label === "Size");
     size?.onInput?.(0.31);
     size?.onCommit(0.34);
@@ -311,17 +339,19 @@ describe("ImageDrillIn", () => {
       ?.onChange("push-in" as never);
 
     expect(writes.map((write) => write.opts.history)).toEqual([
+      "move image to stage",
       false,
       "image size",
       "image crop",
       "image layer",
       "image motion",
     ]);
-    expect(writes[1]?.opts.baseline).toEqual(doc);
-    expect(writes[1]?.image.overlay.size).toBe(0.34);
-    expect(writes[2]?.image.overlay.shape).toBe("circle");
-    expect(writes[3]?.image.overlay.layer).toBe("below");
-    expect(writes[4]?.image.motion).toEqual({ preset: "push-in" });
+    expect(writes[0]?.image.host).toBe("stage");
+    expect(writes[2]?.opts.baseline).toEqual(doc);
+    expect(writes[2]?.image.overlay.size).toBe(0.34);
+    expect(writes[3]?.image.overlay.shape).toBe("circle");
+    expect(writes[4]?.image.overlay.layer).toBe("below");
+    expect(writes[5]?.image.motion).toEqual({ preset: "push-in" });
   });
 });
 

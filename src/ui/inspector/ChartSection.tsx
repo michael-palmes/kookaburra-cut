@@ -60,6 +60,7 @@ import {
   ChartTypeIcon,
   DrillBack,
   DrillGroup,
+  DrillHeaderAction,
   GizmoModeIcon,
   NumberField,
   SegmentedRow,
@@ -1529,7 +1530,37 @@ export function ChartDrillIn({
 
   return (
     <div className="inspector-drill chart-drill">
-      <DrillBack label={backLabel} title="Chart" onClick={onBack} />
+      <DrillBack
+        label={backLabel}
+        title="Chart"
+        onClick={() => {
+          setConfirmRemove(false);
+          onBack();
+        }}
+        actions={
+          <DrillHeaderAction
+            kind="remove"
+            label={confirmRemove ? "Confirm remove chart" : "Remove chart"}
+            armed={confirmRemove}
+            onClick={() => {
+              if (!confirmRemove) {
+                setConfirmRemove(true);
+                return;
+              }
+              setConfirmRemove(false);
+              closeChartDataModal();
+              void patchDoc(
+                (next) => {
+                  next.chart = undefined;
+                  if (next.animatedTrack === "chart") next.animatedTrack = undefined;
+                },
+                { history: "remove chart" },
+              );
+              onBack();
+            }}
+          />
+        }
+      />
       <div className="inspector-drill-body">
         <ToggleFieldset
           control={
@@ -1547,28 +1578,6 @@ export function ChartDrillIn({
         >
           {tab === "graph" ? graph : tab === "axis" ? axis : seriesTab}
         </ToggleFieldset>
-        <div className="inspector-section-divider" />
-        <ActionRow
-          label={confirmRemove ? "Really remove?" : "Remove chart"}
-          chevron={false}
-          danger
-          onClick={() => {
-            if (!confirmRemove) {
-              setConfirmRemove(true);
-              return;
-            }
-            setConfirmRemove(false);
-            closeChartDataModal();
-            void patchDoc(
-              (next) => {
-                next.chart = undefined;
-                if (next.animatedTrack === "chart") next.animatedTrack = undefined;
-              },
-              { history: "remove chart" },
-            );
-            onBack();
-          }}
-        />
       </div>
     </div>
   );

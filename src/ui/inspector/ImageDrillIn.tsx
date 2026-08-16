@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useCallback, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, type Ref, useCallback, useEffect, useRef, useState } from "react";
 import { useImageEditStore } from "../../engine/imageEditStore";
 import type {
   SceneDoc,
@@ -11,6 +11,7 @@ import {
   ActionRow,
   DrillBack,
   DrillGroup,
+  DrillHeaderAction,
   GizmoModeIcon,
   InspectorSliderRow,
   NumberField,
@@ -57,6 +58,50 @@ export interface ImageMutationOptions {
   history: string | false;
   baseline?: SceneDoc;
 }
+
+function ImageHostIcon({ host }: { host: SceneImageHost }) {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {host === "stage" ? (
+        <>
+          <path d="m10 3.2 6 3.3v7L10 16.8l-6-3.3v-7z" />
+          <path d="m4 6.5 6 3.4 6-3.4M10 9.9v6.9" />
+        </>
+      ) : (
+        <>
+          <rect x="3.5" y="4" width="13" height="12" rx="1.5" />
+          <circle cx="7" cy="7.5" r="1" />
+          <path d="m5.5 13 3.2-3.2 2.1 2.1 1.5-1.5 2.2 2.6" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+const IMAGE_HOST_OPTIONS: SegmentedOption<SceneImageHost>[] = [
+  {
+    value: "stage",
+    label: "Stage",
+    title: "A 3D card among devices and objects",
+    icon: <ImageHostIcon host="stage" />,
+  },
+  {
+    value: "overlay",
+    label: "Overlay",
+    title: "Frame-relative editorial artwork",
+    icon: <ImageHostIcon host="overlay" />,
+  },
+];
 
 const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
   { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
@@ -191,34 +236,6 @@ const IMAGE_MOTION_OPTIONS: SegmentedOption<SceneImageMotionPreset>[] = [
   },
 ];
 
-function FooterIcon({ type }: { type: "duplicate" | "remove" }) {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {type === "duplicate" ? (
-        <>
-          <rect x="5" y="5" width="8" height="8" rx="1.5" />
-          <path d="M3 10H2.5A1.5 1.5 0 011 8.5v-6A1.5 1.5 0 012.5 1h6A1.5 1.5 0 0110 2.5V3" />
-        </>
-      ) : (
-        <>
-          <path d="M3 4h10M6 4V2.5h4V4M5 6.5v5M8 6.5v5M11 6.5v5" />
-          <path d="M4 4l.6 9h6.8l.6-9" />
-        </>
-      )}
-    </svg>
-  );
-}
-
 function imageFileName(src: string): string {
   return src.split("/").filter(Boolean).at(-1) ?? src;
 }
@@ -276,7 +293,6 @@ export function ImageDrillIn({
   commitFromBaseline,
   notice,
 }: ImageDrillInProps) {
-  const overlayReasonId = `image-overlay-${useId().replaceAll(":", "")}`;
   const dragBaseline = useRef<SceneDoc | null>(null);
   const pendingGesture = useRef<(() => void) | null>(null);
   const [removeConfirmImageId, setRemoveConfirmImageId] = useState<string | null>(null);
@@ -349,7 +365,8 @@ export function ImageDrillIn({
     else void patchDoc(patch, { history });
   };
   const chooseHost = (host: SceneImageHost) => {
-    if (host === image.host || (host === "overlay" && !overlayAvailable)) return;
+    if (settingsDisabled || host === image.host || (host === "overlay" && !overlayAvailable))
+      return;
     patchImage((candidate) => (candidate.host = host), `move image to ${host}`);
   };
   const duplicate = () => {
@@ -380,7 +397,28 @@ export function ImageDrillIn({
 
   return (
     <div className="inspector-drill image-drill">
-      <DrillBack label={backLabel} title="Image" onClick={onBack} />
+      <DrillBack
+        label={backLabel}
+        title="Image"
+        onClick={onBack}
+        actions={
+          <>
+            <DrillHeaderAction
+              kind="duplicate"
+              label="Duplicate image"
+              disabled={duplicateDisabled}
+              onClick={duplicate}
+            />
+            <DrillHeaderAction
+              kind="remove"
+              label={removeConfirmImageId === image.id ? "Confirm remove image" : "Remove image"}
+              disabled={removeDisabled}
+              armed={removeConfirmImageId === image.id}
+              onClick={remove}
+            />
+          </>
+        }
+      />
       <div className="inspector-scene-head image-drill-identity">
         <div className="inspector-scene-preview">
           {sourcePreviewUrl && <img src={sourcePreviewUrl} alt="" draggable={false} />}
@@ -433,29 +471,25 @@ export function ImageDrillIn({
         <fieldset className="image-settings-fieldset" disabled={settingsDisabled}>
           <legend className="visually-hidden">Image settings</legend>
           <DrillGroup label="Host">
-            <fieldset className="wizard-presets image-host-options">
-              <legend className="visually-hidden">Image host</legend>
-              <button
-                type="button"
-                className={`chip${image.host === "stage" ? " selected" : ""}`}
-                aria-pressed={image.host === "stage"}
-                onClick={() => chooseHost("stage")}
-              >
-                Stage
-              </button>
-              <button
-                type="button"
-                className={`chip${image.host === "overlay" ? " selected" : ""}`}
-                aria-pressed={image.host === "overlay"}
-                aria-disabled={!overlayAvailable}
-                aria-describedby={overlayAvailable ? undefined : overlayReasonId}
-                onClick={() => chooseHost("overlay")}
-              >
-                Overlay
-              </button>
-            </fieldset>
+            <SegmentedRow
+              ariaLabel="Image host"
+              options={IMAGE_HOST_OPTIONS.map((option) =>
+                option.value === "overlay"
+                  ? {
+                      ...option,
+                      disabled: !overlayAvailable,
+                      title: overlayAvailable
+                        ? option.title
+                        : "Add an Overlay to this scene before moving an image there",
+                    }
+                  : option,
+              )}
+              value={image.host}
+              disabled={settingsDisabled}
+              onChange={chooseHost}
+            />
             {!overlayAvailable && (
-              <span id={overlayReasonId} className="drill-group-hint">
+              <span className="drill-group-hint">
                 Add an Overlay to this scene before moving an image there.
               </span>
             )}
@@ -763,17 +797,6 @@ export function ImageDrillIn({
             />
           </DrillGroup>
         </fieldset>
-      </div>
-
-      <div className="inspector-drill-actions">
-        <button type="button" className="btn" disabled={duplicateDisabled} onClick={duplicate}>
-          <FooterIcon type="duplicate" />
-          Duplicate
-        </button>
-        <button type="button" className="btn danger" disabled={removeDisabled} onClick={remove}>
-          <FooterIcon type="remove" />
-          {removeConfirmImageId === image.id ? "Really remove?" : "Remove"}
-        </button>
       </div>
     </div>
   );

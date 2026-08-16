@@ -26,6 +26,7 @@ describe("inspector redesign styles", () => {
   it("styles the new inspector-only layout hooks", () => {
     expect(styles).toContain(".arrange-devices-body {");
     expect(styles).toMatch(/\.device-editor-preview-card\s*{[^}]*flex: none;/s);
+    expect(styles).toMatch(/\.device-editor-media-thumb img\s*\{[^}]*object-fit: contain;/s);
     expect(styles).toContain(".text-inspector-icon-takeover {");
     expect(styles).toMatch(
       /\.text-inspector-type-segments,\s*\.text-inspector-alignment-segments,[^{]*\{[^}]*align-self: stretch;[^}]*margin: 0 8px;/s,
@@ -37,5 +38,35 @@ describe("inspector redesign styles", () => {
       /\.text-inspector-single-controls\s*\{[^}]*display: flex;[^}]*flex-direction: column;/s,
     );
     expect(styles).toMatch(/\.text-inspector-add-line\s*\{[^}]*margin-left: auto;/s);
+    expect(styles).toMatch(
+      /\.inspector-drill-header-action\s*\{[^}]*width: 26px;[^}]*height: 26px;/s,
+    );
+    expect(styles).toMatch(
+      /\.inspector-drill-header-action\.danger\s*\{[^}]*color: var\(--danger\);/s,
+    );
+    expect(styles).toMatch(
+      /\.inspector-device-switcher\s*\{[^}]*display: grid;[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s,
+    );
+    expect(styles).toMatch(
+      /\.inspector-device-switch-preview img\s*\{[^}]*height: 104px;[^}]*object-fit: contain;/s,
+    );
+    expect(styles).toContain(".inspector-device-switch-name {");
+    expect(styles).not.toContain(".device-editor-actions {");
+    expect(styles).not.toContain(".text-inspector-footer {");
+  });
+
+  it("keeps compact theme collection controls at their full height", () => {
+    expect(styles).toMatch(
+      /\.theme-browser-chips\s*\{[^}]*flex: none;[^}]*min-height: var\(--control-h-sm\);/s,
+    );
+  });
+
+  it("removes native fieldset chrome and overflow from Lighting controls", () => {
+    expect(styles).toMatch(
+      /\[data-lighting-screen\] fieldset\.option-grid,\s*\[data-lighting-screen\] \.lighting-sun-controls\s*\{[^}]*min-width: 0;[^}]*max-width: 100%;[^}]*margin: 0;[^}]*border: 0;/s,
+    );
+    expect(styles).toMatch(
+      /\[data-lighting-screen\] \.lighting-sun-controls\s*\{[^}]*padding: 0;/s,
+    );
   });
 });

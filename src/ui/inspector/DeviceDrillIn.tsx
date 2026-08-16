@@ -31,6 +31,7 @@ import {
 import {
   DrillBack,
   DrillGroup,
+  DrillHeaderAction,
   GizmoModeIcon,
   InspectorSliderRow,
   type SegmentedOption,
@@ -53,6 +54,7 @@ export interface DeviceDrillInProps {
   deviceId: string;
   backLabel?: string;
   screenMediaPreviewUrl?: string;
+  screenMediaAspectRatio?: number;
   screenMediaDetail?: string;
   settingsDisabled?: boolean;
   duplicateDisabled?: boolean;
@@ -270,6 +272,19 @@ function fileName(src: string): string {
   return src.split("/").filter(Boolean).at(-1) ?? src;
 }
 
+export function deviceMediaThumbnailSize(
+  aspectRatio?: number,
+): { width: number; height: number } | undefined {
+  if (typeof aspectRatio !== "number" || !Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+    return undefined;
+  }
+  const bound = 58;
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return aspectRatio >= 1
+    ? { width: bound, height: round(bound / aspectRatio) }
+    : { width: round(bound * aspectRatio), height: bound };
+}
+
 function NavigationIcon({ direction }: { direction: "previous" | "next" }) {
   return (
     <svg
@@ -359,11 +374,7 @@ function DeviceControlIcon({
   );
 }
 
-function DeviceActionIcon({
-  type,
-}: {
-  type: "device" | "media" | "edit" | "duplicate" | "remove";
-}) {
+function DeviceActionIcon({ type }: { type: "device" | "media" | "edit" }) {
   const glyph = {
     device: (
       <>
@@ -382,18 +393,6 @@ function DeviceActionIcon({
       <>
         <path d="M4 15.5 5 12l7.8-7.8 3 3L8 15z" />
         <path d="m11.6 5.4 3 3" />
-      </>
-    ),
-    duplicate: (
-      <>
-        <rect x="7" y="7" width="9" height="9" rx="1.5" />
-        <path d="M5 12H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1" />
-      </>
-    ),
-    remove: (
-      <>
-        <path d="M4 5h12M7 5V3h6v2M6 8v6M10 8v6M14 8v6" />
-        <path d="m5 5 .7 12h8.6L15 5" />
       </>
     ),
   }[type];
@@ -502,6 +501,7 @@ export function DeviceDrillIn({
   deviceId,
   backLabel = "Scene",
   screenMediaPreviewUrl,
+  screenMediaAspectRatio,
   screenMediaDetail,
   settingsDisabled = false,
   duplicateDisabled = false,
@@ -644,6 +644,9 @@ export function DeviceDrillIn({
         ? "Video"
         : "Image"
       : "Choose an image or video");
+  const mediaThumbnailSize = screenMediaPreviewUrl
+    ? deviceMediaThumbnailSize(screenMediaAspectRatio)
+    : undefined;
   const layout = doc.deviceLayout;
   const delta = layout?.devices?.[device.id];
   const position = layout ? (delta?.offset ?? ZERO) : (device.placement?.position ?? ZERO);
@@ -653,7 +656,30 @@ export function DeviceDrillIn({
 
   return (
     <div className="inspector-drill device-editor-drill">
-      <DrillBack label={backLabel} title="Device" onClick={onBack} />
+      <DrillBack
+        label={backLabel}
+        title="Device"
+        onClick={onBack}
+        actions={
+          <>
+            <DrillHeaderAction
+              kind="duplicate"
+              label="Duplicate device"
+              disabled={duplicateDisabled}
+              onClick={duplicate}
+            />
+            <DrillHeaderAction
+              kind="remove"
+              label={
+                removeConfirmDeviceId === device.id ? "Confirm remove device" : "Remove device"
+              }
+              disabled={removeDisabled}
+              armed={removeConfirmDeviceId === device.id}
+              onClick={remove}
+            />
+          </>
+        }
+      />
       <div className="inspector-scene-head device-editor-identity">
         <div className="inspector-scene-id">
           <div className="inspector-scene-title">{model.name}</div>
@@ -741,7 +767,7 @@ export function DeviceDrillIn({
 
         <DrillGroup label="Screen">
           <div className="device-editor-media-summary">
-            <div className="device-editor-media-thumb">
+            <div className="device-editor-media-thumb" style={mediaThumbnailSize}>
               {screenMediaPreviewUrl ? (
                 <img src={screenMediaPreviewUrl} alt="" draggable={false} />
               ) : (
@@ -1019,17 +1045,6 @@ export function DeviceDrillIn({
           </DrillGroup>
         </fieldset>
       </div>
-
-      <div className="inspector-drill-actions device-editor-actions">
-        <button type="button" className="btn" disabled={duplicateDisabled} onClick={duplicate}>
-          <DeviceActionIcon type="duplicate" />
-          Duplicate
-        </button>
-        <button type="button" className="btn danger" disabled={removeDisabled} onClick={remove}>
-          <DeviceActionIcon type="remove" />
-          {removeConfirmDeviceId === device.id ? "Really remove?" : "Remove"}
-        </button>
-      </div>
     </div>
   );
 }
@@ -1079,11 +1094,14 @@ export function DeviceModelDrillIn({
               disabled={model === id && (deviceCount === 1 || !applyAll)}
               onClick={() => onSelectModel(id, deviceCount > 1 && applyAll)}
             >
-              <img
-                src={DEVICE_CATALOG[id].previews[DEVICE_CATALOG[id].defaultColour]}
-                alt={DEVICE_CATALOG[id].name}
-                draggable={false}
-              />
+              <span className="inspector-device-switch-preview">
+                <img
+                  src={DEVICE_CATALOG[id].previews[DEVICE_CATALOG[id].defaultColour]}
+                  alt=""
+                  draggable={false}
+                />
+              </span>
+              <span className="inspector-device-switch-name">{DEVICE_CATALOG[id].name}</span>
             </button>
           ))}
         </fieldset>

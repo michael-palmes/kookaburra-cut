@@ -10,6 +10,7 @@ import {
   DeviceModelDrillIn,
   type DevicePatchDoc,
   type DevicePatchDocResult,
+  deviceMediaThumbnailSize,
   deviceNavigationFocusTarget,
   duplicateFirstClassDevice,
   removeFirstClassDevice,
@@ -149,6 +150,7 @@ function props(doc: SceneDoc): DeviceDrillInProps {
     deviceId: "d2",
     backLabel: "Scene",
     screenMediaPreviewUrl: "asset://localhost/demo.jpg",
+    screenMediaAspectRatio: 1170 / 2532,
     screenMediaDetail: "0:12 · 1170×2532",
     onBack: () => undefined,
     onSelectDevice: () => undefined,
@@ -186,6 +188,7 @@ describe("DeviceDrillIn", () => {
     expect(html).toContain("Change device");
     expect(html).toContain("demo.mov");
     expect(html).toContain("0:12 · 1170×2532");
+    expect(html).toContain('class="device-editor-media-thumb" style="width:26.8px;height:58px"');
     expect(html).toContain("Arranges all 3 devices");
     expect(html).toContain("Reset position");
     expect(html).toContain('<fieldset class="device-editor-motion-list">');
@@ -193,8 +196,9 @@ describe("DeviceDrillIn", () => {
     expect(html).toContain("Push-in settle");
     expect(html).toContain("Slow turntable");
     expect(html).toContain("Tilt reveal");
-    expect(html).toContain("Duplicate");
-    expect(html).toContain("Remove");
+    expect(html).toContain('aria-label="Duplicate device"');
+    expect(html).toContain('aria-label="Remove device"');
+    expect(html).not.toContain("device-editor-actions");
     expect(html).not.toContain("Cancel");
     expect(html).not.toContain("Save");
     expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
@@ -217,6 +221,14 @@ describe("DeviceDrillIn", () => {
       "None",
     ]);
     expect(captures.options[0]?.selected).toBe(true);
+  });
+
+  it("fits screen thumbnails to their source aspect ratio", () => {
+    expect(deviceMediaThumbnailSize(1170 / 2532)).toEqual({ width: 26.8, height: 58 });
+    expect(deviceMediaThumbnailSize(1920 / 1080)).toEqual({ width: 58, height: 32.63 });
+    expect(deviceMediaThumbnailSize(1)).toEqual({ width: 58, height: 58 });
+    expect(deviceMediaThumbnailSize(0)).toBeUndefined();
+    expect(deviceMediaThumbnailSize()).toBeUndefined();
   });
 
   it("keeps keyboard focus in device navigation after Previous or Next changes identity", () => {
@@ -253,6 +265,7 @@ describe("DeviceDrillIn", () => {
     );
 
     expect(html).toContain("MacBook Pro 16″");
+    expect(html).toContain('<div class="device-editor-media-thumb">');
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
       "Left-right",
       "Up-down",
@@ -388,8 +401,12 @@ describe("DeviceDrillIn", () => {
     );
 
     expect(html).toContain('<fieldset class="device-editor-settings" disabled="">');
-    expect(html).toMatch(/class="btn" disabled="">[\s\S]*?Duplicate/);
-    expect(html).toMatch(/class="btn danger" disabled="">[\s\S]*?Remove/);
+    expect(html).toMatch(
+      /class="inspector-drill-header-action" aria-label="Duplicate device"[^>]*disabled=""/,
+    );
+    expect(html).toMatch(
+      /class="inspector-drill-header-action danger" aria-label="Remove device"[^>]*disabled=""/,
+    );
   });
 
   it("keeps model selection in a catalogue-only immediate drill", () => {
@@ -410,6 +427,12 @@ describe("DeviceDrillIn", () => {
       '<fieldset class="inspector-device-switcher" aria-label="Device model">',
     );
     expect(html).toContain('aria-label="Apply device model to"');
+    expect(html.match(/class="inspector-device-switch-preview"/g)).toHaveLength(4);
+    expect(html.match(/class="inspector-device-switch-name"/g)).toHaveLength(4);
+    expect(html).toContain('class="inspector-device-switch-name">iPhone 17 Pro</span>');
+    expect(html).toContain('class="inspector-device-switch-name">MacBook Pro 16″</span>');
+    expect(html).toContain('class="inspector-device-switch-name">iPhone 15 Pro</span>');
+    expect(html).toContain('class="inspector-device-switch-name">Android</span>');
     expect(html).not.toContain('role="radiogroup"');
     expect(html).toContain("All devices");
     expect(html).toContain("Device 2");

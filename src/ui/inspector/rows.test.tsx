@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DrillBack, InspectorSliderRow, SegmentedRow, segmentedKeyTarget } from "./rows";
+import {
+  DrillBack,
+  DrillHeaderAction,
+  InspectorSliderRow,
+  SegmentedRow,
+  segmentedKeyTarget,
+} from "./rows";
 
 describe("DrillBack", () => {
   it("renders the return destination and current screen in one labelled button", () => {
@@ -11,7 +17,41 @@ describe("DrillBack", () => {
     expect(html).toContain('aria-label="Back to Lighting from Shadows"');
     expect(html).toContain('class="inspector-drill-destination">Lighting</span>');
     expect(html).toContain('class="inspector-drill-current">Shadows</span>');
+    expect(html).toMatch(
+      /<button[^>]*class="inspector-drill-back"[^>]*>[\s\S]*class="inspector-drill-current">Shadows<\/span>[\s\S]*<\/button>/,
+    );
     expect(html.match(/<button/g)).toHaveLength(1);
+  });
+
+  it("seats labelled content actions beside the current screen", () => {
+    const html = renderToStaticMarkup(
+      <DrillBack
+        label="Scene"
+        title="Device"
+        onClick={() => undefined}
+        actions={
+          <>
+            <DrillHeaderAction
+              kind="duplicate"
+              label="Duplicate device"
+              onClick={() => undefined}
+            />
+            <DrillHeaderAction
+              kind="remove"
+              label="Confirm remove device"
+              armed
+              onClick={() => undefined}
+            />
+          </>
+        }
+      />,
+    );
+
+    expect(html).toContain('class="inspector-drill-header-actions"');
+    expect(html).toContain('aria-label="Duplicate device"');
+    expect(html).toContain('class="inspector-drill-header-action danger armed"');
+    expect(html).toContain('aria-label="Confirm remove device"');
+    expect(html.match(/<button/g)).toHaveLength(3);
   });
 });
 

@@ -633,37 +633,91 @@ export function DrillBack({
   label,
   title,
   onClick,
+  actions,
 }: {
   label: string;
   title: string;
   onClick: () => void;
+  actions?: ReactNode;
 }) {
   const navigation = useInspectorNavigation();
   return (
+    <div className="inspector-drill-header">
+      <button
+        type="button"
+        className="inspector-drill-back"
+        aria-label={`Back to ${label} from ${title}`}
+        onClick={() => {
+          if (navigation) navigation.requestBack(onClick);
+          else onClick();
+        }}
+      >
+        <span className="inspector-drill-back-chev">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M12 5l-5 5 5 5" />
+          </svg>
+        </span>
+        <span className="inspector-drill-destination">{label}</span>
+        <span className="inspector-drill-current">{title}</span>
+      </button>
+      {actions && <div className="inspector-drill-header-actions">{actions}</div>}
+    </div>
+  );
+}
+
+export function DrillHeaderAction({
+  kind,
+  label,
+  onClick,
+  disabled = false,
+  armed = false,
+}: {
+  kind: "duplicate" | "remove";
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  armed?: boolean;
+}) {
+  return (
     <button
       type="button"
-      className="inspector-drill-back"
-      aria-label={`Back to ${label} from ${title}`}
-      onClick={() => {
-        if (navigation) navigation.requestBack(onClick);
-        else onClick();
-      }}
+      className={`inspector-drill-header-action${kind === "remove" ? " danger" : ""}${armed ? " armed" : ""}`}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
     >
-      <span className="inspector-drill-back-chev">
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          aria-hidden="true"
-        >
-          <path d="M12 5l-5 5 5 5" />
-        </svg>
-      </span>
-      <span className="inspector-drill-destination">{label}</span>
-      <span className="inspector-drill-current">{title}</span>
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {kind === "duplicate" ? (
+          <>
+            <rect x="5" y="5" width="8" height="8" rx="1.5" />
+            <path d="M3 10H2.5A1.5 1.5 0 0 1 1 8.5v-6A1.5 1.5 0 0 1 2.5 1h6A1.5 1.5 0 0 1 10 2.5V3" />
+          </>
+        ) : (
+          <>
+            <path d="M3 4h10M6 4V2.5h4V4M5 6.5v5M8 6.5v5M11 6.5v5" />
+            <path d="M4 4l.6 9h6.8l.6-9" />
+          </>
+        )}
+      </svg>
     </button>
   );
 }

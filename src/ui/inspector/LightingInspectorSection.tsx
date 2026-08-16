@@ -412,7 +412,11 @@ export function LightingInspectorSection({
         </DrillGroup>
 
         <DrillGroup label="Sun" hint={sunEnabled ? undefined : "Sun off"}>
-          <fieldset disabled={!sunEnabled} aria-label={sunEnabled ? "Sun controls" : "Sun off"}>
+          <fieldset
+            className="lighting-sun-controls"
+            disabled={!sunEnabled}
+            aria-label={sunEnabled ? "Sun controls" : "Sun off"}
+          >
             <InspectorSliderRow
               icon={<LightingIcon name="brightness" />}
               label="Brightness"
@@ -613,7 +617,11 @@ export function LightingInspectorSection({
                   onCommit={(value) => commit(writeSun((next) => (next.azimuthDeg = value)))}
                 />
               )}
-              <fieldset disabled={!enabled} aria-label={enabled ? "Sun controls" : "Sun off"}>
+              <fieldset
+                className="lighting-sun-controls"
+                disabled={!enabled}
+                aria-label={enabled ? "Sun controls" : "Sun off"}
+              >
                 <InspectorSliderRow
                   icon={<LightingIcon name="brightness" />}
                   label="Brightness"

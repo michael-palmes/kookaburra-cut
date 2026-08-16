@@ -14,7 +14,10 @@ describe("sceneInspectorScreenTitle", () => {
     expect(sceneInspectorScreenTitle("frame.icon")).toBe("Panel icon");
     expect(sceneInspectorScreenTitle("compare.edit")).toBe("Comparison");
     expect(sceneInspectorScreenTitle("image.edit")).toBe("Image");
+    expect(sceneInspectorScreenTitle("media.picker")).toBe("Choose image");
     expect(sceneInspectorScreenTitle("legacyImage.edit")).toBe("Image");
+    expect(sceneInspectorScreenTitle("objects")).toBe("Objects");
+    expect(sceneInspectorScreenTitle("objects.picker")).toBe("Choose object");
     expect(sceneInspectorScreenTitle("device.position")).toBe("Arrange devices");
     expect(sceneInspectorScreenTitle("chart.font")).toBe("Chart font");
     expect(sceneInspectorScreenTitle(chartSeriesInspectorRoute("s1"))).toBe("Series");

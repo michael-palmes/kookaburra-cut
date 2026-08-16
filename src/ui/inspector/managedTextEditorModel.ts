@@ -7,6 +7,7 @@ import {
   managedTextPoints,
   materialiseManagedFrameIcon,
   materialiseManagedText,
+  type ResolvedManagedTextGroup,
   resolveManagedTextGroups,
   resolveTemplateManagedFrameIcon,
   type VirtualManagedTextOptions,
@@ -75,6 +76,19 @@ export interface PerformManagedTextStructuralActionOptions {
 }
 
 export type ManagedTextStructuralStatus = "committed" | "cancelled" | "noop";
+
+export function selectedManagedTextGroup(
+  groups: readonly ResolvedManagedTextGroup[],
+  selectedItemKey?: string | null,
+  requestedGroupKey?: string | null,
+): ResolvedManagedTextGroup | null {
+  return (
+    groups.find((group) => group.itemKeys.includes(selectedItemKey ?? "")) ??
+    groups.find((group) => group.key === requestedGroupKey) ??
+    groups[0] ??
+    null
+  );
+}
 
 export function managedTextVirtualOptionsForFrame(
   frame: FrameSpec | undefined,

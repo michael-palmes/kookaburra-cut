@@ -224,6 +224,7 @@ describe("LightingInspectorSection", () => {
     );
     expect(html).toContain("Sun off");
     expect(html).toContain("inspector-slider-row-icon");
+    expect(html).toContain('class="lighting-sun-controls"');
     expect(html).toContain('type="range"');
     expect(html).toContain("disabled");
   });
