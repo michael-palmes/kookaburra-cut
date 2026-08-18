@@ -1,0 +1,69 @@
+{
+  "version": 2,
+  "id": "kookaburra-elastic-glyphs",
+  "name": "Elastic Glyphs",
+  "mode": "light",
+  "catalogue": {
+    "category": "maker-energy",
+    "useLabel": "Expressive maker launches",
+    "tags": ["maker", "launch", "creative", "kinetic", "typography", "product"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#dcf5f5",
+    "text": "#12302d",
+    "accent": "#006f68",
+    "muted": "#274a46"
+  },
+  "chartColors": ["#006f68", "#1f4d6b", "#77659c", "#a03329", "#3f6b3f", "#8f5000"],
+  "typography": {
+    "headline": { "family": "Space Grotesk", "weight": 600 },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 180, "base": 450, "slow": 850 },
+    "easings": { "standard": "outCubic", "emphasized": "outBack" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 35,
+    "stagger": "char",
+    "startScale": 0.88,
+    "shine": true
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "drift-slabs",
+    "colors": ["#84ded6", "#65ceb4"],
+    "speed": 1.35,
+    "params": { "count": 16, "spread": 3.5, "depth": 12, "size": 0.85, "drift": 1.3 },
+    "backing": { "type": "color", "color": "#dcf5f5" },
+    "preset": "p3"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -25,
+      "elevationDeg": 45,
+      "intensity": 1.9,
+      "color": "#efffff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 125,
+        "elevationDeg": 18,
+        "intensity": 0.75,
+        "color": "#7cd9cf"
+      },
+      {
+        "azimuthDeg": 160,
+        "elevationDeg": 32,
+        "intensity": 0.35,
+        "color": "#8ea8ff"
+      }
+    ],
+    "ambient": 0.75
+  }
+}

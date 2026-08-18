@@ -1,7 +1,9 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import type { GizmoMode } from "../../engine/gizmoMode";
 import type { ChartType } from "../../toolkit/chart/types";
+import { DebouncedRange } from "../TextAnimationPicker";
 import { isTypingIn } from "../textEditFocus";
+import { useInspectorNavigation } from "./InspectorNavigationShell";
 
 /** Inspector building blocks: the action row (17px icon · 13px label · right value · ›; selected = accent-subtle wash + a 2px inset accent edge, never a full accent fill), the toggle row (label and description left, switch right) and the drill group (uppercase label over tight rows, wider gaps between groups); rendered from the pure models in ui/inspectorOptions.ts. */
 
@@ -89,6 +91,7 @@ export function NumberField({
   max,
   step,
   dragScale,
+  disabled = false,
 }: {
   label: string;
   value: number;
@@ -101,6 +104,7 @@ export function NumberField({
   step?: number;
   /** Value change per horizontal pixel (default: the field's finest unit); Shift drags at 0.1x. */
   dragScale?: number;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(value.toFixed(decimals));
   const inputRef = useRef<HTMLInputElement>(null);
@@ -139,6 +143,7 @@ export function NumberField({
         className="modal-input inspector-num inspector-num-drag"
         value={text}
         inputMode="decimal"
+        disabled={disabled}
         onPointerDown={onPointerDown}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
@@ -152,6 +157,47 @@ export function NumberField({
       />
       <span className="inspector-pose-caption">{label}</span>
     </label>
+  );
+}
+
+export function InspectorSliderRow({
+  icon,
+  label,
+  value,
+  min,
+  max,
+  step,
+  onCommit,
+  onInput,
+  disabled = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onCommit: (value: number) => void;
+  onInput?: (value: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="popover-row inspector-slider-row">
+      <span className="popover-inline slider-row-label">
+        <span className="inspector-slider-row-icon">{icon}</span>
+        {label}
+      </span>
+      <DebouncedRange
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        label={label}
+        disabled={disabled}
+        onCommit={onCommit}
+        onInput={onInput}
+      />
+    </div>
   );
 }
 
@@ -498,6 +544,31 @@ export interface SegmentedOption<T extends string> {
   icon?: ReactNode;
   /** Tooltip; useful where the label alone undersells the consequence of switching. */
   title?: string;
+  disabled?: boolean;
+}
+
+export function segmentedKeyTarget<T extends string>(
+  options: readonly SegmentedOption<T>[],
+  value: T,
+  key: string,
+): T | null {
+  const enabledOptions = options.filter((option) => !option.disabled);
+  if (enabledOptions.length === 0) return null;
+  const current = Math.max(
+    0,
+    enabledOptions.findIndex((option) => option.value === value),
+  );
+  const nextIndex =
+    key === "ArrowRight" || key === "ArrowDown"
+      ? (current + 1) % enabledOptions.length
+      : key === "ArrowLeft" || key === "ArrowUp"
+        ? (current - 1 + enabledOptions.length) % enabledOptions.length
+        : key === "Home"
+          ? 0
+          : key === "End"
+            ? enabledOptions.length - 1
+            : null;
+  return nextIndex === null ? null : (enabledOptions[nextIndex]?.value ?? null);
 }
 
 /** The shared segmented toggle (the camera drill's subtabs, promoted): 2-5 exclusive options as one compact pill. Clicking the active option is a no-op. Pair with ToggleFieldset to straddle a bordered section's top edge. */
@@ -506,27 +577,55 @@ export function SegmentedRow<T extends string>({
   value,
   onChange,
   className,
+  ariaLabel,
+  disabled = false,
 }: {
   options: SegmentedOption<T>[];
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  ariaLabel: string;
+  disabled?: boolean;
 }) {
+  const selectedEnabled = options.some((option) => option.value === value && !option.disabled);
+  const fallbackValue = options.find((option) => !option.disabled)?.value;
+
   return (
     <div
       className={className ? `inspector-subtabs ${className}` : "inspector-subtabs"}
-      role="tablist"
+      role="radiogroup"
+      aria-label={ariaLabel}
     >
       {options.map((o) => (
+        // biome-ignore lint/a11y/useSemanticElements: styled buttons implement the complete roving radio keyboard pattern
         <button
           key={o.value}
           type="button"
-          role="tab"
-          aria-selected={o.value === value}
+          role="radio"
+          aria-checked={o.value === value}
+          tabIndex={
+            !disabled &&
+            !o.disabled &&
+            (o.value === value || (!selectedEnabled && o.value === fallbackValue))
+              ? 0
+              : -1
+          }
           className={`inspector-subtab${o.value === value ? " active" : ""}`}
           title={o.title}
+          disabled={disabled || o.disabled}
           onClick={() => {
             if (o.value !== value) onChange(o.value);
+          }}
+          onKeyDown={(event) => {
+            const next = segmentedKeyTarget(options, o.value, event.key);
+            if (!next) return;
+            event.preventDefault();
+            if (next !== o.value) onChange(next);
+            const index = options.findIndex((option) => option.value === next);
+            event.currentTarget.parentElement
+              ?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+              .item(index)
+              .focus();
           }}
         >
           {o.icon}
@@ -547,24 +646,95 @@ export function ToggleFieldset({ control, children }: { control: ReactNode; chil
   );
 }
 
-/** The drill-in back bar: a full-width, eye-catching affordance at the top of every drill-in, accent wash, real hit area, "Back to <context>". */
-export function DrillBack({ label, onClick }: { label: string; onClick: () => void }) {
+export function DrillBack({
+  label,
+  title,
+  onClick,
+  actions,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+  actions?: ReactNode;
+}) {
+  const navigation = useInspectorNavigation();
   return (
-    <button type="button" className="inspector-drill-back" onClick={onClick}>
-      <span className="inspector-drill-back-chev">
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 20 20"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          aria-hidden="true"
-        >
-          <path d="M12 5l-5 5 5 5" />
-        </svg>
-      </span>
-      {`Back to ${label}`}
+    <div className="inspector-drill-header">
+      <button
+        type="button"
+        className="inspector-drill-back"
+        aria-label={`Back to ${label} from ${title}`}
+        onClick={() => {
+          if (navigation) navigation.requestBack(onClick);
+          else onClick();
+        }}
+      >
+        <span className="inspector-drill-back-chev">
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M12 5l-5 5 5 5" />
+          </svg>
+        </span>
+        <span className="inspector-drill-destination">{label}</span>
+        <span className="inspector-drill-current">{title}</span>
+      </button>
+      {actions && <div className="inspector-drill-header-actions">{actions}</div>}
+    </div>
+  );
+}
+
+export function DrillHeaderAction({
+  kind,
+  label,
+  onClick,
+  disabled = false,
+  armed = false,
+}: {
+  kind: "duplicate" | "remove";
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  armed?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`inspector-drill-header-action${kind === "remove" ? " danger" : ""}${armed ? " armed" : ""}`}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {kind === "duplicate" ? (
+          <>
+            <rect x="5" y="5" width="8" height="8" rx="1.5" />
+            <path d="M3 10H2.5A1.5 1.5 0 0 1 1 8.5v-6A1.5 1.5 0 0 1 2.5 1h6A1.5 1.5 0 0 1 10 2.5V3" />
+          </>
+        ) : (
+          <>
+            <path d="M3 4h10M6 4V2.5h4V4M5 6.5v5M8 6.5v5M11 6.5v5" />
+            <path d="M4 4l.6 9h6.8l.6-9" />
+          </>
+        )}
+      </svg>
     </button>
   );
 }

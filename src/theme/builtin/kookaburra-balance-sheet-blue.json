@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "kookaburra-balance-sheet-blue",
+  "name": "Balance-Sheet Blue",
+  "mode": "dark",
+  "catalogue": {
+    "category": "modern-finance",
+    "useLabel": "Banking and accounting",
+    "tags": ["banking", "accounting", "finance", "reporting", "professional", "safe"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#11111d",
+    "text": "#fafaff",
+    "accent": "#c8c7ff",
+    "muted": "#deddf2"
+  },
+  "chartColors": ["#c8c7ff", "#5eead4", "#f1ad69", "#f2b4dc", "#d2c76c", "#a9cdf7"],
+  "typography": {
+    "headline": { "family": "Libre Franklin", "weight": 600 },
+    "body": { "family": "JetBrains Mono", "weight": 400 },
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 180, "base": 450, "slow": 820 },
+    "easings": { "standard": "outQuad", "emphasized": "outCubic" }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 42,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#11111d", "#403f79", "#5654be", "#312f4c"],
+    "speed": 0.45,
+    "params": {
+      "density": 18,
+      "lineWeight": 0.3,
+      "highlightWidth": 0.28,
+      "fillDensity": 0.3,
+      "cadence": 0.4
+    },
+    "preset": "p9"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -22,
+      "elevationDeg": 48,
+      "intensity": 1.9,
+      "color": "#ececff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 134,
+        "elevationDeg": 20,
+        "intensity": 0.85,
+        "color": "#8b89ff"
+      },
+      {
+        "azimuthDeg": 166,
+        "elevationDeg": 34,
+        "intensity": 0.4,
+        "color": "#63b7d2"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

@@ -194,8 +194,7 @@ export function ScenesDrillIn({
   const selection = [...selected].sort((a, b) => a - b);
   return (
     <div className="inspector-drill">
-      <DrillBack label="Project" onClick={onBack} />
-      <div className="inspector-drill-title">Scenes</div>
+      <DrillBack label="Project" title="Scenes" onClick={onBack} />
       <div className="inspector-drill-body">
         <div className="scene-manager" ref={listRef} aria-label="Scenes" role="listbox">
           {scenes.map((scene, i) => (

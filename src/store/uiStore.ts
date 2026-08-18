@@ -1,9 +1,23 @@
 import { create } from "zustand";
+import type { GizmoDomain } from "../engine/gizmoRegistry";
 import type { ThemeBackdrop, ThemeBackground } from "../theme/tokens";
 
 /** Main-window chrome state: the command palette, preview-audio mute, the inspector panel's tab and drill-in nav stack, the timeline's background clipboard, and the rail-wizard request channel (lets the palette, and later the playback bar, ask TerminalPanel to open a scene wizard without threading callbacks through every layer). Like editorStore, the deterministic export path never reads this store, it holds chrome-only state that must never influence rendered pixels. */
 
 export type InspectorTab = "project" | "scene";
+
+export type InspectorNavigationKind = "push" | "pop" | "reset" | "jump" | "replace";
+
+export interface InspectorNavigationEvent {
+  sequence: number;
+  kind: InspectorNavigationKind;
+}
+
+export interface InspectorOverviewSelection {
+  sceneIndex: number;
+  rowId: string;
+  domain: GizmoDomain | null;
+}
 
 export type PreviewQuality = "full" | "balanced" | "performance";
 
@@ -57,6 +71,8 @@ export interface InspectorState {
   drillStack: string[];
   /** Read-only mirror of the stack top (drillStack.at(-1) ?? null): what the render dispatch and preview-only gates match against. Maintained by the drill actions, never set directly. */
   drillIn: string | null;
+  /** The Scene-overview row selected without opening a drill. Kept through push/pop so returning restores the same row and Stage gizmo domain. */
+  overviewSelection: InspectorOverviewSelection | null;
 }
 
 interface UiState {
@@ -73,6 +89,7 @@ interface UiState {
   /** The Free-camera warning stays hidden once the user ticks "Don't show this again". */
   freeCameraWarningDismissed: boolean;
   inspector: InspectorState;
+  inspectorNavigation: InspectorNavigationEvent;
   /** A pending "open this wizard" request for the Claude rail (consumed by TerminalPanel). */
   railWizardRequest: "new-scene" | "edit-scene" | null;
   /** Bumped by the stage's slowdown badge; the inspector opens the Playback options popover. */
@@ -87,6 +104,7 @@ interface UiState {
   setBeatLaneHidden: (hidden: boolean) => void;
   setFreeCameraWarningDismissed: (dismissed: boolean) => void;
   setInspectorTab: (tab: InspectorTab) => void;
+  setInspectorOverviewSelection: (selection: InspectorOverviewSelection | null) => void;
   /** Push a screen (forward navigation): row list to a group, or a group to a detail. */
   openInspectorDrill: (id: string) => void;
   /** Pop one level (the DrillBack affordance). */
@@ -95,6 +113,8 @@ interface UiState {
   resetInspectorDrill: () => void;
   /** Land directly on a screen path (external jumps from the palette or timeline). */
   jumpInspectorDrill: (ids: string[]) => void;
+  /** Replace the current screen at the same depth without changing Back history. */
+  replaceInspectorDrill: (id: string) => void;
   requestRailWizard: (wizard: "new-scene" | "edit-scene" | null) => void;
   requestPlaybackOptions: () => void;
   setBackgroundClipboard: (clip: BackgroundClipboard | null) => void;
@@ -108,7 +128,8 @@ export const useUiStore = create<UiState>((set) => ({
   beatLaneHidden: loadBeatLaneHidden(),
   freeCameraWarningDismissed: loadFreeCameraWarningDismissed(),
   // Scene is the default tab: it's where editing happens; bundled projects heal back to Project.
-  inspector: { tab: "scene", drillStack: [], drillIn: null },
+  inspector: { tab: "scene", drillStack: [], drillIn: null, overviewSelection: null },
+  inspectorNavigation: { sequence: 0, kind: "reset" },
   railWizardRequest: null,
   playbackOptionsNonce: 0,
   backgroundClipboard: null,
@@ -148,21 +169,88 @@ export const useUiStore = create<UiState>((set) => ({
     set({ freeCameraWarningDismissed });
   },
   setInspectorTab: (tab) =>
-    set((s) => ({ inspector: { ...s.inspector, tab, drillStack: [], drillIn: null } })),
+    set((s) => ({
+      inspector: {
+        ...s.inspector,
+        tab,
+        drillStack: [],
+        drillIn: null,
+        overviewSelection: null,
+      },
+      inspectorNavigation: {
+        sequence: s.inspectorNavigation.sequence + 1,
+        kind: "reset",
+      },
+    })),
+  setInspectorOverviewSelection: (overviewSelection) =>
+    set((s) => ({ inspector: { ...s.inspector, overviewSelection } })),
   openInspectorDrill: (id) =>
     set((s) => {
       const drillStack = [...s.inspector.drillStack, id];
-      return { inspector: { ...s.inspector, drillStack, drillIn: id } };
+      return {
+        inspector: { ...s.inspector, drillStack, drillIn: id },
+        inspectorNavigation: {
+          sequence: s.inspectorNavigation.sequence + 1,
+          kind: "push",
+        },
+      };
     }),
   closeInspectorDrill: () =>
     set((s) => {
+      if (s.inspector.drillStack.length === 0) return s;
       const drillStack = s.inspector.drillStack.slice(0, -1);
-      return { inspector: { ...s.inspector, drillStack, drillIn: drillStack.at(-1) ?? null } };
+      return {
+        inspector: { ...s.inspector, drillStack, drillIn: drillStack.at(-1) ?? null },
+        inspectorNavigation: {
+          sequence: s.inspectorNavigation.sequence + 1,
+          kind: "pop",
+        },
+      };
     }),
   resetInspectorDrill: () =>
-    set((s) => ({ inspector: { ...s.inspector, drillStack: [], drillIn: null } })),
+    set((s) => ({
+      inspector: {
+        ...s.inspector,
+        drillStack: [],
+        drillIn: null,
+        overviewSelection: null,
+      },
+      inspectorNavigation: {
+        sequence: s.inspectorNavigation.sequence + 1,
+        kind: "reset",
+      },
+    })),
   jumpInspectorDrill: (ids) =>
-    set((s) => ({ inspector: { ...s.inspector, drillStack: ids, drillIn: ids.at(-1) ?? null } })),
+    set((s) => {
+      const drillStack = [...ids];
+      return {
+        inspector: { ...s.inspector, drillStack, drillIn: drillStack.at(-1) ?? null },
+        inspectorNavigation: {
+          sequence: s.inspectorNavigation.sequence + 1,
+          kind: "jump",
+        },
+      };
+    }),
+  replaceInspectorDrill: (id) =>
+    set((s) => {
+      if (s.inspector.drillStack.length === 0) {
+        return {
+          inspector: { ...s.inspector, drillStack: [id], drillIn: id },
+          inspectorNavigation: {
+            sequence: s.inspectorNavigation.sequence + 1,
+            kind: "push",
+          },
+        };
+      }
+      const drillStack = [...s.inspector.drillStack.slice(0, -1), id];
+      return {
+        inspector: { ...s.inspector, drillStack, drillIn: id },
+        inspectorNavigation: {
+          sequence: s.inspectorNavigation.sequence + 1,
+          kind: "replace",
+        },
+      };
+    }),
   requestRailWizard: (railWizardRequest) => set({ railWizardRequest }),
   requestPlaybackOptions: () => set((s) => ({ playbackOptionsNonce: s.playbackOptionsNonce + 1 })),
   setBackgroundClipboard: (backgroundClipboard) => set({ backgroundClipboard }),

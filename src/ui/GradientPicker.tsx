@@ -83,7 +83,7 @@ export function GradientPickerModal({
   const titleId = useId();
   const [view, setView] = useState<"grid" | "custom">("grid");
   const [userGradients, setUserGradients] = useState<UserGradient[]>([]);
-  useEscapeClose(onCancel);
+  useEscapeClose(onCancel, !embedded);
   useEffect(() => {
     void listUserGradients().then(setUserGradients);
   }, []);

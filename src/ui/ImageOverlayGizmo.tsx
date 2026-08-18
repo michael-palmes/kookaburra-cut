@@ -1,0 +1,250 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCameraEditStore } from "../engine/cameraEditStore";
+import { computeFormat } from "../engine/format";
+import type { StageRect } from "../engine/gizmoRegistry";
+import { useGizmoSectionOpen } from "../engine/gizmoSections";
+import { useImageEditStore } from "../engine/imageEditStore";
+import { type LoadedProject, resolveAssetUrl } from "../engine/project";
+import type { SceneDocImageSpec, SceneImageOverlayPlacement } from "../engine/sceneDocSchema";
+import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
+import { useEditorStore } from "../store/editorStore";
+import { overlayImageGizmoCommit } from "../toolkit/media/imageGizmoCommit";
+import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
+import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
+
+function centrePx(placement: SceneImageOverlayPlacement, rect: StageRect): Pt {
+  return [
+    rect.left + ((placement.position[0] + 1) / 2) * rect.width,
+    rect.top + ((1 - placement.position[1]) / 2) * rect.height,
+  ];
+}
+
+function positionAt(px: Pt, rect: StageRect): [number, number] {
+  return [(2 * (px[0] - rect.left)) / rect.width - 1, 1 - (2 * (px[1] - rect.top)) / rect.height];
+}
+
+interface StartedGesture {
+  id: string;
+  kind: Gizmo2DGesture["kind"];
+  image: SceneDocImageSpec;
+}
+
+/** Editor-only direct manipulation for Overlay-hosted images. Mount above the canvas under the same workspace/export/autorun guards as the other 2D gizmos. */
+export function OverlayImageGizmo({
+  project,
+  sceneIndex,
+}: {
+  project: LoadedProject;
+  sceneIndex: number;
+}) {
+  const sectionOpen = useGizmoSectionOpen("images");
+  const selected = useImageEditStore((state) => state.selected);
+  const livePlacement = useImageEditStore((state) =>
+    state.previewPlacement?.sceneIndex === sceneIndex && state.previewPlacement.kind === "overlay"
+      ? state.previewPlacement
+      : null,
+  );
+  const cameraArmed = useCameraEditStore((state) => state.armedTool !== null);
+  const formatSpec = useEditorStore((state) => state.format);
+  const format = useMemo(() => computeFormat(formatSpec), [formatSpec]);
+  const [sourceAspects, setSourceAspects] = useState<Record<string, number>>({});
+  const requested = useRef(new Set<string>());
+  const images = useMemo(
+    () => (project.sceneDocs[sceneIndex]?.images ?? []).filter((image) => image.host === "overlay"),
+    [project.sceneDocs, sceneIndex],
+  );
+  const versionSignal = useAssetVersionStore((state) =>
+    images.map((image) => state.versions[assetVersionKey(project.id, image.src)] ?? 0).join("|"),
+  );
+
+  const sourceRequests = useMemo(() => {
+    const versions = versionSignal.split("|").map(Number);
+    return Object.fromEntries(
+      images.map((image, index) => {
+        const version = versions[index] ?? 0;
+        const suffix = version > 0 ? `?v=${version}` : "";
+        return [
+          image.id,
+          {
+            src: image.src,
+            key: `${project.id}\u0000${image.src}${suffix}`,
+            suffix,
+          },
+        ];
+      }),
+    );
+  }, [images, project.id, versionSignal]);
+
+  useEffect(() => {
+    let alive = true;
+    for (const request of Object.values(sourceRequests)) {
+      if (requested.current.has(request.key)) continue;
+      requested.current.add(request.key);
+      let url: string;
+      try {
+        url = resolveAssetUrl(project.id, request.src) + request.suffix;
+      } catch {
+        continue;
+      }
+      const loader = new Image();
+      loader.onload = () => {
+        if (alive && loader.naturalHeight > 0) {
+          setSourceAspects((current) => ({
+            ...current,
+            [request.key]: loader.naturalWidth / loader.naturalHeight,
+          }));
+        }
+      };
+      loader.src = url;
+    }
+    return () => {
+      alive = false;
+    };
+  }, [project.id, sourceRequests]);
+
+  const previousCommitted = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    const next = Object.fromEntries(
+      images.map((image) => [
+        image.id,
+        `${image.overlay.position.join()},${image.overlay.size},${image.overlay.rotationDeg}`,
+      ]),
+    );
+    const previous = previousCommitted.current;
+    previousCommitted.current = next;
+    if (previous === null) return;
+    const preview = useImageEditStore.getState().previewPlacement;
+    if (
+      preview?.sceneIndex === sceneIndex &&
+      preview.kind === "overlay" &&
+      previous[preview.imageId] !== next[preview.imageId]
+    ) {
+      useImageEditStore.getState().clearPreview();
+    }
+  }, [images, sceneIndex]);
+  useEffect(
+    () => () => {
+      const preview = useImageEditStore.getState().previewPlacement;
+      if (preview?.sceneIndex === sceneIndex && preview.kind === "overlay") {
+        useImageEditStore.getState().clearPreview();
+      }
+    },
+    [sceneIndex],
+  );
+
+  const items = useMemo<Gizmo2DItem[]>(
+    () =>
+      images.map((image) => ({
+        id: image.id,
+        label: "Image",
+        can: { move: true, resize: true, rotate: true },
+        frame: (rect: StageRect) => {
+          const placement =
+            livePlacement?.imageId === image.id ? livePlacement.placement : image.overlay;
+          const [cx, cy] = centrePx(placement, rect);
+          const sourceAspect = sourceAspects[sourceRequests[image.id]?.key ?? ""] ?? 1;
+          const width = placement.size * rect.width;
+          const height =
+            placement.shape === "circle"
+              ? width
+              : placement.size * (format.aspect / sourceAspect) * rect.height;
+          return {
+            cx,
+            cy,
+            w: width,
+            h: height,
+            deg: placement.rotationDeg,
+            pivot: [cx, cy] as Pt,
+          };
+        },
+      })),
+    [format.aspect, images, livePlacement, sourceAspects, sourceRequests],
+  );
+
+  const frameGuides = useCallback(
+    (rect: StageRect) => {
+      const scale = rect.width / format.frame.width;
+      return frameGuideLines(rect, {
+        left: format.safe.left * scale,
+        right: format.safe.right * scale,
+        top: format.safe.top * scale,
+        bottom: format.safe.bottom * scale,
+      });
+    },
+    [format],
+  );
+
+  const run = useRef<StartedGesture | null>(null);
+  const pending = useRef<ReturnType<typeof overlayImageGizmoCommit> | null>(null);
+
+  const onGesture = (gesture: Gizmo2DGesture) => {
+    let started = run.current;
+    if (!started || started.id !== gesture.id || started.kind !== gesture.kind) {
+      const image = images.find((candidate) => candidate.id === gesture.id);
+      if (!image) return;
+      const rendered =
+        livePlacement?.imageId === image.id
+          ? { ...image, overlay: livePlacement.placement }
+          : image;
+      started = { id: image.id, kind: gesture.kind, image: structuredClone(rendered) };
+      run.current = started;
+      pending.current = null;
+    }
+    const base = started.image.overlay;
+    let placement: SceneImageOverlayPlacement;
+    if (gesture.kind === "move") {
+      const centre = centrePx(base, gesture.rect);
+      placement = {
+        ...base,
+        position: positionAt([centre[0] + gesture.dxPx, centre[1] + gesture.dyPx], gesture.rect),
+      };
+    } else if (gesture.kind === "resize") {
+      const resized = overlayImageGizmoCommit(sceneIndex, gesture.id, {
+        ...base,
+        size: base.size * gesture.factor,
+      });
+      const size = resized.kind === "overlay" ? resized.placement.size : base.size;
+      const ratio = size / base.size;
+      placement = {
+        ...base,
+        position: positionAt(
+          [
+            gesture.fixedPx[0] + (ratio * gesture.diagPx[0]) / 2,
+            gesture.fixedPx[1] + (ratio * gesture.diagPx[1]) / 2,
+          ],
+          gesture.rect,
+        ),
+        size,
+      };
+    } else {
+      placement = { ...base, rotationDeg: gesture.deg };
+    }
+    const preview = overlayImageGizmoCommit(sceneIndex, gesture.id, placement);
+    pending.current = preview;
+    useImageEditStore.getState().preview(preview);
+  };
+
+  const onGestureEnd = (gesture: Gizmo2DGesture | null) => {
+    const commit = pending.current;
+    run.current = null;
+    pending.current = null;
+    if (!gesture || !commit) return;
+    useImageEditStore.getState().requestCommit(commit);
+  };
+
+  if (!sectionOpen) return null;
+  return (
+    <Gizmo2D
+      items={items}
+      selectedId={selected?.sceneIndex === sceneIndex ? selected.imageId : null}
+      onSelect={(imageId) =>
+        useImageEditStore.getState().select(imageId ? { sceneIndex, imageId } : null)
+      }
+      resizeAbout="opposite-corner"
+      frameGuides={frameGuides}
+      onGesture={onGesture}
+      onGestureEnd={onGestureEnd}
+      cameraArmed={cameraArmed}
+    />
+  );
+}

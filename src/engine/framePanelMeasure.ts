@@ -9,6 +9,13 @@ import { prepareEmojiText } from "../toolkit/text/emojiText";
 import type { FormatInfo } from "../toolkit/types";
 import { framePanelLayout, frameTextAlign } from "./framePanelLayout";
 import { estimateTitleLines } from "./framePanelText";
+import {
+  frameIconStyleKey,
+  resolveTemplateManagedFrameIcon,
+  resolveTemplateManagedTextBullets,
+  resolveTemplateManagedTextCopy,
+  usesSpecialisedTextRenderer,
+} from "./managedText";
 import type { SceneDoc } from "./sceneDocSchema";
 
 /** Title size as a fraction of the column's width, clamped by its height (the title-slide size, before the fit-to-column scale). */
@@ -26,6 +33,7 @@ export const ICON_SIZE = 1.25;
 export const ICON_GAP = 0.4;
 /** The header icon's own `textStyle` key, so the generic `<key>Size` multiplier steers it (the app's Size % control). */
 export const ICON_TEXT_KEY = "icon";
+export const FRAME_ICON_TEXT_KEY = "frameIcon";
 /** The bullet marker, and the gap between it and the line's text. */
 export const BULLET_MARKER = "•";
 export const BULLET_GAP = "  ";
@@ -42,6 +50,22 @@ export const HEADER_BODY_GAP = 0.5;
 const FIT_ITERATIONS = 3;
 /** Preload passes: each warms what the previous solve was missing, and the hanging indent adds a dependency level (its probes decide the bullets' wrap width) on top of the fit fixpoint. */
 const PRELOAD_PASSES = 8;
+
+export interface ManagedPanelTextRegionBounds {
+  top: number;
+  bottom: number;
+}
+
+export function managedPanelTextRegion(
+  top: number,
+  bottom: number,
+  iconBudget: number,
+  chipBudget: number,
+): ManagedPanelTextRegionBounds {
+  const boundedTop = top - Math.max(0, iconBudget);
+  const boundedBottom = bottom + Math.max(0, chipBudget);
+  return { top: boundedTop, bottom: Math.min(boundedTop, boundedBottom) };
+}
 
 export interface PanelTextSpec {
   /** The string troika lays out (emoji already substituted, the EmojiQuads contract). */
@@ -227,8 +251,8 @@ function bulletIndentAt(input: PanelTextInput, fit: number, pending: PanelTextSp
 }
 
 /** The sidecar's size multiplier for the header icon (`textStyle.iconSize`), 1 when unset: `FrameIcon` applies it to the drawn mark, callers apply it to their stacking budget. */
-export function headerIconScale(doc: SceneDoc | undefined): number {
-  const value = doc?.textStyle?.[`${ICON_TEXT_KEY}Size`];
+export function headerIconScale(doc: SceneDoc | undefined, key = ICON_TEXT_KEY): number {
+  const value = doc?.textStyle?.[`${key}Size`];
   return typeof value === "number" ? value : 1;
 }
 
@@ -242,9 +266,25 @@ export function solvePanelLayout(
   const col = framePanelLayout(format, frame);
   const baseTitle = Math.min(col.width * TITLE_WIDTH_FRACTION, col.height * TITLE_HEIGHT_FRACTION);
   const claimed = frame.claimsSceneText !== false;
-  const title = claimed ? (doc?.text?.title ?? "").trim() : "";
-  const subtitle = claimed ? (doc?.text?.subtitle ?? "").trim() : "";
-  const bulletLines = claimed ? splitBullets(doc?.text?.bullets) : [];
+  const specialised = usesSpecialisedTextRenderer(doc);
+  const title =
+    claimed && specialised
+      ? resolveTemplateManagedTextCopy(doc, "title", doc?.text?.title ?? "").trim()
+      : "";
+  const subtitle =
+    claimed && specialised
+      ? resolveTemplateManagedTextCopy(doc, "subtitle", doc?.text?.subtitle ?? "").trim()
+      : "";
+  const bulletLines =
+    claimed && specialised
+      ? resolveTemplateManagedTextBullets(doc, "bullets", doc?.text?.bullets)
+      : [];
+  const icon = !claimed
+    ? frame.icon
+    : specialised
+      ? resolveTemplateManagedFrameIcon(doc, frame.icon)
+      : undefined;
+  const iconKey = frameIconStyleKey(doc);
   const align = frameTextAlign(frame);
   const titleInput = title
     ? textInput(title, "headline", baseTitle, col.width, align, theme, doc, "title")
@@ -278,8 +318,8 @@ export function solvePanelLayout(
   );
 
   // Every non-measured block scales linearly with fit; sum them once at fit = 1.
-  const iconBudget = frame.icon
-    ? baseTitle * ICON_SIZE * headerIconScale(doc) + ICON_GAP * baseTitle
+  const iconBudget = icon
+    ? baseTitle * ICON_SIZE * headerIconScale(doc, iconKey) + ICON_GAP * baseTitle
     : 0;
   const titleGap = title && subtitle ? TITLE_GAP * baseTitle : 0;
   const baseChip = CHIP_HEIGHT_FRAC * format.frame.height;

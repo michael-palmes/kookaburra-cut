@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useContext, useLayoutEffect, useMemo } from "react";
+import { useContext, useId, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
@@ -9,6 +9,7 @@ import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
+import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import {
   isWorkspaceProjectId,
@@ -63,17 +64,27 @@ export function useSceneDoc(): SceneDoc | null {
   return useContext(SceneDocContext);
 }
 
-/** A user-visible string from the scene document's text map; the authoring skill mandates all user-visible strings route through this so "Edit text" works on any scene, falling back when the doc, map, or key is absent. */
-export function useSceneText(key: string, fallback = ""): string {
+/** Resolves code-owned or embedded copy, plus the matching item while a managed scaffold retains its template layout. */
+export function useSceneText(
+  key: string,
+  fallback = "",
+  managedTextRole: ManagedTextRenderRole = "scene",
+): string {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
+  const mountId = useId();
+  const authored = doc?.text?.[key] ?? fallback;
+  const resolved =
+    managedTextRole === "scene" ? resolveTemplateManagedTextCopy(doc, key, authored) : authored;
   // Layout effect so TextFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
-    useTextKeyRegistry.getState().register(sceneIndex, key);
-    return () => useTextKeyRegistry.getState().unregister(sceneIndex, key);
-  }, [sceneIndex, key]);
-  return doc?.text?.[key] ?? fallback;
+    useTextKeyRegistry
+      .getState()
+      .register(sceneIndex, key, mountId, { resolvedText: resolved, managedTextRole });
+    return () => useTextKeyRegistry.getState().unregister(sceneIndex, key, mountId);
+  }, [sceneIndex, key, mountId, resolved, managedTextRole]);
+  return resolved;
 }
 
 /** `Device`-spreadable props (the sidecar device entry, with `model` narrowed). */
@@ -158,13 +169,28 @@ export function useSceneChart(): ResolvedChart | null {
 
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
 
+const sceneDocWriteQueues = new Map<string, Promise<void>>();
+
 /** Atomic, version-guarded sidecar write via the native command. */
 export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneDoc): Promise<void> {
-  await invoke("write_scene_doc", {
-    slug,
-    file: sceneFile.replace(/\.tsx$/, ".json"),
-    text: JSON.stringify(doc, null, 2),
-  });
+  const file = sceneFile.replace(/\.tsx$/, ".json");
+  const key = `${slug}\u0000${file}`;
+  const previous = sceneDocWriteQueues.get(key) ?? Promise.resolve();
+  const write = previous
+    .catch(() => {})
+    .then(async () => {
+      await invoke("write_scene_doc", {
+        slug,
+        file,
+        text: JSON.stringify(doc, null, 2),
+      });
+    });
+  sceneDocWriteQueues.set(key, write);
+  try {
+    await write;
+  } finally {
+    if (sceneDocWriteQueues.get(key) === write) sceneDocWriteQueues.delete(key);
+  }
 }
 
 /** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene) AND onto the manifest as `appliedBackground`, so new scenes scaffold with the same look: one compound undo entry covering both, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */

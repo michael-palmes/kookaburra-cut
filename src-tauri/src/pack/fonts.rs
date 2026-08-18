@@ -16,13 +16,17 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Bundled OFL faces ship with the app, so a pack carrying them would add only bloat and version drift. Mirrors `BUNDLED_FONTS` (`src/theme/fonts.ts`).
-const BUNDLED_FAMILIES: [&str; 6] = [
+const BUNDLED_FAMILIES: [&str; 10] = [
     "Inter",
     "Space Grotesk",
     "Open Sans",
     "JetBrains Mono",
     "Playfair Display",
     "Lora",
+    "Barlow Condensed",
+    "Nunito",
+    "Cormorant Garamond",
+    "Libre Franklin",
 ];
 
 pub fn is_bundled_family(family: &str) -> bool {
@@ -482,6 +486,19 @@ mod tests {
         // contentHash is the file's own sha for a font whose bytes travel.
         assert_eq!(fonts[0].base.content_hash, fonts[0].sha256.clone().unwrap());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn theme_library_families_are_bundled_case_insensitively() {
+        for family in [
+            "barlow condensed",
+            "NUNITO",
+            "Cormorant Garamond",
+            "libre franklin",
+        ] {
+            assert!(is_bundled_family(family));
+        }
+        assert!(!is_bundled_family("Avenir Next"));
     }
 
     #[test]

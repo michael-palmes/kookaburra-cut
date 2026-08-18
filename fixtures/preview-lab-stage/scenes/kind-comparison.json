@@ -7,6 +7,21 @@
     "beforeLabel": "Before",
     "afterLabel": "After"
   },
+  "managedText": {
+    "layout": "template",
+    "items": [
+      {
+        "key": "title",
+        "type": "title",
+        "text": "The redesign"
+      },
+      {
+        "key": "subtitle",
+        "type": "subtitle",
+        "text": ""
+      }
+    ]
+  },
   "devices": [
     {
       "id": "d1",

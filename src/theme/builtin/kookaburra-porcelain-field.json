@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "id": "kookaburra-porcelain-field",
+  "name": "Porcelain Field",
+  "mode": "light",
+  "catalogue": {
+    "category": "quiet-technology",
+    "useLabel": "Calm product systems",
+    "tags": ["calm", "product", "systems", "technology", "minimal", "professional"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#e8eff4",
+    "text": "#152735",
+    "accent": "#17677d",
+    "muted": "#38505f"
+  },
+  "chartColors": ["#17677d", "#1f2937", "#3f6f7a", "#6b4f6b", "#7a5c3a", "#27508f"],
+  "typography": {
+    "headline": { "family": "Libre Franklin", "weight": 600 },
+    "body": "Open Sans",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 200, "base": 520, "slow": 920 },
+    "easings": { "standard": "outQuad", "emphasized": "outCubic" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "startScale": 0.96
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "colors": ["#e8eff4", "#d6e2eb", "#c8d8e4", "#dfe9f0"],
+    "speed": 0.3,
+    "params": { "distortion": 0.9, "swirl": 0.05, "grainOverlay": 0.12 },
+    "preset": "p2"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 30,
+      "elevationDeg": 50,
+      "intensity": 2,
+      "color": "#f7fbff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -130,
+        "elevationDeg": 20,
+        "intensity": 0.7,
+        "color": "#b7d5e8"
+      }
+    ],
+    "ambient": 0.8
+  }
+}

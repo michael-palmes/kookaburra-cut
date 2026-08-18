@@ -1,4 +1,7 @@
 /** Converting a scene between the two camera modes, and keeping object aims baked. Pure, so the round trip is testable: a conversion that visibly nudges the shot is a bug, not a nuance. */
+
+import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
+import type { FormatInfo } from "../toolkit/types";
 import { orbitFromView, orbitToView } from "./orbit";
 import type { CameraDoc, RigDoc } from "./sceneCameraEdit";
 import type { SceneDoc, SceneDocRigKey } from "./sceneDocSchema";
@@ -40,11 +43,16 @@ export function rigToOrbit(rig: RigDoc): CameraDoc | null {
 }
 
 /** Re-resolve every object-bound key's baked `at` against the doc's current placements. The ENGINE only ever reads bindings; this is the editor's side of that contract, called in the same write as the placement edit so one undo restores both. */
-export function rebakeRigBindings(rig: RigDoc, doc: SceneDoc): RigDoc {
+export function rebakeRigBindings(
+  rig: RigDoc,
+  doc: SceneDoc,
+  format?: FormatInfo,
+  floorY?: DeviceFloorY,
+): RigDoc {
   let changed = false;
   const keys: SceneDocRigKey[] = rig.keys.map((key) => {
     if (key.pose.aim.mode !== "object") return key;
-    const at = resolveAimTarget(key.pose.aim.id, doc);
+    const at = resolveAimTarget(key.pose.aim.id, doc, format, floorY);
     if (!at || sameAt(at, key.pose.aim.at)) return key;
     changed = true;
     return { ...key, pose: { ...key.pose, aim: { ...key.pose.aim, at } } };
@@ -71,7 +79,7 @@ export function brokenRigBindings(rig: RigDoc, doc: SceneDoc | undefined): strin
   const broken = new Set<string>();
   for (const key of rig.keys) {
     if (key.pose.aim.mode !== "object") continue;
-    if (!doc || !resolveAimTarget(key.pose.aim.id, doc)) broken.add(key.pose.aim.id);
+    if (!doc || resolveAimTarget(key.pose.aim.id, doc) === null) broken.add(key.pose.aim.id);
   }
   return [...broken];
 }

@@ -244,14 +244,30 @@ const fixtureAssetUrls = (glob: Record<string, unknown>): Record<string, string>
 
 // Project-relative IMAGE assets, resolved to Vite-fingerprinted URLs that load inside the webview (textures for DeviceMockup screens, etc.); eager so the map is available synchronously during render. Scoped to images: video sources resolve to an absolute path (`resolveAssetPath`) for ffmpeg pre-extraction, not fetched as URLs.
 const assetUrlGlob: Record<string, string> = {
-  ...import.meta.glob<string>("/projects/*/assets/**/*.{png,jpg,jpeg,webp}", {
-    query: "?url",
-    import: "default",
-    eager: true,
-  }),
+  ...import.meta.glob<string>(
+    [
+      "/projects/*/assets/**/*.[pP][nN][gG]",
+      "/projects/*/assets/**/*.[jJ][pP][gG]",
+      "/projects/*/assets/**/*.[jJ][pP][eE][gG]",
+      "/projects/*/assets/**/*.[wW][eE][bB][pP]",
+    ],
+    {
+      query: "?url",
+      import: "default",
+      eager: true,
+    },
+  ),
   ...fixtureAssetUrls(
     import.meta.env.DEV
-      ? import.meta.glob("/fixtures/*/assets/**/*.{png,jpg,jpeg,webp}", { query: "?url" })
+      ? import.meta.glob(
+          [
+            "/fixtures/*/assets/**/*.[pP][nN][gG]",
+            "/fixtures/*/assets/**/*.[jJ][pP][gG]",
+            "/fixtures/*/assets/**/*.[jJ][pP][eE][gG]",
+            "/fixtures/*/assets/**/*.[wW][eE][bB][pP]",
+          ],
+          { query: "?url" },
+        )
       : {},
   ),
 };

@@ -3,6 +3,13 @@
   "id": "kookaburra-sunrise",
   "name": "Sunrise",
   "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Warm launch stories",
+    "tags": ["launch", "optimistic", "warm", "friendly", "gradient", "marketing"],
+    "stage": "physical",
+    "order": 50
+  },
   "colors": {
     "background": "#fff7f2",
     "text": "#3a2e35",

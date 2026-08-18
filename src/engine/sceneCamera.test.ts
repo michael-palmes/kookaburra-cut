@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
 // Gate sidecars kept as committed fixtures (device-video-spike left the bundled set).
 import gateHeroDoc from "./__fixtures__/device-video-spike/01-hero.json";
 import gateTurntableDoc from "./__fixtures__/device-video-spike/02-turntable.json";
 import { baseCameraPose } from "./cameraTrack";
+import { computeFormat, FORMATS } from "./format";
 import {
   buildSceneCameraTracks,
   defaultOrbitPose,
@@ -18,6 +21,7 @@ import {
 } from "./sceneCamera";
 import { parseSceneDoc, type SceneDoc, type SceneDocCameraPose } from "./sceneDocSchema";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
+import { resolveSceneStageFloorSnapshot } from "./stageRegistry";
 
 const pose = (over: Partial<SceneDocCameraPose> = {}): SceneDocCameraPose => ({
   target: [0, 0, 0],
@@ -390,6 +394,91 @@ describe("per-scene camera mode precedence", () => {
     const tracks = buildSceneCameraTracks([{ version: 1, cameraMode: "rig", cameraRig: noFov }]);
     const projectTrack = [{ tMs: 0, fov: 28 }];
     expect(resolveFrameCameras(tracks, projectTrack, resolveAt(slots, 0), 0)?.solo?.fov).toBe(28);
+  });
+});
+
+describe("grounded device camera anchors", () => {
+  const customFloorY = -0.8;
+  const boundDeviceId = "device-laptop";
+  const devices: NonNullable<SceneDoc["devices"]> = [
+    {
+      id: "device-phone",
+      model: "iphone-17-pro",
+      placement: { ground: true },
+    },
+    {
+      id: boundDeviceId,
+      model: "macbook-pro-16",
+      placement: { ground: true },
+    },
+  ];
+  const deviceLayout: NonNullable<SceneDoc["deviceLayout"]> = { preset: "row", gap: 0.8 };
+  const doc: SceneDoc = {
+    version: 1,
+    devices,
+    deviceLayout,
+    cameraMode: "rig",
+    cameraRig: {
+      keys: [
+        {
+          id: "bound",
+          tMs: 0,
+          pose: {
+            position: [0, 1, 6],
+            aim: { mode: "object", id: boundDeviceId, at: [9, 9, 9] },
+          },
+        },
+      ],
+      segments: [],
+    },
+  };
+
+  it("resolves the same custom mounted floor against each active aspect's layout", () => {
+    const floors = resolveSceneStageFloorSnapshot(
+      1,
+      { 0: { count: 1, backdropType: "floor", floorY: customFloorY } },
+      [0],
+    );
+    const wideFormat = computeFormat(FORMATS["16:9"]);
+    const portraitFormat = computeFormat(FORMATS["9:16"]);
+    const expectedFor = (format: typeof wideFormat) => {
+      const placement = resolveDeviceLayout(devices, deviceLayout, format)[1];
+      return resolveDeviceWorldAnchor(devices[1], placement, customFloorY);
+    };
+
+    const wideAim = buildSceneCameraTracks([doc], wideFormat, floors)[0]?.rig?.keys[0].pose.aim;
+    const portraitAim = buildSceneCameraTracks([doc], portraitFormat, floors)[0]?.rig?.keys[0].pose
+      .aim;
+
+    expect(wideAim?.at).toEqual(expectedFor(wideFormat));
+    expect(portraitAim?.at).toEqual(expectedFor(portraitFormat));
+    expect(wideAim?.at[0]).not.toBeCloseTo(portraitAim?.at[0] ?? 0, 10);
+    expect(wideAim?.at[1]).not.toBeCloseTo(portraitAim?.at[1] ?? 0, 10);
+  });
+
+  it("preserves a baked point before mount and uses authored placement after confirmed no-stage", () => {
+    const rawDoc: SceneDoc = {
+      ...doc,
+      deviceLayout: undefined,
+      devices: [
+        {
+          id: boundDeviceId,
+          model: "macbook-pro-16",
+          placement: { position: [1, 2, 3], ground: true },
+        },
+      ],
+    };
+    const unknownFloors = resolveSceneStageFloorSnapshot(1, {}, []);
+    const noStageFloors = resolveSceneStageFloorSnapshot(1, {}, [0]);
+
+    expect(unknownFloors).toEqual([undefined]);
+    expect(noStageFloors).toEqual([null]);
+    expect(
+      buildSceneCameraTracks([rawDoc], undefined, unknownFloors)[0]?.rig?.keys[0].pose.aim.at,
+    ).toEqual([9, 9, 9]);
+    expect(
+      buildSceneCameraTracks([rawDoc], undefined, noStageFloors)[0]?.rig?.keys[0].pose.aim.at,
+    ).toEqual([1, 2, 3]);
   });
 });
 

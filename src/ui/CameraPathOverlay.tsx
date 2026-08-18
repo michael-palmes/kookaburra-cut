@@ -5,6 +5,7 @@ import { clampToStage, projectToStage, viewBasis, worldPerPixel } from "../engin
 import type { CameraPose } from "../engine/cameraTrack";
 import { useClockStore } from "../engine/clock";
 import { useSceneIsBanded } from "../engine/depthStageRegistry";
+import { useFormat } from "../engine/format";
 import type { LoadedProject } from "../engine/project";
 import type { RigDoc } from "../engine/sceneCameraEdit";
 import { setKeyPose } from "../engine/sceneCameraEdit";
@@ -64,7 +65,7 @@ export function CameraPathOverlay({
 }) {
   const open = useCameraEditStore((s) => s.open);
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
-  const { slot, doc, mode, rig, previewRig, commitRig, appliedViewAt } = useCameraDoc(
+  const { slot, doc, mode, rig, previewRig, commitRig, appliedViewAt, stageFloorY } = useCameraDoc(
     project,
     sceneIndex,
     onDocChanged,
@@ -91,14 +92,17 @@ export function CameraPathOverlay({
   }, []);
 
   const localMs = Math.min(slot.durationMs, Math.max(0, currentMs - slot.startMs));
+  const format = useFormat();
   const aspect = rect.height > 0 ? rect.width / rect.height : 1;
   // The path is drawn through the pose the frame is CURRENTLY showing, so it moves with the shot rather than sitting in a fixed projection.
   const view = appliedViewAt(localMs);
 
   const track = useMemo(
     () =>
-      mode === "rig" && rig.keys.length > 0 ? normalizeSceneRig(rig, "path-overlay", doc) : null,
-    [mode, rig, doc],
+      mode === "rig" && rig.keys.length > 0
+        ? normalizeSceneRig(rig, "path-overlay", doc, format, stageFloorY)
+        : null,
+    [mode, rig, doc, format, stageFloorY],
   );
 
   // The path's WORLD shape and each key's bounds verdict are pure functions of the track: they

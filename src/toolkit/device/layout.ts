@@ -62,7 +62,6 @@ function rowPositions(widths: number[], gap: number): number[] {
 
 function presetBases(preset: DeviceLayoutPreset, widths: number[], gap: number): BasePlacement[] {
   const n = widths.length;
-  if (preset === "depth-pair" && n !== 2) preset = "toe-in";
   switch (preset) {
     case "row": {
       return rowPositions(widths, gap).map((x) => ({ x, z: 0, yawDeg: 0, scale: 1 }));
@@ -118,12 +117,18 @@ function presetBases(preset: DeviceLayoutPreset, widths: number[], gap: number):
       return bases;
     }
     case "depth-pair": {
-      // One steps forward-left, one holds back-right, opposing toe.
+      // Devices step from forward-left to back-right, with the original pair as the endpoints.
       const xs = rowPositions(widths, gap).map((x) => x * 0.8);
-      return [
-        { x: xs[0], z: DEPTH_PAIR_FRONT_Z, yawDeg: DEPTH_PAIR_TOE_DEG, scale: 1 },
-        { x: xs[1], z: -DEPTH_PAIR_BACK_Z, yawDeg: -DEPTH_PAIR_TOE_DEG, scale: 1 },
-      ];
+      if (n === 1) return [{ x: xs[0], z: 0, yawDeg: 0, scale: 1 }];
+      return xs.map((x, i) => {
+        const progress = i / (n - 1);
+        return {
+          x,
+          z: DEPTH_PAIR_FRONT_Z - (DEPTH_PAIR_FRONT_Z + DEPTH_PAIR_BACK_Z) * progress,
+          yawDeg: DEPTH_PAIR_TOE_DEG * (1 - 2 * progress),
+          scale: 1,
+        };
+      });
     }
   }
 }

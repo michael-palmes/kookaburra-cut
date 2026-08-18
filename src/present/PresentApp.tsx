@@ -2,7 +2,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalPosition } from "@tauri-apps/api/window";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { useEffectsStore } from "../engine/effectsStore";
 import { FramePanel } from "../engine/FramePanel";
@@ -14,13 +14,15 @@ import { setPreviewClipStride, setPreviewPlaybackActive } from "../engine/previe
 import { type LoadedProject, loadProject, sceneMountKey } from "../engine/project";
 import { revealApp } from "../engine/reveal";
 import { SceneHost } from "../engine/SceneHost";
-import { ProjectIdContext } from "../engine/sceneContext";
+import { ProjectIdContext, ProjectLightingContext } from "../engine/sceneContext";
+import { animatedFixtureLightIds, buildLightingTracks } from "../engine/sceneLighting";
 import { useEditorStore } from "../store/editorStore";
 import { useTrustStore } from "../store/trustStore";
 import { ChartFallback } from "../toolkit/chart/ChartFallback";
 import { DevicesFallback } from "../toolkit/device/Device";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
 import { LayeredScreenshotFallback } from "../toolkit/media/LayeredScreenshot";
+import { StageSceneImagesFallback } from "../toolkit/media/SceneImage";
 import { VideoWindowFallback } from "../toolkit/media/VideoWindow";
 import { ObjectsFallback } from "../toolkit/objects/ObjectPrimitive";
 import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
@@ -97,6 +99,15 @@ export function PresentApp() {
   const committed = usePresentStore((s) => s.scenesCommitted);
   const [stageReady, setStageReady] = useState(false);
   const mode = target?.mode ?? "slideshow";
+  const animatedFixtureLightSets = useMemo(
+    () =>
+      project
+        ? buildLightingTracks(project.sceneThemes, project.projectLighting, project.sceneDocs).map(
+            animatedFixtureLightIds,
+          )
+        : [],
+    [project],
+  );
 
   useEffect(() => {
     let live = true;
@@ -337,64 +348,68 @@ export function PresentApp() {
             <PresentClock />
             <PresentCompositorDriver project={project} mode={mode} />
             <ProjectIdContext.Provider value={project.id}>
-              <Suspense fallback={null}>
-                {project.scenes.map((scene, i) => {
-                  const slot = project.slots[i];
-                  const SceneComponent = scene.Scene;
-                  const active = mode === "slideshow" && deck.sceneIndex === i;
-                  return (
-                    <SceneHost
-                      key={sceneMountKey(project.id, project.sceneFiles[i])}
-                      index={i}
-                      id={project.sceneFiles[i]}
-                      startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
-                      durationMs={
-                        active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
-                      }
-                      doc={project.sceneDocs[i]}
-                      theme={project.sceneThemes[i]}
-                      frame={project.sceneFrames[i]}
-                    >
-                      <AssetBoundary label={`scene ${i + 1}`}>
-                        <SceneBackground />
-                        <SceneComponent />
-                        <DevicesFallback />
-                        <ObjectsFallback />
-                        <LayeredScreenshotFallback />
-                        <VideoWindowFallback />
-                        <ChartFallback />
-                        <TextFallback />
-                      </AssetBoundary>
-                    </SceneHost>
-                  );
-                })}
-                {/* Hoisted morphs key off the authored global timeline, which a slideshow's steered clock no longer matches; video mode keeps them. */}
-                {mode === "video" && project.persistent && (
-                  <PersistentLayer key={`${project.id}:persistent`}>
-                    <project.persistent />
-                  </PersistentLayer>
-                )}
-                {project.scenes.map((_, i) => {
-                  const frame = project.sceneFrames[i];
-                  if (!frame) return null;
-                  const slot = project.slots[i];
-                  const active = mode === "slideshow" && deck.sceneIndex === i;
-                  return (
-                    <FramePanel
-                      key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
-                      index={i}
-                      startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
-                      durationMs={
-                        active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
-                      }
-                      doc={project.sceneDocs[i]}
-                      theme={project.sceneThemes[i]}
-                      frame={frame}
-                    />
-                  );
-                })}
-                <CommittedProbe />
-              </Suspense>
+              <ProjectLightingContext.Provider value={project.projectLighting ?? null}>
+                <Suspense fallback={null}>
+                  {project.scenes.map((scene, i) => {
+                    const slot = project.slots[i];
+                    const SceneComponent = scene.Scene;
+                    const active = mode === "slideshow" && deck.sceneIndex === i;
+                    return (
+                      <SceneHost
+                        key={sceneMountKey(project.id, project.sceneFiles[i])}
+                        index={i}
+                        id={project.sceneFiles[i]}
+                        startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
+                        durationMs={
+                          active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
+                        }
+                        doc={project.sceneDocs[i]}
+                        theme={project.sceneThemes[i]}
+                        frame={project.sceneFrames[i]}
+                        animatedFixtureLightIds={animatedFixtureLightSets[i]}
+                      >
+                        <AssetBoundary label={`scene ${i + 1}`}>
+                          <SceneBackground />
+                          <SceneComponent />
+                          <StageSceneImagesFallback />
+                          <DevicesFallback />
+                          <ObjectsFallback />
+                          <LayeredScreenshotFallback />
+                          <VideoWindowFallback />
+                          <ChartFallback />
+                          <TextFallback />
+                        </AssetBoundary>
+                      </SceneHost>
+                    );
+                  })}
+                  {/* Hoisted morphs key off the authored global timeline, which a slideshow's steered clock no longer matches; video mode keeps them. */}
+                  {mode === "video" && project.persistent && (
+                    <PersistentLayer key={`${project.id}:persistent`}>
+                      <project.persistent />
+                    </PersistentLayer>
+                  )}
+                  {project.scenes.map((_, i) => {
+                    const frame = project.sceneFrames[i];
+                    if (!frame) return null;
+                    const slot = project.slots[i];
+                    const active = mode === "slideshow" && deck.sceneIndex === i;
+                    return (
+                      <FramePanel
+                        key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
+                        index={i}
+                        startMs={mode === "slideshow" ? (anchors[i] ?? slot.startMs) : slot.startMs}
+                        durationMs={
+                          active ? slot.durationMs + ACTIVE_DURATION_EXTENSION_MS : slot.durationMs
+                        }
+                        doc={project.sceneDocs[i]}
+                        theme={project.sceneThemes[i]}
+                        frame={frame}
+                      />
+                    );
+                  })}
+                  <CommittedProbe />
+                </Suspense>
+              </ProjectLightingContext.Provider>
             </ProjectIdContext.Provider>
           </Canvas>
         </div>

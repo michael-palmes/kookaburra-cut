@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { V3 } from "../types";
-import { type DeviceCommitInput, type DevicePose, deviceGizmoCommit } from "./gizmoCommit";
+import {
+  type DeviceCommitInput,
+  type DevicePose,
+  deviceGizmoCommit,
+  deviceGizmoMovedY,
+} from "./gizmoCommit";
 
 const pose = (position: V3, rotationDeg: V3 = [0, 0, 0], scale = 1): DevicePose => ({
   position,
@@ -14,6 +19,7 @@ const commit = (input: Partial<DeviceCommitInput>) =>
     sceneIndex: 2,
     dragged: pose([0, -0.3, 0]),
     rendered: pose([0, -0.3, 0]),
+    committed: pose([0, -0.3, 0]),
     authored: {},
     ...input,
   });
@@ -55,9 +61,23 @@ describe("deviceGizmoCommit, placement branch", () => {
     const result = commit({
       dragged: pose([1.5, -0.2, 0]),
       rendered: pose([1, -0.2, 0]),
-      authored: { position: [1, -0.3, 0] },
+      authored: { position: [1, -0.3, 0], ground: true },
     });
     expect(result.kind === "placement" && result.placement.position).toEqual([1.5, -0.3, 0]);
+    expect(result.clearGround).toBeUndefined();
+  });
+
+  it("clears ground when a placement drag moves away from the grounded y", () => {
+    const draggedY = 1.5;
+    const result = commit({
+      dragged: pose([1, draggedY, 0]),
+      rendered: pose([1, 1.2, 0]),
+      committed: pose([1, -0.3, 0]),
+      authored: { position: [1, -0.3, 0], ground: true },
+    });
+    expect(result.kind === "placement" && result.placement.position).toEqual([1, 1.5, 0]);
+    expect(result.kind === "placement" && result.placement.position?.[1]).toBe(draggedY);
+    expect(result.clearGround).toBe(true);
   });
 
   it("falls back to what the render itself defaults to for an unauthored placement", () => {
@@ -97,6 +117,23 @@ describe("deviceGizmoCommit, delta branch", () => {
       kind: "delta",
       delta: { offset: [0.35, 0.2, 0], rotationDeg: [0, 7, 0], scale: 1.21 },
     });
+  });
+
+  it("clears raw ground when a laid-out device is dragged vertically", () => {
+    const draggedY = 0;
+    const oldDeltaY = 0;
+    const result = commit({
+      dragged: pose([1, draggedY, 0.5], [0, -14, 0], 0.85),
+      rendered: laid,
+      committed: pose([1, -0.3, 0.5], [0, -14, 0], 0.85),
+      authored: { ground: true },
+      delta: { offset: [0.1, 0, 0] },
+    });
+    expect(result.kind === "delta" && result.delta.offset).toEqual([0.1, 0.3, 0]);
+    if (result.kind !== "delta" || !result.delta.offset) throw new Error("Expected a Y offset");
+    const postCommitY = laid.position[1] - oldDeltaY + result.delta.offset[1];
+    expect(postCommitY).toBe(draggedY);
+    expect(result.clearGround).toBe(true);
   });
 
   it("starts a device with no delta entry from zero", () => {
@@ -144,5 +181,14 @@ describe("deviceGizmoCommit scale guards", () => {
       authored: { scale: 1 },
     });
     expect(result.kind === "placement" && result.placement.scale).toBe(0.01);
+  });
+});
+
+describe("device gizmo grounded preview", () => {
+  it("bypasses the ground clamp only after the dragged y leaves its grounded start", () => {
+    const grounded = pose([0, 1.2, 0]);
+    expect(deviceGizmoMovedY(pose([0.4, 1.2, -0.2]), grounded)).toBe(false);
+    expect(deviceGizmoMovedY(pose([0, 1.20001, 0], [0, 20, 0], 1.2), grounded)).toBe(false);
+    expect(deviceGizmoMovedY(pose([0, 1.35, 0]), grounded)).toBe(true);
   });
 });

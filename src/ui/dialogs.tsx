@@ -13,7 +13,13 @@ import {
 } from "../engine/templates";
 import { listProjects, slugifyName } from "../engine/workspace";
 import { builtinThemes, defaultTheme } from "../theme/registry";
-import { listThemeChoices, type ThemeChoice, ThemeGrid } from "./ThemePicker";
+import {
+  builtinThemeChoices,
+  listThemeChoices,
+  recordSuccessfulThemeUse,
+  ThemeBrowser,
+  type ThemeChoice,
+} from "./ThemePicker";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Setup-failure escape hatch, never seen on a healthy first run: the workspace is created silently at ~/Kookaburra Cut and only ever moved from Settings. This appears when that creation failed (unwritable home folder, full disk), so a blocked default is recoverable without a reinstall. (Default moved out of ~/Documents 2026-07-05: macOS TCC guards Documents and kept breaking headless gates and terminal-driven workflows.) */
@@ -563,7 +569,7 @@ export function NewProjectDialog({
   const [name, setName] = useState("");
   const [templateId, setTemplateId] = useState<string>(BLANK_TEMPLATE_ID);
   const [themeId, setThemeId] = useState("kookaburra-studio-white");
-  const [themes, setThemes] = useState<ThemeChoice[]>([]);
+  const [themes, setThemes] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [group, setGroup] = useState(initialGroup ?? "");
   const [groups, setGroups] = useState<string[]>([]);
   const [templateQuery, setTemplateQuery] = useState("");
@@ -609,7 +615,9 @@ export function NewProjectDialog({
     setBusy(true);
     setError(null);
     try {
-      await onCreate(name, templateId, themeId, group.trim() || null);
+      await recordSuccessfulThemeUse(themeId, () =>
+        onCreate(name, templateId, themeId, group.trim() || null),
+      );
     } catch (e) {
       setError(String(e));
       setBusy(false);
@@ -617,7 +625,9 @@ export function NewProjectDialog({
   };
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="New project">
-      <div className={`modal wizard-wide${step === "details" ? " wizard-template-wide" : ""}`}>
+      <div
+        className={`modal wizard-wide${step === "details" ? " wizard-template-wide" : " wizard-theme-wide"}`}
+      >
         <h2>New project</h2>
         {step === "details" && (
           <>
@@ -697,7 +707,7 @@ export function NewProjectDialog({
               Pick the project's theme — hover a card to preview its four scenes. You can change it
               later, per project or per scene.
             </p>
-            <ThemeGrid choices={themes} value={themeId} onChange={setThemeId} />
+            <ThemeBrowser choices={themes} value={themeId} onChange={setThemeId} />
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button

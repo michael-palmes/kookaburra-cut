@@ -68,6 +68,8 @@ export interface AutoRunConfig {
   atSeconds?: number;
   /** option-previews: stale set names to capture (from the wrapper's manifest diff); absent = every set (`--all`). */
   sets?: string[];
+  /** theme-previews: stale bundled theme ids to capture; absent = the full lineup (`--all`). */
+  themes?: string[];
 }
 
 /** A single aspect's outcome: determinism digests (verify) or the output path (export). */
@@ -159,6 +161,7 @@ interface AutoRunEnv {
   scene: string | null;
   at: string | null;
   sets: string | null;
+  themes: string | null;
 }
 
 let autoRunEnv: AutoRunEnv | null = null;
@@ -190,6 +193,7 @@ export async function initAutoRunConfig(): Promise<void> {
       scene: null,
       at: null,
       sets: null,
+      themes: null,
     };
   }
 }
@@ -271,6 +275,12 @@ export function getAutoRunConfig(): AutoRunConfig | null {
       ? env.sets
           .split(",")
           .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined,
+    themes: env.themes?.trim()
+      ? env.themes
+          .split(",")
+          .map((theme) => theme.trim())
           .filter(Boolean)
       : undefined,
   };
@@ -414,14 +424,19 @@ export async function runAutoRun(
   }
 
   if (config.action === "theme-previews") {
-    // Loads the starter under each lineup theme, captures the 4 scene middles off the preview canvas (borrowed clock, never the export loop), and hands the JPEGs to the native side for the wrapper to copy into src/assets/theme-previews/; one fixed 16:9 pass.
+    // Loads the starter under each selected lineup theme, captures the 4 scene middles off the preview canvas (borrowed clock, never the export loop), and hands the JPEGs to the native side for the wrapper to copy into src/assets/theme-previews/; one fixed 16:9 pass.
     try {
       if (!applyProject) throw new Error("theme-previews needs the applyProject hook");
       useEditorStore.getState().setFormat(FORMATS["16:9"]);
       await nextCommit();
       // A theme switch must never suspend on a bundled backdrop mid-batch, since an update-suspension keeps the previous theme's tree on screen and the capture reads it (the loft-1 stale-preview bug).
       await preloadBundledBackdrops();
-      for (const themeId of THEME_LINEUP) {
+      const themes = config.themes ?? [...THEME_LINEUP];
+      const unknownThemes = themes.filter((themeId) => !THEME_LINEUP.includes(themeId));
+      if (unknownThemes.length > 0) {
+        throw new Error(`theme-previews: unknown theme(s): ${unknownThemes.join(", ")}`);
+      }
+      for (const themeId of themes) {
         console.warn(`[autorun] theme-previews ${themeId} starting`);
         const loaded = await loadProject(config.project, { themeId });
         // The theme's PMREM environment resolves BEFORE the swap (the preloadBundledBackdrops rationale): headless windows never fire rAF, so a texture landing after the swap would otherwise stay unpainted into the first capture.

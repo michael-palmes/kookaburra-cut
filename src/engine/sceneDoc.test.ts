@@ -6,6 +6,10 @@ const written: Array<{ index: number; durationMs: number }> = [];
 // The fake workspace the apply-to-all tests write into: sidecars by file, plus the manifest text.
 const sidecars = new Map<string, string>();
 let manifestText = "";
+let holdSceneDocWrites = false;
+let activeSceneDocWrites = 0;
+let maxActiveSceneDocWrites = 0;
+const releaseSceneDocWrites: Array<() => void> = [];
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
@@ -17,7 +21,13 @@ vi.mock("@tauri-apps/api/core", () => ({
       return null;
     }
     if (cmd === "write_scene_doc") {
+      activeSceneDocWrites += 1;
+      maxActiveSceneDocWrites = Math.max(maxActiveSceneDocWrites, activeSceneDocWrites);
+      if (holdSceneDocWrites) {
+        await new Promise<void>((resolve) => releaseSceneDocWrites.push(resolve));
+      }
       sidecars.set(args?.file as string, args?.text as string);
+      activeSceneDocWrites -= 1;
       return null;
     }
     if (cmd === "read_project_manifest_snapshot") return manifestText;
@@ -36,6 +46,7 @@ import {
   applyEditRepoint,
   followMediaSources,
   resyncFollowMediaDuration,
+  writeSceneDoc,
 } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
 
@@ -50,6 +61,35 @@ const imageDevice = (id: string, src: string) => ({
   id,
   model: "iphone-17-pro",
   media: { src, kind: "image" },
+});
+
+describe("writeSceneDoc", () => {
+  it("serialises writes to the same sidecar", async () => {
+    holdSceneDocWrites = true;
+    activeSceneDocWrites = 0;
+    maxActiveSceneDocWrites = 0;
+    releaseSceneDocWrites.length = 0;
+    try {
+      const first = writeSceneDoc("project", "scenes/one.tsx", docWith({ name: "First" }));
+      await vi.waitFor(() => expect(activeSceneDocWrites).toBe(1));
+      const second = writeSceneDoc("project", "scenes/one.tsx", docWith({ name: "Second" }));
+      await Promise.resolve();
+      expect(activeSceneDocWrites).toBe(1);
+      expect(maxActiveSceneDocWrites).toBe(1);
+
+      releaseSceneDocWrites.shift()?.();
+      await first;
+      await vi.waitFor(() => expect(activeSceneDocWrites).toBe(1));
+      releaseSceneDocWrites.shift()?.();
+      await second;
+
+      expect(maxActiveSceneDocWrites).toBe(1);
+      expect(JSON.parse(sidecars.get("scenes/one.json") ?? "{}").name).toBe("Second");
+    } finally {
+      holdSceneDocWrites = false;
+      for (const release of releaseSceneDocWrites.splice(0)) release();
+    }
+  });
 });
 
 describe("applyEditRepoint (edit-render re-point targeting)", () => {

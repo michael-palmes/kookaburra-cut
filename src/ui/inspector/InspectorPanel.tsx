@@ -21,14 +21,21 @@ import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { DuplicateSceneDialog } from "../PlaybackBar";
 import { DebouncedRange } from "../TextAnimationPicker";
-import { listThemeChoices, type ThemeChoice, ThemeGrid } from "../ThemePicker";
+import {
+  builtinThemeChoices,
+  listThemeChoices,
+  recordSuccessfulThemeUse,
+  ThemeBrowser,
+  type ThemeChoice,
+} from "../ThemePicker";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
+import { InspectorNavigationShell } from "./InspectorNavigationShell";
 import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
 import { ScenesDrillIn } from "./ScenesDrillIn";
 import { SceneTab } from "./SceneTab";
 
-/** The right-hand inspector: a 312px panel with a Project/Scene segmented switch. Gating (decision 12): the host hides the whole panel during export/autorun; bundled dev projects get the Project tab only (no tab switch, no Scene tab) with Aspect ratio live and Theme read-only. The panel is the only scroll container in the chrome (`overflow-y: auto`). */
+/** The right-hand inspector: a fixed 342px rail with pinned tabs and an internally scrolling, animated page stack. */
 /** Option glyphs for the Playback options popover (RowIcon's 20-viewBox stroke style). */
 function QualityIcon({ kind }: { kind: "full" | "balanced" | "performance" }) {
   return (
@@ -150,7 +157,7 @@ export function InspectorPanel({
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
-  onApplyTheme: (themeId: string) => void;
+  onApplyTheme: (themeId: string) => Promise<void>;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
   onDeleteScene: (sceneIndex: number) => void;
   /** Scene manager: apply a full desired order (original indices) to the manifest. */
@@ -284,7 +291,7 @@ export function InspectorPanel({
   const openDrill = useUiStore((s) => s.openInspectorDrill);
   const closeDrill = useUiStore((s) => s.closeInspectorDrill);
   const setDrillIn = (id: string | null) => (id === null ? closeDrill() : openDrill(id));
-  const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>([]);
+  const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
@@ -301,13 +308,6 @@ export function InspectorPanel({
   // The media drill-in: the modal's library, re-homed as a Project-tab sub-panel like Background ▸ Video.
   const [mediaRefresh, setMediaRefresh] = useState(0);
   const [mediaError, setMediaError] = useState<string | null>(null);
-  useEscapeClose(
-    () => setDrillIn(null),
-    drillIn === "project.theme" ||
-      drillIn === "project.typography" ||
-      drillIn === "project.media" ||
-      drillIn === "project.scenes",
-  );
   const [scenesBusy, setScenesBusy] = useState(false);
 
   // Re-list whenever the drill opens or the ThemeMode modal closes over it: Manage no longer closes the drill, so edits must show up in place.
@@ -317,11 +317,13 @@ export function InspectorPanel({
   }, [drillIn, themesRefreshKey]);
 
   // The theme-card right-click menu (shared with the scene-theme drill).
+  const applyProjectTheme = (themeId: string) => {
+    setThemeDraft(themeId);
+    void recordSuccessfulThemeUse(themeId, () => onApplyTheme(themeId));
+  };
+
   const themeMenu = useThemeCardMenu({
-    onApply: (themeId) => {
-      setThemeDraft(themeId);
-      onApplyTheme(themeId);
-    },
+    onApply: applyProjectTheme,
     onManage: onOpenTheme,
     onEditInClaude: onEditThemeInClaude,
     onThemeEdited,
@@ -373,385 +375,385 @@ export function InspectorPanel({
         </div>
       )}
 
-      {(tab === "project" || !isWorkspace) && drillIn === "project.appIcon" && isWorkspace ? (
-        <div className="inspector-drill">
-          <DrillBack label="Project" onClick={() => setDrillIn(null)} />
-          <div className="inspector-drill-title">App icon</div>
-          <div className="inspector-drill-body">
-            <span className="modal-hint">
-              Pick an image; it becomes assets/app-icon.png everywhere.
-            </span>
-            {mediaError && <p className="modal-error">{mediaError}</p>}
-            <div className="inspector-media-host">
-              <MediaBrowser
-                slug={workspaceSlug(project.id)}
-                projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
-                kinds={["image"]}
-                globalToggle
-                refreshKey={mediaRefreshKey + mediaRefresh}
-                onPick={(rel) => {
-                  setDrillIn(null);
-                  onSetAppIcon(rel);
-                }}
-                cardMenu={mediaCardMenu({
-                  slug: workspaceSlug(project.id),
-                  primaryLabel: "Set as icon",
-                  onPrimary: (rel) => {
+      <InspectorNavigationShell resetKey={`${project.id}:${tab}`}>
+        {(tab === "project" || !isWorkspace) && drillIn === "project.appIcon" && isWorkspace ? (
+          <div className="inspector-drill">
+            <DrillBack label="Project" title="App icon" onClick={() => setDrillIn(null)} />
+            <div className="inspector-drill-body">
+              <span className="modal-hint">
+                Pick an image; it becomes assets/app-icon.png everywhere.
+              </span>
+              {mediaError && <p className="modal-error">{mediaError}</p>}
+              <div className="inspector-media-host">
+                <MediaBrowser
+                  slug={workspaceSlug(project.id)}
+                  projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                  kinds={["image"]}
+                  globalToggle
+                  refreshKey={mediaRefreshKey + mediaRefresh}
+                  onPick={(rel) => {
                     setDrillIn(null);
                     onSetAppIcon(rel);
-                  },
-                  onChanged: () => setMediaRefresh((n) => n + 1),
-                  onError: setMediaError,
-                })}
-              />
+                  }}
+                  cardMenu={mediaCardMenu({
+                    slug: workspaceSlug(project.id),
+                    primaryLabel: "Set as icon",
+                    onPrimary: (rel) => {
+                      setDrillIn(null);
+                      onSetAppIcon(rel);
+                    },
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setMediaError,
+                  })}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      ) : (tab === "project" || !isWorkspace) && drillIn === "project.media" && isWorkspace ? (
-        <div className="inspector-drill">
-          <DrillBack label="Project" onClick={() => setDrillIn(null)} />
-          <div className="inspector-drill-title">Media library</div>
-          <div className="inspector-drill-body">
-            {mediaError && <p className="modal-error">{mediaError}</p>}
-            <div className="inspector-media-host">
-              <MediaBrowser
-                slug={workspaceSlug(project.id)}
-                projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
-                kindToggle
-                globalToggle
-                refreshKey={mediaRefreshKey + mediaRefresh}
-                cardMenu={mediaCardMenu({
-                  slug: workspaceSlug(project.id),
-                  primaryLabel: "Insert",
-                  onPrimary: (rel) => onInsertMedia(rel),
-                  onChanged: () => setMediaRefresh((n) => n + 1),
-                  onError: setMediaError,
-                })}
-              />
+        ) : (tab === "project" || !isWorkspace) && drillIn === "project.media" && isWorkspace ? (
+          <div className="inspector-drill">
+            <DrillBack label="Project" title="Media library" onClick={() => setDrillIn(null)} />
+            <div className="inspector-drill-body">
+              {mediaError && <p className="modal-error">{mediaError}</p>}
+              <div className="inspector-media-host">
+                <MediaBrowser
+                  slug={workspaceSlug(project.id)}
+                  projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                  kindToggle
+                  globalToggle
+                  refreshKey={mediaRefreshKey + mediaRefresh}
+                  cardMenu={mediaCardMenu({
+                    slug: workspaceSlug(project.id),
+                    primaryLabel: "Insert",
+                    onPrimary: (rel) => onInsertMedia(rel),
+                    onChanged: () => setMediaRefresh((n) => n + 1),
+                    onError: setMediaError,
+                  })}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      ) : (tab === "project" || !isWorkspace) && drillIn === "project.theme" && isWorkspace ? (
-        <div className="inspector-drill">
-          <DrillBack label="Project" onClick={() => setDrillIn(null)} />
-          <div className="inspector-drill-title">Theme</div>
-          <div className="inspector-drill-body">
-            <ThemeGrid
-              choices={themeChoices}
-              value={themeDraft}
-              onChange={(id) => {
-                // Applies on selection; the draft doubles as the same-id de-dupe.
-                if (id === themeDraft) return;
-                setThemeDraft(id);
-                onApplyTheme(id);
-              }}
-              onCardContextMenu={themeMenu.openMenu}
-            />
-          </div>
-          <div className="inspector-drill-actions">
-            <button
-              type="button"
-              className="btn btn-left"
-              title="Duplicate, edit fonts or delete themes"
-              onClick={() => onOpenTheme()}
-            >
-              Manage…
-            </button>
-          </div>
-          {themeMenu.menuElement}
-        </div>
-      ) : (tab === "project" || !isWorkspace) && drillIn === "project.typography" && isWorkspace ? (
-        <div className="inspector-drill">
-          <DrillBack label="Project" onClick={() => setDrillIn(null)} />
-          <div className="inspector-drill-title">Typography</div>
-          <div className="inspector-drill-body">
-            <div className="font-slot-row">
-              {TYPOGRAPHY_SLOTS.map((slot) => {
-                const ref = typographyRef(slot);
-                return (
-                  <button
-                    type="button"
-                    key={slot}
-                    className={`chip${fontSlot === slot ? " selected" : ""}`}
-                    onClick={() => setFontSlot(slot)}
-                  >
-                    {TYPOGRAPHY_SLOT_LABELS[slot]}: {ref.family} · {ref.weight}
-                  </button>
-                );
-              })}
-            </div>
-            <FontPicker
-              value={typographyRef(fontSlot)}
-              onPick={(ref) => {
-                const current = project.projectTypography;
-                const next: Record<TypographySlot, string | null> = {
-                  headline: current?.headline ?? null,
-                  body: current?.body ?? null,
-                  chart: current?.chart ?? null,
-                };
-                next[fontSlot] = formatFontString(ref);
-                onSetTypography(next.headline, next.body, next.chart);
-              }}
-            />
-            <span className="modal-hint">
-              Project fonts override the theme for every scene; a text field's own font still wins.
-              Charts follow the theme until the Chart slot is set, and a chart's own font outranks
-              it.
-            </span>
-          </div>
-          <div className="inspector-drill-actions">
-            <button
-              type="button"
-              className="btn btn-left"
-              onClick={() => onSetTypography(null, null, null)}
-              disabled={
-                !project.projectTypography?.headline &&
-                !project.projectTypography?.body &&
-                !project.projectTypography?.chart
-              }
-            >
-              Use theme fonts
-            </button>
-          </div>
-        </div>
-      ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
-        <>
-          <ScenesDrillIn
-            scenes={project.slots.map((slot, i) => ({
-              index: i,
-              name: project.sceneDocs[i]?.name ?? sceneFileStem(project.sceneFiles[i]),
-              durationMs: slot.durationMs,
-              hasDoc: !!project.sceneDocs[i],
-            }))}
-            busy={scenesBusy}
-            onBack={() => setDrillIn(null)}
-            onReorder={(desired) => {
-              setScenesBusy(true);
-              void onReorderScenes(desired).finally(() => setScenesBusy(false));
-            }}
-            onDuplicate={(indices) => {
-              setScenesBusy(true);
-              void onDuplicateScenes(indices).finally(() => setScenesBusy(false));
-            }}
-            onRename={onRenameScene}
-            onDuration={onSceneDuration}
-            onDuplicateDialog={setDuplicating}
-            onCopyBackground={(i) => {
-              const doc = project.sceneDocs[i];
-              useUiStore.getState().setBackgroundClipboard({
-                background: doc?.background ? structuredClone(doc.background) : undefined,
-                backdrop: doc?.backdrop ? structuredClone(doc.backdrop) : undefined,
-              });
-            }}
-            onPasteBackground={onPasteBackground}
-            onDelete={onDeleteScene}
-            onCopyToProject={setCopyingScenes}
-          />
-          {duplicating !== null && (
-            <DuplicateSceneDialog
-              project={project}
-              index={duplicating}
-              sourceName={
-                project.sceneDocs[duplicating]?.name ??
-                sceneFileStem(project.sceneFiles[duplicating])
-              }
-              onClose={() => setDuplicating(null)}
-              onDuplicate={onDuplicateSceneAt}
-            />
-          )}
-          {copyingScenes !== null && (
-            <CopySceneModal
-              slug={workspaceSlug(project.id)}
-              indices={copyingScenes}
-              sceneLabel={
-                copyingScenes.length > 1
-                  ? `${copyingScenes.length} scenes`
-                  : `“${
-                      project.sceneDocs[copyingScenes[0]]?.name ??
-                      sceneFileStem(project.sceneFiles[copyingScenes[0]])
-                    }”`
-              }
-              onDone={() => setCopyingScenes(null)}
-              onCancel={() => setCopyingScenes(null)}
-            />
-          )}
-        </>
-      ) : tab === "project" || !isWorkspace ? (
-        <div className="inspector-rows">
-          {rows.map((row) => (
-            <div key={row.id} className="inspector-row-anchor">
-              <ActionRow
-                icon={<RowIcon id={row.id} />}
-                label={row.label}
-                value={row.value}
-                chevron={row.chevron}
-                selected={openRow === row.id}
-                disabled={!row.chevron}
-                onClick={row.chevron ? rowAction[row.id] : undefined}
+        ) : (tab === "project" || !isWorkspace) && drillIn === "project.theme" && isWorkspace ? (
+          <div className="inspector-drill">
+            <DrillBack label="Project" title="Theme" onClick={() => setDrillIn(null)} />
+            <div className="inspector-drill-body">
+              <ThemeBrowser
+                layout="compact"
+                choices={themeChoices}
+                value={themeDraft}
+                onChange={(id) => {
+                  // Applies on selection; the draft doubles as the same-id de-dupe.
+                  if (id === themeDraft) return;
+                  applyProjectTheme(id);
+                }}
+                onCardContextMenu={themeMenu.openMenu}
               />
-              {row.id === "aspect" && openRow === "aspect" && (
-                <div className="inspector-popover" role="menu">
-                  {(Object.keys(FORMATS) as AspectName[]).map((name) => (
+            </div>
+            <div className="inspector-drill-actions">
+              <button
+                type="button"
+                className="btn btn-left"
+                title="Duplicate, edit fonts or delete themes"
+                onClick={() => onOpenTheme()}
+              >
+                Manage…
+              </button>
+            </div>
+            {themeMenu.menuElement}
+          </div>
+        ) : (tab === "project" || !isWorkspace) &&
+          drillIn === "project.typography" &&
+          isWorkspace ? (
+          <div className="inspector-drill">
+            <DrillBack label="Project" title="Typography" onClick={() => setDrillIn(null)} />
+            <div className="inspector-drill-body">
+              <div className="font-slot-row">
+                {TYPOGRAPHY_SLOTS.map((slot) => {
+                  const ref = typographyRef(slot);
+                  return (
                     <button
-                      key={name}
                       type="button"
-                      role="menuitemradio"
-                      aria-checked={name === aspect}
-                      className={`inspector-popover-item${name === aspect ? " active" : ""}`}
+                      key={slot}
+                      className={`chip${fontSlot === slot ? " selected" : ""}`}
+                      onClick={() => setFontSlot(slot)}
+                    >
+                      {TYPOGRAPHY_SLOT_LABELS[slot]}: {ref.family} · {ref.weight}
+                    </button>
+                  );
+                })}
+              </div>
+              <FontPicker
+                value={typographyRef(fontSlot)}
+                onPick={(ref) => {
+                  const current = project.projectTypography;
+                  const next: Record<TypographySlot, string | null> = {
+                    headline: current?.headline ?? null,
+                    body: current?.body ?? null,
+                    chart: current?.chart ?? null,
+                  };
+                  next[fontSlot] = formatFontString(ref);
+                  onSetTypography(next.headline, next.body, next.chart);
+                }}
+              />
+              <span className="modal-hint">
+                Project fonts override the theme for every scene; a text field's own font still
+                wins. Charts follow the theme until the Chart slot is set, and a chart's own font
+                outranks it.
+              </span>
+            </div>
+            <div className="inspector-drill-actions">
+              <button
+                type="button"
+                className="btn btn-left"
+                onClick={() => onSetTypography(null, null, null)}
+                disabled={
+                  !project.projectTypography?.headline &&
+                  !project.projectTypography?.body &&
+                  !project.projectTypography?.chart
+                }
+              >
+                Use theme fonts
+              </button>
+            </div>
+          </div>
+        ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
+          <>
+            <ScenesDrillIn
+              scenes={project.slots.map((slot, i) => ({
+                index: i,
+                name: project.sceneDocs[i]?.name ?? sceneFileStem(project.sceneFiles[i]),
+                durationMs: slot.durationMs,
+                hasDoc: !!project.sceneDocs[i],
+              }))}
+              busy={scenesBusy}
+              onBack={() => setDrillIn(null)}
+              onReorder={(desired) => {
+                setScenesBusy(true);
+                void onReorderScenes(desired).finally(() => setScenesBusy(false));
+              }}
+              onDuplicate={(indices) => {
+                setScenesBusy(true);
+                void onDuplicateScenes(indices).finally(() => setScenesBusy(false));
+              }}
+              onRename={onRenameScene}
+              onDuration={onSceneDuration}
+              onDuplicateDialog={setDuplicating}
+              onCopyBackground={(i) => {
+                const doc = project.sceneDocs[i];
+                useUiStore.getState().setBackgroundClipboard({
+                  background: doc?.background ? structuredClone(doc.background) : undefined,
+                  backdrop: doc?.backdrop ? structuredClone(doc.backdrop) : undefined,
+                });
+              }}
+              onPasteBackground={onPasteBackground}
+              onDelete={onDeleteScene}
+              onCopyToProject={setCopyingScenes}
+            />
+            {duplicating !== null && (
+              <DuplicateSceneDialog
+                project={project}
+                index={duplicating}
+                sourceName={
+                  project.sceneDocs[duplicating]?.name ??
+                  sceneFileStem(project.sceneFiles[duplicating])
+                }
+                onClose={() => setDuplicating(null)}
+                onDuplicate={onDuplicateSceneAt}
+              />
+            )}
+            {copyingScenes !== null && (
+              <CopySceneModal
+                slug={workspaceSlug(project.id)}
+                indices={copyingScenes}
+                sceneLabel={
+                  copyingScenes.length > 1
+                    ? `${copyingScenes.length} scenes`
+                    : `“${
+                        project.sceneDocs[copyingScenes[0]]?.name ??
+                        sceneFileStem(project.sceneFiles[copyingScenes[0]])
+                      }”`
+                }
+                onDone={() => setCopyingScenes(null)}
+                onCancel={() => setCopyingScenes(null)}
+              />
+            )}
+          </>
+        ) : tab === "project" || !isWorkspace ? (
+          <div className="inspector-rows">
+            {rows.map((row) => (
+              <div key={row.id} className="inspector-row-anchor">
+                <ActionRow
+                  icon={<RowIcon id={row.id} />}
+                  label={row.label}
+                  value={row.value}
+                  chevron={row.chevron}
+                  selected={openRow === row.id}
+                  disabled={!row.chevron}
+                  onClick={row.chevron ? rowAction[row.id] : undefined}
+                />
+                {row.id === "aspect" && openRow === "aspect" && (
+                  <div className="inspector-popover" role="menu">
+                    {(Object.keys(FORMATS) as AspectName[]).map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={name === aspect}
+                        className={`inspector-popover-item${name === aspect ? " active" : ""}`}
+                        onClick={() => {
+                          onSetAspect(name);
+                          setOpenRow(null);
+                        }}
+                      >
+                        <AspectIcon name={name} />
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {row.id === "playback" && openRow === "playback" && (
+                  <div className="inspector-popover inspector-popover-wide" role="menu">
+                    <PopoverChoice
+                      icon={<QualityIcon kind="full" />}
+                      label="Full quality"
+                      description="Sharp preview at your screen's full resolution. The right pick on most Macs."
+                      active={previewQuality === "full"}
                       onClick={() => {
-                        onSetAspect(name);
+                        useUiStore.getState().setPreviewQuality("full");
                         setOpenRow(null);
                       }}
-                    >
-                      <AspectIcon name={name} />
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {row.id === "playback" && openRow === "playback" && (
-                <div className="inspector-popover inspector-popover-wide" role="menu">
-                  <PopoverChoice
-                    icon={<QualityIcon kind="full" />}
-                    label="Full quality"
-                    description="Sharp preview at your screen's full resolution. The right pick on most Macs."
-                    active={previewQuality === "full"}
-                    onClick={() => {
-                      useUiStore.getState().setPreviewQuality("full");
-                      setOpenRow(null);
-                    }}
-                  />
-                  <PopoverChoice
-                    icon={<QualityIcon kind="balanced" />}
-                    label="Balanced"
-                    description="A lighter render with screen video at half rate. Try it when playback stutters now and then."
-                    active={previewQuality === "balanced"}
-                    onClick={() => {
-                      useUiStore.getState().setPreviewQuality("balanced");
-                      setOpenRow(null);
-                    }}
-                  />
-                  <PopoverChoice
-                    icon={<QualityIcon kind="performance" />}
-                    label="Performance"
-                    description="Smoothest playback: lowest resolution, screen video at half rate. Great for reviewing timing and pace rather than polish. Exports are always full quality."
-                    active={previewQuality === "performance"}
-                    onClick={() => {
-                      useUiStore.getState().setPreviewQuality("performance");
-                      setOpenRow(null);
-                    }}
-                  />
-                </div>
-              )}
-              {row.id === "render" && openRow === "render" && (
-                <div className="inspector-popover inspector-popover-wide" role="menu">
-                  <PopoverChoice
-                    icon={<RowIcon id="theme" />}
-                    label="ACES Filmic"
-                    description="The cinematic default every existing project was graded under. Changing it re-renders the whole video's colour."
-                    active={project.renderSettings.toneMapping === "aces"}
-                    onClick={() => {
-                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "aces" });
-                      setOpenRow(null);
-                    }}
-                  />
-                  <PopoverChoice
-                    icon={<RowIcon id="theme" />}
-                    label="AgX"
-                    description="Modern cinematic curve with gentler highlight desaturation."
-                    active={project.renderSettings.toneMapping === "agx"}
-                    onClick={() => {
-                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "agx" });
-                      setOpenRow(null);
-                    }}
-                  />
-                  <PopoverChoice
-                    icon={<RowIcon id="theme" />}
-                    label="Neutral"
-                    description="Khronos PBR Neutral: the recommended pick for product-accurate brand colours."
-                    active={project.renderSettings.toneMapping === "neutral"}
-                    onClick={() => {
-                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "neutral" });
-                      setOpenRow(null);
-                    }}
-                  />
-                  <PopoverChoice
-                    icon={<RowIcon id="theme" />}
-                    label="Linear"
-                    description="No curve at all: a diagnostic view, not a look to ship."
-                    active={project.renderSettings.toneMapping === "linear"}
-                    onClick={() => {
-                      onSetRenderSettings({ ...project.renderSettings, toneMapping: "linear" });
-                      setOpenRow(null);
-                    }}
-                  />
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Exposure</span>
-                    <DebouncedRange
-                      label="Exposure"
-                      value={project.renderSettings.exposure}
-                      min={EXPOSURE_MIN}
-                      max={EXPOSURE_MAX}
-                      step={0.05}
-                      onCommit={(exposure) =>
-                        onSetRenderSettings({ ...project.renderSettings, exposure })
-                      }
+                    />
+                    <PopoverChoice
+                      icon={<QualityIcon kind="balanced" />}
+                      label="Balanced"
+                      description="A lighter render with screen video at half rate. Try it when playback stutters now and then."
+                      active={previewQuality === "balanced"}
+                      onClick={() => {
+                        useUiStore.getState().setPreviewQuality("balanced");
+                        setOpenRow(null);
+                      }}
+                    />
+                    <PopoverChoice
+                      icon={<QualityIcon kind="performance" />}
+                      label="Performance"
+                      description="Smoothest playback: lowest resolution, screen video at half rate. Great for reviewing timing and pace rather than polish. Exports are always full quality."
+                      active={previewQuality === "performance"}
+                      onClick={() => {
+                        useUiStore.getState().setPreviewQuality("performance");
+                        setOpenRow(null);
+                      }}
                     />
                   </div>
-                </div>
-              )}
-              {row.id === "music" && openRow === "music" && (
-                <div className="inspector-popover" role="menu">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="inspector-popover-item"
-                    onClick={() => {
-                      setOpenRow(null);
-                      onSetSoundtrack();
-                    }}
-                  >
-                    {soundtrackName ? "Replace track…" : "Choose track…"}
-                  </button>
-                  {soundtrackName && (
+                )}
+                {row.id === "render" && openRow === "render" && (
+                  <div className="inspector-popover inspector-popover-wide" role="menu">
+                    <PopoverChoice
+                      icon={<RowIcon id="theme" />}
+                      label="ACES Filmic"
+                      description="The cinematic default every existing project was graded under. Changing it re-renders the whole video's colour."
+                      active={project.renderSettings.toneMapping === "aces"}
+                      onClick={() => {
+                        onSetRenderSettings({ ...project.renderSettings, toneMapping: "aces" });
+                        setOpenRow(null);
+                      }}
+                    />
+                    <PopoverChoice
+                      icon={<RowIcon id="theme" />}
+                      label="AgX"
+                      description="Modern cinematic curve with gentler highlight desaturation."
+                      active={project.renderSettings.toneMapping === "agx"}
+                      onClick={() => {
+                        onSetRenderSettings({ ...project.renderSettings, toneMapping: "agx" });
+                        setOpenRow(null);
+                      }}
+                    />
+                    <PopoverChoice
+                      icon={<RowIcon id="theme" />}
+                      label="Neutral"
+                      description="Khronos PBR Neutral: the recommended pick for product-accurate brand colours."
+                      active={project.renderSettings.toneMapping === "neutral"}
+                      onClick={() => {
+                        onSetRenderSettings({ ...project.renderSettings, toneMapping: "neutral" });
+                        setOpenRow(null);
+                      }}
+                    />
+                    <PopoverChoice
+                      icon={<RowIcon id="theme" />}
+                      label="Linear"
+                      description="No curve at all: a diagnostic view, not a look to ship."
+                      active={project.renderSettings.toneMapping === "linear"}
+                      onClick={() => {
+                        onSetRenderSettings({ ...project.renderSettings, toneMapping: "linear" });
+                        setOpenRow(null);
+                      }}
+                    />
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Exposure</span>
+                      <DebouncedRange
+                        label="Exposure"
+                        value={project.renderSettings.exposure}
+                        min={EXPOSURE_MIN}
+                        max={EXPOSURE_MAX}
+                        step={0.05}
+                        onCommit={(exposure) =>
+                          onSetRenderSettings({ ...project.renderSettings, exposure })
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+                {row.id === "music" && openRow === "music" && (
+                  <div className="inspector-popover" role="menu">
                     <button
                       type="button"
                       role="menuitem"
-                      className={`inspector-popover-item${confirmRemoveMusic ? " danger" : ""}`}
+                      className="inspector-popover-item"
                       onClick={() => {
-                        if (!confirmRemoveMusic) {
-                          setConfirmRemoveMusic(true);
-                          return;
-                        }
-                        setConfirmRemoveMusic(false);
                         setOpenRow(null);
-                        onRemoveSoundtrack();
+                        onSetSoundtrack();
                       }}
                     >
-                      {confirmRemoveMusic ? "Really remove?" : `Remove ${soundtrackName}`}
+                      {soundtrackName ? "Replace track…" : "Choose track…"}
                     </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <SceneTab
-          project={project}
-          sceneIndex={sceneIndex}
-          sceneTheme={project.sceneThemes[sceneIndex]}
-          onOpenEditVideo={onOpenEditVideo}
-          onDocChanged={onDocChanged}
-          onTimingChanged={onTimingChanged}
-          onOpenTheme={onOpenTheme}
-          onEditThemeInClaude={onEditThemeInClaude}
-          onThemeEdited={onThemeEdited}
-          themesRefreshKey={themesRefreshKey}
-          mediaRefreshKey={mediaRefreshKey}
-          onDeleteScene={onDeleteScene}
-        />
-      )}
+                    {soundtrackName && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={`inspector-popover-item${confirmRemoveMusic ? " danger" : ""}`}
+                        onClick={() => {
+                          if (!confirmRemoveMusic) {
+                            setConfirmRemoveMusic(true);
+                            return;
+                          }
+                          setConfirmRemoveMusic(false);
+                          setOpenRow(null);
+                          onRemoveSoundtrack();
+                        }}
+                      >
+                        {confirmRemoveMusic ? "Really remove?" : `Remove ${soundtrackName}`}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <SceneTab
+            project={project}
+            sceneIndex={sceneIndex}
+            sceneTheme={project.sceneThemes[sceneIndex]}
+            onOpenEditVideo={onOpenEditVideo}
+            onDocChanged={onDocChanged}
+            onTimingChanged={onTimingChanged}
+            onOpenTheme={onOpenTheme}
+            onEditThemeInClaude={onEditThemeInClaude}
+            onThemeEdited={onThemeEdited}
+            themesRefreshKey={themesRefreshKey}
+            mediaRefreshKey={mediaRefreshKey}
+            onDeleteScene={onDeleteScene}
+          />
+        )}
+      </InspectorNavigationShell>
     </aside>
   );
 }

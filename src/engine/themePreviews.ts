@@ -9,8 +9,9 @@ import { captureFrameAt, withBorrowedClock } from "./snapshots";
 
 export const THEME_PREVIEW_WIDTH = 640;
 export const THEME_PREVIEW_COUNT = 4;
+export const THEME_PREVIEW_VERSION = 1;
 
-/** The fixture every theme's previews render from (formerly `theme-starter`): a shipped project, since user themes generate their previews at runtime in the packaged app. Its scene bytes are frozen, a content change invalidates all 40 committed previews. */
+/** The fixture every theme's previews render from (formerly `theme-starter`): a shipped project, since user themes generate their previews at runtime in the packaged app. Its scene bytes are frozen, and a content change invalidates all committed previews. */
 export const THEME_PREVIEW_PROJECT_ID = "preview-lab-theme";
 
 // Committed bundled previews as fingerprinted URLs; a glob (not explicit imports) so a not-yet-generated preview degrades to placeholder art instead of failing the build.
@@ -47,7 +48,7 @@ export async function awaitProjectCommitted(project: LoadedProject): Promise<voi
 }
 
 /** The starter scenes the previews capture: app version, title, device video, device camera. Title 2 and the closing app version repeat looks already shown. */
-const THEME_PREVIEW_SCENES = [0, 1, 2, 4];
+export const THEME_PREVIEW_SCENES = [0, 1, 2, 4] as const;
 
 /** The 4 capture points among the starter's scenes; the first 4 middles when a project is shorter than the standard starter. */
 export function themePreviewMiddles(project: LoadedProject): number[] {

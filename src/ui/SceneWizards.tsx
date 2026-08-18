@@ -68,24 +68,7 @@ export interface ScaffoldedScene {
   durationMs: number;
 }
 
-type SceneKind =
-  | "device"
-  | "deviceonly"
-  | "comparison"
-  | "title"
-  | "titleicon"
-  | "appversion"
-  | "layeredscreenshot"
-  | "chart"
-  | "video"
-  | "image"
-  | "videowindow"
-  | "overlaystart"
-  | "overlayend"
-  | "overlaypanel"
-  | "blank";
-
-const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
+export const SCENE_KIND_OPTIONS = [
   { id: "device", label: "Device + title", blurb: "A titled phone playing your media" },
   { id: "deviceonly", label: "Device only", blurb: "A centred phone with no title copy" },
   { id: "comparison", label: "Comparison", blurb: "Devices side by side, old and new" },
@@ -101,7 +84,9 @@ const KIND_OPTIONS: { id: SceneKind; label: string; blurb: string }[] = [
   { id: "overlayend", label: "Cutout end", blurb: "A scene window beside panel text" },
   { id: "overlaypanel", label: "Overlay title", blurb: "A full-panel title, no scene window" },
   { id: "blank", label: "Blank", blurb: "An empty scene to compose freely" },
-];
+] as const satisfies readonly { id: string; label: string; blurb: string }[];
+
+type SceneKind = (typeof SCENE_KIND_OPTIONS)[number]["id"];
 
 /** Kinds whose panel body takes bullet lines at create time (same storage as the Edit text drill-in). */
 const BULLET_KINDS: SceneKind[] = ["overlaystart", "overlayend", "overlaypanel"];
@@ -110,7 +95,7 @@ const BULLET_KINDS: SceneKind[] = ["overlaystart", "overlayend", "overlaypanel"]
 const VIDEO_MEDIA_KINDS: SceneKind[] = ["video", "videowindow"];
 /** Kinds with no text fields at all (the device stays centred). */
 const NO_TEXT_KINDS: SceneKind[] = ["video", "image", "deviceonly"];
-/** Kinds whose composition renders a subtitle on its own; blank/layeredscreenshot text rides TextFallback, which needs a title. */
+/** Kinds whose composition renders a subtitle; blank and layered screenshots take a title only. */
 const SUBTITLE_KINDS: SceneKind[] = [
   "device",
   "comparison",
@@ -200,7 +185,40 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
 
 /** The key a scene's single text line lives under: `title` unless only a legacy `headline` exists. */
 function sceneTitleKey(doc: SceneDoc | undefined): "title" | "headline" {
+  const managedCopyKeys = new Set(
+    doc?.managedText?.items
+      .filter((item) => item.type === "title" || item.type === "subtitle")
+      .map((item) => item.key),
+  );
+  if (managedCopyKeys.has("title")) return "title";
+  if (managedCopyKeys.has("headline")) return "headline";
   return doc?.text && "headline" in doc.text && !("title" in doc.text) ? "headline" : "title";
+}
+
+export function sceneWizardCanEditTitle(doc: SceneDoc | undefined): boolean {
+  if (!doc) return false;
+  if (doc.managedText === undefined) return true;
+  const key = sceneTitleKey(doc);
+  return doc.managedText.items.some(
+    (item) => item.key === key && (item.type === "title" || item.type === "subtitle"),
+  );
+}
+
+export function sceneWizardTitleValue(doc: SceneDoc | undefined): string {
+  if (!doc || !sceneWizardCanEditTitle(doc)) return "";
+  const key = sceneTitleKey(doc);
+  return doc.managedText?.items.find((item) => item.key === key)?.text ?? doc.text?.[key] ?? "";
+}
+
+export function setSceneWizardTitle(doc: SceneDoc, value: string): SceneDoc {
+  const next = structuredClone(doc);
+  if (!sceneWizardCanEditTitle(doc)) return next;
+  const key = sceneTitleKey(doc);
+  const managedItem = next.managedText?.items.find((item) => item.key === key);
+  if (managedItem) managedItem.text = value;
+  next.text = { ...next.text, [key]: value };
+  if (!value && key === "headline") delete next.text.headline;
+  return next;
 }
 
 function ChipSelect({
@@ -594,7 +612,7 @@ export function NewSceneWizard({
         {step === "type" && (
           <>
             <div className="kind-picker">
-              {KIND_OPTIONS.map((k) => {
+              {SCENE_KIND_OPTIONS.map((k) => {
                 const preview = optionPreviewStill(`kind-${k.id}`);
                 return (
                   <button
@@ -824,6 +842,7 @@ export function NewSceneWizard({
             </Field>
             <Field label="Look">
               <SegmentedRow<ChartDimension>
+                ariaLabel="Chart dimension"
                 options={[
                   { value: "2d", label: "2D", title: "A flat chart, drawn face on" },
                   { value: "3d", label: "3D", title: "Extruded marks on a staged floor" },
@@ -834,6 +853,7 @@ export function NewSceneWizard({
             </Field>
             <Field label="Starter data">
               <SegmentedRow
+                ariaLabel="Chart starter data"
                 options={CHART_STARTER_DATA.map((d) => ({ value: d.id, label: d.label }))}
                 value={chartData}
                 onChange={setChartData}
@@ -1105,7 +1125,7 @@ export function EditSceneWizard({
   function seedForm() {
     if (!doc) return;
     setName(doc.name ?? "");
-    setTitle(doc.text?.[sceneTitleKey(doc)] ?? "");
+    setTitle(sceneWizardTitleValue(doc));
     // Seeded by type; an untouched chip leaves the sidecar's background exactly as-is so a custom colour/drift/image src is never clobbered by a wizard save.
     const bg = doc.background?.type ?? "default";
     setBackground(bg);
@@ -1137,12 +1157,8 @@ export function EditSceneWizard({
     setError(null);
     try {
       // Patch a copy of the loaded doc; unknown fields (camera, extra text keys) ride through untouched, only the wizard's fields change.
-      const next: SceneDoc = structuredClone(doc);
+      const next = setSceneWizardTitle(doc, title.trim());
       next.name = name.trim() || undefined;
-      const titleKey = sceneTitleKey(doc);
-      next.text = { ...next.text, [titleKey]: title.trim() };
-      // An empty legacy headline is dropped as before; an empty `title` stays so the panel field remains visible.
-      if (!title.trim() && titleKey === "headline") delete next.text.headline;
       if (background !== backgroundSeed) {
         if (background === "default") next.background = undefined;
         else {
@@ -1319,7 +1335,14 @@ export function EditSceneWizard({
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
-            <TextFieldRow label="Title" value={title} placeholder="No title" onChange={setTitle} />
+            {sceneWizardCanEditTitle(doc) && (
+              <TextFieldRow
+                label="Title"
+                value={title}
+                placeholder="No title"
+                onChange={setTitle}
+              />
+            )}
             <Field label="Background">
               <ChipSelect options={backgroundChips} value={background} onChange={setBackground} />
             </Field>

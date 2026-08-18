@@ -1,4 +1,12 @@
-import { AmbientLight, DirectionalLight, PointLight, Scene } from "three";
+import {
+  AmbientLight,
+  DirectionalLight,
+  Group,
+  PointLight,
+  RectAreaLight,
+  Scene,
+  Vector3,
+} from "three";
 import { describe, expect, it } from "vitest";
 import { kelvinToHex } from "./kelvin";
 import {
@@ -74,5 +82,94 @@ describe("applyFrameLighting", () => {
       for (const cleanup of cleanups) cleanup();
     }
     expect(lightingAnimatableCount()).toBe(0);
+  });
+
+  it("moves a world fixture as one rigid rig and restores its base placement", () => {
+    const scene = new Scene();
+    const group = new Group();
+    const pairedLight = new PointLight("#ffffff", 0);
+    const cleanup = registerLightingAnimatable("t:fixture", {
+      kind: "fixture",
+      sceneIndex: 0,
+      id: "tube",
+      base: {
+        id: "tube",
+        form: "tube",
+        size: [3, 0.06],
+        emissive: 3,
+        lightIntensity: 0,
+        placement: { mode: "point", position: [1, 2, 3] },
+      },
+      baseColor: "#ffffff",
+      instances: [],
+      meshes: [],
+      instanced: null,
+      pairedLights: [pairedLight],
+      group,
+    });
+    try {
+      applyFrameLighting(scene, {
+        index: 0,
+        pose: {
+          fixtures: {
+            tube: {
+              lightIntensity: 12,
+              placement: { mode: "point", position: [5, 6, 7] },
+            },
+          },
+        },
+      });
+      expect(group.position.toArray()).toEqual([5, 6, 7]);
+      expect(pairedLight.intensity).toBe(12);
+      applyFrameLighting(scene, { index: 0, pose: {} });
+      expect(group.position.toArray()).toEqual([1, 2, 3]);
+      expect(pairedLight.intensity).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("re-aims a world area light after keyed placement and base restoration", () => {
+    const scene = new Scene();
+    const light = new RectAreaLight("#ffffff", 4, 2, 3);
+    const target: [number, number, number] = [0, 1, -2];
+    light.position.set(1, 2, 3);
+    light.lookAt(...target);
+    const cleanup = registerLightingAnimatable("t:area", {
+      kind: "light",
+      sceneIndex: 0,
+      id: "area",
+      light,
+      base: {
+        id: "area",
+        type: "area",
+        intensity: 4,
+        width: 2,
+        height: 3,
+        placement: { mode: "point", position: [1, 2, 3] },
+        target,
+      },
+      baseColor: "#ffffff",
+    });
+    const alignment = () => {
+      const forward = new Vector3(0, 0, -1).applyQuaternion(light.quaternion);
+      return forward.dot(new Vector3(...target).sub(light.position).normalize());
+    };
+    try {
+      applyFrameLighting(scene, {
+        index: 0,
+        pose: {
+          lights: { area: { placement: { mode: "point", position: [5, 6, 7] } } },
+        },
+      });
+      expect(light.position.toArray()).toEqual([5, 6, 7]);
+      expect(alignment()).toBeCloseTo(1, 6);
+
+      applyFrameLighting(scene, { index: 0, pose: {} });
+      expect(light.position.toArray()).toEqual([1, 2, 3]);
+      expect(alignment()).toBeCloseTo(1, 6);
+    } finally {
+      cleanup();
+    }
   });
 });

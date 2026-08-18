@@ -133,9 +133,13 @@ function Line({
   );
 }
 
+export function lightingHelpersVisibleForRoute(route: string | null | undefined): boolean {
+  return route === "lighting" || route?.startsWith("lighting.") === true;
+}
+
 export function LightHelpers({ lighting }: { lighting: LightingSpec | undefined }) {
   // Mount gate one: the Lighting drill must be open (never true in an autorun or export).
-  const open = useUiStore((s) => s.inspector.drillIn === "lighting");
+  const open = useUiStore((s) => lightingHelpersVisibleForRoute(s.inspector.drillIn));
   const selectedLightId = useLightEditStore((s) => s.selectedLightId);
   const selectedFixtureId = useLightEditStore((s) => s.selectedFixtureId);
   if (!open || !lighting) return null;

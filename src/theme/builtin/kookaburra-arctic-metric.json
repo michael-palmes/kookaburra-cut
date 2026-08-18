@@ -1,0 +1,70 @@
+{
+  "version": 2,
+  "id": "kookaburra-arctic-metric",
+  "name": "Arctic Metric",
+  "mode": "light",
+  "catalogue": {
+    "category": "quiet-technology",
+    "useLabel": "Clear analytical stories",
+    "tags": ["analytics", "data", "metrics", "clear", "professional", "technical"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#f5f0dc",
+    "text": "#272313",
+    "accent": "#6d5612",
+    "muted": "#463e23"
+  },
+  "chartColors": ["#6d5612", "#3f5a4c", "#1f3a5f", "#8c2f39", "#8a6d1f", "#4a4a52"],
+  "typography": {
+    "headline": { "family": "Libre Franklin", "weight": 600 },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 200, "base": 500, "slow": 900 },
+    "easings": { "standard": "outQuad", "emphasized": "outCubic" }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 50,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "contour-field",
+    "colors": ["#cbb164"],
+    "speed": 0.9,
+    "params": {
+      "levels": 8,
+      "hilliness": 0.4,
+      "scale": 14,
+      "height": -2.2,
+      "clearRadius": 10,
+      "fadeRadius": 68,
+      "drift": 0.7,
+      "opacity": 0.9
+    },
+    "backing": { "type": "color", "color": "#f5f0dc" },
+    "preset": "p3"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -20,
+      "elevationDeg": 50,
+      "intensity": 2,
+      "color": "#fff7dd"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 135,
+        "elevationDeg": 24,
+        "intensity": 0.75,
+        "color": "#c6dce2"
+      }
+    ],
+    "ambient": 0.75
+  }
+}

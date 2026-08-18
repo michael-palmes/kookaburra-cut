@@ -1,0 +1,18 @@
+{
+  "id": "inspector-redesign-gate",
+  "name": "Inspector redesign gate (dev-only)",
+  "version": 2,
+  "themeId": "kookaburra-midnight",
+  "formats": ["16:9", "9:16", "1:1", "4:5", "5:4", "3:2", "2:3"],
+  "scenes": [
+    {
+      "file": "scenes/01-content.tsx",
+      "durationMs": 1400,
+      "transition": { "type": "crossfade", "durationMs": 300 }
+    },
+    {
+      "file": "scenes/02-lighting.tsx",
+      "durationMs": 1600
+    }
+  ]
+}

@@ -44,10 +44,28 @@ normally and simply shows no editing affordances.
                                              // playback-bar labels show it; absent = the scene's largest
                                              // mounted text, else the file stem (v13)
   "duration": { "mode": "follow-media", "sourceDeviceId": "d1" },  // or { "mode": "manual" }
-  "text": {                                  // EVERY user-visible string (rule 7); values may
-    "title": "Ship faster"                   // carry \n (real line breaks); title scenes add the
-  },                                         // reserved "subtitle" (TitleBlock); "headline" is the
-                                             // legacy single-line key on pre-v13 device scenes
+  "text": {                                  // code-owned and embedded copy; managed scenes may
+    "title": "Ship faster"                   // retain these keys as compatibility mirrors
+  },                                         // "headline" is the legacy pre-v13 single-line key
+  "managedText": {                           // presence transfers scene-text ownership to the inspector
+    "layout": "template",                    // optional: preserve the scaffold's specialised composition;
+                                             // a structural edit removes it and uses the responsive stack
+    "groups": [                              // optional Content-level Text groups; flat items remain
+      { "key": "text", "itemKeys": ["title", "subtitle", "bullets", "icon"],
+        "align": "center" }                  // left|center|right; absent inherits textLayout/frame alignment
+    ],
+    "items": [                               // ordered, stable scene-local keys
+      { "key": "frameIcon", "type": "icon", "icon": "assets/deck-mark.png" },
+      { "key": "title", "type": "title", "text": "Ship faster" },
+      { "key": "subtitle", "type": "subtitle", "text": "" },
+      { "key": "bullets", "type": "bullets", "text": "Fast\nDeterministic",
+        "marker": "dot", "points": [
+          { "key": "bullets-point-1", "text": "Fast" },
+          { "key": "bullets-point-2", "text": "Deterministic" }
+        ] },
+      { "key": "icon", "type": "icon", "icon": "🚀" }
+    ]
+  },
   "textLayout": { "align": "center" },       // left|center|right — consumed by TitleBlock;
                                              // inert on scenes that position text by hand
   "textStyle": {                             // per-element overrides, keyed <textKey><Suffix>:
@@ -104,6 +122,35 @@ Rules for Claude:
 - **Structured changes go in the sidecar** (text, device model/colour/media, motion
   preset, shadow, camera keys); **composition changes go in the TSX** (layout, extra
   primitives, custom motion). Both hot-reload.
+- **Choose one scene-text owner.** With no `managedText`, scene copy lives in `text` and
+  the TSX reads it through `useSceneText`. With `managedText`, `items` are authoritative:
+  Title/Subtitle items use `text`, Bullets use ordered stable `points`, and Icon uses
+  `icon`. An optional `layout: "template"` keeps the scaffold's current composition for
+  copy, style and motion edits. Adding, removing, reordering or changing item types moves
+  that scene to the generic responsive stack. Present but empty `items` intentionally
+  suppresses code-owned scene text. Keep positioned labels and other composition copy in
+  `text`, and mark both their hook and renderer as `embedded`.
+- **Keep managed copy leaves flat and group them by reference.** `managedText.groups`
+  defines each atomic Text row in Content with a stable key, ordered `itemKeys` and optional
+  alignment. A group may contain repeated Icon, Title, Subtitle and Bullets leaves in its
+  declared order. Styles and motion remain keyed to each stable leaf in `textStyle` and
+  `textAnimationOverrides`. A block without
+  `groups` resolves as one implicit group containing every copy item, without rewriting the
+  sidecar. Reserved panel chrome such as `frameIcon` remains outside Content groups.
+- **Keep specialised optional-title slots explicit.** Fresh Chart, Blank and Layered
+  Screenshot scenes carry an empty template-managed Title item when no copy is supplied, so
+  the first inspector edit fills the specialised slot instead of creating a generic stack.
+- **Keep Overlay and scene icons separate.** A fresh template-managed scene under a
+  resolved claiming frame stores the panel mark as stable Icon item `frameIcon`, including
+  an explicit empty value that hides an inherited deck icon. The scene composition keeps
+  its own stable `icon` item. The panel renders `frameIcon`; TitleBlock and BrandLockup
+  retain `icon` at their specialised placement while the panel owns the claimed copy.
+  Older documents are not migrated: their panel `icon` remains a compatibility fallback.
+- **Reserve `layout: "template"` for a matching scaffold composition.** Its keys must be
+  slots that the TSX or overlay panel already renders. A custom code-owned scene should
+  omit `managedText`; a generic inspector-owned scene should omit `layout`.
+- **Never migrate on load.** Scaffolded scenes choose ownership when created. Existing
+  code-owned scenes remain unchanged until an explicit, undoable inspector takeover.
 - `duration.mode: "follow-media"` means the app keeps the scene's `project.json`
   `durationMs` synced to the source video's length. The source is the `sourceDeviceId`
   device's video; with no pin (or a stale one) every device video qualifies and the
@@ -424,9 +471,9 @@ replaces the deck's outright (never deep-merges); other fields override field-by
                                   // is image-only, and decoration text lives HERE, never in
                                   // the doc's text map (it is positioned art, not body copy)
   "textAlign": "left",
-  "claimsSceneText": true         // default true: the panel takes the sidecar's text.title /
-                                  // text.subtitle / text.bullets and suppresses the in-world
-                                  // headline; false = panel chrome only, scene text stays put
+  "claimsSceneText": true         // default true: the panel takes managed scene items, or
+                                  // legacy text.title / subtitle / bullets, and suppresses the
+                                  // in-world headline; false = chrome only, scene text stays put
 }
 ```
 
@@ -443,17 +490,22 @@ Rules:
   flat fill and nothing else.
 - **A transparent panel ignores the cutout.** With no fill there is no hole to cut, so the
   scene renders full-bleed and the panel keeps only its content (text, chip, decorations).
-- **Bullets** are one sidecar string split on newlines: `text.bullets = "First\nSecond"`.
-  Left-aligned bullets hang, so a wrapped line clears the marker instead of running under it.
+- **Bullets** in a managed scene are one Bullets item with ordered stable `points`.
+  Keep its newline `text` mirror so switching item type is lossless. Legacy code-owned
+  panels still split `text.bullets` on newlines. Left-aligned bullets hang, so a wrapped
+  line clears the marker instead of running under it.
 - **Header icon size** rides the generic style map: `textStyle.iconSize = 1.5` draws the
-  header icon (the sidecar's `headerIcon`, or an overlay's `frame.icon`) at 150%, and the
-  layout reserves the bigger box. The app writes it from Size % beside the icon picker.
+  scene icon at 150%, while `textStyle.frameIconSize` independently sizes a fresh managed
+  Overlay mark. Older panel icons keep reading `iconSize` for exact compatibility. The
+  layout reserves the bigger box, and the app writes the value from Size % beside the icon
+  picker.
 - Decoration and icon assets follow the media rules above: project-relative, copied into
   `assets/` first, path checked before writing.
-- Terminal edits ride the sidecar helper, e.g.
+- Terminal edits ride the sidecar helper. Managed item arrays must be read, edited and
+  written as a whole because dotted paths traverse objects only, e.g.
   `sidecar.py 02-tour set frame.cutout.side end` ·
   `sidecar.py 02-tour set frame.enabled false` ·
-  `sidecar.py 02-tour set text.bullets "Fast\nDeterministic"`.
+  `sidecar.py 02-tour get managedText`.
 - Layout maths, zone budgets and design rationale: `docs/overlays.md` (repo background,
   not on user machines).
 
@@ -583,7 +635,10 @@ useFormat(): { width: number; height: number; aspect: number;
 useTheme(): Theme
 
 // Scene-document hooks (v7 · M2) — read the mounted scene's sidecar:
-useSceneText(key: string, fallback?: string): string   // text map lookup ("" default)
+useSceneText(key: string, fallback?: string,
+             managedTextRole?: "scene"|"embedded"|"managed"): string
+                                                     // code-owned text lookup, or the
+                                                     // matching managed item in template layout
 useSceneDevices(): SceneDeviceProps[]                  // devices array, Device-spreadable
 useSceneDoc(): SceneDoc | null                         // the raw document (rarely needed)
 ```

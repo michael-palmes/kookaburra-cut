@@ -39,7 +39,7 @@ import type {
   SceneDoc,
   SceneDocLayeredScreenshot,
 } from "../engine/sceneDocSchema";
-import { DrillBack } from "./inspector/rows";
+import { DrillBack, DrillHeaderAction } from "./inspector/rows";
 import { useLayeredScreenshotDoc } from "./layeredScreenshotDoc";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
@@ -99,12 +99,14 @@ export function LayeredScreenshotBuilder({
   sceneIndex,
   onDocChanged,
   onBack,
+  onRemove,
   backLabel = "Scene",
 }: {
   project: LoadedProject;
   sceneIndex: number;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onBack: () => void;
+  onRemove: () => void;
   backLabel?: string;
 }) {
   const selectedLayerId = useLayeredScreenshotEditStore((s) => s.selectedLayerId);
@@ -141,10 +143,20 @@ export function LayeredScreenshotBuilder({
     toId: string | null;
     side: LayeredScreenshotAttachSide;
   } | null>(null);
-  /** Change media renders as a docked sub-screen (the stage stays live behind it), not a modal. */
   const [changingMedia, setChangingMedia] = useState(false);
-  useEscapeClose(() => setAdding(null), adding !== null);
-  useEscapeClose(() => setChangingMedia(false), changingMedia);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  useEffect(() => {
+    if (!confirmRemove) return;
+    const timeout = window.setTimeout(() => setConfirmRemove(false), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [confirmRemove]);
+  useEscapeClose(
+    () => {
+      if (adding) setAdding(null);
+      else setChangingMedia(false);
+    },
+    adding !== null || changingMedia,
+  );
 
   // A block with no layers still opens: seed the first layer so the panel is never a dead end.
   const empty = ordered.length === 0;
@@ -276,12 +288,57 @@ export function LayeredScreenshotBuilder({
     commitBlock(next);
   };
 
-  // The Change-media sub-screen: one drill level down from the builder, mirroring the video window's media drill. The .inspector-drill wrapper bounds the height so the media grid scrolls instead of growing the whole rail.
+  if (adding) {
+    return (
+      <div className="inspector-drill">
+        <DrillBack
+          label="Screenshot stack"
+          title="Add to the stack"
+          onClick={() => setAdding(null)}
+        />
+        <div className="inspector-drill-body">
+          {mediaError && <p className="modal-error">{mediaError}</p>}
+          <div className="inspector-media-host">
+            <MediaBrowser
+              slug={slug}
+              projectPath={projectPath}
+              kindToggle
+              kindDefault="image"
+              globalToggle
+              refreshKey={mediaRefresh}
+              onPick={addScreen}
+              cardMenu={mediaCardMenu({
+                slug,
+                primaryLabel: "Select",
+                onPrimary: addScreen,
+                onChanged: () => setMediaRefresh((n) => n + 1),
+                onError: setMediaError,
+              })}
+            />
+          </div>
+          <div className="inspector-drill-actions">
+            <button
+              type="button"
+              className="btn"
+              title="Add a theme-typed text label instead of a screen"
+              onClick={addText}
+            >
+              Add text instead
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (changingMedia && item?.kind === "screen") {
     return (
       <div className="inspector-drill">
-        <DrillBack label="Screenshot stack" onClick={() => setChangingMedia(false)} />
-        <div className="inspector-drill-title">Change media</div>
+        <DrillBack
+          label="Screenshot stack"
+          title="Change media"
+          onClick={() => setChangingMedia(false)}
+        />
         <div className="inspector-drill-body">
           {mediaError && <p className="modal-error">{mediaError}</p>}
           <div className="inspector-media-host">
@@ -310,8 +367,31 @@ export function LayeredScreenshotBuilder({
 
   return (
     <div className="inspector-drill">
-      <DrillBack label={backLabel} onClick={onBack} />
-      <div className="inspector-drill-title">Screenshot stack</div>
+      <DrillBack
+        label={backLabel}
+        title="Screenshot stack"
+        onClick={() => {
+          setConfirmRemove(false);
+          onBack();
+        }}
+        actions={
+          doc?.layeredScreenshot ? (
+            <DrillHeaderAction
+              kind="remove"
+              label={confirmRemove ? "Confirm remove screenshot stack" : "Remove screenshot stack"}
+              armed={confirmRemove}
+              onClick={() => {
+                if (!confirmRemove) {
+                  setConfirmRemove(true);
+                  return;
+                }
+                setConfirmRemove(false);
+                onRemove();
+              }}
+            />
+          ) : undefined
+        }
+      />
       <div className="ls-builder">
         <div className="ls-builder-section">
           <div className="inspector-tabs" role="tablist">
@@ -690,46 +770,6 @@ export function LayeredScreenshotBuilder({
           </div>
         )}
       </div>
-
-      {adding && (
-        <div className="modal-overlay" role="dialog" aria-modal="true">
-          <div className="modal wizard-wide">
-            <h2>Add to the stack</h2>
-            {mediaError && <p className="modal-error">{mediaError}</p>}
-            <div className="wizard-media-host">
-              <MediaBrowser
-                slug={slug}
-                projectPath={projectPath}
-                kindToggle
-                kindDefault="image"
-                globalToggle
-                refreshKey={mediaRefresh}
-                onPick={addScreen}
-                cardMenu={mediaCardMenu({
-                  slug,
-                  primaryLabel: "Select",
-                  onPrimary: addScreen,
-                  onChanged: () => setMediaRefresh((n) => n + 1),
-                  onError: setMediaError,
-                })}
-              />
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn" onClick={() => setAdding(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn"
-                title="Add a theme-typed text label instead of a screen"
-                onClick={addText}
-              >
-                Add text instead
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

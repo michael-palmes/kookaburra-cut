@@ -162,6 +162,7 @@ export function FrameChip({
           from={from}
           to={to}
           color={labelColour}
+          managedTextRole="embedded"
         />
       )}
     </>

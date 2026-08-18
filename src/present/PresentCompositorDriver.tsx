@@ -10,6 +10,7 @@ import {
   preloadEnvironments,
   preloadMirrorEnvironments,
 } from "../engine/environments";
+import { useFormat } from "../engine/format";
 import { resolveOverlays } from "../engine/overlayPlan";
 import { setSceneHold } from "../engine/presentHold";
 import { snapshotPresentTimings } from "../engine/presentTimingRegistry";
@@ -30,6 +31,7 @@ import {
   resolveAt,
   resolveTransitionParams,
 } from "../engine/sceneTimeline";
+import { useSceneStageFloors } from "../engine/stageRegistry";
 import { sampleLoopedSceneCamera, sampleLoopedSceneRig } from "./cameraLoop";
 import { type DerivedHold, derivePresentHold } from "./holdPoint";
 import { usePresentStore } from "./presentStore";
@@ -64,7 +66,12 @@ export function PresentCompositorDriver({
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const gl = useThree((s) => s.gl);
-  const sceneTracks = useMemo(() => buildSceneCameraTracks(project.sceneDocs), [project]);
+  const format = useFormat();
+  const sceneFloorYs = useSceneStageFloors(project.slots.length);
+  const sceneTracks = useMemo(
+    () => buildSceneCameraTracks(project.sceneDocs, format, sceneFloorYs),
+    [project, format, sceneFloorYs],
+  );
   const lightingTracks = useMemo(
     () => buildLightingTracks(project.sceneThemes, project.projectLighting, project.sceneDocs),
     [project],

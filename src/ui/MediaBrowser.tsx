@@ -27,6 +27,77 @@ import { VideoPlayer } from "./VideoPlayer";
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v", "webm"];
 const MEDIA_PICKER_EXTENSIONS = [...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS];
+const MEDIA_PREVIEW_FOCUSABLE = [
+  "a[href]",
+  "area[href]",
+  "button:not([disabled])",
+  'input:not([disabled]):not([type="hidden"])',
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "iframe",
+  "object",
+  "embed",
+  "audio[controls]",
+  "video[controls]",
+  "summary",
+  '[contenteditable]:not([contenteditable="false"])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+export function mediaPreviewTabTarget(
+  focusables: readonly HTMLElement[],
+  activeElement: HTMLElement | null,
+  backwards: boolean,
+): HTMLElement | null {
+  if (focusables.length === 0) return null;
+  const activeIndex = activeElement ? focusables.indexOf(activeElement) : -1;
+  if (backwards) return activeIndex <= 0 ? (focusables.at(-1) ?? null) : null;
+  return activeIndex < 0 || activeIndex === focusables.length - 1 ? focusables[0] : null;
+}
+
+function mediaPreviewFocusables(dialog: HTMLElement): HTMLElement[] {
+  return Array.from(dialog.querySelectorAll<HTMLElement>(MEDIA_PREVIEW_FOCUSABLE))
+    .filter((element) => {
+      if (element.tabIndex < 0 || element.matches(":disabled")) return false;
+      if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+      const style = window.getComputedStyle(element);
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        element.getClientRects().length > 0
+      );
+    })
+    .map((element, order) => ({ element, order }))
+    .sort((a, b) => {
+      if (a.element.tabIndex === b.element.tabIndex) return a.order - b.order;
+      if (a.element.tabIndex === 0) return 1;
+      if (b.element.tabIndex === 0) return -1;
+      return a.element.tabIndex - b.element.tabIndex;
+    })
+    .map(({ element }) => element);
+}
+
+export function MediaBrowserError({ message }: { message: string }) {
+  return (
+    <span className="modal-error media-add-error" role="alert">
+      {message}
+    </span>
+  );
+}
+
+export async function runMediaPickSingleFlight(
+  busyRef: { current: boolean },
+  task: () => Promise<void>,
+): Promise<boolean> {
+  if (busyRef.current) return false;
+  busyRef.current = true;
+  try {
+    await task();
+    return true;
+  } finally {
+    busyRef.current = false;
+  }
+}
 
 /** Kind by extension, instant (metas stream in later; the backend agrees on these). */
 function kindOfRel(rel: string): "image" | "video" {
@@ -116,7 +187,7 @@ export function AddMediaButton({
       >
         {importing ? "Adding…" : "＋ Add media"}
       </button>
-      {error && <span className="modal-error media-add-error">{error}</span>}
+      {error && <MediaBrowserError message={error} />}
     </>
   );
 }
@@ -156,7 +227,7 @@ function AddGlobalScreenshotButton({ onImported }: { onImported: (names: string[
       >
         {importing ? "Adding…" : "＋ Add to library"}
       </button>
-      {error && <span className="modal-error media-add-error">{error}</span>}
+      {error && <MediaBrowserError message={error} />}
     </>
   );
 }
@@ -235,7 +306,15 @@ export interface MediaBrowserProps {
   onPick?: (rel: string, meta: MediaMeta | null) => void;
 }
 
-function MediaCard({
+export function mediaCardActions(
+  onPick: (() => void) | undefined,
+  onPreview: () => void,
+  onMenu?: (x: number, y: number) => void,
+) {
+  return { activate: onPick ?? onPreview, preview: onPreview, openMenu: onMenu };
+}
+
+export function MediaCard({
   rel,
   meta,
   metaFailed,
@@ -245,6 +324,7 @@ function MediaCard({
   onMenu,
   onPreview,
   onPick,
+  disabled,
 }: {
   rel: string;
   meta: MediaMeta | null;
@@ -260,12 +340,13 @@ function MediaCard({
   onPreview: () => void;
   /** Picker mode: card click chooses this file (preview demotes to an action button). */
   onPick?: () => void;
+  disabled?: boolean;
 }) {
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const thumbRef = useRef<HTMLDivElement>(null);
 
   const name = rel.replace(/^assets\//, "");
-  const activate = onPick ?? onPreview;
+  const actions = mediaCardActions(onPick, onPreview, onMenu);
   const scrub =
     meta && scrubIndex !== null && meta.scrubPaths.length > 0
       ? meta.scrubPaths[Math.min(scrubIndex, meta.scrubPaths.length - 1)]
@@ -273,44 +354,41 @@ function MediaCard({
   const imageSrc = scrub ?? meta?.posterPath ?? null;
 
   return (
-    // The whole card is the click target: hover state + hand cursor; fullscreen preview moves to the expand icon over the thumb. Deliberately a <div role="button">, not a <button>: WKWebView treats <button> as a special replaced-element frame and won't reliably paint an <img> descendant (confirmed against WebKit).
-    // biome-ignore lint/a11y/useSemanticElements: a real <button> drops the img in WKWebView
     <div
       className={`media-card${selected ? " selected" : ""}`}
-      role="button"
-      tabIndex={0}
-      aria-label={onPick ? `Use ${name}` : `Preview ${name}`}
       draggable={canDrag}
-      onDragStart={(e) => {
-        if (!canDrag) return;
-        e.dataTransfer.setData(MEDIA_DRAG_TYPE, rel);
-        e.dataTransfer.setData("text/plain", rel);
-        e.dataTransfer.effectAllowed = "copy";
-      }}
-      onClick={activate}
-      onContextMenu={
-        onMenu
-          ? (e) => {
-              e.preventDefault();
-              onMenu(e.clientX, e.clientY);
-            }
-          : undefined
-      }
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          activate();
-        }
-      }}
+      style={{ position: "relative" }}
     >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: hover-scrub is decorative — the card root carries the button semantics */}
-      <div
-        ref={thumbRef}
-        className={`media-thumb${meta?.kind === "image" ? " media-thumb-alpha" : ""}`}
+      <button
+        type="button"
+        className="media-card-activate"
+        draggable={canDrag}
+        aria-label={onPick ? `Use ${name}` : `Preview ${name}`}
+        aria-pressed={onPick ? selected : undefined}
+        aria-busy={disabled || undefined}
+        disabled={disabled}
+        onClick={actions.activate}
+        onDragStart={(e) => {
+          if (!canDrag) return;
+          e.dataTransfer.setData(MEDIA_DRAG_TYPE, rel);
+          e.dataTransfer.setData("text/plain", rel);
+          e.dataTransfer.effectAllowed = "copy";
+        }}
+        onContextMenu={
+          onMenu
+            ? (e) => {
+                e.preventDefault();
+                actions.openMenu?.(e.clientX, e.clientY);
+              }
+            : undefined
+        }
         onMouseMove={(e) => {
-          // Hover-scrub: cursor X sweeps across the pre-extracted frames.
           if (!meta || meta.scrubPaths.length === 0 || !thumbRef.current) return;
           const rect = thumbRef.current.getBoundingClientRect();
+          if (e.clientY < rect.top || e.clientY > rect.bottom) {
+            setScrubIndex(null);
+            return;
+          }
           const t = (e.clientX - rect.left) / Math.max(1, rect.width);
           setScrubIndex(
             Math.max(
@@ -320,6 +398,23 @@ function MediaCard({
           );
         }}
         onMouseLeave={() => setScrubIndex(null)}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          width: "100%",
+          height: "100%",
+          padding: 0,
+          color: "inherit",
+          background: "transparent",
+          border: 0,
+          borderRadius: "inherit",
+          cursor: "inherit",
+        }}
+      />
+      <div
+        ref={thumbRef}
+        className={`media-thumb${meta?.kind === "image" ? " media-thumb-alpha" : ""}`}
       >
         {imageSrc ? (
           <img src={fsUrl(imageSrc)} alt="" draggable={false} />
@@ -338,10 +433,16 @@ function MediaCard({
             className="media-expand"
             aria-label={`Preview ${name}`}
             title="Preview"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPreview();
-            }}
+            style={{ zIndex: 2 }}
+            onContextMenu={
+              onMenu
+                ? (e) => {
+                    e.preventDefault();
+                    actions.openMenu?.(e.clientX, e.clientY);
+                  }
+                : undefined
+            }
+            onClick={actions.preview}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
               <path
@@ -373,10 +474,14 @@ function MediaCard({
               className="media-menu-btn"
               aria-label={`Actions for ${name}`}
               title="Actions"
+              style={{ position: "relative", zIndex: 2 }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                actions.openMenu?.(e.clientX, e.clientY);
+              }}
               onClick={(e) => {
-                e.stopPropagation();
                 const r = e.currentTarget.getBoundingClientRect();
-                onMenu(r.left, r.bottom + 4);
+                actions.openMenu?.(r.left, r.bottom + 4);
               }}
             >
               ⋯
@@ -411,6 +516,8 @@ export function MediaBrowser({
   const [metaFailed, setMetaFailed] = useState<ReadonlySet<string>>(new Set());
   const [edits, setEdits] = useState<string[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
+  const previewReturnFocusRef = useRef<HTMLElement | null>(null);
   const [kindTab, setKindTab] = useState<"video" | "image">(kindDefault ?? "video");
   const [sourceTab, setSourceTab] = useState<"project" | "global">("project");
   const [globalShots, setGlobalShots] = useState<GlobalScreenshot[] | null>(null);
@@ -418,6 +525,8 @@ export function MediaBrowser({
   const [globalFailed, setGlobalFailed] = useState<ReadonlySet<string>>(new Set());
   /** Copy-on-use failures must never be silent (the pick just wouldn't land). */
   const [pickError, setPickError] = useState<string | null>(null);
+  const pickBusyRef = useRef(false);
+  const [pickBusy, setPickBusy] = useState(false);
 
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
@@ -507,14 +616,19 @@ export function MediaBrowser({
   const pickGlobal = useCallback(
     async (shot: GlobalScreenshot) => {
       if (!onPick) return;
-      setPickError(null);
-      try {
-        const [rel] = await importMedia(slug, [shot.absPath]);
-        if (rel) onPick(rel, globalMetas[shot.name] ?? null);
-      } catch (e) {
-        console.warn(`[media] copy-on-use failed for ${shot.name}:`, e);
-        setPickError(`Couldn't copy into the project: ${String(e)}`);
-      }
+      await runMediaPickSingleFlight(pickBusyRef, async () => {
+        setPickBusy(true);
+        setPickError(null);
+        try {
+          const [rel] = await importMedia(slug, [shot.absPath]);
+          if (rel) await onPick(rel, globalMetas[shot.name] ?? null);
+        } catch (e) {
+          console.warn(`[media] copy-on-use failed for ${shot.name}:`, e);
+          setPickError(`Couldn't copy into the project: ${String(e)}`);
+        } finally {
+          setPickBusy(false);
+        }
+      });
     },
     [onPick, slug, globalMetas],
   );
@@ -573,9 +687,24 @@ export function MediaBrowser({
 
   // The fullscreen preview is a layer of its own: the shared Escape stack closes it first, then a host modal on the next press.
   useEscapeClose(() => setPreview(null), preview !== null);
+  useEffect(() => {
+    if (!preview) return;
+    previewReturnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() =>
+      previewCloseRef.current?.focus({ preventScroll: true }),
+    );
+    return () => {
+      window.cancelAnimationFrame(frame);
+      const target = previewReturnFocusRef.current;
+      previewReturnFocusRef.current = null;
+      if (target?.isConnected) target.focus({ preventScroll: true });
+    };
+  }, [preview]);
 
   const sourceRow = globalToggle ? (
     <SegmentedRow
+      ariaLabel="Media source"
       options={[
         {
           value: "project",
@@ -591,6 +720,7 @@ export function MediaBrowser({
         },
       ]}
       value={sourceTab}
+      disabled={pickBusy}
       onChange={(tab) => {
         setSourceTab(tab);
         setPreview(null);
@@ -599,11 +729,13 @@ export function MediaBrowser({
   ) : null;
   const kindRow = kindToggle ? (
     <SegmentedRow
+      ariaLabel="Media type"
       options={[
         { value: "video", label: "Video", icon: <VideoIcon /> },
         { value: "image", label: "Images", icon: <ImageIcon /> },
       ]}
       value={kindTab}
+      disabled={pickBusy}
       onChange={setKindTab}
     />
   ) : null;
@@ -632,7 +764,7 @@ export function MediaBrowser({
           {addButton}
         </div>
       )}
-      {pickError && <span className="modal-error media-add-error">{pickError}</span>}
+      {pickError && <MediaBrowserError message={pickError} />}
 
       {sourceTab === "global" ? (
         globalShots === null || visibleGlobal === undefined ? (
@@ -659,6 +791,7 @@ export function MediaBrowser({
                 edited={false}
                 canDrag={false}
                 selected={false}
+                disabled={pickBusy}
                 onMenu={(x, y) =>
                   setMenu({
                     x,
@@ -714,6 +847,7 @@ export function MediaBrowser({
               edited={editNameOf(rel) !== null}
               canDrag={Boolean(draggableVideos && metas[rel]?.kind === "video")}
               selected={selectedRel != null && rel === selectedRel}
+              disabled={pickBusy}
               onMenu={(x, y) =>
                 setMenu({
                   x,
@@ -737,18 +871,35 @@ export function MediaBrowser({
   );
 
   return (
-    <div className={`media-browser${compact ? " compact" : ""}`}>
+    <div className={`media-browser${compact ? " compact" : ""}`} aria-busy={pickBusy || undefined}>
       {sourceRow && kindRow ? <ToggleFieldset control={sourceRow}>{body}</ToggleFieldset> : body}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
 
       {preview && previewSrc && (
-        <div className="media-preview" role="presentation">
+        <div
+          className="media-preview"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Preview ${preview}`}
+          onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            const target = mediaPreviewTabTarget(
+              mediaPreviewFocusables(event.currentTarget),
+              document.activeElement instanceof HTMLElement ? document.activeElement : null,
+              event.shiftKey,
+            );
+            if (!target) return;
+            event.preventDefault();
+            target.focus({ preventScroll: true });
+          }}
+        >
           {/* Click-anywhere-to-close, as a real button so keyboards get it too. */}
           <button
             type="button"
             className="media-preview-backdrop"
             aria-label="Close preview"
+            tabIndex={-1}
             onClick={() => setPreview(null)}
           />
           {previewMeta?.kind === "image" ? (
@@ -758,6 +909,7 @@ export function MediaBrowser({
             <VideoPlayer src={fsUrl(previewSrc)} fps={previewMeta?.fps} autoPlay />
           )}
           <button
+            ref={previewCloseRef}
             type="button"
             className="toast-close media-preview-close"
             aria-label="Close preview"

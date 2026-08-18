@@ -20,6 +20,7 @@ export function CompareChips() {
   const label = useSceneText(
     side === "a" ? "beforeLabel" : "afterLabel",
     side === "a" ? "Before" : "After",
+    "embedded",
   );
   if (!spec?.chrome.chips || !label) return null;
   const portrait = format.aspect < 1;

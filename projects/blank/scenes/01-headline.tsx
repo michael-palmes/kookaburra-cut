@@ -11,7 +11,7 @@ import {
  * Authoring rules (see .claude/skills/kookaburra-scene-authoring): default-export a
  * `defineScene`, animate only off the timeline, text via toolkit primitives,
  * colours via theme tokens, laid-out content at z=0. User-visible text lives in the
- * sidecar `scenes/01-headline.json` text map. `<SceneStage>` mounts the theme's
+ * sidecar's managed text block. `<SceneStage>` mounts the theme's
  * staging (lights, backdrop, shadows) and honours the sidecar's stage overrides.
  */
 export default defineScene({
@@ -25,6 +25,7 @@ export default defineScene({
       <SceneStage>
         <AnimatedHeadline
           text={headline}
+          textKey="headline"
           from={0}
           to={theme.motion.durations.base}
           position={[0, 0, 0]}

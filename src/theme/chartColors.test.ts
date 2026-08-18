@@ -24,10 +24,21 @@ const hueGap = (a: string, b: string): number => {
   return d > 180 ? 360 - d : d;
 };
 
+const perceptualGap = (a: string, b: string): number => {
+  const first = hexToOklch(a);
+  const second = hexToOklch(b);
+  const firstA = first.c * Math.cos((first.h * Math.PI) / 180);
+  const firstB = first.c * Math.sin((first.h * Math.PI) / 180);
+  const secondA = second.c * Math.cos((second.h * Math.PI) / 180);
+  const secondB = second.c * Math.sin((second.h * Math.PI) / 180);
+  return Math.hypot(first.l - second.l, firstA - secondA, firstB - secondB);
+};
+
 const PALETTE_SIZE = 6;
 /** A neighbouring pair must step in tone or saturation, not hue alone: hue-only steps collapse for the ~8% of viewers with a colour vision deficiency, and read as one block on a projector. */
 const MIN_LIGHTNESS_STEP = 0.03;
 const MIN_CHROMA_STEP = 0.02;
+const MIN_PAIR_GAP = 0.04;
 /** How far a hand-picked first swatch may drift from the theme accent before it stops reading as the same brand colour. */
 const MAX_ACCENT_HUE_DRIFT = 12;
 
@@ -65,6 +76,20 @@ describe("bundled chartColors palettes", () => {
           Math.abs(next.l - prev.l) >= MIN_LIGHTNESS_STEP ||
           Math.abs(next.c - prev.c) >= MIN_CHROMA_STEP;
         expect(step, `${theme.id} ${palette[i - 1]} -> ${palette[i]}`).toBe(true);
+      }
+    }
+  });
+
+  it("keeps every pair in a palette perceptually distinct", () => {
+    for (const theme of themes) {
+      const palette = theme.chartColors ?? [];
+      for (let first = 0; first < palette.length; first++) {
+        for (let second = first + 1; second < palette.length; second++) {
+          expect(
+            perceptualGap(palette[first], palette[second]),
+            `${theme.id} ${palette[first]} vs ${palette[second]}`,
+          ).toBeGreaterThanOrEqual(MIN_PAIR_GAP);
+        }
       }
     }
   });

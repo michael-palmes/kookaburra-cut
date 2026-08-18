@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "id": "kookaburra-dialogue-halo",
+  "name": "Dialogue Halo",
+  "mode": "dark",
+  "catalogue": {
+    "category": "human-centred-ai",
+    "useLabel": "Conversational product stories",
+    "tags": ["conversation", "assistant", "ai", "product", "human", "cinematic"],
+    "stage": "lighting-only",
+    "order": 30
+  },
+  "colors": {
+    "background": "#17110d",
+    "text": "#fff8ef",
+    "accent": "#f2b879",
+    "muted": "#d8cbc0"
+  },
+  "chartColors": ["#f2b879", "#6b8afc", "#a9c6ff", "#c79bf5", "#73d6b0", "#ef8fa6"],
+  "typography": {
+    "headline": { "family": "Nunito", "weight": 600 },
+    "body": "Inter",
+    "scale": 1.25
+  },
+  "motion": {
+    "durations": { "fast": 180, "base": 460, "slow": 850 },
+    "easings": { "standard": "outCubic", "emphasized": "outBack" }
+  },
+  "textAnimation": {
+    "in": "twist-scale",
+    "out": "fade",
+    "staggerMs": 45,
+    "stagger": "word",
+    "direction": "from-right"
+  },
+  "background": {
+    "type": "scene3d",
+    "look": "halo-rings",
+    "colors": ["#372f2a", "#494232"],
+    "speed": 1.05,
+    "params": { "count": 4, "spread": 2, "depth": 15, "size": 1.3, "tube": 0.24, "drift": 0.7 },
+    "backing": { "type": "color", "color": "#17110d" },
+    "preset": "p7"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -30,
+      "elevationDeg": 38,
+      "intensity": 1.7,
+      "color": "#ffe4c5"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 125,
+        "elevationDeg": 20,
+        "intensity": 0.85,
+        "color": "#8fd4c8"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 30,
+        "intensity": 0.5,
+        "color": "#b7a0ff"
+      }
+    ],
+    "ambient": 0.35
+  }
+}
