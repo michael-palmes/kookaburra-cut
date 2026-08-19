@@ -1259,6 +1259,7 @@ pub fn run() {
             notify_export_done,
             media::probe_audio,
             media::delete_media,
+            media::unused_media,
             media::rename_media,
             loudness::measure_loudness,
             beats::beat_cache_load,

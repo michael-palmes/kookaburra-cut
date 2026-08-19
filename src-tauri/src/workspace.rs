@@ -1436,6 +1436,11 @@ const SAMPLE_ASSET_FILES: [&str; 3] = [
     "app-icon.png",
 ];
 
+/// Whether a file name is one of the samples `ensure_sample_assets` restores at every project load; deleting one only brings it back, so the unused sweep leaves them alone.
+pub(crate) fn is_backfilled_sample(name: &str) -> bool {
+    SAMPLE_ASSET_FILES.contains(&name)
+}
+
 /// The shared sample pool inside the bundled tree (`projects/_samples/`), the one source both creation and the backfill seed from.
 fn samples_root(app: &AppHandle) -> PathBuf {
     templates_root(app).join(SAMPLES_DIR_NAME)
@@ -1672,9 +1677,13 @@ pub fn list_project_media(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<String>, String> {
-    let mut files = list_by_extension(&app, &state, &slug, MEDIA_EXTENSIONS)?;
-    let project_dir = require_root(&app, &state)?.join(&slug);
-    sort_media_by_added(&project_dir, &mut files);
+    project_media_rels(&require_root(&app, &state)?, &slug)
+}
+
+/// Every media rel in a project's `assets/`, newest added first: `list_project_media`'s body with the root already in hand, so other modules can list without plumbing a `State` through.
+pub(crate) fn project_media_rels(root: &Path, slug: &str) -> Result<Vec<String>, String> {
+    let mut files = list_by_extension_in(root, slug, MEDIA_EXTENSIONS)?;
+    sort_media_by_added(&root.join(slug), &mut files);
     Ok(files)
 }
 
@@ -1695,7 +1704,14 @@ fn list_by_extension(
     slug: &str,
     extensions: &[&str],
 ) -> Result<Vec<String>, String> {
-    let root = require_root(app, state)?;
+    list_by_extension_in(&require_root(app, state)?, slug, extensions)
+}
+
+fn list_by_extension_in(
+    root: &Path,
+    slug: &str,
+    extensions: &[&str],
+) -> Result<Vec<String>, String> {
     validate_slug(slug)?;
     let assets = root.join(slug).join("assets");
     let mut files = Vec::new();
@@ -1975,6 +1991,16 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&source);
         let _ = std::fs::remove_dir_all(&dest_root);
+    }
+
+    #[test]
+    fn the_backfilled_samples_are_left_out_of_the_unused_sweep() {
+        for name in SAMPLE_ASSET_FILES {
+            assert!(is_backfilled_sample(name));
+        }
+        // The seeded screenshots are only written at creation, so deleting one sticks.
+        assert!(!is_backfilled_sample("sample-screenshot-1.jpg"));
+        assert!(!is_backfilled_sample("my-clip.mp4"));
     }
 
     #[test]
