@@ -121,6 +121,7 @@ export function InspectorPanel({
   onDeleteScene,
   onReorderScenes,
   onDuplicateScenes,
+  onDeleteScenes,
   onRenameScene,
   onSceneDuration,
   onPasteBackground,
@@ -164,6 +165,8 @@ export function InspectorPanel({
   onReorderScenes: (desired: number[]) => Promise<void>;
   /** Scene manager: duplicate these scenes, each copy landing after its original. */
   onDuplicateScenes: (indices: number[]) => Promise<void>;
+  /** Scene manager: delete these scenes (descending, one reload; refused when it would empty the project). */
+  onDeleteScenes: (indices: number[]) => Promise<void>;
   /** Commit an in-place rename (the host writes `doc.name` + history). */
   onRenameScene: (index: number, name: string) => void;
   /** Commit a scene length in ms (the host writes project.json + the manual-mode flip). */
@@ -526,7 +529,10 @@ export function InspectorPanel({
                 });
               }}
               onPasteBackground={onPasteBackground}
-              onDelete={onDeleteScene}
+              onDelete={(indices) => {
+                setScenesBusy(true);
+                void onDeleteScenes(indices).finally(() => setScenesBusy(false));
+              }}
               onCopyToProject={setCopyingScenes}
             />
             {duplicating !== null && (

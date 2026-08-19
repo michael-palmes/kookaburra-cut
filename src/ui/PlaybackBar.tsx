@@ -113,7 +113,7 @@ export function PlaybackBar({
       y: e.clientY,
       items: sceneMenuItems({
         canRename: !!project.sceneDocs[index],
-        lastScene: project.slots.length <= 1,
+        canDelete: project.slots.length > 1,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
         onRename: () => setRenaming({ index, text: sceneName(index) }),
         onDuplicate: () => setDuplicating(index),

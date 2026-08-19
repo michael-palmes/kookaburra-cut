@@ -111,7 +111,7 @@ import {
   writeSceneDoc,
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
-import { planDuplicates, planMoves } from "./engine/sceneOrder";
+import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
@@ -751,12 +751,19 @@ export default function App() {
     [handleDocChanged],
   );
 
-  const handleDeleteScene = useCallback(async (sceneIndex: number) => {
+  const handleDeleteScenes = useCallback(async (indices: number[]) => {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
+    const plan = planDeletes(indices, current.slots.length);
+    if (plan.length === 0) {
+      setToast({ kind: "error", message: "A project needs at least one scene." });
+      return;
+    }
     try {
-      // No history entry, the wizard's delete semantics: recoverable from the Trash, not ⌘Z (a manifest revert can't restore trashed files).
-      await removeProjectScene(workspaceSlug(current.id), sceneIndex);
+      // Descending (planDeletes), so each removal only shifts indices past the one already gone; no history entry, the wizard's delete semantics: recoverable from the Trash, not ⌘Z (a manifest revert can't restore trashed files).
+      for (const index of plan) {
+        await removeProjectScene(workspaceSlug(current.id), index);
+      }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
     } catch (e) {
@@ -2308,9 +2315,10 @@ export default function App() {
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
               onApplyTheme={handleApplyTheme}
-              onDeleteScene={(i) => void handleDeleteScene(i)}
+              onDeleteScene={(i) => void handleDeleteScenes([i])}
               onReorderScenes={handleReorderScenes}
               onDuplicateScenes={handleDuplicateScenes}
+              onDeleteScenes={handleDeleteScenes}
               onRenameScene={(i, name) => void handleRenameScene(i, name)}
               onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
               onPasteBackground={(i) => void handlePasteBackground(i)}
@@ -2408,7 +2416,7 @@ export default function App() {
               setRailOpen(true);
             }}
             onRenameScene={(i, name) => void handleRenameScene(i, name)}
-            onDeleteScene={(i) => void handleDeleteScene(i)}
+            onDeleteScene={(i) => void handleDeleteScenes([i])}
             onDuplicateScene={handleDuplicateScene}
             onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
             onPasteBackground={(i) => void handlePasteBackground(i)}

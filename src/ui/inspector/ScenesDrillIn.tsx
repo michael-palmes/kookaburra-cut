@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { moveSelection } from "../../engine/sceneOrder";
+import { moveSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { sceneMenuItems } from "../sceneMenu";
@@ -54,8 +54,8 @@ export function ScenesDrillIn({
   /** Snapshot a scene's background + staging onto the shared clipboard (the host owns the docs). */
   onCopyBackground: (index: number) => void;
   onPasteBackground: (index: number) => void;
-  /** Trash-recoverable scene removal (the host reloads; Rust guards the last scene). */
-  onDelete: (index: number) => void;
+  /** Trash-recoverable removal of the whole selection (the host reloads once; the last scene is refused before any call). */
+  onDelete: (indices: number[]) => void;
   /** Open the copy-to-project picker for the given selection (the host mounts CopySceneModal). */
   onCopyToProject: (indices: number[]) => void;
 }) {
@@ -163,14 +163,15 @@ export function ScenesDrillIn({
     // Right-clicking inside a multi-selection turns Duplicate into the footer button's bulk action.
     const bulk =
       selected.has(scene.index) && selected.size > 1 ? [...selected].sort((a, b) => a - b) : null;
+    const deletable = planDeletes(bulk ?? [scene.index], scenes.length);
     setMenu({
       x: e.clientX,
       y: e.clientY,
       items: sceneMenuItems({
         canRename: scene.hasDoc,
-        lastScene: scenes.length <= 1,
+        canDelete: deletable.length > 0,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
-        duplicateCount: bulk?.length,
+        selectionCount: bulk?.length,
         onRename: () => startRename(scene),
         onDuplicate: () => {
           if (!bulk) {
@@ -185,7 +186,11 @@ export function ScenesDrillIn({
           setTiming({ index: scene.index, text: (scene.durationMs / 1000).toFixed(2) }),
         onCopyBackground: () => onCopyBackground(scene.index),
         onPasteBackground: () => onPasteBackground(scene.index),
-        onDelete: () => onDelete(scene.index),
+        onDelete: () => {
+          setSelected(new Set());
+          setAnchor(null);
+          onDelete(deletable);
+        },
         onCopyToProject: () => onCopyToProject(bulk ?? [scene.index]),
       }),
     });
