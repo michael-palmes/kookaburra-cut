@@ -9520,15 +9520,26 @@ textarea.text-inspector-copy-input {
 }
 
 .colour-popover {
+  display: flex;
+  flex-direction: column;
   position: fixed;
   /* Above .modal-overlay (20), below .context-menu (30) so chip menus stack on top. */
   z-index: 22;
-  width: 232px;
-  padding: var(--space-4);
+  width: 288px;
+  padding: 0;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: var(--elev-popover);
+}
+
+/* The body scrolls so the preview row below it stays pinned however tall the sections get. */
+.colour-popover-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .colour-popover-section {
@@ -9544,9 +9555,9 @@ textarea.text-inspector-copy-input {
 
 .colour-popover-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 4px;
-  margin-bottom: var(--space-3);
+  margin-top: 4px;
 }
 
 .colour-swatch-chip {
@@ -9562,6 +9573,10 @@ textarea.text-inspector-copy-input {
 .colour-swatch-chip.selected {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+/* Twelve columns share the width instead of overflowing the chip's fixed size. */
+.colour-popover-grid .colour-swatch-chip {
+  width: 100%;
 }
 
 .colour-popover-hex-row {
@@ -9579,9 +9594,10 @@ textarea.text-inspector-copy-input {
 
 .colour-popover-preview {
   display: flex;
+  flex: none;
   gap: var(--space-3);
   align-items: center;
-  padding-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -9595,6 +9611,65 @@ textarea.text-inspector-copy-input {
 .colour-popover-preview-details {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* The free-form surface: a saturation/brightness square over a hue rail. */
+.colour-spectrum {
+  margin-bottom: var(--space-3);
+}
+
+.colour-spectrum-square {
+  position: relative;
+  height: 150px;
+  margin-bottom: var(--space-3);
+  /* rgba over the `transparent` keyword: WebKit interpolates that through transparent black and greys the mid-tones. */
+  background-image:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.colour-spectrum-hue {
+  position: relative;
+  height: 14px;
+  background-image: linear-gradient(
+    to right,
+    #f00 0%,
+    #ff0 16.6%,
+    #0f0 33.3%,
+    #0ff 50%,
+    #00f 66.6%,
+    #f0f 83.3%,
+    #f00 100%
+  );
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.colour-spectrum-thumb,
+.colour-spectrum-hue-thumb {
+  position: absolute;
+  border: 2px solid #fff;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.colour-spectrum-thumb {
+  width: 12px;
+  height: 12px;
+}
+
+.colour-spectrum-hue-thumb {
+  top: 50%;
+  width: 10px;
+  height: 10px;
 }
 
 /* ── Camera presets: a list of canned moves under the drill-in's rows ── */
