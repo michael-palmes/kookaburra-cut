@@ -16,8 +16,9 @@ import { COLOUR_PRESET_GRID } from "./colourPresets";
 import { loadColourRecents, rememberColourPick } from "./colourRecents";
 import { colourSwatchMenu } from "./colourSwatchMenu";
 import { type Hsv, hexToHsv, hexToRgbString, hsvToHex, normaliseHex } from "./colourUtils";
+import { sampleScreenColour } from "./screenSampler";
 
-/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, the native NSColorPanel via "Show Colors…", theme tokens, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
+/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, a native eyedropper, the native NSColorPanel via "Show Colors…", theme tokens, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
 
 export interface ColourPickerProps {
   /** Current colour, sRGB hex. */
@@ -132,8 +133,11 @@ function ColourPopover({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [recents] = useState(loadColourRecents);
   const [hsv, setHsv] = useState(() => hexToHsv(draft));
+  const [sampling, setSampling] = useState(false);
   // The hex the spectrum last produced: without it a drag into black or white would re-derive HSV and lose the hue.
   const hsvHex = useRef(draft);
+  const samplingRef = useRef(false);
+  const alive = useRef(true);
 
   // Refs so the unmount flush sees the latest state whatever path closed us.
   const draftRef = useRef(draft);
@@ -167,6 +171,8 @@ function ColourPopover({
   // Outside pointerdown closes; the trigger is excluded or its toggle would reopen us.
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
+      // The click that dismisses NSColorSampler lands here while the app is not frontmost.
+      if (samplingRef.current) return;
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchorRef.current?.contains(t)) return;
       onClose();
@@ -178,6 +184,7 @@ function ColourPopover({
   // Every close path unmounts us: flush a pending debounce and record the final pick.
   useEffect(
     () => () => {
+      alive.current = false;
       if (pending.current !== null) {
         window.clearTimeout(pending.current);
         pending.current = null;
@@ -233,6 +240,19 @@ function ColourPopover({
       el.showPicker();
     } catch {
       el.click();
+    }
+  };
+
+  const sample = async () => {
+    if (samplingRef.current) return;
+    setSampling(true);
+    samplingRef.current = true;
+    try {
+      const hex = await sampleScreenColour();
+      if (hex && alive.current) pick(hex);
+    } finally {
+      samplingRef.current = false;
+      if (alive.current) setSampling(false);
     }
   };
 
@@ -292,6 +312,17 @@ function ColourPopover({
             }}
             onBlur={applyHexText}
           />
+          <button
+            type="button"
+            className="colour-popover-icon-btn"
+            aria-label="Pick a colour from the screen"
+            title="Pick a colour from the screen"
+            aria-pressed={sampling}
+            disabled={sampling}
+            onClick={() => void sample()}
+          >
+            <EyedropperIcon />
+          </button>
           <button type="button" className="btn btn-small" onClick={showNative}>
             Show Colors…
           </button>
@@ -355,5 +386,22 @@ function ColourPopover({
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
+  );
+}
+
+function EyedropperIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M13.4 3.6a2.2 2.2 0 0 1 3.1 3.1l-1.7 1.7-3.1-3.1 1.7-1.7Z" />
+      <path d="M11.7 5.3 5 12v3h3l6.7-6.7" />
+    </svg>
   );
 }

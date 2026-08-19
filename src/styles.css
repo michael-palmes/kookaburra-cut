@@ -9592,6 +9592,33 @@ textarea.text-inspector-copy-input {
   font-size: var(--text-sm);
 }
 
+/* The eyedropper: .titlebar-icon-btn shrunk to .btn-small's height so the hex row lines up. */
+.colour-popover-icon-btn {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.colour-popover-icon-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.colour-popover-icon-btn:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
 .colour-popover-preview {
   display: flex;
   flex: none;

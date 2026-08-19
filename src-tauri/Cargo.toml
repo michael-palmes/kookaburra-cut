@@ -61,8 +61,14 @@ objc2-app-kit = { version = "0.3", features = [
   "NSMenuItem",
   "NSImage",
   "NSColor",
+  "NSColorSampler",
+  "NSColorSpace",
+  "block2",
+  # Declared here rather than inherited from wry: it gates NSColor's component accessors.
+  "objc2-core-foundation",
 ] }
 objc2-foundation = "0.3"
+block2 = "0.6"
 
 # macOS 27 dyld rejects optimised proc-macro dylibs (mis-aligned LINKEDIT string pool); opt-level 0 here covers only build scripts and proc macros, the shipped binary is unaffected.
 [profile.release.build-override]
