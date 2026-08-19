@@ -152,6 +152,7 @@ describe("device editor model", () => {
           media: {
             d1: { src: "assets/after.mp4", kind: "video" as const, startMs: 450 },
           },
+          deviceAppearance: { d1: { colour: "black", shadow: "long" as const } },
         },
       },
     } satisfies SceneDoc;
@@ -178,6 +179,10 @@ describe("device editor model", () => {
       startMs: 450,
     });
     expect(mutated.compare?.b?.media?.d2).not.toBe(mutated.compare?.b?.media?.d1);
+    expect(mutated.compare?.b?.deviceAppearance?.d2).toEqual({ colour: "black", shadow: "long" });
+    expect(mutated.compare?.b?.deviceAppearance?.d2).not.toBe(
+      mutated.compare?.b?.deviceAppearance?.d1,
+    );
   });
 
   it("applies visual rotation poses to the active placement surface", () => {
@@ -239,13 +244,19 @@ describe("device editor model", () => {
         preset: "row" as const,
         devices: { d1: { scale: 1.2 }, d2: { scale: 0.9 } },
       },
-      compare: { b: { media: { d1: { src: "assets/after.mp4", kind: "video" as const } } } },
+      compare: {
+        b: {
+          media: { d1: { src: "assets/after.mp4", kind: "video" as const } },
+          deviceAppearance: { d1: { colour: "black" } },
+        },
+      },
     };
 
     expect(removeDevice(doc, "d1")).toBe("d2");
     expect(doc.devices).toEqual([{ id: "d2", model: "android" }]);
     expect(doc.deviceLayout.devices).toEqual({ d2: { scale: 0.9 } });
     expect(doc.compare.b?.media).toBeUndefined();
+    expect(doc.compare.b?.deviceAppearance).toBeUndefined();
     expect(doc.duration).toEqual({ mode: "manual" });
   });
 

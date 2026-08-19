@@ -1,5 +1,6 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import {
+  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -48,6 +49,7 @@ import {
   isSceneImageSource,
   type SceneDoc,
   type SceneDocCameraPose,
+  type SceneDocCompareDeviceAppearance,
   type SceneDocDeviceLayoutDelta,
   type SceneDocRigPose,
   type SceneDocVideoWindow,
@@ -80,6 +82,8 @@ import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import {
+  CUSTOM_COLOUR_PREFIX,
+  customColourHex,
   DEFAULT_DEVICE_ID,
   DEVICE_CATALOG,
   isDeviceId,
@@ -316,6 +320,7 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
+import { mutateCompareBackgroundTarget, setCompareDeviceAppearance } from "./comparisonTarget";
 import { changeFirstClassDeviceModel, DeviceDrillIn, DeviceModelDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
 import {
@@ -1994,7 +1999,7 @@ export function SceneTab({
   onOpenEditVideo: (
     sceneIndex: number,
     mediaRel: string,
-    slot?: "device" | "background" | "videoWindow",
+    slot?: "device" | "compareDevice" | "background" | "videoWindow",
     deviceId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
@@ -2175,6 +2180,7 @@ export function SceneTab({
   // The comparison drill's side pill and its full-height media screen's target device.
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
+  const [compareAppearanceDeviceId, setCompareAppearanceDeviceId] = useState<string | null>(null);
   const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
   const compareDragBaseline = useRef<SceneDoc | null>(null);
@@ -2801,6 +2807,7 @@ export function SceneTab({
     useImageEditStore.getState().select(null);
     setCompareSide("a");
     setCompareMediaDeviceId(null);
+    setCompareAppearanceDeviceId(null);
     setConfirmRemoveCompare(false);
     setOverviewSelection(null);
     setContentPickerOpen(false);
@@ -3459,19 +3466,10 @@ export function SceneTab({
     );
   };
 
-  /** Route a background-drill mutation at its target: the scene's own `background`, or the comparison's after side. For the after side, side B's value swaps in before the mutation and transplants out after, so the drill's reads and writes work unchanged and every OTHER field still mutates the real doc. */
+  /** Route a background-drill mutation at its target: the scene's own background, or the comparison's after side. For the after side, side B's values swap in before the mutation and transplant out after, so the drill's reads and writes work unchanged and every OTHER field still mutates the real doc. Staging rides along, because the drill's colour and gradient picks write the backdrop too. */
   const patchBgDoc = (mutate: (next: SceneDoc) => void, opts?: Parameters<typeof patchDoc>[1]) => {
     if (bgTarget !== "compareB") return patchDoc(mutate, opts);
-    return patchDoc((next) => {
-      const own = next.background;
-      next.background = next.compare?.b?.background;
-      mutate(next);
-      const written = next.background;
-      next.background = own;
-      if (!next.compare) next.compare = {};
-      if (!next.compare.b) next.compare.b = {};
-      next.compare.b.background = written;
-    }, opts);
+    return patchDoc((next) => mutateCompareBackgroundTarget(next, mutate), opts);
   };
   /** The lighting drill's target routing, same transplant rule over `lighting`. */
   const patchLightingDoc = (
@@ -6503,6 +6501,90 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "compare.device" && doc?.compare && compareAppearanceDeviceId) {
+    const targetId = compareAppearanceDeviceId;
+    const target = devices.find((d) => d.id === targetId);
+    const override = doc.compare.b?.deviceAppearance?.[targetId];
+    const spec = target ? resolveAvailableDeviceSpec(target.model) : undefined;
+    const beforeColour = target?.colour ?? spec?.defaultColour;
+    const activeColour = override?.colour ?? beforeColour;
+    const activeShadow = override?.shadow ?? target?.shadow ?? "soft";
+    const customFinish = customColourHex(activeColour);
+    const setAppearanceColour = (colour: string | undefined) =>
+      void patchDoc((next) => {
+        setCompareDeviceAppearance(next, targetId, "colour", colour);
+      });
+    const setAppearanceShadow = (shadow: SceneDocCompareDeviceAppearance["shadow"]) =>
+      void patchDoc((next) => {
+        setCompareDeviceAppearance(next, targetId, "shadow", shadow);
+      });
+    return (
+      <div className="inspector-drill">
+        <DrillBack label="Comparison" title="After appearance" onClick={() => closeDrill()} />
+        <div className="inspector-drill-body">
+          {!target || !spec ? (
+            <p className="inspector-stub-note">This device is no longer in the scene.</p>
+          ) : (
+            <>
+              {(override?.colour !== undefined || override?.shadow !== undefined) && (
+                <ActionRow
+                  icon={<SceneRowIcon id="device.media" />}
+                  label="Match the before side"
+                  chevron={false}
+                  onClick={() => {
+                    void patchDoc((next) => {
+                      setCompareDeviceAppearance(next, targetId, "colour", undefined);
+                      setCompareDeviceAppearance(next, targetId, "shadow", undefined);
+                    });
+                  }}
+                />
+              )}
+              <DrillGroup label="Finish">
+                <fieldset className="device-editor-finishes" aria-label="After device finish">
+                  {spec.colours.map((finish) => (
+                    <button
+                      key={finish.id}
+                      type="button"
+                      className={`device-editor-finish-swatch${activeColour === finish.id ? " selected" : ""}`}
+                      style={{ background: finish.swatch }}
+                      aria-label={finish.name}
+                      aria-pressed={activeColour === finish.id}
+                      title={finish.name}
+                      onClick={() => setAppearanceColour(finish.id)}
+                    />
+                  ))}
+                  <span className={`device-editor-custom-finish${customFinish ? " selected" : ""}`}>
+                    <ColourPicker
+                      value={customFinish ?? "#8a93a6"}
+                      label="Custom finish"
+                      pressed={customFinish !== undefined}
+                      onCommit={(hex) =>
+                        setAppearanceColour(CUSTOM_COLOUR_PREFIX + hex.toLowerCase())
+                      }
+                    />
+                  </span>
+                </fieldset>
+              </DrillGroup>
+              <DrillGroup label="Shadow">
+                <fieldset className="option-grid device-editor-shadow-grid">
+                  <legend className="visually-hidden">After device shadow</legend>
+                  {SHADOW_OPTIONS.map((o) => (
+                    <OptionCard
+                      key={o.id}
+                      label={o.label}
+                      image={optionPreviewStill(`shadow-${o.id}`)}
+                      selected={activeShadow === o.id}
+                      onSelect={() => setAppearanceShadow(o.id as DeviceShadowMode)}
+                    />
+                  ))}
+                </fieldset>
+              </DrillGroup>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
   if (drillIn === "compare.media" && doc?.compare && compareMediaDeviceId) {
     const targetId = compareMediaDeviceId;
     const current = doc.compare.b?.media?.[targetId];
@@ -6930,14 +7012,25 @@ export function SceneTab({
                   The before side is this scene itself; these rows edit it in place.
                 </p>
                 {devices.map((d, i) => (
-                  <ActionRow
-                    key={d.id}
-                    icon={<SceneRowIcon id="device.media" />}
-                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
-                    value={middleTruncate(d.media?.src.split("/").pop() ?? "None")}
-                    chevron
-                    onClick={() => openMediaPicker({ kind: "device", deviceId: d.id })}
-                  />
+                  <Fragment key={d.id}>
+                    <ActionRow
+                      icon={<SceneRowIcon id="device.media" />}
+                      label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
+                      value={middleTruncate(d.media?.src.split("/").pop() ?? "None")}
+                      chevron
+                      onClick={() => openMediaPicker({ kind: "device", deviceId: d.id })}
+                    />
+                    {d.media?.kind === "video" && (
+                      <ActionRow
+                        icon={<SceneRowIcon id="device.editVideo" />}
+                        label={devices.length > 1 ? `Edit video ${i + 1}` : "Edit video"}
+                        chevron={false}
+                        onClick={() =>
+                          d.media && onOpenEditVideo(sceneIndex, d.media.src, "device", d.id)
+                        }
+                      />
+                    )}
+                  </Fragment>
                 ))}
                 <ActionRow
                   icon={<SceneRowIcon id="style.theme" />}
@@ -6971,21 +7064,50 @@ export function SceneTab({
               </>
             ) : (
               <>
-                {devices.map((d, i) => (
-                  <ActionRow
-                    key={d.id}
-                    icon={<SceneRowIcon id="device.media" />}
-                    label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
-                    value={middleTruncate(
-                      cmp.b?.media?.[d.id]?.src.split("/").pop() ?? "Same as before",
-                    )}
-                    chevron
-                    onClick={() => {
-                      setCompareMediaDeviceId(d.id);
-                      openDrill("compare.media");
-                    }}
-                  />
-                ))}
+                {devices.map((d, i) => {
+                  const afterMedia = cmp.b?.media?.[d.id] ?? d.media;
+                  const appearance = cmp.b?.deviceAppearance?.[d.id];
+                  return (
+                    <Fragment key={d.id}>
+                      <ActionRow
+                        icon={<SceneRowIcon id="device.media" />}
+                        label={devices.length > 1 ? `Screen ${i + 1}` : "Screen media"}
+                        value={middleTruncate(
+                          cmp.b?.media?.[d.id]?.src.split("/").pop() ?? "Same as before",
+                        )}
+                        chevron
+                        onClick={() => {
+                          setCompareMediaDeviceId(d.id);
+                          openDrill("compare.media");
+                        }}
+                      />
+                      {afterMedia?.kind === "video" && (
+                        <ActionRow
+                          icon={<SceneRowIcon id="device.editVideo" />}
+                          label={devices.length > 1 ? `Edit video ${i + 1}` : "Edit video"}
+                          chevron={false}
+                          onClick={() =>
+                            onOpenEditVideo(sceneIndex, afterMedia.src, "compareDevice", d.id)
+                          }
+                        />
+                      )}
+                      <ActionRow
+                        icon={<SceneRowIcon id="style.shadow" />}
+                        label={devices.length > 1 ? `Appearance ${i + 1}` : "Appearance"}
+                        value={
+                          appearance?.colour !== undefined || appearance?.shadow !== undefined
+                            ? "Overridden"
+                            : "Same as before"
+                        }
+                        chevron
+                        onClick={() => {
+                          setCompareAppearanceDeviceId(d.id);
+                          openDrill("compare.device");
+                        }}
+                      />
+                    </Fragment>
+                  );
+                })}
                 <ActionRow
                   icon={<SceneRowIcon id="style.theme" />}
                   label="Theme"
