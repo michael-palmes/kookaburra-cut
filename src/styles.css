@@ -1470,6 +1470,11 @@ button.beat-status {
   text-align: center;
 }
 
+/* m:ss.cs needs a floor the narrowest scene cell can't shrink past; the rename input keeps the shared flex. */
+.pb-labels .pb-label-input.pb-label-duration {
+  min-width: 58px;
+}
+
 .pb-right {
   display: flex;
   flex-direction: column;
@@ -4743,7 +4748,7 @@ button.beat-status {
 /* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */
 .anim-duration {
   box-sizing: border-box;
-  width: 56px;
+  width: 68px;
   padding: 0 4px;
   color: inherit;
   font: inherit;
@@ -4760,7 +4765,7 @@ button.beat-status {
 
 .anim-duration-input {
   box-sizing: border-box;
-  width: 56px;
+  width: 68px;
   padding: 0 4px;
   /* The one editable island in a select-none row. */
   user-select: text;
@@ -7830,7 +7835,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   min-width: 0;
 }
 
-/* The Duration row: label + state + inline seconds field. */
+/* The Duration row: label + state + inline m:ss.cs field. */
 .inspector-duration-row {
   display: flex;
   align-items: center;
@@ -7843,7 +7848,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-seconds {
-  width: 64px;
+  width: 78px;
   flex: none;
 }
 
@@ -7862,7 +7867,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-scene-overview-duration .inspector-seconds {
-  width: 52px;
+  width: 78px;
   height: 22px;
 }
 

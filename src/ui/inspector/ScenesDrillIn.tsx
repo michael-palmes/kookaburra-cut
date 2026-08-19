@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { moveSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
+import { formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
 import { SceneMenuIcon, sceneMenuItems, sceneSelectionLabel } from "../sceneMenu";
 import { canOpenSceneMenu, nextRename, renameCommit, type SceneEdit } from "../sceneRename";
 import { DrillBack } from "./rows";
@@ -149,10 +150,8 @@ export function ScenesDrillIn({
     const t = timing;
     setTiming(null);
     if (!commit || !t) return;
-    const seconds = Number(t.text);
-    // The inspector DurationRow's floor: junk and sub-100ms values are dropped silently.
-    if (!Number.isFinite(seconds) || seconds < 0.1) return;
-    const ms = Math.round(seconds * 1000);
+    const ms = parseSceneLengthMs(t.text);
+    if (ms === null) return;
     const current = scenes.find((s) => s.index === t.index);
     if (ms !== current?.durationMs) onDuration(t.index, ms);
   };
@@ -184,7 +183,7 @@ export function ScenesDrillIn({
           onDuplicate(bulk);
         },
         onDuration: () =>
-          setTiming({ index: scene.index, text: (scene.durationMs / 1000).toFixed(2) }),
+          setTiming({ index: scene.index, text: formatSceneLengthMs(scene.durationMs) }),
         onCopyBackground: () => onCopyBackground(scene.index),
         onPasteBackground: () => onPasteBackground(scene.index),
         onDelete: () => {
@@ -256,10 +255,9 @@ export function ScenesDrillIn({
                 <input
                   className="modal-input scene-manager-edit scene-manager-edit-duration"
                   value={timing.text}
-                  inputMode="decimal"
                   // biome-ignore lint/a11y/noAutofocus: entered from the context menu, so it IS the focus target
                   autoFocus
-                  aria-label="Scene duration in seconds"
+                  aria-label="Scene length in minutes and seconds"
                   onPointerDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onChange={(e) => setTiming({ index: scene.index, text: e.target.value })}

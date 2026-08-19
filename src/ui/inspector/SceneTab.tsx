@@ -130,6 +130,7 @@ import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
+import { formatSceneLength, formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
 import { FontPicker } from "../FontPicker";
 import { useFreeCameraWarning } from "../freeCameraWarning";
 import { GradientPickerModal } from "../GradientPicker";
@@ -985,7 +986,7 @@ function SceneRowIcon({ id }: { id: string }) {
   }
 }
 
-/** Inline seconds field (2 dp; committing flips the scene to manual), the EditBar's DurationField, restyled for the panel. */
+/** Inline m:ss.cs length field (typing takes m:ss or plain seconds; committing flips the scene to manual), the EditBar's DurationField, restyled for the panel. */
 function DurationRow({
   durationMs,
   mode,
@@ -995,7 +996,7 @@ function DurationRow({
   mode: string | null;
   onCommit: (ms: number) => void;
 }) {
-  const [text, setText] = useState((durationMs / 1000).toFixed(2));
+  const [text, setText] = useState(formatSceneLengthMs(durationMs));
   const inputRef = useRef<HTMLInputElement>(null);
   const { dragging, onPointerDown } = useDragScrub({
     value: durationMs / 1000,
@@ -1003,25 +1004,26 @@ function DurationRow({
     min: 0.1,
     dragScale: 0.05,
     onText: setText,
+    format: formatSceneLength,
     inputRef,
     onCommit: (seconds) => onCommit(Math.round(seconds * 1000)),
   });
   useEffect(() => {
-    if (!dragging && !isTypingIn(inputRef.current)) setText((durationMs / 1000).toFixed(2));
+    if (!dragging && !isTypingIn(inputRef.current)) setText(formatSceneLengthMs(durationMs));
   }, [durationMs, dragging]);
   const commit = () => {
-    const seconds = Number(text);
-    if (!Number.isFinite(seconds) || seconds < 0.1) {
-      setText((durationMs / 1000).toFixed(2));
+    const ms = parseSceneLengthMs(text);
+    if (ms === null) {
+      setText(formatSceneLengthMs(durationMs));
       return;
     }
-    const ms = Math.round(seconds * 1000);
     if (ms !== durationMs) onCommit(ms);
+    else setText(formatSceneLengthMs(durationMs));
   };
   return (
     <div
       className={`inspector-duration-row${dragging ? " scrubbing" : ""}`}
-      title="Scene length in seconds (switches to manual)"
+      title="Scene length, m:ss or seconds (switches to manual)"
     >
       <span className="action-row-icon">
         <SceneRowIcon id="motion.duration" />
@@ -1032,17 +1034,15 @@ function DurationRow({
         ref={inputRef}
         className="modal-input inspector-num inspector-seconds inspector-num-drag"
         value={text}
-        inputMode="decimal"
-        aria-label="Scene duration in seconds"
+        aria-label="Scene length in minutes and seconds"
         onPointerDown={onPointerDown}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") setText((durationMs / 1000).toFixed(2));
+          if (e.key === "Escape") setText(formatSceneLengthMs(durationMs));
         }}
       />
-      <span className="inspector-unit">s</span>
     </div>
   );
 }
