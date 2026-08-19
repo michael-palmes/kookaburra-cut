@@ -82,7 +82,7 @@ export function UnusedMediaSheet({
       onClose();
       return;
     }
-    // The trashed rows are gone; re-listing leaves exactly what refused, still ticked.
+    // Re-list rather than subtract: a file refused for a new reference is no longer unused, so only the failures name it.
     setFailures(refused);
     setOutcome(unusedOutcome(deleted, refused));
     setBusy(false);
