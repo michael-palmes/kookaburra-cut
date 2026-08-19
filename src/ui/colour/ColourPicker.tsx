@@ -16,9 +16,10 @@ import { COLOUR_PRESET_GRID } from "./colourPresets";
 import { loadColourRecents, rememberColourPick } from "./colourRecents";
 import { colourSwatchMenu } from "./colourSwatchMenu";
 import { type Hsv, hexToHsv, hexToRgbString, hsvToHex, normaliseHex } from "./colourUtils";
+import { projectPaletteColours } from "./projectPalette";
 import { sampleScreenColour } from "./screenSampler";
 
-/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, a native eyedropper, the native NSColorPanel via "Show Colors…", theme tokens, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
+/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, a native eyedropper, the native NSColorPanel via "Show Colors…", theme tokens, the project's own colours, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
 
 export interface ColourPickerProps {
   /** Current colour, sRGB hex. */
@@ -132,6 +133,7 @@ function ColourPopover({
   const [hexText, setHexText] = useState(draft);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [recents] = useState(loadColourRecents);
+  const [projectColours] = useState(projectPaletteColours);
   const [hsv, setHsv] = useState(() => hexToHsv(draft));
   const [sampling, setSampling] = useState(false);
   // The hex the spectrum last produced: without it a drag into black or white would re-derive HSV and lose the hue.
@@ -344,6 +346,14 @@ function ColourPopover({
             )}
           </div>
         </div>
+        {projectColours.length > 0 && (
+          <div className="colour-popover-section">
+            <span className="popover-group-label">Used in this project</span>
+            <div className="colour-popover-row">
+              {projectColours.map((hex) => chip(hex, hex, `p-${hex}`))}
+            </div>
+          </div>
+        )}
         {recents.length > 0 && (
           <div className="colour-popover-section">
             <span className="popover-group-label">Recent</span>

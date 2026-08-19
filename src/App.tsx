@@ -145,6 +145,7 @@ import { ChartHeroGizmo } from "./ui/ChartHeroGizmo";
 import { CommandPalette } from "./ui/CommandPalette";
 import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
+import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
@@ -258,6 +259,7 @@ export default function App() {
   const loadedProjectRef = useRef<LoadedProject | null>(null);
   useEffect(() => {
     loadedProjectRef.current = project;
+    setProjectPaletteSource(project);
   }, [project]);
   // Scene file to land the playhead on after the next reload (set by create/duplicate).
   const focusSceneFileRef = useRef<string | null>(null);
