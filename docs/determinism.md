@@ -1211,10 +1211,10 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `f304f1bd…` | `8cdb7481…` | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `28beda34…` | stale | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `8d293536…` | `ed66045e…` | `63dfb18b…` | `aa3cb9b1…` | — | — | — |
+| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
@@ -1224,6 +1224,21 @@ rolling-gate project (`showcase-tour`):
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — |
+
+> **2026-08-19 (upstream drift, re-recorded not caused here):** `showcase-tour`
+> 16:9 moves `f304f1bd…` → `28beda34…` and `compare-spike` 16:9 moves
+> `8d293536…` → `b6883733…`. Neither movement belongs to the change recording
+> them. Both fixtures were run twice on this branch and twice on a pristine
+> `origin/main` at `dc952e1` on the same machine: branch and main produce the
+> SAME hash for each fixture, so the drift is already on main. `ws:launch-2026`
+> stayed EQUAL at `eb89826c…` throughout, so no engine-wide constant moved. The
+> movement entered between `985f49d` (where `f304f1bd…` last verified) and
+> `dc952e1`; the render-path suspects in that span are the `postprocessing`
+> 6.39.3 → 6.39.4 and `@react-three/fiber` 9.6.1 → 9.7.0 bumps, neither of
+> which was gated when it landed. The other aspects of both fixtures go stale
+> rather than re-recorded, since they were not re-run. Bisecting the exact
+> commit is worth doing before the next release records packaged parity, which
+> still cites the superseded `f304f1bd…`.
 
 > **2026-08-07 (batch 18):** two deliberate re-records. `ws:chart-spike` 16:9
 > (`c947c931…` → `d58ff1f2…`): a billboard `onBeforeRender` prop had shadowed
