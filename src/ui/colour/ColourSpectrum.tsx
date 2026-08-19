@@ -123,8 +123,8 @@ export function ColourSpectrum({ hsv, onChange }: ColourSpectrumProps) {
         aria-label="Hue"
         aria-valuemin={0}
         aria-valuemax={359}
-        aria-valuenow={Math.round(hsv.h)}
-        aria-valuetext={`${Math.round(hsv.h)} degrees`}
+        aria-valuenow={Math.floor(hsv.h)}
+        aria-valuetext={`${Math.floor(hsv.h)} degrees`}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           event.currentTarget.setPointerCapture(event.pointerId);
