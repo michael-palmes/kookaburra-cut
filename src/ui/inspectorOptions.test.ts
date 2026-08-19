@@ -6,59 +6,12 @@ import {
   CHART_TYPE_IDS,
   CHART_TYPE_LABELS,
   chartRowValue,
-  comparisonDeviceVideoRows,
-  comparisonDeviceVideoSides,
   deriveSceneOverview,
   drillStackForScene,
   projectRows,
   sceneSections,
 } from "./inspectorOptions";
 import { textIconInspectorRoute } from "./inspectorTitles";
-
-describe("comparison device video actions", () => {
-  it("consolidates the overview to one Change and one Edit row", () => {
-    expect(
-      comparisonDeviceVideoRows(
-        { kind: "video", src: "assets/before.mp4" },
-        { kind: "image", src: "assets/after.png" },
-      ),
-    ).toEqual([
-      {
-        id: "device.media",
-        label: "Change video",
-        value: "Before / After",
-        chevron: true,
-      },
-      {
-        id: "device.editVideo",
-        label: "Edit video",
-        value: "Before / After",
-        chevron: true,
-        disabled: false,
-      },
-    ]);
-  });
-
-  it("disables Edit only when neither side resolves to video", () => {
-    const image = { kind: "image" as const, src: "assets/still.png" };
-    expect(comparisonDeviceVideoRows(image, image)[1].disabled).toBe(true);
-    const video = { kind: "video" as const, src: "assets/shared.mp4" };
-    expect(comparisonDeviceVideoRows(image, video)[1].disabled).toBe(false);
-  });
-
-  it("enables Change for both sides and Edit only for video sides", () => {
-    const before = { kind: "image" as const, src: "assets/before.png" };
-    const after = { kind: "video" as const, src: "assets/after.mp4" };
-    expect(comparisonDeviceVideoSides(before, after, "change")).toEqual([
-      { side: "before", label: "Before", disabled: false },
-      { side: "after", label: "After", disabled: false },
-    ]);
-    expect(comparisonDeviceVideoSides(before, after, "edit")).toEqual([
-      { side: "before", label: "Before", disabled: true },
-      { side: "after", label: "After", disabled: false },
-    ]);
-  });
-});
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {

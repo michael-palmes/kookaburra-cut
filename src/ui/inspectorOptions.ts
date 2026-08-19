@@ -1,12 +1,7 @@
 import type { AspectName } from "../engine/format";
 import { frameTextAlign } from "../engine/framePanelLayout";
 import type { ResolvedManagedTextGroup } from "../engine/managedText";
-import type {
-  SceneDoc,
-  SceneDocChart,
-  SceneDocDeviceSpec,
-  SceneManagedTextItem,
-} from "../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
@@ -618,45 +613,6 @@ export interface SceneRowModel {
   danger?: boolean;
   disabled?: boolean;
   chevron: boolean;
-}
-
-export function comparisonDeviceVideoRows(
-  before: SceneDocDeviceSpec["media"],
-  after: SceneDocDeviceSpec["media"],
-): SceneRowModel[] {
-  return [
-    {
-      id: "device.media",
-      label: "Change video",
-      value: "Before / After",
-      chevron: true,
-    },
-    {
-      id: "device.editVideo",
-      label: "Edit video",
-      value: "Before / After",
-      chevron: true,
-      disabled: before?.kind !== "video" && after?.kind !== "video",
-    },
-  ];
-}
-
-export interface ComparisonVideoSideOption {
-  side: "before" | "after";
-  label: "Before" | "After";
-  disabled: boolean;
-}
-
-/** The compact comparison media picker: Change accepts either side, Edit disables only the sides that are not videos. */
-export function comparisonDeviceVideoSides(
-  before: SceneDocDeviceSpec["media"],
-  after: SceneDocDeviceSpec["media"],
-  action: "change" | "edit",
-): ComparisonVideoSideOption[] {
-  return [
-    { side: "before", label: "Before", disabled: action === "edit" && before?.kind !== "video" },
-    { side: "after", label: "After", disabled: action === "edit" && after?.kind !== "video" },
-  ];
 }
 
 export interface SceneSectionModel {
