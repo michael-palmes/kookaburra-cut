@@ -3,6 +3,8 @@
 export const POPOVER_MARGIN = 8;
 export const POPOVER_GAP = 6;
 export const POPOVER_MIN_HEIGHT = 220;
+/** One size everywhere: the palette scrolls rather than letting a tall window turn the picker into a column. */
+export const POPOVER_MAX_HEIGHT = 420;
 
 export interface PopoverAnchorRect {
   left: number;
@@ -16,7 +18,7 @@ export interface PopoverPlacement {
   maxHeight: number;
 }
 
-/** Prefers below the anchor, flips above only when that side genuinely has more room, and caps the height so a tall popover scrolls internally instead of running off screen. */
+/** Prefers below the anchor, flips above only when that side genuinely has more room, and caps the height so the popover scrolls internally instead of running off screen or dominating a tall window. */
 export function placeColourPopover(
   anchor: PopoverAnchorRect,
   box: { width: number; height: number },
@@ -28,8 +30,12 @@ export function placeColourPopover(
   );
   const below = viewport.height - anchor.bottom - POPOVER_GAP - POPOVER_MARGIN;
   const above = anchor.top - POPOVER_GAP - POPOVER_MARGIN;
-  const flip = box.height > below && above > below;
-  const maxHeight = Math.max(POPOVER_MIN_HEIGHT, flip ? above : below);
+  const wanted = Math.min(box.height, POPOVER_MAX_HEIGHT);
+  const flip = wanted > below && above > below;
+  const maxHeight = Math.min(
+    POPOVER_MAX_HEIGHT,
+    Math.max(POPOVER_MIN_HEIGHT, flip ? above : below),
+  );
   const height = Math.min(box.height, maxHeight);
   const top = flip
     ? Math.max(POPOVER_MARGIN, anchor.top - POPOVER_GAP - height)

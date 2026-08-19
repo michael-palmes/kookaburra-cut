@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { POPOVER_MIN_HEIGHT, placeColourPopover } from "./colourPopoverLayout";
+import { POPOVER_MAX_HEIGHT, POPOVER_MIN_HEIGHT, placeColourPopover } from "./colourPopoverLayout";
 
 const viewport = { width: 1440, height: 900 };
 const box = { width: 288, height: 620 };
@@ -9,18 +9,18 @@ describe("placeColourPopover", () => {
     const place = placeColourPopover({ left: 1000, top: 100, bottom: 120 }, box, viewport);
     expect(place.left).toBe(1000);
     expect(place.top).toBe(126);
-    expect(place.maxHeight).toBe(766);
+    expect(place.maxHeight).toBe(POPOVER_MAX_HEIGHT);
   });
 
   it("flips above when below cannot hold it and above has more room", () => {
     const place = placeColourPopover({ left: 400, top: 700, bottom: 720 }, box, viewport);
-    expect(place.top).toBe(74);
-    expect(place.maxHeight).toBe(686);
+    expect(place.top).toBe(274);
+    expect(place.maxHeight).toBe(POPOVER_MAX_HEIGHT);
   });
 
   it("stays below when neither side fits but below is the roomier one", () => {
     const place = placeColourPopover({ left: 400, top: 400, bottom: 420 }, box, viewport);
-    expect(place.maxHeight).toBe(466);
+    expect(place.maxHeight).toBe(POPOVER_MAX_HEIGHT);
     expect(place.top + Math.min(box.height, place.maxHeight)).toBeLessThanOrEqual(892);
   });
 
@@ -35,6 +35,19 @@ describe("placeColourPopover", () => {
       height: 900,
     });
     expect(place.left).toBe(8);
+  });
+
+  it("never grows past the cap even when the viewport is huge", () => {
+    const place = placeColourPopover({ left: 100, top: 100, bottom: 120 }, box, {
+      width: 1440,
+      height: 2000,
+    });
+    expect(place.maxHeight).toBe(POPOVER_MAX_HEIGHT);
+  });
+
+  it("stays below when the cap fits under the anchor, without flipping", () => {
+    const place = placeColourPopover({ left: 400, top: 300, bottom: 320 }, box, viewport);
+    expect(place.top).toBe(326);
   });
 
   it("never reports a max height below the floor", () => {
