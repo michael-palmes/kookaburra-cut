@@ -1,6 +1,13 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { ContextMenuItem } from "./ContextMenu";
-import { sceneMenuItems, sceneSelectionLabel } from "./sceneMenu";
+import {
+  SceneMenuIcon,
+  type SceneMenuIconId,
+  sceneMenuItems,
+  sceneSelectionLabel,
+} from "./sceneMenu";
 
 type SceneMenuOptions = Parameters<typeof sceneMenuItems>[0];
 
@@ -99,5 +106,37 @@ describe("sceneMenuItems", () => {
     const onDelete = vi.fn();
     item(items({ onDelete }), "delete").onSelect();
     expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SceneMenuIcon", () => {
+  it("gives every menu item a leading icon", () => {
+    for (const entries of [items(), items({ onManage: vi.fn(), onCopyToProject: undefined })]) {
+      for (const entry of entries) {
+        if (entry !== "separator") expect(entry.icon).toBeDefined();
+      }
+    }
+  });
+
+  it("draws icons at the house geometry", () => {
+    const ids: SceneMenuIconId[] = [
+      "rename",
+      "duplicate",
+      "copy-to-project",
+      "duration",
+      "manage",
+      "copy-background",
+      "paste-background",
+      "delete",
+    ];
+    for (const id of ids) {
+      const html = renderToStaticMarkup(createElement(SceneMenuIcon, { id }));
+      expect(html).toContain('viewBox="0 0 20 20"');
+      expect(html).toContain('width="17"');
+      expect(html).toContain('stroke="currentColor"');
+      expect(html).toContain('stroke-width="1.5"');
+      expect(html).toContain('fill="none"');
+      expect(html).toContain('aria-hidden="true"');
+    }
   });
 });
