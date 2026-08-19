@@ -269,7 +269,7 @@ export function ScenesDrillIn({
                 />
               ) : (
                 <span className="scene-manager-duration">
-                  {(scene.durationMs / 1000).toFixed(1)}s
+                  {formatSceneLengthMs(scene.durationMs)}
                 </span>
               )}
             </div>

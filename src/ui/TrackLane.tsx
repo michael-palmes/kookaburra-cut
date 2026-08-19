@@ -706,7 +706,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
               title="Scene length; double-click to type m:ss or seconds"
               onDoubleClick={() => setDurEdit(formatSceneLengthMs(durationMs))}
             >
-              {`${(durationMs / 1000).toFixed(1)}s`}
+              {formatSceneLengthMs(durationMs)}
             </button>
           )}
         </span>

@@ -57,6 +57,6 @@ describe("ScenesDrillIn", () => {
   it("renders one row per scene with its length", () => {
     const html = render();
     expect(html.match(/class="scene-manager-row"/g)).toHaveLength(3);
-    expect(html).toContain("0.5s");
+    expect(html).toContain("0:00.50");
   });
 });
