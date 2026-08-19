@@ -9695,6 +9695,12 @@ textarea.text-inspector-copy-input {
   margin-bottom: var(--space-3);
 }
 
+.colour-popover-error {
+  margin: 0 0 var(--space-3);
+  color: var(--danger);
+  font-size: 11px;
+}
+
 .colour-popover-hex-input {
   width: 84px;
   font-family: var(--font-mono);

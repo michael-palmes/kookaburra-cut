@@ -136,6 +136,7 @@ function ColourPopover({
   const [projectColours] = useState(projectPaletteColours);
   const [hsv, setHsv] = useState(() => hexToHsv(draft));
   const [sampling, setSampling] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
   // The hex the spectrum last produced: without it a drag into black or white would re-derive HSV and lose the hue.
   const hsvHex = useRef(draft);
   const samplingRef = useRef(false);
@@ -184,8 +185,10 @@ function ColourPopover({
   }, [anchorRef, onClose]);
 
   // Every close path unmounts us: flush a pending debounce and record the final pick.
-  useEffect(
-    () => () => {
+  // Setting the latch in the body, not just the cleanup, is what survives StrictMode's remount.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
       alive.current = false;
       if (pending.current !== null) {
         window.clearTimeout(pending.current);
@@ -197,9 +200,8 @@ function ColourPopover({
       if (!skipFlush.current && draftRef.current !== openedWith.current) {
         rememberColourPick(draftRef.current);
       }
-    },
-    [],
-  );
+    };
+  }, []);
 
   const commit = (hex: string) => {
     committed.current = hex;
@@ -248,9 +250,12 @@ function ColourPopover({
   const sample = async () => {
     if (samplingRef.current) return;
     setSampling(true);
+    setSampleError(null);
     samplingRef.current = true;
     try {
-      const hex = await sampleScreenColour();
+      const hex = await sampleScreenColour((message) => {
+        if (alive.current) setSampleError(message);
+      });
       if (hex && alive.current) pick(hex);
     } finally {
       samplingRef.current = false;
@@ -338,6 +343,7 @@ function ColourPopover({
             onChange={(e) => commitLater(e.target.value)}
           />
         </div>
+        {sampleError && <p className="colour-popover-error">{sampleError}</p>}
         <div className="colour-popover-section">
           <span className="popover-group-label">Theme</span>
           <div className="colour-popover-row">
