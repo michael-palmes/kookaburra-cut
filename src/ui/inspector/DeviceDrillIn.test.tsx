@@ -364,7 +364,7 @@ describe("DeviceDrillIn", () => {
     expect(effectiveDeviceShadowMode("none")).toBe("none");
   });
 
-  it("identifies an unknown model with the same legacy fallback as the renderer", () => {
+  it("identifies an unknown model with the same available fallback as the renderer", () => {
     const doc: SceneDoc = {
       version: 1,
       devices: [{ id: "d1", model: "future-device" }],
@@ -372,7 +372,7 @@ describe("DeviceDrillIn", () => {
 
     const html = renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" />);
 
-    expect(html).toContain("iPhone 15 Pro");
+    expect(html).toContain("Android");
     expect(html).not.toContain("iPhone 17 Pro");
   });
 

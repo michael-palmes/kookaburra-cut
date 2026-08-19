@@ -82,9 +82,6 @@ export interface DeviceSpec {
 
 export type DeviceId = "iphone-15-pro" | "iphone-17-pro" | "macbook-pro-16" | "android";
 
-/** Unknown authored ids keep using the legacy renderer fallback. */
-export const DEVICE_FALLBACK_ID: DeviceId = "iphone-15-pro";
-
 /** The generated Android's colour slots: the frame + camera metal share one finish, the back glass another; names match the OBJ's materials. */
 const ANDROID_FRAME_MATERIALS = [
   "frame_metal",

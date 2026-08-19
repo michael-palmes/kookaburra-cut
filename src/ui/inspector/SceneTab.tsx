@@ -80,10 +80,11 @@ import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
 import type { Theme, ThemeBackdrop, ThemeBackground } from "../../theme/tokens";
 import {
+  DEFAULT_DEVICE_ID,
   DEVICE_CATALOG,
-  DEVICE_FALLBACK_ID,
-  type DeviceId,
   isDeviceId,
+  resolveAvailableDeviceId,
+  resolveAvailableDeviceSpec,
 } from "../../toolkit/device/catalog";
 import type { DeviceShadowMode } from "../../toolkit/device/Device";
 import { CHIP_ICON_IDS, type ChipIconId, resolveChipIconId } from "../../toolkit/frame/chipIcons";
@@ -2977,8 +2978,8 @@ export function SceneTab({
           ...currentDevices,
           {
             id,
-            model: "iphone-17-pro",
-            colour: "silver",
+            model: DEFAULT_DEVICE_ID,
+            colour: DEVICE_CATALOG[DEFAULT_DEVICE_ID].defaultColour,
             placement: { position: [x, -0.3, 0], rotationDeg: [0, 0, 0], scale: 1 },
             motion: { preset: "none" },
             shadow: "soft",
@@ -7403,7 +7404,7 @@ export function SceneTab({
   if (drillIn === "device.change" && device) {
     return (
       <DeviceModelDrillIn
-        model={(device.model in DEVICE_CATALOG ? device.model : DEVICE_FALLBACK_ID) as DeviceId}
+        model={resolveAvailableDeviceId(device.model)}
         deviceCount={devices.length}
         deviceLabel={`Device ${
           Math.max(
@@ -7879,11 +7880,7 @@ export function SceneTab({
       }[row.id];
       const value = {
         "text.motion": doc?.textAnimation ? describeSpec(doc.textAnimation) : "Theme default",
-        "device.change": device
-          ? DEVICE_CATALOG[
-              (device.model in DEVICE_CATALOG ? device.model : DEVICE_FALLBACK_ID) as DeviceId
-            ].name
-          : undefined,
+        "device.change": device ? resolveAvailableDeviceSpec(device.model).name : undefined,
         "device.position": doc?.deviceLayout
           ? LAYOUT_PRESET_LABELS[doc.deviceLayout.preset].label
           : device
