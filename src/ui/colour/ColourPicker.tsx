@@ -13,7 +13,12 @@ import { useEscapeClose } from "../useEscapeClose";
 import { ColourSpectrum } from "./ColourSpectrum";
 import { POPOVER_MARGIN, placeColourPopover } from "./colourPopoverLayout";
 import { COLOUR_PRESET_GRID } from "./colourPresets";
-import { loadColourRecents, rememberColourPick } from "./colourRecents";
+import {
+  loadColourRecents,
+  loadSpectrumOpen,
+  rememberColourPick,
+  rememberSpectrumOpen,
+} from "./colourRecents";
 import { colourSwatchMenu } from "./colourSwatchMenu";
 import { type Hsv, hexToHsv, hexToRgbString, hsvToHex, normaliseHex } from "./colourUtils";
 import { projectPaletteColours } from "./projectPalette";
@@ -137,6 +142,7 @@ function ColourPopover({
   const [hsv, setHsv] = useState(() => hexToHsv(draft));
   const [sampling, setSampling] = useState(false);
   const [sampleError, setSampleError] = useState<string | null>(null);
+  const [spectrumOpen, setSpectrumOpen] = useState(loadSpectrumOpen);
   // The hex the spectrum last produced: without it a drag into black or white would re-derive HSV and lose the hue.
   const hsvHex = useRef(draft);
   const samplingRef = useRef(false);
@@ -155,6 +161,7 @@ function ColourPopover({
   useEscapeClose(onClose);
 
   // Anchor below the trigger, flip above when that side is roomier, cap the height to the viewport.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the fold changes our height, so it is the re-measure trigger
   useLayoutEffect(() => {
     const el = ref.current;
     const anchor = anchorRef.current;
@@ -162,7 +169,7 @@ function ColourPopover({
     const a = anchor.getBoundingClientRect();
     const r = el.getBoundingClientRect();
     setPos(placeColourPopover(a, r, { width: window.innerWidth, height: window.innerHeight }));
-  }, [anchorRef]);
+  }, [anchorRef, spectrumOpen]);
 
   // Reverse sync: a chip, a typed hex or the native panel moved the draft, so re-derive HSV.
   useEffect(() => {
@@ -306,7 +313,23 @@ function ColourPopover({
   return (
     <div ref={ref} className="colour-popover" role="dialog" aria-label={label} style={pos}>
       <div className="colour-popover-scroll">
-        <ColourSpectrum hsv={hsv} onChange={onSpectrumChange} />
+        <div className="colour-popover-section">
+          <button
+            type="button"
+            className="colour-popover-disclosure"
+            aria-expanded={spectrumOpen}
+            onClick={() => {
+              setSpectrumOpen((open) => {
+                rememberSpectrumOpen(!open);
+                return !open;
+              });
+            }}
+          >
+            <DisclosureIcon open={spectrumOpen} />
+            <span className="popover-group-label">Spectrum</span>
+          </button>
+          {spectrumOpen && <ColourSpectrum hsv={hsv} onChange={onSpectrumChange} />}
+        </div>
         <div className="colour-popover-hex-row">
           <input
             className="modal-input colour-popover-hex-input"
@@ -418,6 +441,24 @@ function EyedropperIcon() {
     >
       <path d="M13.4 3.6a2.2 2.2 0 0 1 3.1 3.1l-1.7 1.7-3.1-3.1 1.7-1.7Z" />
       <path d="M11.7 5.3 5 12v3h3l6.7-6.7" />
+    </svg>
+  );
+}
+
+/** The spectrum's fold marker: the same 20-box stroke as the row icons, rotated by CSS when open. */
+function DisclosureIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`colour-popover-chevron${open ? " open" : ""}`}
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="m8 6 4 4-4 4" />
     </svg>
   );
 }

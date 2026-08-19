@@ -9701,6 +9701,32 @@ textarea.text-inspector-copy-input {
   font-size: 11px;
 }
 
+.colour-popover-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  margin: 0 0 4px -5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.colour-popover-disclosure .popover-group-label {
+  cursor: pointer;
+}
+
+.colour-popover-chevron {
+  flex: none;
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.colour-popover-chevron.open {
+  transform: rotate(90deg);
+}
+
 .colour-popover-hex-input {
   width: 84px;
   font-family: var(--font-mono);

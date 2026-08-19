@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadColourRecents, rememberColourPick } from "./colourRecents";
+import {
+  loadColourRecents,
+  loadSpectrumOpen,
+  rememberColourPick,
+  rememberSpectrumOpen,
+} from "./colourRecents";
 
 // Node test environment has no localStorage; a Map-backed stand-in is enough.
 function stubLocalStorage(): void {
@@ -50,5 +55,20 @@ describe("colour recents", () => {
     const recents = loadColourRecents();
     expect(recents).toHaveLength(10);
     expect(recents[0]).toBe("#00000b");
+  });
+});
+
+describe("spectrum disclosure", () => {
+  it("stays folded until something remembers otherwise", () => {
+    expect(loadSpectrumOpen()).toBe(false);
+    localStorage.setItem("kookaburra:colour-spectrum-open", "yes please");
+    expect(loadSpectrumOpen()).toBe(false);
+  });
+
+  it("round trips both states", () => {
+    rememberSpectrumOpen(true);
+    expect(loadSpectrumOpen()).toBe(true);
+    rememberSpectrumOpen(false);
+    expect(loadSpectrumOpen()).toBe(false);
   });
 });
