@@ -7470,6 +7470,11 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   margin-right: auto;
 }
 
+/* Footer buttons that lead with a glyph (the Scenes drill-in): the icon never shrinks with the label. */
+.inspector-drill-actions .btn svg {
+  flex: none;
+}
+
 /* The staging block (Style section): the EditBar popover's rows, stacked. */
 .inspector-staging {
   display: flex;
@@ -7715,6 +7720,11 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   pointer-events: none;
   background: var(--accent);
   border-radius: 1px;
+}
+
+/* The scene manager's destructive footer action reads red at rest; the armed step adds .btn.danger's border. */
+.scene-manager-delete {
+  color: var(--danger);
 }
 
 /* The left rule marks the key whose gizmo handles are showing; it is reserved on every group and

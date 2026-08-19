@@ -61,6 +61,11 @@ describe("inspector redesign styles", () => {
     );
   });
 
+  it("keeps the scene manager's footer delete red and its icon unshrunk", () => {
+    expect(styles).toMatch(/\.scene-manager-delete\s*\{[^}]*color: var\(--danger\);/s);
+    expect(styles).toMatch(/\.inspector-drill-actions \.btn svg\s*\{[^}]*flex: none;/s);
+  });
+
   it("removes native fieldset chrome and overflow from Lighting controls", () => {
     expect(styles).toMatch(
       /\[data-lighting-screen\] fieldset\.option-grid,\s*\[data-lighting-screen\] \.lighting-sun-controls\s*\{[^}]*min-width: 0;[^}]*max-width: 100%;[^}]*margin: 0;[^}]*border: 0;/s,

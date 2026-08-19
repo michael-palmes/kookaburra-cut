@@ -1,12 +1,12 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { moveSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
-import { sceneMenuItems } from "../sceneMenu";
+import { SceneMenuIcon, sceneMenuItems, sceneSelectionLabel } from "../sceneMenu";
 import { canOpenSceneMenu, nextRename, renameCommit, type SceneEdit } from "../sceneRename";
 import { DrillBack } from "./rows";
 
-/** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; Duplicate copies the selection after itself. Double-click renames in place; right-click opens the shared scene menu (the timeline's). Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
+/** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; the footer's Duplicate copies the selection after itself and its Delete removes it behind the armed two-step. Double-click renames in place; right-click opens the shared scene menu (the timeline's). Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
 
 export interface SceneManagerRow {
   index: number;
@@ -65,6 +65,7 @@ export function ScenesDrillIn({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<SceneEdit | null>(null);
   const [timing, setTiming] = useState<SceneEdit | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const edits = { busy, renaming, timing };
 
@@ -197,6 +198,18 @@ export function ScenesDrillIn({
   };
 
   const selection = [...selected].sort((a, b) => a - b);
+  const deletableSelection = planDeletes(selection, scenes.length);
+  const selectionKey = selection.join(",");
+
+  // The Delete confirmation disarms itself, and on any selection change.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const t = window.setTimeout(() => setConfirmDelete(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [confirmDelete]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm when the selection changes
+  useEffect(() => setConfirmDelete(false), [selectionKey]);
+
   return (
     <div className="inspector-drill">
       <DrillBack label="Project" title="Scenes" onClick={onBack} />
@@ -285,9 +298,31 @@ export function ScenesDrillIn({
             onDuplicate(selection);
           }}
         >
-          {busy
-            ? "Working…"
-            : `Duplicate${selection.length > 1 ? ` ${selection.length} scenes` : ""}`}
+          <SceneMenuIcon id="duplicate" />
+          {busy ? "Working…" : sceneSelectionLabel("Duplicate", selection.length)}
+        </button>
+        <button
+          type="button"
+          className={`btn scene-manager-delete${confirmDelete ? " danger" : ""}`}
+          disabled={busy || deletableSelection.length === 0}
+          title={
+            deletableSelection.length === 0 && selection.length > 0
+              ? "A project needs at least one scene"
+              : undefined
+          }
+          onClick={() => {
+            if (!confirmDelete) {
+              setConfirmDelete(true);
+              return;
+            }
+            setConfirmDelete(false);
+            setSelected(new Set());
+            setAnchor(null);
+            onDelete(deletableSelection);
+          }}
+        >
+          <SceneMenuIcon id="delete" />
+          {confirmDelete ? "Really delete?" : sceneSelectionLabel("Delete", selection.length)}
         </button>
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
