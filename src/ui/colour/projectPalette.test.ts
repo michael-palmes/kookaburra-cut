@@ -86,6 +86,19 @@ describe("collectProjectColours", () => {
     expect(colours).toHaveLength(PROJECT_PALETTE_CAP);
   });
 
+  it("ignores prose that happens to spell a hex", () => {
+    expect(
+      collectProjectColours(
+        source({
+          sceneDocs: [
+            { title: "Feb", subtitle: "Decade", label: "202608", tick: "100" },
+            { background: { colour: "#ff0000" } },
+          ],
+        }),
+      ),
+    ).toEqual(["#ff0000"]);
+  });
+
   it("returns nothing without a project", () => {
     expect(collectProjectColours(null)).toEqual([]);
   });

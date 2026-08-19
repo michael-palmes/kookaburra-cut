@@ -23,7 +23,8 @@ function walk(value: unknown, counts: Map<string, number>): void {
     return;
   }
   if (typeof value === "string") {
-    const hex = normaliseHex(value);
+    // Authored colours always carry the #; normaliseHex makes it optional, which reads "Feb" as #ffeebb.
+    const hex = value.startsWith("#") ? normaliseHex(value) : null;
     if (hex) counts.set(hex, (counts.get(hex) ?? 0) + 1);
     return;
   }
