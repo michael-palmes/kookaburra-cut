@@ -14,13 +14,14 @@ describe("placeColourPopover", () => {
 
   it("flips above when below cannot hold it and above has more room", () => {
     const place = placeColourPopover({ left: 400, top: 700, bottom: 720 }, box, viewport);
-    expect(place.top).toBe(274);
+    expect(place.top).toBe(224);
     expect(place.maxHeight).toBe(POPOVER_MAX_HEIGHT);
   });
 
   it("stays below when neither side fits but below is the roomier one", () => {
     const place = placeColourPopover({ left: 400, top: 400, bottom: 420 }, box, viewport);
-    expect(place.maxHeight).toBe(POPOVER_MAX_HEIGHT);
+    // Short of the cap: the room available wins whenever it is the smaller of the two.
+    expect(place.maxHeight).toBe(466);
     expect(place.top + Math.min(box.height, place.maxHeight)).toBeLessThanOrEqual(892);
   });
 

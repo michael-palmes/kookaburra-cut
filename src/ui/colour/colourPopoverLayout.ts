@@ -3,8 +3,8 @@
 export const POPOVER_MARGIN = 8;
 export const POPOVER_GAP = 6;
 export const POPOVER_MIN_HEIGHT = 220;
-/** One size everywhere: the palette scrolls rather than letting a tall window turn the picker into a column. */
-export const POPOVER_MAX_HEIGHT = 420;
+/** Sized so a folded popover fits without scrolling, Reset row included, and a tall window still cannot turn the picker into a column. */
+export const POPOVER_MAX_HEIGHT = 470;
 
 export interface PopoverAnchorRect {
   left: number;
