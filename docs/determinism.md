@@ -1229,7 +1229,7 @@ rolling-gate project (`showcase-tour`):
 | `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
-| `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | `e5bc2b79…` | — | — | — | — | — | — | — | — |
 
 > **2026-08-22 (scene media: images and the video window merged):** a scene's
 > stills and its floating screen recording became ONE sidecar family, `media[]`,
@@ -1247,9 +1247,14 @@ rolling-gate project (`showcase-tour`):
 > aim and the follow-media duration now bind by media id; the legacy
 > `"videoWindow"` spelling stays valid on both and keeps resolving to the entry
 > serving as the window, whose aim point stays exactly `[0, 0, 0]` so recorded
-> fixtures do not move. RE-RECORDS PENDING: `ws:video-window-spike` and
-> `ws:overlay-spike` are the two feature-matched fixtures for this batch and
-> have not been re-run since the merge; run both before the pre-merge pair.
+> fixtures do not move. Verified post-merge: the migration is byte-null on
+> every gated fixture. `ws:video-window-spike` Verify ×2 returned its ORIGINAL
+> baseline (`6dfe68a6…` twice), so it was not re-recorded. `ws:overlay-spike`
+> came back EQUAL at `e5bc2b79…`, off its 2026-08-07 recording; the same verify
+> on pristine main (99566e9e) produced the identical `e5bc2b79…`, so the drift
+> predates this batch (main-side, unbisected, the 2026-08 drift pattern) and
+> the table records the new hash with the batch branch proven byte-identical
+> to main. `pnpm gate` stayed EQUAL on baseline (`28beda34…`).
 
 > **2026-08-22 (Phone and Phone Landscape aspects):** `phone` (1206×2622) and
 > `phone-landscape` (2622×1206) joined the first-class, feature-scoped set: the
@@ -1264,7 +1269,13 @@ rolling-gate project (`showcase-tour`):
 > format's dimensions move, so the batch's standard gate carries the
 > null-for-legacy proof; `STANDING_ASPECTS` is unchanged (Verify's "all" is
 > still the standing three) and neither aspect has a baseline until a project
-> ships in one, the 2:3 precedent.
+> ships in one, the 2:3 precedent. Eyeballed at record time: both orientations
+> render at the exact panel dimensions; landscape frames cleanly, but portrait
+> clips `showcase-tour` headlines on both edges (scenes were authored down to
+> 9:16's 0.5625 width, phone is 0.46), the 5:4 pattern of scene-authoring
+> overflow rather than aspect plumbing. That overflow is WHY no phone baseline
+> was recorded; check scene text widths per project before shipping a phone
+> export.
 
 > **2026-08-19 (theme library, inspector redesign):** two moves that landed on
 > main without a re-record, bisected leg by leg. #134 (theme library) appends
