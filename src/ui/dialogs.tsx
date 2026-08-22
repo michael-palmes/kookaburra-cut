@@ -244,7 +244,9 @@ function TemplateCard({
   tabStop: boolean;
   onSelect: () => void;
 }) {
-  const [frame, setFrame] = useState(0);
+  // The card rests on the manifest's poster frame; hovering still sweeps all four stills.
+  const poster = Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, entry.manifest.preview.poster));
+  const [frame, setFrame] = useState(poster);
   const thumbRef = useRef<HTMLDivElement>(null);
   const previews = entry.previews;
   const src = previews ? previews[Math.min(frame, previews.length - 1)] : null;
@@ -278,7 +280,7 @@ function TemplateCard({
             Math.min(TEMPLATE_PREVIEW_COUNT - 1, Math.max(0, Math.floor(t * previews.length))),
           );
         }}
-        onMouseLeave={() => setFrame(0)}
+        onMouseLeave={() => setFrame(poster)}
       >
         {src ? (
           <img src={src} alt="" loading="lazy" decoding="async" draggable={false} />
