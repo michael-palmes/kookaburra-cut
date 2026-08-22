@@ -121,18 +121,18 @@ fn preview_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
         .join("theme-previews"))
 }
 
-/// Where the bundled-preview autorun batch lands (`<workspace>/_autorun/theme-previews`); the `kookaburra:run` wrapper copies these into `src/assets/theme-previews/` for commit.
-fn preview_autorun_root(app: &AppHandle) -> Result<PathBuf, String> {
+/// Where a bundled-preview autorun batch lands (`<workspace>/_autorun/<dir>`); the `kookaburra:run` wrapper copies these into `src/assets/` for commit.
+fn preview_autorun_root(app: &AppHandle, dir: &str) -> Result<PathBuf, String> {
     Ok(app
         .path()
         .home_dir()
         .map_err(|e| e.to_string())?
         .join(WORKSPACE_DIR_NAME)
         .join("_autorun")
-        .join("theme-previews"))
+        .join(dir))
 }
 
-/// Persist one theme-preview JPEG; bytes arrive as the raw invoke body (the `write_snapshot` pattern), headers route it: `x-kookaburra-kind` = `autorun` (the bundled batch) or `cache` (a user theme, key = content hash), `x-kookaburra-key` names the theme folder, `x-kookaburra-index` is the 1-based scene index.
+/// Persist one preview JPEG; bytes arrive as the raw invoke body (the `write_snapshot` pattern), headers route it: `x-kookaburra-kind` = `autorun` (the bundled theme batch), `template` (the template card-art batch) or `cache` (a user theme, key = content hash), `x-kookaburra-key` names the folder, `x-kookaburra-index` is the 1-based scene index.
 #[tauri::command]
 pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Result<(), String> {
     let header = |name: &str| -> Result<String, String> {
@@ -163,7 +163,8 @@ pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Resu
         return Err("theme preview too large".into());
     }
     let base = match kind.as_str() {
-        "autorun" => preview_autorun_root(&app)?,
+        "autorun" => preview_autorun_root(&app, "theme-previews")?,
+        "template" => preview_autorun_root(&app, "template-previews")?,
         "cache" => preview_cache_root(&app)?,
         other => return Err(format!("unknown preview kind {other:?}")),
     };

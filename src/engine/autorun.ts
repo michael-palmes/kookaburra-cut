@@ -16,6 +16,7 @@ import { canvasHandle } from "./exportBridge";
 import {
   awaitSceneHostsCommitted,
   type Codec,
+  captureFrameRgba,
   captureScreenshot,
   type ExportProgress,
   exportProject,
@@ -28,6 +29,7 @@ import { runPackRoundTrip } from "./packRoundTrip";
 import { runPerfProbe } from "./perfProbe";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
+import { findTemplate, listTemplates, TEMPLATE_PREVIEW_WIDTH } from "./templates";
 import {
   awaitProjectCommitted,
   captureThemePreviewFrames,
@@ -42,6 +44,7 @@ export type AutoRunAction =
   | "verify"
   | "export"
   | "theme-previews"
+  | "template-previews"
   | "option-previews"
   | "perf"
   | "screenshot"
@@ -207,6 +210,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "verify" &&
     action !== "export" &&
     action !== "theme-previews" &&
+    action !== "template-previews" &&
     action !== "option-previews" &&
     action !== "perf" &&
     action !== "screenshot" &&
@@ -215,7 +219,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "render-spike"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike)`,
     );
   }
   const at = env.at?.trim();
@@ -242,16 +246,25 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     env.project?.trim() ||
     (action === "theme-previews"
       ? THEME_PREVIEW_PROJECT_ID
-      : action === "option-previews"
-        ? (previewLabProjectIds()[0] ?? "preview-lab-text")
-        : useEditorStore.getState().projectId)
+      : action === "template-previews"
+        ? listTemplates()
+            .map((entry) => entry.id)
+            .join(",")
+        : action === "option-previews"
+          ? (previewLabProjectIds()[0] ?? "preview-lab-text")
+          : useEditorStore.getState().projectId)
   )
     .split(",")
     .map((p) => p.trim())
     .filter(Boolean);
-  if (projects.length > 1 && action !== "verify" && action !== "export") {
+  if (
+    projects.length > 1 &&
+    action !== "verify" &&
+    action !== "export" &&
+    action !== "template-previews"
+  ) {
     throw new Error(
-      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify and export accept a list`,
+      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export and template-previews accept a list`,
     );
   }
   return {
@@ -284,6 +297,37 @@ export function getAutoRunConfig(): AutoRunConfig | null {
           .filter(Boolean)
       : undefined,
   };
+}
+
+/** Downscales one export-path RGBA frame to a JPEG at `targetWidth` (template card art); the frame arrives bottom-up (the native writers vflip too), so the scale pass flips it. */
+async function rgbaToJpeg(
+  rgba: Uint8Array,
+  width: number,
+  height: number,
+  targetWidth: number,
+): Promise<Uint8Array> {
+  const full = document.createElement("canvas");
+  full.width = width;
+  full.height = height;
+  const fullCtx = full.getContext("2d");
+  if (!fullCtx) throw new Error("2d context unavailable");
+  fullCtx.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
+  const scale = Math.min(1, targetWidth / Math.max(1, width));
+  const target = document.createElement("canvas");
+  target.width = Math.max(1, Math.round(width * scale));
+  target.height = Math.max(1, Math.round(height * scale));
+  const targetCtx = target.getContext("2d");
+  if (!targetCtx) throw new Error("2d context unavailable");
+  targetCtx.imageSmoothingEnabled = true;
+  targetCtx.imageSmoothingQuality = "high";
+  targetCtx.translate(0, target.height);
+  targetCtx.scale(1, -1);
+  targetCtx.drawImage(full, 0, 0, target.width, target.height);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    target.toBlob(resolve, "image/jpeg", 0.82),
+  );
+  if (!blob) throw new Error("JPEG encode failed");
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 /** Yields two macrotask hops for a store change to commit into the scene tree; deliberately setTimeout-based not requestAnimationFrame, since WKWebView suspends rAF while occluded or asleep (the normal state of an AFK `kookaburra:run`), which used to stall the whole run before the first export. */
@@ -461,6 +505,75 @@ export async function runAutoRun(
         if (!frames) throw new Error(`theme-previews: capture unavailable for ${themeId}`);
         await writeThemePreviews("autorun", themeId, frames);
         results.push({ aspect: "16:9", theme: themeId, path: `theme-previews/${themeId}` });
+      }
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "template-previews") {
+    // Bundled template card art: each template runs the create-smoke path (materialised into the wrapper's throwaway root), then its manifest's four preview frames render through the EXPORT path (captureFrameRgba carries text motion; the borrowed-clock preview surface left twist-scale glyphs frozen at their start pose) and downscale to 16:9 JPEGs the wrapper promotes into src/assets/template-previews/.
+    try {
+      if (!applyProject) throw new Error("template-previews needs the applyProject hook");
+      useEditorStore.getState().setFormat(FORMATS["16:9"]);
+      await nextCommit();
+      await preloadBundledBackdrops();
+      for (const templateId of config.projects) {
+        const entry = findTemplate(templateId);
+        if (!entry) throw new Error(`template-previews: unknown template "${templateId}"`);
+        console.warn(`[autorun] template-previews ${templateId} starting`);
+        const info = await createProject(`Template previews ${templateId}`, templateId, null);
+        releaseCompositorPools();
+        releaseComposer();
+        const created = await loadProject(`ws:${info.slug}`);
+        applyProject(created);
+        await nextCommit();
+        await awaitProjectCommitted(created);
+        await awaitSceneHostsCommitted(created.slots.length);
+        const opts = {
+          projectId: created.id,
+          fps: FPS,
+          durationMs: created.totalMs,
+          slots: created.slots,
+          cameraTrack: created.cameraTrack,
+          sceneDocs: created.sceneDocs,
+          theme: created.theme,
+          sceneThemes: created.sceneThemes,
+          projectLighting: created.projectLighting,
+          sceneFrames: created.sceneFrames,
+          compareBDocs: created.compareBDocs,
+          compareBThemes: created.compareBThemes,
+          codec: config.codec,
+          format: FORMATS["16:9"],
+        };
+        const frames: Uint8Array[] = [];
+        for (const frame of entry.manifest.preview.frames) {
+          const spec = typeof frame === "number" ? { scene: frame, atMs: undefined } : frame;
+          const tMs = resolveScreenshotTimeMs(
+            created,
+            String(spec.scene),
+            spec.atMs === undefined ? undefined : spec.atMs / 1000,
+          );
+          const shot = await captureFrameRgba(opts, tMs);
+          frames.push(await rgbaToJpeg(shot.rgba, shot.width, shot.height, TEMPLATE_PREVIEW_WIDTH));
+        }
+        await writeThemePreviews("template", templateId, frames);
+        results.push({
+          aspect: "16:9",
+          project: templateId,
+          path: `template-previews/${templateId}`,
+        });
       }
     } catch (e) {
       ok = false;

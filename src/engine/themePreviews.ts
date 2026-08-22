@@ -72,9 +72,9 @@ export function captureThemePreviewFrames(project: LoadedProject): Promise<Uint8
   });
 }
 
-/** Persist a captured preview set natively (raw-body invokes, the write_snapshot path). */
+/** Persist a captured preview set natively (raw-body invokes, the write_snapshot path); kind `template` routes to the template-previews staging dir. */
 export async function writeThemePreviews(
-  kind: "autorun" | "cache",
+  kind: "autorun" | "cache" | "template",
   key: string,
   frames: Uint8Array[],
 ): Promise<void> {
