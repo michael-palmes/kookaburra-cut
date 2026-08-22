@@ -31,7 +31,7 @@ any `kookaburra:run` call without `--preset`/`--encode-json` take the frozen pat
 | `version` | `1` | required; newer versions are refused, never mangled |
 | `id` / `name` / `description` | string | description = ONE Australian-English sentence for non-technical folk |
 | `platform` | string | the modal's grouping key ("Meta", "YouTube", …) |
-| `favouredAspect` | `"16:9" \| "9:16" \| "1:1" \| "4:5"` | seeds the modal aspect row; `--preset` without `--aspect` exports this |
+| `favouredAspect` | `"16:9" \| "9:16" \| "1:1" \| "4:5" \| "5:4" \| "3:2" \| "2:3" \| "phone" \| "phone-landscape"` | seeds the modal aspect row; `--preset` without `--aspect` exports this |
 | `allowedAspects` | aspect[] (optional) | constrains the aspect row; absent = all four |
 | `maxFileSizeMB` | number (optional) | the cap the estimate warns against (amber + Fit to cap) |
 | `notes` | string (optional) | shown in the detail pane |

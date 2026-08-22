@@ -249,7 +249,8 @@ Full guide, including the tool and shortcut map: `docs/camera.md`.
 ```
 
 - **`aim.mode`** is `point` (a fixed world position), `tangent` (look along the path) or
-  `object` (`{ mode, id, at }`, following a device id, `"videoWindow"` or
+  `object` (`{ mode, id, at }`, following a device id, a video media entry id,
+  `"videoWindow"` (the promoted legacy window, resolving to the world origin) or
   `"layeredScreenshot"`). `at` is stored on EVERY mode as the baked fallback, so a
   degenerate tangent or a deleted device still renders the shot.
 - **`fov`** is optional and clamps to 15..90; absent, the project-level track keeps
@@ -947,32 +948,46 @@ only block-less scenes, or delete the field first. Gate fixture:
 `DeviceMockup` (v3/v4) is the LEGACY pre-catalog device primitive (bundled glTF + static screen image, auto-fit, lit set) — kept for old projects; **prefer `Device` for all new scenes**. The bundled handset model is the LICENSED vendor asset (`src/assets/models/README.md` — gitignored, present locally only); the accurate-branded-model trade-dress decision is recorded in docs/decisions.md.
 
 ```ts
-<VideoWindow />                                       // sidecar-driven; one per scene
-// scene sidecar (scenes/<stem>.json):
-"videoWindow": {
-  "media":  { "src": "assets/screencast.mp4", "startMs"?: 0, "loop"?: false },
-  "radius": "macos",              // "sharp" | "subtle" | "macos" | "rounded" | { "custom": 0..0.5 }
-  "recording"?: true,             // raw macOS window recording: crop the capture margins
-  "shadow"?: { "opacity": 0.34, "blur": 0.16, "offset": [0, -0.06] },  // blur/offset are short-edge fractions
-  "motion"?: { "preset": "float", "amplitude"?, "hz"?, "durationMs"? }, // none|float|tilt-reveal|push-in|drift
-  "scale"?:  0.72,                // window size as a fraction of the frame's shorter axis
-  "offset"?: [0, 0]               // placement as frame fractions (x right, y up), clamped -1..1
-}
+// Scene media: stills and videos, one sidecar array (scenes/<stem>.json):
+"media": [{
+  "id": "vid1",                  // img1/vid1 style; NEVER re-mint an existing id
+  "kind": "video",               // "image" | "video"
+  "src": "assets/screencast.mp4",
+  "host": "overlay",             // "stage" (world-space card) | "overlay" (frame-relative)
+  "stage":   { "position": [0, 1.2, 0], "size": 5.3, "rotationDeg": [0, 0, 0] },
+  "overlay": { "position": [0, 0], "size": 0.72, "rotationDeg": 0,
+               "shape": "none", "layer": "below" },   // both placements always authored
+  "motion"?: { "preset": "float", "amplitude"?, "hz"?, "durationMs"? },
+               // none|turntable|float|tilt-reveal|push-in|drift; kind-aware (turntable
+               // is inert on videos, drift on stills)
+  "castShadow"?: true,           // stage-hosted stills only
+  "window"?: {                   // the floating-window chrome, EITHER kind
+    "radius": "macos",           // "sharp" | "subtle" | "macos" | "rounded" | { "custom": 0..0.5 }
+    "recording"?: true,          // raw macOS window recording: crop the capture margins
+    "border"?: { "enabled": false, "color": "#ffffff", "width": 0.0035, "opacity": 0.12 },
+    "shadow"?: { "opacity": 0.34, "blur": 0.16, "offset": [0, -0.06] }  // short-edge fractions
+  },
+  "video"?: { "startMs"?: 0, "loop"?: false }  // video-kind playback fields
+}]
 ```
 
-`VideoWindow` presents a macOS screen recording (any aspect) as a floating window: a
-rounded-rect card with a hairline rim and an analytic drop shadow, floating over whatever the
-scene stages behind it (theme backdrop, fixed background, or nothing). The window and shadow
-sit in real world space at different depths, so the per-scene `camera` track orbits them with
-genuine parallax (not a camera-locked overlay). Video rides the SAME deterministic clip
-pipeline as `VideoClip` (`useClipTexture`); the window matches the recording's intrinsic aspect
-(contain, no crop), except under `recording: true`: the raw-window-recording mode, which crops
-the capture margins (baked shadow and margin) off a Retina 2x macOS window recording, and under
-the `macos` radius preset masks at the true macOS corner radius (other presets and custom
-fractions stay as authored). The flag is auto-detected at pick time from the poster's black
-margins. One window per scene, sidecar-driven (the `useSceneVideoWindow` consumer stands the
-host fallback down, the LayeredScreenshot pattern). Radius/crop/shadow are analytic per-pixel
-SDF + UV maths, deterministic by construction. Gate project: `ws:video-window-spike`.
+Scene media is the one content family for stills and videos (it superseded the separate
+`images[]` and singleton `videoWindow` blocks in v0.13; both legacy shapes still parse
+forward, and the first inspector write promotes a doc to `media`). Where an entry renders:
+an overlay-hosted entry WITHOUT window chrome is camera-locked editorial artwork on the
+frame layer; a stage-hosted entry, and EVERY entry with a `window` block, sits in real
+world space, so the per-scene `camera` track orbits it with genuine parallax. A windowed
+entry fits inside a box `size` of the frame (contain); a plain entry's `size` IS its width.
+Video rides the SAME deterministic clip pipeline as `VideoClip` (`useClipTexture`). Under
+`window.recording: true` the capture margins (baked shadow and margin) crop off a Retina 2x
+macOS window recording and the `macos` radius masks at the true corner radius; the flag is
+auto-detected at pick time from the poster's black margins, stills included. Several videos
+per scene are allowed; scene duration can follow one via
+`duration: { "mode": "follow-media", "source": "media", "sourceMediaId": "vid1" }` (the
+legacy `"source": "videoWindow"` spelling reads forward). The `<VideoWindow />` TSX
+primitive remains as a shim over the windowed entry for legacy scene code. Radius, crop and
+shadow are analytic per-pixel SDF + UV maths, deterministic by construction. Gate project:
+`ws:video-window-spike`.
 
 ## 3D primitives (v3 · M4)
 
@@ -1146,8 +1161,9 @@ Every row of the app's Project tab maps to files you can edit directly:
   to PNG at that exact path; `BrandLockup`/app-version scenes read it by default).
   Replace the file to change it, keep it square.
 - **Aspect ratio** → `project.json.formats` lists the aspects the project targets
-  (`"16:9" | "9:16" | "1:1" | "4:5"`); which one is CURRENTLY previewed is app-side
-  state, not a file.
+  (`"16:9" | "9:16" | "1:1" | "4:5" | "5:4" | "3:2" | "2:3" | "phone" | "phone-landscape"`,
+  the phone pair being the iPhone 17 Pro panel at native 1206x2622); which one is
+  CURRENTLY previewed is app-side state, not a file.
 - **Music** → `project.json.audio`:
   `{ "file": "assets/track.mp3", "gainDb"?, "fadeInMs"?, "fadeOutMs"?, "startOffsetMs"? }`.
   `file` is assets-relative (copy the track in first); the soundtrack auto-fades over the
@@ -1231,6 +1247,6 @@ Add new tokens here; never hard-code values in scenes.
 | Per-scene camera track (orbit keys/segments, mini-timeline UI) | v7 · M5 | implemented |
 | `LayeredScreenshot` (sidecar stack, cards, global screenshots, wizard) | slides · PR 2 | implemented + gated — builder, animation lane, present-mode holds |
 | Scene overlays (`frame` block: panel + cutout + chip + decorations) | v0.5.0 | implemented + gated — deck default + per-scene sidecar, standalone cutouts |
-| Video window (`videoWindow` block: floating recording window) | v0.5.0 | implemented + gated — `ws:video-window-spike` fixture |
+| Scene media (`media[]`: stills + videos, optional window chrome; superseded `images[]` and `videoWindow`) | v0.13 | implemented + gated — `ws:video-window-spike` fixture |
 | Scene lighting v9 (sun, free lights, fixtures, HDRIs, keyframes) | v0.7.0 | implemented + gated — sidecar `lighting`, see the lighting skill |
 | Camera rigs (free flight, depth bands, presets) | v0.7.0 | implemented + gated — sidecar `cameraRig`, see "Camera rigs" |
