@@ -1,4 +1,9 @@
-import type { SceneDoc, SceneDocCompareDeviceAppearance } from "../../engine/sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocCompare,
+  SceneDocCompareDeviceAppearance,
+  SceneDocCompareKey,
+} from "../../engine/sceneDocSchema";
 
 const clone = <T>(value: T | undefined): T | undefined =>
   value === undefined ? undefined : structuredClone(value);
@@ -82,6 +87,51 @@ export function setCompareDeviceAppearance<K extends keyof SceneDocCompareDevice
     ...side.deviceAppearance[deviceId],
     [field]: value,
   };
+}
+
+/** The divider key the drill's Divider and Angle fields edit: the one nearest `localMs` by absolute time distance, the EARLIER key taking a tie (a playhead sitting exactly between two keys edits the one already passed). Null when the track carries no keys, which is what sends both fields back to the static value and mask angle. */
+export function nearestCompareKey(
+  keys: readonly SceneDocCompareKey[] | undefined,
+  localMs: number,
+): SceneDocCompareKey | null {
+  let nearest: SceneDocCompareKey | null = null;
+  let best = Number.POSITIVE_INFINITY;
+  for (const key of keys ?? []) {
+    const distance = Math.abs(key.tMs - localMs);
+    if (distance < best || (nearest !== null && distance === best && key.tMs < nearest.tMs)) {
+      nearest = key;
+      best = distance;
+    }
+  }
+  return nearest;
+}
+
+/** Set the divider position the drill's slider shows: the nearest key's pose with everything else on it (id, time, angle) untouched, or the static `compare.value` on a keyless comparison. */
+export function setCompareDividerValue(
+  compare: SceneDocCompare,
+  localMs: number,
+  value: number,
+): void {
+  const key = nearestCompareKey(compare.track?.keys, localMs);
+  if (!key) {
+    compare.value = value;
+    return;
+  }
+  key.pose = { ...key.pose, value };
+}
+
+/** Set the divider angle the drill's Angle field shows: the nearest key's `pose.angleDeg` (keys without one keep holding the static angle), or `mask.angleDeg` on a keyless comparison. */
+export function setCompareDividerAngle(
+  compare: SceneDocCompare,
+  localMs: number,
+  angleDeg: number,
+): void {
+  const key = nearestCompareKey(compare.track?.keys, localMs);
+  if (!key) {
+    compare.mask = { ...(compare.mask ?? { type: "linear" }), angleDeg };
+    return;
+  }
+  key.pose = { ...key.pose, angleDeg };
 }
 
 /** The Manual motion choice: drop the divider keys so the static Divider slider drives the comparison again. Everything else stays, `animatedTrack` included: the comparison still exists and keeps its lane, which is what separates this from removing the comparison. */
