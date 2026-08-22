@@ -1211,7 +1211,7 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `28beda34…` | stale | stale | stale | stale | stale (pre-trim) | — |
+| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — |
@@ -1225,20 +1225,35 @@ rolling-gate project (`showcase-tour`):
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — |
 
-> **2026-08-19 (upstream drift, re-recorded not caused here):** `showcase-tour`
-> 16:9 moves `f304f1bd…` → `28beda34…` and `compare-spike` 16:9 moves
-> `8d293536…` → `b6883733…`. Neither movement belongs to the change recording
-> them. Both fixtures were run twice on this branch and twice on a pristine
-> `origin/main` at `dc952e1` on the same machine: branch and main produce the
-> SAME hash for each fixture, so the drift is already on main. `ws:launch-2026`
-> stayed EQUAL at `eb89826c…` throughout, so no engine-wide constant moved. The
-> movement entered between `985f49d` (where `f304f1bd…` last verified) and
-> `dc952e1`; the render-path suspects in that span are the `postprocessing`
-> 6.39.3 → 6.39.4 and `@react-three/fiber` 9.6.1 → 9.7.0 bumps, neither of
-> which was gated when it landed. The other aspects of both fixtures go stale
-> rather than re-recorded, since they were not re-run. Bisecting the exact
-> commit is worth doing before the next release records packaged parity, which
-> still cites the superseded `f304f1bd…`.
+> **2026-08-19 (theme library, inspector redesign):** two moves that landed on
+> main without a re-record, bisected leg by leg. #134 (theme library) appends
+> four faces to `BUNDLED_FONTS`, the REBASE EVENT this document warns about:
+> 46 frames of scene 2 shift, at most 67 px each, max channel delta 6, all on
+> the glyph edges of the Playfair headline, and nothing else in the 612-frame
+> reel changes a byte (ProRes framemd5 against a pre-#134 export). Attribution
+> is proved the prescribed way: dropping ONLY those four faces at `75be37a`
+> reproduces `f304f1bd…` exactly. #137 (inspector redesign) then reworks device
+> shadowing, the `Device` paragraph it rewrote above: 263 frames move across
+> exactly the three device scenes (04, 05, 07), 99% of the changed subpixels
+> DARKER, and a soft contact shadow is eyeballed back under the handset in
+> scene 7. A shadow gained, not lost, so the move is the intended direction;
+> which sub-change lands it is not pinned down (that batch touches the
+> presentation-blob default, world-anchored shadow grounding, and the floor Y
+> handed to lighting). `showcase-tour` re-recorded 16:9 `f304f1bd…` →
+> `28beda34…` and 9:16 `8cdb7481…` → `b3e3dd72…`, both Verify ×2, and
+> `ws:launch-2026` stays EQUAL at `eb89826c…` over both moves (`pnpm
+> gate:merge` on `dc952e1`), so no engine-wide constant moved. The #133
+> dependabot bumps (`postprocessing` 6.39.4, `@react-three/fiber` 9.7.0) are
+> pixel-NULL on this reel: `8cc778c` carries them and still verifies
+> `f304f1bd…`.
+
+> **2026-08-19 (comparison fixture, same upstream moves):** `compare-spike`
+> 16:9 re-records `8d293536…` → `b6883733…`, Verify ×2. The fixture was run
+> twice on the batch-23 branch and twice on a pristine `origin/main` at
+> `dc952e1` on the same machine, and both produce `b6883733…`, so the move is
+> the pair of upstream moves recorded above, not the branch. This leg was not
+> bisected itself, and its other aspects go stale rather than re-recorded,
+> since they were not re-run.
 
 > **2026-08-07 (batch 18):** two deliberate re-records. `ws:chart-spike` 16:9
 > (`c947c931…` → `d58ff1f2…`): a billboard `onBeforeRender` prop had shadowed
