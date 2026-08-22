@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Flow two",
+  "duration": { "mode": "manual" },
+  "text": {
+    "title": "Reminders\non time"
+  },
+  "textStyle": {
+    "titleSize": 1.05,
+    "titleOffsetY": -0.66,
+    "titleLineHeight": 1.1,
+    "titleColor": "#1b1512"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "video",
+    "src": "assets/kooka-alt-loop-sample.mp4"
+  }
+}

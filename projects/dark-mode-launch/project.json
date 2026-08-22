@@ -1,0 +1,38 @@
+{
+  "id": "dark-mode-launch",
+  "name": "Dark Mode Launch",
+  "version": 2,
+  "themeId": "kookaburra-abyss",
+  "formats": ["1:1", "9:16", "16:9", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-lights-on.tsx",
+      "durationMs": 2200,
+      "transition": { "type": "dissolve", "durationMs": 400 }
+    },
+    {
+      "file": "scenes/02-switch.tsx",
+      "durationMs": 3600,
+      "transition": { "type": "luma", "durationMs": 450 }
+    },
+    {
+      "file": "scenes/03-dark-hero.tsx",
+      "durationMs": 3600,
+      "transition": { "type": "crossfade", "durationMs": 380 }
+    },
+    {
+      "file": "scenes/04-detail-orbit.tsx",
+      "durationMs": 3200,
+      "transition": { "type": "glitch", "durationMs": 260 }
+    },
+    {
+      "file": "scenes/05-auto-switch.tsx",
+      "durationMs": 2800,
+      "transition": { "type": "dip", "durationMs": 500 }
+    },
+    {
+      "file": "scenes/06-cta.tsx",
+      "durationMs": 2800
+    }
+  ]
+}

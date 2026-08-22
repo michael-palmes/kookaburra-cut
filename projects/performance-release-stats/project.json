@@ -1,0 +1,53 @@
+{
+  "id": "performance-release-stats",
+  "name": "Performance Release (stats)",
+  "version": 2,
+  "themeId": "kookaburra-pacific",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-claim.tsx",
+      "durationMs": 2400,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/02-launch-time.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/03-frame-rate.tsx",
+      "durationMs": 3800,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/04-size.tsx",
+      "durationMs": 2800,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/05-panel-chart.tsx",
+      "durationMs": 5000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/06-cta.tsx",
+      "durationMs": 3800
+    }
+  ]
+}

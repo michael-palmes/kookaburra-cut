@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Performance Release (stats)",
+  "tagline": "A release whose whole pitch is numbers: faster, smaller, steadier, each on a chart that does not lie.",
+  "category": "app-updates",
+  "tags": ["performance", "stats", "benchmarks", "metrics", "release notes", "charts"],
+  "personas": ["pm", "co-founder"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": ["chart", "overlay", "text-motion", "background"],
+  "highlights": [
+    "Three charts, every axis from zero",
+    "Cold start, frame rate and download size",
+    "Method notes and sample size on screen"
+  ],
+  "preview": {
+    "poster": 1,
+    "frames": [
+      { "scene": 0, "atMs": 1600 },
+      { "scene": 1, "atMs": 3000 },
+      { "scene": 3, "atMs": 2000 },
+      { "scene": 4, "atMs": 3600 }
+    ]
+  },
+  "order": 9,
+  "status": "stable"
+}

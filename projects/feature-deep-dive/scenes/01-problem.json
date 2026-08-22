@@ -1,0 +1,41 @@
+{
+  "background": {
+    "backing": {
+      "gradient": "brand",
+      "type": "gradient"
+    },
+    "colors": ["#496489", "#72612f"],
+    "look": "dust-drift",
+    "params": {
+      "count": 900,
+      "drift": 1,
+      "innerRadius": 10,
+      "opacity": 0.95,
+      "outerRadius": 26,
+      "pointSize": 0.09,
+      "twinkle": 0.6
+    },
+    "preset": "p6",
+    "speed": 1,
+    "type": "scene3d"
+  },
+  "name": "The problem",
+  "text": {
+    "subtitle": "Until now",
+    "title": "Finding it\ntook too long"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "subtitleSize": 1.4,
+    "titleSize": 0.75
+  },
+  "version": 1
+}

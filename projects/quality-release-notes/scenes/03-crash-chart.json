@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "name": "Crash rate",
+  "text": {
+    "title": "Crashes are down"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "background": {
+    "type": "none"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "chart": {
+    "type": "line",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["v2.3", "v2.3.1", "v2.4", "v2.4.1"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Crashes per 1,000 sessions",
+          "values": [26, 21, 44, 4]
+        }
+      ]
+    },
+    "style": {
+      "preset": "terminal"
+    },
+    "axis": {
+      "value": {
+        "name": "Crashes per 1,000 sessions",
+        "min": 0,
+        "max": 50,
+        "steps": 5,
+        "format": {
+          "decimals": 0
+        },
+        "gridlines": {
+          "visible": true,
+          "style": "hair"
+        }
+      },
+      "category": {
+        "name": "Last four releases"
+      }
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": true,
+        "location": "above",
+        "countUp": true,
+        "format": {
+          "decimals": 0
+        }
+      }
+    },
+    "animation": {
+      "preset": "draw",
+      "delivery": "series",
+      "staggerMs": 120,
+      "durationMs": 900,
+      "from": "start"
+    }
+  }
+}

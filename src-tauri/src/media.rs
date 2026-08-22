@@ -559,11 +559,13 @@ pub fn unused_media(
     let rels = workspace::project_media_rels(&root, &slug)?;
     let project = root.join(&slug);
     let texts = project_texts(&project);
+    let backfilled: std::collections::HashSet<String> =
+        workspace::backfilled_sample_names(&app).into_iter().collect();
     Ok(unreferenced_rels(&texts, &rels)
         .into_iter()
         .filter(|rel| {
             !rel.strip_prefix("assets/")
-                .is_some_and(workspace::is_backfilled_sample)
+                .is_some_and(|name| backfilled.contains(name))
         })
         .map(|rel| UnusedAsset {
             bytes: std::fs::metadata(project.join(rel))

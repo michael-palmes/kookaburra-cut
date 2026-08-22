@@ -15,3 +15,9 @@ lists or loads one.
 Adding a background means adding its `preview-lab-bg-<id>` project here; a vitest
 guards the pairing. The theme-preview fixture is NOT here: it ships, as
 `projects/preview-lab-theme/`.
+
+The pool loop clips (kooka-*-loop-sample.mp4) regenerate from the Kooka stills
+
+
+
+via scripts/make-kooka-loops.sh (ffmpeg xfade at the native 828x1792 screen ratio; the export path only renders the fixed aspects, which cover-crop inside handset screens).

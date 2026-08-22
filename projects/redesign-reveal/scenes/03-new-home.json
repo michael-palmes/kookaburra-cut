@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "name": "A calmer home",
+  "text": {
+    "title": "A calmer home",
+    "subtitle": "Less to scan"
+  },
+  "textStyle": { "subtitleSize": 1.9 },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "backdrop": { "type": "floor", "color": "#e8e0d2", "filletRadius": 3 },
+  "background": {
+    "type": "gradient",
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#EDE0CF", 0],
+        ["#EAD9C5", 0.25],
+        ["#E7D3BD", 0.5],
+        ["#E5CEB8", 0.75],
+        ["#E3C9B4", 1]
+      ]
+    },
+    "parallax": 0.03
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/kooka-feed-loop-sample.mp4", "kind": "video", "startMs": 0 },
+      "placement": { "position": [0, -0.35, 0], "rotationDeg": [0, -6, 0], "scale": 1 },
+      "motion": { "preset": "none" },
+      "shadow": "long"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, 0, 0],
+          "azimuthDeg": -12,
+          "elevationDeg": 6,
+          "distance": 6.2,
+          "dof": { "mode": "depth", "blur": 0.4, "range": 1.2, "squeeze": 1.4, "focus": "auto" }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 2600,
+        "pose": { "target": [0, 0.1, 0], "azimuthDeg": 4, "elevationDeg": 2, "distance": 5.2 }
+      }
+    ],
+    "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
+  },
+  "lighting": {
+    "preset": "golden-hour",
+    "environment": { "source": "kookaburra:sunset", "intensity": 0.9, "rotationDeg": 0 },
+    "sun": {
+      "azimuthDeg": -60,
+      "elevationDeg": 26,
+      "intensity": 2.6,
+      "kelvin": 2900,
+      "angularDeg": 1.2
+    },
+    "ambient": 0.3,
+    "shadow": {
+      "technique": "map",
+      "softness": 0.35,
+      "opacity": 0.4,
+      "mapSize": 4096,
+      "bias": -0.0018,
+      "color": "#3a2a18"
+    },
+    "keys": [
+      {
+        "id": "lk1",
+        "tMs": 0,
+        "pose": { "environmentIntensity": 0.7, "sun": { "intensity": 2.2 } }
+      },
+      {
+        "id": "lk2",
+        "tMs": 2600,
+        "pose": { "environmentIntensity": 1, "sun": { "intensity": 3 } }
+      }
+    ],
+    "segments": [{ "from": "lk1", "to": "lk2", "ease": "inOutSine" }]
+  }
+}

@@ -22,7 +22,7 @@
 #            so queued runs never clobber each other. last-run.json is copied back to the
 #            legacy ~/Kookaburra Cut/_autorun/last-run.json and dev.log is symlinked there.
 #
-# Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
+# Flags:  --action verify|export|theme-previews|template-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
 #                  every theme), option-previews → the preview-lab-* fixtures (incremental
@@ -92,8 +92,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "template-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'template-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -318,6 +318,27 @@ if [[ "$ACTION" == "create" ]]; then
   echo "kookaburra:run: create smoke in $CREATE_ROOT"
 fi
 
+# template-previews materialise into the same throwaway root as the create smoke, so the
+# user's workspace is never written to; staged art is cleared so the promotion loop can
+# only copy this run's sets. --project selects templates (comma list, default: all).
+if [[ "$ACTION" == "template-previews" ]]; then
+  if [[ -n "$PROJECT" && -z "$APP" ]]; then
+    IFS=',' read -r -a TPL_IDS <<<"$PROJECT"
+    for tpl in "${TPL_IDS[@]}"; do
+      if [[ ! -f "$ROOT/projects/$tpl/template.json" ]]; then
+        echo "kookaburra:run: '$tpl' has no projects/$tpl/template.json, so it is not a template" >&2
+        exit 2
+      fi
+    done
+  fi
+  rm -rf "$RUN_DIR/template-previews"
+  CREATE_ROOT="$RUN_DIR/create-root"
+  rm -rf "$CREATE_ROOT"
+  mkdir -p "$CREATE_ROOT"
+  export KOOKABURRA_WORKSPACE_ROOT="$CREATE_ROOT"
+  echo "kookaburra:run: template previews in $CREATE_ROOT"
+fi
+
 # KOOKABURRA_* is the canonical runtime channel (v9 · M2 — read by the native
 # get_autorun_config).
 export KOOKABURRA_ACTION="$ACTION"
@@ -465,6 +486,43 @@ if [[ "$ACTION" == "theme-previews" ]]; then
   done
   node "$ROOT/scripts/theme-preview-stale.mjs" commit --project "$THEME_PREVIEW_PROJECT" "${PROMOTED[@]}"
   echo "kookaburra:run: promoted $copied preview(s) → src/assets/theme-previews/"
+fi
+
+# template-previews: promote the staged card art into the repo (the theme-previews pattern,
+# no stale ledger: the action re-renders whatever --project selects).
+if [[ "$ACTION" == "template-previews" ]]; then
+  SRC="$RUN_DIR/template-previews"
+  DEST="$ROOT/src/assets/template-previews"
+  mkdir -p "$DEST"
+  copied=0
+  PROMOTED=()
+  # Validate every staged set before changing any final preview.
+  for dir in "$SRC"/*/; do
+    [[ -d "$dir" ]] || continue
+    tpl="$(basename "$dir")"
+    for i in 1 2 3 4; do
+      if [[ ! -f "$dir/$i.jpg" ]]; then
+        echo "kookaburra:run: incomplete template preview set for $tpl (missing $i.jpg)" >&2
+        exit 1
+      fi
+    done
+    PROMOTED+=("$tpl")
+  done
+  if [[ "${#PROMOTED[@]}" -eq 0 ]]; then
+    echo "kookaburra:run: no template preview sets were produced" >&2
+    exit 1
+  fi
+  for dir in "$SRC"/*/; do
+    [[ -d "$dir" ]] || continue
+    tpl="$(basename "$dir")"
+    for i in 1 2 3 4; do
+      tmp="$DEST/.template-preview-$tpl-$i.tmp"
+      cp "$dir/$i.jpg" "$tmp"
+      mv -f "$tmp" "$DEST/$tpl-$i.jpg"
+      copied=$((copied + 1))
+    done
+  done
+  echo "kookaburra:run: promoted $copied preview(s) → src/assets/template-previews/"
 fi
 
 # option-previews: encode clip sets (frame sequences → small H.264 loops via the

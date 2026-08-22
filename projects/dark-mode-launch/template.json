@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Dark Mode Launch",
+  "tagline": "Light to dark on a wipe, then the details only dark mode makes possible.",
+  "category": "app-updates",
+  "tags": ["dark mode", "theme switch", "before after", "app update", "feature drop"],
+  "personas": ["marketer", "co-founder"],
+  "level": "standard",
+  "tier": "bold",
+  "uses": ["device", "compare", "overlay", "text-motion", "background"],
+  "highlights": [
+    "A light-to-dark wipe across one handset",
+    "Edge-lit orbit with keyframed rim light",
+    "Swap two screenshots and the copy"
+  ],
+  "preview": {
+    "poster": 1,
+    "frames": [
+      { "scene": 0, "atMs": 1400 },
+      { "scene": 1, "atMs": 1400 },
+      { "scene": 2, "atMs": 2600 },
+      { "scene": 4, "atMs": 1800 }
+    ]
+  },
+  "order": 8,
+  "status": "stable"
+}

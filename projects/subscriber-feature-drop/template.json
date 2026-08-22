@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Subscriber Feature Drop",
+  "tagline": "A gated feature landing for a tier or a flagged cohort: what it is, who gets it, how to turn it on.",
+  "category": "app-updates",
+  "tags": ["subscription", "pro tier", "feature flag", "rollout", "upgrade", "paywall"],
+  "personas": ["marketer", "pm"],
+  "level": "showcase",
+  "tier": "bold",
+  "uses": ["device", "overlay", "layered-screenshot", "text-motion", "background"],
+  "highlights": [
+    "Neon-lit hero device under a push-in camera",
+    "Who-gets-it panel with a Pro chip and three lines",
+    "Settings stack that spreads to show the toggle"
+  ],
+  "preview": {
+    "poster": 1,
+    "frames": [
+      { "scene": 0, "atMs": 1400 },
+      { "scene": 1, "atMs": 3200 },
+      { "scene": 3, "atMs": 3000 },
+      { "scene": 5, "atMs": 2000 }
+    ]
+  },
+  "order": 10,
+  "status": "stable"
+}

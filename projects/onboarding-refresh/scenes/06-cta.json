@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "Update now",
+  "text": {
+    "title": "Kooka",
+    "subtitle": "Update now"
+  },
+  "textStyle": {
+    "subtitleSize": 0.85
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "preset": "p1",
+    "colors": ["#f6e9e4", "#eed7cf", "#e9cec7", "#f4e3da"],
+    "speed": 0.4,
+    "params": { "distortion": 0.5, "swirl": 0.08 }
+  }
+}

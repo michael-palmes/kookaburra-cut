@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "The claim",
+  "text": {
+    "title": "2.4 is quicker\neverywhere",
+    "subtitle": "Measured, not claimed"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "none"
+  }
+}

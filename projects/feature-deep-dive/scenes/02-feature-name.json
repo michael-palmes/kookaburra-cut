@@ -1,0 +1,53 @@
+{
+  "background": {
+    "backing": {
+      "spec": {
+        "angleDeg": 180,
+        "space": "oklch",
+        "stops": [
+          ["#0B1220", 0],
+          ["#0E1523", 0.25],
+          ["#101827", 0.5],
+          ["#12192A", 0.75],
+          ["#141C2E", 1]
+        ],
+        "type": "linear"
+      },
+      "type": "gradient"
+    },
+    "colors": ["#496489", "#72612f"],
+    "look": "dust-drift",
+    "params": {
+      "count": 900,
+      "drift": 1,
+      "innerRadius": 10,
+      "opacity": 0.95,
+      "outerRadius": 26,
+      "pointSize": 0.09,
+      "twinkle": 0.6
+    },
+    "preset": "p6",
+    "speed": 1,
+    "type": "scene3d"
+  },
+  "name": "Feature name",
+  "text": {
+    "subtitle": "",
+    "title": "Instant\nsearch"
+  },
+  "textAnimation": {
+    "delivery": "all-at-once",
+    "direction": "from-left",
+    "in": "twist-scale",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "titleLineHeight": 1.05,
+    "titleSize": 1.15
+  },
+  "version": 1
+}

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Dev Release Notes",
+  "tagline": "The changelog for people who read diffs: breaking changes, a real terminal and the migration steps.",
+  "category": "app-updates",
+  "tags": ["release notes", "changelog", "sdk", "api", "developer", "terminal", "migration"],
+  "personas": ["developer"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": ["overlay", "video-window", "chart", "text-motion", "background"],
+  "highlights": [
+    "Breaking changes and migration steps as overlay slides",
+    "A real terminal recording in a floating window",
+    "Adoption charted in the terminal look"
+  ],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      { "scene": 0, "atMs": 1800 },
+      { "scene": 2, "atMs": 2600 },
+      { "scene": 3, "atMs": 2600 },
+      { "scene": 5, "atMs": 3200 }
+    ]
+  },
+  "order": 11,
+  "status": "stable"
+}

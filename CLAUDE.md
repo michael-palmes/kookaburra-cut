@@ -46,6 +46,10 @@ pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 # Required per template batch; with --app it proves the packaged resource layout.
 pnpm kookaburra:run --action create --project blank
 
+# Template card art: create each template in the throwaway root, capture its manifest's
+# four preview frames (16:9, 640px JPEG), promote into src/assets/template-previews/.
+pnpm kookaburra:run --action template-previews          # --project <id,...> selects
+
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
 pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG

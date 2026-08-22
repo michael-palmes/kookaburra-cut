@@ -1,0 +1,34 @@
+{
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "colors": ["#17121e", "#4e3465", "#7f48a7"],
+    "params": {
+      "density": 66,
+      "dotSize": 0.14,
+      "driftAngle": 120,
+      "pulse": 0.4,
+      "waveWidth": 0.9
+    },
+    "preset": "p7",
+    "shader": "dot-grid",
+    "speed": 0.7,
+    "type": "shader"
+  },
+  "name": "Update now",
+  "text": {
+    "subtitle": "Update",
+    "title": "App Store"
+  },
+  "textAnimation": {
+    "delivery": "all-at-once",
+    "in": "fade-scale",
+    "out": "none",
+    "shine": true,
+    "staggerMs": 0,
+    "startScale": 0.9
+  },
+  "themeId": "kookaburra-porcelain-field",
+  "version": 1
+}

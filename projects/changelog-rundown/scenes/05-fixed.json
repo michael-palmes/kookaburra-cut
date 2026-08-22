@@ -1,0 +1,37 @@
+{
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "src": "assets/shot-c-sample.jpg",
+    "type": "image"
+  },
+  "frame": {
+    "chip": {
+      "colour": "#2fb170",
+      "icon": "circle-check",
+      "label": "Fixed"
+    },
+    "cutout": {
+      "inset": 0.06,
+      "radius": 0.1,
+      "shape": "rounded-rect",
+      "side": "end",
+      "size": 0.33
+    },
+    "textAlign": "left"
+  },
+  "name": "Fixed",
+  "text": {
+    "bullets": "Sync stalls\nTimezone drift\nWidget refresh\nExport crash",
+    "subtitle": "",
+    "title": "Steadier"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "version": 1
+}

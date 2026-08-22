@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "Migration",
+  "text": {
+    "title": "How to migrate",
+    "subtitle": "Three steps, about ten minutes",
+    "bullets": "Step 1: bump the SDK to 4.2.0\nStep 2: pass a region to createClient\nStep 3: run the codemod for callbacks"
+  },
+  "textStyle": {
+    "bulletsFont": "JetBrains Mono"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "none",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "none"
+    },
+    "chip": {
+      "label": "Migrate",
+      "icon": "circle-check"
+    },
+    "background": "#0f141b",
+    "textAlign": "center"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 0.25,
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

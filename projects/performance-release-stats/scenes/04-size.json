@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "Download size",
+  "text": {
+    "headline": "Download size",
+    "unit": "MB",
+    "note": "Down from 142 MB in 2.3"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "none"
+  }
+}

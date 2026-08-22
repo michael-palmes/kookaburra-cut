@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Flow three",
+  "duration": {
+    "mode": "manual"
+  },
+  "text": {
+    "title": "Make it\nyours"
+  },
+  "textStyle": {
+    "titleSize": 1.05,
+    "titleOffsetY": -0.66,
+    "titleLineHeight": 1.1,
+    "titleColor": "#f7f2ec"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "video",
+    "src": "assets/kooka-dark-loop-sample.mp4"
+  }
+}

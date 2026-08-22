@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "Value counter",
+  "text": {
+    "headline": "Saves about",
+    "unit": "min a week"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "preset": "p6",
+    "speed": 0.9
+  }
+}

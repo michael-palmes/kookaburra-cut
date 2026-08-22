@@ -1,0 +1,57 @@
+{
+  "id": "feature-deep-dive",
+  "name": "Feature Deep Dive",
+  "version": 2,
+  "themeId": "kookaburra-midnight",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-problem.tsx",
+      "durationMs": 2600,
+      "transition": {
+        "type": "blur",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/02-feature-name.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "push",
+        "durationMs": 420
+      }
+    },
+    {
+      "file": "scenes/03-hero-device.tsx",
+      "durationMs": 4200
+    },
+    {
+      "file": "scenes/04-detail-push.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "zoom",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/05-screens-stack.tsx",
+      "durationMs": 3800,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/06-payoff-counter.tsx",
+      "durationMs": 3400,
+      "transition": {
+        "type": "dip",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/07-cta.tsx",
+      "durationMs": 3000
+    }
+  ]
+}

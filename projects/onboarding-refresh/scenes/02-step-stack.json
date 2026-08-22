@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "Step stack",
+  "text": {
+    "ls-t1": "Step 1: Plan"
+  },
+  "layeredScreenshot": {
+    "layers": [
+      {
+        "id": "l1",
+        "name": "Step 3",
+        "visible": true,
+        "z": 0,
+        "items": [
+          {
+            "id": "i1",
+            "kind": "screen",
+            "src": "assets/onboard-3-sample.jpg",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      },
+      {
+        "id": "l2",
+        "name": "Step 2",
+        "visible": true,
+        "z": 1,
+        "items": [
+          {
+            "id": "i2",
+            "kind": "screen",
+            "src": "assets/onboard-2-sample.jpg",
+            "media": "image",
+            "attach": null
+          }
+        ]
+      },
+      {
+        "id": "l3",
+        "name": "Step 1",
+        "visible": true,
+        "z": 2,
+        "items": [
+          {
+            "id": "i3",
+            "kind": "screen",
+            "src": "assets/onboard-1-sample.jpg",
+            "media": "image",
+            "attach": null
+          },
+          {
+            "id": "t1",
+            "kind": "text",
+            "width": 1.4,
+            "gap": 0.12,
+            "attach": { "to": "i3", "side": "bottom" }
+          }
+        ]
+      }
+    ],
+    "pose": {
+      "spread": 1,
+      "azimuthDeg": 22,
+      "elevationDeg": 12,
+      "zoom": 0.73,
+      "pan": [0.1, 0.15]
+    }
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "preset": "p1",
+    "colors": ["#f6e9e4", "#eed7cf", "#e9cec7", "#f4e3da"],
+    "speed": 0.4,
+    "params": { "distortion": 0.5, "swirl": 0.08 }
+  }
+}

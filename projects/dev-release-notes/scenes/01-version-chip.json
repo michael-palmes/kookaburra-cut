@@ -1,0 +1,42 @@
+{
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "driftAngle": 70,
+      "pulse": 0.45,
+      "waveWidth": 0.5
+    },
+    "preset": "p6",
+    "shader": "dot-grid",
+    "speed": 0.25,
+    "type": "shader"
+  },
+  "headerIcon": "assets/kooka-icon-dark-sample.png",
+  "name": "Version chip",
+  "text": {
+    "subtitle": "Breaking: 1",
+    "title": "sdk 4.2.0"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "subtitleFont": "JetBrains Mono",
+    "subtitleOffsetY": -0.61,
+    "titleFont": "JetBrains Mono",
+    "titleOffsetY": -0.44
+  },
+  "version": 1
+}

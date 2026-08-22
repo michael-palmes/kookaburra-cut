@@ -1,0 +1,53 @@
+{
+  "id": "subscriber-feature-drop",
+  "name": "Subscriber Feature Drop",
+  "version": 2,
+  "themeId": "kookaburra-ember",
+  "formats": ["9:16", "4:5", "1:1", "16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-tease.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "zoom",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/02-feature-hero.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "push",
+        "durationMs": 420
+      }
+    },
+    {
+      "file": "scenes/03-who-gets-it.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "slice",
+        "durationMs": 300
+      }
+    },
+    {
+      "file": "scenes/04-turn-it-on.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "blur",
+        "durationMs": 380
+      }
+    },
+    {
+      "file": "scenes/05-value-counter.tsx",
+      "durationMs": 3200,
+      "transition": {
+        "type": "dip",
+        "durationMs": 520
+      }
+    },
+    {
+      "file": "scenes/06-upgrade-cta.tsx",
+      "durationMs": 3200
+    }
+  ]
+}

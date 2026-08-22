@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "name": "How we measured",
+  "text": {
+    "title": "How we measured",
+    "subtitle": "iOS 26.2, release builds",
+    "bullets": "Cold start from a killed app\nMedian of 200 runs per device\nWi-Fi on, cache cleared"
+  },
+  "textStyle": {
+    "subtitleFont": "JetBrains Mono"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "rounded-rect",
+      "radius": 0.12,
+      "size": 0.42,
+      "side": "end",
+      "inset": 0.06
+    },
+    "chip": {
+      "label": "Method",
+      "icon": "info",
+      "colour": "muted"
+    },
+    "textAlign": "left"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#eef5f6", "#e8f2f2", "#e1efef", "#ecf3f3"],
+    "speed": 0.25,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.4,
+      "highlightWidth": 0.35,
+      "fillDensity": 0.18,
+      "cadence": 0.25
+    },
+    "preset": "p1"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "chart": {
+    "type": "bar",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["iPhone 15", "iPhone 13", "iPhone SE"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Cold start",
+          "values": [1.4, 1.7, 2.2]
+        }
+      ]
+    },
+    "style": {
+      "preset": "boardroom"
+    },
+    "axis": {
+      "value": {
+        "name": "Cold start in seconds",
+        "min": 0,
+        "max": 3,
+        "steps": 3,
+        "format": {
+          "decimals": 1,
+          "suffix": "s"
+        },
+        "gridlines": {
+          "visible": true,
+          "style": "hair"
+        }
+      }
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": true,
+        "location": "above",
+        "countUp": true,
+        "format": {
+          "decimals": 1,
+          "suffix": "s"
+        }
+      }
+    },
+    "animation": {
+      "preset": "rise",
+      "delivery": "cascade",
+      "staggerMs": 90,
+      "durationMs": 900,
+      "from": "start"
+    }
+  }
+}
