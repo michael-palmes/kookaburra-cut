@@ -106,7 +106,7 @@ interface AutoRunResult {
   texturesInMemory?: number;
 }
 
-/** The full run payload serialised to `~/Kookaburra Cut/_autorun/last-run.json`. */
+/** The full run payload serialised to `<run result dir>/last-run.json` (`KOOKABURRA_RESULT_DIR`, falling back to `~/Kookaburra Cut/_autorun`). */
 interface AutoRunReport {
   action: AutoRunAction;
   project: string;
@@ -570,7 +570,7 @@ export async function runAutoRun(
   }
 
   if (config.action === "screenshot") {
-    // One deterministic frame via the export path, written as a PNG under _autorun/.
+    // One deterministic frame via the export path, written as a PNG in the run result dir.
     try {
       const format = config.aspects[0];
       useEditorStore.getState().setFormat(format);
