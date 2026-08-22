@@ -33,7 +33,17 @@ describe("resolveCutoutRender", () => {
   });
 
   it("keeps the cutout strictly inside the output frame", () => {
-    for (const name of ["16:9", "9:16", "1:1", "4:5", "5:4", "3:2", "2:3"] as const) {
+    for (const name of [
+      "16:9",
+      "9:16",
+      "1:1",
+      "4:5",
+      "5:4",
+      "3:2",
+      "2:3",
+      "phone",
+      "phone-landscape",
+    ] as const) {
       const { pixelRect } = resolveCutoutRender(FORMATS[name], rounded);
       expect(pixelRect.x).toBeGreaterThanOrEqual(0);
       expect(pixelRect.y).toBeGreaterThanOrEqual(0);

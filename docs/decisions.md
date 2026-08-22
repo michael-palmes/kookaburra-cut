@@ -199,7 +199,8 @@ The full contract and its failure catalogue are in
 | VBV determinism | Software VBV lanes pin encoder threads to 1 | x264 VBV under threads produces identical frames but differing bytes |
 | Loudness | Measured gain only (cached ebur128 through the exact export graph) summed into a single volume slot; true-peak overage warns, never limits | A limiter is content-dependent DSP; a gain is a constant |
 | Render at output fps | 30fps presets step the render clock at 30 directly | Half the render time; the 30fps instants are bit-identical to every second 60fps instant |
-| Aspects | 16:9 / 9:16 / 1:1 standing; 4:5 / 5:4 / 3:2 / 2:3 first-class but feature-scoped in gates (whether any joins the standing matrix stays an open question) | Gate economy |
+| Aspects | 16:9 / 9:16 / 1:1 standing; 4:5 / 5:4 / 3:2 / 2:3 plus Phone / Phone Landscape (`phone` / `phone-landscape`, the iPhone 17 Pro panel at its native 1206×2622, under the 2160 short edge by choice) first-class but feature-scoped in gates (whether any joins the standing matrix stays an open question) | Gate economy; a phone cut should match the panel it plays on |
+| Aspect ids | Slug-safe ids (`phone`, not a ratio) with `aspectLabel()` owning the display names | The export path slugs the aspect into filenames through the Rust slug check |
 | Output naming | Preset/custom exports carry a preset suffix; the frozen path keeps the exact legacy filename | Preset output can never overwrite the files baselines hash |
 | Size caps | Estimate vs platform cap with a one-click fit; informative, never blocking | Informative, not paternal |
 | Comparison model | A before/after comparison is ONE scene: side A is the doc itself, `compare.b` overrides derive side B, composited under a mask on the transition A/B pools (docs/comparisons.md) | Self-contained scenes round-trip through packs, verify and the timeline like any other |

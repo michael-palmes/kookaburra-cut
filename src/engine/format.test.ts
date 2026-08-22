@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fade } from "../toolkit/transitions/fade";
 import type { SceneTime } from "../toolkit/types";
-import { computeFormat, FORMATS } from "./format";
+import { type AspectName, aspectLabel, computeFormat, FORMATS } from "./format";
 
 const at = (localMs: number): SceneTime => ({ localMs, globalMs: localMs, progress: 0 });
 
@@ -32,6 +32,28 @@ describe("computeFormat", () => {
     expect(computeFormat(FORMATS["5:4"]).aspect).toBeCloseTo(5 / 4, 5);
     expect(FORMATS["5:4"].width).toBe(2700);
     expect(FORMATS["5:4"].height).toBe(2160);
+  });
+
+  it("derives the phone pair from the native panel (1206x2622, exactly 437:201)", () => {
+    expect(FORMATS.phone.width).toBe(1206);
+    expect(FORMATS.phone.height).toBe(2622);
+    expect(FORMATS["phone-landscape"].width).toBe(2622);
+    expect(FORMATS["phone-landscape"].height).toBe(1206);
+    expect(computeFormat(FORMATS.phone).aspect).toBeCloseTo(201 / 437, 5);
+    expect(computeFormat(FORMATS["phone-landscape"]).aspect).toBeCloseTo(437 / 201, 5);
+  });
+
+  it("labels the phone pair but leaves ratio names alone", () => {
+    expect(aspectLabel("phone")).toBe("Phone");
+    expect(aspectLabel("phone-landscape")).toBe("Phone Landscape");
+    expect(aspectLabel("16:9")).toBe("16:9");
+    expect(aspectLabel("4:5")).toBe("4:5");
+  });
+
+  it("keeps every aspect id slug-safe once the export path swaps the colon", () => {
+    for (const name of Object.keys(FORMATS) as AspectName[]) {
+      expect(name.replace(":", "x")).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
   });
 
   it("keeps a constant visible world HEIGHT across aspects (vertical FOV)", () => {

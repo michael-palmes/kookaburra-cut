@@ -1053,11 +1053,15 @@ extra 0.0 = the byte-frozen legacy string). Projected true peak > −1.5 dBTP wa
 and proceeds, never a limiter (a limiter is content-dependent DSP; a gain is a
 constant).
 
-**4:5, 5:4, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
-2160×2700, `FORMATS["5:4"]` = 2700×2160, `FORMATS["3:2"]` = 3240×2160,
-`FORMATS["2:3"]` = 2160×3240 (2160 short edge, the house convention);
-`STANDING_ASPECTS` pins Verify's "all" and the full matrices to the standing
-three (16:9 / 9:16 / 1:1).
+**4:5, 5:4, 3:2, 2:3 and the phone pair are first-class but feature-scoped**:
+`FORMATS["4:5"]` = 2160×2700, `FORMATS["5:4"]` = 2700×2160, `FORMATS["3:2"]` =
+3240×2160, `FORMATS["2:3"]` = 2160×3240 (2160 short edge, the house convention),
+`FORMATS.phone` = 1206×2622 and `FORMATS["phone-landscape"]` = 2622×1206 (the
+iPhone 17 Pro panel at native size, exactly 437:201, deliberately under the 2160
+convention). The phone pair's ids are slugs, not ratios, because the export path
+runs `name.replace(":", "x")` through the Rust slug check; `aspectLabel()` owns
+the display names ("Phone", "Phone Landscape"). `STANDING_ASPECTS` pins Verify's
+"all" and the full matrices to the standing three (16:9 / 9:16 / 1:1).
 
 ### The export modal & user presets
 
@@ -1208,22 +1212,37 @@ workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
 durations re-frozen 2026-07-25, see the splice note below) and the bundled
 rolling-gate project (`showcase-tour`):
 
-| Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
-| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
-| `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — |
-| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
-| `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — |
+| Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 | phone | phone-landscape |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
+| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — | — | — |
+| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
+| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — | — | — |
+
+> **2026-08-22 (Phone and Phone Landscape aspects):** `phone` (1206×2622) and
+> `phone-landscape` (2622×1206) joined the first-class, feature-scoped set: the
+> iPhone 17 Pro panel at its native size, exactly 437:201. They are the first
+> aspects under the 2160 short edge, the owner's explicit call, so a phone cut
+> matches the panel it plays on instead of being scaled to the house
+> convention. Their ids are slugs, not ratios, because the export path runs
+> `name.replace(":", "x")` through `validate_slug` (alphanumerics, dashes and
+> underscores only); `aspectLabel()` maps them to "Phone" and "Phone Landscape"
+> in every surface that shows an aspect, and `AspectIcon` now proportions its
+> rect from `FORMATS` rather than parsing "W:H" out of the name. No existing
+> format's dimensions move, so the batch's standard gate carries the
+> null-for-legacy proof; `STANDING_ASPECTS` is unchanged (Verify's "all" is
+> still the standing three) and neither aspect has a baseline until a project
+> ships in one, the 2:3 precedent.
 
 > **2026-08-19 (theme library, inspector redesign):** two moves that landed on
 > main without a re-record, bisected leg by leg. #134 (theme library) appends

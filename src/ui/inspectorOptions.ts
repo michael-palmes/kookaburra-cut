@@ -1,4 +1,4 @@
-import type { AspectName } from "../engine/format";
+import { type AspectName, aspectLabel } from "../engine/format";
 import { frameTextAlign } from "../engine/framePanelLayout";
 import type { ResolvedManagedTextGroup } from "../engine/managedText";
 import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
@@ -43,7 +43,7 @@ export function projectRows(input: {
     return [
       { id: "theme", label: "Theme", value: input.themeName, chevron: false },
       { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
-      { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
+      { id: "aspect", label: "Aspect ratio", value: aspectLabel(input.aspect), chevron: true },
     ];
   }
   return [
@@ -59,7 +59,7 @@ export function projectRows(input: {
     { id: "appIcon", label: "App icon", chevron: true },
     { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
     { id: "render", label: "Render", value: input.renderLabel, chevron: true },
-    { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
+    { id: "aspect", label: "Aspect ratio", value: aspectLabel(input.aspect), chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },
   ];
 }
