@@ -7675,12 +7675,6 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   gap: 6px;
 }
 
-/* The divider ease picker takes the row's remaining width, the way a slider row does. */
-.compare-ease-row .modal-input {
-  flex: 1;
-  min-width: 0;
-}
-
 /* Pinned footer for drill-ins with terminal actions (Cancel/Apply/Save). */
 .inspector-drill-actions {
   display: flex;
@@ -7756,8 +7750,14 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   background: var(--surface-raised);
 }
 
+/* The Before/After selector: full width at its surface's own inset, whether it sits under a drill header (Theme, Background, Lighting) or leads a drill body (Device). */
 .inspector-subtabs.comparison-side-tabs {
   align-self: stretch;
+  margin: 2px 16px 8px;
+}
+
+.inspector-drill-body > .inspector-subtabs.comparison-side-tabs {
+  margin: 0;
 }
 
 .inspector-subtabs.comparison-side-tabs .inspector-subtab {

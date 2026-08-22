@@ -38,7 +38,7 @@ describe("inspector media routing", () => {
 
     expect(sceneTabSource).not.toContain('setModal("media")');
     expect(sceneTabSource).not.toContain("mediaModal");
-    expect(sceneTabSource.match(/openMediaPicker\(\{/g)).toHaveLength(8);
+    expect(sceneTabSource.match(/openMediaPicker\(\{/g)).toHaveLength(7);
     expect(picker).toContain('className="inspector-drill"');
     expect(picker).toContain('className="inspector-media-host"');
     expect(picker).toContain(

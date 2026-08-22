@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import type { ComparePreset } from "../../engine/comparePresets";
-import type { CompareMaskType } from "../../engine/sceneCompare";
+import type { CompareGripStyle, CompareMaskType } from "../../engine/sceneCompare";
 
-/** Comparison-drill glyphs (docs/design.md section 10): hand-authored line icons on a 16px grid, 1.5px stroke, `currentColor`, `aria-hidden`, drawn from what each choice DOES (a split rect, a window, a sweep, a ghosted overlap) so the mask row, the motion chips and the chrome toggles wear one face. The maps are pinned complete against the mask catalogue and the preset catalogue in tests; the engine keeps owning the data, this file only paints it. */
+/** Comparison-drill glyphs (docs/design.md section 10): hand-authored line icons on a 16px grid, 1.5px stroke, `currentColor`, `aria-hidden`, drawn from what each choice DOES (a split rect, a window, a sweep, a ghosted overlap) so the mask row, the motion chips, the chrome toggles and the grip picker wear one face. The maps are pinned complete against the mask, preset and grip catalogues in tests; the engine keeps owning the data, this file only paints it. */
 
 /** Motion-preset ids plus the manual choice, which has no catalogue entry (it clears the keys rather than writing them). */
 export type ComparePresetIconId = ComparePreset["id"] | "manual";
 
-/** Divider-chrome and animation toggles: the line itself, its grip, the before/after label chips, and the keyed angle. */
-export type CompareToggleIconId = "line" | "grip" | "chips" | "angle";
+/** Divider-chrome toggles: the line itself, its grip, and the before/after label chips. */
+export type CompareToggleIconId = "line" | "grip" | "chips";
 
 export const COMPARE_MASK_GLYPHS: Record<CompareMaskType, ReactNode> = {
   linear: (
@@ -109,11 +109,23 @@ export const COMPARE_TOGGLE_GLYPHS: Record<CompareToggleIconId, ReactNode> = {
       <rect x="7" y="8.6" width="7" height="4" rx="2" />
     </>
   ),
-  angle: (
+};
+
+/** Grip-handle styles, each drawn as the shader draws it: the ring with outward chevrons, the filled disc, the pill riding the divider, the pair of outward arrowheads. */
+export const COMPARE_GRIP_GLYPHS: Record<CompareGripStyle, ReactNode> = {
+  chevrons: (
     <>
-      <path d="M3.2 12.8h9.6" />
-      <path d="m3.2 12.8 7.3-8.6" />
-      <path d="M8.6 12.8a5.4 5.4 0 0 0-1.8-4" />
+      <circle cx="8" cy="8" r="4.4" />
+      <path d="M7.1 6.4 5.9 8l1.2 1.6" />
+      <path d="m8.9 6.4 1.2 1.6-1.2 1.6" />
+    </>
+  ),
+  dot: <circle cx="8" cy="8" r="3.4" fill="currentColor" />,
+  bar: <rect x="6.9" y="4" width="2.2" height="8" rx="1.1" fill="currentColor" />,
+  arrows: (
+    <>
+      <path d="M3.8 8 7 5.9v4.2Z" fill="currentColor" />
+      <path d="M12.2 8 9 5.9v4.2Z" fill="currentColor" />
     </>
   ),
 };
@@ -146,4 +158,8 @@ export function ComparePresetIcon({ id, size = 16 }: { id: ComparePresetIconId; 
 
 export function CompareToggleIcon({ id, size = 16 }: { id: CompareToggleIconId; size?: number }) {
   return <CompareGlyph glyph={COMPARE_TOGGLE_GLYPHS[id]} size={size} />;
+}
+
+export function CompareGripIcon({ id, size = 16 }: { id: CompareGripStyle; size?: number }) {
+  return <CompareGlyph glyph={COMPARE_GRIP_GLYPHS[id]} size={size} />;
 }
