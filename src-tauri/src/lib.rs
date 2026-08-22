@@ -618,25 +618,61 @@ struct AutorunEnv {
     themes: Option<String>,
 }
 
+/// One `KOOKABURRA_*` env read under the single auto-run rule: trimmed, and empty/whitespace reads as unset.
+fn autorun_var(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Whether this process was launched by the terminal wrapper rather than by a person.
+pub(crate) fn is_autorun() -> bool {
+    autorun_var("KOOKABURRA_ACTION").is_some()
+}
+
+/// An auto-run that must stay out of the user's way (no Dock icon, no activation, window parked); the wrapper sets `KOOKABURRA_FOREGROUND` for the runs that need a normal visible launch, the perf probe above all.
+pub(crate) fn autorun_background() -> bool {
+    is_autorun() && autorun_var("KOOKABURRA_FOREGROUND").is_none()
+}
+
+/// Where an auto-run writes its results: the wrapper's per-run `KOOKABURRA_RESULT_DIR` when it gives one (so parallel worktree runs never share a sink), otherwise the shared `~/Kookaburra Cut/_autorun`.
+pub(crate) fn autorun_result_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = match autorun_var("KOOKABURRA_RESULT_DIR") {
+        Some(raw) => {
+            let dir = PathBuf::from(raw);
+            if !dir.is_absolute() {
+                return Err(format!(
+                    "KOOKABURRA_RESULT_DIR must be an absolute path, got {}",
+                    dir.display()
+                ));
+            }
+            dir
+        }
+        None => app
+            .path()
+            .home_dir()
+            .map_err(|e| e.to_string())?
+            .join(workspace::WORKSPACE_DIR_NAME)
+            .join("_autorun"),
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
 #[tauri::command]
 fn get_autorun_config() -> AutorunEnv {
-    fn var(key: &str) -> Option<String> {
-        std::env::var(key)
-            .ok()
-            .map(|v| v.trim().to_string())
-            .filter(|v| !v.is_empty())
-    }
     AutorunEnv {
-        action: var("KOOKABURRA_ACTION"),
-        project: var("KOOKABURRA_PROJECT"),
-        aspect: var("KOOKABURRA_ASPECT"),
-        codec: var("KOOKABURRA_CODEC"),
-        preset: var("KOOKABURRA_PRESET"),
-        encode_json: var("KOOKABURRA_ENCODE_JSON"),
-        scene: var("KOOKABURRA_SCENE"),
-        at: var("KOOKABURRA_AT"),
-        sets: var("KOOKABURRA_SETS"),
-        themes: var("KOOKABURRA_THEMES"),
+        action: autorun_var("KOOKABURRA_ACTION"),
+        project: autorun_var("KOOKABURRA_PROJECT"),
+        aspect: autorun_var("KOOKABURRA_ASPECT"),
+        codec: autorun_var("KOOKABURRA_CODEC"),
+        preset: autorun_var("KOOKABURRA_PRESET"),
+        encode_json: autorun_var("KOOKABURRA_ENCODE_JSON"),
+        scene: autorun_var("KOOKABURRA_SCENE"),
+        at: autorun_var("KOOKABURRA_AT"),
+        sets: autorun_var("KOOKABURRA_SETS"),
+        themes: autorun_var("KOOKABURRA_THEMES"),
     }
 }
 
@@ -661,13 +697,7 @@ fn finish_autorun(app: AppHandle, result_json: String, ok: bool) -> Result<(), S
             result_json.len()
         ));
     }
-    let dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(workspace::WORKSPACE_DIR_NAME)
-        .join("_autorun");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = autorun_result_dir(&app)?;
     std::fs::write(dir.join("last-run.json"), &result_json).map_err(|e| e.to_string())?;
     // Sentinel line for anyone tailing the dev process stdout; the wrapper reads the file.
     println!("KOOKABURRA_AUTORUN_RESULT {result_json}");
@@ -684,7 +714,7 @@ struct PendingScreenshot {
 
 struct ScreenshotState(Mutex<Option<PendingScreenshot>>);
 
-/// Arms a screenshot write under `<workspace>/_autorun/`; autorun-gated (F-009), name sanitised to a bare stem.
+/// Arms a screenshot write under the run's result directory (`autorun_result_dir`); autorun-gated (F-009), name sanitised to a bare stem.
 #[tauri::command]
 fn begin_screenshot(
     app: AppHandle,
@@ -712,14 +742,7 @@ fn begin_screenshot(
             }
         })
         .collect();
-    let dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(workspace::WORKSPACE_DIR_NAME)
-        .join("_autorun");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let out = dir.join(format!("{stem}.png"));
+    let out = autorun_result_dir(&app)?.join(format!("{stem}.png"));
     let path = out.to_string_lossy().into_owned();
     *state.0.lock().map_err(|_| "screenshot state poisoned")? =
         Some(PendingScreenshot { width, height, out });
@@ -753,6 +776,52 @@ async fn save_screenshot(
     }
     media::write_rgba_png(&app, bytes, pending.width, pending.height, &pending.out).await?;
     Ok(pending.out.to_string_lossy().into_owned())
+}
+
+/// A staging sibling for a `$APPDATA/cache` entry: `.staging-<entry>-<pid>` in the entry's own parent, so a finished tree lands with one rename and never crosses a filesystem. The dot prefix keeps it out of the listings that skip hidden names.
+pub(crate) fn staging_sibling(target: &std::path::Path) -> Result<PathBuf, String> {
+    let parent = target.parent().ok_or("cache entry has no parent")?;
+    let name = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("cache entry has no name")?;
+    Ok(parent.join(format!(".staging-{name}-{}", std::process::id())))
+}
+
+/// Publish a staged cache entry with one rename, so a second app instance can never read a half-written entry. If the rename loses a race, a complete entry (`.done`) already there wins and the staging tree is dropped, while a partial one is stale remnant: remove it and retry once.
+pub(crate) fn commit_staged_dir(
+    staging: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<(), String> {
+    match std::fs::rename(staging, target) {
+        Ok(()) => Ok(()),
+        Err(_) if target.exists() => {
+            if target.join(".done").is_file() {
+                let _ = std::fs::remove_dir_all(staging);
+                return Ok(());
+            }
+            let _ = std::fs::remove_dir_all(target);
+            std::fs::rename(staging, target).map_err(|e| e.to_string())
+        }
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(staging);
+            Err(error.to_string())
+        }
+    }
+}
+
+/// Write a small shared-cache file through a `<name>.tmp-<pid>` sibling, so a concurrent reader sees either the old bytes or the new ones, never a torn file.
+pub(crate) fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("cannot write a file with no name")?;
+    let tmp = path.with_file_name(format!("{name}.tmp-{}", std::process::id()));
+    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })
 }
 
 /// Determinate extraction progress for the "Preparing video…" chip, streamed over an ipc `Channel` (frames written vs a probe-estimated total); pure observability, the extraction args and output bytes are untouched.
@@ -805,10 +874,14 @@ async fn extract_clip_frames(
         Err(_) => 0,
     };
 
-    // Re-extract from scratch (clears any partial remnants).
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let pattern = dir.join("frame-%05d.png");
+    // A `.done` entry that got here has no readable frames: ours must replace it rather than defer to it at commit time.
+    let replacing_broken = done.exists();
+
+    // Re-extract from scratch into a staging sibling, renamed onto `dir` once complete, so a second app instance extracting the same clip can neither interleave with nor read this extraction.
+    let staging = staging_sibling(&dir)?;
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    let pattern = staging.join("frame-%05d.png");
     let mut args: Vec<String> = vec!["-y".into(), "-progress".into(), "pipe:1".into()];
     if hardware {
         args.extend(["-hwaccel".into(), "videotoolbox".into()]);
@@ -873,13 +946,20 @@ async fn extract_clip_frames(
         }
     }
     if code != Some(0) {
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&staging);
         return Err(last_error.unwrap_or_else(|| format!("ffmpeg extract exited with {code:?}")));
     }
 
-    let info = read_clip_info(&dir)?.ok_or("extraction produced no frames")?;
-    std::fs::write(&done, []).map_err(|e| e.to_string())?;
-    Ok(info)
+    let info = read_clip_info(&staging)?.ok_or("extraction produced no frames")?;
+    std::fs::write(staging.join(".done"), []).map_err(|e| e.to_string())?;
+    if replacing_broken {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    commit_staged_dir(&staging, &dir)?;
+    Ok(ClipInfo {
+        cache_dir: dir.to_string_lossy().into_owned(),
+        ..info
+    })
 }
 
 /// Counts PNG frames in an extracted clip dir and reads the geometry from one of them, or `None` if the dir is missing/empty.
@@ -974,12 +1054,13 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         return Err("ensure_clip_previews: clip not fully extracted".into());
     }
     let preview = dir.join("preview");
-    let done = preview.join(".done");
-    if done.exists() {
+    if preview.join(".done").exists() {
         return Ok(());
     }
-    let _ = std::fs::remove_dir_all(&preview);
-    std::fs::create_dir_all(&preview).map_err(|e| e.to_string())?;
+    // Staged inside the clip entry and renamed onto `preview` once complete, so a second app instance never binds a half-generated tier.
+    let staging = staging_sibling(&preview)?;
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
     let args: Vec<String> = vec![
         "-y".into(),
         "-f".into(),
@@ -994,7 +1075,7 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         "4".into(),
         "-start_number".into(),
         "0".into(),
-        preview
+        staging
             .join("frame-%05d.jpg")
             .to_string_lossy()
             .into_owned(),
@@ -1024,26 +1105,59 @@ async fn ensure_clip_previews(app: AppHandle, cache_dir: String) -> Result<(), S
         }
     }
     if code != Some(0) {
-        let _ = std::fs::remove_dir_all(&preview);
+        let _ = std::fs::remove_dir_all(&staging);
         return Err(last_error.unwrap_or_else(|| format!("ffmpeg preview exited with {code:?}")));
     }
-    std::fs::write(&done, []).map_err(|e| e.to_string())?;
-    Ok(())
+    std::fs::write(staging.join(".done"), []).map_err(|e| e.to_string())?;
+    commit_staged_dir(&staging, &preview)
+}
+
+/// Best-effort: park a background auto-run's main window at the config minimum size, bottom-right of its monitor, so it never lands over the work of whoever is using the machine. Any missing piece leaves the window exactly as it was.
+fn park_background_window(window: &tauri::WebviewWindow) {
+    const WIDTH: f64 = 1200.0;
+    const HEIGHT: f64 = 700.0;
+    const MARGIN: f64 = 16.0;
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return;
+    };
+    let scale = monitor.scale_factor();
+    if scale <= 0.0 {
+        return;
+    }
+    if window
+        .set_size(tauri::LogicalSize::new(WIDTH, HEIGHT))
+        .is_err()
+    {
+        return;
+    }
+    let left = f64::from(monitor.position().x) / scale;
+    let top = f64::from(monitor.position().y) / scale;
+    let width = f64::from(monitor.size().width) / scale;
+    let height = f64::from(monitor.size().height) / scale;
+    let _ = window.set_position(tauri::LogicalPosition::new(
+        left + width - WIDTH - MARGIN,
+        top + height - HEIGHT - MARGIN,
+    ));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let background = autorun_background();
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
-        // The present window's geometry is re-derived from the modal's display pick every launch; restoring a stale fullscreen rect (possibly on an unplugged display) would fight it.
-        // The render window is hidden by design; a restored state could resurrect it visible.
-        .plugin(
+        .plugin(tauri_plugin_dialog::init());
+    // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
+    // The present window's geometry is re-derived from the modal's display pick every launch; restoring a stale fullscreen rect (possibly on an unplugged display) would fight it.
+    // The render window is hidden by design; a restored state could resurrect it visible.
+    // A background auto-run skips the plugin outright: it parks its own window, and must neither restore nor overwrite the geometry the user's own instance owns.
+    if !background {
+        builder = builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_denylist(&["present", "render"])
                 .build(),
-        )
+        );
+    }
+    builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ExportState::default())
         .manage(LastExport::default())
@@ -1060,11 +1174,19 @@ pub fn run() {
         .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
         .manage(pack::commands::PackState::default())
-        .setup(|app| {
+        .setup(move |app| {
             // The main window exists (config-created); strip its webview's white layer.
             #[cfg(target_os = "macos")]
             if let Some(main) = app.get_webview_window("main") {
                 deflash_webview(&main);
+            }
+            // A background auto-run keeps out of the user's own session: no Dock icon, no activation steal, and its window parked in a corner.
+            if background {
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                if let Some(main) = app.get_webview_window("main") {
+                    park_background_window(&main);
+                }
             }
             // Staging and backup trees from a crashed or killed import; harmless but they accumulate.
             if let Ok(root) = workspace::require_root(&app.handle().clone(), &app.state()) {
@@ -1513,6 +1635,17 @@ mod tests {
         let expected = expected_frame_len(100, 100);
         assert_ne!(expected, 100 * 100 * 3); // e.g. an RGB body sent instead of RGBA
         assert_ne!(expected, 0);
+    }
+
+    // The rename in commit_staged_dir is only atomic while the staging tree is a sibling of the entry it replaces.
+    #[test]
+    fn a_staging_tree_is_a_hidden_sibling_of_its_cache_entry() {
+        let entry = PathBuf::from("/tmp/cache/clips/abc-30fps");
+        let staging = staging_sibling(&entry).unwrap();
+        assert_eq!(staging.parent(), entry.parent());
+        let name = staging.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with(".staging-abc-30fps-"));
+        assert!(name.ends_with(&std::process::id().to_string()));
     }
 
     // F-009: finish_autorun's env gate mirrors get_autorun_config's trim/empty rule.

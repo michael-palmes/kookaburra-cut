@@ -70,7 +70,7 @@ export function optionPreviewSetsOf(project: LoadedProject): string[] {
   return optionPreviewJobs(project.sceneFiles.map(sceneFileStem)).map((j) => j.set);
 }
 
-/** Capture option-preview sets off a loaded preview-lab project (the caller holds the usual project-commit + scene-hosts barriers): stills capture the scene middle; clips capture the whole scene window at `OPTION_CLIP_FPS`. `only` limits capture to the named stale sets (absent = all, the `--all` re-record). Frames land natively via `write_option_preview` (`~/Kookaburra Cut/_autorun/option-previews/<set>/NNN.jpg`); the `kookaburra:run` wrapper encodes clips, promotes everything staged into `src/assets/` and commits the captured sets' source hashes to the manifest. Returns the number of sets written, or null when capture isn't possible right now. */
+/** Capture option-preview sets off a loaded preview-lab project (the caller holds the usual project-commit + scene-hosts barriers): stills capture the scene middle; clips capture the whole scene window at `OPTION_CLIP_FPS`. `only` limits capture to the named stale sets (absent = all, the `--all` re-record). Frames land natively via `write_option_preview` (`<run result dir>/option-previews/<set>/NNN.jpg`, from `KOOKABURRA_RESULT_DIR` or the legacy `_autorun`); the `kookaburra:run` wrapper encodes clips, promotes everything staged into `src/assets/` and commits the captured sets' source hashes to the manifest. Returns the number of sets written, or null when capture isn't possible right now. */
 export async function captureOptionPreviews(
   project: LoadedProject,
   only?: ReadonlySet<string>,
