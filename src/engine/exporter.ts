@@ -40,6 +40,7 @@ import {
   preloadMirrorEnvironments,
 } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
+import { exportFrameTimeMs, normalExportFrameCount, posterFrameSample } from "./exportFrames";
 import { setExporting, withExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
@@ -436,7 +437,9 @@ async function exportProjectHeld(
   const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
   const { width, height } = opts.format;
-  const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
+  const normalTotal = normalExportFrameCount(opts.durationMs, opts.fps);
+  const poster = opts.encode?.posterFrame ? posterFrameSample(opts.slots, opts.fps) : undefined;
+  const total = normalTotal + (poster === undefined ? 0 : 1);
   const ctx = gl.getContext();
   const rgba = new Uint8Array(width * height * 4);
   const sizeProbe = new Vector2();
@@ -556,7 +559,7 @@ async function exportProjectHeld(
   setExporting(true);
   try {
     for (let frame = 0; frame < total; frame++) {
-      const tMs = frame * (1000 / opts.fps);
+      const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
       flushSync(() => useClockStore.getState().setCurrentMs(tMs));
       clockOwnedMs = tMs;
@@ -578,7 +581,7 @@ async function exportProjectHeld(
         cam.updateProjectionMatrix();
       }
       // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the resize guard above stays the sole owner of aspect.
-      const resolved = resolveAt(opts.slots, tMs);
+      const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
       const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);

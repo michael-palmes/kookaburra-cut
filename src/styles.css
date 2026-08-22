@@ -2613,6 +2613,11 @@ button.beat-status {
   color: var(--text-tertiary);
 }
 
+.welcome-loading {
+  margin: 0;
+  color: var(--text-tertiary);
+}
+
 /* The one display-type moment outside About (§5.2): the wordmark (v14 · M6). */
 .welcome-header h1 {
   margin: 0;
@@ -2673,36 +2678,99 @@ button.beat-status {
   color: var(--text-secondary);
 }
 
-/* Group sections: heading + a small new-project-in-group affordance beside it. */
-.welcome-group-head {
+.project-library {
+  display: grid;
+  grid-template-columns: minmax(10rem, 12rem) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+.project-library-rail {
+  position: sticky;
+  top: calc(var(--control-h-lg) + var(--space-4) * 2 + var(--space-3));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.project-library-rail-row {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin: var(--space-2) 0 var(--space-5);
-}
-.welcome-group-head .welcome-section {
-  margin-bottom: 0;
-}
-.welcome-group-add {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.4rem;
-  height: 1.4rem;
-  padding: 0;
+  height: var(--row-h-list);
+  padding: 0 var(--space-3);
   font: inherit;
   font-size: var(--text-sm);
-  line-height: 1;
+  text-align: left;
   color: var(--text-secondary);
-  background: transparent;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-xs);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.welcome-group-add:hover {
+
+.project-library-rail-row:nth-child(2) {
+  margin-bottom: var(--space-3);
+}
+
+.project-library-rail-row:hover {
   color: var(--text-primary);
-  border-color: var(--accent-border);
   background: var(--surface-hover);
+}
+
+.project-library-rail-row.selected {
+  color: var(--text-primary);
+  background: var(--accent-subtle);
+}
+
+.project-library-rail-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-library-rail-count {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-library-results {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .welcome {
+    padding-inline: var(--space-6);
+  }
+
+  .project-library {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+
+  .project-library-rail {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+  }
+
+  .project-library-rail-row {
+    flex: none;
+    min-width: 8rem;
+  }
+
+  .project-library-rail-row:nth-child(2) {
+    margin: 0 var(--space-3) 0 0;
+  }
 }
 
 /* Object library picker: thumbnail cards, the template-grid look at media-card proportions. */
@@ -6225,6 +6293,10 @@ button.beat-status {
   inline-size: 100%;
 }
 
+.export-link-previews .export-notes {
+  grid-column: 1 / -1;
+}
+
 /* Checkbox rows override the column layout `.export-knobs label` sets — beat it on
    specificity (0,2,1), never !important. */
 .export-knobs label.export-check {
@@ -6778,8 +6850,13 @@ button.beat-status {
   cursor: pointer;
 }
 
-.inspector-popover-item:hover {
+.inspector-popover-item:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+
+.inspector-popover-item:disabled {
+  opacity: 0.42;
+  cursor: default;
 }
 
 .inspector-popover-item.active {
@@ -6789,6 +6866,11 @@ button.beat-status {
 
 /* The aspect popover's proportioned rect glyphs sit clear of the label. */
 .inspector-popover-item > .aspect-icon {
+  flex: none;
+  margin-right: var(--space-3);
+}
+
+.comparison-media-popover .inspector-popover-item > svg {
   flex: none;
   margin-right: var(--space-3);
 }
@@ -7641,6 +7723,15 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   font-weight: 590;
   color: var(--text-primary);
   background: var(--surface-raised);
+}
+
+.inspector-subtabs.comparison-side-tabs {
+  align-self: stretch;
+}
+
+.inspector-subtabs.comparison-side-tabs .inspector-subtab {
+  flex: 1;
+  justify-content: center;
 }
 /* The object placement drill's rhythm: clear air above every labelled group (less for the first, which sits under the drill title), content hugging its own label, and the gizmo pills stripped of their stock margins so they align with the 8px label inset and their hint reads attached. */
 .object-drill .drill-group {

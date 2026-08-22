@@ -21,7 +21,7 @@ slideware.
 | Series colours | Per-series override, else one of 10 named schemes, else theme `chartColors`, else a derived OKLCH ramp | A chart often wants its own colours without restyling the whole scene; user themes without a curated palette still read on light and dark. |
 | Chart type (typeface) | One face for the WHOLE chart: block `chart.font`, else the project's `typography.chart`, else the theme faces | Data wants a numerals face (often a mono or a grotesk) that the rest of the deck does not; splitting it per label would only invite a chart that disagrees with itself. |
 | Number formatting | Hand-rolled, no `Intl` | Locale data varies across macOS versions, which would break byte-identical export. |
-| Appearance | 12 presets in three tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
+| Appearance | 15 presets in four tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
 | Build-in | 19 presets in three tiers, sampled per element | A preset is a row of channel parameters, never bespoke motion code. |
 | One per scene | One `chart` block | Mirrors `layeredScreenshot` / `videoWindow` / `compare`. |
 
@@ -196,7 +196,7 @@ Resolution rules worth knowing:
 
 ## Appearance presets
 
-Twelve presets in three tiers (`stylePresets.ts`, `CHART_STYLE_PRESET_IDS` is the
+Fifteen presets in four tiers (`stylePresets.ts`, `CHART_STYLE_PRESET_IDS` is the
 carousel order). Every row is stated as deltas against `boardroom`, and
 `resolveChartStyle` folds the preset, the authored `style` scalars and the theme into
 ONE `ChartStyleSurface` (a flat facet, a lit facet, and the treatments that cross
@@ -216,6 +216,9 @@ both). Nothing downstream reads `style.preset`.
 | market | `midnightGold` | Deep stage, gold-leaning metal under a clearcoat: the premium finance shot. |
 | market | `neonLedger` | Dark-first ledger: glowing edges, dashed hairlines, numerals carrying weight. |
 | market | `pulseGlass` | Glass and glow over a rising ramp: the crypto hero, the only preset running both. |
+| dark | `nightEditorial` | Restrained night editorial: fine rules, matte marks and a barely luminous edge. |
+| dark | `launchGlow` | Luminous launch dashboard: rising fill, strong points and bright dimensional edges. |
+| dark | `obsidian` | Premium dimensional material: dense metal, broad clearcoat and a sculpted bevel without glow. |
 
 Merge rules, per authored field:
 
@@ -454,9 +457,10 @@ hands the host a world rect. See `docs/overlays.md` for the panel itself.
   so every control shows the value that renders; writes patch only the field touched,
   so an untouched default never lands in the sidecar. Live slider and scrub ticks
   write history-less from a drag-start snapshot and settle to one history entry.
-- **Graph tab order.** Edit data leads (the row a chart is opened for), then Chart
-  type, Dimension, Mount, Appearance, Colours, Font, Shape, Placement, Legend,
-  Build in. The Colours group is a plain 2-up grid of CSS swatch tiles: a Theme tile
+- **Graph tab order.** Edit data stays above the Graph / Axis / Series control, then
+  the Graph tab carries Chart type, Dimension, Mount, Appearance, Colours, Font,
+  Shape, Placement, Legend and Build in. The Colours group is a plain 2-up grid of
+  CSS swatch tiles: a Theme tile
   first, showing what this scene's theme resolves, then the ten schemes. Nothing here
   is a captured preview, so the catalogue can grow without regenerating thumbnails.
 - **Font.** One row in the text-field font idiom (the family when the block overrides,
@@ -481,11 +485,14 @@ hands the host a world rect. See `docs/overlays.md` for the panel itself.
   navigate or blur, never per keystroke. Soft guidance warns past 12 categories or 6
   series, and stacked types warn on negatives (they clamp to 0 at layout).
 - **Timeline lane.** A scene with a chart block gets a data lane (a `TrackLane`,
-  stacked above the camera lane) with full batch-11 semantics: connected keyframes,
+  stacked above the camera lane while Animate scene is open) with full batch-11
+  semantics: connected keyframes,
   junction diamonds, segment ease menus, ripple resize and duration clamping. There
   are no armed tools (a key IS a data snapshot), Add keyframe seeds the currently
   sampled values so adding never visibly moves the chart, and double-clicking a
-  diamond opens the data modal on that key.
+  diamond opens the data modal on that key. Secondary chart and comparison lanes
+  never open the stack themselves, and their hidden selections clear when Animate
+  scene closes or the active scene changes.
 - **Wizard and commands.** The New-scene wizard's `chart` kind adds a type picker, a
   2D/3D choice and a starter dataset, scaffolds `chart.tsx.tmpl` and seeds the block
   natively in `scene_doc.rs` (starter data only: style, axis, labels and animation stay

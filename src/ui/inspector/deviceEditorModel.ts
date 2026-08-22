@@ -13,6 +13,7 @@ import {
   isDeviceId,
 } from "../../toolkit/device/catalog";
 import type { V3 } from "../../toolkit/types";
+import { duplicateCompareDeviceTargets, pruneCompareDeviceTargets } from "./comparisonTarget";
 import { nextNumberedContentId } from "./contentIds";
 
 const DEVICE_STEP_X = 1.4;
@@ -81,13 +82,7 @@ export function duplicateDevice(doc: SceneDoc, deviceId: string): string | null 
       [id]: structuredClone(layoutDelta),
     };
   }
-  const comparisonMedia = doc.compare?.b?.media?.[deviceId];
-  if (comparisonMedia && doc.compare?.b) {
-    doc.compare.b.media = {
-      ...doc.compare.b.media,
-      [id]: structuredClone(comparisonMedia),
-    };
-  }
+  duplicateCompareDeviceTargets(doc, deviceId, id);
   return id;
 }
 
@@ -185,10 +180,7 @@ export function removeDevice(doc: SceneDoc, deviceId: string): string | null {
     delete doc.deviceLayout.devices[deviceId];
     if (Object.keys(doc.deviceLayout.devices).length === 0) delete doc.deviceLayout.devices;
   }
-  if (doc.compare?.b?.media?.[deviceId]) {
-    delete doc.compare.b.media[deviceId];
-    if (Object.keys(doc.compare.b.media).length === 0) delete doc.compare.b.media;
-  }
+  pruneCompareDeviceTargets(doc, deviceId);
   if (doc.cameraRig) doc.cameraRig = bakeRigBinding(doc.cameraRig as RigDoc, deviceId);
   return devices[currentIndex]?.id ?? devices[currentIndex - 1]?.id ?? null;
 }

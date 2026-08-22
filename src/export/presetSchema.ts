@@ -24,6 +24,7 @@ export interface EncodeSpec {
   tenBit?: boolean;
   faststart?: boolean;
   colourTags?: boolean;
+  posterFrame?: boolean;
   audio?: {
     codec: { aacKbps: number } | { pcmBits: number };
     loudnessGainDb?: number;

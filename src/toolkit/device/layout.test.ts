@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeFormat, FORMATS } from "../../engine/format";
 import type { SceneDocDeviceLayout } from "../../engine/sceneDocSchema";
+import { resolveAvailableDeviceSpec } from "./catalog";
 import { resolveDeviceLayout } from "./layout";
 
 const wide = computeFormat(FORMATS["16:9"]);
@@ -19,7 +20,8 @@ describe("resolveDeviceLayout", () => {
     const [a, b] = resolveDeviceLayout(phones(2), layout({ gap: 0.4 }), wide);
     expect(a.position?.[0]).toBeCloseTo(-(b.position?.[0] ?? 0));
     // Equal widths: centre distance = one device width (at base scale) + the gap.
-    expect((b.position?.[0] ?? 0) - (a.position?.[0] ?? 0)).toBeCloseTo(1.25 * 0.92 + 0.4);
+    const width = resolveAvailableDeviceSpec("iphone-17-pro").layoutWidth;
+    expect((b.position?.[0] ?? 0) - (a.position?.[0] ?? 0)).toBeCloseTo(width * 0.92 + 0.4);
     expect(a.rotationDeg).toEqual([0, 0, 0]);
     expect(a.scale).toBeCloseTo(0.92);
   });
@@ -107,9 +109,11 @@ describe("resolveDeviceLayout", () => {
     ];
     const [phone, laptop] = resolveDeviceLayout(pair, layout({ gap: 0.3 }), wide);
     const centreGap = (laptop.position?.[0] ?? 0) - (phone.position?.[0] ?? 0);
-    // Half of each width (at base scale) plus the gap; this pair fits 16:9 unscaled.
+    const phoneWidth = resolveAvailableDeviceSpec("iphone-17-pro").layoutWidth;
+    const laptopWidth = resolveAvailableDeviceSpec("macbook-pro-16").layoutWidth;
+    // Half of each rendered width at base scale, plus the gap.
     expect(phone.scale).toBeCloseTo(0.92);
-    expect(centreGap).toBeCloseTo(((1.25 + 3.4) / 2) * 0.92 + 0.3);
+    expect(centreGap).toBeCloseTo(((phoneWidth + laptopWidth) / 2) * 0.92 + 0.3);
   });
 
   it("stamps the resolved pose so consumer spreads cannot drift it", () => {
@@ -135,5 +139,25 @@ describe("resolveDeviceLayout", () => {
     expect(only.ground).toBe(true);
     expect(only.scale).toBeCloseTo(0.92);
     expect(resolveDeviceLayout([], layout(), wide)).toEqual([]);
+  });
+
+  it("lays out an unknown model with the same width as the Android fallback", () => {
+    const unknown = resolveDeviceLayout(
+      [
+        { id: "d1", model: "mystery" },
+        { id: "d2", model: "mystery" },
+      ],
+      layout({ gap: 0.4 }),
+      wide,
+    );
+    const android = resolveDeviceLayout(
+      [
+        { id: "d1", model: "android" },
+        { id: "d2", model: "android" },
+      ],
+      layout({ gap: 0.4 }),
+      wide,
+    );
+    expect(unknown).toEqual(android);
   });
 });

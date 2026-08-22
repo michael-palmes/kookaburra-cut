@@ -47,7 +47,13 @@ import { AssetBoundary } from "../media/AssetBoundary";
 import { preparingVideoTexture } from "../media/preparingTexture";
 import { useSceneStaged, useStageFloorY, useStageMapShadows } from "../stage/context";
 import type { V3 } from "../types";
-import { DEVICE_CATALOG, DEVICE_FALLBACK_ID, type DeviceId, deviceColour } from "./catalog";
+import {
+  AVAILABLE_DEVICE_IDS,
+  DEVICE_CATALOG,
+  type DeviceId,
+  deviceColour,
+  resolveAvailableDeviceId,
+} from "./catalog";
 import { DeviceGizmo } from "./DeviceGizmo";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
@@ -607,12 +613,15 @@ export function Device(props: DeviceProps) {
   const stageFloorY = useStageFloorY();
   const shadowMode = effectiveDeviceShadowMode(shadow);
 
-  const spec = DEVICE_CATALOG[model];
-  // A bad scene document must degrade, never tear down the canvas tree (bootTrap lesson).
-  if (!spec) console.error(`Device: unknown model "${model}"`);
+  const renderModel = resolveAvailableDeviceId(model);
+  const activeSpec = DEVICE_CATALOG[renderModel];
+  useEffect(() => {
+    if (renderModel !== model) {
+      console.warn(`Device: model "${model}" is unavailable in this build, using Android`);
+    }
+  }, [model, renderModel]);
 
-  const { scene } = useGLTF((spec ?? DEVICE_CATALOG[DEVICE_FALLBACK_ID]).glbUrl);
-  const activeSpec = spec ?? DEVICE_CATALOG[DEVICE_FALLBACK_ID];
+  const { scene } = useGLTF(activeSpec.glbUrl);
   // Memoised because custom tints mint a fresh spec per call, and colourSpec keys the clone below.
   const colourSpec = useMemo(() => deviceColour(activeSpec, colour), [activeSpec, colour]);
 
@@ -892,6 +901,6 @@ export function DevicesFallback() {
 
 // Warm drei's cache so the first render has geometry ready; the export preamble awaits `preloadCatalogModels()` for the hard barrier.
 {
-  const urls = new Set(Object.values(DEVICE_CATALOG).map((s) => s.glbUrl));
+  const urls = new Set(AVAILABLE_DEVICE_IDS.map((id) => DEVICE_CATALOG[id].glbUrl));
   for (const url of urls) useGLTF.preload(url);
 }

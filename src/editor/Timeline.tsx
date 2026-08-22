@@ -24,7 +24,7 @@ export interface TimelineProps {
   playheadMs: number;
   onSelect: (id: string | null) => void;
   onPlayhead: (ms: number) => void;
-  onCommit: (clips: EditClip[]) => void;
+  onCommit: (clips: EditClip[], label: string) => void;
   /** Live trim feedback: the dragged edge's source frame, null when the drag ends. */
   onTrimScrub?: (scrub: TrimScrub | null) => void;
   /** Horizontal wheel/trackpad delta scrubs the playhead (scroll scrubs in both the preview and the timeline; the timeline pans via auto-follow). */
@@ -286,7 +286,13 @@ export function Timeline({
       draft &&
       (orig.inMs !== draft.inMs || orig.outMs !== draft.outMs || orig.holdMs !== draft.holdMs)
     ) {
-      onCommit(drag.draft);
+      const label =
+        drag.kind === "hold"
+          ? "retime freeze"
+          : drag.kind === "trim-in"
+            ? "trim clip start"
+            : "trim clip end";
+      onCommit(drag.draft, label);
     }
     setDrag(null);
     onTrimScrub?.(null);
@@ -333,7 +339,7 @@ export function Timeline({
   function onClipPointerUp() {
     if (drag?.kind !== "move") return;
     if (drag.active && drag.toIndex !== drag.fromIndex) {
-      onCommit(moveClip(drag.orig, drag.fromIndex, drag.toIndex));
+      onCommit(moveClip(drag.orig, drag.fromIndex, drag.toIndex), "reorder clip");
     }
     setDrag(null);
   }

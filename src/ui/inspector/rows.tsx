@@ -421,6 +421,23 @@ function Chevron() {
   );
 }
 
+export function TableGridIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3.5" width="14" height="13" rx="1.5" />
+      <path d="M3 8h14M8 3.5v13M12.5 3.5v13" />
+    </svg>
+  );
+}
+
 export function ActionRow({
   icon,
   label,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDocObjectSpec } from "../../engine/sceneDocSchema";
+import { isDeviceAvailable } from "../device/catalog";
 import { besideDevicePlacement, floorCentrePlacement, frontOfDevicePlacement } from "./presets";
 
 type Device = Parameters<typeof besideDevicePlacement>[0];
@@ -28,11 +29,13 @@ describe("besideDevicePlacement", () => {
     expect((offset.position?.[0] ?? 0) - 2).toBeGreaterThan(base.position?.[0] ?? 0);
   });
 
-  it("width-fit devices (laptops) read wider than phones", () => {
+  it("uses laptop width only when the laptop model is available", () => {
     const laptop = { id: "d1", model: "macbook-pro-16" } as Device;
     const besidePhone = besideDevicePlacement(phone, "right");
     const besideLaptop = besideDevicePlacement(laptop, "right");
-    expect(besideLaptop.position?.[0]).toBeGreaterThan(besidePhone.position?.[0] ?? 0);
+    expect((besideLaptop.position?.[0] ?? 0) > (besidePhone.position?.[0] ?? 0)).toBe(
+      isDeviceAvailable("macbook-pro-16"),
+    );
   });
 
   it("an unknown model still yields a finite grounded placement", () => {

@@ -126,6 +126,26 @@ describe("applyEditRepoint (edit-render re-point targeting)", () => {
     expect(applyEditRepoint(doc, "device", rel, "gone")).toBeNull();
   });
 
+  it("an after-device edit creates an override without changing before", () => {
+    const doc = docWith({
+      devices: [videoDevice("d1", "assets/before.mp4")] as SceneDoc["devices"],
+      compare: { b: {} },
+    });
+    const next = applyEditRepoint(doc, "compareDevice", rel, "d1");
+    expect(next?.devices?.[0].media?.src).toBe("assets/before.mp4");
+    expect(next?.compare?.b?.media?.d1.src).toBe(rel);
+  });
+
+  it("an after-device edit keeps the override's media kind", () => {
+    const doc = docWith({
+      devices: [imageDevice("d1", "assets/before.png")] as SceneDoc["devices"],
+      compare: { b: { media: { d1: { src: "assets/after.mp4", kind: "video" } } } },
+    });
+    const next = applyEditRepoint(doc, "compareDevice", rel, "d1");
+    expect(next?.compare?.b?.media?.d1).toEqual({ src: rel, kind: "video" });
+    expect(next?.devices?.[0].media?.kind).toBe("image");
+  });
+
   it("a media-less device and a device-less doc re-point nothing", () => {
     const bare = docWith({
       devices: [{ id: "d1", model: "iphone-17-pro" }] as SceneDoc["devices"],

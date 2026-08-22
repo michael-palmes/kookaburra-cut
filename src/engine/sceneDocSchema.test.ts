@@ -334,6 +334,38 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("parses comparison staging and device appearance independently", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        compare: {
+          b: {
+            backdrop: { type: "floor", color: "#123456" },
+            background: { type: "color", color: "#654321" },
+            deviceAppearance: {
+              d1: { colour: "silver", shadow: "none" },
+              d2: { colour: "graphite", shadow: "unknown" },
+              d3: { colour: 42, shadow: "long" },
+              d4: { colour: "   " },
+              empty: {},
+            },
+          },
+        },
+      },
+      "test",
+    );
+    expect(doc?.compare?.b?.backdrop).toEqual({ type: "floor", color: "#123456" });
+    expect(doc?.compare?.b?.background).toEqual({ type: "color", color: "#654321" });
+    expect(doc?.compare?.b?.deviceAppearance).toEqual({
+      d1: { colour: "silver", shadow: "none" },
+      d2: { colour: "graphite" },
+      d3: { shadow: "long" },
+    });
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
   it("keeps a non-empty string themeId and drops other shapes (v8)", () => {
     expect(parseSceneDoc({ version: 1, themeId: "kookaburra-studio-white" }, "test")?.themeId).toBe(
       "kookaburra-studio-white",

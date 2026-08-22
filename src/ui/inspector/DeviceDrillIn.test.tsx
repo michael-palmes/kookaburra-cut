@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
+import {
+  AVAILABLE_DEVICE_IDS,
+  DEFAULT_DEVICE_ID,
+  isDeviceAvailable,
+  resolveAvailableDeviceSpec,
+} from "../../toolkit/device/catalog";
 import { effectiveDeviceShadowMode } from "../../toolkit/device/Device";
 import {
   armDeviceRemoveConfirmation,
@@ -178,13 +184,14 @@ describe("DeviceDrillIn", () => {
     const html = renderToStaticMarkup(<DeviceDrillIn {...props(deviceDoc())} />);
 
     expect(html).toContain('aria-label="Back to Scene from Device"');
-    expect(html).toContain("iPhone 17 Pro");
+    expect(html).toContain(resolveAvailableDeviceSpec("iphone-17-pro").name);
     expect(html).toContain("Device 2 of 3");
     expect(html).toContain('aria-label="Previous device"');
     expect(html).toContain('aria-label="Next device"');
     expect(html).toContain('class="device-editor-preview"');
     expect(html).toContain('<fieldset class="device-editor-finishes" aria-label="Device finish">');
-    expect(html).toContain("Deep Blue");
+    // Deep Blue is an iPhone finish; the fallback offers its own, so name the resolved one.
+    expect(html).toContain(isDeviceAvailable("iphone-17-pro") ? "Deep Blue" : "Graphite");
     expect(html).toContain("Change device");
     expect(html).toContain("demo.mov");
     expect(html).toContain("0:12 · 1170×2532");
@@ -264,15 +271,16 @@ describe("DeviceDrillIn", () => {
       <DeviceDrillIn {...props(doc)} deviceId="d3" screenMediaPreviewUrl={undefined} />,
     );
 
-    expect(html).toContain("MacBook Pro 16″");
+    const laptop = isDeviceAvailable("macbook-pro-16");
+    expect(html).toContain(resolveAvailableDeviceSpec("macbook-pro-16").name);
     expect(html).toContain('<div class="device-editor-media-thumb">');
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
       "Left-right",
       "Up-down",
       "Depth",
-      "Lid angle",
+      ...(laptop ? ["Lid angle"] : []),
     ]);
-    expect(captures.sliders.at(-1)?.value).toBe(90);
+    if (laptop) expect(captures.sliders.at(-1)?.value).toBe(90);
   });
 
   it("previews layout-slider ticks without history and commits once from the original baseline", () => {
@@ -364,7 +372,7 @@ describe("DeviceDrillIn", () => {
     expect(effectiveDeviceShadowMode("none")).toBe("none");
   });
 
-  it("identifies an unknown model with the same legacy fallback as the renderer", () => {
+  it("identifies an unknown model with the same available fallback as the renderer", () => {
     const doc: SceneDoc = {
       version: 1,
       devices: [{ id: "d1", model: "future-device" }],
@@ -372,7 +380,7 @@ describe("DeviceDrillIn", () => {
 
     const html = renderToStaticMarkup(<DeviceDrillIn {...props(doc)} deviceId="d1" />);
 
-    expect(html).toContain("iPhone 15 Pro");
+    expect(html).toContain("Android");
     expect(html).not.toContain("iPhone 17 Pro");
   });
 
@@ -427,11 +435,14 @@ describe("DeviceDrillIn", () => {
       '<fieldset class="inspector-device-switcher" aria-label="Device model">',
     );
     expect(html).toContain('aria-label="Apply device model to"');
-    expect(html.match(/class="inspector-device-switch-preview"/g)).toHaveLength(4);
-    expect(html.match(/class="inspector-device-switch-name"/g)).toHaveLength(4);
-    expect(html).toContain('class="inspector-device-switch-name">iPhone 17 Pro</span>');
-    expect(html).toContain('class="inspector-device-switch-name">MacBook Pro 16″</span>');
-    expect(html).toContain('class="inspector-device-switch-name">iPhone 15 Pro</span>');
+    const available = AVAILABLE_DEVICE_IDS.length;
+    expect(html.match(/class="inspector-device-switch-preview"/g)).toHaveLength(available);
+    expect(html.match(/class="inspector-device-switch-name"/g)).toHaveLength(available);
+    for (const id of AVAILABLE_DEVICE_IDS) {
+      expect(html).toContain(
+        `class="inspector-device-switch-name">${resolveAvailableDeviceSpec(id).name}</span>`,
+      );
+    }
     expect(html).toContain('class="inspector-device-switch-name">Android</span>');
     expect(html).not.toContain('role="radiogroup"');
     expect(html).toContain("All devices");
@@ -446,7 +457,7 @@ describe("DeviceDrillIn", () => {
   it("disables a one-device current model tile so it cannot create no-op history", () => {
     const html = renderToStaticMarkup(
       <DeviceModelDrillIn
-        model="iphone-17-pro"
+        model={DEFAULT_DEVICE_ID}
         onBack={() => undefined}
         onSelectModel={() => undefined}
       />,

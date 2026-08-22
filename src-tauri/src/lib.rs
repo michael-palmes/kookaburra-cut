@@ -50,9 +50,9 @@ fn show_character_palette(app: AppHandle) -> Result<(), String> {
         app.run_on_main_thread(|| {
             use objc2_app_kit::NSApp;
             use objc2_foundation::MainThreadMarker;
-            if let Some(mtm) = MainThreadMarker::new() {
-                NSApp(mtm).orderFrontCharacterPalette(None);
-            }
+            // run_on_main_thread guarantees the marker required by AppKit.
+            let mtm = unsafe { MainThreadMarker::new_unchecked() };
+            NSApp(mtm).orderFrontCharacterPalette(None);
         })
         .map_err(|error| error.to_string())
     }
@@ -1215,9 +1215,21 @@ pub fn run() {
                     } else if event.id() == "find-project" {
                         let _ = app.emit("kookaburra://find-project", ());
                     } else if event.id() == "kookaburra-undo" {
-                        let _ = app.emit("kookaburra://undo", ());
+                        if let Some(window) = app
+                            .webview_windows()
+                            .into_values()
+                            .find(|window| window.is_focused().unwrap_or(false))
+                        {
+                            let _ = app.emit_to(window.label(), "kookaburra://undo", ());
+                        }
                     } else if event.id() == "kookaburra-redo" {
-                        let _ = app.emit("kookaburra://redo", ());
+                        if let Some(window) = app
+                            .webview_windows()
+                            .into_values()
+                            .find(|window| window.is_focused().unwrap_or(false))
+                        {
+                            let _ = app.emit_to(window.label(), "kookaburra://redo", ());
+                        }
                     } else if event.id() == "show-shortcuts" {
                         let _ = app.emit("kookaburra://show-shortcuts", ());
                     } else if event.id() == "check-for-updates" {
@@ -1317,6 +1329,7 @@ pub fn run() {
             scene_doc::remove_project_scene,
             scene_doc::move_project_scene,
             scene_doc::update_project_scene_transition,
+            scene_doc::apply_project_transition_to_all,
             scene_doc::set_project_theme,
             scene_doc::set_project_audio,
             scene_doc::scaffold_scene,
@@ -1356,6 +1369,7 @@ pub fn run() {
             export_presets::write_export_preset,
             export_presets::delete_export_preset,
             workspace::set_last_export_preset,
+            workspace::set_opening_poster_frame,
             fonts::list_system_fonts,
             fonts::list_workspace_fonts,
             fonts::pin_system_font,

@@ -124,15 +124,16 @@ pub(crate) fn audio_filter_graph(
     total_frames: u32,
     fps: u32,
 ) -> Result<String, String> {
-    audio_filter_graph_gained(audio, total_frames, fps, 0.0)
+    audio_filter_graph_gained(audio, total_frames, fps, 0.0, 0)
 }
 
-/// The graph with an EXTRA gain (the loudness delta) summed with the author's gain into the ONE `volume=` slot; `extra_db = 0.0` emits byte-for-byte the legacy string (the goldens above prove it), so the frozen path is untouched.
+/// The graph with an EXTRA gain (the loudness delta) summed with the author's gain into the ONE `volume=` slot, plus an optional sample-exact leading silence; zero for both emits byte-for-byte the legacy string (the goldens above prove it), so the frozen path is untouched.
 pub(crate) fn audio_filter_graph_gained(
     audio: &AudioOptions,
     total_frames: u32,
     fps: u32,
     extra_db: f64,
+    leading_silence_frames: u32,
 ) -> Result<String, String> {
     if fps == 0 || AUDIO_RATE % (fps as u64) != 0 {
         return Err(format!(
@@ -140,6 +141,7 @@ pub(crate) fn audio_filter_graph_gained(
         ));
     }
     let n_samples = (total_frames as u64) * (AUDIO_RATE / fps as u64);
+    let leading_silence_samples = (leading_silence_frames as u64) * (AUDIO_RATE / fps as u64);
     let mut parts: Vec<String> = vec![
         format!("aformat=sample_fmts=fltp:sample_rates={AUDIO_RATE}:channel_layouts=stereo"),
         format!(
@@ -152,14 +154,25 @@ pub(crate) fn audio_filter_graph_gained(
     if gain_db != 0.0 {
         parts.push(format!("volume={:.2}dB", gain_db));
     }
+    if leading_silence_samples > 0 {
+        parts.push(format!("adelay=delays={leading_silence_samples}S:all=1"));
+    }
     parts.push(format!("apad=whole_len={n_samples}"));
     parts.push(format!("atrim=end_sample={n_samples}"));
     parts.push("asetpts=PTS-STARTPTS".into());
     if audio.fade_in_ms > 0 {
-        parts.push(format!(
-            "afade=t=in:st=0:d={:.3}:curve=qsin",
-            audio.fade_in_ms as f64 / 1000.0
-        ));
+        if leading_silence_samples == 0 {
+            parts.push(format!(
+                "afade=t=in:st=0:d={:.3}:curve=qsin",
+                audio.fade_in_ms as f64 / 1000.0
+            ));
+        } else {
+            parts.push(format!(
+                "afade=t=in:st={:.6}:d={:.3}:curve=qsin",
+                leading_silence_samples as f64 / AUDIO_RATE as f64,
+                audio.fade_in_ms as f64 / 1000.0
+            ));
+        }
     }
     if audio.fade_out_ms > 0 {
         let out_s = audio.fade_out_ms as f64 / 1000.0;
@@ -339,6 +352,9 @@ pub(crate) struct EncodeSpec {
     /// Write bt709 tags AND perform the RGB→YUV conversion with the bt709 matrix at the scale filter (untagged swscale defaults to bt601 on raw RGBA input).
     #[serde(default)]
     pub(crate) colour_tags: bool,
+    /// Insert one encoded frame sampled from the first scene's lower-centre output frame before timeline frame 0.
+    #[serde(default)]
+    pub(crate) poster_frame: bool,
     #[serde(default)]
     pub(crate) audio: Option<EncodeAudio>,
 }
@@ -592,6 +608,7 @@ pub(crate) fn spec_export_args(
                     spec.out_frames(options.total_frames, options.fps),
                     spec.fps,
                     extra_db,
+                    u32::from(spec.poster_frame),
                 )?,
             ]);
             args.extend(spec.audio_encoder_args());
@@ -669,6 +686,7 @@ pub(crate) fn transcode_pass_args(
                     spec.out_frames(options.total_frames, options.fps),
                     spec.fps,
                     extra_db,
+                    u32::from(spec.poster_frame),
                 )?,
             ]);
             args.extend(spec.audio_encoder_args());
@@ -758,6 +776,28 @@ mod audio_graph_tests {
     fn oversized_fade_out_clamps_to_start() {
         let graph = audio_filter_graph(&opts(0, 20_000), 600, 60).unwrap();
         assert!(graph.contains("afade=t=out:st=0.000000:d=20.000:curve=qsin"));
+    }
+
+    #[test]
+    fn poster_frame_delay_is_sample_exact_at_60_and_30_fps() {
+        let graph_60 = audio_filter_graph_gained(&opts(500, 1000), 601, 60, 0.0, 1).unwrap();
+        assert!(graph_60.contains("adelay=delays=800S:all=1"));
+        assert!(graph_60.contains("apad=whole_len=480800"));
+        assert!(graph_60.contains("afade=t=in:st=0.016667:d=0.500:curve=qsin"));
+        assert!(graph_60.contains("afade=t=out:st=9.016667:d=1.000:curve=qsin"));
+
+        let graph_30 = audio_filter_graph_gained(&opts(500, 1000), 301, 30, 0.0, 1).unwrap();
+        assert!(graph_30.contains("adelay=delays=1600S:all=1"));
+        assert!(graph_30.contains("apad=whole_len=481600"));
+        assert!(graph_30.contains("afade=t=in:st=0.033333:d=0.500:curve=qsin"));
+        assert!(graph_30.contains("afade=t=out:st=9.033333:d=1.000:curve=qsin"));
+    }
+
+    #[test]
+    fn zero_leading_frames_keep_the_existing_graph_exactly() {
+        let legacy = audio_filter_graph(&opts(500, 1000), 600, 60).unwrap();
+        let gained = audio_filter_graph_gained(&opts(500, 1000), 600, 60, 0.0, 0).unwrap();
+        assert_eq!(gained, legacy);
     }
 }
 
@@ -979,6 +1019,7 @@ mod spec_argv_goldens {
             ten_bit: false,
             faststart: true,
             colour_tags: true,
+            poster_frame: false,
             audio: None,
         }
     }
@@ -1061,6 +1102,7 @@ mod spec_argv_goldens {
             ten_bit: true,
             faststart: false,
             colour_tags: false,
+            poster_frame: false,
             audio: None,
         };
         let args = spec_export_args(&options(), &spec, "/out/h.mp4").unwrap();
@@ -1179,6 +1221,7 @@ mod spec_argv_goldens {
             ten_bit: false,
             faststart: true,
             colour_tags: false,
+            poster_frame: false,
             audio: None,
         };
         let args = spec_export_args(&options(), &spec, "/out/v.mp4").unwrap();
@@ -1203,6 +1246,7 @@ mod spec_argv_goldens {
             ten_bit: false,
             faststart: false,
             colour_tags: false,
+            poster_frame: false,
             audio: None,
         };
         let args = spec_export_args(&options(), &spec, "/out/p.mov").unwrap();
@@ -1239,6 +1283,40 @@ mod spec_argv_goldens {
         assert!(args.windows(2).any(|w| w == ["-b:a", "128k"]));
     }
 
+    #[test]
+    fn poster_frame_audio_delay_reaches_single_and_two_pass_lanes() {
+        let mut opts = options_30fps();
+        opts.total_frames = 301;
+        opts.audio = Some(AudioOptions {
+            file: "/abs/track.mp3".into(),
+            gain_db: 0.0,
+            fade_in_ms: 500,
+            fade_out_ms: 1000,
+            start_offset_ms: 0,
+        });
+        let mut spec = reels_1080p30();
+        spec.poster_frame = true;
+        spec.audio = Some(EncodeAudio {
+            codec: EncodeAudioCodec::Aac { aac_kbps: 128 },
+            loudness_gain_db: 0.0,
+        });
+
+        let direct = spec_export_args(&opts, &spec, "/out/a.mp4").unwrap();
+        let direct_af = &direct[direct.iter().position(|a| a == "-af").unwrap() + 1];
+        assert!(direct_af.contains("adelay=delays=1600S:all=1"));
+
+        spec.rate = RateControl::Bitrate {
+            target_kbps: 12_000,
+            max_kbps: 16_000,
+            bufsize_kbps: 24_000,
+            two_pass: true,
+        };
+        let pass =
+            transcode_pass_args(&opts, &spec, "/mezz/m.mkv", "/out/a.mp4", 2, "/mezz/log").unwrap();
+        let pass_af = &pass[pass.iter().position(|a| a == "-af").unwrap() + 1];
+        assert_eq!(pass_af, direct_af);
+    }
+
     /// Odd totals ceil (frame 0 survives decimation); dims round to even; the decimation branch is DEFENCE since the app renders at the output rate, pinned here so a faster-than-spec input still decimates correctly.
     #[test]
     fn out_frames_and_dims_maths() {
@@ -1262,11 +1340,13 @@ mod spec_argv_goldens {
             "rate": { "targetKbps": 12000, "maxKbps": 16000, "bufsizeKbps": 24000, "twoPass": true },
             "faststart": true,
             "colourTags": true,
+            "posterFrame": true,
             "audio": { "codec": { "aacKbps": 128 }, "loudnessGainDb": -1.5 }
         }"#;
         let spec: EncodeSpec = serde_json::from_str(json).unwrap();
         assert!(spec.two_pass());
         assert_eq!(spec.fps, 30);
+        assert!(spec.poster_frame);
         let crf = r#"{ "codec": "libx265", "fps": 60, "rate": { "crf": 22 } }"#;
         let spec: EncodeSpec = serde_json::from_str(crf).unwrap();
         assert!(matches!(spec.rate, RateControl::Crf { crf: 22 }));

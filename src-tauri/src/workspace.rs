@@ -65,6 +65,9 @@ pub struct AppSettings {
     /// Global fallback when the project has no entry yet (the most recent pick anywhere).
     #[serde(default)]
     pub last_export_preset: Option<String>,
+    /// Inverted so the serde/Default false means opening poster frames are ON across the app.
+    #[serde(default)]
+    pub disable_opening_poster_frame: bool,
     /// Consented workspace projects (the F-001 trust gate), keyed by slug; a grant stands until the sources change outside a trusted session.
     #[serde(default)]
     pub trusted_projects: HashMap<String, TrustRecord>,
@@ -1022,6 +1025,18 @@ pub fn set_last_export_preset(
     save_settings(&app, &state, settings)
 }
 
+/// Remember the app-wide opening poster-frame choice; the inverted field keeps old and fresh settings default-on.
+#[tauri::command]
+pub fn set_opening_poster_frame(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = load_settings(&app, &state)?;
+    settings.disable_opening_poster_frame = !enabled;
+    save_settings(&app, &state, settings)
+}
+
 /// Remember the Present modal's selection per project (and, on request, as the cross-project default).
 #[tauri::command]
 pub fn set_present_options(
@@ -1758,6 +1773,20 @@ fn collect_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opening_poster_frame_defaults_on_and_round_trips_the_opt_out() {
+        let defaults: AppSettings = serde_json::from_str("{}").unwrap();
+        assert!(!defaults.disable_opening_poster_frame);
+
+        let disabled = AppSettings {
+            disable_opening_poster_frame: true,
+            ..Default::default()
+        };
+        let saved = serde_json::to_string(&disabled).unwrap();
+        let loaded: AppSettings = serde_json::from_str(&saved).unwrap();
+        assert!(loaded.disable_opening_poster_frame);
+    }
 
     #[test]
     fn slugify_flattens_names() {

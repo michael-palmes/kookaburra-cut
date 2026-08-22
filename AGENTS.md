@@ -74,9 +74,10 @@ Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-taur
 
 **Licensed assets:** the device model glbs live at `src/assets/models/licensed/`
 (gitignored, never commit them; UUID filenames, mapping table in
-`src/assets/models/README.md`). Builds fall back to the committed placeholder
-when absent; regenerate with `pnpm assets:devices` from the licensed source
-archives.
+`src/assets/models/README.md`). Clean builds hide unavailable licensed devices
+and render saved references with the committed Android fallback. Copy the
+licensed directory into each worktree or regenerate it with
+`pnpm assets:devices` from the licensed source archives.
 
 ## Scene-authoring hard rules
 

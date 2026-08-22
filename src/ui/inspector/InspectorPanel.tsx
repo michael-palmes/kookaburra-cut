@@ -152,7 +152,7 @@ export function InspectorPanel({
   onOpenEditVideo: (
     sceneIndex: number,
     mediaRel: string,
-    slot?: "device" | "background" | "videoWindow",
+    slot?: "device" | "compareDevice" | "background" | "videoWindow",
     deviceId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
@@ -192,6 +192,25 @@ export function InspectorPanel({
 
   // The Scene tab follows the playhead's dominant scene (decision 2); same derive-don't-subscribe selector the EditBar uses.
   const sceneIndex = useClockStore((s) => activeSceneIndex(project.slots, s.currentMs));
+
+  useEffect(() => {
+    let previous = activeSceneIndex(project.slots, useClockStore.getState().currentMs);
+    return useClockStore.subscribe((state) => {
+      const next = activeSceneIndex(project.slots, state.currentMs);
+      if (next === previous) return;
+      previous = next;
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active.closest(".inspector") &&
+        active.matches(
+          'textarea, [contenteditable="true"], input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"])',
+        )
+      ) {
+        active.blur();
+      }
+    });
+  }, [project.slots]);
 
   // A bundled project can't show the Scene tab; heal the store if we land there.
   useEffect(() => {
