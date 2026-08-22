@@ -171,6 +171,8 @@ export interface VirtualManagedTextOptions {
 export interface ManagedTextModel {
   ownership: "authored" | "managed";
   items: SceneManagedTextItem[];
+  /** Keys of the host chrome this model appended: the only items writers drop, whatever an item is named. */
+  chromeKeys: readonly string[];
   textStyle?: Record<string, string | number>;
   textAnimationOverrides?: Record<string, TextAnimationSpec>;
 }
@@ -533,8 +535,9 @@ export function deriveManagedTextModel(
     const chrome = chromeItemsFor(doc, blockKeys);
     const managedItems =
       chrome.length > 0 ? [...doc.managedText.items, ...chrome] : doc.managedText.items;
+    const chromeKeys = chrome.map((item) => item.key);
     if (!isTemplateManagedText(doc)) {
-      return { ownership: "managed", items: managedItems };
+      return { ownership: "managed", items: managedItems, chromeKeys };
     }
     const keys = new Set(blockKeys);
     const textStyle: Record<string, string | number> = {};
@@ -546,11 +549,13 @@ export function deriveManagedTextModel(
     return {
       ownership: "managed",
       items: managedItems,
+      chromeKeys,
       ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
       ...(Object.keys(textAnimationOverrides).length > 0 ? { textAnimationOverrides } : {}),
     };
   }
   const items: SceneManagedTextItem[] = [];
+  const chromeKeys: string[] = [];
   const textStyle: Record<string, string | number> = {};
   const textAnimationOverrides: Record<string, TextAnimationSpec> = {};
   const used = new Set<string>();
@@ -586,6 +591,7 @@ export function deriveManagedTextModel(
   }
   for (const item of chromeItemsFor(doc, used)) {
     used.add(item.key);
+    chromeKeys.push(item.key);
     items.push(item);
   }
   for (const [key, text] of Object.entries(doc.text ?? {})) {
@@ -597,6 +603,7 @@ export function deriveManagedTextModel(
   return {
     ownership: "authored",
     items,
+    chromeKeys,
     ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
     ...(Object.keys(textAnimationOverrides).length > 0 ? { textAnimationOverrides } : {}),
   };
@@ -609,11 +616,13 @@ function cloneItem(item: SceneManagedTextItem): SceneManagedTextItem {
   };
 }
 
-/** The model's own items: host chrome is editable but never belongs to the block the stack renders. */
+/** The model's own items: only the chrome the model appended is editable without belonging to the block the stack renders, so a hand-authored item sharing a chip key stays owned. */
 export function ownedManagedTextItems(
   items: readonly SceneManagedTextItem[],
+  chromeKeys: readonly string[],
 ): SceneManagedTextItem[] {
-  return items.filter((item) => !isCompareChipTextKey(item.key));
+  const chrome = new Set(chromeKeys);
+  return items.filter((item) => !chrome.has(item.key));
 }
 
 /** Materialises one virtual snapshot while retaining every authored field for exact undo/removal. */
@@ -625,7 +634,7 @@ export function materialiseManagedText(doc: SceneDoc, model: ManagedTextModel): 
     : doc.textAnimationOverrides;
   return {
     ...doc,
-    managedText: { items: ownedManagedTextItems(model.items).map(cloneItem) },
+    managedText: { items: ownedManagedTextItems(model.items, model.chromeKeys).map(cloneItem) },
     ...(textStyle && Object.keys(textStyle).length > 0 ? { textStyle } : {}),
     ...(textAnimationOverrides && Object.keys(textAnimationOverrides).length > 0
       ? { textAnimationOverrides }

@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { isCompareChipTextKey } from "../../engine/compareChipText";
 import {
   deriveManagedTextModel,
   isChromeManagedTextGroup,
@@ -239,7 +238,8 @@ function TextAlignmentIcon({ align }: { align: SceneTextAlign }) {
   );
 }
 
-function TextControlIcon({
+/** The text drill's control glyphs; `colour` is shared with the comparison drill's divider colour row, which wears the same layout. */
+export function TextControlIcon({
   type,
 }: {
   type: "gap" | "indent" | "motion" | "spacing" | "font" | "colour";
@@ -453,14 +453,14 @@ export function ManagedTextDrill({
 }: ManagedTextDrillProps) {
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
-  const groups = resolveManagedTextGroups(model.items, doc.managedText?.groups);
+  const groups = resolveManagedTextGroups(model.items, doc.managedText?.groups, model.chromeKeys);
   const selectedGroup = selectedManagedTextGroup(groups, selectedItemKey, requestedGroupKey);
   const groupItems = selectedGroup?.items ?? [];
   const isSingleItemGroup = groupItems.length === 1;
   const selected = groupItems.find((item) => item.key === selectedItemKey) ?? groupItems[0] ?? null;
   // Host chrome (the comparison chips) owns copy and style only: it has no group, no type and no reveal of its own.
   const chromeGroup = selectedGroup ? isChromeManagedTextGroup(selectedGroup) : false;
-  const chromeItem = selected ? isCompareChipTextKey(selected.key) : false;
+  const chromeItem = selected ? model.chromeKeys.includes(selected.key) : false;
   const resolvedVirtualOptions = optionsFor(doc);
   const legacyIcon = resolvedVirtualOptions.icon ?? doc.headerIcon;
   const legacyIconKey = legacyIcon ? (resolvedVirtualOptions.iconKey ?? "icon") : null;

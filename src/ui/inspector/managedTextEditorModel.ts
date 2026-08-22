@@ -4,7 +4,6 @@ import {
   clearTemplateManagedTextLayout,
   DEFAULT_MANAGED_TEXT_GROUP_KEY,
   deriveManagedTextModel,
-  isChromeManagedTextGroup,
   MANAGED_TEXT_FRAME_ICON_KEY,
   managedTextPoints,
   materialiseManagedFrameIcon,
@@ -380,13 +379,12 @@ function rawGroupsForItems(
   items: readonly SceneManagedTextItem[],
   groups: readonly SceneManagedTextGroup[] | undefined,
 ): SceneManagedTextGroup[] {
-  return resolveManagedTextGroups(items, groups)
-    .filter((group) => !isChromeManagedTextGroup(group))
-    .map((group) => ({
-      key: group.key,
-      itemKeys: [...group.itemKeys],
-      ...(group.align ? { align: group.align } : {}),
-    }));
+  // Chrome is already out of these items, so every group here is content the document owns.
+  return resolveManagedTextGroups(items, groups, []).map((group) => ({
+    key: group.key,
+    itemKeys: [...group.itemKeys],
+    ...(group.align ? { align: group.align } : {}),
+  }));
 }
 
 function normaliseItemsToGroupOrder(
@@ -449,8 +447,8 @@ export function applyManagedTextStructuralAction(
   virtualOptions: VirtualManagedTextOptions = {},
 ): ManagedTextStructuralResult | null {
   const model = deriveManagedTextModel(doc, registrations, virtualOptions);
-  // Host chrome never enters the block, so no structural action can move, copy or delete a chip row.
-  const sourceItems = cloneItems(ownedManagedTextItems(model.items));
+  // Appended host chrome never enters the block, so no structural action can move, copy or delete a chip row.
+  const sourceItems = cloneItems(ownedManagedTextItems(model.items, model.chromeKeys));
   const items = cloneItems(sourceItems);
   const hadExplicitGroups = doc.managedText?.groups !== undefined;
   const groups = rawGroupsForItems(sourceItems, doc.managedText?.groups);
@@ -729,11 +727,10 @@ export async function performManagedTextStructuralAction({
 }: PerformManagedTextStructuralActionOptions): Promise<ManagedTextStructuralStatus> {
   if (doc.managedText === undefined) {
     if (!confirmTakeover) return "cancelled";
+    const model = deriveManagedTextModel(doc, registrations, virtualOptions);
     const accepted = await confirmTakeover({
       action,
-      itemCount: ownedManagedTextItems(
-        deriveManagedTextModel(doc, registrations, virtualOptions).items,
-      ).length,
+      itemCount: ownedManagedTextItems(model.items, model.chromeKeys).length,
     });
     if (!accepted) return "cancelled";
   }

@@ -10,6 +10,7 @@ import {
   managedFrameIconItemKey,
   managedTextOwnsScene,
   materialiseManagedText,
+  ownedManagedTextItems,
   resolveManagedTextGroups,
   resolveManagedTextRenderPlan,
   resolveSpecialisedTextCopy,
@@ -542,7 +543,7 @@ describe("managed text ownership", () => {
     ];
     const doc: SceneDoc = { version: 1, managedText: { items } };
     const model = deriveManagedTextModel(doc, [{ key: "other", text: "Ignored" }]);
-    expect(model).toEqual({ ownership: "managed", items });
+    expect(model).toEqual({ ownership: "managed", items, chromeKeys: [] });
     expect(model.items).toBe(items);
   });
 
@@ -563,11 +564,12 @@ describe("managed text ownership", () => {
     expect(template).toEqual({
       ownership: "managed",
       items,
+      chromeKeys: [],
       textStyle: { titleColor: "muted", titleFont: "Inter@500", titleSize: 0.72 },
       textAnimationOverrides: { title: registration.motion },
     });
     expect(template.items).toBe(items);
-    expect(generic).toEqual({ ownership: "managed", items });
+    expect(generic).toEqual({ ownership: "managed", items, chromeKeys: [] });
   });
 
   it("materialises once while retaining the exact authored fields for removal or Undo", () => {
@@ -581,7 +583,11 @@ describe("managed text ownership", () => {
     expect(next.textStyle).toBe(style);
     expect(next.textAnimation).toBe(animation);
     expect(next.managedText?.items).toEqual([{ key: "title", type: "title", text: "Authored" }]);
-    const second = materialiseManagedText(next, { ownership: "authored", items: [] });
+    const second = materialiseManagedText(next, {
+      ownership: "authored",
+      items: [],
+      chromeKeys: [],
+    });
     expect(second).toBe(next);
   });
 
@@ -716,6 +722,36 @@ describe("comparison chip rows", () => {
 
     expect(resolveManagedTextGroups(items, undefined, [])).toEqual([
       { key: "text", itemKeys: ["beforeLabel"], items, implicit: true },
+    ]);
+  });
+
+  it("reports only the chrome it appended, so a block item sharing a chip key stays owned", () => {
+    const items = [{ key: "beforeLabel", type: "subtitle" as const, text: "Authored by hand" }];
+    const model = deriveManagedTextModel({ ...chipsOn, managedText: { items } });
+
+    expect(model.chromeKeys).toEqual(["afterLabel"]);
+    expect(model.items.map(({ key }) => key)).toEqual(["beforeLabel", "afterLabel"]);
+    expect(ownedManagedTextItems(model.items, model.chromeKeys)).toEqual(items);
+  });
+
+  it("gives a block item sharing a chip key a content group, not a chrome row", () => {
+    const items = [{ key: "beforeLabel", type: "subtitle" as const, text: "Authored by hand" }];
+    const model = deriveManagedTextModel({ ...chipsOn, managedText: { items } });
+    const groups = resolveManagedTextGroups(model.items, undefined, model.chromeKeys);
+
+    expect(groups.map((group) => group.key)).toEqual(["text", "compare-chip:afterLabel"]);
+    expect(groups[0]?.itemKeys).toEqual(["beforeLabel"]);
+    expect(groups[1]?.chrome).toBe(true);
+  });
+
+  it("writes a code-owned item sharing a chip key into the block a takeover materialises", () => {
+    const doc: SceneDoc = { ...chipsOn, text: { title: "Owned" } };
+    const model = deriveManagedTextModel(doc, [{ key: "beforeLabel", text: "Authored by hand" }]);
+
+    expect(model.chromeKeys).toEqual(["afterLabel"]);
+    expect(materialiseManagedText(doc, model).managedText?.items).toEqual([
+      { key: "beforeLabel", type: "title", text: "Authored by hand" },
+      { key: "title", type: "title", text: "Owned" },
     ]);
   });
 
