@@ -2338,6 +2338,12 @@ export default function App() {
               onSetTypography={(headline, body, chart) =>
                 void handleSetTypography(headline, body, chart)
               }
+              onScenesCopied={(destName, count) =>
+                setToast({
+                  kind: "success",
+                  message: `Copied ${count} scene${count === 1 ? "" : "s"} to ${destName}`,
+                })
+              }
             />
           )}
         </div>

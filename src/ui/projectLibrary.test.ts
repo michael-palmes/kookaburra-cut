@@ -4,6 +4,7 @@ import {
   filterProjectLibrary,
   projectGroupRows,
   selectedProjectGroup,
+  sortProjectsByRecency,
   UNGROUPED_PROJECTS,
 } from "./projectLibrary";
 
@@ -32,6 +33,32 @@ describe("filterProjectLibrary", () => {
       projects[3],
     ]);
     expect(filterProjectLibrary(projects, ALL_PROJECTS, "tour")).toEqual([projects[1]]);
+  });
+});
+
+describe("sortProjectsByRecency", () => {
+  const rows = [
+    { name: "Beta", lastOpenedMs: 200 },
+    { name: "Never opened", lastOpenedMs: null },
+    { name: "Alpha", lastOpenedMs: 200 },
+    { name: "Newest", lastOpenedMs: 900 },
+    { name: "Also never", lastOpenedMs: null },
+  ];
+
+  it("orders most recent first, breaking ties and never-opened projects by name", () => {
+    expect(sortProjectsByRecency(rows).map((p) => p.name)).toEqual([
+      "Newest",
+      "Alpha",
+      "Beta",
+      "Also never",
+      "Never opened",
+    ]);
+  });
+
+  it("leaves the caller's array alone", () => {
+    const input = [...rows];
+    sortProjectsByRecency(input);
+    expect(input).toEqual(rows);
   });
 });
 

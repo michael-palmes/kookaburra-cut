@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useClockStore } from "../../engine/clock";
-import { type AspectName, FORMATS } from "../../engine/format";
+import { type AspectName, aspectLabel, FORMATS } from "../../engine/format";
 import {
   isWorkspaceProjectId,
   type LoadedProject,
@@ -13,7 +13,6 @@ import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
-import { CopySceneModal } from "../CopySceneModal";
 import { AspectIcon } from "../exportIcons";
 import { FontPicker } from "../FontPicker";
 import { projectRows } from "../inspectorOptions";
@@ -31,6 +30,7 @@ import {
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
+import { ProjectCopyDrill } from "./ProjectCopyDrill";
 import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
 import { ScenesDrillIn } from "./ScenesDrillIn";
 import { SceneTab } from "./SceneTab";
@@ -128,6 +128,7 @@ export function InspectorPanel({
   onDuplicateSceneAt,
   onSetRenderSettings,
   onSetTypography,
+  onScenesCopied,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -179,6 +180,8 @@ export function InspectorPanel({
   onSetRenderSettings: (settings: RenderSettings) => void;
   /** Write the project font override (manifest `typography`; all null clears); App owns the write + history. `chart` is the project's default chart face. */
   onSetTypography: (headline: string | null, body: string | null, chart: string | null) => void;
+  /** Every scene in a Copy-to-project run landed; App toasts. */
+  onScenesCopied: (destName: string, count: number) => void;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
@@ -246,6 +249,21 @@ export function InspectorPanel({
     setOpenRow("playback");
   }, [playbackNonce, tab, setTab]);
 
+  // Copy to project…, from either the timeline menu or the scene manager: the same Project-tab-first hop, landing on the destination picker above Scenes.
+  const sceneCopyNonce = useUiStore((s) => s.sceneCopyNonce);
+  const sceneCopyIndices = useUiStore((s) => s.sceneCopyIndices);
+  const requestSceneCopy = useUiStore((s) => s.requestSceneCopy);
+  const handledSceneCopyNonce = useRef(0);
+  useEffect(() => {
+    if (sceneCopyNonce === 0 || handledSceneCopyNonce.current === sceneCopyNonce) return;
+    if (tab !== "project") {
+      setTab("project");
+      return;
+    }
+    handledSceneCopyNonce.current = sceneCopyNonce;
+    useUiStore.getState().jumpInspectorDrill(["project.scenes", "project.scenes.copyTo"]);
+  }, [sceneCopyNonce, tab, setTab]);
+
   const rows = projectRows({
     isWorkspace,
     themeName: project.theme.name,
@@ -298,7 +316,6 @@ export function InspectorPanel({
   const [themeDraft, setThemeDraft] = useState<string>("");
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
-  const [copyingScenes, setCopyingScenes] = useState<number[] | null>(null);
   const [fontSlot, setFontSlot] = useState<TypographySlot>("headline");
   /** The slot's effective font: the manifest override when set, else the (already-overridden) resolved theme's face; charts fall back to the body face, which is what their labels take unset. */
   const typographyRef = (slot: TypographySlot) => {
@@ -519,6 +536,26 @@ export function InspectorPanel({
               </button>
             </div>
           </div>
+        ) : (tab === "project" || !isWorkspace) &&
+          drillIn === "project.scenes.copyTo" &&
+          isWorkspace ? (
+          <ProjectCopyDrill
+            slug={workspaceSlug(project.id)}
+            indices={sceneCopyIndices}
+            sceneLabel={
+              sceneCopyIndices.length > 1
+                ? `${sceneCopyIndices.length} scenes`
+                : `“${
+                    project.sceneDocs[sceneCopyIndices[0]]?.name ??
+                    sceneFileStem(project.sceneFiles[sceneCopyIndices[0]] ?? "")
+                  }”`
+            }
+            onBack={() => setDrillIn(null)}
+            onDone={(destName, count) => {
+              setDrillIn(null);
+              onScenesCopied(destName, count);
+            }}
+          />
         ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
           <>
             <ScenesDrillIn
@@ -553,7 +590,7 @@ export function InspectorPanel({
                 setScenesBusy(true);
                 void onDeleteScenes(indices).finally(() => setScenesBusy(false));
               }}
-              onCopyToProject={setCopyingScenes}
+              onCopyToProject={requestSceneCopy}
             />
             {duplicating !== null && (
               <DuplicateSceneDialog
@@ -565,22 +602,6 @@ export function InspectorPanel({
                 }
                 onClose={() => setDuplicating(null)}
                 onDuplicate={onDuplicateSceneAt}
-              />
-            )}
-            {copyingScenes !== null && (
-              <CopySceneModal
-                slug={workspaceSlug(project.id)}
-                indices={copyingScenes}
-                sceneLabel={
-                  copyingScenes.length > 1
-                    ? `${copyingScenes.length} scenes`
-                    : `“${
-                        project.sceneDocs[copyingScenes[0]]?.name ??
-                        sceneFileStem(project.sceneFiles[copyingScenes[0]])
-                      }”`
-                }
-                onDone={() => setCopyingScenes(null)}
-                onCancel={() => setCopyingScenes(null)}
               />
             )}
           </>
@@ -612,7 +633,7 @@ export function InspectorPanel({
                         }}
                       >
                         <AspectIcon name={name} />
-                        {name}
+                        {aspectLabel(name)}
                       </button>
                     ))}
                   </div>
