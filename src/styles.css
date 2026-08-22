@@ -698,6 +698,115 @@ body {
   font-size: var(--text-xs);
   align-self: center;
 }
+
+/* The delete-unused sheet. Compound `.modal.unused-media-modal` so the width beats the base
+   `.modal` 30rem declared later in the file (the `.modal.media-modal` lesson above). */
+.modal.unused-media-modal {
+  width: min(38rem, calc(100% - 3rem));
+  max-height: calc(100% - 4rem);
+  overflow: hidden;
+}
+
+/* Toolbar actions ride together on the bar's right edge. */
+.media-browser-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.media-browser-cleanup {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.unused-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.unused-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.unused-row:hover {
+  border-color: var(--text-tertiary);
+}
+
+.unused-thumb {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  background: var(--surface-recessed);
+  border-radius: var(--radius-xs);
+}
+
+/* Same absolute-inset trick as `.media-thumb img`: WKWebView mis-sizes percentage heights here. */
+.unused-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.unused-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.unused-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.unused-row-detail {
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.unused-row-size {
+  flex: none;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.unused-tick-all {
+  align-self: flex-start;
+}
+
+/* `.modal-actions` is flex-end, so the running total parks left without a new wrapper. */
+.unused-summary {
+  margin-right: auto;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.unused-failure {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
 .modal-title-row {
   display: flex;
   gap: var(--space-3);
@@ -1468,6 +1577,11 @@ button.beat-status {
   padding: 0 4px;
   font-size: 10px;
   text-align: center;
+}
+
+/* m:ss.cs needs a floor the narrowest scene cell can't shrink past; the rename input keeps the shared flex. */
+.pb-labels .pb-label-input.pb-label-duration {
+  min-width: 58px;
 }
 
 .pb-right {
@@ -4811,7 +4925,7 @@ button.beat-status {
 /* The scene-length half of the readout doubles as the edit affordance; button and input share one fixed box so editing never resizes it. */
 .anim-duration {
   box-sizing: border-box;
-  width: 56px;
+  width: 68px;
   padding: 0 4px;
   color: inherit;
   font: inherit;
@@ -4828,7 +4942,7 @@ button.beat-status {
 
 .anim-duration-input {
   box-sizing: border-box;
-  width: 56px;
+  width: 68px;
   padding: 0 4px;
   /* The one editable island in a select-none row. */
   user-select: text;
@@ -7552,6 +7666,11 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   margin-right: auto;
 }
 
+/* Footer buttons that lead with a glyph (the Scenes drill-in): the icon never shrinks with the label. */
+.inspector-drill-actions .btn svg {
+  flex: none;
+}
+
 /* The staging block (Style section): the EditBar popover's rows, stacked. */
 .inspector-staging {
   display: flex;
@@ -7808,6 +7927,11 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   border-radius: 1px;
 }
 
+/* The scene manager's destructive footer action reads red at rest; the armed step adds .btn.danger's border. */
+.scene-manager-delete {
+  color: var(--danger);
+}
+
 /* The left rule marks the key whose gizmo handles are showing; it is reserved on every group and
    only coloured on the selected one, so selecting never shifts the fields. The -8px eats exactly
    the rule plus its gap out of the drill body's 16px gutter. */
@@ -7911,7 +8035,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   min-width: 0;
 }
 
-/* The Duration row: label + state + inline seconds field. */
+/* The Duration row: label + state + inline m:ss.cs field. */
 .inspector-duration-row {
   display: flex;
   align-items: center;
@@ -7924,7 +8048,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-seconds {
-  width: 64px;
+  width: 78px;
   flex: none;
 }
 
@@ -7943,7 +8067,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-scene-overview-duration .inspector-seconds {
-  width: 52px;
+  width: 78px;
   height: 22px;
 }
 
@@ -9596,15 +9720,26 @@ textarea.text-inspector-copy-input {
 }
 
 .colour-popover {
+  display: flex;
+  flex-direction: column;
   position: fixed;
   /* Above .modal-overlay (20), below .context-menu (30) so chip menus stack on top. */
   z-index: 22;
-  width: 232px;
-  padding: var(--space-4);
+  width: 288px;
+  padding: 0;
   background: var(--surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   box-shadow: var(--elev-popover);
+}
+
+/* The body scrolls so the preview row below it stays pinned however tall the sections get. */
+.colour-popover-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .colour-popover-section {
@@ -9620,9 +9755,9 @@ textarea.text-inspector-copy-input {
 
 .colour-popover-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 4px;
-  margin-bottom: var(--space-3);
+  margin-top: 4px;
 }
 
 .colour-swatch-chip {
@@ -9639,6 +9774,10 @@ textarea.text-inspector-copy-input {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+/* Twelve columns share the width instead of overflowing the chip's fixed size. */
+.colour-popover-grid .colour-swatch-chip {
+  width: 100%;
+}
 
 .colour-popover-hex-row {
   display: flex;
@@ -9647,17 +9786,77 @@ textarea.text-inspector-copy-input {
   margin-bottom: var(--space-3);
 }
 
+.colour-popover-error {
+  margin: 0 0 var(--space-3);
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.colour-popover-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  margin: 0 0 4px -5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.colour-popover-disclosure .popover-group-label {
+  cursor: pointer;
+}
+
+.colour-popover-chevron {
+  flex: none;
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.colour-popover-chevron.open {
+  transform: rotate(90deg);
+}
+
 .colour-popover-hex-input {
   width: 84px;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
 
+/* The eyedropper: .titlebar-icon-btn shrunk to .btn-small's height so the hex row lines up. */
+.colour-popover-icon-btn {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.colour-popover-icon-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.colour-popover-icon-btn:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
 .colour-popover-preview {
   display: flex;
+  flex: none;
   gap: var(--space-3);
   align-items: center;
-  padding-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -9671,6 +9870,65 @@ textarea.text-inspector-copy-input {
 .colour-popover-preview-details {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* The free-form surface: a saturation/brightness square over a hue rail. */
+.colour-spectrum {
+  margin-bottom: var(--space-3);
+}
+
+.colour-spectrum-square {
+  position: relative;
+  height: 150px;
+  margin-bottom: var(--space-3);
+  /* rgba over the `transparent` keyword: WebKit interpolates that through transparent black and greys the mid-tones. */
+  background-image:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, rgba(255, 255, 255, 0));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.colour-spectrum-hue {
+  position: relative;
+  height: 14px;
+  background-image: linear-gradient(
+    to right,
+    #f00 0%,
+    #ff0 16.6%,
+    #0f0 33.3%,
+    #0ff 50%,
+    #00f 66.6%,
+    #f0f 83.3%,
+    #f00 100%
+  );
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.colour-spectrum-thumb,
+.colour-spectrum-hue-thumb {
+  position: absolute;
+  border: 2px solid #fff;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.colour-spectrum-thumb {
+  width: 12px;
+  height: 12px;
+}
+
+.colour-spectrum-hue-thumb {
+  top: 50%;
+  width: 10px;
+  height: 10px;
 }
 
 /* ── Camera presets: a list of canned moves under the drill-in's rows ── */

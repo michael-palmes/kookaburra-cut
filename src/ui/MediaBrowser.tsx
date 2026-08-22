@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { listEdits } from "../engine/edit";
 import {
   deleteGlobalScreenshot,
@@ -19,6 +20,8 @@ import {
 } from "../engine/media";
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
+import { modalHost } from "./modalHost";
+import { UnusedMediaSheet } from "./UnusedMediaSheet";
 import { useEscapeClose } from "./useEscapeClose";
 import { VideoPlayer } from "./VideoPlayer";
 
@@ -298,6 +301,8 @@ export interface MediaBrowserProps {
   kindDefault?: "video" | "image";
   /** Hide the built-in Add button: the host renders `<AddMediaButton>` in its own title row and bumps `refreshKey` on import. */
   hideAdd?: boolean;
+  /** Show the "Delete unused…" action beside Add media (management surfaces only: the media library modal and the Project tab's media drill-in). A picker's job is choosing a file, so a bulk sweep never appears in one. */
+  cleanupUnused?: boolean;
   /** Per-card ⋯/right-click menu items; omit for none (the editor panel drags instead). The browser hosts one ContextMenu, the house two-step confirm rides `confirmLabel` (see ui/mediaCardMenu.tsx for the shared Edit/Insert/Delete set). */
   cardMenu?: (rel: string, meta: MediaMeta | null, ctx: MediaActionContext) => ContextMenuItem[];
   /** Highlight this rel as the current selection (e.g. the scene's background video). */
@@ -505,6 +510,7 @@ export function MediaBrowser({
   kindDefault,
   globalToggle,
   hideAdd,
+  cleanupUnused,
   cardMenu,
   selectedRel,
   onPick,
@@ -527,6 +533,7 @@ export function MediaBrowser({
   const [pickError, setPickError] = useState<string | null>(null);
   const pickBusyRef = useRef(false);
   const [pickBusy, setPickBusy] = useState(false);
+  const [unusedOpen, setUnusedOpen] = useState(false);
 
   // The visible kind set: a fixed `kinds` filter wins; else the toolbar toggle; else all.
   const allowedKinds = kinds ?? (kindToggle ? [kindTab] : null);
@@ -676,6 +683,11 @@ export function MediaBrowser({
     [edits],
   );
 
+  const editedRels = useMemo(
+    () => new Set((rels ?? []).filter((rel) => editNameOf(rel) !== null)),
+    [rels, editNameOf],
+  );
+
   const previewMeta = preview
     ? ((sourceTab === "global" ? globalMetas[preview] : metas[preview]) ?? null)
     : null;
@@ -751,17 +763,37 @@ export function MediaBrowser({
   ) : (
     <AddMediaButton slug={slug} kinds={kinds} onImported={refresh} />
   );
+  // Library files live in ~/Kookaburra Cut/screenshots and have their own per-card Delete.
+  const cleanupButton =
+    cleanupUnused && sourceTab === "project" ? (
+      <button
+        type="button"
+        className="btn media-browser-cleanup"
+        onClick={() => setUnusedOpen(true)}
+      >
+        Delete unused…
+      </button>
+    ) : null;
 
   const body = (
     <>
-      {((!(sourceRow && kindRow) && sourceRow) || kindRow || hint || addButton) && (
+      {((!(sourceRow && kindRow) && sourceRow) ||
+        kindRow ||
+        hint ||
+        addButton ||
+        cleanupButton) && (
         <div className="media-browser-bar">
           <div className="media-browser-toggles">
             {!(sourceRow && kindRow) && sourceRow}
             {kindRow}
             {hint && <span className="muted media-browser-hint">{hint}</span>}
           </div>
-          {addButton}
+          {(cleanupButton || addButton) && (
+            <div className="media-browser-actions">
+              {cleanupButton}
+              {addButton}
+            </div>
+          )}
         </div>
       )}
       {pickError && <MediaBrowserError message={pickError} />}
@@ -875,6 +907,19 @@ export function MediaBrowser({
       {sourceRow && kindRow ? <ToggleFieldset control={sourceRow}>{body}</ToggleFieldset> : body}
 
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+
+      {/* Portalled: an inspector drill page animates with a transform, which would become the containing block for the fixed overlay. */}
+      {unusedOpen &&
+        createPortal(
+          <UnusedMediaSheet
+            slug={slug}
+            metas={metas}
+            editedRels={editedRels}
+            onDeleted={refresh}
+            onClose={() => setUnusedOpen(false)}
+          />,
+          modalHost(),
+        )}
 
       {preview && previewSrc && (
         <div

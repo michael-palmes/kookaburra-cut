@@ -63,6 +63,50 @@ fn show_character_palette(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// sRGB hex for a sampled colour; NSColor components arrive as CGFloat, which is f64 on Apple Silicon.
+fn srgb_hex(red: f64, green: f64, blue: f64) -> String {
+    let byte = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!("#{:02x}{:02x}{:02x}", byte(red), byte(green), byte(blue))
+}
+
+/// The eyedropper: AppKit's screen colour sampler (no Screen Recording permission, unlike a screen capture), resolved to sRGB hex; `None` means the user cancelled. Async because the sampler returns at once and the user may take seconds to click.
+#[tauri::command]
+async fn sample_screen_colour(app: AppHandle) -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, rx) = oneshot::channel::<Option<String>>();
+        let tx = Mutex::new(Some(tx));
+        app.run_on_main_thread(move || {
+            use block2::RcBlock;
+            use objc2_app_kit::{NSColor, NSColorSampler, NSColorSpace};
+            let sampler = NSColorSampler::new();
+            let handler = RcBlock::new(move |colour: *mut NSColor| {
+                let hex = unsafe { colour.as_ref() }.and_then(|colour| {
+                    // A sampled NSColor carries the display's space (often Display P3), so convert.
+                    let srgb = colour.colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
+                    Some(srgb_hex(
+                        srgb.redComponent(),
+                        srgb.greenComponent(),
+                        srgb.blueComponent(),
+                    ))
+                });
+                if let Some(tx) = tx.lock().ok().and_then(|mut held| held.take()) {
+                    let _ = tx.send(hex);
+                }
+            });
+            unsafe { sampler.showSamplerWithSelectionHandler(&handler) };
+        })
+        .map_err(|error| error.to_string())?;
+        rx.await
+            .map_err(|_| "the colour sampler closed without answering".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("The screen colour sampler is only available on macOS.".into())
+    }
+}
+
 /// Progress event streamed back to the frontend over an ipc `Channel`.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1222,10 +1266,12 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             show_character_palette,
+            sample_screen_colour,
             start_export,
             notify_export_done,
             media::probe_audio,
             media::delete_media,
+            media::unused_media,
             media::rename_media,
             loudness::measure_loudness,
             beats::beat_cache_load,
@@ -1424,6 +1470,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn srgb_hex_rounds_and_clamps_sampled_components() {
+        assert_eq!(srgb_hex(0.0, 0.0, 0.0), "#000000");
+        assert_eq!(srgb_hex(1.0, 1.0, 1.0), "#ffffff");
+        assert_eq!(srgb_hex(0.5, 0.5, 0.5), "#808080");
+        assert_eq!(srgb_hex(1.4, -0.2, 0.5), "#ff0080");
+    }
 
     // F-002: start_export validates project_id/aspect with this same helper before they become filename components.
     #[test]

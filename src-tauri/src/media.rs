@@ -434,17 +434,21 @@ pub(crate) async fn probe_media(app: &AppHandle, abs: &Path) -> Result<ProbeInfo
     })
 }
 
-/// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules, edit documents and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
-pub(crate) fn media_references(project: &std::path::Path, rel: &str) -> Vec<String> {
-    let mut hits = Vec::new();
-    let mut check = |path: &std::path::Path, display: String| {
+/// One project file read once: the display name the in-use guard reports, and the text it searches.
+pub(crate) struct ProjectText {
+    display: String,
+    text: String,
+}
+
+/// Every project file a media reference can live in, read once: the manifest, scene sidecars and modules, and edit documents. Unreadable files are skipped, and order does not matter because `references_in` sorts its hits.
+pub(crate) fn project_texts(project: &Path) -> Vec<ProjectText> {
+    let mut texts = Vec::new();
+    let mut read = |path: &Path, display: String| {
         if let Ok(text) = std::fs::read_to_string(path) {
-            if text.contains(rel) {
-                hits.push(display);
-            }
+            texts.push(ProjectText { display, text });
         }
     };
-    check(
+    read(
         &project.join(MANIFEST_FILENAME),
         MANIFEST_FILENAME.to_owned(),
     );
@@ -455,7 +459,7 @@ pub(crate) fn media_references(project: &std::path::Path, rel: &str) -> Vec<Stri
             if path.is_file() && matches!(ext, Some("json") | Some("tsx")) {
                 if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                     let display = name.to_owned();
-                    check(&path, display);
+                    read(&path, display);
                 }
             }
         }
@@ -467,13 +471,36 @@ pub(crate) fn media_references(project: &std::path::Path, rel: &str) -> Vec<Stri
             if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("json") {
                 if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
                     let display = format!("edits/{name}");
-                    check(&path, display);
+                    read(&path, display);
                 }
             }
         }
     }
+    texts
+}
+
+/// The files in `texts` that mention `rel`, sorted; substring match, so a false positive only ever REFUSES a destructive action, never allows one.
+pub(crate) fn references_in(texts: &[ProjectText], rel: &str) -> Vec<String> {
+    let mut hits: Vec<String> = texts
+        .iter()
+        .filter(|file| file.text.contains(rel))
+        .map(|file| file.display.clone())
+        .collect();
     hits.sort();
     hits
+}
+
+/// The entries of `rels` that nothing in `texts` mentions, input order preserved.
+pub(crate) fn unreferenced_rels<'a>(texts: &[ProjectText], rels: &'a [String]) -> Vec<&'a str> {
+    rels.iter()
+        .filter(|rel| !texts.iter().any(|file| file.text.contains(rel.as_str())))
+        .map(|rel| rel.as_str())
+        .collect()
+}
+
+/// Every project file that mentions `rel` (the in-use guard): scene sidecars, scene TSX modules, edit documents and project.json (audio); substring match, so a false positive only ever REFUSES a destructive action, never allows one.
+pub(crate) fn media_references(project: &Path, rel: &str) -> Vec<String> {
+    references_in(&project_texts(project), rel)
 }
 
 /// A project-relative asset path that stays inside `assets/` (no traversal, no nesting tricks), the shared validation for delete/rename.
@@ -509,6 +536,47 @@ pub fn delete_media(
         return Err(format!("{rel} is still used by: {}", used.join(", ")));
     }
     workspace::trash_path(&path).map_err(|e| format!("couldn't move the file to the Trash: {e}"))
+}
+
+/// One project asset nothing points at: a row in the "Delete unused" sheet.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnusedAsset {
+    pub rel: String,
+    pub bytes: u64,
+    pub kind: String, // "video" | "image"
+}
+
+/// Every media file in a project's `assets/` that no scene, edit or the manifest mentions, newest added first (the grid's order). One pass over the project's text files answers every asset, and the answer comes from the same guard `delete_media` enforces, so the list can never drift from what a delete will allow. Media extensions only: fonts, HDRIs, 3D objects and chart data can be referenced from files this guard never reads, so sweeping them would risk trashing something in use. The samples `ensure_sample_assets` restores at every project load are left out, since deleting one only brings it back.
+#[tauri::command]
+pub fn unused_media(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<Vec<UnusedAsset>, String> {
+    let root = workspace::require_root(&app, &state)?;
+    workspace::validate_slug(&slug)?;
+    let rels = workspace::project_media_rels(&root, &slug)?;
+    let project = root.join(&slug);
+    let texts = project_texts(&project);
+    Ok(unreferenced_rels(&texts, &rels)
+        .into_iter()
+        .filter(|rel| {
+            !rel.strip_prefix("assets/")
+                .is_some_and(workspace::is_backfilled_sample)
+        })
+        .map(|rel| UnusedAsset {
+            bytes: std::fs::metadata(project.join(rel))
+                .map(|m| m.len())
+                .unwrap_or(0),
+            kind: if is_video(&extension_of(Path::new(rel))) {
+                "video".to_owned()
+            } else {
+                "image".to_owned()
+            },
+            rel: rel.to_owned(),
+        })
+        .collect())
 }
 
 /// Rename an asset within `assets/`; same in-use refusal as delete, and the extension must stay (the kind, and any probe cache semantics, ride on it).
@@ -956,6 +1024,72 @@ mod tests {
         let parsed: CachedMeta = serde_json::from_str(legacy).unwrap();
         assert_eq!(parsed.poster_version, 0);
         assert!(poster_is_stale(&parsed));
+    }
+
+    fn file(display: &str, text: &str) -> ProjectText {
+        ProjectText {
+            display: display.into(),
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn a_mention_in_any_project_file_is_reported_once_and_sorted() {
+        let corpus = vec![
+            file(MANIFEST_FILENAME, r#"{"audio":"assets/theme.mp3"}"#),
+            file(
+                "02-hero.json",
+                r#"{"a":"assets/clip.mp4","b":"assets/clip.mp4"}"#,
+            ),
+            file("02-hero.tsx", "const src = \"assets/other.mp4\";"),
+            file("edits/take.json", r#"{"source":"assets/clip.mp4"}"#),
+        ];
+
+        assert_eq!(
+            references_in(&corpus, "assets/clip.mp4"),
+            vec!["02-hero.json".to_owned(), "edits/take.json".to_owned()]
+        );
+        assert_eq!(
+            references_in(&corpus, "assets/theme.mp3"),
+            vec![MANIFEST_FILENAME.to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_near_miss_path_is_not_a_reference() {
+        let corpus = vec![file("02-hero.json", r#"{"a":"assets/logo-2.png"}"#)];
+
+        assert!(references_in(&corpus, "assets/logo.png").is_empty());
+    }
+
+    #[test]
+    fn the_substring_match_only_ever_over_reports() {
+        let corpus = vec![file("02-hero.json", r#"{"a":"x/assets/clip.mp4"}"#)];
+
+        assert_eq!(
+            references_in(&corpus, "assets/clip.mp4"),
+            vec!["02-hero.json".to_owned()]
+        );
+    }
+
+    #[test]
+    fn unreferenced_rels_keeps_input_order_and_drops_anything_mentioned() {
+        let corpus = vec![file("02-hero.json", r#"{"a":"assets/middle.png"}"#)];
+        let rels = vec![
+            "assets/first.mp4".to_owned(),
+            "assets/middle.png".to_owned(),
+            "assets/last.png".to_owned(),
+        ];
+
+        assert_eq!(
+            unreferenced_rels(&corpus, &rels),
+            vec!["assets/first.mp4", "assets/last.png"]
+        );
+    }
+
+    #[test]
+    fn media_references_and_references_in_agree_on_an_empty_corpus() {
+        assert!(references_in(&[], "assets/clip.mp4").is_empty());
     }
 
     #[test]

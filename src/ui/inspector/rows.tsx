@@ -9,13 +9,14 @@ import { useInspectorNavigation } from "./InspectorNavigationShell";
 
 const DRAG_THRESHOLD_PX = 4;
 
-/** Horizontal drag-to-scrub gesture over a numeric input: a plain click still focuses for typing; a >4px drag scrubs even while the input is focused (value tracks live, `onInput` previews each tick, one `onCommit` on release), Shift drags at 0.1x, clamped to min/max/step. The caller owns the input and its text state; `onText` pushes the formatted value there during a drag. Shared by NumberField and DurationRow. */
+/** Horizontal drag-to-scrub gesture over a numeric input: a plain click still focuses for typing; a >4px drag scrubs even while the input is focused (value tracks live, `onInput` previews each tick, one `onCommit` on release), Shift drags at 0.1x, clamped to min/max/step. The caller owns the input and its text state; `onText` pushes the value there during a drag, spelled by `format` when given and by `decimals` otherwise. Shared by NumberField and DurationRow. */
 export function useDragScrub({
   value,
   decimals,
   onCommit,
   onInput,
   onText,
+  format,
   inputRef,
   min,
   max,
@@ -27,6 +28,8 @@ export function useDragScrub({
   onCommit: (n: number) => void;
   onInput?: (n: number) => void;
   onText: (s: string) => void;
+  /** How a scrubbed value is spelled into the field; omit for plain `toFixed(decimals)`. */
+  format?: (n: number) => string;
   inputRef: RefObject<HTMLInputElement | null>;
   min?: number;
   max?: number;
@@ -34,6 +37,7 @@ export function useDragScrub({
   dragScale?: number;
 }) {
   const [dragging, setDragging] = useState(false);
+  const write = format ?? ((n: number) => n.toFixed(decimals));
   const clampSnap = (n: number) => {
     let v = step ? Math.round(n / step) * step : Number(n.toFixed(decimals));
     if (min !== undefined) v = Math.max(min, v);
@@ -61,7 +65,7 @@ export function useDragScrub({
       }
       ev.preventDefault();
       const v = at(ev);
-      onText(v.toFixed(decimals));
+      onText(write(v));
       onInput?.(v);
     };
     const onUp = (ev: PointerEvent) => {
@@ -72,7 +76,7 @@ export function useDragScrub({
       setDragging(false);
       const v = at(ev);
       if (changed(v)) onCommit(v);
-      else onText(value.toFixed(decimals));
+      else onText(write(value));
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);

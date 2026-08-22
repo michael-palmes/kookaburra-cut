@@ -20,6 +20,7 @@ import { useUiStore } from "../store/uiStore";
 import { BeatLane } from "./BeatLane";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { CopySceneModal } from "./CopySceneModal";
+import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
 import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
@@ -113,15 +114,12 @@ export function PlaybackBar({
       y: e.clientY,
       items: sceneMenuItems({
         canRename: !!project.sceneDocs[index],
-        lastScene: project.slots.length <= 1,
+        canDelete: project.slots.length > 1,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
         onRename: () => setRenaming({ index, text: sceneName(index) }),
         onDuplicate: () => setDuplicating(index),
         onDuration: () =>
-          setTiming({
-            index,
-            text: ((project.slots[index]?.durationMs ?? 0) / 1000).toFixed(2),
-          }),
+          setTiming({ index, text: formatSceneLengthMs(project.slots[index]?.durationMs ?? 0) }),
         onCopyBackground: () => {
           const doc = project.sceneDocs[index];
           useUiStore.getState().setBackgroundClipboard({
@@ -161,10 +159,8 @@ export function PlaybackBar({
     const t = timing;
     setTiming(null);
     if (!commit || !t || !project) return;
-    const seconds = Number(t.text);
-    // The inspector DurationRow's floor: junk and sub-100ms values are dropped silently.
-    if (!Number.isFinite(seconds) || seconds < 0.1) return;
-    const ms = Math.round(seconds * 1000);
+    const ms = parseSceneLengthMs(t.text);
+    if (ms === null) return;
     if (ms !== project.slots[t.index]?.durationMs) onSceneDuration(t.index, ms);
   };
 
@@ -363,13 +359,12 @@ export function PlaybackBar({
             ) : timing?.index === span.index ? (
               <input
                 key={span.index}
-                className="modal-input pb-label-input"
+                className="modal-input pb-label-input pb-label-duration"
                 style={{ flexGrow: span.weight }}
                 value={timing.text}
-                inputMode="decimal"
                 // biome-ignore lint/a11y/noAutofocus: entered from the context menu — it IS the focus target
                 autoFocus
-                aria-label="Scene duration in seconds"
+                aria-label="Scene length in minutes and seconds"
                 onPointerDown={holdPointer}
                 onChange={(e) => setTiming({ index: span.index, text: e.target.value })}
                 onBlur={() => finishTiming(true)}

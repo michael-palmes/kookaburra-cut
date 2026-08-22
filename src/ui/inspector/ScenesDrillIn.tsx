@@ -1,12 +1,13 @@
-import { useRef, useState } from "react";
-import { moveSelection } from "../../engine/sceneOrder";
+import { useEffect, useRef, useState } from "react";
+import { moveSelection, planDeletes } from "../../engine/sceneOrder";
 import { useUiStore } from "../../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
-import { sceneMenuItems } from "../sceneMenu";
+import { formatSceneLengthMs, parseSceneLengthMs } from "../durationText";
+import { SceneMenuIcon, sceneMenuItems, sceneSelectionLabel } from "../sceneMenu";
 import { canOpenSceneMenu, nextRename, renameCommit, type SceneEdit } from "../sceneRename";
 import { DrillBack } from "./rows";
 
-/** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; Duplicate copies the selection after itself. Double-click renames in place; right-click opens the shared scene menu (the timeline's). Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
+/** The Project tab's scene manager: a reorderable multi-select list over the manifest's scenes. macOS list selection (click selects, ⌘ toggles, ⇧ ranges); dragging a selected row moves the whole selection as a block; the footer's Duplicate copies the selection after itself and its Delete removes it behind the armed two-step. Double-click renames in place; right-click opens the shared scene menu (the timeline's). Ops resolve through the host's manifest editors, so this stays presentation + order maths. */
 
 export interface SceneManagerRow {
   index: number;
@@ -54,8 +55,8 @@ export function ScenesDrillIn({
   /** Snapshot a scene's background + staging onto the shared clipboard (the host owns the docs). */
   onCopyBackground: (index: number) => void;
   onPasteBackground: (index: number) => void;
-  /** Trash-recoverable scene removal (the host reloads; Rust guards the last scene). */
-  onDelete: (index: number) => void;
+  /** Trash-recoverable removal of the whole selection (the host reloads once; the last scene is refused before any call). */
+  onDelete: (indices: number[]) => void;
   /** Open the copy-to-project picker for the given selection (the host mounts CopySceneModal). */
   onCopyToProject: (indices: number[]) => void;
 }) {
@@ -65,6 +66,7 @@ export function ScenesDrillIn({
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [renaming, setRenaming] = useState<SceneEdit | null>(null);
   const [timing, setTiming] = useState<SceneEdit | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const edits = { busy, renaming, timing };
 
@@ -148,10 +150,8 @@ export function ScenesDrillIn({
     const t = timing;
     setTiming(null);
     if (!commit || !t) return;
-    const seconds = Number(t.text);
-    // The inspector DurationRow's floor: junk and sub-100ms values are dropped silently.
-    if (!Number.isFinite(seconds) || seconds < 0.1) return;
-    const ms = Math.round(seconds * 1000);
+    const ms = parseSceneLengthMs(t.text);
+    if (ms === null) return;
     const current = scenes.find((s) => s.index === t.index);
     if (ms !== current?.durationMs) onDuration(t.index, ms);
   };
@@ -163,14 +163,15 @@ export function ScenesDrillIn({
     // Right-clicking inside a multi-selection turns Duplicate into the footer button's bulk action.
     const bulk =
       selected.has(scene.index) && selected.size > 1 ? [...selected].sort((a, b) => a - b) : null;
+    const deletable = planDeletes(bulk ?? [scene.index], scenes.length);
     setMenu({
       x: e.clientX,
       y: e.clientY,
       items: sceneMenuItems({
         canRename: scene.hasDoc,
-        lastScene: scenes.length <= 1,
+        canDelete: deletable.length > 0,
         hasClipboard: !!useUiStore.getState().backgroundClipboard,
-        duplicateCount: bulk?.length,
+        selectionCount: bulk?.length,
         onRename: () => startRename(scene),
         onDuplicate: () => {
           if (!bulk) {
@@ -182,16 +183,32 @@ export function ScenesDrillIn({
           onDuplicate(bulk);
         },
         onDuration: () =>
-          setTiming({ index: scene.index, text: (scene.durationMs / 1000).toFixed(2) }),
+          setTiming({ index: scene.index, text: formatSceneLengthMs(scene.durationMs) }),
         onCopyBackground: () => onCopyBackground(scene.index),
         onPasteBackground: () => onPasteBackground(scene.index),
-        onDelete: () => onDelete(scene.index),
+        onDelete: () => {
+          setSelected(new Set());
+          setAnchor(null);
+          onDelete(deletable);
+        },
         onCopyToProject: () => onCopyToProject(bulk ?? [scene.index]),
       }),
     });
   };
 
   const selection = [...selected].sort((a, b) => a - b);
+  const deletableSelection = planDeletes(selection, scenes.length);
+  const selectionKey = selection.join(",");
+
+  // The Delete confirmation disarms itself, and on any selection change.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const t = window.setTimeout(() => setConfirmDelete(false), 3000);
+    return () => window.clearTimeout(t);
+  }, [confirmDelete]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm when the selection changes
+  useEffect(() => setConfirmDelete(false), [selectionKey]);
+
   return (
     <div className="inspector-drill">
       <DrillBack label="Project" title="Scenes" onClick={onBack} />
@@ -238,10 +255,9 @@ export function ScenesDrillIn({
                 <input
                   className="modal-input scene-manager-edit scene-manager-edit-duration"
                   value={timing.text}
-                  inputMode="decimal"
                   // biome-ignore lint/a11y/noAutofocus: entered from the context menu, so it IS the focus target
                   autoFocus
-                  aria-label="Scene duration in seconds"
+                  aria-label="Scene length in minutes and seconds"
                   onPointerDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onChange={(e) => setTiming({ index: scene.index, text: e.target.value })}
@@ -253,7 +269,7 @@ export function ScenesDrillIn({
                 />
               ) : (
                 <span className="scene-manager-duration">
-                  {(scene.durationMs / 1000).toFixed(1)}s
+                  {formatSceneLengthMs(scene.durationMs)}
                 </span>
               )}
             </div>
@@ -280,9 +296,31 @@ export function ScenesDrillIn({
             onDuplicate(selection);
           }}
         >
-          {busy
-            ? "Working…"
-            : `Duplicate${selection.length > 1 ? ` ${selection.length} scenes` : ""}`}
+          <SceneMenuIcon id="duplicate" />
+          {busy ? "Working…" : sceneSelectionLabel("Duplicate", selection.length)}
+        </button>
+        <button
+          type="button"
+          className={`btn scene-manager-delete${confirmDelete ? " danger" : ""}`}
+          disabled={busy || deletableSelection.length === 0}
+          title={
+            deletableSelection.length === 0 && selection.length > 0
+              ? "A project needs at least one scene"
+              : undefined
+          }
+          onClick={() => {
+            if (!confirmDelete) {
+              setConfirmDelete(true);
+              return;
+            }
+            setConfirmDelete(false);
+            setSelected(new Set());
+            setAnchor(null);
+            onDelete(deletableSelection);
+          }}
+        >
+          <SceneMenuIcon id="delete" />
+          {confirmDelete ? "Really delete?" : sceneSelectionLabel("Delete", selection.length)}
         </button>
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moveSelection, planDuplicates, planMoves } from "./sceneOrder";
+import { moveSelection, planDeletes, planDuplicates, planMoves } from "./sceneOrder";
 
 describe("moveSelection", () => {
   it("moves one scene forward and back", () => {
@@ -60,6 +60,44 @@ describe("planDuplicates", () => {
         ...before.slice(last + 1),
       ]);
     }
+  });
+});
+
+describe("planDeletes", () => {
+  it("issues the selection descending so earlier removals never shift later ones", () => {
+    expect(planDeletes([1, 2], 4)).toEqual([2, 1]);
+    expect(planDeletes([0, 3], 4)).toEqual([3, 0]);
+  });
+
+  it("replayed sequentially, exactly the selected scenes go", () => {
+    for (const [count, selected] of [
+      [4, [1, 2]],
+      [4, [0, 3]],
+      [5, [0, 1, 2]],
+      [3, [1]],
+    ] as [number, number[]][]) {
+      const before = Array.from({ length: count }, (_, i) => `s${i}`);
+      const scenes = [...before];
+      for (const index of planDeletes(selected, count)) {
+        scenes.splice(index, 1);
+      }
+      expect(scenes).toEqual(before.filter((_, i) => !selected.includes(i)));
+    }
+  });
+
+  it("refuses a selection that would empty the project", () => {
+    expect(planDeletes([0, 1], 2)).toEqual([]);
+    expect(planDeletes([0], 1)).toEqual([]);
+    expect(planDeletes([2, 0, 1], 3)).toEqual([]);
+  });
+
+  it("keeps a partial selection of a two-scene project", () => {
+    expect(planDeletes([1], 2)).toEqual([1]);
+  });
+
+  it("dedupes and drops out-of-range indices", () => {
+    expect(planDeletes([1, 1, 9, -1], 4)).toEqual([1]);
+    expect(planDeletes([], 4)).toEqual([]);
   });
 });
 

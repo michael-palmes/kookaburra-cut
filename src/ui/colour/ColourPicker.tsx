@@ -10,17 +10,26 @@ import { useTheme } from "../../theme";
 import type { Theme } from "../../theme/tokens";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { useEscapeClose } from "../useEscapeClose";
+import { ColourSpectrum } from "./ColourSpectrum";
+import { POPOVER_MARGIN, placeColourPopover } from "./colourPopoverLayout";
 import { COLOUR_PRESET_GRID } from "./colourPresets";
-import { loadColourRecents, rememberColourPick } from "./colourRecents";
+import {
+  loadColourRecents,
+  loadSpectrumOpen,
+  rememberColourPick,
+  rememberSpectrumOpen,
+} from "./colourRecents";
 import { colourSwatchMenu } from "./colourSwatchMenu";
-import { hexToRgbString, normaliseHex } from "./colourUtils";
+import { type Hsv, hexToHsv, hexToRgbString, hsvToHex, normaliseHex } from "./colourUtils";
+import { projectPaletteColours } from "./projectPalette";
+import { sampleScreenColour } from "./screenSampler";
 
-/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (theme tokens, recents, preset grid, hex field, the native NSColorPanel via "Show Colors…", live preview). Discrete picks commit immediately; native-panel drags debounce ~250ms because macOS keeps focus on the hidden input while the panel is open, so blur-only commits looked stale. Right-clicking any square offers copy options. */
+/** The app-wide colour selector: a swatch trigger opening an anchored macOS-style popover (a saturation/brightness spectrum, hex field, a native eyedropper, the native NSColorPanel via "Show Colors…", theme tokens, the project's own colours, recents, a 96-swatch palette, live preview). Discrete picks commit immediately; spectrum and native-panel drags debounce ~250ms into one commit, so a gesture costs one undo entry and one recents entry. Right-clicking any square offers copy options. */
 
 export interface ColourPickerProps {
   /** Current colour, sRGB hex. */
   value: string;
-  /** A settled pick: immediate for discrete picks, debounced during native-panel drags. */
+  /** A settled pick: immediate for discrete picks, debounced during spectrum and native-panel drags. */
   onCommit: (hex: string) => void;
   /** Accessible name for the trigger swatch and the popover. */
   label: string;
@@ -120,11 +129,24 @@ function ColourPopover({
   const theme = themeOverride ?? contextTheme;
   const ref = useRef<HTMLDivElement>(null);
   const nativeRef = useRef<HTMLInputElement>(null);
-  const [pos, setPos] = useState({ left: 0, top: 0 });
+  const [pos, setPos] = useState(() => ({
+    left: 0,
+    top: 0,
+    maxHeight: window.innerHeight - 2 * POPOVER_MARGIN,
+  }));
   const [draft, setDraft] = useState(() => normaliseHex(value) ?? value.toLowerCase());
   const [hexText, setHexText] = useState(draft);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [recents] = useState(loadColourRecents);
+  const [projectColours] = useState(projectPaletteColours);
+  const [hsv, setHsv] = useState(() => hexToHsv(draft));
+  const [sampling, setSampling] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+  const [spectrumOpen, setSpectrumOpen] = useState(loadSpectrumOpen);
+  // The hex the spectrum last produced: without it a drag into black or white would re-derive HSV and lose the hue.
+  const hsvHex = useRef(draft);
+  const samplingRef = useRef(false);
+  const alive = useRef(true);
 
   // Refs so the unmount flush sees the latest state whatever path closed us.
   const draftRef = useRef(draft);
@@ -138,22 +160,29 @@ function ColourPopover({
 
   useEscapeClose(onClose);
 
-  // Anchor below the trigger, flip above on overflow, clamp to the viewport.
+  // Anchor below the trigger, flip above when that side is roomier, cap the height to the viewport.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the fold changes our height, so it is the re-measure trigger
   useLayoutEffect(() => {
     const el = ref.current;
     const anchor = anchorRef.current;
     if (!el || !anchor) return;
     const a = anchor.getBoundingClientRect();
     const r = el.getBoundingClientRect();
-    const left = Math.max(8, Math.min(a.left, window.innerWidth - r.width - 8));
-    let top = a.bottom + 6;
-    if (top + r.height > window.innerHeight - 8) top = a.top - r.height - 6;
-    setPos({ left, top: Math.max(8, top) });
-  }, [anchorRef]);
+    setPos(placeColourPopover(a, r, { width: window.innerWidth, height: window.innerHeight }));
+  }, [anchorRef, spectrumOpen]);
+
+  // Reverse sync: a chip, a typed hex or the native panel moved the draft, so re-derive HSV.
+  useEffect(() => {
+    if (draft === hsvHex.current) return;
+    hsvHex.current = draft;
+    setHsv(hexToHsv(draft));
+  }, [draft]);
 
   // Outside pointerdown closes; the trigger is excluded or its toggle would reopen us.
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
+      // The click that dismisses NSColorSampler lands here while the app is not frontmost.
+      if (samplingRef.current) return;
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchorRef.current?.contains(t)) return;
       onClose();
@@ -163,8 +192,11 @@ function ColourPopover({
   }, [anchorRef, onClose]);
 
   // Every close path unmounts us: flush a pending debounce and record the final pick.
-  useEffect(
-    () => () => {
+  // Setting the latch in the body, not just the cleanup, is what survives StrictMode's remount.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
       if (pending.current !== null) {
         window.clearTimeout(pending.current);
         pending.current = null;
@@ -175,9 +207,8 @@ function ColourPopover({
       if (!skipFlush.current && draftRef.current !== openedWith.current) {
         rememberColourPick(draftRef.current);
       }
-    },
-    [],
-  );
+    };
+  }, []);
 
   const commit = (hex: string) => {
     committed.current = hex;
@@ -196,7 +227,8 @@ function ColourPopover({
     rememberColourPick(hex);
   };
 
-  const onNativeChange = (hex: string) => {
+  // The debounced path, shared by the spectrum and the native panel: one commit per gesture.
+  const commitLater = (hex: string) => {
     setDraft(hex);
     setHexText(hex);
     if (pending.current !== null) window.clearTimeout(pending.current);
@@ -222,6 +254,22 @@ function ColourPopover({
     }
   };
 
+  const sample = async () => {
+    if (samplingRef.current) return;
+    setSampling(true);
+    setSampleError(null);
+    samplingRef.current = true;
+    try {
+      const hex = await sampleScreenColour((message) => {
+        if (alive.current) setSampleError(message);
+      });
+      if (hex && alive.current) pick(hex);
+    } finally {
+      samplingRef.current = false;
+      if (alive.current) setSampling(false);
+    }
+  };
+
   const reset = () => {
     if (!onReset) return;
     if (pending.current !== null) {
@@ -237,6 +285,13 @@ function ColourPopover({
     e.preventDefault();
     e.stopPropagation();
     setMenu({ x: e.clientX, y: e.clientY, items: colourSwatchMenu({ hex }) });
+  };
+
+  const onSpectrumChange = (next: Hsv) => {
+    setHsv(next);
+    const hex = hsvToHex(next);
+    hsvHex.current = hex;
+    commitLater(hex);
   };
 
   const chip = (rawHex: string, title: string, key: string) => {
@@ -257,69 +312,111 @@ function ColourPopover({
 
   return (
     <div ref={ref} className="colour-popover" role="dialog" aria-label={label} style={pos}>
-      <div className="colour-popover-section">
-        <span className="popover-group-label">Theme</span>
-        <div className="colour-popover-row">
-          {THEME_TOKEN_LABELS.map(([token, name]) =>
-            chip(theme.colors[token], `${name} ${theme.colors[token]}`, `theme-${token}`),
-          )}
-        </div>
-      </div>
-      {recents.length > 0 && (
+      <div className="colour-popover-scroll">
         <div className="colour-popover-section">
-          <span className="popover-group-label">Recent</span>
-          <div className="colour-popover-row">
-            {recents.map((hex) => chip(hex, hex, `r-${hex}`))}
-          </div>
-        </div>
-      )}
-      <div className="colour-popover-grid">
-        {COLOUR_PRESET_GRID.map((hex) => chip(hex, hex, hex))}
-      </div>
-      <div className="colour-popover-hex-row">
-        <input
-          className="modal-input colour-popover-hex-input"
-          value={hexText}
-          aria-label={`${label} hex value`}
-          spellCheck={false}
-          onChange={(e) => setHexText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") applyHexText();
-          }}
-          onBlur={applyHexText}
-        />
-        <button type="button" className="btn btn-small" onClick={showNative}>
-          Show Colors…
-        </button>
-        <input
-          ref={nativeRef}
-          type="color"
-          className="visually-hidden"
-          tabIndex={-1}
-          aria-hidden="true"
-          value={draft}
-          onChange={(e) => onNativeChange(e.target.value)}
-        />
-      </div>
-      {onReset && (
-        <div className="colour-popover-hex-row">
           <button
             type="button"
-            className="btn btn-small"
-            title={defaultValue ? `Default ${defaultValue}` : undefined}
-            onClick={reset}
+            className="colour-popover-disclosure"
+            aria-expanded={spectrumOpen}
+            onClick={() => {
+              setSpectrumOpen((open) => {
+                rememberSpectrumOpen(!open);
+                return !open;
+              });
+            }}
           >
-            Reset to default
+            <DisclosureIcon open={spectrumOpen} />
+            <span className="popover-group-label">Spectrum</span>
           </button>
-          {defaultValue && (
-            <span
-              className="colour-swatch-chip"
-              style={{ background: defaultValue }}
-              title={`Default ${defaultValue}`}
-            />
-          )}
+          {spectrumOpen && <ColourSpectrum hsv={hsv} onChange={onSpectrumChange} />}
         </div>
-      )}
+        <div className="colour-popover-hex-row">
+          <input
+            className="modal-input colour-popover-hex-input"
+            value={hexText}
+            aria-label={`${label} hex value`}
+            spellCheck={false}
+            onChange={(e) => setHexText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") applyHexText();
+            }}
+            onBlur={applyHexText}
+          />
+          <button
+            type="button"
+            className="colour-popover-icon-btn"
+            aria-label="Pick a colour from the screen"
+            title="Pick a colour from the screen"
+            aria-pressed={sampling}
+            disabled={sampling}
+            onClick={() => void sample()}
+          >
+            <EyedropperIcon />
+          </button>
+          <button type="button" className="btn btn-small" onClick={showNative}>
+            Show Colors…
+          </button>
+          <input
+            ref={nativeRef}
+            type="color"
+            className="visually-hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+            value={draft}
+            onChange={(e) => commitLater(e.target.value)}
+          />
+        </div>
+        {sampleError && <p className="colour-popover-error">{sampleError}</p>}
+        <div className="colour-popover-section">
+          <span className="popover-group-label">Theme</span>
+          <div className="colour-popover-row">
+            {THEME_TOKEN_LABELS.map(([token, name]) =>
+              chip(theme.colors[token], `${name} ${theme.colors[token]}`, `theme-${token}`),
+            )}
+          </div>
+        </div>
+        {projectColours.length > 0 && (
+          <div className="colour-popover-section">
+            <span className="popover-group-label">Used in this project</span>
+            <div className="colour-popover-row">
+              {projectColours.map((hex) => chip(hex, hex, `p-${hex}`))}
+            </div>
+          </div>
+        )}
+        {recents.length > 0 && (
+          <div className="colour-popover-section">
+            <span className="popover-group-label">Recent</span>
+            <div className="colour-popover-row">
+              {recents.map((hex) => chip(hex, hex, `r-${hex}`))}
+            </div>
+          </div>
+        )}
+        <div className="colour-popover-section">
+          <span className="popover-group-label">Palette</span>
+          <div className="colour-popover-grid">
+            {COLOUR_PRESET_GRID.map((hex) => chip(hex, hex, hex))}
+          </div>
+        </div>
+        {onReset && (
+          <div className="colour-popover-hex-row">
+            <button
+              type="button"
+              className="btn btn-small"
+              title={defaultValue ? `Default ${defaultValue}` : undefined}
+              onClick={reset}
+            >
+              Reset to default
+            </button>
+            {defaultValue && (
+              <span
+                className="colour-swatch-chip"
+                style={{ background: defaultValue }}
+                title={`Default ${defaultValue}`}
+              />
+            )}
+          </div>
+        )}
+      </div>
       <div className="colour-popover-preview">
         <span className="colour-popover-preview-swatch" style={{ background: draft }} />
         <span className="colour-popover-preview-details">
@@ -328,5 +425,41 @@ function ColourPopover({
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
+  );
+}
+
+function EyedropperIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="M12.4 3.9a2.3 2.3 0 0 1 3.3 3.3l-2 2-3.3-3.3 2-2Z" />
+      <path d="m10.4 5.9-6 6a2 2 0 0 0-.5 1v2.2h2.2a2 2 0 0 0 1-.5l6-6" />
+      <path d="m8.2 7.6 4.2 4.2" />
+    </svg>
+  );
+}
+
+/** The spectrum's fold marker: the same 20-box stroke as the row icons, rotated by CSS when open. */
+function DisclosureIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`colour-popover-chevron${open ? " open" : ""}`}
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d="m8 6 4 4-4 4" />
+    </svg>
   );
 }
