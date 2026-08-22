@@ -1,6 +1,6 @@
 import type { CompareMaskType } from "./sceneCompare";
 
-/** The comparison mask picker's single source of truth (the transition-catalogue pattern): one row per mask type, structure-pinned in tests against the schema union and the shader dispatch ids so picker and compositor can never drift. `needsAngle`/`needsCenter` gate which mask fields the inspector shows; `hasLine` gates the divider-line chrome rows (the radial sweep has no stable line width, blend has no line at all). */
+/** The comparison mask picker's single source of truth (the transition-catalogue pattern): one row per mask type, structure-pinned in tests against the schema union and the shader dispatch ids so picker and compositor can never drift. `needsAngle`/`needsCenter` gate which mask fields the inspector shows; `hasLine` gates the divider-line chrome rows (the radial sweep has no stable line width, blend has no line at all); `hasSoftness` gates the Edge softness row (blend cross-fades whole frames, so it has no edge to feather and `compareCoverageAt` ignores softness there). */
 export interface CompareMaskEntry {
   id: CompareMaskType;
   label: string;
@@ -9,6 +9,7 @@ export interface CompareMaskEntry {
   needsCenter: boolean;
   hasLine: boolean;
   hasGrip: boolean;
+  hasSoftness: boolean;
 }
 
 export const COMPARE_MASK_CATALOG: readonly CompareMaskEntry[] = [
@@ -20,6 +21,7 @@ export const COMPARE_MASK_CATALOG: readonly CompareMaskEntry[] = [
     needsCenter: false,
     hasLine: true,
     hasGrip: true,
+    hasSoftness: true,
   },
   {
     id: "circle",
@@ -29,6 +31,7 @@ export const COMPARE_MASK_CATALOG: readonly CompareMaskEntry[] = [
     needsCenter: true,
     hasLine: true,
     hasGrip: false,
+    hasSoftness: true,
   },
   {
     id: "radial",
@@ -38,6 +41,7 @@ export const COMPARE_MASK_CATALOG: readonly CompareMaskEntry[] = [
     needsCenter: true,
     hasLine: false,
     hasGrip: false,
+    hasSoftness: true,
   },
   {
     id: "blend",
@@ -47,5 +51,6 @@ export const COMPARE_MASK_CATALOG: readonly CompareMaskEntry[] = [
     needsCenter: false,
     hasLine: false,
     hasGrip: false,
+    hasSoftness: false,
   },
 ];

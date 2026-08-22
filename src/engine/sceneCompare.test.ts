@@ -438,4 +438,22 @@ describe("compare mask catalogue (structure pin)", () => {
     expect(byId.get("blend")?.needsAngle).toBe(false);
     expect(byId.get("blend")?.hasLine).toBe(false);
   });
+
+  it("hasSoftness tracks the masks that actually feather: every edge mask, never the ghost blend", () => {
+    const byId = new Map(COMPARE_MASK_CATALOG.map((e) => [e.id, e]));
+    expect(byId.get("linear")?.hasSoftness).toBe(true);
+    expect(byId.get("circle")?.hasSoftness).toBe(true);
+    expect(byId.get("radial")?.hasSoftness).toBe(true);
+    expect(byId.get("blend")?.hasSoftness).toBe(false);
+    const probes: [number, number][] = [
+      [0.46, 0.5],
+      [0.79, 0.51],
+    ];
+    for (const entry of COMPARE_MASK_CATALOG) {
+      const coverage = (softness: number, uv: [number, number]) =>
+        compareCoverageAt(specWith({ maskType: entry.id, softness }), 0.5, 90, uv, 16 / 9, "a");
+      const feathered = probes.some((uv) => coverage(0.2, uv) !== coverage(0, uv));
+      expect(feathered).toBe(entry.hasSoftness);
+    }
+  });
 });
