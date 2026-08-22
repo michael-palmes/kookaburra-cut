@@ -84,6 +84,11 @@ export function setCompareDeviceAppearance<K extends keyof SceneDocCompareDevice
   };
 }
 
+/** The Manual motion choice: drop the divider keys so the static Divider slider drives the comparison again. Everything else stays, `animatedTrack` included: the comparison still exists and keeps its lane, which is what separates this from removing the comparison. */
+export function clearCompareTrack(doc: SceneDoc): void {
+  if (doc.compare) doc.compare.track = undefined;
+}
+
 /** Remove every comparison record targeting a deleted device. */
 export function pruneCompareDeviceTargets(doc: SceneDoc, deviceId: string): void {
   const side = doc.compare?.b;

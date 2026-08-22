@@ -1,8 +1,16 @@
-import { isValidElement } from "react";
+import { createElement, isValidElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
-import { COMPARE_MASK_GLYPHS, COMPARE_PRESET_GLYPHS, COMPARE_TOGGLE_GLYPHS } from "./compareIcons";
+import {
+  COMPARE_MASK_GLYPHS,
+  COMPARE_PRESET_GLYPHS,
+  COMPARE_TOGGLE_GLYPHS,
+  CompareMaskIcon,
+  ComparePresetIcon,
+  CompareToggleIcon,
+} from "./compareIcons";
 
 const sorted = (ids: readonly string[]) => [...ids].sort();
 
@@ -31,5 +39,26 @@ describe("comparison drill glyphs (structure pin)", () => {
     ];
     expect(glyphs).toHaveLength(12);
     for (const glyph of glyphs) expect(isValidElement(glyph)).toBe(true);
+  });
+
+  it("draws at the house geometry, at the size the caller asks for", () => {
+    const html = renderToStaticMarkup(createElement(CompareMaskIcon, { id: "linear", size: 17 }));
+    expect(html).toContain('viewBox="0 0 16 16"');
+    expect(html).toContain('width="17"');
+    expect(html).toContain('height="17"');
+    expect(html).toContain('stroke="currentColor"');
+    expect(html).toContain('stroke-width="1.5"');
+    expect(html).toContain('fill="none"');
+    expect(html).toContain('aria-hidden="true"');
+  });
+
+  it("falls back to the 16px grid size", () => {
+    for (const element of [
+      createElement(CompareMaskIcon, { id: "blend" }),
+      createElement(ComparePresetIcon, { id: "manual" }),
+      createElement(CompareToggleIcon, { id: "chips" }),
+    ]) {
+      expect(renderToStaticMarkup(element)).toContain('width="16"');
+    }
   });
 });

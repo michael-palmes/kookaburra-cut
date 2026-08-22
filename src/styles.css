@@ -7668,6 +7668,19 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   min-width: 0;
 }
 
+/* Comparison motion chips: the preset's own mark leads its label (the chart-type-chip treatment). */
+.compare-preset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The divider ease picker takes the row's remaining width, the way a slider row does. */
+.compare-ease-row .modal-input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Pinned footer for drill-ins with terminal actions (Cancel/Apply/Save). */
 .inspector-drill-actions {
   display: flex;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
+  clearCompareTrack,
   duplicateCompareDeviceTargets,
   mutateCompareBackgroundTarget,
   mutateCompareLightingTarget,
@@ -118,5 +119,36 @@ describe("comparison inspector targets", () => {
       colour: "silver",
       shadow: "none",
     });
+  });
+
+  it("the Manual choice drops the divider keys and leaves the comparison standing", () => {
+    const next = doc();
+    next.animatedTrack = "compare";
+    if (next.compare) {
+      next.compare.value = 0.25;
+      next.compare.mask = { type: "linear", angleDeg: 90 };
+      next.compare.chrome = { chips: true };
+      next.compare.track = {
+        keys: [
+          { id: "k1", tMs: 0, pose: { value: 1 } },
+          { id: "k2", tMs: 2000, pose: { value: 0 } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "inOutCubic" }],
+      };
+    }
+    clearCompareTrack(next);
+    expect(next.compare?.track).toBeUndefined();
+    expect(next.compare?.value).toBe(0.25);
+    expect(next.compare?.mask).toEqual({ type: "linear", angleDeg: 90 });
+    expect(next.compare?.chrome).toEqual({ chips: true });
+    expect(next.compare?.b).toEqual({});
+    expect(next.animatedTrack).toBe("compare");
+  });
+
+  it("leaves a scene with no comparison alone", () => {
+    const next = doc();
+    next.compare = undefined;
+    expect(() => clearCompareTrack(next)).not.toThrow();
+    expect(next.compare).toBeUndefined();
   });
 });

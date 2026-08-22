@@ -15,10 +15,12 @@ import { useCameraEditStore } from "../../engine/cameraEditStore";
 import { useChartEditStore } from "../../engine/chartEditStore";
 import { useClockStore } from "../../engine/clock";
 import { COMPARE_MASK_CATALOG } from "../../engine/compareCatalog";
+import { useCompareEditStore } from "../../engine/compareEditStore";
 import { COMPARE_PRESETS } from "../../engine/comparePresets";
 import { useDecorationEditStore } from "../../engine/decorationEditStore";
 import { useSceneIsBanded } from "../../engine/depthStageRegistry";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import { EASE_NAMES } from "../../engine/ease";
 import { isExporting, subscribeExporting } from "../../engine/exportState";
 import { useFormat } from "../../engine/format";
 import { mergeFrameSpec } from "../../engine/frameSchema";
@@ -28,6 +30,7 @@ import { useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { pushHistory } from "../../engine/history";
 import { imageEditCommitMatches, useImageEditStore } from "../../engine/imageEditStore";
 import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
+import { MIN_KEY_GAP_MS } from "../../engine/keyedTrack";
 import { useLayeredScreenshotEditStore } from "../../engine/layeredScreenshotEditStore";
 import { useLightingEditStore } from "../../engine/lightingEditStore";
 import { deriveManagedTextModel, resolveManagedTextGroups } from "../../engine/managedText";
@@ -321,7 +324,17 @@ import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
 import { CameraPresetRow } from "./CameraPresetRow";
 import { CameraRigFields, seedRig } from "./CameraRigFields";
-import { mutateCompareBackgroundTarget, setCompareDeviceAppearance } from "./comparisonTarget";
+import {
+  buildCompareAnimationTrack,
+  type CompareAnimationFields,
+  readCompareAnimationFields,
+} from "./compareAnimationModel";
+import { CompareMaskIcon, ComparePresetIcon, CompareToggleIcon } from "./compareIcons";
+import {
+  clearCompareTrack,
+  mutateCompareBackgroundTarget,
+  setCompareDeviceAppearance,
+} from "./comparisonTarget";
 import { changeFirstClassDeviceModel, DeviceDrillIn, DeviceModelDrillIn } from "./DeviceDrillIn";
 import { DofFields } from "./DofFields";
 import {
@@ -6703,12 +6716,42 @@ export function SceneTab({
     const maskType = cmp.mask?.type ?? "linear";
     const maskEntry = COMPARE_MASK_CATALOG.find((e) => e.id === maskType);
     const hasKeys = (cmp.track?.keys.length ?? 0) > 0;
+    // The lane's committed draft outranks the doc in the compositor, so rewriting the keys releases it.
+    const releaseTrackDraft = () => {
+      const lane = useCompareEditStore.getState();
+      lane.setDraft(null);
+      lane.select(null, null);
+    };
     const applyPreset = (preset: (typeof COMPARE_PRESETS)[number]) => {
       const track = preset.build(scene.durationMs);
+      releaseTrackDraft();
       void patchDoc((next) => {
         if (!next.compare) return;
         next.compare.track = track;
       });
+    };
+    const clearKeys = () => {
+      releaseTrackDraft();
+      void patchDoc(clearCompareTrack, { history: "clear divider keys" });
+    };
+    const staticAngleDeg = cmp.mask?.angleDeg ?? 90;
+    const animation = readCompareAnimationFields(
+      cmp.track,
+      { value: cmp.value, angleDeg: staticAngleDeg },
+      scene.durationMs,
+    );
+    const anim = animation.fields;
+    const keyedAngle = anim.angleFromDeg !== undefined || anim.angleToDeg !== undefined;
+    // Every field writes the WHOLE track, so a rich hand edit is replaced explicitly rather than merged into.
+    const writeAnimation = (patch: Partial<CompareAnimationFields>) => {
+      const track = buildCompareAnimationTrack({ ...anim, ...patch }, scene.durationMs);
+      releaseTrackDraft();
+      void patchDoc(
+        (next) => {
+          if (next.compare) next.compare.track = track;
+        },
+        { history: "divider animation" },
+      );
     };
     const lineTokens = ["accent", "text", "muted", "background"] as const;
     const bThemeName = cmp.b?.themeId
@@ -6750,6 +6793,7 @@ export function SceneTab({
               value: e.id,
               label: e.label,
               title: e.hint,
+              icon: <CompareMaskIcon id={e.id} size={17} />,
             }))}
             value={maskType}
             onChange={(id) =>
@@ -6813,26 +6857,28 @@ export function SceneTab({
               />
             </div>
           )}
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Edge softness</span>
-            <DebouncedRange
-              value={cmp.mask?.softness ?? 0}
-              min={0}
-              max={0.2}
-              step={0.005}
-              label="Edge softness"
-              onInput={(v) =>
-                cmpLive((c) => {
-                  c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
-                })
-              }
-              onCommit={(v) =>
-                cmpCommit((c) => {
-                  c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
-                })
-              }
-            />
-          </div>
+          {maskEntry?.hasSoftness && (
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Edge softness</span>
+              <DebouncedRange
+                value={cmp.mask?.softness ?? 0}
+                min={0}
+                max={0.2}
+                step={0.005}
+                label="Edge softness"
+                onInput={(v) =>
+                  cmpLive((c) => {
+                    c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
+                  })
+                }
+                onCommit={(v) =>
+                  cmpCommit((c) => {
+                    c.mask = { ...(c.mask ?? { type: maskType }), softness: v };
+                  })
+                }
+              />
+            </div>
+          )}
           {hasKeys ? (
             <p className="inspector-stub-note">
               Keys drive the divider; edit them in the timeline lane below the preview.
@@ -6859,84 +6905,212 @@ export function SceneTab({
               />
             </div>
           )}
+          <DrillGroup
+            label="Animation"
+            hint="Two keys and one segment, hand-tunable in the lane afterwards."
+          >
+            {animation.shape === "rich" && (
+              <p className="inspector-stub-note">
+                {animation.keyCount} keys drive the divider; edit them in the lane, or set a field
+                here to replace them.
+              </p>
+            )}
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">From / to</span>
+              <NumberField
+                label="Divider from"
+                value={anim.fromValue}
+                decimals={2}
+                min={0}
+                max={1}
+                step={0.01}
+                onCommit={(v) => writeAnimation({ fromValue: v })}
+              />
+              <NumberField
+                label="Divider to"
+                value={anim.toValue}
+                decimals={2}
+                min={0}
+                max={1}
+                step={0.01}
+                onCommit={(v) => writeAnimation({ toValue: v })}
+              />
+            </div>
+            <div className="popover-row">
+              <span className="popover-inline slider-row-label">Start / length (ms)</span>
+              <NumberField
+                label="Motion start"
+                value={anim.startMs}
+                decimals={0}
+                min={0}
+                max={scene.durationMs}
+                step={10}
+                onCommit={(v) => writeAnimation({ startMs: v })}
+              />
+              <NumberField
+                label="Motion length"
+                value={anim.durationMs}
+                decimals={0}
+                min={MIN_KEY_GAP_MS}
+                max={scene.durationMs}
+                step={10}
+                onCommit={(v) => writeAnimation({ durationMs: v })}
+              />
+            </div>
+            <label className="popover-row compare-ease-row">
+              <span className="popover-inline slider-row-label">Ease</span>
+              <select
+                className="modal-input"
+                aria-label="Divider ease"
+                value={anim.ease}
+                onChange={(e) => writeAnimation({ ease: e.target.value })}
+              >
+                {EASE_NAMES.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {maskEntry?.needsAngle && (
+              <>
+                <ToggleRow
+                  label="Animate the angle"
+                  description="Keys the divider angle too; off holds the static angle."
+                  checked={keyedAngle}
+                  onChange={(on) =>
+                    writeAnimation(
+                      on
+                        ? {
+                            angleFromDeg: anim.angleFromDeg ?? staticAngleDeg,
+                            angleToDeg: anim.angleToDeg ?? staticAngleDeg,
+                          }
+                        : { angleFromDeg: undefined, angleToDeg: undefined },
+                    )
+                  }
+                />
+                {keyedAngle && (
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Angle from / to</span>
+                    <NumberField
+                      label="Angle from"
+                      value={anim.angleFromDeg ?? staticAngleDeg}
+                      decimals={0}
+                      min={0}
+                      max={360}
+                      step={1}
+                      onCommit={(v) => writeAnimation({ angleFromDeg: v })}
+                    />
+                    <NumberField
+                      label="Angle to"
+                      value={anim.angleToDeg ?? staticAngleDeg}
+                      decimals={0}
+                      min={0}
+                      max={360}
+                      step={1}
+                      onCommit={(v) => writeAnimation({ angleToDeg: v })}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </DrillGroup>
           <DrillGroup label="Motion presets" hint="Writes keys you can hand-tune in the lane.">
             <div className="wizard-presets">
+              <button
+                type="button"
+                className="chip compare-preset-chip"
+                title="Clears the keys and brings back the static Divider slider"
+                disabled={!hasKeys}
+                onClick={clearKeys}
+              >
+                <ComparePresetIcon id="manual" size={14} />
+                Manual
+              </button>
               {COMPARE_PRESETS.map((p) => (
                 <button
                   type="button"
                   key={p.id}
-                  className="chip"
+                  className="chip compare-preset-chip"
                   title={p.hint}
                   onClick={() => applyPreset(p)}
                 >
+                  <ComparePresetIcon id={p.id} size={14} />
                   {p.label}
                 </button>
               ))}
             </div>
           </DrillGroup>
-          <DrillGroup label="Divider line">
-            <ToggleRow
-              label="Show line"
-              checked={!!cmp.chrome?.line}
-              onChange={(on) =>
-                patchCompare((c) => {
-                  c.chrome = {
-                    ...c.chrome,
-                    line: on ? { width: 4, colour: "accent" } : undefined,
-                  };
-                })
-              }
-            />
-            {cmp.chrome?.line && (
-              <>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Width</span>
-                  <DebouncedRange
-                    value={cmp.chrome.line.width ?? 4}
-                    min={1}
-                    max={12}
-                    step={0.5}
-                    label="Line width"
-                    onInput={(v) =>
-                      cmpLive((c) => {
-                        if (c.chrome?.line) c.chrome.line.width = v;
-                      })
-                    }
-                    onCommit={(v) =>
-                      cmpCommit((c) => {
-                        if (c.chrome?.line) c.chrome.line.width = v;
-                      })
-                    }
-                  />
-                </div>
-                <SegmentedRow
-                  ariaLabel="Divider colour"
-                  className="subtabs-compact"
-                  options={lineTokens.map((t) => ({ value: t, label: t }))}
-                  value={(cmp.chrome.line.colour ?? "accent") as (typeof lineTokens)[number]}
-                  onChange={(t) =>
+          {(maskEntry?.hasLine || maskEntry?.hasGrip) && (
+            <DrillGroup label="Divider line">
+              {maskEntry?.hasLine && (
+                <ToggleRow
+                  icon={<CompareToggleIcon id="line" size={17} />}
+                  label="Show line"
+                  checked={!!cmp.chrome?.line}
+                  onChange={(on) =>
                     patchCompare((c) => {
-                      if (c.chrome?.line) c.chrome.line.colour = t;
+                      c.chrome = {
+                        ...c.chrome,
+                        line: on ? { width: 4, colour: "accent" } : undefined,
+                      };
                     })
                   }
                 />
-              </>
-            )}
-            {maskEntry?.hasGrip && (
-              <ToggleRow
-                label="Grip handle"
-                description="The slider grip riding the divider."
-                checked={!!cmp.chrome?.grip}
-                onChange={(on) =>
-                  patchCompare((c) => {
-                    c.chrome = { ...c.chrome, grip: on ? true : undefined };
-                  })
-                }
-              />
-            )}
-          </DrillGroup>
+              )}
+              {maskEntry?.hasLine && cmp.chrome?.line && (
+                <>
+                  <div className="popover-row">
+                    <span className="popover-inline slider-row-label">Width</span>
+                    <DebouncedRange
+                      value={cmp.chrome.line.width ?? 4}
+                      min={1}
+                      max={12}
+                      step={0.5}
+                      label="Line width"
+                      onInput={(v) =>
+                        cmpLive((c) => {
+                          if (c.chrome?.line) c.chrome.line.width = v;
+                        })
+                      }
+                      onCommit={(v) =>
+                        cmpCommit((c) => {
+                          if (c.chrome?.line) c.chrome.line.width = v;
+                        })
+                      }
+                    />
+                  </div>
+                  <SegmentedRow
+                    ariaLabel="Divider colour"
+                    className="subtabs-compact"
+                    options={lineTokens.map((t) => ({ value: t, label: t }))}
+                    value={(cmp.chrome.line.colour ?? "accent") as (typeof lineTokens)[number]}
+                    onChange={(t) =>
+                      patchCompare((c) => {
+                        if (c.chrome?.line) c.chrome.line.colour = t;
+                      })
+                    }
+                  />
+                </>
+              )}
+              {maskEntry?.hasGrip && (
+                <ToggleRow
+                  icon={<CompareToggleIcon id="grip" size={17} />}
+                  label="Grip handle"
+                  description="The slider grip riding the divider."
+                  checked={!!cmp.chrome?.grip}
+                  onChange={(on) =>
+                    patchCompare((c) => {
+                      c.chrome = { ...c.chrome, grip: on ? true : undefined };
+                    })
+                  }
+                />
+              )}
+            </DrillGroup>
+          )}
           <DrillGroup label="Labels">
             <ToggleRow
+              icon={<CompareToggleIcon id="chips" size={17} />}
               label="Before / after chips"
               description="Label chips pinned to each half (text keys beforeLabel and afterLabel)."
               checked={cmp.chrome?.chips === true}

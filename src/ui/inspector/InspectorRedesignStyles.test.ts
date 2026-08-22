@@ -66,6 +66,16 @@ describe("inspector redesign styles", () => {
     expect(styles).toMatch(/\.inspector-drill-actions \.btn svg\s*\{[^}]*flex: none;/s);
   });
 
+  it("seats the glyph beside the label on the comparison motion chips", () => {
+    expect(styles).toMatch(
+      /\.compare-preset-chip\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s,
+    );
+  });
+
+  it("gives the divider ease picker the rest of its row", () => {
+    expect(styles).toMatch(/\.compare-ease-row \.modal-input\s*\{[^}]*flex: 1;[^}]*min-width: 0;/s);
+  });
+
   it("removes native fieldset chrome and overflow from Lighting controls", () => {
     expect(styles).toMatch(
       /\[data-lighting-screen\] fieldset\.option-grid,\s*\[data-lighting-screen\] \.lighting-sun-controls\s*\{[^}]*min-width: 0;[^}]*max-width: 100%;[^}]*margin: 0;[^}]*border: 0;/s,
