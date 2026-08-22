@@ -504,6 +504,9 @@ confirms). Theme cards and animation segments use it today.
   `--text-disabled`.
 - **Monochrome only**: no multicolour icons in chrome. Author as SVG (inherently Retina-crisp);
   never mix stroke weights within one toolbar.
+- **Icons by default**: inspector toggle rows, action rows, segmented options and preset/option chips
+  carry a leading line icon. Text-only rows are the exception and need a reason (for example dense
+  token pickers where swatches or names already do the work).
 
 ---
 
