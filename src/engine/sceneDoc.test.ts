@@ -146,6 +146,21 @@ describe("applyEditRepoint (edit-render re-point targeting)", () => {
     expect(next?.devices?.[0].media?.kind).toBe("image");
   });
 
+  it("an edited still becomes a video on both device slots (the render is an mp4)", () => {
+    const doc = docWith({
+      devices: [imageDevice("d1", "assets/shot.png")] as SceneDoc["devices"],
+      compare: { b: {} },
+    });
+    expect(applyEditRepoint(doc, "device", rel, "d1")?.devices?.[0].media).toEqual({
+      src: rel,
+      kind: "video",
+    });
+    expect(applyEditRepoint(doc, "compareDevice", rel, "d1")?.compare?.b?.media?.d1).toEqual({
+      src: rel,
+      kind: "video",
+    });
+  });
+
   it("a media-less device and a device-less doc re-point nothing", () => {
     const bare = docWith({
       devices: [{ id: "d1", model: "iphone-17-pro" }] as SceneDoc["devices"],

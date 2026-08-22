@@ -621,7 +621,7 @@ export interface SceneSectionModel {
   rows: SceneRowModel[];
 }
 
-/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
+/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit additionally needs screen media, of either kind); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
 export function sceneSections(input: {
   doc: SceneDoc | undefined;
   slotsCount: number;
@@ -660,8 +660,8 @@ export function sceneSections(input: {
   // and video window are their own top-level entries now, not device rows.
   if (device) {
     const rows: SceneRowModel[] = [{ id: "device.media", label: "Change video", chevron: true }];
-    if (device.media?.kind === "video") {
-      rows.push({ id: "device.editVideo", label: "Edit video", chevron: true });
+    if (device.media) {
+      rows.push({ id: "device.editVideo", label: "Edit", chevron: true });
     }
     rows.push(
       { id: "device.change", label: "Change device", chevron: true },

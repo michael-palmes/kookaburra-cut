@@ -287,8 +287,8 @@ export interface MediaBrowserProps {
   refreshKey?: number;
   /** Tighter grid for narrow hosts (the editor's side panel). */
   compact?: boolean;
-  /** Video cards become HTML5-draggable (`MEDIA_DRAG_TYPE` carries the rel path). Editor-window only: the main window's native drag-drop interception eats these. */
-  draggableVideos?: boolean;
+  /** Media cards become HTML5-draggable once probed (`MEDIA_DRAG_TYPE` carries the rel path). Editor-window only: the main window's native drag-drop interception eats these. */
+  draggableMedia?: boolean;
   /** Small muted hint in the toolbar row (e.g. the drag affordance). */
   hint?: string;
   /** Restrict the browser to these kinds (e.g. background images). Filters the grid and the Add-media file picker; no toggle is shown. */
@@ -503,7 +503,7 @@ export function MediaBrowser({
   projectPath,
   refreshKey = 0,
   compact,
-  draggableVideos,
+  draggableMedia,
   hint,
   kinds,
   kindToggle,
@@ -877,7 +877,7 @@ export function MediaBrowser({
               meta={metas[rel] ?? null}
               metaFailed={metaFailed.has(rel)}
               edited={editNameOf(rel) !== null}
-              canDrag={Boolean(draggableVideos && metas[rel]?.kind === "video")}
+              canDrag={Boolean(draggableMedia && metas[rel])}
               selected={selectedRel != null && rel === selectedRel}
               disabled={pickBusy}
               onMenu={(x, y) =>

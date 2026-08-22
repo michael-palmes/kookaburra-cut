@@ -22,8 +22,10 @@ import {
 import {
   addTap,
   clipIndexAt,
+  DEFAULT_HOLD_MS,
   freezeAt,
   freezeAtEnd,
+  imageClip,
   insertClipAt,
   moveTap,
   nextClipId,
@@ -68,7 +70,7 @@ import {
   TAP_STYLES,
 } from "./tapStyles.generated";
 
-/** The non-destructive video editor window: magnetic timeline (trim/split/reorder/speed/zoom, filmstrips), playhead-driven preview with spacebar transport and trim-edge live preview, debounced autosave with warn-on-close and corrupt-doc recovery, multi-clip assembly. Renders close the window on success. */
+/** The non-destructive video editor window: magnetic timeline (trim/split/reorder/speed/zoom, filmstrips), playhead-driven preview with spacebar transport and trim-edge live preview, debounced autosave with warn-on-close and corrupt-doc recovery, multi-clip assembly. Still images join as freeze clips (default hold, retimed by the same handle). Renders close the window on success. */
 
 type RenderState =
   | { phase: "idle" }
@@ -373,7 +375,8 @@ export function EditorApp() {
     getEditorTarget()
       .then((t) => {
         if (t) load(t);
-        else setError("No edit is open. Pick a video in the media library and choose Edit.");
+        else
+          setError("No edit is open. Pick a video or image in the media library and choose Edit.");
       })
       .catch((e) => setError(String(e)));
   }, [load]);
@@ -574,6 +577,7 @@ export function EditorApp() {
             {
               id: "r1",
               rel: refRel,
+              kind: "video",
               width: meta.width,
               height: meta.height,
               fps: meta.fps,
@@ -687,7 +691,7 @@ export function EditorApp() {
   const handleReset = useCallback(async () => {
     if (!target) return;
     const sure = await ask(
-      "Discard this edit and start over from the source video? The current document is kept beside it as a .json.bak backup.",
+      "Discard this edit and start over from the source file? The current document is kept beside it as a .json.bak backup.",
       { title: "Discard edit", kind: "warning" },
     );
     if (!sure) return;
@@ -796,14 +800,13 @@ export function EditorApp() {
     }
   }, [target, doc, flushSave]);
 
-  /** Shared add/insert flow: probe `rel`, reuse-or-create its EditSource, build a full-length clip and commit `place`'s arrangement; mediaMeta also warms the filmstrip cache. */
+  /** Shared add/insert flow: probe `rel`, reuse-or-create its EditSource, build its clip (a video's full span, an image's default hold) and commit `place`'s arrangement; mediaMeta also warms the filmstrip cache. */
   const spliceClip = useCallback(
     (rel: string, place: (clips: EditClip[], clip: EditClip) => EditClip[], label: string) => {
       if (!doc || !target) return;
       const requestedTarget = target;
       mediaMeta(target.slug, rel)
         .then((meta) => {
-          if (meta.kind !== "video") throw new Error("only videos can be added to an edit");
           const current = docRef.current;
           if (
             !current ||
@@ -821,20 +824,24 @@ export function EditorApp() {
                 {
                   id: sourceId,
                   rel,
+                  kind: meta.kind,
                   width: meta.width,
                   height: meta.height,
                   fps: meta.fps,
                   durationMs: meta.durationMs,
                 },
               ];
-          const clip: EditClip = {
-            id: nextClipId(current.clips),
-            sourceId,
-            inMs: 0,
-            outMs: meta.durationMs,
-            speed: 1,
-            startMs: 0,
-          };
+          const clip: EditClip =
+            meta.kind === "image"
+              ? imageClip(current.clips, sourceId, DEFAULT_HOLD_MS)
+              : {
+                  id: nextClipId(current.clips),
+                  sourceId,
+                  inMs: 0,
+                  outMs: meta.durationMs,
+                  speed: 1,
+                  startMs: 0,
+                };
           setMetas((prev) => ({ ...prev, [sourceId]: meta }));
           commitDoc({ ...current, sources, clips: place(current.clips, clip) }, label);
         })
@@ -872,7 +879,6 @@ export function EditorApp() {
   }, [doc, playheadMs, commit]);
 
   /** Freeze the frame under the playhead for a default beat; the Hold field retimes it. */
-  const DEFAULT_HOLD_MS = 2000;
   const handleFreeze = useCallback(() => {
     if (!doc) return;
     const total = timelineDurationMs(doc.clips);
@@ -1006,18 +1012,18 @@ export function EditorApp() {
         items: [
           {
             id: "insert",
-            label: "Insert video at playhead",
+            label: "Insert at playhead",
             disabled: !rel,
-            title: "Splice this clip's video in at the playhead, full length",
+            title: "Splice this clip's media in at the playhead, full length",
             onSelect: () => {
               if (rel) handleInsertClipAt(rel, playheadRef.current);
             },
           },
           {
             id: "append",
-            label: "Append video to the end",
+            label: "Append to the end",
             disabled: !rel,
-            title: "Add this clip's video again as the last clip",
+            title: "Add this clip's media again as the last clip",
             onSelect: () => {
               if (rel) handleAddClip(rel);
             },
@@ -1115,7 +1121,7 @@ export function EditorApp() {
       </header>
 
       <div className="editor-split">
-        {/* The shared MediaBrowser as a persistent side panel: same cards as the main window's Media modal; videos drag into the timeline (this window disables Tauri's native drag-drop handler to free HTML5 DnD). */}
+        {/* The shared MediaBrowser as a persistent side panel: same cards as the main window's Media modal; videos and images drag into the timeline (this window disables Tauri's native drag-drop handler to free HTML5 DnD). */}
         <aside className="editor-media-panel" aria-label="Project media">
           {target && (
             <MediaBrowser
@@ -1123,9 +1129,9 @@ export function EditorApp() {
               projectPath={target.path}
               refreshKey={mediaRefresh}
               compact
-              draggableVideos
-              kinds={["video"]}
-              hint="Drag a video into the timeline"
+              draggableMedia
+              kindToggle
+              hint="Drag into the timeline"
               cardMenu={mediaCardMenu({
                 slug: target.slug,
                 primaryLabel: "Insert",

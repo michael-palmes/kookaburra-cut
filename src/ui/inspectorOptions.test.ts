@@ -458,7 +458,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     ).toBe("Arrangement");
   });
 
-  it("no text → the Text section offers a single Add text row; image media → no Edit video", () => {
+  it("no text → the Text section offers a single Add text row; image media still edits", () => {
     const doc = docWith({
       devices: [{ media: { kind: "image", src: "assets/a.png" } }] as SceneDoc["devices"],
     });
@@ -475,9 +475,18 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     expect(textRows?.map((r) => r.id)).toEqual(["text.add"]);
     expect(textRows?.[0].chevron).toBe(false);
     expect(textRows?.[0].danger).toBeUndefined();
-    expect(sections.find((s) => s.id === "device")?.rows.map((r) => r.id)).not.toContain(
+    expect(sections.find((s) => s.id === "device")?.rows.map((r) => r.id)).toContain(
       "device.editVideo",
     );
+  });
+
+  it("a device with no media has nothing to edit", () => {
+    const doc = docWith({ devices: [{ id: "d1" }] as SceneDoc["devices"] });
+    expect(
+      sceneSections({ doc, slotsCount: 1 })
+        .find((s) => s.id === "device")
+        ?.rows.map((r) => r.id),
+    ).not.toContain("device.editVideo");
   });
 
   it("no device → the device section offers a single Add device row and no Shadow row", () => {
@@ -504,6 +513,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const sections = sceneSections({ doc, slotsCount: 2 });
     expect(sections.find((s) => s.id === "device")?.rows.map((r) => r.id)).toEqual([
       "device.media",
+      "device.editVideo",
       "device.change",
       "device.position",
       "style.shadow",

@@ -7020,10 +7020,10 @@ export function SceneTab({
                       chevron
                       onClick={() => openMediaPicker({ kind: "device", deviceId: d.id })}
                     />
-                    {d.media?.kind === "video" && (
+                    {d.media && (
                       <ActionRow
                         icon={<SceneRowIcon id="device.editVideo" />}
-                        label={devices.length > 1 ? `Edit video ${i + 1}` : "Edit video"}
+                        label={devices.length > 1 ? `Edit ${i + 1}` : "Edit"}
                         chevron={false}
                         onClick={() =>
                           d.media && onOpenEditVideo(sceneIndex, d.media.src, "device", d.id)
@@ -7081,10 +7081,10 @@ export function SceneTab({
                           openDrill("compare.media");
                         }}
                       />
-                      {afterMedia?.kind === "video" && (
+                      {afterMedia && (
                         <ActionRow
                           icon={<SceneRowIcon id="device.editVideo" />}
-                          label={devices.length > 1 ? `Edit video ${i + 1}` : "Edit video"}
+                          label={devices.length > 1 ? `Edit ${i + 1}` : "Edit"}
                           chevron={false}
                           onClick={() =>
                             onOpenEditVideo(sceneIndex, afterMedia.src, "compareDevice", d.id)

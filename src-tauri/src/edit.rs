@@ -1,4 +1,4 @@
-//! Non-destructive mini video editor: an edit is a JSON document under a project's `edits/` folder describing trim/reorder/retime of clips cut from `assets/` source videos (never modified), edited in a second Tauri window (label `editor`); the flatten render defaults to VideoToolbox decode + `h264_videotoolbox` at a generous bitrate (retrying once with the old `libx264 -crf 18 -preset veryfast` lane on failure) and is NOT part of the byte-identical export path, but re-entering as a `VideoClip` source deterministically re-extracts to a CFR-60 PNG sequence, so a rendered edit still passes `Verify ×2`.
+//! Non-destructive mini video editor: an edit is a JSON document under a project's `edits/` folder describing trim/reorder/retime of clips cut from `assets/` source videos and still images (never modified), edited in a second Tauri window (label `editor`); the flatten render defaults to VideoToolbox decode + `h264_videotoolbox` at a generous bitrate (retrying once with the old `libx264 -crf 18 -preset veryfast` lane on failure) and is NOT part of the byte-identical export path, but re-entering as a `VideoClip` source deterministically re-extracts to a CFR-60 PNG sequence, so a rendered edit still passes `Verify ×2`.
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -12,12 +12,23 @@ use tauri_plugin_shell::ShellExt;
 use crate::media;
 use crate::workspace::{self, SettingsState};
 
-/// A source video referenced by an edit (read-only; identified by `id`, located by `rel`).
+/// What a source is: a video with a span, or a still image whose clips are all holds. Absent in documents written before images were editable, so it defaults to video.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EditSourceKind {
+    #[default]
+    Video,
+    Image,
+}
+
+/// A source video or still image referenced by an edit (read-only; identified by `id`, located by `rel`). Images probe as 0 fps / 0 ms.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditSource {
     pub id: String,
     pub rel: String,
+    #[serde(default)]
+    pub kind: EditSourceKind,
     pub width: u32,
     pub height: u32,
     pub fps: f64,
@@ -284,7 +295,15 @@ pub async fn open_edit(
     Ok(name)
 }
 
-/// The fresh single-clip document `open_edit` seeds (and `reset_edit` recreates).
+/// Default hold for a still image clip, mirroring editMath.ts `DEFAULT_HOLD_MS`.
+const DEFAULT_IMAGE_HOLD_MS: u64 = 2000;
+
+/// yuv420p needs even output dimensions; a screenshot can be odd, a recording never is.
+fn even(w: u32, h: u32) -> (u32, u32) {
+    (w - w % 2, h - h % 2)
+}
+
+/// The fresh single-clip document `open_edit` seeds (and `reset_edit` recreates); an image seeds one default-length freeze instead of a full-span clip.
 async fn create_default_doc(
     app: &AppHandle,
     root: &Path,
@@ -297,9 +316,17 @@ async fn create_default_doc(
         return Err(format!("source not found: {source_rel}"));
     }
     let probe = media::probe_media(app, &source_abs).await?;
-    if probe.kind != "video" {
-        return Err("only videos can be edited".into());
-    }
+    let kind = match probe.kind.as_str() {
+        "video" => EditSourceKind::Video,
+        "image" => EditSourceKind::Image,
+        other => return Err(format!("{other} files can't be edited")),
+    };
+    let image = kind == EditSourceKind::Image;
+    let (width, height) = if image {
+        even(probe.width, probe.height)
+    } else {
+        (probe.width, probe.height)
+    };
     let fps = if probe.fps > 0.0 { probe.fps } else { 60.0 };
     let prefs = read_tap_prefs(root, slug);
     Ok(EditDoc {
@@ -308,17 +335,14 @@ async fn create_default_doc(
         sources: vec![EditSource {
             id: "s1".into(),
             rel: source_rel.to_owned(),
+            kind,
             width: probe.width,
             height: probe.height,
             fps: probe.fps,
             duration_ms: probe.duration_ms,
             abs: String::new(),
         }],
-        settings: EditSettings {
-            width: probe.width,
-            height: probe.height,
-            fps,
-        },
+        settings: EditSettings { width, height, fps },
         clips: vec![EditClip {
             id: "c1".into(),
             source_id: "s1".into(),
@@ -326,7 +350,7 @@ async fn create_default_doc(
             out_ms: probe.duration_ms,
             speed: 1.0,
             start_ms: 0,
-            hold_ms: None,
+            hold_ms: image.then_some(DEFAULT_IMAGE_HOLD_MS),
         }],
         taps: Vec::new(),
         tap_style: prefs.tap_style,
@@ -456,13 +480,22 @@ pub fn list_edits(
     Ok(names)
 }
 
-/// Frames an output clip contributes: its retimed duration at the output fps (a freeze contributes its hold).
-fn clip_output_frames(clip: &EditClip, fps: f64) -> u32 {
-    let span_ms = match clip.hold_ms {
-        Some(hold) => hold as f64,
-        None => {
-            let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
-            clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed
+/// How long an image clip sits on the timeline: its hold, falling back to the default beat for a document that somehow carries none (an image has no span to fall back on).
+fn image_hold_ms(clip: &EditClip) -> u64 {
+    clip.hold_ms.unwrap_or(DEFAULT_IMAGE_HOLD_MS)
+}
+
+/// Frames an output clip contributes: its retimed duration at the output fps (a freeze, and every image clip, contributes its hold).
+fn clip_output_frames(clip: &EditClip, fps: f64, image: bool) -> u32 {
+    let span_ms = if image {
+        image_hold_ms(clip) as f64
+    } else {
+        match clip.hold_ms {
+            Some(hold) => hold as f64,
+            None => {
+                let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
+                clip.out_ms.saturating_sub(clip.in_ms) as f64 / speed
+            }
         }
     };
     ((span_ms / 1000.0) * fps).round().max(0.0) as u32
@@ -547,7 +580,7 @@ fn tap_windows<'a>(
     windows
 }
 
-/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
+/// Build the ffmpeg args that flatten an edit into a single file: one filter chain per clip (trim → retime → normalise fps → scale+pad to the output size; an image input loops for its hold instead of trimming) then `concat`, rendered in timeline (`startMs`) order; gaps are not yet materialised as black. Tap highlights overlay the concat output (one baked-frame input per visible window). The hardware lane decodes and encodes on the media engine; the output is an intermediate re-encoded at final export, so 0.25 bits/pixel is generous headroom (the old crf-18 lane measures ~0.09).
 fn build_render_args(
     doc: &EditDoc,
     output: &str,
@@ -564,36 +597,56 @@ fn build_render_args(
         60.0
     };
 
-    // Each source used by a clip becomes ONE `-i` in stable order; ffmpeg auto-splits a reused *input stream specifier* like `[idx:v]` so we decode each source once, but reusing a *filter output* label (e.g. `[v0]`) would error, don't "fix" this into one `-i` per clip.
+    // Each source VIDEO used by a clip becomes ONE `-i` in stable order; ffmpeg auto-splits a reused *input stream specifier* like `[idx:v]` so we decode each source once, but reusing a *filter output* label (e.g. `[v0]`) would error, don't "fix" this into one `-i` per clip. A still is the exception: it takes one looped input PER clip, each with its own `-t`, so a reused image never leaves a split queueing thousands of duplicated frames.
     let mut input_order: Vec<&EditSource> = Vec::new();
-    let mut input_index = std::collections::HashMap::new();
+    let mut input_hold_ms: Vec<u64> = Vec::new();
+    let mut video_index = std::collections::HashMap::new();
     let clips_sorted = {
         let mut c: Vec<&EditClip> = doc.clips.iter().collect();
         c.sort_by_key(|clip| clip.start_ms);
         c
     };
+    let mut clip_input = Vec::with_capacity(clips_sorted.len());
     for clip in &clips_sorted {
-        if !input_index.contains_key(&clip.source_id) {
-            let source = doc
-                .sources
-                .iter()
-                .find(|s| s.id == clip.source_id)
-                .ok_or_else(|| format!("clip references unknown source {}", clip.source_id))?;
-            input_index.insert(clip.source_id.clone(), input_order.len());
-            input_order.push(source);
-        }
+        let source = doc
+            .sources
+            .iter()
+            .find(|s| s.id == clip.source_id)
+            .ok_or_else(|| format!("clip references unknown source {}", clip.source_id))?;
+        let image = source.kind == EditSourceKind::Image;
+        let idx = match video_index.get(&clip.source_id) {
+            Some(&idx) if !image => idx,
+            _ => {
+                input_order.push(source);
+                input_hold_ms.push(if image { image_hold_ms(clip) } else { 0 });
+                if !image {
+                    video_index.insert(clip.source_id.clone(), input_order.len() - 1);
+                }
+                input_order.len() - 1
+            }
+        };
+        clip_input.push(idx);
     }
 
     let mut filter = String::new();
     let mut labels = Vec::new();
     let mut total_frames = 0u32;
     for (i, clip) in clips_sorted.iter().enumerate() {
-        let idx = input_index[&clip.source_id];
+        let idx = clip_input[i];
+        let image = input_order[idx].kind == EditSourceKind::Image;
         let in_s = clip.in_ms as f64 / 1000.0;
         let out_s = clip.out_ms as f64 / 1000.0;
         let speed = if clip.speed > 0.0 { clip.speed } else { 1.0 };
         let label = format!("v{i}");
-        if let Some(hold_ms) = clip.hold_ms {
+        if image {
+            // A still is already one frame: normalise to the output rate and cut the hold out of the loop, no trim/select frame pick.
+            let hold_s = image_hold_ms(clip) as f64 / 1000.0;
+            filter.push_str(&format!(
+                "[{idx}:v]fps={fps},trim=duration={hold_s:.6},setpts=PTS-STARTPTS,\
+                 scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[{label}];"
+            ));
+        } else if let Some(hold_ms) = clip.hold_ms {
             // Freeze frame: select exactly the frame at inMs, clone it for the hold, then trim to the exact length after fps normalisation.
             let hold_s = hold_ms as f64 / 1000.0;
             filter.push_str(&format!(
@@ -610,7 +663,7 @@ fn build_render_args(
             ));
         }
         labels.push(label);
-        total_frames += clip_output_frames(clip, fps);
+        total_frames += clip_output_frames(clip, fps, image);
     }
     for label in &labels {
         filter.push_str(&format!("[{label}]"));
@@ -669,8 +722,19 @@ fn build_render_args(
         "-progress".into(),
         "pipe:1".into(),
     ];
-    for source in &input_order {
-        if hardware {
+    for (i, source) in input_order.iter().enumerate() {
+        if source.kind == EditSourceKind::Image {
+            // Loop the still at the output rate for exactly its clip's hold; there is no codec here to hardware-decode.
+            let duration_s = input_hold_ms[i] as f64 / 1000.0;
+            args.extend([
+                "-loop".into(),
+                "1".into(),
+                "-framerate".into(),
+                format!("{fps}"),
+                "-t".into(),
+                format!("{duration_s:.6}"),
+            ]);
+        } else if hardware {
             args.push("-hwaccel".into());
             args.push("videotoolbox".into());
         }
@@ -859,6 +923,7 @@ mod tests {
             sources: vec![EditSource {
                 id: "s1".into(),
                 rel: "assets/a.mp4".into(),
+                kind: EditSourceKind::Video,
                 width: 1920,
                 height: 1080,
                 fps: 60.0,
@@ -958,6 +1023,100 @@ mod tests {
         assert!(filter.contains("concat=n=2"));
     }
 
+    /// An image source added to `doc()`, plus a clip holding it for `hold_ms`.
+    fn with_image(hold_ms: u64) -> EditDoc {
+        let mut d = doc();
+        d.sources.push(EditSource {
+            id: "s2".into(),
+            rel: "assets/shot.png".into(),
+            kind: EditSourceKind::Image,
+            width: 1080,
+            height: 1920,
+            fps: 0.0,
+            duration_ms: 0,
+            abs: "/abs/shot.png".into(),
+        });
+        d.clips.push(EditClip {
+            id: "c2".into(),
+            source_id: "s2".into(),
+            in_ms: 0,
+            out_ms: 0,
+            speed: 1.0,
+            start_ms: 1000,
+            hold_ms: Some(hold_ms),
+        });
+        d
+    }
+
+    #[test]
+    fn image_clips_loop_the_still_for_their_hold_and_concat_with_video() {
+        let (args, total) =
+            build_render_args(&with_image(2000), "/out/x.mp4", false, None).unwrap();
+        assert_eq!(total, 60 + 120); // 1s of source + a 2s still at 60fps
+        let i = args.iter().position(|a| a == "-loop").unwrap();
+        assert_eq!(
+            args[i..i + 8],
+            [
+                "-loop",
+                "1",
+                "-framerate",
+                "60",
+                "-t",
+                "2.000000",
+                "-i",
+                "/abs/shot.png"
+            ]
+            .map(String::from)
+        );
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("[1:v]fps=60,trim=duration=2.000000,setpts=PTS-STARTPTS,"));
+        // A still has no span, so nothing picks a frame out of it.
+        assert!(!filter.contains("select=eq(n\\,0)"));
+        assert!(filter.contains("concat=n=2"));
+    }
+
+    #[test]
+    fn a_reused_still_takes_one_looped_input_per_clip_and_never_hardware_decodes() {
+        let mut d = with_image(2000);
+        d.clips.push(EditClip {
+            id: "c3".into(),
+            source_id: "s2".into(),
+            in_ms: 0,
+            out_ms: 0,
+            speed: 1.0,
+            start_ms: 3000,
+            hold_ms: Some(5000),
+        });
+        let (args, total) = build_render_args(&d, "/out/x.mp4", true, None).unwrap();
+        assert_eq!(total, 60 + 120 + 300);
+        // One looped input per still clip, each cut to its own hold: no split queues duplicated frames.
+        assert_eq!(args.iter().filter(|a| *a == "-i").count(), 3);
+        let holds: Vec<&str> = args
+            .windows(2)
+            .filter(|w| w[0] == "-t")
+            .map(|w| w[1].as_str())
+            .collect();
+        assert_eq!(holds, ["2.000000", "5.000000"]);
+        // Hardware decode rides the video input only.
+        assert_eq!(args.iter().filter(|a| *a == "-hwaccel").count(), 1);
+        let filter = &args[args.iter().position(|a| a == "-filter_complex").unwrap() + 1];
+        assert!(filter.contains("[1:v]fps=60,trim=duration=2.000000"));
+        assert!(filter.contains("[2:v]fps=60,trim=duration=5.000000"));
+        assert!(filter.contains("concat=n=3"));
+    }
+
+    #[test]
+    fn an_image_source_without_a_kind_loads_as_a_video() {
+        let doc: EditDoc = serde_json::from_str(
+            r#"{"version":1,"name":"cut","sources":[{"id":"s1","rel":"assets/a.mp4","width":1920,
+             "height":1080,"fps":60,"durationMs":1000}],"settings":{"width":1920,"height":1080,
+             "fps":60},"clips":[{"id":"c1","sourceId":"s1","inMs":0,"outMs":1000,"speed":1,
+             "startMs":0}]}"#,
+        )
+        .unwrap();
+        assert_eq!(doc.sources[0].kind, EditSourceKind::Video);
+    }
+
     #[test]
     fn tap_overlay_adds_one_input_and_enable_window_per_visible_tap() {
         let mut d = doc();
@@ -1001,6 +1160,7 @@ mod tests {
         d.sources.push(EditSource {
             id: "s2".into(),
             rel: "assets/b.mp4".into(),
+            kind: EditSourceKind::Video,
             width: 1080,
             height: 1920,
             fps: 60.0,

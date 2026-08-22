@@ -259,7 +259,7 @@ export async function applyBackgroundToAllScenes(
   return { applied, failed };
 }
 
-/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
+/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`), and a device slot's kind becomes "video" (an edited still renders out as a clip). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
 export function applyEditRepoint(
   doc: SceneDoc,
   slot: "device" | "compareDevice" | "background" | "videoWindow",
@@ -290,13 +290,13 @@ export function applyEditRepoint(
       ...next.compare.b,
       media: {
         ...next.compare.b?.media,
-        [device.id]: { ...media, src: rel },
+        [device.id]: { ...media, src: rel, kind: "video" },
       },
     };
     return next;
   }
   if (!device.media) return null;
-  device.media = { ...device.media, src: rel };
+  device.media = { ...device.media, src: rel, kind: "video" };
   return next;
 }
 
