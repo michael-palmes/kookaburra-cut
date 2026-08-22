@@ -33,8 +33,9 @@ describe("comparison animation drill (source pin)", () => {
     expect(drill).not.toMatch(/<option value="inOut/);
   });
 
-  it("replaces the whole track in one history entry per field commit", () => {
-    expect(drill).toContain("const track = buildCompareAnimationTrack({ ...anim, ...patch }");
+  it("replaces the whole track in one history entry, rebased on the doc inside the patch", () => {
+    expect(drill).toContain("next.compare.track = buildCompareAnimationTrack(merged");
+    expect(drill).toContain("...readCompareAnimationFields(\n              next.compare.track,");
     expect(drill).toContain('{ history: "divider animation" }');
     expect(drill.match(/writeAnimation\(/g)?.length).toBeGreaterThan(5);
   });

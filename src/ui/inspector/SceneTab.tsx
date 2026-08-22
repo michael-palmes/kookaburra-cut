@@ -2194,6 +2194,8 @@ export function SceneTab({
   const [compareSide, setCompareSide] = useState<"a" | "b">("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
   const [compareAppearanceDeviceId, setCompareAppearanceDeviceId] = useState<string | null>(null);
+  // Shows the angle fields before any key carries an angle; the fields' own commits do the writing.
+  const [compareAngleOpen, setCompareAngleOpen] = useState(false);
   const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
   const compareDragBaseline = useRef<SceneDoc | null>(null);
@@ -2821,6 +2823,7 @@ export function SceneTab({
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     setCompareAppearanceDeviceId(null);
+    setCompareAngleOpen(false);
     setConfirmRemoveCompare(false);
     setOverviewSelection(null);
     setContentPickerOpen(false);
@@ -6742,13 +6745,26 @@ export function SceneTab({
     );
     const anim = animation.fields;
     const keyedAngle = anim.angleFromDeg !== undefined || anim.angleToDeg !== undefined;
-    // Every field writes the WHOLE track, so a rich hand edit is replaced explicitly rather than merged into.
+    // Every field replaces the WHOLE track, rebuilt from the doc INSIDE the patch so queued commits rebase instead of reverting each other.
     const writeAnimation = (patch: Partial<CompareAnimationFields>) => {
-      const track = buildCompareAnimationTrack({ ...anim, ...patch }, scene.durationMs);
       releaseTrackDraft();
       void patchDoc(
         (next) => {
-          if (next.compare) next.compare.track = track;
+          if (!next.compare) return;
+          const statik = next.compare.mask?.angleDeg ?? 90;
+          const merged = {
+            ...readCompareAnimationFields(
+              next.compare.track,
+              { value: next.compare.value, angleDeg: statik },
+              scene.durationMs,
+            ).fields,
+            ...patch,
+          };
+          if ((merged.angleFromDeg === undefined) !== (merged.angleToDeg === undefined)) {
+            merged.angleFromDeg = merged.angleFromDeg ?? statik;
+            merged.angleToDeg = merged.angleToDeg ?? statik;
+          }
+          next.compare.track = buildCompareAnimationTrack(merged, scene.durationMs);
         },
         { history: "divider animation" },
       );
@@ -6789,11 +6805,12 @@ export function SceneTab({
         <div className="inspector-drill-body">
           <SegmentedRow
             ariaLabel="Comparison mask"
+            className="subtabs-compact"
             options={COMPARE_MASK_CATALOG.map((e) => ({
               value: e.id,
               label: e.label,
               title: e.hint,
-              icon: <CompareMaskIcon id={e.id} size={17} />,
+              icon: <CompareMaskIcon id={e.id} size={14} />,
             }))}
             value={maskType}
             onChange={(id) =>
@@ -6812,6 +6829,7 @@ export function SceneTab({
                 min={0}
                 max={360}
                 step={1}
+                disabled={keyedAngle}
                 onCommit={(v) =>
                   patchCompare((c) => {
                     c.mask = { ...(c.mask ?? { type: "linear" }), angleDeg: v };
@@ -6944,7 +6962,8 @@ export function SceneTab({
                 decimals={0}
                 min={0}
                 max={scene.durationMs}
-                step={10}
+                step={1}
+                dragScale={10}
                 onCommit={(v) => writeAnimation({ startMs: v })}
               />
               <NumberField
@@ -6953,7 +6972,8 @@ export function SceneTab({
                 decimals={0}
                 min={MIN_KEY_GAP_MS}
                 max={scene.durationMs}
-                step={10}
+                step={1}
+                dragScale={10}
                 onCommit={(v) => writeAnimation({ durationMs: v })}
               />
             </div>
@@ -6975,21 +6995,17 @@ export function SceneTab({
             {maskEntry?.needsAngle && (
               <>
                 <ToggleRow
+                  icon={<CompareToggleIcon id="angle" size={17} />}
                   label="Animate the angle"
-                  description="Keys the divider angle too; off holds the static angle."
-                  checked={keyedAngle}
-                  onChange={(on) =>
-                    writeAnimation(
-                      on
-                        ? {
-                            angleFromDeg: anim.angleFromDeg ?? staticAngleDeg,
-                            angleToDeg: anim.angleToDeg ?? staticAngleDeg,
-                          }
-                        : { angleFromDeg: undefined, angleToDeg: undefined },
-                    )
-                  }
+                  description="Keys the divider angle too; while on, the static Angle above is ignored."
+                  checked={keyedAngle || compareAngleOpen}
+                  onChange={(on) => {
+                    setCompareAngleOpen(on);
+                    if (!on && keyedAngle)
+                      writeAnimation({ angleFromDeg: undefined, angleToDeg: undefined });
+                  }}
                 />
-                {keyedAngle && (
+                {(keyedAngle || compareAngleOpen) && (
                   <div className="popover-row">
                     <span className="popover-inline slider-row-label">Angle from / to</span>
                     <NumberField

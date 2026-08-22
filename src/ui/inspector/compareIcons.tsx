@@ -7,8 +7,8 @@ import type { CompareMaskType } from "../../engine/sceneCompare";
 /** Motion-preset ids plus the manual choice, which has no catalogue entry (it clears the keys rather than writing them). */
 export type ComparePresetIconId = ComparePreset["id"] | "manual";
 
-/** Divider-chrome toggles: the line itself, its grip, and the before/after label chips. */
-export type CompareToggleIconId = "line" | "grip" | "chips";
+/** Divider-chrome and animation toggles: the line itself, its grip, the before/after label chips, and the keyed angle. */
+export type CompareToggleIconId = "line" | "grip" | "chips" | "angle";
 
 export const COMPARE_MASK_GLYPHS: Record<CompareMaskType, ReactNode> = {
   linear: (
@@ -107,6 +107,13 @@ export const COMPARE_TOGGLE_GLYPHS: Record<CompareToggleIconId, ReactNode> = {
     <>
       <rect x="2" y="3.4" width="7" height="4" rx="2" />
       <rect x="7" y="8.6" width="7" height="4" rx="2" />
+    </>
+  ),
+  angle: (
+    <>
+      <path d="M3.2 12.8h9.6" />
+      <path d="m3.2 12.8 7.3-8.6" />
+      <path d="M8.6 12.8a5.4 5.4 0 0 0-1.8-4" />
     </>
   ),
 };
