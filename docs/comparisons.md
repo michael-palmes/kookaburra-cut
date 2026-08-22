@@ -76,7 +76,9 @@ Rules:
   tweens with the value, so a linear divider can rotate as it reveals. Keys
   without one hold the static angle, which is what keeps angle-free docs
   exporting byte-identically. Angle interpolates numerically, with no
-  shortest-path wrap: 350 to 10 travels backwards through 180.
+  shortest-path wrap: 350 to 10 travels backwards through 180. The drill's
+  Angle field only starts writing per-key angles once the track has one (see
+  the first-write tilt below).
 - The track rides the shared KeyedTrack model: eased interpolation inside a
   segment, the latest key HOLDS outside (the camera semantics), the static
   `value` and angle with no keys. Position and angle come off ONE walk
@@ -188,10 +190,14 @@ the `accent` token back so the divider follows the theme.
 
 The Divider slider is always shown, and the Angle field (linear masks) beside
 it. With no keys they write the static `compare.value` and `mask.angleDeg`.
-With keys they edit the key NEAREST the playhead (the earlier key takes a
-tie), live while dragging and one history entry on release; the angle write
-lands on that key's `pose.angleDeg`, and keys without one keep holding the
-static angle. The nearest-key maths is
+With keys the Divider slider edits the key NEAREST the playhead (the earlier
+key takes a tie), live while dragging and one history entry on release. Angle
+starts wider: on a keyed track whose keys carry NO angle yet, the FIRST angle
+write tilts the whole comparison, setting `pose.angleDeg` on every key and
+`mask.angleDeg` with them, so one angle stays one angle instead of the edit
+turning into a rotation. Once any key carries an angle, later writes land on
+the nearest key's `pose.angleDeg` alone and the rotation is deliberate; keys
+still without one keep holding the static angle. The nearest-key maths is
 `ui/inspector/comparisonTarget.ts`. Key times, eases and everything richer
 belong to the timeline lane, which is the animation surface.
 
