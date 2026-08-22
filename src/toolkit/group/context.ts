@@ -17,6 +17,12 @@ export interface GroupAnimationState {
   band: GroupShineBand | null;
   /** MOUNT-STABLE: whether this group can ever shine; children use it once per mount to decide whether to route through a shine-capable material variant. */
   shineCapable: boolean;
+  /** MOUNT-STABLE: managed image children need the blur/mask material variant. */
+  imageEffectsCapable?: boolean;
+  /** This frame's managed-image blur radius in world units. */
+  imageBlurWorld?: number;
+  /** This frame's horizontal managed-image reveal window. */
+  imageSweep?: readonly [number, number];
 }
 
 /** null = not inside an `AnimatedGroup`, so children behave exactly as they did before groups existed. */
@@ -36,5 +42,31 @@ export function foldBandToChild(
   return {
     centerS: state.band.centerS - (position[0] * SHINE_AXIS[0] + position[1] * SHINE_AXIS[1]),
     invHalfWidthS: state.band.invHalfWidthS,
+  };
+}
+
+export interface GroupImageEffects {
+  blur: readonly [number, number, number, number];
+  mask: readonly [number, number, number, number];
+}
+
+/** Converts the managed-image group sample into shader uniforms. Null keeps the stock image material. */
+export function groupImageEffects(
+  state: GroupAnimationState | null,
+  width: number,
+  height: number,
+): GroupImageEffects | null {
+  if (state?.imageEffectsCapable !== true) return null;
+  const blurWorld = Math.max(0, state.imageBlurWorld ?? 0);
+  const sweep = state.imageSweep ?? [0, 1];
+  const partial = sweep[0] > 0 || sweep[1] < 1;
+  return {
+    blur: [
+      Math.min(0.2, blurWorld / Math.max(width, 0.0001)),
+      Math.min(0.2, blurWorld / Math.max(height, 0.0001)),
+      blurWorld > 0 ? 1 : 0,
+      0,
+    ],
+    mask: [sweep[0], sweep[1], 1 / 512, partial ? 1 : 0],
   };
 }

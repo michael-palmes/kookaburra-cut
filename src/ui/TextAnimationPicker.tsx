@@ -24,6 +24,7 @@ export function DebouncedRange({
   label,
   onCommit,
   onInput,
+  disabled = false,
 }: {
   value: number;
   min: number;
@@ -33,6 +34,7 @@ export function DebouncedRange({
   onCommit: (v: number) => void;
   /** When present, the drag's debounced ticks call this (live, history-less) and `onCommit` fires only on release. */
   onInput?: (v: number) => void;
+  disabled?: boolean;
 }) {
   const [v, setV] = useState(value);
   const [editing, setEditing] = useState(false);
@@ -111,6 +113,7 @@ export function DebouncedRange({
         step={step}
         value={v}
         aria-label={label}
+        disabled={disabled}
         onChange={(e) => schedule(Number(e.target.value))}
         onPointerUp={release}
         onKeyUp={release}
@@ -122,6 +125,7 @@ export function DebouncedRange({
           value={text}
           inputMode="decimal"
           aria-label={`${label} value`}
+          disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => {
             const commit = !cancel.current;
@@ -143,6 +147,7 @@ export function DebouncedRange({
           type="button"
           className="range-value"
           title="Double-click to type a value"
+          disabled={disabled}
           onDoubleClick={() => {
             setText(v.toFixed(2));
             setEditing(true);

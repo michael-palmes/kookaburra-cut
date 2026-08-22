@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ColourPicker } from "./colour/ColourPicker";
 import { MediaBrowser } from "./MediaBrowser";
@@ -70,9 +71,11 @@ export function HeaderIconField({
   onPick: (value: string) => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [paletteError, setPaletteError] = useState<string | null>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
   useEscapeClose(() => setPickerOpen(false), pickerOpen);
   return (
-    <div className="wizard-field">
+    <div ref={fieldRef} className="wizard-field">
       <TextFieldRow
         label="Header icon"
         value={value}
@@ -93,9 +96,24 @@ export function HeaderIconField({
           </button>
         ))}
       </div>
-      <button type="button" className="btn btn-left" onClick={() => setPickerOpen(true)}>
-        Choose image…
-      </button>
+      <div className="popover-row">
+        <button
+          type="button"
+          className="btn btn-left"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setPaletteError(null);
+            fieldRef.current?.querySelector("textarea")?.focus();
+            void invoke("show_character_palette").catch((error) => setPaletteError(String(error)));
+          }}
+        >
+          More emoji…
+        </button>
+        <button type="button" className="btn btn-left" onClick={() => setPickerOpen(true)}>
+          Choose image…
+        </button>
+      </div>
+      {paletteError && <p className="modal-error">{paletteError}</p>}
       <p className="modal-hint">{hint}</p>
       {pickerOpen && (
         <div

@@ -29,9 +29,11 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | --- | --- | --- | --- | --- |
 | Staged object | 3D | `ObjectPrimitive` → `SceneGizmo` | move / rotate / scale | `objects[].placement` |
 | Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | `deviceLayout` delta, else `devices[].placement` |
+| Stage image | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `images[].stage` |
 | Staged chart | 3D | `Chart.tsx` (`StagedChart`) → `SceneGizmo` | move / rotate / scale | `chart.placement` |
 | Scene text, per key | 2D | `TextGizmo` → `Gizmo2D` | move / size / rotate | `textStyle.<key>OffsetX,OffsetY,Size,RotationDeg` |
 | Hero chart | 2D | `ChartHeroGizmo` → `Gizmo2D` | move / scale | `chart.style.offset`, `chart.style.scale` |
+| Overlay image | 2D | `OverlayImageGizmo` → `Gizmo2D` | move / resize / rotate | `images[].overlay` |
 | Panel decoration | 2D | `DecorationGizmo` → `Gizmo2D` | move / resize / rotate | `frame.decorations[].position,size,rotationDeg` |
 
 `SceneGizmo` (`src/engine/SceneGizmo.tsx`) is the only place drei's
@@ -50,7 +52,10 @@ placement pose (float, spin and the intro presets ride between them), so
 sibling of the device root, which does. The drag flows back through React state
 (the clock re-renders `Device` every frame and would stomp a mutated group), and
 the proxy re-syncs only when the COMMITTED placement changes, so the handles hold
-the drag across the async sidecar write instead of snapping back for it.
+the drag across the async sidecar write instead of snapping back for it. The
+write result is acknowledged by commit id: success releases the matching local
+preview after the committed document lands, and failure restores only that
+device. A comparison's B side cannot consume the acknowledgement.
 
 `Gizmo2D` (`src/ui/gizmo/Gizmo2D.tsx`) draws a box per item, four corner resize
 handles, a rotate knob and the guides, and owns the pointer plumbing. It owns no
@@ -63,11 +68,11 @@ troika's first typeset landing.
 ## Section-scoped visibility
 
 `gizmoSections.ts` maps inspector drill ids to gizmo domains by prefix
-(`device` → devices, `objects`, `chart`, `text`, `frame.decorations`), reading the
-whole drill stack top down so a drill carrying another family's id (Shadow lives
-under Device as `style.shadow`) still reads as the section the user drilled
-through. `useGizmoSectionOpen(domain)` is a boolean selector, so moving between
-drills inside one family re-renders nothing.
+(`device` → devices, `image` → images, `objects`, `chart`, `text`,
+`frame.decorations`), reading the whole drill stack top down so a drill carrying
+another family's id (Shadow lives under Device as `style.shadow`) still reads as
+the section the user drilled through. `useGizmoSectionOpen(domain)` is a boolean
+selector, so moving between drills inside one family re-renders nothing.
 
 While a section is open:
 
@@ -186,6 +191,8 @@ precision as the inspector's own controls.
 | --- | --- | --- |
 | Object / staged chart | `placement.position,rotationDeg,scale` | The group is read back at pointer-up, so the doc lands exactly what is on screen; scale is uniformised to the furthest-moved axis |
 | Device | `deviceLayout` delta `offset,rotationDeg,scale` when a layout block is live, else `placement` | `committed = authored + (dragged - rendered)`, scale multiplying; 3dp positions, 1dp degrees, 3dp scale, minimum scale 0.01 |
+| Stage image | `images[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges |
+| Overlay image | `images[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges |
 | Text | `<key>OffsetX/OffsetY`, `<key>Size`, `<key>RotationDeg` | 2dp world units, whole percent (0.01..10 multiplier), 1dp degrees; a neutral value deletes the key so the scene's own layout resurfaces |
 | Hero chart | `chart.style.offset`, `chart.style.scale` | 2dp, clamped to the resolver's own ±20 and 0.2..3, so a drag can never write a value the resolver would silently clamp back |
 | Decoration | `position`, `size`, `rotationDeg` | Size clamped 0.02..1.5 of the frame width |
@@ -205,15 +212,29 @@ box's screen angle, so a tilt the scene itself authored stays out of the sidecar
   canvas. `SceneTab` subscribes, clears the pending commit (even for another
   scene, so an unclaimed drag is dropped rather than landing late) and writes
   once.
-- 2D hosts share `useGizmoDocWrite`: every tick previews in memory (no disk
+- Overlay images use the same Image-store route as Stage images. Live ticks stay
+  in `previewPlacement`, and pointer-up posts one `pendingCommit`, so changing
+  host never changes the image's history contract.
+- Image motion is neutralised on all mounted editor sides while the Image domain
+  owns the Stage, keeping comparison renders, outlines, hit areas and handles on
+  the authored placement. Leaving the domain restores sampled motion immediately.
+- Device motion is neutralised on all mounted editor sides while the Device
+  domain owns the Stage for the same reason. Export always samples the authored
+  motion.
+- Other 2D hosts share `useGizmoDocWrite`: every tick previews in memory (no disk
   write, no history) so the item tracks the pointer, and pointer-up lands one
   `writeSceneDoc` plus one `pushHistory` against the doc the drag STARTED from, so
   undo returns to the pose before the drag, not to the last preview tick.
 
-A press that never moved a handle costs nothing anywhere: the three 3D hosts
+A press that never moved a handle costs nothing anywhere: the 3D hosts
 check a dragging flag set on the first `onObjectChange` (three-stdlib fires
 `mouseUp` for a zero-movement press too), and `Gizmo2D` ends with a null
 gesture.
+
+A grounded device stays clamped for X, Z, rotation and scale drags. Once a Y
+drag leaves the grounded start, the live preview follows the proxy and the one
+commit clears `placement.ground`. Both raw placement and layout-delta writes
+land at the exact visible Y.
 
 ## Export safety
 
@@ -225,9 +246,10 @@ Five independent guards keep gizmos out of exported pixels:
    selection and the section is open. The 2D layers mount only for a workspace
    project, with the matching section open, and never while exporting or in an
    autorun.
-2. **`exportPreamble` clears the selections** (objects, charts, devices)
-   explicitly, not incidentally, so a gizmo selected when an export starts cannot
-   reach a frame.
+2. **Export state is held before `exportPreamble` clears the selections**
+   (objects, charts, devices, images), so synchronous inspector repair cannot
+   reselect one before frame zero. The lifecycle transition restores inspector
+   selection after completion and releases safely on preload failure.
 3. **Layer discipline.** Outline brackets ride `HELPER_LAYER`, which the exporter
    disables on the camera for the whole run; the click-to-select mesh is
    `visible={false}`, which `WebGLRenderer.projectObject` returns on, so it never
@@ -267,7 +289,8 @@ in the tree.
 | 2D layer, geometry, projection | `src/ui/gizmo/Gizmo2D.tsx`, `gizmo2dMath.ts`, `gizmo2dProject.ts` |
 | Routing, modifiers, camera yield | `src/ui/gizmo/gizmoRouting.ts`, `modifierKeys.ts`, `useGizmoYield.ts` |
 | Write helpers | `src/ui/gizmo/gizmoDocWrite.ts`, `textGizmoWrite.ts`, `chartGizmoWrite.ts`, `src/toolkit/device/gizmoCommit.ts` |
-| Hosts | `src/ui/TextGizmo.tsx`, `src/ui/ChartHeroGizmo.tsx`, `src/ui/DecorationGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx` |
+| Image writes | `src/toolkit/media/imageGizmoCommit.ts`, `src/engine/imageEditStore.ts` |
+| Hosts | `src/ui/TextGizmo.tsx`, `src/ui/ChartHeroGizmo.tsx`, `src/ui/DecorationGizmo.tsx`, `src/ui/ImageOverlayGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/media/StageImageGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx` |
 
 ## Open edges
 

@@ -8,18 +8,21 @@
 #
 #   pnpm kookaburra:run --action verify --project launch-2026 --aspect all
 #   pnpm kookaburra:run --action export --project device-spike --aspect 16:9 --codec libx264
-#   pnpm kookaburra:run --action theme-previews          # regenerate src/assets/theme-previews/
+#   pnpm kookaburra:run --action theme-previews          # regenerate stale theme previews
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
+#   pnpm kookaburra:run --action render-spike --at 300   # hidden render window throttling spike
 #
-# Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot (required)
+# Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
-#                  preview-lab-theme, option-previews → the preview-lab-* fixtures (incremental
+#                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
+#                  every theme), option-previews → the preview-lab-* fixtures (incremental
 #                  via the src/assets/option-previews/manifest.json diff; --all re-records
 #                  everything); verify/export accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
 #         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
-#         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene)
+#         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene;
+#                  render-spike: sample duration, default 300)
 #         --codec  libx264|h264_videotoolbox|prores_ks (default: libx264)
 #         --preset <id>  export through a bundled/user export preset (v11 · M7);
 #                  without --aspect, the preset's favoured aspect is used
@@ -62,8 +65,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" ]]; then
-  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip' or 'create'" >&2
+if [[ "$ACTION" != "verify" && "$ACTION" != "export" && "$ACTION" != "theme-previews" && "$ACTION" != "option-previews" && "$ACTION" != "perf" && "$ACTION" != "screenshot" && "$ACTION" != "packroundtrip" && "$ACTION" != "create" && "$ACTION" != "render-spike" ]]; then
+  echo "kookaburra:run: --action must be 'verify', 'export', 'theme-previews', 'option-previews', 'perf', 'screenshot', 'packroundtrip', 'create' or 'render-spike'" >&2
   exit 2
 fi
 if [[ -n "$APP" ]]; then
@@ -130,6 +133,18 @@ fi
 # renamed or removed themes would be resurrected into src/assets on each run.
 if [[ "$ACTION" == "theme-previews" ]]; then
   rm -rf "$RESULT_DIR/theme-previews"
+  THEME_PREVIEW_PROJECT="${PROJECT:-preview-lab-theme}"
+  unset KOOKABURRA_THEMES 2>/dev/null || true
+  node "$ROOT/scripts/theme-preview-stale.mjs" cleanup --project "$THEME_PREVIEW_PROJECT"
+  if [[ "$ALL_PREVIEWS" != "1" ]]; then
+    STALE_THEMES="$(node "$ROOT/scripts/theme-preview-stale.mjs" list --project "$THEME_PREVIEW_PROJECT")"
+    if [[ -z "$STALE_THEMES" ]]; then
+      echo "kookaburra:run: theme previews are all fresh, nothing to do (--all forces a re-record)"
+      exit 0
+    fi
+    export KOOKABURRA_THEMES="$STALE_THEMES"
+    echo "kookaburra:run: $(echo "$STALE_THEMES" | tr ',' '\n' | wc -l | tr -d ' ') stale theme(s) to capture"
+  fi
 fi
 
 # The pack round trip renders in a THROWAWAY workspace root seeded from the real one, so the
@@ -242,6 +257,11 @@ if ! grep -q '"ok": true' "$RESULT_FILE"; then
   exit 1
 fi
 
+# render-spike: the beat statistics live in the result file.
+if [[ "$ACTION" == "render-spike" ]]; then
+  echo "kookaburra:run: render-spike stats → $RESULT_FILE"
+fi
+
 # screenshot: surface the PNG path.
 if [[ "$ACTION" == "screenshot" ]]; then
   PNG="$(grep -o '"path": "[^"]*"' "$RESULT_FILE" | head -1 | sed 's/"path": "\(.*\)"/\1/')"
@@ -255,17 +275,37 @@ if [[ "$ACTION" == "theme-previews" ]]; then
   DEST="$ROOT/src/assets/theme-previews"
   mkdir -p "$DEST"
   copied=0
+  PROMOTED=()
+  # Validate every staged set before changing any final preview or manifest entry.
   for dir in "$SRC"/*/; do
     [[ -d "$dir" ]] || continue
     theme="$(basename "$dir")"
     for i in 1 2 3 4; do
-      if [[ -f "$dir/$i.jpg" ]]; then
-        cp "$dir/$i.jpg" "$DEST/$theme-$i.jpg"
-        copied=$((copied + 1))
+      if [[ ! -f "$dir/$i.jpg" ]]; then
+        echo "kookaburra:run: incomplete theme preview set for $theme (missing $i.jpg)" >&2
+        exit 1
       fi
     done
+    PROMOTED+=("$theme")
   done
-  echo "kookaburra:run: copied $copied preview(s) → src/assets/theme-previews/"
+  if [[ "${#PROMOTED[@]}" -eq 0 ]]; then
+    echo "kookaburra:run: no theme preview sets were produced" >&2
+    exit 1
+  fi
+  # Invalidate first, so interruption during the copies can only cause a safe re-render.
+  node "$ROOT/scripts/theme-preview-stale.mjs" invalidate --project "$THEME_PREVIEW_PROJECT" "${PROMOTED[@]}"
+  for dir in "$SRC"/*/; do
+    [[ -d "$dir" ]] || continue
+    theme="$(basename "$dir")"
+    for i in 1 2 3 4; do
+      tmp="$DEST/.theme-preview-$theme-$i.tmp"
+      cp "$dir/$i.jpg" "$tmp"
+      mv -f "$tmp" "$DEST/$theme-$i.jpg"
+      copied=$((copied + 1))
+    done
+  done
+  node "$ROOT/scripts/theme-preview-stale.mjs" commit --project "$THEME_PREVIEW_PROJECT" "${PROMOTED[@]}"
+  echo "kookaburra:run: promoted $copied preview(s) → src/assets/theme-previews/"
 fi
 
 # option-previews: encode clip sets (frame sequences → small H.264 loops via the

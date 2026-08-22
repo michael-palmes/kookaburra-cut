@@ -4,6 +4,7 @@ import { resolveFixturePlan } from "../../engine/fixtures";
 import { registerLightingAnimatable } from "../../engine/lightingAnimation";
 import { sunPosition } from "../../engine/orbit";
 import {
+  AnimatedFixtureLightIdsContext,
   ProjectLightingContext,
   SceneDocContext,
   useSceneContext,
@@ -20,6 +21,7 @@ import { mergeLighting } from "../../theme/schema";
 import type { ThemeLightSpec } from "../../theme/tokens";
 import { StageFixtures } from "../lighting/Fixture";
 import { LightHelpers } from "../lighting/LightHelpers";
+import { StageSceneImages } from "../media/SceneImage";
 import { DEFAULT_FLOOR_Y, StageBackdrop } from "./backdrops";
 import { SceneStageContext, type SceneStageState } from "./context";
 import { StageLights } from "./StageLights";
@@ -29,6 +31,7 @@ import {
   SHADOW_FRUSTUM_EXTENT,
   SHADOW_NEAR,
   SHADOW_RADIUS_SCALE,
+  stageMapShadowsEnabled,
 } from "./shadowRig";
 
 /** The theme-driven stage: lights the scene from the resolved lighting layers (theme -> project -> scene, see `mergeLighting`), mounts the resolved backdrop, and tells staged primitives to stand their bundled lit sets down; the camera-locked fixed background and environment reflections do NOT mount here (mounted elsewhere, at the scene host and the compositor seam respectively). Shadows are the HYBRID decision: the sun casts real shadow maps only when a floor/backdrop is staged AND the shadow technique is "map", else the procedural blob shadows remain the default; no lighting at any layer renders no lights and leaves primitives lit (context null) so a scaffolded scene stays visible under a legacy theme. The v8 path (sun + ambient + fills, no v9 fields) must emit an IDENTICAL scene graph: same component order, same props, same values. */
@@ -48,6 +51,7 @@ export function SceneStage({
 }) {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
+  const animatedFixtureLightIds = useContext(AnimatedFixtureLightIdsContext);
   const projectLighting = useContext(ProjectLightingContext);
   const lighting = useMemo(
     () => mergeLighting(theme.lighting, projectLighting ?? undefined, doc?.lighting),
@@ -56,22 +60,31 @@ export function SceneStage({
   const backdrop = doc?.backdrop ?? theme.backdrop;
   const hasBackdrop = backdrop !== undefined && backdrop.type !== "none";
   const shadow = lighting?.shadow;
-  const mapShadows = Boolean(hasBackdrop && shadow && shadow.technique === "map");
+  const mapShadows = stageMapShadowsEnabled(hasBackdrop, shadow);
   const sun = lighting?.sun;
+  const stageFloorY = backdrop?.type === "floor" ? (floorY ?? DEFAULT_FLOOR_Y) : null;
+  const renderedFloorY = lighting ? stageFloorY : null;
 
   // Report staging to the registry so the Background editor can warn about occluded fills.
-  const sceneIndex = useSceneContext()?.index;
+  const stageRegistrationKey = useId();
+  const sceneContext = useSceneContext();
+  const sceneIndex = sceneContext?.index;
+  const sceneSide = sceneContext?.side;
   const backdropType = backdrop?.type ?? "none";
   useEffect(() => {
     if (sceneIndex === undefined) return;
-    useStageRegistry.getState().register(sceneIndex, backdropType);
-    return () => useStageRegistry.getState().unregister(sceneIndex);
-  }, [sceneIndex, backdropType]);
+    useStageRegistry.getState().register(stageRegistrationKey, {
+      index: sceneIndex,
+      side: sceneSide,
+      backdropType,
+      floorY: renderedFloorY,
+    });
+    return () => useStageRegistry.getState().unregister(stageRegistrationKey);
+  }, [stageRegistrationKey, sceneIndex, sceneSide, backdropType, renderedFloorY]);
 
-  const stageFloorY = backdrop?.type === "floor" ? (floorY ?? DEFAULT_FLOOR_Y) : null;
   const stageState = useMemo<SceneStageState | null>(
-    () => (lighting ? { mapShadows, floorY: stageFloorY } : null),
-    [lighting, mapShadows, stageFloorY],
+    () => (lighting ? { mapShadows, floorY: renderedFloorY } : null),
+    [lighting, mapShadows, renderedFloorY],
   );
 
   // Keyframe apply-seam registration: the sun and ambient are animatable per scene (no track mounted means the registry is populated but never read).
@@ -119,6 +132,7 @@ export function SceneStage({
     const fixtures = resolveFixturePlan(
       lighting.fixtures,
       MAX_SCENE_LIGHTS - sunSlot - b.lights.length,
+      animatedFixtureLightIds,
     );
     if (b.droppedLights > 0) {
       console.warn(
@@ -141,14 +155,18 @@ export function SceneStage({
       );
     }
     return { ...b, fixtures };
-  }, [lighting, sunCasts, sceneIndex]);
+  }, [lighting, sunCasts, sceneIndex, animatedFixtureLightIds]);
 
   return (
     <SceneStageContext.Provider value={stageState}>
       {lighting && (
         <>
           {lighting.ambient !== undefined && (
-            <ambientLight ref={ambientRef} intensity={lighting.ambient} />
+            <ambientLight
+              ref={ambientRef}
+              intensity={lighting.ambient}
+              {...(lighting.ambientColor ? { color: lighting.ambientColor } : {})}
+            />
           )}
           {sun && sun.enabled !== false && (
             <directionalLight
@@ -184,6 +202,7 @@ export function SceneStage({
               lights={budget.lights}
               shadowCasterIds={budget.shadowCasterIds}
               shadow={shadow}
+              mapShadows={mapShadows}
               colors={theme.colors}
             />
           )}
@@ -196,6 +215,7 @@ export function SceneStage({
       {backdrop && (
         <StageBackdrop spec={backdrop} shadow={mapShadows ? shadow : undefined} floorY={floorY} />
       )}
+      <StageSceneImages />
       {children}
     </SceneStageContext.Provider>
   );

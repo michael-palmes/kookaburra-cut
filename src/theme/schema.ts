@@ -278,6 +278,18 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
   } else if (v.delivery !== undefined) {
     console.warn(`[theme] ${source}: invalid "textAnimation.delivery" — dropped`);
   }
+  if (isNum(v.durationMs) && v.durationMs > 0) spec.durationMs = v.durationMs;
+  else if (v.durationMs !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textAnimation.durationMs", dropped`);
+  }
+  if (isNum(v.distance) && v.distance >= 0) spec.distance = v.distance;
+  else if (v.distance !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textAnimation.distance", dropped`);
+  }
+  if (isStr(v.ease)) spec.ease = v.ease;
+  else if (v.ease !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textAnimation.ease", dropped`);
+  }
   return spec;
 }
 

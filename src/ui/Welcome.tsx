@@ -1,6 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listProjectIds } from "../engine/project";
 import {
   deleteProject,
@@ -12,6 +12,13 @@ import {
   type WorkspaceProjectInfo,
 } from "../engine/workspace";
 import { NamePromptModal } from "./NamePromptModal";
+import {
+  ALL_PROJECTS,
+  filterProjectLibrary,
+  projectGroupRows,
+  selectedProjectGroup,
+  UNGROUPED_PROJECTS,
+} from "./projectLibrary";
 import { useEscapeClose } from "./useEscapeClose";
 
 function formatDuration(ms: number): string {
@@ -339,8 +346,10 @@ export function Welcome({
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
   const [showDevProjects, setShowDevProjects] = useState(false);
   const [query, setQuery] = useState("");
+  const [activeGroupId, setActiveGroupId] = useState(ALL_PROJECTS);
   const [scrolled, setScrolled] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const groupRailRef = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
     if (focusSearchNonce === 0) return;
     searchRef.current?.focus();
@@ -385,18 +394,35 @@ export function Welcome({
 
   const empty = projects !== null && projects.length === 0 && !loadError;
   const trimmedQuery = query.trim().toLowerCase();
-  const visibleProjects = trimmedQuery
-    ? (projects ?? []).filter(
-        (p) =>
-          p.name.toLowerCase().includes(trimmedQuery) ||
-          p.slug.toLowerCase().includes(trimmedQuery),
-      )
-    : (projects ?? []);
-  // Group names come from ALL projects (not the filtered view) so the move-to-group chips stay stable while searching.
-  const groups = Array.from(
-    new Set((projects ?? []).map((p) => p.group).filter((g): g is string => Boolean(g))),
-  ).sort((a, b) => a.localeCompare(b));
-  const ungrouped = visibleProjects.filter((p) => !p.group);
+  const groupRows = useMemo(() => projectGroupRows(projects ?? []), [projects]);
+  const visibleProjects = useMemo(
+    () => filterProjectLibrary(projects ?? [], activeGroupId, query),
+    [projects, activeGroupId, query],
+  );
+  const groups = groupRows.slice(2).map((row) => row.label);
+  const inheritedGroup = selectedProjectGroup(activeGroupId);
+
+  useEffect(() => {
+    if (!groupRows.some((row) => row.id === activeGroupId)) setActiveGroupId(ALL_PROJECTS);
+  }, [activeGroupId, groupRows]);
+
+  const onGroupRailKeyDown = (e: React.KeyboardEvent) => {
+    const current = Math.max(
+      0,
+      groupRows.findIndex((row) => row.id === activeGroupId),
+    );
+    let next = current;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+      next = Math.min(groupRows.length - 1, current + 1);
+    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+      next = Math.max(0, current - 1);
+    } else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = groupRows.length - 1;
+    else return;
+    e.preventDefault();
+    setActiveGroupId(groupRows[next].id);
+    groupRailRef.current?.querySelectorAll<HTMLElement>(".project-library-rail-row")[next]?.focus();
+  };
 
   return (
     <div className="welcome" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
@@ -443,58 +469,46 @@ export function Welcome({
         </div>
       )}
 
-      {trimmedQuery && visibleProjects.length === 0 && (
-        <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
+      {projects === null && (
+        <p className="welcome-loading" role="status">
+          Loading projects…
+        </p>
       )}
 
-      <div className="project-grid">
-        {ungrouped.map((p) => (
-          <ProjectCard
-            key={p.slug}
-            project={p}
-            groups={groups}
-            onOpen={() => onOpenProject(`ws:${p.slug}`)}
-            onChanged={() => setRetryNonce((n) => n + 1)}
-          />
-        ))}
-        <button type="button" className="project-card new-project" onClick={() => onNewProject()}>
-          <span className="new-project-plus" aria-hidden="true">
-            +
-          </span>
-          <span>New project</span>
-        </button>
-        {/* Someone sent a pack to a person with an empty workspace: this is where they will be. */}
-        <button
-          type="button"
-          className="project-card new-project"
-          onClick={() => void invoke("open_pack_import", { path: null })}
-        >
-          <span className="new-project-plus" aria-hidden="true">
-            ↓
-          </span>
-          <span>Import a pack</span>
-        </button>
-      </div>
-
-      {groups.map((group) => {
-        const members = visibleProjects.filter((p) => p.group === group);
-        if (members.length === 0) return null;
-        return (
-          <section key={group} aria-label={group}>
-            <div className="welcome-group-head">
-              <h2 className="welcome-section">{group}</h2>
+      {projects !== null && !loadError && (
+        <div className="project-library">
+          <fieldset
+            ref={groupRailRef}
+            className="project-library-rail"
+            aria-label="Project groups"
+            onKeyDown={onGroupRailKeyDown}
+          >
+            {groupRows.map((row) => (
               <button
+                key={row.id}
                 type="button"
-                className="welcome-group-add"
-                aria-label={`New project in ${group}`}
-                title={`New project in ${group}`}
-                onClick={() => onNewProject(group)}
+                className={`project-library-rail-row${activeGroupId === row.id ? " selected" : ""}`}
+                aria-pressed={activeGroupId === row.id}
+                tabIndex={activeGroupId === row.id ? 0 : -1}
+                onClick={() => setActiveGroupId(row.id)}
               >
-                +
+                <span className="project-library-rail-label">{row.label}</span>
+                <span className="project-library-rail-count">{row.count}</span>
               </button>
-            </div>
+            ))}
+          </fieldset>
+
+          <main className="project-library-results">
+            {trimmedQuery && visibleProjects.length === 0 && (
+              <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
+            )}
+            {!trimmedQuery &&
+              activeGroupId === UNGROUPED_PROJECTS &&
+              visibleProjects.length === 0 && (
+                <p className="welcome-no-matches">No ungrouped projects.</p>
+              )}
             <div className="project-grid">
-              {members.map((p) => (
+              {visibleProjects.map((p) => (
                 <ProjectCard
                   key={p.slug}
                   project={p}
@@ -503,33 +517,53 @@ export function Welcome({
                   onChanged={() => setRetryNonce((n) => n + 1)}
                 />
               ))}
-            </div>
-          </section>
-        );
-      })}
-
-      {showDevProjects && (
-        <>
-          <h2 className="welcome-section">Built-in projects (dev)</h2>
-          <div className="project-grid">
-            {listProjectIds().map((id) => (
               <button
                 type="button"
-                key={id}
-                className="project-card"
-                onClick={() => onOpenProject(id)}
+                className="project-card new-project"
+                onClick={() => onNewProject(inheritedGroup)}
               >
-                <span className="project-card-thumb">
-                  <PlaceholderArt />
+                <span className="new-project-plus" aria-hidden="true">
+                  +
                 </span>
-                <span className="project-card-body">
-                  <span className="project-card-name">{id}</span>
-                  <span className="project-card-meta">bundled</span>
-                </span>
+                <span>New project</span>
               </button>
-            ))}
-          </div>
-        </>
+              <button
+                type="button"
+                className="project-card new-project"
+                onClick={() => void invoke("open_pack_import", { path: null })}
+              >
+                <span className="new-project-plus" aria-hidden="true">
+                  ↓
+                </span>
+                <span>Import a pack</span>
+              </button>
+            </div>
+
+            {showDevProjects && (
+              <>
+                <h2 className="welcome-section">Built-in projects (dev)</h2>
+                <div className="project-grid">
+                  {listProjectIds().map((id) => (
+                    <button
+                      type="button"
+                      key={id}
+                      className="project-card"
+                      onClick={() => onOpenProject(id)}
+                    >
+                      <span className="project-card-thumb">
+                        <PlaceholderArt />
+                      </span>
+                      <span className="project-card-body">
+                        <span className="project-card-name">{id}</span>
+                        <span className="project-card-meta">bundled</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </main>
+        </div>
       )}
 
       <footer className="welcome-footer">

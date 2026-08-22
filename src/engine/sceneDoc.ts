@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useContext, useLayoutEffect, useMemo } from "react";
+import { useContext, useId, useLayoutEffect, useMemo } from "react";
 import type { DeviceId } from "../toolkit/device/catalog";
 import type { DeviceProps } from "../toolkit/device/Device";
 import { resolveDeviceLayout } from "../toolkit/device/layout";
@@ -9,6 +9,7 @@ import { useFormat } from "./format";
 import { type HistoryChange, pushHistory } from "./history";
 import { clampTrackToDuration, type KeyedTrack } from "./keyedTrack";
 import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
+import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import {
   isWorkspaceProjectId,
@@ -30,11 +31,12 @@ import { useVideoWindowRegistry } from "./videoWindowRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
-/** Loads the sidecar beside a manifest scene entry, keyed off the manifest file (never the TSX's `defineScene` id, which may differ from the stem); missing is the normal case and returns undefined. Workspace reads go through `invoke` every time so the fingerprint-poll reload always sees fresh content. */
+/** Loads the sidecar beside a manifest scene entry, keyed off the manifest file (never the TSX's `defineScene` id, which may differ from the stem); missing is the normal case and returns undefined. Workspace reads go through `invoke` every time so the fingerprint-poll reload always sees fresh content. `bundledDir` is the project's root-absolute glob folder (projects/ or the dev-only fixtures/ tree), so fixture sidecars resolve too. */
 export async function loadSceneDoc(
   projectId: string,
   sceneFile: string,
   bundledDocs: Record<string, () => Promise<{ default: unknown }>>,
+  bundledDir?: string,
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
@@ -49,7 +51,7 @@ export async function loadSceneDoc(
       return undefined;
     }
   }
-  const key = `/projects/${projectId}/${docFile}`;
+  const key = `${bundledDir ?? `/projects/${projectId}`}/${docFile}`;
   const load = bundledDocs[key];
   if (!load) return undefined;
   return parseSceneDoc((await load()).default, key);
@@ -62,17 +64,27 @@ export function useSceneDoc(): SceneDoc | null {
   return useContext(SceneDocContext);
 }
 
-/** A user-visible string from the scene document's text map; the authoring skill mandates all user-visible strings route through this so "Edit text" works on any scene, falling back when the doc, map, or key is absent. */
-export function useSceneText(key: string, fallback = ""): string {
+/** Resolves code-owned or embedded copy, plus the matching item while a managed scaffold retains its template layout. */
+export function useSceneText(
+  key: string,
+  fallback = "",
+  managedTextRole: ManagedTextRenderRole = "scene",
+): string {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
+  const mountId = useId();
+  const authored = doc?.text?.[key] ?? fallback;
+  const resolved =
+    managedTextRole === "scene" ? resolveTemplateManagedTextCopy(doc, key, authored) : authored;
   // Layout effect so TextFallback's render gate settles in the same commit, never a painted frame late.
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
-    useTextKeyRegistry.getState().register(sceneIndex, key);
-    return () => useTextKeyRegistry.getState().unregister(sceneIndex, key);
-  }, [sceneIndex, key]);
-  return doc?.text?.[key] ?? fallback;
+    useTextKeyRegistry
+      .getState()
+      .register(sceneIndex, key, mountId, { resolvedText: resolved, managedTextRole });
+    return () => useTextKeyRegistry.getState().unregister(sceneIndex, key, mountId);
+  }, [sceneIndex, key, mountId, resolved, managedTextRole]);
+  return resolved;
 }
 
 /** `Device`-spreadable props (the sidecar device entry, with `model` narrowed). */
@@ -157,20 +169,35 @@ export function useSceneChart(): ResolvedChart | null {
 
 // ── Sidecar writes (shared by the wizards and the edit bar) ────────────────────
 
+const sceneDocWriteQueues = new Map<string, Promise<void>>();
+
 /** Atomic, version-guarded sidecar write via the native command. */
 export async function writeSceneDoc(slug: string, sceneFile: string, doc: SceneDoc): Promise<void> {
-  await invoke("write_scene_doc", {
-    slug,
-    file: sceneFile.replace(/\.tsx$/, ".json"),
-    text: JSON.stringify(doc, null, 2),
-  });
+  const file = sceneFile.replace(/\.tsx$/, ".json");
+  const key = `${slug}\u0000${file}`;
+  const previous = sceneDocWriteQueues.get(key) ?? Promise.resolve();
+  const write = previous
+    .catch(() => {})
+    .then(async () => {
+      await invoke("write_scene_doc", {
+        slug,
+        file,
+        text: JSON.stringify(doc, null, 2),
+      });
+    });
+  sceneDocWriteQueues.set(key, write);
+  try {
+    await write;
+  } finally {
+    if (sceneDocWriteQueues.get(key) === write) sceneDocWriteQueues.delete(key);
+  }
 }
 
 /** Stamps one scene's background + backdrop overrides onto every OTHER scene (raw fields, so "follow theme" copies as absence and named gradients still resolve per-scene) AND onto the manifest as `appliedBackground`, so new scenes scaffold with the same look: one compound undo entry covering both, doc-less targets get a minimal doc, and a single bad scene loses only itself. Returns counts so the caller can surface partial failures. */
 export async function applyBackgroundToAllScenes(
   project: LoadedProject,
   sourceIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: (sceneIndex: number, doc: SceneDoc, sceneFile?: string) => void,
 ): Promise<{ applied: number; failed: number }> {
   if (!isWorkspaceProjectId(project.id)) return { applied: 0, failed: 0 };
   const slug = workspaceSlug(project.id);
@@ -188,7 +215,7 @@ export async function applyBackgroundToAllScenes(
     next.backdrop = source?.backdrop ? structuredClone(source.backdrop) : undefined;
     try {
       await writeSceneDoc(slug, file, next);
-      onDocChanged(i, next);
+      onDocChanged(i, next, file);
       applied++;
       changes.push({
         kind: "sceneDoc",
@@ -235,7 +262,7 @@ export async function applyBackgroundToAllScenes(
 /** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
 export function applyEditRepoint(
   doc: SceneDoc,
-  slot: "device" | "background" | "videoWindow",
+  slot: "device" | "compareDevice" | "background" | "videoWindow",
   rel: string,
   deviceId?: string,
 ): SceneDoc | null {
@@ -254,7 +281,21 @@ export function applyEditRepoint(
     return next;
   }
   const device = deviceId ? next.devices?.find((d) => d.id === deviceId) : next.devices?.[0];
-  if (!device?.media) return null;
+  if (!device) return null;
+  if (slot === "compareDevice") {
+    if (!next.compare) return null;
+    const media = next.compare.b?.media?.[device.id] ?? device.media;
+    if (!media) return null;
+    next.compare.b = {
+      ...next.compare.b,
+      media: {
+        ...next.compare.b?.media,
+        [device.id]: { ...media, src: rel },
+      },
+    };
+    return next;
+  }
+  if (!device.media) return null;
   device.media = { ...device.media, src: rel };
   return next;
 }

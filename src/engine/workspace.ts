@@ -10,6 +10,8 @@ export interface AppSettings {
   /** Last export-modal pick per project id + the global fallback. */
   lastExportPresetByProject?: Record<string, string>;
   lastExportPreset?: string | null;
+  /** Inverted so absent/false means opening poster frames are enabled app-wide. */
+  disableOpeningPosterFrame?: boolean;
   /** Inverted flag so its default (false) means hardware video ON. */
   disableHardwareVideo?: boolean;
   /** Inverted flag so its default (false) means app exports land in ~/Downloads. */
@@ -164,6 +166,11 @@ export function deleteExportPreset(slug: string): Promise<void> {
 /** Remember the export modal's pick, per project, with the global pick as fallback. */
 export function setLastExportPreset(projectId: string, presetId: string): Promise<void> {
   return invoke<void>("set_last_export_preset", { projectId, presetId });
+}
+
+/** Remember the opening poster-frame choice across projects and app launches. */
+export function setOpeningPosterFrame(enabled: boolean): Promise<void> {
+  return invoke<void>("set_opening_poster_frame", { enabled });
 }
 
 /** Remember the Present modal's pick per project; saveAsDefault also writes the cross-project default. */

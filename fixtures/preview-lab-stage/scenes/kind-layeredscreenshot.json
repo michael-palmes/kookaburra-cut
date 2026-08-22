@@ -1,6 +1,13 @@
 {
   "version": 1,
   "name": "Kind: layered screenshot",
+  "text": {
+    "title": "Screenshots in motion"
+  },
+  "managedText": {
+    "layout": "template",
+    "items": [{ "key": "title", "type": "title", "text": "Screenshots in motion" }]
+  },
   "layeredScreenshot": {
     "layers": [
       {

@@ -40,10 +40,13 @@ import {
   preloadMirrorEnvironments,
 } from "./environments";
 import { canvasCommittedClockMs, canvasHandle } from "./exportBridge";
-import { setExporting } from "./exportState";
+import { exportFrameTimeMs, normalExportFrameCount, posterFrameSample } from "./exportFrames";
+import { setExporting, withExporting } from "./exportState";
 import { computeFormat, type FormatSpec } from "./format";
 import { preloadPanelMeasures } from "./framePanelMeasure";
+import { useImageEditStore } from "./imageEditStore";
 import { HELPER_LAYER } from "./lightEditStore";
+import { yieldMacrotask } from "./macrotask";
 import { useObjectEditStore } from "./objectEditStore";
 import { preloadOverlayPanelImages } from "./overlayPanelTexture";
 import { overlayPanelImageSources, resolveOverlays } from "./overlayPlan";
@@ -59,9 +62,14 @@ import { buildSceneCameraTracks, hasSceneCameraTracks, resolveFrameCameras } fro
 import { compareSpecOf, resolveCompareFrame } from "./sceneCompare";
 import { collectSceneDocFontRefs, type SceneDoc } from "./sceneDocSchema";
 import { getSceneHosts } from "./sceneHostRegistry";
-import { buildLightingTracks, resolveFrameLighting } from "./sceneLighting";
+import {
+  buildCompareBLightingTracks,
+  buildLightingTracks,
+  resolveFrameLighting,
+} from "./sceneLighting";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
+import { snapshotSceneStageFloors } from "./stageRegistry";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
 
@@ -225,13 +233,15 @@ function frameDelta(frame: number, a: Uint8Array, b: Uint8Array, width: number):
 
 /** Waits until every scene's host is registered, i.e. the canvas tree has actually committed the scenes. All scenes mount inside one shared `<Suspense fallback={null}>`; on a cold load a suspending primitive (ImageCard's `useTexture`) keeps the whole boundary out of the graph until React's retry commits, which races the export preamble on the wall clock, and frame 0 rendered before it lands captures a scene-less frame (the showcase-tour white-first-frame flake) that the clock barrier can't catch since the clock is already committed at its initial 0. Host registration runs in a `useEffect` after the boundary's content commits, so counting hosts observes exactly the state frame 0 needs; called after the asset preloads so the spin exits within a few ticks. Exported for the theme-preview batch, which swaps projects the same way. */
 export async function awaitSceneHostsCommitted(expected: number): Promise<void> {
-  for (let spins = 0; getSceneHosts().length < expected; spins++) {
+  const primaryHostCount = (): number =>
+    getSceneHosts().filter((host) => host.side === undefined).length;
+  for (let spins = 0; primaryHostCount() < expected; spins++) {
     if (spins > 5000) {
       throw new Error(
-        `Scene tree never committed: ${getSceneHosts().length}/${expected} scene hosts registered.`,
+        `Scene tree never committed: ${primaryHostCount()}/${expected} primary scene hosts registered.`,
       );
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldMacrotask();
   }
 }
 
@@ -243,7 +253,7 @@ async function awaitCanvasClockCommit(tMs: number): Promise<void> {
         `Canvas tree never committed clock ${tMs}ms (stuck at ${canvasCommittedClockMs()}ms).`,
       );
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldMacrotask();
   }
 }
 
@@ -301,10 +311,11 @@ async function exportPreamble(
   onStep?: (step: number) => void,
 ): Promise<void> {
   configureDeterministicEngine();
-  // Explicit, not incidental: an object, chart or device gizmo selected when an export starts must never reach a frame.
+  // Explicit, not incidental: an object, chart, device or image gizmo selected when an export starts must never reach a frame.
   useObjectEditStore.getState().select(null);
   useChartEditStore.getState().select(null);
   useDeviceEditStore.getState().select(null);
+  useImageEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
@@ -405,14 +416,30 @@ export async function exportProject(
   /** UI overlay hook: reports each coarse export-preamble phase (1..3); UI only, never affects render. */
   onPrepareStep?: (step: number) => void,
 ): Promise<string> {
+  return withExporting(() =>
+    exportProjectHeld(opts, onProgress, onFrame, onBoundClipFrame, onFingerprint, onPrepareStep),
+  );
+}
+
+async function exportProjectHeld(
+  opts: ExportOptions,
+  onProgress?: (p: ExportProgress) => void,
+  onFrame?: (frame: number, rgba: Uint8Array) => void,
+  onBoundClipFrame?: (frame: number, boundClipFrame: number) => void,
+  onFingerprint?: (fp: RenderStateFingerprint) => void,
+  onPrepareStep?: (step: number) => void,
+): Promise<string> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
 
   await exportPreamble(opts, gl, onPrepareStep);
+  const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
   const { width, height } = opts.format;
-  const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
+  const normalTotal = normalExportFrameCount(opts.durationMs, opts.fps);
+  const poster = opts.encode?.posterFrame ? posterFrameSample(opts.slots, opts.fps) : undefined;
+  const total = normalTotal + (poster === undefined ? 0 : 1);
   const ctx = gl.getContext();
   const rgba = new Uint8Array(width * height * 4);
   const sizeProbe = new Vector2();
@@ -421,6 +448,7 @@ export async function exportProject(
   const prevSize = gl.getSize(new Vector2());
   const prevPixelRatio = gl.getPixelRatio();
   const prevClockMs = useClockStore.getState().currentMs;
+  let clockOwnedMs: number | null = null;
   const cam = camera as PerspectiveCamera;
   const prevAspect = cam.isPerspectiveCamera ? cam.aspect : 0;
 
@@ -466,9 +494,21 @@ export async function exportProject(
   });
 
   // Per-scene camera tracks, normalized once for the whole run; projects without any stay on the legacy camera path below, byte-identically.
-  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const sceneTracks = buildSceneCameraTracks(
+    opts.sceneDocs ?? [],
+    computeFormat(opts.format),
+    sceneFloorYs,
+  );
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
+  const compareBLightingTracks = opts.sceneThemes
+    ? buildCompareBLightingTracks(
+        opts.sceneThemes,
+        opts.compareBThemes,
+        opts.projectLighting,
+        opts.sceneDocs ?? [],
+      )
     : null;
 
   // Per-scene render states, built once; null unless the project opts into themed scene state (mirrored in CompositorDriver).
@@ -519,9 +559,10 @@ export async function exportProject(
   setExporting(true);
   try {
     for (let frame = 0; frame < total; frame++) {
-      const tMs = frame * (1000 / opts.fps);
+      const tMs = exportFrameTimeMs(frame, opts.fps, poster?.tMs);
       // flushSync commits the DOM tree; the canvas tree (r3f reconciler) commits on its own schedule, so wait for it before trusting any per-mesh readiness hook for this frame.
       flushSync(() => useClockStore.getState().setCurrentMs(tMs));
+      clockOwnedMs = tMs;
       await awaitCanvasClockCommit(tMs);
       // Ensure each VideoClip's current frame texture is uploaded first (this may yield)...
       await awaitVideoFramesReady(scene);
@@ -540,11 +581,11 @@ export async function exportProject(
         cam.updateProjectionMatrix();
       }
       // The camera applies at this shared seam (mirrored in CompositorDriver), a pure function of tMs. Scene-doc tracks get a per-frame plan applied inside renderComposited (per-target on transition frames); otherwise the legacy project-track path runs, a hard no-op when the project declares no track. Neither touches `cam.aspect`, so the resize guard above stays the sole owner of aspect.
-      const resolved = resolveAt(opts.slots, tMs);
+      const resolved = frame === 0 && poster ? poster.resolved : resolveAt(opts.slots, tMs);
       const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
       if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
       const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-      const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+      const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
       const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
       // Same render path as the preview (engine/compositor): single-scene frames render directly (v0-identical), transition frames go through the composite.
       renderComposited(
@@ -578,25 +619,49 @@ export async function exportProject(
       cam.aspect = prevAspect;
       cam.updateProjectionMatrix();
     }
-    flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    // Give the playhead back only if this run wrote it and still owns it; an untouched or since-moved clock stays put.
+    if (clockOwnedMs !== null && useClockStore.getState().currentMs === clockOwnedMs) {
+      flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    }
   }
 }
 
-/** Renders one deterministic frame at tMs through the export path and writes it as <workspace>/_autorun/<name>.png. */
-export async function captureScreenshot(
+/** Renders one deterministic frame at tMs through the export path and returns its raw pixels (GL bottom-up row order). The shared core of `captureScreenshot` and the render window's thumb service. */
+export async function captureFrameRgba(
   opts: ExportOptions,
   tMs: number,
-  name: string,
-  commands: { begin: string; save: string } = {
-    begin: "begin_screenshot",
-    save: "save_screenshot",
-  },
-): Promise<string> {
+): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+  return withExporting(() => captureFrameRgbaHeld(opts, tMs));
+}
+
+async function captureFrameRgbaHeld(
+  opts: ExportOptions,
+  tMs: number,
+): Promise<{ rgba: Uint8Array; width: number; height: number }> {
   const handle = canvasHandle.current;
   if (!handle) throw new Error("Export bridge not mounted: the canvas is not ready.");
   const { gl, scene, camera } = handle;
 
-  await exportPreamble(opts, gl);
+  // Bridge captures run mid-edit: the preamble's selection clear (a gizmo must never reach a frame) is given back once the capture ends, unlike a user-initiated export.
+  const prevSelection = {
+    object: useObjectEditStore.getState().selected,
+    chart: useChartEditStore.getState().selected,
+    device: useDeviceEditStore.getState().selected,
+    image: useImageEditStore.getState().selected,
+  };
+  const restoreSelection = () => {
+    useObjectEditStore.getState().select(prevSelection.object);
+    useChartEditStore.getState().select(prevSelection.chart);
+    useDeviceEditStore.getState().select(prevSelection.device);
+    useImageEditStore.getState().select(prevSelection.image);
+  };
+  try {
+    await exportPreamble(opts, gl);
+  } catch (err) {
+    restoreSelection();
+    throw err;
+  }
+  const sceneFloorYs = snapshotSceneStageFloors(opts.slots.length);
 
   const { width, height } = opts.format;
   const ctx = gl.getContext();
@@ -616,9 +681,21 @@ export async function captureScreenshot(
     cam.updateProjectionMatrix();
   }
 
-  const sceneTracks = buildSceneCameraTracks(opts.sceneDocs ?? []);
+  const sceneTracks = buildSceneCameraTracks(
+    opts.sceneDocs ?? [],
+    computeFormat(opts.format),
+    sceneFloorYs,
+  );
   const lightingTracks = opts.sceneThemes
     ? buildLightingTracks(opts.sceneThemes, opts.projectLighting, opts.sceneDocs ?? [])
+    : null;
+  const compareBLightingTracks = opts.sceneThemes
+    ? buildCompareBLightingTracks(
+        opts.sceneThemes,
+        opts.compareBThemes,
+        opts.projectLighting,
+        opts.sceneDocs ?? [],
+      )
     : null;
   const sceneStates =
     opts.theme && opts.sceneThemes
@@ -652,7 +729,18 @@ export async function captureScreenshot(
           },
         )
       : null;
+  // Trackless projects heal the shared camera to base for the frame; snapshot the live pose (a mid-orbit view stays where the user left it) and give it back afterwards.
+  let restoreCameraPose: (() => void) | null = null;
   if ((!opts.cameraTrack || opts.cameraTrack.length === 0) && !hasSceneCameraTracks(sceneTracks)) {
+    const pos = cam.position.clone();
+    const quat = cam.quaternion.clone();
+    const fov = cam.fov;
+    restoreCameraPose = () => {
+      cam.position.copy(pos);
+      cam.quaternion.copy(quat);
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    };
     applyCameraPose(cam, baseCameraPose());
   }
 
@@ -673,7 +761,7 @@ export async function captureScreenshot(
     const plan = resolveFrameCameras(sceneTracks, opts.cameraTrack, resolved, tMs);
     if (!plan) applyCameraTrack(cam, opts.cameraTrack, tMs);
     const statePlan = resolveFrameSceneStates(sceneStates, resolved);
-    const lightingPlan = resolveFrameLighting(lightingTracks, resolved);
+    const lightingPlan = resolveFrameLighting(lightingTracks, resolved, compareBLightingTracks);
     const compareFrame = resolveCompareFrame(compareSpecs, sceneStates, sceneStatesB, resolved);
     renderComposited(
       gl,
@@ -688,8 +776,7 @@ export async function captureScreenshot(
       compareFrame,
     );
     ctx.readPixels(0, 0, width, height, ctx.RGBA, ctx.UNSIGNED_BYTE, rgba);
-    await invoke(commands.begin, { width, height, name });
-    return await invoke<string>(commands.save, rgba);
+    return { rgba, width, height };
   } finally {
     setExporting(false);
     setClipLane(everydayClipLane());
@@ -699,8 +786,28 @@ export async function captureScreenshot(
       cam.aspect = prevAspect;
       cam.updateProjectionMatrix();
     }
-    flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    restoreCameraPose?.();
+    restoreSelection();
+    // Give the playhead back only while the capture still owns it; a scrub mid-capture wins.
+    if (useClockStore.getState().currentMs === tMs) {
+      flushSync(() => useClockStore.getState().setCurrentMs(prevClockMs));
+    }
   }
+}
+
+/** Renders one deterministic frame at tMs through the export path and writes it natively as a PNG (autorun `_autorun/<name>.png` by default, the bridge pair for capture requests). */
+export async function captureScreenshot(
+  opts: ExportOptions,
+  tMs: number,
+  name: string,
+  commands: { begin: string; save: string } = {
+    begin: "begin_screenshot",
+    save: "save_screenshot",
+  },
+): Promise<string> {
+  const { rgba, width, height } = await captureFrameRgba(opts, tMs);
+  await invoke(commands.begin, { width, height, name });
+  return await invoke<string>(commands.save, rgba);
 }
 
 /** The determinism gate: exports the same project twice (overwriting the per-aspect output path) and compares the SHA-256 of each run, returning both digests and whether they match. Must run in the app runtime, export needs WebGL and the ffmpeg sidecar. */

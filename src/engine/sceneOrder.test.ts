@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moveSelection, planMoves } from "./sceneOrder";
+import { moveSelection, planDuplicates, planMoves } from "./sceneOrder";
 
 describe("moveSelection", () => {
   it("moves one scene forward and back", () => {
@@ -14,6 +14,52 @@ describe("moveSelection", () => {
 
   it("dropping onto a selected index lands the block at the same spot", () => {
     expect(moveSelection(4, [1, 2], 1)).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe("planDuplicates", () => {
+  it("copies a contiguous selection as one block after the last of them", () => {
+    expect(planDuplicates([0, 1])).toEqual([
+      { from: 0, at: 2 },
+      { from: 1, at: 3 },
+    ]);
+  });
+
+  it("puts a gappy selection's copies after the LAST selected scene", () => {
+    expect(planDuplicates([1, 4])).toEqual([
+      { from: 1, at: 5 },
+      { from: 4, at: 6 },
+    ]);
+  });
+
+  it("sorts and dedupes the selection", () => {
+    expect(planDuplicates([4, 1, 4])).toEqual(planDuplicates([1, 4]));
+  });
+
+  it("has nothing to do for an empty selection", () => {
+    expect(planDuplicates([])).toEqual([]);
+  });
+
+  it("replayed sequentially, the copies land as one block in source order", () => {
+    for (const [count, selected] of [
+      [2, [0, 1]],
+      [6, [1, 4]],
+      [4, [0, 2, 3]],
+      [5, [2]],
+      [3, [0, 1, 2]],
+    ] as [number, number[]][]) {
+      const before = Array.from({ length: count }, (_, i) => `s${i}`);
+      const scenes = [...before];
+      for (const { from, at } of planDuplicates(selected)) {
+        scenes.splice(at, 0, `${scenes[from]} copy`);
+      }
+      const last = selected[selected.length - 1];
+      expect(scenes).toEqual([
+        ...before.slice(0, last + 1),
+        ...selected.map((i) => `s${i} copy`),
+        ...before.slice(last + 1),
+      ]);
+    }
   });
 });
 

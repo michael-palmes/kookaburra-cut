@@ -1,0 +1,53 @@
+{
+  "id": "compare-transition-spike",
+  "name": "Compare transition spike",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-null.tsx",
+      "durationMs": 1500,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/02-split.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "push",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/03-sweep.tsx",
+      "durationMs": 2000,
+      "transition": {
+        "type": "wipe",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/04-circle.tsx",
+      "durationMs": 1600,
+      "transition": {
+        "type": "dip",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/05-blend.tsx",
+      "durationMs": 1600,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 600
+      }
+    },
+    {
+      "file": "scenes/06-chrome.tsx",
+      "durationMs": 1600
+    }
+  ]
+}

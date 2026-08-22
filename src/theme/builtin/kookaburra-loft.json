@@ -3,6 +3,13 @@
   "id": "kookaburra-loft",
   "name": "Loft",
   "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Lifestyle product scenes",
+    "tags": ["lifestyle", "spatial", "interior", "product", "premium", "warm"],
+    "stage": "physical",
+    "order": 60
+  },
   "colors": {
     "background": "#f6f1e9",
     "text": "#2d2a26",

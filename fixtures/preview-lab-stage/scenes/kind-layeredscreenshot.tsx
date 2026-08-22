@@ -1,4 +1,4 @@
-import { defineScene, LayeredScreenshot, SceneStage } from "@kookaburra/toolkit";
+import { defineScene, LayeredScreenshot, SceneStage, useSceneText } from "@kookaburra/toolkit";
 
 /**
  * Preview Lab: New-scene kind card for "Layered screenshot". DEV-ONLY, rendered by
@@ -8,9 +8,10 @@ export default defineScene({
   id: "lab-kind-layeredscreenshot",
   durationMs: 3000,
   Scene() {
+    const title = useSceneText("title");
     return (
       <SceneStage>
-        <LayeredScreenshot />
+        <LayeredScreenshot title={title} />
       </SceneStage>
     );
   },

@@ -87,6 +87,53 @@ describe("applyRelativeLights", () => {
     }
   });
 
+  it("samples light and fixture placement for the matching transition target", () => {
+    const light = new Object3D();
+    const fixture = new Object3D();
+    const cleanups = [
+      registerRelativeLight("sample-light", {
+        object: light,
+        targetObject: null,
+        aimSelf: false,
+        spec: {
+          space: "camera",
+          placement: { mode: "point", position: [0, 0, -1] },
+        },
+        target: { sceneIndex: 2, kind: "light", id: "rim" },
+      }),
+      registerRelativeLight("sample-fixture", {
+        object: fixture,
+        targetObject: null,
+        aimSelf: false,
+        orient: true,
+        spec: {
+          space: "camera",
+          placement: { mode: "point", position: [0, 0, -2] },
+        },
+        target: { sceneIndex: 2, kind: "fixture", id: "tube" },
+      }),
+    ];
+    try {
+      const cameraPose = pose([0, 0, 5], [0, 0, 0]);
+      const camera = cameraAt(cameraPose);
+      applyRelativeLights(camera, cameraPose, {
+        index: 2,
+        pose: {
+          lights: { rim: { placement: { mode: "point", position: [1, 0, -3] } } },
+          fixtures: { tube: { placement: { mode: "point", position: [-1, 2, -4] } } },
+        },
+      });
+      expect(light.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([1, 0, 2]);
+      expect(fixture.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([-1, 2, 1]);
+
+      applyRelativeLights(camera, cameraPose, { index: 1, pose: {} });
+      expect(light.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, 4]);
+      expect(fixture.position.toArray().map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, 3]);
+    } finally {
+      for (const cleanup of cleanups) cleanup();
+    }
+  });
+
   it("subject space: azimuth 0 points from the subject toward the camera", () => {
     const light = new Object3D();
     const unregister = registerRelativeLight("t3", {

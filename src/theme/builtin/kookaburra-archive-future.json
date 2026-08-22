@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "id": "kookaburra-archive-future",
+  "name": "Archive Future",
+  "mode": "light",
+  "catalogue": {
+    "category": "human-centred-ai",
+    "useLabel": "Editorial AI narratives",
+    "tags": ["editorial", "archive", "ai", "culture", "narrative", "experimental"],
+    "stage": "lighting-only",
+    "order": 40
+  },
+  "colors": {
+    "background": "#f0f4f8",
+    "text": "#182734",
+    "accent": "#335d83",
+    "muted": "#465766"
+  },
+  "chartColors": ["#335d83", "#1f2937", "#3f6f7a", "#6b4f6b", "#7a5c3a", "#27508f"],
+  "typography": {
+    "headline": { "family": "Cormorant Garamond", "weight": 600 },
+    "body": "Open Sans",
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 220, "base": 560, "slow": 1000 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "mask-reveal",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "by-paragraph"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#f0f4f8", "#e9f0f5", "#e2ecf4"],
+    "speed": 1,
+    "params": { "density": 50, "dotSize": 0.19, "pulse": 0.45, "waveWidth": 0.5, "driftAngle": 70 },
+    "preset": "p1"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": 25,
+      "elevationDeg": 58,
+      "intensity": 2,
+      "color": "#ffffff"
+    },
+    "fills": [
+      {
+        "azimuthDeg": -145,
+        "elevationDeg": 18,
+        "intensity": 0.6,
+        "color": "#c3d8e8"
+      }
+    ],
+    "ambient": 0.8
+  }
+}

@@ -6,8 +6,9 @@ export type HistoryChange =
   | {
       kind: "sceneDoc";
       slug: string;
-      /** Manifest module path, e.g. `scenes/02-hero.tsx`. */
+      /** Manifest module path, e.g. `scenes/02-hero.tsx`. The scene's IDENTITY: replay writes and patches by this, since a scene added or moved after the edge was recorded moves every later index. */
       file: string;
+      /** The index at record time, a hint only (`resolveDocPatchIndex` re-resolves against `file`). */
       sceneIndex: number;
       /** null = the sidecar didn't exist; undo restores an EMPTY doc (behaviourally identical - deleting files isn't a writer we have or need). */
       before: SceneDoc | null;

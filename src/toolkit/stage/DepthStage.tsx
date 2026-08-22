@@ -3,6 +3,7 @@ import { useDepthStageRegistry } from "../../engine/depthStageRegistry";
 import { useFormat } from "../../engine/format";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { normalizeSceneRig, rigOverscan, type SceneRigTrack } from "../../engine/sceneRig";
+import { useStageFloorY } from "./context";
 
 /** Named depth bands for a scene a camera rig flies THROUGH: content where scenes already lay out, a foreground layer between the camera and it, and two layers behind. Every band sizes its full-bleed rect from the scene's rig envelope, so a layer that fills the frame at rest still fills it at the far end of a fly-through. A scene with no rig gets today's static sizing, which is why adding the container to an existing scene changes nothing. Band depths are EXPORT CONTRACT; see docs/determinism.md. */
 
@@ -34,10 +35,12 @@ export function useDepthBand(): DepthBand | null {
 /** The scene's normalised rig track, or null when it has no rig. Derived from the scene doc already in context, so preview and export resolve it identically by construction rather than by a plumbing rule. */
 export function useRigTrack(): SceneRigTrack | null {
   const doc = useContext(SceneDocContext);
+  const format = useFormat();
+  const stageFloorY = useStageFloorY();
   return useMemo(() => {
     if (doc?.cameraMode !== "rig") return null;
-    return normalizeSceneRig(doc.cameraRig, "rig-envelope", doc);
-  }, [doc]);
+    return normalizeSceneRig(doc.cameraRig, "rig-envelope", doc, format, stageFloorY);
+  }, [doc, format, stageFloorY]);
 }
 
 export function DepthStage({

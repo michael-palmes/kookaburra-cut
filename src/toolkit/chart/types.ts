@@ -71,6 +71,8 @@ export interface ChartValueAxis {
   /** null is auto (nice scale over the data). */
   min: number | null;
   max: number | null;
+  /** Cut lines and areas AT the bound they cross instead of letting them run outside the plot. On by default and inert until a bound is actually exceeded, which takes a manual scale or the scale a keyframed track pins (its upper envelope, so a negative dip or an overshooting segment ease can still leave it). Bars clamp regardless. */
+  trim: boolean;
   /** Divisions of the value axis: exact when both bounds are manual, a tick-density target when either is auto. */
   steps: number;
   format: ChartValueFormat;
@@ -208,17 +210,23 @@ export interface ChartBarMark {
   labelAnchor: ChartPoint;
 }
 
-/** A value point on a line or area, at its category band centre. */
+/** A vertex on a line or area: one per category at its band centre, plus the vertices the axis trim inserts where a segment crosses a bound. */
 export interface ChartLinePoint extends ChartPoint {
+  /** The category whose datum and build channels this vertex rides; an inserted crossing takes the left end of the segment it split. */
   categoryIndex: number;
   value: number;
+  /** True on a category point, false on an inserted crossing, which carries no datum of its own: no dot and no value label ride it. */
+  datum: boolean;
+  /** False where the true curve has left the plot band and only the clamped edge is drawn: the stroke breaks here. Always true when the trim is off. */
+  inside: boolean;
 }
 
-/** One line/area series: the value curve plus the lower boundary an area fills to (the zero line, or the stack layer below). */
+/** One line/area series, index-paired across all three arrays: the value curve (already trimmed into the plot band), the boundary each vertex grows OUT of (never trimmed, so an entrance still rides in from off-plot), and the boundary an area fills TO (clamped, so a fill never spills past the axis). The `datum` and `inside` flags on `baseline` mirror the curve's. */
 export interface ChartSeriesLayout {
   seriesIndex: number;
   points: ChartLinePoint[];
   baseline: ChartLinePoint[];
+  fillBaseline: ChartPoint[];
 }
 
 export interface ChartPieSlice {

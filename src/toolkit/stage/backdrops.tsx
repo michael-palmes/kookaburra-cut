@@ -21,6 +21,7 @@ import { useTheme } from "../../theme";
 import { hexToOklch, mixOklch, type Oklch, oklchToBytes } from "../../theme/oklch";
 import type { GradientSpec, ThemeBackdrop, ThemeShadowSpec } from "../../theme/tokens";
 import { AssetBoundary } from "../media/AssetBoundary";
+import { stageShadowCatcherMode } from "./shadowRig";
 
 /** Staging backdrops, mounted by `<SceneStage>` from the scene's resolved backdrop spec: all three surface kinds render UNLIT with `toneMapped: false` so theme hexes/gradients/images land EXACTLY (a `#ffffff` background through ACES would render grey, the device-screen precedent), and receive real shadows through a `ShadowMaterial` catcher overlay drawn just in front (polygon offset); geometry/texture constants below are EXPORT CONTRACT. See docs/determinism.md ("Staging"). */
 
@@ -44,18 +45,21 @@ export const BACKDROP_Z = -6;
 const GRADIENT_SIZE = 512;
 
 /** Cyclorama profile swept along x: flat floor → quarter-circle fillet → vertical back wall, so the floor/wall junction never shows a horizon seam; built at y=0 floor level, position the mesh to set the stage floor height. */
-function cycGeometry(fillet: number): BufferGeometry {
+function cycGeometry(fillet: number, includeBackdrop = true): BufferGeometry {
   // Profile points in (z, y) with their (nz, ny) normals (analytic; the catcher's shadow sampling wants real normals even though the base material is unlit).
   const profile: [number, number, number, number][] = [];
   const arcCenterZ = CYC_WALL_Z + fillet;
   profile.push([CYC_FRONT_Z, 0, 0, 1]);
-  for (let i = 0; i <= CYC_ARC_SEGMENTS; i++) {
+  if (!includeBackdrop) {
+    profile.push([arcCenterZ, 0, 0, 1]);
+  }
+  for (let i = 0; includeBackdrop && i <= CYC_ARC_SEGMENTS; i++) {
     const phi = (i / CYC_ARC_SEGMENTS) * (Math.PI / 2);
     const z = arcCenterZ - fillet * Math.sin(phi);
     const y = fillet - fillet * Math.cos(phi);
     profile.push([z, y, Math.sin(phi), Math.cos(phi)]);
   }
-  profile.push([CYC_WALL_Z, CYC_WALL_HEIGHT, 1, 0]);
+  if (includeBackdrop) profile.push([CYC_WALL_Z, CYC_WALL_HEIGHT, 1, 0]);
 
   const rows = profile.length;
   const positions = new Float32Array(rows * 2 * 3);
@@ -204,16 +208,29 @@ function CycFloor({
   shadow,
   floorY = DEFAULT_FLOOR_Y,
 }: BackdropProps & { spec: Extract<ThemeBackdrop, { type: "floor" }> }) {
+  const catcherMode = stageShadowCatcherMode(spec.type, shadow);
   const geometry = useMemo(
     () => cycGeometry(spec.filletRadius ?? DEFAULT_FILLET),
     [spec.filletRadius],
   );
+  const floorCatcherGeometry = useMemo(
+    () =>
+      catcherMode === "floor" ? cycGeometry(spec.filletRadius ?? DEFAULT_FILLET, false) : null,
+    [catcherMode, spec.filletRadius],
+  );
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);
+  useLayoutEffect(() => () => floorCatcherGeometry?.dispose(), [floorCatcherGeometry]);
   const material = useExactMaterial((m) => m.color.set(spec.color), [spec.color]);
   return (
     <>
       <mesh geometry={geometry} material={material} position={[0, floorY, 0]} />
-      {shadow && <Catcher geometry={geometry} shadow={shadow} position={[0, floorY, 0]} />}
+      {shadow && catcherMode !== "none" && (
+        <Catcher
+          geometry={floorCatcherGeometry ?? geometry}
+          shadow={shadow}
+          position={[0, floorY, 0]}
+        />
+      )}
     </>
   );
 }
@@ -222,6 +239,7 @@ function GradientPlane({
   spec,
   shadow,
 }: BackdropProps & { spec: Extract<ThemeBackdrop, { type: "gradient" }> }) {
+  const catcherMode = stageShadowCatcherMode(spec.type, shadow);
   const theme = useTheme();
   // An inline spec wins over the theme lookup (the ThemeBackground rule).
   const gradient = spec.spec ?? (spec.gradient ? theme.gradients?.[spec.gradient] : undefined);
@@ -242,7 +260,9 @@ function GradientPlane({
   return (
     <>
       <mesh geometry={geometry} material={material} position={[0, 4, BACKDROP_Z]} />
-      {shadow && <Catcher geometry={geometry} shadow={shadow} position={[0, 4, BACKDROP_Z]} />}
+      {shadow && catcherMode === "full" && (
+        <Catcher geometry={geometry} shadow={shadow} position={[0, 4, BACKDROP_Z]} />
+      )}
     </>
   );
 }
@@ -341,6 +361,7 @@ function ImagePlaneMesh({
   spec: Extract<ThemeBackdrop, { type: "image" }>;
   shadow?: ThemeShadowSpec;
 }) {
+  const catcherMode = stageShadowCatcherMode(spec.type, shadow);
   useLayoutEffect(() => {
     texture.colorSpace = SRGBColorSpace;
     // Cover-fit: crop via repeat/offset so the image fills the plane without stretching.
@@ -369,7 +390,9 @@ function ImagePlaneMesh({
   return (
     <>
       <mesh geometry={geometry} material={material} position={[0, 4, BACKDROP_Z]} />
-      {shadow && <Catcher geometry={geometry} shadow={shadow} position={[0, 4, BACKDROP_Z]} />}
+      {shadow && catcherMode === "full" && (
+        <Catcher geometry={geometry} shadow={shadow} position={[0, 4, BACKDROP_Z]} />
+      )}
     </>
   );
 }

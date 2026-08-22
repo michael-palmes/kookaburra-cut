@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
+import { resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
+import type { FormatInfo } from "../toolkit/types";
+import { computeFormat, FORMATS } from "./format";
 import type { SceneDoc, SceneDocRigPose } from "./sceneDocSchema";
 import {
   defaultRigPose,
@@ -24,8 +29,13 @@ const pose = (position: V3, over: Partial<SceneDocRigPose> = {}): SceneDocRigPos
   ...over,
 });
 
-const track = (raw: NonNullable<SceneDoc["cameraRig"]>, doc?: SceneDoc): SceneRigTrack => {
-  const t = normalizeSceneRig(raw, "test", doc);
+const track = (
+  raw: NonNullable<SceneDoc["cameraRig"]>,
+  doc?: SceneDoc,
+  format?: FormatInfo,
+  floorY?: DeviceFloorY,
+): SceneRigTrack => {
+  const t = normalizeSceneRig(raw, "test", doc, format, floorY);
   if (!t) throw new Error("rig track expected");
   return t;
 };
@@ -200,6 +210,115 @@ describe("normalizeSceneRig", () => {
       doc,
     );
     expect(t.keys[0].pose.aim.at).toEqual([1, 2, 3]);
+  });
+
+  it("resolves a grounded object aim from its fitted body and mounted custom floor", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        {
+          id: "laptop",
+          model: "macbook-pro-16",
+          placement: { position: [1, 8, 3], scale: 1.25, ground: true },
+        },
+      ],
+    };
+    const t = track(
+      {
+        keys: [
+          {
+            id: "a",
+            tMs: 0,
+            pose: {
+              position: [0, 0, 5],
+              aim: { mode: "object", id: "laptop", at: [9, 9, 9] },
+            },
+          },
+        ],
+        segments: [],
+      },
+      doc,
+      undefined,
+      0.4,
+    );
+    const expected = resolveDeviceWorldAnchor(
+      doc.devices?.[0] ?? { model: "" },
+      doc.devices?.[0]?.placement,
+      0.4,
+    );
+
+    expect(t.keys[0].pose.aim.at).toEqual(expected);
+  });
+
+  it("preserves a grounded binding's baked point while its mounted floor is unknown on load", () => {
+    const warn = vi.spyOn(console, "warn");
+    const baked: V3 = [1, -0.2, 3];
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        {
+          id: "phone",
+          model: "iphone-17-pro",
+          placement: { position: [1, 99, 3], ground: true },
+        },
+      ],
+    };
+    const t = track(
+      {
+        keys: [
+          {
+            id: "a",
+            tMs: 0,
+            pose: { position: [0, 0, 5], aim: { mode: "object", id: "phone", at: baked } },
+          },
+        ],
+        segments: [],
+      },
+      doc,
+    );
+
+    expect(t.keys[0].pose.aim.at).toEqual(baked);
+    expect(warn.mock.calls.some((call) => String(call[0]).includes("phone"))).toBe(false);
+  });
+
+  it("resolves an arranged device aim against its per-aspect rendered placement", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "left", model: "iphone-15-pro" },
+        { id: "right", model: "iphone-15-pro", placement: { ground: true } },
+      ],
+      deviceLayout: {
+        preset: "row",
+        gap: 0.6,
+        devices: { right: { offset: [0.25, 0.1, -0.2] } },
+      },
+    };
+    const format = computeFormat(FORMATS["9:16"]);
+    const layout = doc.deviceLayout;
+    if (!layout) throw new Error("device layout expected");
+    const resolved = resolveDeviceLayout(doc.devices ?? [], layout, format)[1];
+    const expected = resolveDeviceWorldAnchor(doc.devices?.[1] ?? { model: "" }, resolved, -1.5);
+    const t = track(
+      {
+        keys: [
+          {
+            id: "a",
+            tMs: 0,
+            pose: {
+              position: [0, 0, 5],
+              aim: { mode: "object", id: "right", at: [0, 0, 0] },
+            },
+          },
+        ],
+        segments: [],
+      },
+      doc,
+      format,
+      -1.5,
+    );
+
+    expect(t.keys[0].pose.aim.at).toEqual(expected);
   });
 
   it("resolves the two singleton bindables", () => {

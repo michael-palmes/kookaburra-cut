@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { type ChartTrackDoc, useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
@@ -8,7 +8,7 @@ import { useChartTrackDoc } from "./chartTrackDoc";
 import { clearOtherLaneSelections } from "./laneSelection";
 import { TrackLane } from "./TrackLane";
 
-/** The chart's data lane: a thin wrapper binding the generic `TrackLane` to the chart edit store and doc funnel (the CompareAnimationLane pattern). No armed tools (a key IS a data snapshot, edited in the modal), so bare keys pass through; the lane mounts for every scene with a chart block, stacked above the camera or stack lane, and double-clicking a diamond opens the data modal on that key. */
+/** The chart's data lane: a thin wrapper binding the generic `TrackLane` to the chart edit store and doc funnel (the CompareAnimationLane pattern). No armed tools (a key IS a data snapshot, edited in the modal), so bare keys pass through; the lane follows the scene's master animation visibility, stacked above the camera or stack lane, and double-clicking a diamond opens the data modal on that key. */
 
 const getSelection = () => {
   const s = useChartTrackEditStore.getState();
@@ -27,15 +27,16 @@ const onToolKey = () => false;
 export function ChartAnimationLane({
   project,
   sceneIndex,
+  open,
   onDocChanged,
   onSceneDuration,
 }: {
   project: LoadedProject;
   sceneIndex: number;
+  open: boolean;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onSceneDuration: (sceneIndex: number, ms: number) => void;
 }) {
-  const open = useChartTrackEditStore((s) => s.open);
   const selectedKeyId = useChartTrackEditStore((s) => s.selectedKeyId);
   const selectedSegment = useChartTrackEditStore((s) => s.selectedSegment);
   const writeError = useChartTrackEditStore((s) => s.writeError);
@@ -44,10 +45,6 @@ export function ChartAnimationLane({
     sceneIndex,
     onDocChanged,
   );
-  useEffect(() => {
-    useChartTrackEditStore.getState().setOpen(true);
-    return () => useChartTrackEditStore.getState().setOpen(false);
-  }, []);
   const onDuration = useCallback(
     (ms: number) => onSceneDuration(sceneIndex, ms),
     [onSceneDuration, sceneIndex],

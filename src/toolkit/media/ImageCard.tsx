@@ -6,7 +6,7 @@ import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
 import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
 import { useEditorStore } from "../../store/editorStore";
-import { foldBandToChild, GroupAnimationContext } from "../group/context";
+import { foldBandToChild, GroupAnimationContext, groupImageEffects } from "../group/context";
 import { SHINE_AXIS, SHINE_INTENSITY } from "../text/presets";
 import type { V3 } from "../types";
 import { AssetBoundary } from "./AssetBoundary";
@@ -17,6 +17,8 @@ export interface ImageCardProps {
   position?: V3;
   /** World-unit width; height follows the image's aspect ratio. */
   width?: number;
+  /** Optional world-unit height cap; both dimensions shrink together to contain the image. */
+  maxHeight?: number;
   /** Optional linear fade-in window, ms (local scene time). Absent = always opaque. */
   from?: number;
   to?: number;
@@ -24,7 +26,7 @@ export interface ImageCardProps {
 
 /** A flat image plane for icons, logos and stills: renders UNLIT with `toneMapped: false` so the asset's pixels land exactly (the device-screen/backdrop precedent), respecting PNG alpha so rounded/irregular shapes come from the asset itself; the suspense texture load is settled by the export preamble before frame 0. */
 export function ImageCard(props: ImageCardProps) {
-  const { src, position = [0, 0, 0], width = 1, from, to } = props;
+  const { src, position = [0, 0, 0], width = 1, maxHeight, from, to } = props;
   const contextProjectId = useContext(ProjectIdContext);
   const storeProjectId = useEditorStore((s) => s.projectId);
   const projectId = contextProjectId ?? storeProjectId;
@@ -41,7 +43,14 @@ export function ImageCard(props: ImageCardProps) {
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={src}>
-      <LoadedImageCard url={url} position={position} width={width} from={from} to={to} />
+      <LoadedImageCard
+        url={url}
+        position={position}
+        width={width}
+        maxHeight={maxHeight}
+        from={from}
+        to={to}
+      />
     </AssetBoundary>
   );
 }
@@ -51,6 +60,11 @@ interface ImageShineUniforms {
   uGanShine: { value: Vector4 };
   uGanShineAxis: { value: Vector2 };
   uGanSize: { value: Vector2 };
+}
+
+interface ImageMotionUniforms {
+  uGanImageBlur: { value: Vector4 };
+  uGanImageMask: { value: Vector4 };
 }
 
 // The same soft smoothstep band as the text shine, masked to the sampled texture's alpha (2026-07-09 decision) so rounded/irregular icons shine only where they have pixels; both lifts match the text (rgb brightens dark pixels, alpha lift keeps the band visible on a mid-fade card), injected after <opaque_fragment> where gl_FragColor is fully composed.
@@ -73,31 +87,82 @@ uniform vec2 uGanShineAxis;
 uniform vec2 uGanSize;
 `;
 
+const IMAGE_MOTION_DEFS = /* glsl */ `
+uniform vec4 uGanImageBlur;
+uniform vec4 uGanImageMask;
+`;
+
+const IMAGE_MOTION_MAP = /* glsl */ `
+#ifdef USE_MAP
+vec4 sampledDiffuseColor = texture2D(map, vMapUv);
+if (uGanImageBlur.z > 0.5 && max(uGanImageBlur.x, uGanImageBlur.y) > 0.0) {
+  vec2 d = uGanImageBlur.xy;
+  sampledDiffuseColor = sampledDiffuseColor * 0.2
+    + texture2D(map, vMapUv + vec2(d.x, 0.0)) * 0.12
+    + texture2D(map, vMapUv - vec2(d.x, 0.0)) * 0.12
+    + texture2D(map, vMapUv + vec2(0.0, d.y)) * 0.12
+    + texture2D(map, vMapUv - vec2(0.0, d.y)) * 0.12
+    + texture2D(map, vMapUv + d) * 0.08
+    + texture2D(map, vMapUv - d) * 0.08
+    + texture2D(map, vMapUv + vec2(d.x, -d.y)) * 0.08
+    + texture2D(map, vMapUv + vec2(-d.x, d.y)) * 0.08;
+}
+diffuseColor *= sampledDiffuseColor;
+#endif
+`;
+
+const IMAGE_MOTION_MASK = /* glsl */ `if (uGanImageMask.w > 0.5) {
+  float feather = max(uGanImageMask.z, 0.00001);
+  float left = smoothstep(uGanImageMask.x - feather, uGanImageMask.x + feather, vMapUv.x);
+  float right = 1.0 - smoothstep(uGanImageMask.y - feather, uGanImageMask.y + feather, vMapUv.x);
+  gl_FragColor.a *= left * right;
+}`;
+
 /** Patch the group-shine band into a card's material (the Device GSAA precedent); only ever applied inside shine-capable groups, so cards outside groups keep the stock program, zero regression surface. */
-function applyImageShine(material: MeshBasicMaterial, uniforms: ImageShineUniforms): void {
+function applyImageEffects(
+  material: MeshBasicMaterial,
+  shine: ImageShineUniforms | null,
+  motion: ImageMotionUniforms | null,
+): void {
   material.onBeforeCompile = (shader) => {
-    shader.uniforms.uGanShine = uniforms.uGanShine;
-    shader.uniforms.uGanShineAxis = uniforms.uGanShineAxis;
-    shader.uniforms.uGanSize = uniforms.uGanSize;
-    shader.fragmentShader = IMAGE_SHINE_DEFS + shader.fragmentShader;
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <opaque_fragment>",
-      IMAGE_SHINE_FRAGMENT,
-    );
+    let opaque = "#include <opaque_fragment>";
+    if (shine) {
+      shader.uniforms.uGanShine = shine.uGanShine;
+      shader.uniforms.uGanShineAxis = shine.uGanShineAxis;
+      shader.uniforms.uGanSize = shine.uGanSize;
+      shader.fragmentShader = IMAGE_SHINE_DEFS + shader.fragmentShader;
+      opaque = IMAGE_SHINE_FRAGMENT;
+    }
+    if (motion) {
+      shader.uniforms.uGanImageBlur = motion.uGanImageBlur;
+      shader.uniforms.uGanImageMask = motion.uGanImageMask;
+      shader.fragmentShader = IMAGE_MOTION_DEFS + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <map_fragment>",
+        IMAGE_MOTION_MAP,
+      );
+      opaque = `${opaque}\n${IMAGE_MOTION_MASK}`;
+    }
+    shader.fragmentShader = shader.fragmentShader.replace("#include <opaque_fragment>", opaque);
   };
-  material.customProgramCacheKey = () => "kookaburra-image-shine-v1";
+  material.customProgramCacheKey = () =>
+    motion
+      ? `kookaburra-image-effects-v2:${shine ? "shine" : "plain"}:motion`
+      : "kookaburra-image-shine-v1";
 }
 
 function LoadedImageCard({
   url,
   position,
   width,
+  maxHeight,
   from,
   to,
 }: {
   url: string;
   position: V3;
   width: number;
+  maxHeight?: number;
   from?: number;
   to?: number;
 }) {
@@ -110,6 +175,7 @@ function LoadedImageCard({
   }, [texture]);
   // Mount-stable (the resolved group animation cannot change without a scene remount).
   const shineCapable = group?.shineCapable === true;
+  const motionCapable = group?.imageEffectsCapable === true;
   const shineUniforms = useMemo<ImageShineUniforms | null>(
     () =>
       shineCapable
@@ -121,17 +187,27 @@ function LoadedImageCard({
         : null,
     [shineCapable],
   );
+  const motionUniforms = useMemo<ImageMotionUniforms | null>(
+    () =>
+      motionCapable
+        ? {
+            uGanImageBlur: { value: new Vector4(0, 0, 0, 0) },
+            uGanImageMask: { value: new Vector4(0, 1, 0.002, 0) },
+          }
+        : null,
+    [motionCapable],
+  );
   const material = useMemo(() => {
     const m = new MeshBasicMaterial({ transparent: true, depthWrite: false });
     m.toneMapped = false;
     m.map = texture;
-    if (shineUniforms) applyImageShine(m, shineUniforms);
+    if (shineUniforms || motionUniforms) applyImageEffects(m, shineUniforms, motionUniforms);
     return m;
-  }, [texture, shineUniforms]);
+  }, [texture, shineUniforms, motionUniforms]);
   useLayoutEffect(() => () => material.dispose(), [material]);
 
   const img = texture.image as { width: number; height: number };
-  const height = width * (img.height / img.width);
+  const contained = containImageDimensions(img.width, img.height, width, maxHeight);
   const opacity =
     from === undefined || to === undefined || to <= from
       ? 1
@@ -145,12 +221,34 @@ function LoadedImageCard({
     } else {
       shineUniforms.uGanShine.value.set(0, 1, 0, 0);
     }
-    shineUniforms.uGanSize.value.set(width, height);
+    shineUniforms.uGanSize.value.set(contained.width, contained.height);
+  }
+  if (motionUniforms) {
+    const effects = groupImageEffects(group, contained.width, contained.height);
+    if (effects) {
+      motionUniforms.uGanImageBlur.value.fromArray(effects.blur);
+      motionUniforms.uGanImageMask.value.fromArray(effects.mask);
+    }
   }
 
   return (
     <mesh position={position} material={material}>
-      <planeGeometry args={[width, height]} />
+      <planeGeometry args={[contained.width, contained.height]} />
     </mesh>
   );
+}
+
+export function containImageDimensions(
+  sourceWidth: number,
+  sourceHeight: number,
+  width: number,
+  maxHeight?: number,
+): { width: number; height: number } {
+  const aspect = sourceWidth > 0 && sourceHeight > 0 ? sourceHeight / sourceWidth : 1;
+  const naturalHeight = width * aspect;
+  if (!(maxHeight !== undefined && maxHeight >= 0) || naturalHeight <= maxHeight) {
+    return { width, height: naturalHeight };
+  }
+  const scale = naturalHeight > 0 ? maxHeight / naturalHeight : 1;
+  return { width: width * scale, height: maxHeight };
 }

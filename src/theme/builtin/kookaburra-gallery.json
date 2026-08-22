@@ -3,6 +3,13 @@
   "id": "kookaburra-gallery",
   "name": "Gallery",
   "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Minimal portfolios",
+    "tags": ["portfolio", "minimal", "art", "architecture", "neutral", "presentation"],
+    "stage": "physical",
+    "order": 40
+  },
   "colors": {
     "background": "#eef0f3",
     "text": "#23272c",

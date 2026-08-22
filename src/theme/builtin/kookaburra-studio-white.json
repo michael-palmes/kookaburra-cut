@@ -3,6 +3,13 @@
   "id": "kookaburra-studio-white",
   "name": "Studio White",
   "mode": "light",
+  "catalogue": {
+    "category": "essentials",
+    "useLabel": "Clean product showcases",
+    "tags": ["clean", "minimal", "product", "presentation", "professional", "bright"],
+    "stage": "physical",
+    "order": 10
+  },
   "colors": {
     "background": "#f4f6f8",
     "text": "#1a1d21",

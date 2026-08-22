@@ -9,7 +9,8 @@ import { type DevicePose, deviceGizmoCommit } from "./gizmoCommit";
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
-const poseKey = (p: DevicePose) => `${p.position.join()}|${p.rotationDeg.join()}|${p.scale}`;
+export const deviceGizmoProxySyncKey = (pose: DevicePose, resetKey: number): string =>
+  `${pose.position.join()}|${pose.rotationDeg.join()}|${pose.scale}|${resetKey}`;
 
 /** The device gizmo: no group inside `Device` carries the whole placement pose (float, spin and the intro presets ride between them), so the control attaches to an invisible proxy that does, mounted as a SIBLING of the device's root group so it shares that space without double-counting the drag. The drag feeds back through `onDrag`, and pointer-up posts the sidecar write the Position sliders would make. Editor-only: it mounts only while the device store holds this selection, which `exportPreamble` clears. */
 export function DeviceGizmo({
@@ -17,7 +18,9 @@ export function DeviceGizmo({
   sceneIndex,
   committed,
   rendered,
+  resetKey,
   onDrag,
+  onCommitRequested,
 }: {
   deviceId: string;
   sceneIndex: number;
@@ -25,7 +28,9 @@ export function DeviceGizmo({
   committed: DevicePose;
   /** The pose the render is using from the COMMITTED placement (ground clamp applied), never the live drag. */
   rendered: DevicePose;
+  resetKey: number;
   onDrag: (pose: DevicePose | null) => void;
+  onCommitRequested: (commitId: number) => void;
 }) {
   const proxyRef = useRef<Group>(null);
   const doc = useContext(SceneDocContext);
@@ -37,7 +42,7 @@ export function DeviceGizmo({
   useEffect(() => {
     const p = proxyRef.current;
     if (!p || dragging.current) return;
-    const key = poseKey(committed);
+    const key = deviceGizmoProxySyncKey(committed, resetKey);
     if (key === synced.current) return;
     synced.current = key;
     p.position.set(rendered.position[0], rendered.position[1], rendered.position[2]);
@@ -88,17 +93,19 @@ export function DeviceGizmo({
     const dragged = readProxy();
     if (!dragged) return;
     const authored = doc?.devices?.find((d) => d.id === deviceId)?.placement ?? {};
-    useDeviceEditStore.getState().requestCommit(
+    const commitId = useDeviceEditStore.getState().requestCommit(
       deviceGizmoCommit({
         deviceId,
         sceneIndex,
         dragged,
         rendered,
+        committed,
         authored,
         // A live block is the branch the sliders take, delta entry or not.
         delta: doc?.deviceLayout ? (doc.deviceLayout.devices?.[deviceId] ?? {}) : undefined,
       }),
     );
+    onCommitRequested(commitId);
   };
 
   return (

@@ -202,6 +202,7 @@ export function Fixture({ entry, colors }: { entry: FixturePlanEntry; colors: Th
   const key = useId();
   const mapShadows = useStageMapShadows();
   const groupRef = useRef<Group>(null);
+  const sceneIndex = useSceneContext()?.index;
   const relative = (spec.space ?? "world") !== "world";
   const basePosition = placementPosition(spec.placement);
   const rotation = (spec.rotationDeg ?? [0, 0, 0]).map((d) => d * DEG2RAD) as [
@@ -258,11 +259,14 @@ export function Fixture({ entry, colors }: { entry: FixturePlanEntry; colors: Th
         placement: spec.placement,
         target: [0, 0, 0],
       },
+      target:
+        sceneIndex === undefined
+          ? undefined
+          : { sceneIndex, kind: "fixture" as const, id: spec.id },
     });
-  }, [key, relative, spec]);
+  }, [key, relative, spec, sceneIndex]);
 
   // Keyframe apply-seam registration (emissive/lightIntensity per fixture id): the traversal snapshots the mounted meshes and paired lights in scene-graph (= instance) order.
-  const sceneIndex = useSceneContext()?.index;
   useEffect(() => {
     const group = groupRef.current;
     if (!group || sceneIndex === undefined) return;
@@ -294,6 +298,7 @@ export function Fixture({ entry, colors }: { entry: FixturePlanEntry; colors: Th
       meshes,
       instanced: instancedRef.current,
       pairedLights,
+      group,
     });
   }, [key, spec, colors, instances, sceneIndex]);
 

@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { SceneDoc, SceneDocChart } from "../engine/sceneDocSchema";
+import { isDeviceAvailable } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
 import {
   CHART_TYPE_IDS,
   CHART_TYPE_LABELS,
   chartRowValue,
+  deriveSceneOverview,
   drillStackForScene,
   projectRows,
   sceneSections,
 } from "./inspectorOptions";
+import { textIconInspectorRoute } from "./inspectorTitles";
 
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {
@@ -77,6 +80,353 @@ describe("projectRows (the Project-tab pin)", () => {
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
 
+describe("deriveSceneOverview", () => {
+  const overview = (
+    doc: SceneDoc,
+    parts: Partial<Parameters<typeof deriveSceneOverview>[0]> = {},
+  ) =>
+    deriveSceneOverview({
+      doc,
+      durationMs: 4_000,
+      slotsCount: 3,
+      themeName: "Studio White",
+      transitionValue: "Crossfade · 0.4 s",
+      ...parts,
+    });
+
+  it("derives natural row values, media hints, selection targets and routes", () => {
+    const frame: FrameSpec = {
+      cutout: { shape: "rounded-rect", side: "end", size: 0.34 },
+      decorations: [
+        {
+          id: "logo",
+          src: "assets/brand/logo.png",
+          position: [0.5, 0.25],
+          size: 0.24,
+        },
+      ],
+    };
+    const model = overview(
+      docWith({
+        text: { headline: "Your App · 3.1.5" },
+        textLayout: { align: "center" },
+        devices: [
+          {
+            id: "phone",
+            model: "iphone-17-pro",
+            media: { kind: "video", src: "assets/demo.mov" },
+          },
+        ],
+        videoWindow: {
+          media: { src: "assets/demo-recording.mov" },
+          radius: "macos",
+        },
+        images: [
+          {
+            id: "hero",
+            src: "assets/hero.png",
+            host: "stage",
+            stage: { position: [0, 0, 0], size: 1.8, rotationDeg: [0, 0, 0] },
+            overlay: {
+              position: [0, 0],
+              size: 0.25,
+              rotationDeg: 0,
+              shape: "none",
+              layer: "above",
+            },
+          },
+        ],
+        objects: [{ id: "cup", objectId: "ws:coffee-cup", placement: { position: [-0.5, 0, 0] } }],
+      }),
+      {
+        frame,
+        overlayValue: "Right · 34%",
+        cameraValue: "Orbit · Push in",
+        lightingValue: "Soft studio",
+      },
+    );
+
+    expect(model.groups.map((group) => group.id)).toEqual([
+      "text",
+      "devices",
+      "images",
+      "videos",
+      "objects",
+    ]);
+    expect(model.groups.map((group) => group.label)).toEqual([
+      "Text",
+      "Devices",
+      "Images",
+      "Videos",
+      "Objects",
+    ]);
+    const rows = Object.fromEntries(
+      model.groups.flatMap((group) => group.rows).map((row) => [row.id, row]),
+    );
+    expect(rows["text:headline"]).toMatchObject({
+      label: "Your App · 3.1.5",
+      value: "Left",
+      selectionTarget: { kind: "text", id: "headline" },
+      openRoute: "text",
+    });
+    expect(rows["device:phone"]).toMatchObject({
+      label: "iPhone 17 Pro",
+      value: "demo.mov",
+      mediaHint: { kind: "video", src: "assets/demo.mov" },
+      selectionTarget: { kind: "device", id: "phone" },
+      openRoute: "device",
+    });
+    expect(rows["image:hero"]).toMatchObject({
+      label: "hero.png",
+      value: "Stage",
+      thumbnail: "assets/hero.png",
+      selectionTarget: { kind: "image", id: "hero" },
+      openRoute: "image.edit",
+    });
+    expect(rows["image:legacy:logo"]).toMatchObject({
+      label: "logo.png",
+      value: "24%",
+      readOnly: true,
+      selectionTarget: { kind: "legacyImage", id: "logo" },
+      openRoute: "legacyImage.edit",
+    });
+    expect(rows["video:window"]).toMatchObject({
+      label: "demo-recording.mov",
+      value: "Window",
+      selectionTarget: { kind: "videoWindow" },
+      openRoute: "videoWindow.edit",
+    });
+    expect(rows["object:cup"]).toMatchObject({
+      label: "Coffee cup",
+      value: "Left",
+      selectionTarget: { kind: "object", id: "cup" },
+      openRoute: "objects.placement",
+    });
+    expect(model.settings.map((row) => row.value)).toEqual([
+      "Right · 34%",
+      "Studio White",
+      "Theme default",
+      "Orbit · Push in",
+      "Soft studio",
+      "Crossfade · 0.4 s",
+      "4.00 s",
+    ]);
+  });
+
+  it("omits every empty content group and keeps the seven scene settings", () => {
+    const model = overview(docWith({}), { durationMs: 3_000, slotsCount: 1 });
+    expect(model.groups).toEqual([]);
+    expect(model.standalone).toEqual([]);
+    expect(model.settings.map((row) => row.id)).toEqual([
+      "overlay",
+      "theme",
+      "background",
+      "camera",
+      "lighting",
+      "transition",
+      "duration",
+    ]);
+    expect(model.settings.find((row) => row.id === "transition")?.openRoute).toBeNull();
+    expect(model.settings.find((row) => row.id === "duration")?.value).toBe("3.00 s");
+    expect(model.addOptions.find((option) => option.id === "image")).toMatchObject({
+      singleton: false,
+      disabled: false,
+    });
+  });
+
+  it("projects mounted fallback copy when code-authored text has no sidecar key", () => {
+    const model = overview(docWith({ text: {} }), { fallbackText: "Built in headline" });
+
+    expect(model.groups).toHaveLength(1);
+    expect(model.groups[0]).toMatchObject({
+      id: "text",
+      rows: [
+        {
+          id: "text:fallback",
+          label: "Built in headline",
+          openRoute: "text",
+          readOnly: true,
+        },
+      ],
+    });
+    expect(model.groups[0].rows[0].selectionTarget).toBeUndefined();
+  });
+
+  it("uses the ordered managed projection exclusively, including present-empty", () => {
+    const doc = docWith({ text: { dormant: "Legacy copy" } });
+    const managed = overview(doc, {
+      fallbackText: "Code fallback",
+      textItems: [
+        { key: "subtitle", type: "subtitle", text: "Second" },
+        {
+          key: "points",
+          type: "bullets",
+          points: [{ key: "p1", text: "First point" }],
+        },
+      ],
+    });
+
+    expect(managed.groups[0]?.rows.map((row) => row.id)).toEqual(["text:subtitle", "text:points"]);
+    expect(managed.groups[0]?.rows[1]?.label).toBe("First point");
+
+    const empty = overview(doc, { fallbackText: "Code fallback", textItems: [] });
+    expect(empty.groups.find((group) => group.id === "text")).toBeUndefined();
+  });
+
+  it("projects one atomic Content row per managed Text group", () => {
+    const doc = docWith({ textLayout: { align: "center" } });
+    const model = overview(doc, {
+      textGroups: [
+        {
+          key: "text",
+          itemKeys: ["title", "subtitle"],
+          items: [
+            { key: "title", type: "title", text: "First group" },
+            { key: "subtitle", type: "subtitle", text: "Supporting copy" },
+          ],
+          align: "left",
+          implicit: false,
+        },
+        {
+          key: "text-2",
+          itemKeys: ["title-2"],
+          items: [{ key: "title-2", type: "title", text: "Second group" }],
+          align: "right",
+          implicit: false,
+        },
+      ],
+    });
+
+    expect(model.groups[0]?.rows).toEqual([
+      expect.objectContaining({
+        id: "text:text",
+        label: "Text 1: First group",
+        value: "Left",
+        selectionTarget: { kind: "text", id: "text" },
+        openRoute: "text",
+      }),
+      expect.objectContaining({
+        id: "text:text-2",
+        label: "Text 2: Second group",
+        value: "Right",
+        selectionTarget: { kind: "text", id: "text-2" },
+        openRoute: "text",
+      }),
+    ]);
+  });
+
+  it("pins heavy scenes to the specified group, standalone and setting order", () => {
+    const devices = Array.from({ length: 6 }, (_, index) => ({
+      id: `d${index + 1}`,
+      model: index < 3 ? "iphone-17-pro" : "macbook-pro-16",
+      media: { kind: "image" as const, src: `assets/screen-${index + 1}.png` },
+    }));
+    const objects = ["coffee-cup", "plant", "desk-lamp"].map((objectId, index) => ({
+      id: `o${index + 1}`,
+      objectId: `ws:${objectId}`,
+    }));
+    const frame: FrameSpec = {
+      cutout: { shape: "rounded-rect" },
+      decorations: ["logo", "badge"].map((id, index) => ({
+        id,
+        src: `assets/${id}.png`,
+        position: [0, index * 0.2] as [number, number],
+        size: index === 0 ? 0.24 : 0.12,
+      })),
+    };
+    const model = overview(
+      docWith({
+        text: { headline: "Headline", bullets: "Feature list" },
+        devices,
+        videoWindow: { media: { src: "assets/screen-2.mov" }, radius: "subtle" },
+        objects,
+        chart: {
+          type: "stackedBar",
+          data: {
+            categories: ["A"],
+            series: Array.from({ length: 4 }, (_, index) => ({
+              id: `s${index + 1}`,
+              values: [index],
+            })),
+          },
+        },
+        layeredScreenshot: {
+          layers: Array.from({ length: 5 }, () => ({}) as never),
+          pose: { spread: 0.5, azimuthDeg: 0, elevationDeg: 0, zoom: 1, pan: [0, 0] },
+        },
+        compare: { mask: { type: "linear" } },
+      }),
+      { frame, durationMs: 6_500 },
+    );
+
+    expect(model.groups.map((group) => [group.id, group.rows.length])).toEqual([
+      ["text", 2],
+      ["devices", 6],
+      ["images", 2],
+      ["videos", 1],
+      ["objects", 3],
+    ]);
+    expect(model.standalone.map((row) => row.id)).toEqual([
+      "chart",
+      "screenshotStack",
+      "comparison",
+    ]);
+    expect(model.standalone.map((row) => row.value)).toEqual([
+      "Stacked bar · 4 series",
+      "5 layers",
+      "Linear wipe",
+    ]);
+    expect(model.settings.map((row) => row.id)).toEqual([
+      "overlay",
+      "theme",
+      "background",
+      "camera",
+      "lighting",
+      "transition",
+      "duration",
+    ]);
+  });
+
+  it("disables only present singleton add options", () => {
+    const model = overview(
+      docWith({
+        text: { headline: "Existing" },
+        devices: [{ id: "d1", model: "iphone-17-pro" }],
+        objects: [{ id: "o1", objectId: "ws:plant" }],
+        videoWindow: { media: { src: "assets/demo.mov" }, radius: "macos" },
+        chart: { type: "line", data: { categories: [], series: [] } },
+        layeredScreenshot: {
+          layers: [],
+          pose: { spread: 0, azimuthDeg: 0, elevationDeg: 0, zoom: 1, pan: [0, 0] },
+        },
+        compare: {},
+      }),
+      { frame: { cutout: { shape: "rounded-rect" } } },
+    );
+    const options = Object.fromEntries(model.addOptions.map((option) => [option.id, option]));
+    for (const id of ["device", "text", "image", "object"] as const) {
+      expect(options[id]).toMatchObject({ singleton: false, disabled: false });
+    }
+    for (const id of ["video", "chart", "screenshotStack", "comparison"] as const) {
+      expect(options[id]).toMatchObject({
+        singleton: true,
+        disabled: true,
+        disabledReason: "Already in scene",
+      });
+    }
+    expect(model.addOptions.map((option) => option.id)).toEqual([
+      "device",
+      "text",
+      "image",
+      "video",
+      "object",
+      "chart",
+      "screenshotStack",
+      "comparison",
+    ]);
+  });
+});
+
 describe("sceneSections (the EditBar capability gating, verbatim)", () => {
   it("a text+video-device scene gets every section", () => {
     const doc = docWith({
@@ -103,6 +453,9 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.add",
       "device.remove",
     ]);
+    expect(
+      sections.find((s) => s.id === "device")?.rows.find((r) => r.id === "device.position")?.label,
+    ).toBe("Arrangement");
   });
 
   it("no text → the Text section offers a single Add text row; image media → no Edit video", () => {
@@ -180,7 +533,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     );
   });
 
-  it("a laptop device adds the Lid angle row", () => {
+  it("a laptop device adds the Lid angle row only when its model is available", () => {
     const doc = docWith({
       devices: [{ id: "d1", model: "macbook-pro-16" }] as SceneDoc["devices"],
     });
@@ -191,7 +544,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
       "device.media",
       "device.change",
       "device.position",
-      "device.lid",
+      ...(isDeviceAvailable("macbook-pro-16") ? ["device.lid"] : []),
       "style.shadow",
       "device.duplicate",
       "device.add",
@@ -224,7 +577,7 @@ describe("sceneSections (the EditBar capability gating, verbatim)", () => {
     const forD2 = sceneSections({ doc, slotsCount: 1, selectedDeviceId: "d2" })
       .find((s) => s.id === "device")
       ?.rows.map((r) => r.id);
-    expect(forD2).toContain("device.lid");
+    expect(forD2?.includes("device.lid")).toBe(isDeviceAvailable("macbook-pro-16"));
     expect(forD2).not.toContain("device.editVideo");
   });
 
@@ -278,6 +631,7 @@ describe("sceneSections Overlay section", () => {
       "frame.enabled",
       "frame.cutout",
       "frame.panel",
+      "frame.icon",
       "frame.chip",
       "frame.decorations",
       "frame.text",
@@ -316,6 +670,7 @@ describe("sceneSections Overlay section", () => {
       "frame.enabled",
       "frame.cutout",
       "frame.panel",
+      "frame.icon",
       "frame.chip",
       "frame.decorations",
       "frame.text",
@@ -380,7 +735,7 @@ describe("drillStackForScene (what the inspector keeps open across a scene chang
     expect(drillStackForScene(["device"], full)).toEqual(["device"]);
   });
 
-  it("Animations survives even a doc-less scene", () => {
+  it("Camera survives even a doc-less scene", () => {
     expect(drillStackForScene(["camera"], { ...full, hasDoc: false, textKeys: [] })).toEqual([
       "camera",
     ]);
@@ -394,6 +749,14 @@ describe("drillStackForScene (what the inspector keeps open across a scene chang
     expect(
       drillStackForScene(["text", "text.font:title"], { ...full, textKeys: ["headline"] }),
     ).toEqual(["text"]);
+  });
+
+  it("keeps a Text icon child only while its item key still exists", () => {
+    const route = textIconInspectorRoute("image", "title");
+    expect(drillStackForScene(["text", route], full)).toEqual(["text", route]);
+    expect(drillStackForScene(["text", route], { ...full, textKeys: ["headline"] })).toEqual([
+      "text",
+    ]);
   });
 
   it("a scene the section is missing from drops to the row list", () => {

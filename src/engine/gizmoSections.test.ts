@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { gizmoDomainForDrill, gizmoDomainForDrillStack } from "./gizmoSections";
+import {
+  gizmoDomainForDrill,
+  gizmoDomainForDrillStack,
+  gizmoDomainForInspector,
+} from "./gizmoSections";
 
 describe("gizmoDomainForDrill", () => {
-  it("maps every device, objects and chart drill to its domain", () => {
+  it("maps every entity editor drill to its domain", () => {
     expect(gizmoDomainForDrill("device")).toBe("devices");
     expect(gizmoDomainForDrill("device.change")).toBe("devices");
     expect(gizmoDomainForDrill("device.position")).toBe("devices");
+    expect(gizmoDomainForDrill("image")).toBe("images");
+    expect(gizmoDomainForDrill("image.position")).toBe("images");
+    expect(gizmoDomainForDrill("legacyImage.edit")).toBe("decorations");
     expect(gizmoDomainForDrill("objects")).toBe("objects");
     expect(gizmoDomainForDrill("objects.placement")).toBe("objects");
     expect(gizmoDomainForDrill("chart.edit")).toBe("chart");
@@ -36,6 +43,7 @@ describe("gizmoDomainForDrill", () => {
 
   it("matches whole families only, never a prefix that just shares letters", () => {
     expect(gizmoDomainForDrill("devices")).toBeNull();
+    expect(gizmoDomainForDrill("images")).toBeNull();
     expect(gizmoDomainForDrill("charting")).toBeNull();
   });
 });
@@ -54,5 +62,43 @@ describe("gizmoDomainForDrillStack", () => {
   it("takes the deepest match when a stack crosses families", () => {
     expect(gizmoDomainForDrillStack(["objects", "objects.placement"])).toBe("objects");
     expect(gizmoDomainForDrillStack(["device", "chart.edit"])).toBe("chart");
+  });
+});
+
+describe("gizmoDomainForInspector", () => {
+  const inspector = {
+    tab: "scene" as const,
+    drillStack: [],
+    drillIn: null,
+    overviewSelection: {
+      sceneIndex: 1,
+      rowId: "device:phone",
+      domain: "devices" as const,
+    },
+  };
+
+  it("uses the selected overview row domain while the Scene overview is open", () => {
+    expect(gizmoDomainForInspector(inspector)).toBe("devices");
+  });
+
+  it("lets an open drill family override the retained overview selection", () => {
+    expect(
+      gizmoDomainForInspector({
+        ...inspector,
+        drillStack: ["objects", "objects.placement"],
+        drillIn: "objects.placement",
+      }),
+    ).toBe("objects");
+    expect(
+      gizmoDomainForInspector({
+        ...inspector,
+        drillStack: ["lighting"],
+        drillIn: "lighting",
+      }),
+    ).toBeNull();
+  });
+
+  it("never opens an overview domain on the Project tab", () => {
+    expect(gizmoDomainForInspector({ ...inspector, tab: "project" })).toBeNull();
   });
 });

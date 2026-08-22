@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Kookaburra Cut",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "identifier": "com.mpalmes.kookaburracut",
   "build": {
     "frontendDist": "../dist",
@@ -63,7 +63,7 @@
     "externalBin": ["bin/ffmpeg", "bin/ffprobe"],
     "resources": {
       "../projects": "projects",
-      "../.claude/skills": "claude-skills"
+      "../.agents/skills": "claude-skills"
     },
     "icon": [
       "icons/32x32.png",

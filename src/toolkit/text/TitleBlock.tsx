@@ -8,10 +8,17 @@ import {
   requestPanelTextMeasure,
   subscribePanelMeasures,
 } from "../../engine/framePanelMeasure";
+import {
+  isTemplateManagedText,
+  type ManagedTextRenderRole,
+  resolveTemplateManagedTextCopy,
+  resolveTemplateManagedTextIcon,
+  specialisedClaimedTextMode,
+} from "../../engine/managedText";
 import { SceneTextClaimedContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneDoc } from "../../engine/sceneDoc";
 import type { SceneTextAlign } from "../../engine/sceneDocSchema";
-import { useSceneConsumesAnyTextKey } from "../../engine/textKeyRegistry";
+import { useSceneConsumesAnyTextKey, useSceneOwnsAnyTextKey } from "../../engine/textKeyRegistry";
 import {
   clearTitleMeasures,
   NO_TITLE_CASCADE,
@@ -21,6 +28,7 @@ import {
 import { useTheme } from "../../theme";
 import type { V3 } from "../types";
 import { AnimatedHeadline } from "./AnimatedHeadline";
+import { ManagedTextStack } from "./ManagedTextStack";
 
 /** How many modular-scale steps the subtitle sits below the title (matches the hand-authored .56/.22 convention at scale 1.25). */
 const SUBTITLE_SCALE_STEPS = 4;
@@ -51,8 +59,10 @@ export interface TitleBlockProps {
   subtitleColor?: "text" | "muted" | "accent" | (string & {});
   /** Subtitle reveal delay behind the title, ms (default 350). */
   subtitleDelayMs?: number;
-  /** Register the title/subtitle text keys (default true). `TextFallback` passes false so its own render can't flip the fallback's "is a consumer mounted" gate (which would mount/unmount-loop). */
+  /** Register the title/subtitle text keys (default true). Legacy host fallbacks keep this off. */
   register?: boolean;
+  /** Render registration role. Host fallbacks use managed so they do not count as authored consumers. */
+  managedTextRole?: ManagedTextRenderRole;
   /** Header icon drawn above the title: an emoji/glyph or a project asset path. Defaults to the sidecar's `headerIcon`, so a scaffolded scene's own `TitleBlock` shows it without wiring; overlay scenes carry it on `frame.icon` instead. */
   icon?: string;
 }
@@ -60,24 +70,27 @@ export interface TitleBlockProps {
 /** Title + optional subtitle with theme-scale sizing and safe-area alignment: the standard top-of-scene text block. Alignment resolves prop → sidecar `textLayout.align` → centre, so the inspector can steer scenes that don't hard-code it. */
 export function TitleBlock(props: TitleBlockProps) {
   const {
-    title,
-    subtitle,
     from = 200,
     to = 900,
     position = [0, 0, 0],
     subtitleDelayMs = SUBTITLE_DELAY_MS,
     register = true,
+    managedTextRole = "scene",
   } = props;
   const theme = useTheme();
   const format = useFormat();
   const doc = useSceneDoc();
   const claimed = useContext(SceneTextClaimedContext);
+  const templateManaged = isTemplateManagedText(doc);
+  const claimedMode = specialisedClaimedTextMode(doc, claimed);
+  const title = resolveTemplateManagedTextCopy(doc, "title", props.title);
+  const subtitle = resolveTemplateManagedTextCopy(doc, "subtitle", props.subtitle ?? "");
   const portrait = format.aspect < 1;
   const align = props.align ?? doc?.textLayout?.align ?? "center";
   const titleSize = props.fontSize ?? (portrait ? 0.34 : 0.56);
   const subtitleSize = titleSize / theme.typography.scale ** SUBTITLE_SCALE_STEPS;
-  const hasSubtitle = typeof subtitle === "string" && subtitle.trim().length > 0;
-  const subtitleText = subtitle ?? "";
+  const hasSubtitle = subtitle.trim().length > 0;
+  const subtitleText = subtitle;
   const { maxWidth } = props;
 
   // Measured multi-line growth (engine/titleBlockMeasure): the cache fills async, each landing bumps the store and re-solves, and single-line text solves to a hard zero so the constants below stay untouched.
@@ -132,8 +145,7 @@ export function TitleBlock(props: TitleBlockProps) {
     return () => clearTitleMeasures(measureId);
   }, [cascade, measureId]);
 
-  // The overlay panel renders the headline instead; suppress the in-world one.
-  if (claimed) return null;
+  if (claimedMode === "none" || (doc?.managedText !== undefined && !templateManaged)) return null;
 
   const anchorX =
     align === "left"
@@ -142,7 +154,7 @@ export function TitleBlock(props: TitleBlockProps) {
         ? format.frame.width / 2 - format.safe.right
         : 0;
   // The sidecar's headerIcon is the default so any scene that renders a TitleBlock (the scaffold's own, not just TextFallback) shows it; an explicit prop still wins.
-  const icon = props.icon ?? doc?.headerIcon;
+  const icon = resolveTemplateManagedTextIcon(doc, ICON_TEXT_KEY, props.icon ?? doc?.headerIcon);
   const iconSize = titleSize * HEADER_ICON_SIZE;
   const iconScale = headerIconScale(doc ?? undefined);
   // What the icon adds above the title: the recentring branch drops the pair by half of it, so an icon scene centres on the whole block rather than on the title alone.
@@ -167,35 +179,42 @@ export function TitleBlock(props: TitleBlockProps) {
           to={to}
           anchorX={align}
           textKey={ICON_TEXT_KEY}
+          managedTextRole={templateManaged ? "scene" : managedTextRole}
         />
       )}
-      <AnimatedHeadline
-        text={title}
-        from={from}
-        to={to}
-        position={at(titleY)}
-        fontSize={titleSize}
-        color={props.titleColor}
-        textKey={register ? "title" : undefined}
-        anchorX={align}
-        textAlign={align}
-        maxWidth={props.maxWidth}
-      />
-      {hasSubtitle && (
-        <AnimatedHeadline
-          text={subtitle}
-          from={from + subtitleDelayMs}
-          to={to + subtitleDelayMs}
-          position={at(subtitleY)}
-          fontSize={subtitleSize}
-          face="body"
-          color={props.subtitleColor}
-          textKey={register ? "subtitle" : undefined}
-          defaultColor="muted"
-          anchorX={align}
-          textAlign={align}
-          maxWidth={props.maxWidth}
-        />
+      {claimedMode === "all" && (
+        <>
+          <AnimatedHeadline
+            text={title}
+            from={from}
+            to={to}
+            position={at(titleY)}
+            fontSize={titleSize}
+            color={props.titleColor}
+            textKey={register ? "title" : undefined}
+            managedTextRole={managedTextRole}
+            anchorX={align}
+            textAlign={align}
+            maxWidth={props.maxWidth}
+          />
+          {hasSubtitle && (
+            <AnimatedHeadline
+              text={subtitle}
+              from={from + subtitleDelayMs}
+              to={to + subtitleDelayMs}
+              position={at(subtitleY)}
+              fontSize={subtitleSize}
+              face="body"
+              color={props.subtitleColor}
+              textKey={register ? "subtitle" : undefined}
+              managedTextRole={managedTextRole}
+              defaultColor="muted"
+              anchorX={align}
+              textAlign={align}
+              maxWidth={props.maxWidth}
+            />
+          )}
+        </>
       )}
     </>
   );
@@ -208,9 +227,23 @@ export const FALLBACK_TEXT_KEYS = ["title", "subtitle"] as const;
 export function TextFallback() {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
-  const consumed = useSceneConsumesAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
-  const title = doc?.text?.title ?? "";
+  const claimed = useContext(SceneTextClaimedContext);
+  const consumedByAny = useSceneConsumesAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
+  const consumedByScene = useSceneOwnsAnyTextKey(sceneIndex, FALLBACK_TEXT_KEYS);
+  const consumed = isTemplateManagedText(doc) ? consumedByScene : consumedByAny;
+  if (claimed) return null;
+  if (doc?.managedText !== undefined && !isTemplateManagedText(doc)) {
+    return <ManagedTextStack />;
+  }
+  const title = resolveTemplateManagedTextCopy(doc, "title", doc?.text?.title ?? "");
   if (consumed || !title.trim()) return null;
   // TitleBlock reads the sidecar's headerIcon itself, so it needs no icon wiring here.
-  return <TitleBlock title={title} subtitle={doc?.text?.subtitle ?? ""} register={false} />;
+  return (
+    <TitleBlock
+      title={title}
+      subtitle={resolveTemplateManagedTextCopy(doc, "subtitle", doc?.text?.subtitle ?? "")}
+      register={isTemplateManagedText(doc)}
+      managedTextRole={isTemplateManagedText(doc) ? "managed" : "scene"}
+    />
+  );
 }

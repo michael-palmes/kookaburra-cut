@@ -7,7 +7,11 @@ import {
   fixtureWorldInstances,
   resolveFixturePlan,
 } from "./fixtures";
-import { FIXTURE_MAX_COUNT } from "./sceneLighting";
+import {
+  animatedFixtureLightIds,
+  FIXTURE_MAX_COUNT,
+  normalizeLightingTrack,
+} from "./sceneLighting";
 
 const tube = (over: Partial<FixtureSpec> = {}): FixtureSpec => ({
   id: "corridor",
@@ -106,6 +110,71 @@ describe("resolveFixturePlan", () => {
   it("drops disabled fixtures entirely", () => {
     const plan = resolveFixturePlan([tube({ enabled: false })], 8);
     expect(plan.entries).toHaveLength(0);
+  });
+
+  it("reserves paired lights only for zero-base fixtures that an enabled track can raise", () => {
+    const decorative = tube({ lightIntensity: 0 });
+    const lit = tube({ id: "later" });
+    expect(resolveFixturePlan([decorative, lit], 1).entries.map((entry) => entry.lights)).toEqual([
+      [false],
+      [true],
+    ]);
+    expect(
+      resolveFixturePlan([decorative, lit], 1, new Set([decorative.id])).entries.map(
+        (entry) => entry.lights,
+      ),
+    ).toEqual([[true], [false]]);
+  });
+
+  it("does not spend the fixture budget on a malformed key rejected by normalisation", () => {
+    const decorative = tube({ lightIntensity: 0 });
+    const lit = tube({ id: "later" });
+    const track = normalizeLightingTrack(
+      {
+        fixtures: [decorative, lit],
+        keys: [
+          {
+            id: "bad",
+            tMs: Number.NaN,
+            pose: { fixtures: { [decorative.id]: { lightIntensity: 8 } } },
+          },
+        ],
+      },
+      "malformed reservation",
+    );
+
+    expect(track).toBeNull();
+    expect(
+      resolveFixturePlan([decorative, lit], 1, animatedFixtureLightIds(track)).entries.map(
+        (entry) => entry.lights,
+      ),
+    ).toEqual([[false], [true]]);
+  });
+
+  it("does not spend the fixture budget on a positive duplicate key that is dropped", () => {
+    const decorative = tube({ lightIntensity: 0 });
+    const lit = tube({ id: "later" });
+    const track = normalizeLightingTrack(
+      {
+        fixtures: [decorative, lit],
+        keys: [
+          { id: "same", tMs: 0, pose: {} },
+          {
+            id: "same",
+            tMs: 500,
+            pose: { fixtures: { [decorative.id]: { lightIntensity: 8 } } },
+          },
+        ],
+      },
+      "duplicate reservation",
+    );
+
+    expect(track?.keys).toHaveLength(1);
+    expect(
+      resolveFixturePlan([decorative, lit], 1, animatedFixtureLightIds(track)).entries.map(
+        (entry) => entry.lights,
+      ),
+    ).toEqual([[false], [true]]);
   });
 });
 

@@ -11,17 +11,25 @@ import {
 } from "react";
 import type { Object3D } from "three";
 import { registerGizmoTarget, unregisterGizmoTarget } from "../../engine/gizmoTargetRegistry";
+import {
+  type ManagedTextRenderRole,
+  shouldRenderManagedTextHeadline,
+} from "../../engine/managedText";
 import { useHeldLocalMs } from "../../engine/presentHold";
 import { registerPresentTiming } from "../../engine/presentTimingRegistry";
-import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import {
+  SceneDocContext,
+  SceneTextClaimedContext,
+  useSceneContext,
+} from "../../engine/sceneContext";
 import { registerSceneText } from "../../engine/sceneTextRegistry";
 import { useTextKeyRegistry } from "../../engine/textKeyRegistry";
 import { useTextMotionRegistry } from "../../engine/textMotionRegistry";
 import { useTimeline } from "../../engine/timeline";
 import { useTheme } from "../../theme";
-import { parseFontString } from "../../theme/fontRef";
+import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { fontUrl } from "../../theme/fonts";
-import type { FontRef, Theme } from "../../theme/tokens";
+import type { FontRef, TextAnimationSpec, Theme } from "../../theme/tokens";
 import { foldBandToChild, GroupAnimationContext } from "../group/context";
 import type { EaseName, V3 } from "../types";
 import {
@@ -45,6 +53,9 @@ import {
   type TextDelivery,
   type TextDirection,
   type TextPresetName,
+  TWIST_START_SCALE,
+  textAnimationEndMs,
+  textPresetHasMotion,
   unitIndexForKey,
 } from "./presets";
 import {
@@ -86,6 +97,10 @@ export interface AnimatedHeadlineProps {
   color?: "text" | "muted" | "accent" | (string & {});
   /** The sidecar text key this headline renders (what `useSceneText` was called with): enables the app-editable fill (`textStyle.<textKey>Color` in the scene document) and registers the field's colour swatch in the inspector. */
   textKey?: string;
+  /** Compatibility-only style source when the stable managed key differs from an older sidecar style key. */
+  styleKey?: string;
+  /** Compatibility-only motion source when the stable managed key differs from an older keyed override. */
+  motionKey?: string;
   /** Fill when neither `color` nor the sidecar set one (default "text"): the token a scene wants as its design default while staying app-editable. */
   defaultColor?: "text" | "muted" | "accent" | (string & {});
   position?: V3;
@@ -102,6 +117,10 @@ export interface AnimatedHeadlineProps {
   maxWidth?: number;
   /** Line spacing as a multiple of the font size; unset means troika's own "normal" (the font's metrics), which is also how the dispatcher applies a sidecar `<textKey>LineHeight`. */
   lineHeight?: number;
+  /** Scene text stands down when `managedText` is present. Embedded composition text opts out; managed renderer nodes opt back in. */
+  managedTextRole?: ManagedTextRenderRole;
+  /** Effective coded parent motion to retain if the inspector takes ownership of this line. */
+  managedTextCodedMotion?: TextAnimationSpec;
 }
 
 /** Layout props forwarded to troika; spread-conditional so an unset prop can never disturb troika's own defaults (the legacy byte contract). */
@@ -130,6 +149,14 @@ function textStyle(theme: Theme, props: AnimatedHeadlineProps) {
 
 /** SDF headline rendered through troika (via drei `<Text>`); all motion is a pure function of the timeline, never the wall clock. Three render paths chosen once per mount: LEGACY (nothing configured, the original v0 linear fillOpacity ramp byte-for-byte, must not change), BLOCK (preset without stagger, whole-block opacity/offset/blur/clip via troika props), and STAGGERED (staggerMs > 0, one mesh with a per-glyph derived material). */
 export function AnimatedHeadline(props: AnimatedHeadlineProps) {
+  const doc = useContext(SceneDocContext);
+  const claimed = useContext(SceneTextClaimedContext);
+  const role = props.managedTextRole ?? "scene";
+  if (!shouldRenderManagedTextHeadline(doc, role, claimed)) return null;
+  return <AnimatedHeadlineRenderer {...props} />;
+}
+
+function AnimatedHeadlineRenderer(props: AnimatedHeadlineProps) {
   const theme = useTheme();
   const doc = useContext(SceneDocContext);
   const ctx = useSceneContext();
@@ -141,25 +168,125 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
     useTextMotionRegistry.getState().register(sceneIndex);
     return () => useTextMotionRegistry.getState().unregister(sceneIndex);
   }, [coded, sceneIndex]);
+  const anim = resolveTextAnimationWithDoc(props, theme, doc, props.motionKey ?? props.textKey);
+  const animPreset = anim?.preset;
+  const animOutPreset = anim?.outPreset;
+  const animEase = anim?.ease;
+  const animStaggerMs = anim?.staggerMs;
+  const animGranularity = anim?.granularity;
+  const animDurationMs = anim?.durationMs;
+  const animDistance = anim?.distance;
+  const animStartScale = anim?.params.startScale;
+  const animTwistStartScale = anim?.params.twistStartScale;
+  const animShine = anim?.params.shine;
+  const animTwistDir = anim?.params.twistDir;
+  const codedMotion = useMemo<TextAnimationSpec | undefined>(() => {
+    if (!coded || !animPreset || !animOutPreset || animStaggerMs === undefined) return undefined;
+    const motion: TextAnimationSpec = {
+      in: animPreset,
+      out: animOutPreset,
+      staggerMs: animStaggerMs,
+      ease: animEase,
+      ...(animDurationMs !== undefined ? { durationMs: animDurationMs } : {}),
+      ...(animDistance !== undefined ? { distance: animDistance } : {}),
+    };
+    if (animGranularity === "char" || animGranularity === "word") {
+      motion.stagger = animGranularity;
+    } else if (animGranularity === "paragraph") {
+      motion.delivery = "by-paragraph";
+    } else if (animGranularity === "paragraph-group") {
+      motion.delivery = "by-paragraph-group";
+    } else if (props.delivery === "all-at-once") {
+      motion.delivery = "all-at-once";
+    }
+    if (animPreset === "fade-scale" && animStartScale !== undefined) {
+      motion.startScale = animStartScale;
+      if (animShine) motion.shine = true;
+    }
+    if (animPreset === "twist-scale" && animTwistDir !== undefined) {
+      motion.startScale = animTwistStartScale ?? TWIST_START_SCALE;
+      if (animShine) motion.shine = true;
+      motion.direction = animTwistDir < 0 ? "from-right" : "from-left";
+    }
+    return motion;
+  }, [
+    coded,
+    animPreset,
+    animOutPreset,
+    animEase,
+    animStaggerMs,
+    animGranularity,
+    animDurationMs,
+    animDistance,
+    animStartScale,
+    animTwistStartScale,
+    animShine,
+    animTwistDir,
+    props.delivery,
+  ]);
   // The app-editable fill: an explicit `color` prop pins the fill (prop-wins, the text-motion precedent), otherwise the sidecar's `textStyle.<textKey>Color` overrides the design default. Report the editable field to the registry so the Edit-text drill-in shows its swatch; a pinned fill registers nothing (the swatch would be dead).
   const { textKey, defaultColor } = props;
+  const styleKey = props.styleKey ?? textKey;
   const colorDefault = props.color === undefined && textKey ? (defaultColor ?? "text") : undefined;
-  useLayoutEffect(() => {
-    if (sceneIndex === undefined || !textKey) return;
-    useTextKeyRegistry.getState().register(sceneIndex, textKey, colorDefault, true);
-    return () => useTextKeyRegistry.getState().unregister(sceneIndex, textKey);
-  }, [sceneIndex, textKey, colorDefault]);
   const styleOf = (suffix: string) =>
-    textKey ? doc?.textStyle?.[`${textKey}${suffix}`] : undefined;
+    styleKey ? doc?.textStyle?.[`${styleKey}${suffix}`] : undefined;
   const fill = props.color ?? (styleOf("Color") as string | undefined) ?? defaultColor;
-  // Sidecar font/size/offset/line-height overrides fold into the dispatched props; absent overrides pass the originals through untouched (null-for-legacy).
   const fontValue = styleOf("Font");
   const sizeMul = styleOf("Size");
   const offX = styleOf("OffsetX");
   const offY = styleOf("OffsetY");
   const lineHeight = styleOf("LineHeight");
-  // Rotation is deliberately NOT folded into `styled`: it changes no layout input, so the title cascade and the panel column never reflow around a tilt.
   const rotRaw = styleOf("RotationDeg");
+  const textRegistryMountId = useId();
+  const registrationMotion = props.managedTextCodedMotion ?? codedMotion;
+  const registrationColor = fill ?? "text";
+  const registrationFont = formatFontString(
+    typeof fontValue === "string"
+      ? parseFontString(fontValue)
+      : (props.fontRef ?? theme.typography[props.face ?? "headline"]),
+  );
+  useLayoutEffect(() => {
+    if (sceneIndex === undefined || !textKey) return;
+    useTextKeyRegistry.getState().register(sceneIndex, textKey, textRegistryMountId, {
+      colorDefault,
+      styleCapable: true,
+      resolvedText: props.text,
+      style: {
+        color: registrationColor,
+        font: registrationFont,
+        size: typeof sizeMul === "number" ? sizeMul : 1,
+        offsetX: typeof offX === "number" ? offX : 0,
+        offsetY: typeof offY === "number" ? offY : 0,
+        ...(typeof lineHeight === "number"
+          ? { lineHeight }
+          : props.lineHeight !== undefined
+            ? { lineHeight: props.lineHeight }
+            : {}),
+        rotationDeg: typeof rotRaw === "number" ? rotRaw : 0,
+      },
+      ...(registrationMotion ? { codedMotion: registrationMotion } : {}),
+      managedTextRole: props.managedTextRole ?? "scene",
+    });
+    return () => useTextKeyRegistry.getState().unregister(sceneIndex, textKey, textRegistryMountId);
+  }, [
+    sceneIndex,
+    textKey,
+    textRegistryMountId,
+    colorDefault,
+    registrationColor,
+    registrationFont,
+    props.text,
+    props.lineHeight,
+    sizeMul,
+    offX,
+    offY,
+    lineHeight,
+    rotRaw,
+    registrationMotion,
+    props.managedTextRole,
+  ]);
+  // Sidecar font/size/offset/line-height overrides fold into the dispatched props; absent overrides pass the originals through untouched (null-for-legacy).
+  // Rotation is deliberately NOT folded into `styled`: it changes no layout input, so the title cascade and the panel column never reflow around a tilt.
   const rotZ = typeof rotRaw === "number" && rotRaw !== 0 ? (-rotRaw * Math.PI) / 180 : 0;
   let styled = props;
   if (
@@ -214,11 +341,11 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
     }
     return registerSceneText(sceneIndex, registeredText, registeredSize);
   }, [sceneIndex, registeredText, registeredSize]);
-  const anim = resolveTextAnimationWithDoc(props, theme, doc);
   // Emoji clusters swap to placeholder codepoints before troika sees the string; identical text for emoji-free strings, so legacy bytes stay safe (the registry above keeps the ORIGINAL text).
   const prepared = useMemo(() => prepareEmojiText(props.text), [props.text]);
-  const hasOut = anim !== null && anim.outPreset !== "none" && props.outAt !== undefined;
-  const holdToMs = props.to ?? 600;
+  const hasOut = anim !== null && textPresetHasMotion(anim.outPreset) && props.outAt !== undefined;
+  const authoredToMs = props.to ?? 600;
+  const holdToMs = anim ? textAnimationEndMs(props.from ?? 0, authoredToMs, anim) : authoredToMs;
   const holdOutMs = hasOut ? props.outAt : undefined;
   useEffect(() => {
     if (sceneIndex === undefined) return;
@@ -236,10 +363,11 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
       />
     );
   }
+  const animated = holdToMs === authoredToMs ? styled : { ...styled, to: holdToMs };
   if (anim.granularity && anim.staggerMs > 0) {
     return (
       <StaggeredHeadline
-        {...styled}
+        {...animated}
         color={fill}
         theme={theme}
         anim={anim}
@@ -251,7 +379,7 @@ export function AnimatedHeadline(props: AnimatedHeadlineProps) {
   }
   return (
     <BlockHeadline
-      {...styled}
+      {...animated}
       color={fill}
       theme={theme}
       anim={anim}
@@ -390,7 +518,8 @@ function BlockHeadline(
 
   const masked = anim.preset === "mask-reveal" || anim.outPreset === "mask-reveal";
   // Shine is a fade-scale scale-IN feature: the block mounts the derived material purely for the band (unit uniforms stay neutral; fillOpacity and the group transform keep doing the block work, troika merges its uniforms through the chain); a shine-capable `AnimatedGroup` also mounts it, the child's OWN shine wins the single band slot (explicit prop over inherited), else the group band lands pre-folded into this child's local space.
-  const ownShine = anim.params.shine && anim.preset === "fade-scale";
+  const ownShine =
+    anim.params.shine && (anim.preset === "fade-scale" || anim.preset === "twist-scale");
   const shining = ownShine || group?.shineCapable === true;
   const holder = useMemo(
     () => (shining ? createStaggerTextMaterial({ shine: true }) : null),
@@ -532,7 +661,8 @@ function StaggeredHeadline(
   // Variant flags are mount-constant (the resolved animation cannot change without a scene remount): the walk axis follows the granularity (paragraphs are vertically disjoint, so the walk keys on −Y), twist mounts the per-unit card turn, and shine stays ELEMENT-level (one band over the whole text, driven by unit 0); a shine-capable `AnimatedGroup` also mounts the shine variant, the child's OWN shine wins the single band slot, else the group band lands pre-folded.
   const axis = granularity === "paragraph" || granularity === "paragraph-group" ? "-y" : "x";
   const twisting = anim.preset === "twist-scale" || anim.outPreset === "twist-scale";
-  const ownShine = anim.params.shine && anim.preset === "fade-scale";
+  const ownShine =
+    anim.params.shine && (anim.preset === "fade-scale" || anim.preset === "twist-scale");
   const shining = ownShine || group?.shineCapable === true;
   const scattering = anim.preset === "scatter-scale" || anim.outPreset === "scatter-scale";
   const holder = useMemo(

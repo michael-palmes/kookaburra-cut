@@ -1,40 +1,18 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { useClockStore } from "../../engine/clock";
-import {
-  BUNDLED_ENVIRONMENT_IDS,
-  NONE_SOURCE,
-  resolveSceneEnvironment,
-  SOFTBOX_SOURCE,
-} from "../../engine/environments";
-import { nextKeyId } from "../../engine/keyedTrack";
-import { useLightEditStore } from "../../engine/lightEditStore";
+import type { ReactNode } from "react";
 import { placementToOrbit, placementToPoint } from "../../engine/orbit";
-import { listProjectEnvironmentAssets } from "../../engine/project";
-import type { SceneDoc } from "../../engine/sceneDocSchema";
-import {
-  captureLightingPose,
-  chainLightingSegments,
-  resolveLighting,
-  resolveLightingColour,
-  SUN_ANGULAR_REFERENCE,
-  sunShadowSoftness,
-} from "../../engine/sceneLighting";
-import type {
-  EnvironmentSpec,
-  FixtureSpec,
-  LightingSpec,
-  LightSpace,
-  LightSpec,
-  SunSpec,
-  Theme,
-  ThemeLightSpec,
-  ThemeShadowSpec,
-} from "../../theme/tokens";
-import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";
+import { resolveLightingColour } from "../../engine/sceneLighting";
+import type { FixtureSpec, LightSpace, LightSpec, Theme } from "../../theme/tokens";
 import { ColourPicker } from "../colour/ColourPicker";
-import { OptionCard } from "../OptionCard";
-import { DebouncedRange } from "../TextAnimationPicker";
-import { ActionRow, DrillBack, DrillGroup, NumberField, ToggleRow } from "./rows";
+import { namedInspectorTitle } from "../inspectorTitles";
+import { LightingIcon } from "./LightingIcon";
+import {
+  ActionRow,
+  DrillBack,
+  DrillGroup,
+  InspectorSliderRow,
+  NumberField,
+  ToggleRow,
+} from "./rows";
 
 /** Baked picker thumbnails (UI-only JPEGs; scripts/hdri-thumb.py). */
 const HDRI_THUMBS = import.meta.glob<string>("../../assets/hdri-thumbs/*.jpg", {
@@ -43,7 +21,7 @@ const HDRI_THUMBS = import.meta.glob<string>("../../assets/hdri-thumbs/*.jpg", {
   import: "default",
 });
 
-const thumbFor = (id: string): string | null =>
+export const thumbFor = (id: string): string | null =>
   HDRI_THUMBS[`../../assets/hdri-thumbs/${id.replace(/^kookaburra:/, "")}.jpg`] ?? null;
 
 /** One-off app-screenshot bakes (scripts/lighting-thumb-bake.sh): the lighting presets plus the procedural softbox. Missing files degrade to the text swatch. */
@@ -53,31 +31,10 @@ const LIGHTING_THUMBS = import.meta.glob<string>("../../assets/lighting-thumbs/*
   import: "default",
 });
 
-const lightingThumbFor = (id: string): string | null =>
+export const lightingThumbFor = (id: string): string | null =>
   LIGHTING_THUMBS[`../../assets/lighting-thumbs/${id}.jpg`] ?? null;
 
-const environmentLabel = (source: string): string => {
-  if (source === NONE_SOURCE) return "None";
-  if (source === SOFTBOX_SOURCE) return "Softbox";
-  const stem = source.replace(/^kookaburra:/, "").replace(/^assets\//, "");
-  return stem.replace(/\.(hdr|exr)$/i, "").replace(/[-_]/g, " ");
-};
-
-/** The Lighting drill-in (v9): edits the resolved theme -> project -> scene layers. Inherited values render from the resolve, never written on open (writing on open would diff every scene the user merely looked at); each edit writes its WHOLE field into the sidecar (the mergeLighting whole-field contract). Environment is a read-only summary until PR 3. */
-
-/** Seed rig for "Light this scene" on an unlit theme: the soft-studio starting point. */
-const DEFAULT_SUN: SunSpec = { azimuthDeg: 35, elevationDeg: 40, intensity: 1.8 };
-const DEFAULT_AMBIENT = 0.4;
-const DEFAULT_SHADOW: ThemeShadowSpec = {
-  technique: "map",
-  softness: 0.5,
-  opacity: 0.3,
-  mapSize: 2048,
-  bias: -0.0005,
-};
-const MAP_SIZES = [1024, 2048, 4096];
-
-const TYPE_LABEL: Record<LightSpec["type"], string> = {
+export const TYPE_LABEL: Record<LightSpec["type"], string> = {
   directional: "Directional",
   point: "Point",
   spot: "Spot",
@@ -85,7 +42,7 @@ const TYPE_LABEL: Record<LightSpec["type"], string> = {
 };
 
 /** Per-type intensity slider ceilings (three's units differ wildly between types). */
-const INTENSITY_MAX: Record<LightSpec["type"], number> = {
+export const INTENSITY_MAX: Record<LightSpec["type"], number> = {
   directional: 6,
   point: 40,
   spot: 200,
@@ -105,7 +62,7 @@ const SPACE_HINT: Record<LightSpace, string | undefined> = {
 };
 
 /** Defaults on add, tuned so a new light is immediately visible (never origin at intensity 0). */
-const LIGHT_DEFAULTS: Record<LightSpec["type"], (id: string) => LightSpec> = {
+export const LIGHT_DEFAULTS: Record<LightSpec["type"], (id: string) => LightSpec> = {
   directional: (id) => ({
     id,
     type: "directional",
@@ -142,13 +99,13 @@ const LIGHT_DEFAULTS: Record<LightSpec["type"], (id: string) => LightSpec> = {
   }),
 };
 
-function nextLightId(lights: readonly LightSpec[]): string {
+export function nextLightId(lights: readonly LightSpec[]): string {
   let n = 1;
   while (lights.some((l) => l.id === `light-${n}`)) n += 1;
   return `light-${n}`;
 }
 
-const FORM_LABEL: Record<FixtureSpec["form"], string> = {
+export const FORM_LABEL: Record<FixtureSpec["form"], string> = {
   tube: "Tube",
   panel: "Panel",
   ring: "Ring",
@@ -174,7 +131,7 @@ const SIZE_LABELS: Record<FixtureSpec["form"], [string, string]> = {
 };
 
 /** Per-type glyphs for the light chips and rows (the RowIcon convention: 20-viewBox stroke SVGs). */
-function LightTypeIcon({ type, size = 13 }: { type: LightSpec["type"]; size?: number }) {
+export function LightTypeIcon({ type, size = 13 }: { type: LightSpec["type"]; size?: number }) {
   const paths: Record<LightSpec["type"], ReactNode> = {
     directional: (
       <>
@@ -218,7 +175,7 @@ function LightTypeIcon({ type, size = 13 }: { type: LightSpec["type"]; size?: nu
 }
 
 /** Per-form glyphs for the fixture chips and rows. */
-function FixtureFormIcon({ form, size = 13 }: { form: FixtureSpec["form"]; size?: number }) {
+export function FixtureFormIcon({ form, size = 13 }: { form: FixtureSpec["form"]; size?: number }) {
   const paths: Record<FixtureSpec["form"], ReactNode> = {
     tube: <rect x="3" y="8.2" width="14" height="3.6" rx="1.8" />,
     panel: <rect x="4" y="5" width="12" height="10" rx="1.2" />,
@@ -267,7 +224,7 @@ function FixtureFormIcon({ form, size = 13 }: { form: FixtureSpec["form"]; size?
 }
 
 /** The None environment card's glyph: a highlight-free ball, struck through. */
-function NoReflectionsIcon() {
+export function NoReflectionsIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -285,7 +242,7 @@ function NoReflectionsIcon() {
 }
 
 /** Defaults on add, tuned so a new fixture looks right immediately. */
-const FIXTURE_DEFAULTS: Record<FixtureSpec["form"], (id: string) => FixtureSpec> = {
+export const FIXTURE_DEFAULTS: Record<FixtureSpec["form"], (id: string) => FixtureSpec> = {
   tube: (id) => ({
     id,
     form: "tube",
@@ -371,730 +328,14 @@ const FIXTURE_DEFAULTS: Record<FixtureSpec["form"], (id: string) => FixtureSpec>
   }),
 };
 
-function nextFixtureId(fixtures: readonly FixtureSpec[]): string {
+export function nextFixtureId(fixtures: readonly FixtureSpec[]): string {
   let n = 1;
   while (fixtures.some((f) => f.id === `fixture-${n}`)) n += 1;
   return `fixture-${n}`;
 }
 
-/** Which layer a field currently comes from, for the group hints ("From theme" placeholders). */
-function fieldSource(
-  field: keyof LightingSpec,
-  doc: LightingSpec | undefined,
-  project: LightingSpec | undefined,
-): string | undefined {
-  if (doc?.[field] !== undefined) return undefined;
-  if (project?.[field] !== undefined) return "From project";
-  return "From theme";
-}
-
-export function LightingSectionBody({
-  doc,
-  theme,
-  projectId,
-  projectLighting,
-  slot,
-  onBack,
-  patchDoc,
-  commitFromBaseline,
-}: {
-  doc: SceneDoc;
-  theme: Theme;
-  projectId: string;
-  projectLighting: LightingSpec | undefined;
-  /** The scene's timeline placement, for "Add key at playhead". */
-  slot: { startMs: number; durationMs: number };
-  onBack: () => void;
-  patchDoc: (patch: (next: SceneDoc) => void, opts?: { history?: string | false }) => Promise<void>;
-  commitFromBaseline: (baseline: SceneDoc, patch: (next: SceneDoc) => void) => Promise<void>;
-}) {
-  const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
-  const dragBaseline = useRef<SceneDoc | null>(null);
-  const [lightId, setLightId] = useState<string | null>(null);
-  const [fixtureId, setFixtureId] = useState<string | null>(null);
-  // The project's own .hdr/.exr files, listed once per open (extra tiles below the bundled set).
-  const [projectMaps, setProjectMaps] = useState<string[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    void listProjectEnvironmentAssets(projectId).then((rels) => {
-      if (!cancelled) setProjectMaps(rels);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
-  // Live slider ticks write history-less; the release records one entry from the drag-start snapshot (the video-window pattern).
-  const live = (mutate: (next: SceneDoc) => void) => {
-    if (!dragBaseline.current) dragBaseline.current = structuredClone(doc);
-    void patchDoc(mutate, { history: false });
-  };
-  const commit = (mutate: (next: SceneDoc) => void) => {
-    const baseline = dragBaseline.current;
-    dragBaseline.current = null;
-    if (baseline) void commitFromBaseline(baseline, mutate);
-    else void patchDoc(mutate);
-  };
-
-  // Each writer patches the WHOLE field from the resolved base (whole-field replacement), so a first edit on an inherited value captures the base rather than a partial fragment.
-  const writeSun =
-    (mutate: (s: SunSpec) => void) =>
-    (next: SceneDoc): void => {
-      const sun = structuredClone(resolved?.sun ?? DEFAULT_SUN);
-      mutate(sun);
-      next.lighting = { ...(next.lighting ?? {}), sun };
-    };
-  const writeAmbient =
-    (value: number) =>
-    (next: SceneDoc): void => {
-      next.lighting = { ...(next.lighting ?? {}), ambient: value };
-    };
-  const writeFills =
-    (mutate: (fills: ThemeLightSpec[]) => void) =>
-    (next: SceneDoc): void => {
-      const fills = structuredClone(resolved?.fills ?? []);
-      mutate(fills);
-      next.lighting = { ...(next.lighting ?? {}), fills };
-    };
-  const writeShadow =
-    (mutate: (s: ThemeShadowSpec) => void) =>
-    (next: SceneDoc): void => {
-      const shadow = structuredClone(resolved?.shadow ?? DEFAULT_SHADOW);
-      mutate(shadow);
-      next.lighting = { ...(next.lighting ?? {}), shadow };
-    };
-  const writeLights =
-    (mutate: (lights: LightSpec[]) => void) =>
-    (next: SceneDoc): void => {
-      const lights = structuredClone(resolved?.lights ?? []);
-      mutate(lights);
-      next.lighting = { ...(next.lighting ?? {}), lights };
-    };
-  const writeEnvironment =
-    (mutate: (e: EnvironmentSpec) => void) =>
-    (next: SceneDoc): void => {
-      const environment = structuredClone(
-        resolveSceneEnvironment(theme, projectLighting, doc) ?? {
-          source: NONE_SOURCE,
-          intensity: 1,
-          rotationDeg: 0,
-        },
-      );
-      mutate(environment);
-      next.lighting = { ...(next.lighting ?? {}), environment };
-    };
-  const writeLight = (id: string, mutate: (l: LightSpec) => void) =>
-    writeLights((lights) => {
-      const light = lights.find((l) => l.id === id);
-      if (light) mutate(light);
-    });
-
-  const addLight = (type: LightSpec["type"]) => {
-    const id = nextLightId(resolved?.lights ?? []);
-    commit(writeLights((lights) => lights.push(LIGHT_DEFAULTS[type](id))));
-    setLightId(id);
-  };
-
-  const writeFixtures =
-    (mutate: (fixtures: FixtureSpec[]) => void) =>
-    (next: SceneDoc): void => {
-      const fixtures = structuredClone(resolved?.fixtures ?? []);
-      mutate(fixtures);
-      next.lighting = { ...(next.lighting ?? {}), fixtures };
-    };
-  const writeFixture = (id: string, mutate: (f: FixtureSpec) => void) =>
-    writeFixtures((fixtures) => {
-      const fixture = fixtures.find((f) => f.id === id);
-      if (fixture) mutate(fixture);
-    });
-  const addFixture = (form: FixtureSpec["form"]) => {
-    const id = nextFixtureId(resolved?.fixtures ?? []);
-    commit(writeFixtures((fixtures) => fixtures.push(FIXTURE_DEFAULTS[form](id))));
-    setFixtureId(id);
-  };
-
-  const sun = resolved?.sun;
-  const shadow = resolved?.shadow;
-  const sunSwatch = sun ? resolveLightingColour(sun, theme.colors) : "#ffffff";
-  const angularDisplay = sun?.angularDeg ?? sunShadowSoftness(sun, shadow) * SUN_ANGULAR_REFERENCE;
-  const environment = resolveSceneEnvironment(theme, projectLighting, doc);
-
-  const selectedFixture = fixtureId
-    ? (resolved?.fixtures ?? []).find((f) => f.id === fixtureId)
-    : undefined;
-  if (selectedFixture) {
-    return (
-      <FixtureEditor
-        fixture={selectedFixture}
-        colors={theme.colors}
-        onBack={() => {
-          useLightEditStore.getState().select(null);
-          setFixtureId(null);
-        }}
-        onLive={(mutate) => live(writeFixture(selectedFixture.id, mutate))}
-        onCommit={(mutate) => commit(writeFixture(selectedFixture.id, mutate))}
-        onDuplicate={() => {
-          const id = nextFixtureId(resolved?.fixtures ?? []);
-          commit(
-            writeFixtures((fixtures) => {
-              const source = fixtures.find((f) => f.id === selectedFixture.id);
-              if (source) {
-                const copy = structuredClone(source);
-                copy.id = id;
-                copy.name = undefined;
-                fixtures.push(copy);
-              }
-            }),
-          );
-          setFixtureId(id);
-        }}
-        onDelete={() => {
-          commit(
-            writeFixtures((fixtures) => {
-              const at = fixtures.findIndex((f) => f.id === selectedFixture.id);
-              if (at >= 0) fixtures.splice(at, 1);
-            }),
-          );
-          setFixtureId(null);
-        }}
-      />
-    );
-  }
-
-  const selectedLight = lightId
-    ? (resolved?.lights ?? []).find((l) => l.id === lightId)
-    : undefined;
-  if (selectedLight) {
-    return (
-      <LightEditor
-        light={selectedLight}
-        colors={theme.colors}
-        onBack={() => {
-          useLightEditStore.getState().select(null);
-          setLightId(null);
-        }}
-        onLive={(mutate) => live(writeLight(selectedLight.id, mutate))}
-        onCommit={(mutate) => commit(writeLight(selectedLight.id, mutate))}
-        onDuplicate={() => {
-          const id = nextLightId(resolved?.lights ?? []);
-          commit(
-            writeLights((lights) => {
-              const source = lights.find((l) => l.id === selectedLight.id);
-              if (source) lights.push({ ...structuredClone(source), id, name: undefined });
-            }),
-          );
-          setLightId(id);
-        }}
-        onDelete={() => {
-          commit(
-            writeLights((lights) => {
-              const at = lights.findIndex((l) => l.id === selectedLight.id);
-              if (at >= 0) lights.splice(at, 1);
-            }),
-          );
-          setLightId(null);
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="inspector-drill">
-      <DrillBack label="Scene" onClick={onBack} />
-      <div className="inspector-drill-title">Lighting</div>
-      <div className="inspector-drill-body inspector-section-body">
-        {!resolved ? (
-          <>
-            <p className="modal-hint">
-              This scene isn't lit: its theme has no lighting and nothing overrides it. Lighting the
-              scene stands the primitives' bundled rigs down and lights them from here.
-            </p>
-            <ActionRow
-              label="Light this scene"
-              chevron={false}
-              onClick={() =>
-                commit((next) => {
-                  next.lighting = {
-                    ...(next.lighting ?? {}),
-                    sun: structuredClone(DEFAULT_SUN),
-                    ambient: DEFAULT_AMBIENT,
-                  };
-                })
-              }
-            />
-          </>
-        ) : (
-          <>
-            <DrillGroup
-              label="Presets"
-              hint="One click writes a complete look into this scene; every value stays tweakable after."
-            >
-              <div className="option-grid">
-                {LIGHTING_PRESETS.map((preset) => (
-                  <OptionCard
-                    key={preset.id}
-                    label={preset.label}
-                    title={preset.description}
-                    image={lightingThumbFor(preset.id)}
-                    selected={doc.lighting?.preset === preset.id}
-                    onSelect={() =>
-                      commit((next) => {
-                        // By-value application (the shader-preset model): keys survive only if their referenced ids still exist after the swap.
-                        next.lighting = structuredClone({ ...preset.spec, preset: preset.id });
-                      })
-                    }
-                  />
-                ))}
-              </div>
-            </DrillGroup>
-
-            <DrillGroup
-              label="Environment"
-              hint={fieldSource("environment", doc.lighting, projectLighting)}
-            >
-              {/* Lighting-only IBL: reflections and specular, never a visible background. */}
-              <div className="option-grid">
-                <OptionCard
-                  label="None"
-                  title="Explicitly no reflections"
-                  image={null}
-                  icon={<NoReflectionsIcon />}
-                  selected={environment?.source === NONE_SOURCE}
-                  onSelect={() =>
-                    commit(writeEnvironment((e) => Object.assign(e, { source: NONE_SOURCE })))
-                  }
-                />
-                <OptionCard
-                  label="Softbox"
-                  title="The procedural three-panel studio rig"
-                  image={lightingThumbFor("softbox")}
-                  selected={environment?.source === SOFTBOX_SOURCE}
-                  onSelect={() =>
-                    commit(writeEnvironment((e) => Object.assign(e, { source: SOFTBOX_SOURCE })))
-                  }
-                />
-                {BUNDLED_ENVIRONMENT_IDS.map((id) => (
-                  <OptionCard
-                    key={id}
-                    label={environmentLabel(id)}
-                    image={thumbFor(id)}
-                    selected={environment?.source === id}
-                    onSelect={() =>
-                      commit(writeEnvironment((e) => Object.assign(e, { source: id })))
-                    }
-                  />
-                ))}
-                {projectMaps.map((rel) => (
-                  <OptionCard
-                    key={rel}
-                    label={environmentLabel(rel)}
-                    title={rel}
-                    image={null}
-                    selected={environment?.source === rel}
-                    onSelect={() =>
-                      commit(writeEnvironment((e) => Object.assign(e, { source: rel })))
-                    }
-                  />
-                ))}
-              </div>
-              {environment && environment.source !== NONE_SOURCE && (
-                <>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Intensity</span>
-                    <DebouncedRange
-                      label="Intensity"
-                      value={environment.intensity}
-                      min={0}
-                      max={3}
-                      step={0.05}
-                      onInput={(n) => live(writeEnvironment((e) => (e.intensity = n)))}
-                      onCommit={(n) => commit(writeEnvironment((e) => (e.intensity = n)))}
-                    />
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Rotation</span>
-                    <DebouncedRange
-                      label="Rotation °"
-                      value={environment.rotationDeg}
-                      min={0}
-                      max={360}
-                      step={1}
-                      onInput={(n) => live(writeEnvironment((e) => (e.rotationDeg = n)))}
-                      onCommit={(n) => commit(writeEnvironment((e) => (e.rotationDeg = n)))}
-                    />
-                  </div>
-                </>
-              )}
-              {doc.lighting?.environment && (
-                <ActionRow
-                  label="Use the theme's reflections"
-                  chevron={false}
-                  onClick={() =>
-                    commit((next) => {
-                      if (next.lighting) delete next.lighting.environment;
-                    })
-                  }
-                />
-              )}
-            </DrillGroup>
-
-            <DrillGroup label="Sun" hint={fieldSource("sun", doc.lighting, projectLighting)}>
-              {sun ? (
-                <>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Azimuth</span>
-                    <DebouncedRange
-                      label="Azimuth"
-                      value={sun.azimuthDeg}
-                      min={-180}
-                      max={180}
-                      step={1}
-                      onInput={(n) => live(writeSun((s) => (s.azimuthDeg = n)))}
-                      onCommit={(n) => commit(writeSun((s) => (s.azimuthDeg = n)))}
-                    />
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Elevation</span>
-                    <DebouncedRange
-                      label="Elevation"
-                      value={sun.elevationDeg}
-                      min={-90}
-                      max={90}
-                      step={1}
-                      onInput={(n) => live(writeSun((s) => (s.elevationDeg = n)))}
-                      onCommit={(n) => commit(writeSun((s) => (s.elevationDeg = n)))}
-                    />
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Intensity</span>
-                    <DebouncedRange
-                      label="Intensity"
-                      value={sun.intensity}
-                      min={0}
-                      max={6}
-                      step={0.05}
-                      onInput={(n) => live(writeSun((s) => (s.intensity = n)))}
-                      onCommit={(n) => commit(writeSun((s) => (s.intensity = n)))}
-                    />
-                  </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Angular size</span>
-                    <DebouncedRange
-                      label="Angular size °"
-                      value={angularDisplay}
-                      min={0}
-                      max={16}
-                      step={0.1}
-                      onInput={(n) => live(writeSun((s) => (s.angularDeg = n)))}
-                      onCommit={(n) => commit(writeSun((s) => (s.angularDeg = n)))}
-                    />
-                  </div>
-                  <div className="lighting-kelvin-row">
-                    <span className="popover-inline slider-row-label">Temperature</span>
-                    <span
-                      className="lighting-kelvin-swatch"
-                      style={{ background: sunSwatch }}
-                      title={sun.kelvin !== undefined ? `${sun.kelvin} K` : "Theme colour"}
-                    />
-                    <DebouncedRange
-                      label="Temperature K"
-                      value={sun.kelvin ?? 6500}
-                      min={1000}
-                      max={20000}
-                      step={100}
-                      onInput={(n) => live(writeSun((s) => (s.kelvin = n)))}
-                      onCommit={(n) => commit(writeSun((s) => (s.kelvin = n)))}
-                    />
-                  </div>
-                  {sun.kelvin !== undefined ? (
-                    <ActionRow
-                      label="Use a custom colour instead"
-                      chevron={false}
-                      onClick={() =>
-                        commit(
-                          writeSun((s) => {
-                            delete s.kelvin;
-                          }),
-                        )
-                      }
-                    />
-                  ) : (
-                    <div className="camera-loop-modes">
-                      <span className="drill-group-hint">Custom colour</span>
-                      <ColourPicker
-                        value={sun.color ?? "#ffffff"}
-                        label="Sun colour"
-                        onCommit={(hex) =>
-                          commit(
-                            writeSun((s) => {
-                              s.color = hex;
-                              delete s.kelvin;
-                            }),
-                          )
-                        }
-                      />
-                    </div>
-                  )}
-                  <ToggleRow
-                    label="Sun enabled"
-                    description="Off keeps the sun's settings without lighting anything."
-                    checked={sun.enabled !== false}
-                    onChange={(on) => commit(writeSun((s) => (s.enabled = on ? undefined : false)))}
-                  />
-                  <ToggleRow
-                    label="Cast shadows"
-                    description="Real shadow maps need a floor or backdrop staged."
-                    checked={sun.castShadow !== false}
-                    onChange={(on) =>
-                      commit(writeSun((s) => (s.castShadow = on ? undefined : false)))
-                    }
-                  />
-                </>
-              ) : (
-                <ActionRow
-                  label="Add a sun"
-                  chevron={false}
-                  onClick={() => commit(writeSun(() => {}))}
-                />
-              )}
-            </DrillGroup>
-
-            <DrillGroup
-              label="Ambient"
-              hint={fieldSource("ambient", doc.lighting, projectLighting)}
-            >
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Intensity</span>
-                <DebouncedRange
-                  label="Intensity"
-                  value={resolved.ambient ?? 0}
-                  min={0}
-                  max={2}
-                  step={0.01}
-                  onInput={(n) => live(writeAmbient(n))}
-                  onCommit={(n) => commit(writeAmbient(n))}
-                />
-              </div>
-            </DrillGroup>
-
-            {(resolved.fills?.length ?? 0) > 0 && (
-              <DrillGroup label="Fills" hint={fieldSource("fills", doc.lighting, projectLighting)}>
-                {(resolved.fills ?? []).map((fill, i) => (
-                  // Fills are a static ordered list; index identity is stable.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: static ordered list
-                  <div className="popover-row" key={i}>
-                    <span className="popover-inline slider-row-label">{`Fill ${i + 1}`}</span>
-                    <DebouncedRange
-                      label={`Fill ${i + 1}`}
-                      value={fill.intensity}
-                      min={0}
-                      max={4}
-                      step={0.05}
-                      onInput={(n) => live(writeFills((fills) => (fills[i].intensity = n)))}
-                      onCommit={(n) => commit(writeFills((fills) => (fills[i].intensity = n)))}
-                    />
-                  </div>
-                ))}
-              </DrillGroup>
-            )}
-
-            <DrillGroup label="Lights" hint={fieldSource("lights", doc.lighting, projectLighting)}>
-              {(resolved.lights ?? []).map((light) => (
-                <ActionRow
-                  key={light.id}
-                  icon={<LightTypeIcon type={light.type} size={17} />}
-                  label={light.name ?? TYPE_LABEL[light.type]}
-                  value={`${TYPE_LABEL[light.type]} · ${light.intensity}`}
-                  onClick={() => {
-                    useLightEditStore.getState().select("light", light.id);
-                    setLightId(light.id);
-                  }}
-                />
-              ))}
-              <div className="camera-loop-modes">
-                <span className="drill-group-hint">Add</span>
-                {(Object.keys(TYPE_LABEL) as LightSpec["type"][]).map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    className="chip"
-                    title={`Add a ${TYPE_LABEL[type].toLowerCase()} light`}
-                    onClick={() => addLight(type)}
-                  >
-                    <LightTypeIcon type={type} />
-                    {TYPE_LABEL[type]}
-                  </button>
-                ))}
-              </div>
-            </DrillGroup>
-
-            <DrillGroup
-              label="Fixtures"
-              hint={
-                fieldSource("fixtures", doc.lighting, projectLighting) ??
-                "Fixtures glow when the scene has bloom."
-              }
-            >
-              {(resolved.fixtures ?? []).map((fixture) => (
-                <ActionRow
-                  key={fixture.id}
-                  icon={<FixtureFormIcon form={fixture.form} size={17} />}
-                  label={fixture.name ?? FORM_LABEL[fixture.form]}
-                  value={`${FORM_LABEL[fixture.form]}${fixture.repeat && fixture.repeat.count > 1 ? ` ×${fixture.repeat.count}${fixture.repeat.mirrorAxis ? "×2" : ""}` : ""}`}
-                  onClick={() => {
-                    useLightEditStore.getState().select("fixture", fixture.id);
-                    setFixtureId(fixture.id);
-                  }}
-                />
-              ))}
-              <div className="camera-loop-modes">
-                <span className="drill-group-hint">Add</span>
-                {(Object.keys(FORM_LABEL) as FixtureSpec["form"][]).map((form) => (
-                  <button
-                    key={form}
-                    type="button"
-                    className="chip"
-                    title={`Add a ${FORM_LABEL[form].toLowerCase()} fixture`}
-                    onClick={() => addFixture(form)}
-                  >
-                    <FixtureFormIcon form={form} />
-                    {FORM_LABEL[form]}
-                  </button>
-                ))}
-              </div>
-            </DrillGroup>
-
-            <DrillGroup label="Shadow" hint={fieldSource("shadow", doc.lighting, projectLighting)}>
-              <ToggleRow
-                label="Real shadow maps"
-                description="Renders only when the scene stages a floor or backdrop."
-                checked={(shadow?.technique ?? DEFAULT_SHADOW.technique) === "map"}
-                onChange={(on) => commit(writeShadow((s) => (s.technique = on ? "map" : "none")))}
-              />
-              {(shadow?.technique ?? "map") === "map" && (
-                <>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Opacity</span>
-                    <DebouncedRange
-                      label="Opacity"
-                      value={shadow?.opacity ?? DEFAULT_SHADOW.opacity}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      onInput={(n) => live(writeShadow((s) => (s.opacity = n)))}
-                      onCommit={(n) => commit(writeShadow((s) => (s.opacity = n)))}
-                    />
-                  </div>
-                  <div className="camera-loop-modes">
-                    {MAP_SIZES.map((size) => (
-                      <button
-                        key={size}
-                        type="button"
-                        className={`chip${(shadow?.mapSize ?? DEFAULT_SHADOW.mapSize) === size ? " selected" : ""}`}
-                        title={`${size} px shadow map`}
-                        onClick={() => commit(writeShadow((s) => (s.mapSize = size)))}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                    <NumberField
-                      label="bias"
-                      value={shadow?.bias ?? DEFAULT_SHADOW.bias}
-                      decimals={4}
-                      dragScale={0.0001}
-                      onCommit={(n) => commit(writeShadow((s) => (s.bias = n)))}
-                    />
-                    <ColourPicker
-                      value={shadow?.color ?? "#000000"}
-                      label="Shadow tint"
-                      defaultValue="#000000"
-                      onCommit={(hex) => commit(writeShadow((s) => (s.color = hex)))}
-                    />
-                  </div>
-                </>
-              )}
-            </DrillGroup>
-
-            <DrillGroup
-              label="Animation"
-              hint="One sparse track over the whole rig: each key captures this scene's current overrides; consecutive keys chain with an ease."
-            >
-              {[...(doc.lighting?.keys ?? [])]
-                .sort((a, b) => a.tMs - b.tMs)
-                .map((key) => (
-                  <ActionRow
-                    key={key.id}
-                    label={`${(key.tMs / 1000).toFixed(2)}s`}
-                    value={Object.keys(key.pose).join(", ") || "empty"}
-                    chevron={false}
-                    onClick={() =>
-                      commit((next) => {
-                        if (!next.lighting?.keys) return;
-                        next.lighting.keys = next.lighting.keys.filter((k) => k.id !== key.id);
-                        next.lighting.segments = chainLightingSegments(
-                          next.lighting.keys,
-                          next.lighting.segments,
-                        );
-                        if (next.lighting.keys.length === 0) {
-                          delete next.lighting.keys;
-                          delete next.lighting.segments;
-                        }
-                      })
-                    }
-                  />
-                ))}
-              <ActionRow
-                label="Add key at playhead"
-                chevron={false}
-                onClick={() => {
-                  const localMs = Math.round(
-                    Math.min(
-                      slot.durationMs,
-                      Math.max(0, useClockStore.getState().currentMs - slot.startMs),
-                    ),
-                  );
-                  const pose = captureLightingPose(theme, projectLighting, doc.lighting);
-                  commit((next) => {
-                    const lighting = next.lighting ?? {};
-                    const keys = [...(lighting.keys ?? [])];
-                    keys.push({ id: nextKeyId({ keys, segments: [] }), tMs: localMs, pose });
-                    lighting.keys = keys;
-                    lighting.segments = chainLightingSegments(keys, lighting.segments);
-                    next.lighting = lighting;
-                  });
-                }}
-              />
-              {(doc.lighting?.keys?.length ?? 0) > 0 && (
-                <p className="modal-hint">
-                  Tap a key to remove it. A keyed shadow-casting light re-renders its shadow map
-                  every frame, which is correct and costly.
-                </p>
-              )}
-            </DrillGroup>
-
-            {doc.lighting && (
-              <>
-                <div className="inspector-section-divider" />
-                <ActionRow
-                  label="Reset to theme"
-                  chevron={false}
-                  onClick={() =>
-                    commit((next) => {
-                      delete next.lighting;
-                    })
-                  }
-                />
-              </>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /** One free light's editor: type-specific fields, the World/Camera/Subject space row, the lossless Orbit/Position placement pair, the colour union (kelvin first, token swatches, custom hex) and the per-type shadow policy. */
-function LightEditor({
+export function LightEditor({
   light,
   colors,
   onBack,
@@ -1102,6 +343,8 @@ function LightEditor({
   onCommit,
   onDuplicate,
   onDelete,
+  onAnimate,
+  embedded = false,
 }: {
   light: LightSpec;
   colors: Theme["colors"];
@@ -1110,6 +353,8 @@ function LightEditor({
   onCommit: (mutate: (l: LightSpec) => void) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onAnimate?: () => void;
+  embedded?: boolean;
 }) {
   const aim = light.target ?? ([0, 0, 0] as [number, number, number]);
   const space = light.space ?? "world";
@@ -1120,9 +365,14 @@ function LightEditor({
   const spaceHint = SPACE_HINT[space];
 
   return (
-    <div className="inspector-drill">
-      <DrillBack label="Lighting" onClick={onBack} />
-      <div className="inspector-drill-title">{light.name ?? TYPE_LABEL[light.type]}</div>
+    <div className={embedded ? "lighting-inline-editor" : "inspector-drill"}>
+      {!embedded && (
+        <DrillBack
+          label="Lighting"
+          title={namedInspectorTitle(light.name, TYPE_LABEL[light.type])}
+          onClick={onBack}
+        />
+      )}
       <div className="inspector-drill-body inspector-section-body">
         <input
           key={light.id}
@@ -1188,46 +438,42 @@ function LightEditor({
           </div>
           {placement.mode === "orbit" ? (
             <>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Azimuth</span>
-                <DebouncedRange
-                  label="Azimuth"
-                  value={placement.azimuthDeg}
-                  min={-180}
-                  max={180}
-                  step={1}
-                  onInput={(n) =>
-                    onLive((l) => {
-                      if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
-                    })
-                  }
-                  onCommit={(n) =>
-                    onCommit((l) => {
-                      if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
-                    })
-                  }
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Elevation</span>
-                <DebouncedRange
-                  label="Elevation"
-                  value={placement.elevationDeg}
-                  min={-90}
-                  max={90}
-                  step={1}
-                  onInput={(n) =>
-                    onLive((l) => {
-                      if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
-                    })
-                  }
-                  onCommit={(n) =>
-                    onCommit((l) => {
-                      if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
-                    })
-                  }
-                />
-              </div>
+              <InspectorSliderRow
+                icon={<LightingIcon name="direction" />}
+                label="Azimuth"
+                value={placement.azimuthDeg}
+                min={-180}
+                max={180}
+                step={1}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.placement.mode === "orbit") l.placement.azimuthDeg = n;
+                  })
+                }
+              />
+              <InspectorSliderRow
+                icon={<LightingIcon name="direction" />}
+                label="Elevation"
+                value={placement.elevationDeg}
+                min={-90}
+                max={90}
+                step={1}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.placement.mode === "orbit") l.placement.elevationDeg = n;
+                  })
+                }
+              />
               <div className="inspector-pose-grid">
                 <NumberField
                   label="distance"
@@ -1297,60 +543,54 @@ function LightEditor({
         </DrillGroup>
 
         <DrillGroup label="Light">
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Intensity</span>
-            <DebouncedRange
-              label="Intensity"
-              value={light.intensity}
-              min={0}
-              max={INTENSITY_MAX[light.type]}
-              step={0.05}
-              onInput={(n) => onLive((l) => (l.intensity = n))}
-              onCommit={(n) => onCommit((l) => (l.intensity = n))}
-            />
-          </div>
+          <InspectorSliderRow
+            icon={<LightingIcon name="brightness" />}
+            label="Intensity"
+            value={light.intensity}
+            min={0}
+            max={INTENSITY_MAX[light.type]}
+            step={0.05}
+            onInput={(n) => onLive((l) => (l.intensity = n))}
+            onCommit={(n) => onCommit((l) => (l.intensity = n))}
+          />
           {light.type === "spot" && (
             <>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Cone</span>
-                <DebouncedRange
-                  label="Cone °"
-                  value={light.angleDeg}
-                  min={1}
-                  max={179}
-                  step={1}
-                  onInput={(n) =>
-                    onLive((l) => {
-                      if (l.type === "spot") l.angleDeg = n;
-                    })
-                  }
-                  onCommit={(n) =>
-                    onCommit((l) => {
-                      if (l.type === "spot") l.angleDeg = n;
-                    })
-                  }
-                />
-              </div>
-              <div className="popover-row">
-                <span className="popover-inline slider-row-label">Penumbra</span>
-                <DebouncedRange
-                  label="Penumbra"
-                  value={light.penumbra}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  onInput={(n) =>
-                    onLive((l) => {
-                      if (l.type === "spot") l.penumbra = n;
-                    })
-                  }
-                  onCommit={(n) =>
-                    onCommit((l) => {
-                      if (l.type === "spot") l.penumbra = n;
-                    })
-                  }
-                />
-              </div>
+              <InspectorSliderRow
+                icon={<LightingIcon name="direction" />}
+                label="Cone °"
+                value={light.angleDeg}
+                min={1}
+                max={179}
+                step={1}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.type === "spot") l.angleDeg = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.type === "spot") l.angleDeg = n;
+                  })
+                }
+              />
+              <InspectorSliderRow
+                icon={<LightingIcon name="softness" />}
+                label="Penumbra"
+                value={light.penumbra}
+                min={0}
+                max={1}
+                step={0.01}
+                onInput={(n) =>
+                  onLive((l) => {
+                    if (l.type === "spot") l.penumbra = n;
+                  })
+                }
+                onCommit={(n) =>
+                  onCommit((l) => {
+                    if (l.type === "spot") l.penumbra = n;
+                  })
+                }
+              />
             </>
           )}
           {(light.type === "point" || light.type === "spot") && (
@@ -1418,23 +658,21 @@ function LightEditor({
         </DrillGroup>
 
         <DrillGroup label="Colour">
-          <div className="lighting-kelvin-row">
-            <span className="popover-inline slider-row-label">Temperature</span>
-            <span
-              className="lighting-kelvin-swatch"
-              style={{ background: swatch }}
-              title={light.kelvin !== undefined ? `${light.kelvin} K` : "Colour"}
-            />
-            <DebouncedRange
-              label="Temperature K"
-              value={light.kelvin ?? 6500}
-              min={1000}
-              max={20000}
-              step={100}
-              onInput={(n) => onLive((l) => (l.kelvin = n))}
-              onCommit={(n) => onCommit((l) => (l.kelvin = n))}
-            />
-          </div>
+          <InspectorSliderRow
+            icon={<LightingIcon name="warmth" />}
+            label="Temperature K"
+            value={light.kelvin ?? 6500}
+            min={1000}
+            max={20000}
+            step={100}
+            onInput={(n) => onLive((l) => (l.kelvin = n))}
+            onCommit={(n) => onCommit((l) => (l.kelvin = n))}
+          />
+          <span
+            className="lighting-kelvin-swatch"
+            style={{ background: swatch }}
+            title={light.kelvin !== undefined ? `${light.kelvin} K` : "Colour"}
+          />
           {light.kelvin !== undefined ? (
             <ActionRow
               label="Use a theme or custom colour instead"
@@ -1510,6 +748,13 @@ function LightEditor({
         />
 
         <div className="inspector-section-divider" />
+        {onAnimate && (
+          <ActionRow
+            icon={<LightingIcon name="animation" />}
+            label="Animate this light"
+            onClick={onAnimate}
+          />
+        )}
         <ActionRow label="Duplicate light" chevron={false} onClick={onDuplicate} />
         <ActionRow label="Delete light" chevron={false} danger onClick={onDelete} />
       </div>
@@ -1518,7 +763,7 @@ function LightEditor({
 }
 
 /** One fixture's editor: form, per-form sized geometry, the colour union, emissive + paired light intensity, placement + rotation, the World/Camera/Subject space row, the repeat block and the env-mirror toggle. */
-function FixtureEditor({
+export function FixtureEditor({
   fixture,
   colors,
   onBack,
@@ -1526,6 +771,8 @@ function FixtureEditor({
   onCommit,
   onDuplicate,
   onDelete,
+  onAnimate,
+  embedded = false,
 }: {
   fixture: FixtureSpec;
   colors: Theme["colors"];
@@ -1534,6 +781,8 @@ function FixtureEditor({
   onCommit: (mutate: (f: FixtureSpec) => void) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onAnimate?: () => void;
+  embedded?: boolean;
 }) {
   const space = fixture.space ?? "world";
   const swatch = resolveLightingColour(fixture, colors);
@@ -1544,9 +793,14 @@ function FixtureEditor({
   const repeat = fixture.repeat;
 
   return (
-    <div className="inspector-drill">
-      <DrillBack label="Lighting" onClick={onBack} />
-      <div className="inspector-drill-title">{fixture.name ?? FORM_LABEL[fixture.form]}</div>
+    <div className={embedded ? "lighting-inline-editor" : "inspector-drill"}>
+      {!embedded && (
+        <DrillBack
+          label="Lighting"
+          title={namedInspectorTitle(fixture.name, FORM_LABEL[fixture.form])}
+          onClick={onBack}
+        />
+      )}
       <div className="inspector-drill-body inspector-section-body">
         <div className="camera-loop-modes">
           {(Object.keys(FORM_LABEL) as FixtureSpec["form"][]).map((form) => (
@@ -1626,47 +880,41 @@ function FixtureEditor({
         </DrillGroup>
 
         <DrillGroup label="Glow">
-          <div className="lighting-kelvin-row">
-            <span className="popover-inline slider-row-label">Temperature</span>
-            <span
-              className="lighting-kelvin-swatch"
-              style={{ background: swatch }}
-              title={fixture.kelvin !== undefined ? `${fixture.kelvin} K` : "Colour"}
-            />
-            <DebouncedRange
-              label="Temperature K"
-              value={fixture.kelvin ?? 4200}
-              min={1000}
-              max={20000}
-              step={100}
-              onInput={(n) => onLive((f) => (f.kelvin = n))}
-              onCommit={(n) => onCommit((f) => (f.kelvin = n))}
-            />
-          </div>
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Emissive</span>
-            <DebouncedRange
-              label="Emissive"
-              value={fixture.emissive}
-              min={0}
-              max={8}
-              step={0.1}
-              onInput={(n) => onLive((f) => (f.emissive = n))}
-              onCommit={(n) => onCommit((f) => (f.emissive = n))}
-            />
-          </div>
-          <div className="popover-row">
-            <span className="popover-inline slider-row-label">Light intensity</span>
-            <DebouncedRange
-              label="Light intensity"
-              value={fixture.lightIntensity}
-              min={0}
-              max={40}
-              step={0.5}
-              onInput={(n) => onLive((f) => (f.lightIntensity = n))}
-              onCommit={(n) => onCommit((f) => (f.lightIntensity = n))}
-            />
-          </div>
+          <InspectorSliderRow
+            icon={<LightingIcon name="warmth" />}
+            label="Temperature K"
+            value={fixture.kelvin ?? 4200}
+            min={1000}
+            max={20000}
+            step={100}
+            onInput={(n) => onLive((f) => (f.kelvin = n))}
+            onCommit={(n) => onCommit((f) => (f.kelvin = n))}
+          />
+          <span
+            className="lighting-kelvin-swatch"
+            style={{ background: swatch }}
+            title={fixture.kelvin !== undefined ? `${fixture.kelvin} K` : "Colour"}
+          />
+          <InspectorSliderRow
+            icon={<LightingIcon name="brightness" />}
+            label="Emissive"
+            value={fixture.emissive}
+            min={0}
+            max={8}
+            step={0.1}
+            onInput={(n) => onLive((f) => (f.emissive = n))}
+            onCommit={(n) => onCommit((f) => (f.emissive = n))}
+          />
+          <InspectorSliderRow
+            icon={<LightingIcon name="lights" />}
+            label="Light intensity"
+            value={fixture.lightIntensity}
+            min={0}
+            max={40}
+            step={0.5}
+            onInput={(n) => onLive((f) => (f.lightIntensity = n))}
+            onCommit={(n) => onCommit((f) => (f.lightIntensity = n))}
+          />
           <p className="modal-hint">
             Emissive is the visible glow (above 1 it blooms); light intensity is the paired real
             light. Zero light intensity keeps a purely decorative fixture. Paired lights reach
@@ -1829,6 +1077,13 @@ function FixtureEditor({
         />
 
         <div className="inspector-section-divider" />
+        {onAnimate && (
+          <ActionRow
+            icon={<LightingIcon name="animation" />}
+            label="Animate this fixture"
+            onClick={onAnimate}
+          />
+        )}
         <ActionRow label="Duplicate fixture" chevron={false} onClick={onDuplicate} />
         <ActionRow label="Delete fixture" chevron={false} danger onClick={onDelete} />
       </div>

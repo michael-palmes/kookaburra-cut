@@ -51,6 +51,7 @@ describe("resolveChart", () => {
       name: null,
       min: null,
       max: null,
+      trim: true,
       steps: 4,
       format: CHART_AXIS_FORMAT_DEFAULTS,
       gridlines: { visible: true, style: "hair" },

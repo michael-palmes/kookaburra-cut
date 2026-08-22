@@ -16,10 +16,16 @@ export const TEXT_PRESET_NAMES = [
   // Per-character 3D scatter entrance (Michael's reference round).
   "scatter-scale",
 ] as const;
-export type TextPresetName = (typeof TEXT_PRESET_NAMES)[number];
+/** Inspector “None”: fully static, distinct from legacy `none`'s plain linear reveal. */
+export const STATIC_TEXT_PRESET = "static" as const;
+export type TextPresetName = (typeof TEXT_PRESET_NAMES)[number] | typeof STATIC_TEXT_PRESET;
 
 export function isTextPresetName(name: string): name is TextPresetName {
-  return (TEXT_PRESET_NAMES as readonly string[]).includes(name);
+  return name === STATIC_TEXT_PRESET || (TEXT_PRESET_NAMES as readonly string[]).includes(name);
+}
+
+export function textPresetHasMotion(name: TextPresetName): boolean {
+  return name !== "none" && name !== STATIC_TEXT_PRESET;
 }
 
 /** Stagger granularities: words split on whitespace, chars are non-whitespace characters; paragraph granularities (spelled through `delivery`, never the public `stagger` prop) split on `\n` / blank lines and walk Y-key unit boundaries. */
@@ -92,7 +98,9 @@ const DEFAULT_STAGGER_MS: Record<StaggerGranularity, number> = {
 export interface TextPresetParams {
   /** fade-scale: the starting scale, landing at 1 (0.8 grows in; 1.15 settles down). */
   startScale: number;
-  /** fade-scale: sweep the soft white shine band once, during the scale-in only. */
+  /** twist-scale: an explicitly authored starting scale; absent preserves the tuned legacy 0.92. */
+  twistStartScale?: number;
+  /** fade-scale and twist-scale: sweep the soft white shine band once, during the scale-in only. */
   shine: boolean;
   /** twist-scale: +1 = from-left, −1 = from-right. */
   twistDir: 1 | -1;
@@ -107,6 +115,10 @@ export interface ResolvedTextAnimation {
   staggerMs: number;
   /** null = whole-block (no stagger). */
   granularity: StaggerGranularity | null;
+  /** Absent keeps the primitive's authored `from` → `to` window. */
+  durationMs?: number;
+  /** Absent keeps the selected preset's tuned travel distance. */
+  distance?: number;
   params: TextPresetParams;
 }
 
@@ -193,7 +205,7 @@ export function resolveTextAnimation(
   } else if (specDelivery !== undefined) granularity = specDelivery;
   // scatter-scale is inherently per-character; when nothing else chose, default to char (a new preset name, so no legacy input can reach this branch differently).
   else if (preset === "scatter-scale") granularity = "char";
-  else granularity = staggerMs > 0 && preset !== "none" ? "word" : null;
+  else granularity = staggerMs > 0 && preset !== "none" && preset !== "static" ? "word" : null;
   // A granularity request without any delay configured gets the granularity's default, unless the scene explicitly passed staggerMs={0}, which wins.
   if (granularity && staggerMs === 0 && props.staggerMs === undefined) {
     staggerMs = DEFAULT_STAGGER_MS[granularity];
@@ -203,11 +215,16 @@ export function resolveTextAnimation(
   return {
     preset,
     outPreset,
-    ease: props.ease ?? theme.motion.easings.standard,
+    ease: props.ease ?? spec?.ease ?? theme.motion.easings.standard,
     staggerMs,
-    granularity: preset === "none" ? null : granularity,
+    granularity: preset === "none" || preset === "static" ? null : granularity,
+    ...(spec?.durationMs !== undefined ? { durationMs: spec.durationMs } : {}),
+    ...(spec?.distance !== undefined ? { distance: spec.distance } : {}),
     params: {
       startScale: rawStart === undefined ? DEFAULT_START_SCALE : clampStartScale(rawStart),
+      ...(rawStart !== undefined && (preset === "twist-scale" || outPreset === "twist-scale")
+        ? { twistStartScale: clampStartScale(rawStart) }
+        : {}),
       shine: props.shine ?? spec?.shine ?? false,
       twistDir: direction === "from-right" ? -1 : 1,
     },
@@ -218,6 +235,7 @@ export function resolveTextAnimation(
 export interface TextAnimationDocFields {
   textAnimation?: TextAnimationSpec;
   textAnimationForce?: boolean;
+  textAnimationOverrides?: Record<string, TextAnimationSpec>;
 }
 
 /** Sidecar-aware resolution: the shared resolver, honouring the doc's `textAnimationForce`; when set, the primitive's own TSX animation props are IGNORED and the sidecar/theme spec drives (the app's "Override coded motion"; timing props like from/to/outAt are not animation props and keep applying). Absent flag = the normal prop-wins order. */
@@ -225,9 +243,20 @@ export function resolveTextAnimationWithDoc(
   props: ResolveTextAnimationProps,
   theme: Theme,
   doc: TextAnimationDocFields | null | undefined,
+  textKey?: string,
 ): ResolvedTextAnimation | null {
   const force = doc?.textAnimationForce === true;
-  return resolveTextAnimation(force ? {} : props, theme, doc?.textAnimation);
+  const spec = (textKey ? doc?.textAnimationOverrides?.[textKey] : undefined) ?? doc?.textAnimation;
+  return resolveTextAnimation(force ? {} : props, theme, spec);
+}
+
+/** The effective end of a preset's in window. Absent duration returns the authored value exactly. */
+export function textAnimationEndMs(
+  from: number,
+  authoredTo: number,
+  anim: ResolvedTextAnimation,
+): number {
+  return anim.durationMs === undefined ? authoredTo : from + anim.durationMs;
 }
 
 /** Whether a primitive's props configure its own animation, exactly the resolver's props-only "configured" test (what the coded-motion registry reports). */
@@ -323,13 +352,14 @@ export function sampleTextUnit(
 
   switch (anim.preset) {
     case "none":
+    case "static":
       break;
     case "fade":
       alpha = p;
       break;
     case "fade-up":
       alpha = p;
-      dyEm = -(1 - p) * RISE_EM;
+      dyEm = -(1 - p) * (anim.distance ?? RISE_EM);
       break;
     case "blur-in":
       alpha = p;
@@ -338,7 +368,7 @@ export function sampleTextUnit(
       break;
     case "slide":
       alpha = p;
-      dxEm = -(1 - p) * SLIDE_EM;
+      dxEm = -(1 - p) * (anim.distance ?? SLIDE_EM);
       break;
     case "mask-reveal":
       sweepR = p;
@@ -351,11 +381,14 @@ export function sampleTextUnit(
       if (anim.params.shine) shineU = p;
       break;
     }
-    case "twist-scale":
+    case "twist-scale": {
+      const s0 = anim.params.twistStartScale ?? TWIST_START_SCALE;
       alpha = p;
-      scale = TWIST_START_SCALE + (1 - TWIST_START_SCALE) * p;
+      scale = s0 + (1 - s0) * p;
       rotYRad = anim.params.twistDir * (1 - p) * TWIST_RAD;
+      if (anim.params.shine) shineU = p;
       break;
+    }
     case "scatter-scale": {
       const settle = 1 - p;
       alpha = clamp01(p / SCATTER_FADE_P);
@@ -363,10 +396,11 @@ export function sampleTextUnit(
         (SCATTER_ROLL_MIN_RAD +
           (SCATTER_ROLL_MAX_RAD - SCATTER_ROLL_MIN_RAD) * unitHash01(unitIndex, 2)) *
         settle;
-      dzEm = SCATTER_DEPTH_EM * settle;
+      const travel = anim.distance ?? SCATTER_DEPTH_EM;
+      dzEm = travel * settle;
       if (ctx?.unitCenterEm) {
         // The unit's share of the element tilt: rotate its centre counter-clockwise by θ = TILT × settle about the element centre; the drift is the arc offset.
-        const theta = SCATTER_TILT_RAD * settle;
+        const theta = SCATTER_TILT_RAD * (travel / SCATTER_DEPTH_EM) * settle;
         const cos = Math.cos(theta);
         const sin = Math.sin(theta);
         const [cx, cy] = ctx.unitCenterEm;
@@ -380,13 +414,14 @@ export function sampleTextUnit(
   if (q > 0) {
     switch (anim.outPreset) {
       case "none":
+      case "static":
         break;
       case "fade":
         alpha *= 1 - q;
         break;
       case "fade-up":
         alpha *= 1 - q;
-        dyEm += q * RISE_EM;
+        dyEm += q * (anim.distance ?? RISE_EM);
         break;
       case "blur-in":
         alpha *= 1 - q;
@@ -395,7 +430,7 @@ export function sampleTextUnit(
         break;
       case "slide":
         alpha *= 1 - q;
-        dxEm += q * SLIDE_EM;
+        dxEm += q * (anim.distance ?? SLIDE_EM);
         break;
       case "mask-reveal":
         sweepL = q;
@@ -407,20 +442,23 @@ export function sampleTextUnit(
         scale *= s0 + (1 - s0) * (1 - q);
         break;
       }
-      case "twist-scale":
+      case "twist-scale": {
+        const s0 = anim.params.twistStartScale ?? TWIST_START_SCALE;
         alpha *= 1 - q;
-        scale *= TWIST_START_SCALE + (1 - TWIST_START_SCALE) * (1 - q);
+        scale *= s0 + (1 - s0) * (1 - q);
         rotYRad += anim.params.twistDir * q * TWIST_RAD;
         break;
+      }
       case "scatter-scale": {
+        const travel = anim.distance ?? SCATTER_DEPTH_EM;
         alpha *= 1 - q;
         rotZRad +=
           (SCATTER_ROLL_MIN_RAD +
             (SCATTER_ROLL_MAX_RAD - SCATTER_ROLL_MIN_RAD) * unitHash01(unitIndex, 2)) *
           q;
-        dzEm += SCATTER_DEPTH_EM * q;
+        dzEm += travel * q;
         if (ctx?.unitCenterEm) {
-          const theta = SCATTER_TILT_RAD * q;
+          const theta = SCATTER_TILT_RAD * (travel / SCATTER_DEPTH_EM) * q;
           const cos = Math.cos(theta);
           const sin = Math.sin(theta);
           const [cx, cy] = ctx.unitCenterEm;

@@ -23,6 +23,7 @@ import {
   addTap,
   clipIndexAt,
   freezeAt,
+  freezeAtEnd,
   insertClipAt,
   moveTap,
   nextClipId,
@@ -43,11 +44,19 @@ import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
-import { DEVICE_CATALOG, isDeviceId } from "../toolkit/device/catalog";
+import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
 import { mediaCardMenu } from "../ui/mediaCardMenu";
+import { hasPendingTextEdit } from "../ui/textEditFocus";
 import { useEscapeClose } from "../ui/useEscapeClose";
+import {
+  bindEditorHistory,
+  closeEditorHistoryCoalescing,
+  pushEditorHistory,
+  takeEditorRedo,
+  takeEditorUndo,
+} from "./editorHistory";
 import { Preview, type TrimScrub } from "./Preview";
 import { ReferencePane } from "./ReferencePane";
 import { Timeline } from "./Timeline";
@@ -122,6 +131,7 @@ function TapSettingsBar({
   onColor,
   size,
   onSize,
+  onSizeCommit,
 }: {
   scope: "near" | "all";
   onScope: (scope: "near" | "all") => void;
@@ -131,6 +141,7 @@ function TapSettingsBar({
   onColor: (id: string) => void;
   size: number;
   onSize: (size: number) => void;
+  onSizeCommit: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -230,6 +241,10 @@ function TapSettingsBar({
           step={0.05}
           value={size}
           onChange={(e) => onSize(Number(e.currentTarget.value))}
+          onPointerUp={onSizeCommit}
+          onPointerCancel={onSizeCommit}
+          onKeyUp={onSizeCommit}
+          onBlur={onSizeCommit}
         />
       </label>
     </div>
@@ -244,6 +259,10 @@ export function EditorApp() {
 
   const [target, setTarget] = useState<EditTarget | null>(null);
   const [doc, setDoc] = useState<EditDoc | null>(null);
+  const targetRef = useRef<EditTarget | null>(target);
+  const docRef = useRef<EditDoc | null>(doc);
+  targetRef.current = target;
+  docRef.current = doc;
   const [metas, setMetas] = useState<Record<string, MediaMeta | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -296,7 +315,10 @@ export function EditorApp() {
   // Load the edit for a target (boot + when the main window points us at a different one).
   const load = useCallback((t: EditTarget) => {
     void flushSaveRef.current(); // never lose a pending save from the previous target
+    bindEditorHistory(t.slug, t.name);
     renderStaleRef.current = false;
+    targetRef.current = t;
+    docRef.current = null;
     setTarget(t);
     setDoc(null);
     setMetas({});
@@ -306,15 +328,20 @@ export function EditorApp() {
     setSelectedId(null);
     setPlayheadMs(0);
     setPlaying(false);
+    const isCurrentTarget = () =>
+      targetRef.current?.slug === t.slug && targetRef.current?.name === t.name;
     loadEdit(t.slug, t.name)
       .then((d) => {
+        if (!isCurrentTarget()) return;
         // Normalise on load: the timeline is magnetic, startMs is derived state.
-        const next = { ...d, clips: relayout(d.clips) };
+        const loaded = { ...d, clips: relayout(d.clips) };
+        const next = { ...loaded };
         // A completed swap: the previous active becomes this doc's reference, offset negated, saved on the normal debounce.
         const swap = pendingSwapRef.current;
         if (swap && swap.forName === t.name) {
           pendingSwapRef.current = null;
           next.reference = { rel: swap.rel, offsetMs: swap.offsetMs };
+          pushEditorHistory({ label: "swap reference", before: loaded, after: next });
           renderStaleRef.current = true;
           pendingDoc.current = next;
           if (saveTimer.current !== null) clearTimeout(saveTimer.current);
@@ -323,6 +350,7 @@ export function EditorApp() {
             AUTOSAVE_DEBOUNCE_MS,
           );
         }
+        docRef.current = next;
         setDoc(next);
         // Filmstrips ride the scrub cache (warm for anything the library has shown).
         Promise.all(
@@ -331,9 +359,13 @@ export function EditorApp() {
               .then((m) => [s.id, m] as const)
               .catch(() => [s.id, null] as const),
           ),
-        ).then((entries) => setMetas(Object.fromEntries(entries)));
+        ).then((entries) => {
+          if (isCurrentTarget()) setMetas(Object.fromEntries(entries));
+        });
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => {
+        if (isCurrentTarget()) setError(String(e));
+      });
   }, []);
 
   // Boot: read the pending target the main window stashed before opening us.
@@ -392,23 +424,55 @@ export function EditorApp() {
     };
   }, [target?.slug]);
 
-  /** Commit a document mutation: update state, mark the render stale, schedule autosave. */
-  const commitDoc = useCallback((next: EditDoc) => {
-    setDoc(next);
-    renderStaleRef.current = true;
-    pendingDoc.current = next;
-    if (saveTimer.current !== null) clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => void flushSaveRef.current(), AUTOSAVE_DEBOUNCE_MS);
-  }, []);
+  /** Commit a document mutation through the editor's state, stale-render and autosave funnel. */
+  const commitDoc = useCallback(
+    (next: EditDoc, label: string, options: { record?: boolean; coalesceKey?: string } = {}) => {
+      const before = docRef.current;
+      if (options.record !== false && before) {
+        pushEditorHistory({ label, before, after: next, coalesceKey: options.coalesceKey });
+      }
+      docRef.current = next;
+      setDoc(next);
+      renderStaleRef.current = true;
+      pendingDoc.current = next;
+      if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(
+        () => void flushSaveRef.current(),
+        AUTOSAVE_DEBOUNCE_MS,
+      );
+    },
+    [],
+  );
 
   /** Commit a clips-only mutation (what the timeline emits). */
   const commit = useCallback(
-    (clips: EditClip[]) => {
+    (clips: EditClip[], label: string) => {
       if (!doc || !target) return;
-      commitDoc({ ...doc, clips });
+      commitDoc({ ...doc, clips }, label);
     },
     [doc, target, commitDoc],
   );
+
+  // Focused native Edit-menu events land in this window only. Replays use commitDoc without recording.
+  useEffect(() => {
+    const run = (direction: "undo" | "redo") => {
+      if (hasPendingTextEdit()) {
+        document.execCommand(direction);
+        return;
+      }
+      if (render.phase === "rendering") return;
+      const entry = direction === "undo" ? takeEditorUndo() : takeEditorRedo();
+      if (!entry) return;
+      const snapshot = direction === "undo" ? entry.before : entry.after;
+      commitDoc({ ...snapshot, clips: relayout(snapshot.clips) }, entry.label, { record: false });
+    };
+    const undo = listen("kookaburra://undo", () => run("undo"));
+    const redo = listen("kookaburra://redo", () => run("redo"));
+    return () => {
+      void undo.then((unlisten) => unlisten());
+      void redo.then((unlisten) => unlisten());
+    };
+  }, [render.phase, commitDoc]);
 
   // The scene's other videos, labelled for the Compare dropdown; scene-scoped by design, read from the sidecar so it can't go stale against a passed-in list.
   useEffect(() => {
@@ -436,7 +500,7 @@ export function EditorApp() {
         const devices = sceneDoc.devices ?? [];
         devices.forEach((d, i) => {
           if (d.media?.kind === "video") {
-            const model = isDeviceId(d.model) ? DEVICE_CATALOG[d.model].name : d.model;
+            const model = resolveAvailableDeviceSpec(d.model).name;
             entries.push({ rel: d.media.src, label: `Device ${i + 1} · ${model}` });
           }
         });
@@ -543,13 +607,16 @@ export function EditorApp() {
   /** Slide the reference by whole frames; provisional (pane + strip only) until baked. */
   const nudgeReference = (frames: number) => {
     if (!doc?.reference) return;
-    commitDoc({
-      ...doc,
-      reference: {
-        ...doc.reference,
-        offsetMs: Math.round(doc.reference.offsetMs + frames * refFrameMs),
+    commitDoc(
+      {
+        ...doc,
+        reference: {
+          ...doc.reference,
+          offsetMs: Math.round(doc.reference.offsetMs + frames * refFrameMs),
+        },
       },
-    });
+      "nudge reference",
+    );
   };
   const firstClip = doc?.clips[0];
   const canBake =
@@ -562,16 +629,22 @@ export function EditorApp() {
     const maxTrim = Math.max(0, firstClip.outMs - firstClip.inMs - refFrameMs);
     const inMs = Math.round(firstClip.inMs + Math.min(delta, maxTrim));
     const clips = relayout(doc.clips.map((c, i) => (i === 0 ? { ...c, inMs } : c)));
-    commitDoc({ ...doc, clips, reference: { ...doc.reference, offsetMs: 0 } });
+    commitDoc(
+      { ...doc, clips, reference: { ...doc.reference, offsetMs: 0 } },
+      "bake reference alignment",
+    );
   };
   /** Sync markers: Mark stores the beat's time on the active video; scrub until the reference pane shows the same beat, Match sets the offset from the difference. */
   const matchReference = () => {
     if (!doc?.reference || activeMark === null) return;
     const refBeatMs = playheadMs + doc.reference.offsetMs;
-    commitDoc({
-      ...doc,
-      reference: { ...doc.reference, offsetMs: Math.round(refBeatMs - activeMark) },
-    });
+    commitDoc(
+      {
+        ...doc,
+        reference: { ...doc.reference, offsetMs: Math.round(refBeatMs - activeMark) },
+      },
+      "match reference",
+    );
     setActiveMark(null);
   };
 
@@ -619,7 +692,10 @@ export function EditorApp() {
     );
     if (!sure) return;
     resetEdit(target.slug, target.name, target.sourceRel)
-      .then(() => load(target))
+      .then(() => {
+        bindEditorHistory(null, null);
+        load(target);
+      })
       .catch((e) => setError(String(e)));
   }, [target, load]);
 
@@ -722,17 +798,26 @@ export function EditorApp() {
 
   /** Shared add/insert flow: probe `rel`, reuse-or-create its EditSource, build a full-length clip and commit `place`'s arrangement; mediaMeta also warms the filmstrip cache. */
   const spliceClip = useCallback(
-    (rel: string, place: (clips: EditClip[], clip: EditClip) => EditClip[]) => {
+    (rel: string, place: (clips: EditClip[], clip: EditClip) => EditClip[], label: string) => {
       if (!doc || !target) return;
+      const requestedTarget = target;
       mediaMeta(target.slug, rel)
         .then((meta) => {
           if (meta.kind !== "video") throw new Error("only videos can be added to an edit");
-          const existing = doc.sources.find((s) => s.rel === rel);
-          const sourceId = existing?.id ?? nextSourceId(doc.sources);
+          const current = docRef.current;
+          if (
+            !current ||
+            targetRef.current?.slug !== requestedTarget.slug ||
+            targetRef.current.name !== requestedTarget.name
+          ) {
+            return;
+          }
+          const existing = current.sources.find((s) => s.rel === rel);
+          const sourceId = existing?.id ?? nextSourceId(current.sources);
           const sources = existing
-            ? doc.sources
+            ? current.sources
             : [
-                ...doc.sources,
+                ...current.sources,
                 {
                   id: sourceId,
                   rel,
@@ -743,7 +828,7 @@ export function EditorApp() {
                 },
               ];
           const clip: EditClip = {
-            id: nextClipId(doc.clips),
+            id: nextClipId(current.clips),
             sourceId,
             inMs: 0,
             outMs: meta.durationMs,
@@ -751,7 +836,7 @@ export function EditorApp() {
             startMs: 0,
           };
           setMetas((prev) => ({ ...prev, [sourceId]: meta }));
-          commitDoc({ ...doc, sources, clips: place(doc.clips, clip) });
+          commitDoc({ ...current, sources, clips: place(current.clips, clip) }, label);
         })
         .catch((e) => setSaveError(`Couldn't add the clip: ${String(e)}`));
     },
@@ -761,39 +846,49 @@ export function EditorApp() {
   /** Insert a full-length clip of `rel` at clip position `index` (end when omitted). */
   const handleAddClip = useCallback(
     (rel: string, index?: number) =>
-      spliceClip(rel, (clips, clip) => {
-        const next = [...clips];
-        next.splice(Math.max(0, Math.min(next.length, index ?? next.length)), 0, clip);
-        return relayout(next);
-      }),
+      spliceClip(
+        rel,
+        (clips, clip) => {
+          const next = [...clips];
+          next.splice(Math.max(0, Math.min(next.length, index ?? next.length)), 0, clip);
+          return relayout(next);
+        },
+        "add clip",
+      ),
     [spliceClip],
   );
 
   /** Splice a full-length clip of `rel` in at output time `tMs`; mid-clip splits the clip under it (the freeze-frame pattern). */
   const handleInsertClipAt = useCallback(
-    (rel: string, tMs: number) => spliceClip(rel, (clips, clip) => insertClipAt(clips, tMs, clip)),
+    (rel: string, tMs: number) =>
+      spliceClip(rel, (clips, clip) => insertClipAt(clips, tMs, clip), "insert clip"),
     [spliceClip],
   );
 
   const handleSplit = useCallback(() => {
     if (!doc) return;
     const next = splitAt(doc.clips, playheadMs, nextClipId(doc.clips));
-    if (next) commit(next);
+    if (next) commit(next, "split clip");
   }, [doc, playheadMs, commit]);
 
   /** Freeze the frame under the playhead for a default beat; the Hold field retimes it. */
   const DEFAULT_HOLD_MS = 2000;
   const handleFreeze = useCallback(() => {
     if (!doc) return;
-    const next = freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS);
-    if (next) commit(next);
+    const total = timelineDurationMs(doc.clips);
+    const outputFps = doc.settings.fps > 0 ? doc.settings.fps : 60;
+    const atEnd = Math.abs(playheadMs - total) <= 500 / outputFps;
+    const next = atEnd
+      ? freezeAtEnd(doc.clips, outputFps, DEFAULT_HOLD_MS)
+      : freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS);
+    if (next) commit(next, "freeze frame");
   }, [doc, playheadMs, commit]);
 
   /** Commit a taps-only mutation (placement, drag, context-menu edits). */
   const commitTaps = useCallback(
-    (taps: EditTap[]) => {
+    (taps: EditTap[], label: string) => {
       if (!doc || !target) return;
-      commitDoc({ ...doc, taps });
+      commitDoc({ ...doc, taps }, label);
     },
     [doc, target, commitDoc],
   );
@@ -806,6 +901,7 @@ export function EditorApp() {
       const taps = doc.taps ?? [];
       commitTaps(
         addTap(taps, { id: nextTapId(taps), sourceId: at.sourceId, sourceMs: at.sourceMs, pos }),
+        "add tap",
       );
     },
     [doc, playheadMs, commitTaps],
@@ -814,7 +910,7 @@ export function EditorApp() {
   const handleCommitTap = useCallback(
     (id: string, pos: [number, number]) => {
       if (!doc) return;
-      commitTaps(moveTap(doc.taps ?? [], id, pos));
+      commitTaps(moveTap(doc.taps ?? [], id, pos), "move tap");
     },
     [doc, commitTaps],
   );
@@ -822,7 +918,7 @@ export function EditorApp() {
   const handleTapStyle = useCallback(
     (id: string) => {
       if (!doc || !target) return;
-      commitDoc({ ...doc, tapStyle: id });
+      commitDoc({ ...doc, tapStyle: id }, "change tap style");
     },
     [doc, target, commitDoc],
   );
@@ -830,7 +926,7 @@ export function EditorApp() {
   const handleTapColor = useCallback(
     (id: string) => {
       if (!doc || !target) return;
-      commitDoc({ ...doc, tapColor: id });
+      commitDoc({ ...doc, tapColor: id }, "change tap colour");
     },
     [doc, target, commitDoc],
   );
@@ -838,7 +934,7 @@ export function EditorApp() {
   const handleTapSize = useCallback(
     (size: number) => {
       if (!doc || !target) return;
-      commitDoc({ ...doc, tapSize: size });
+      commitDoc({ ...doc, tapSize: size }, "resize tap", { coalesceKey: "tap-size" });
     },
     [doc, target, commitDoc],
   );
@@ -847,7 +943,13 @@ export function EditorApp() {
   const selectedClip = doc?.clips.find((c) => c.id === selectedId) ?? null;
   const totalMs = doc ? timelineDurationMs(doc.clips) : 0;
   const canSplit = doc ? splitAt(doc.clips, playheadMs, "probe") !== null : false;
-  const canFreeze = doc ? freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS) !== null : false;
+  const outputFps = doc && doc.settings.fps > 0 ? doc.settings.fps : 60;
+  const atTimelineEnd = Math.abs(playheadMs - totalMs) <= 500 / outputFps;
+  const canFreeze = doc
+    ? atTimelineEnd
+      ? freezeAtEnd(doc.clips, outputFps, DEFAULT_HOLD_MS) !== null
+      : freezeAt(doc.clips, playheadMs, DEFAULT_HOLD_MS) !== null
+    : false;
   const canTap = doc ? outputToSource(doc.clips, playheadMs) !== null : false;
 
   /** Every tap's visible output windows, flattened for the preview glow and the ruler markers. */
@@ -873,7 +975,9 @@ export function EditorApp() {
             onSelect: () => {
               if (!doc) return;
               const at = outputToSource(doc.clips, playheadMs);
-              if (at) commitTaps(retimeTap(doc.taps ?? [], id, at.sourceId, at.sourceMs));
+              if (at) {
+                commitTaps(retimeTap(doc.taps ?? [], id, at.sourceId, at.sourceMs), "retime tap");
+              }
             },
           },
           {
@@ -882,7 +986,7 @@ export function EditorApp() {
             confirmLabel: "Really delete?",
             danger: true,
             onSelect: () => {
-              if (doc) commitTaps(removeTap(doc.taps ?? [], id));
+              if (doc) commitTaps(removeTap(doc.taps ?? [], id), "delete tap");
             },
           },
         ],
@@ -924,7 +1028,7 @@ export function EditorApp() {
             confirmLabel: "Really remove?",
             danger: true,
             onSelect: () => {
-              if (doc) commit(removeClip(doc.clips, id));
+              if (doc) commit(removeClip(doc.clips, id), "remove clip");
             },
           },
         ],
@@ -960,7 +1064,7 @@ export function EditorApp() {
         setArmedTap((a) => !a);
       } else if ((e.key === "Delete" || e.key === "Backspace") && doc && selectedId) {
         e.preventDefault();
-        commit(removeClip(doc.clips, selectedId));
+        commit(removeClip(doc.clips, selectedId), "remove clip");
       } else if (e.key === "Escape") {
         // Disarm the tap tool first, deselect only when it wasn't armed (the AnimationLane pattern).
         if (armedTap) setArmedTap(false);
@@ -1048,6 +1152,7 @@ export function EditorApp() {
                   onColor={handleTapColor}
                   size={doc.tapSize ?? 1.25}
                   onSize={handleTapSize}
+                  onSizeCommit={closeEditorHistoryCoalescing}
                 />
               </div>
             )}
@@ -1145,7 +1250,9 @@ export function EditorApp() {
               <button
                 type="button"
                 className="btn"
-                onClick={() => selectedId && commit(removeClip(doc.clips, selectedId))}
+                onClick={() =>
+                  selectedId && commit(removeClip(doc.clips, selectedId), "remove clip")
+                }
                 disabled={!selectedId}
                 title="Delete the selected clip (⌫)"
               >
@@ -1165,7 +1272,10 @@ export function EditorApp() {
                     onBlur={(e) => {
                       const s = Number(e.currentTarget.value);
                       if (Number.isFinite(s) && s > 0 && selectedId) {
-                        commit(setClipHold(doc.clips, selectedId, Math.round(s * 1000)));
+                        commit(
+                          setClipHold(doc.clips, selectedId, Math.round(s * 1000)),
+                          "retime freeze",
+                        );
                       }
                     }}
                     onKeyDown={(e) => {
@@ -1180,10 +1290,16 @@ export function EditorApp() {
                   value={selectedClip?.speed ?? 1}
                   disabled={!selectedClip}
                   title="Playback speed of the selected clip"
-                  onChange={(e) =>
-                    selectedId &&
-                    commit(setClipSpeed(doc.clips, selectedId, Number(e.target.value)))
-                  }
+                  onChange={(e) => {
+                    if (selectedId) {
+                      commit(
+                        setClipSpeed(doc.clips, selectedId, Number(e.currentTarget.value)),
+                        "change clip speed",
+                      );
+                    }
+                    // The popup closes but the select keeps focus, and it eats the next click.
+                    e.currentTarget.blur();
+                  }}
                 >
                   {SPEED_OPTIONS.map((s) => (
                     <option key={s} value={s}>
@@ -1218,7 +1334,9 @@ export function EditorApp() {
                           rel
                             ? { ...doc, reference: { rel, offsetMs: 0 } }
                             : { ...doc, reference: undefined },
+                          "change reference",
                         );
+                        e.currentTarget.blur();
                       }}
                     >
                       <option value="">None</option>

@@ -4,10 +4,10 @@ import type {
   SceneDocDeviceLayoutDelta,
 } from "../../engine/sceneDocSchema";
 import type { FormatInfo } from "../types";
-import { DEVICE_CATALOG, type DeviceId } from "./catalog";
+import { resolveAvailableDeviceSpec } from "./catalog";
 import type { DevicePlacement } from "./Device";
 
-/** Resolves a scene's deviceLayout block to per-device placements: a pure function of (devices, block, format) so preview and export cannot drift, and independent of the loaded glbs (widths come from catalog constants, so licensed and placeholder builds lay out identically). Preset bases compute at natural size against the aspect's safe width, the whole arrangement compresses uniformly when it overflows (positions and scales together, the portrait behaviour), then per-device deltas apply: offset and rotation add, scale multiplies. Deltas deliberately never re-slot neighbours. */
+/** Resolves a scene's deviceLayout block to per-device placements: a pure function of (devices, block, format) so preview and export cannot drift. Widths come from the model this build can render, including the Android fallback. Preset bases compute at natural size against the aspect's safe width, the whole arrangement compresses uniformly when it overflows (positions and scales together, the portrait behaviour), then per-device deltas apply: offset and rotation add, scale multiplies. Deltas deliberately never re-slot neighbours. */
 
 const DEFAULT_GAP = 0.35;
 const GAP_MIN = -0.5;
@@ -29,9 +29,6 @@ const HERO_TOE_DEG = 12;
 const DEPTH_PAIR_TOE_DEG = 8;
 const DEPTH_PAIR_FRONT_Z = 0.25;
 const DEPTH_PAIR_BACK_Z = 0.5;
-/** Fallback width for models the catalog doesn't know (they render as the fallback phone anyway). */
-const UNKNOWN_WIDTH = 1.25;
-
 interface LayoutDeviceLike {
   id: string;
   model: string;
@@ -45,8 +42,7 @@ interface BasePlacement {
   scale: number;
 }
 
-const widthOf = (model: string): number =>
-  DEVICE_CATALOG[model as DeviceId]?.layoutWidth ?? UNKNOWN_WIDTH;
+const widthOf = (model: string): number => resolveAvailableDeviceSpec(model).layoutWidth;
 
 /** Yaw turning a device's screen toward the frame's centre line, scaled by how far out it sits. */
 const toeToward = (x: number, halfSpan: number, deg: number): number =>
@@ -66,7 +62,6 @@ function rowPositions(widths: number[], gap: number): number[] {
 
 function presetBases(preset: DeviceLayoutPreset, widths: number[], gap: number): BasePlacement[] {
   const n = widths.length;
-  if (preset === "depth-pair" && n !== 2) preset = "toe-in";
   switch (preset) {
     case "row": {
       return rowPositions(widths, gap).map((x) => ({ x, z: 0, yawDeg: 0, scale: 1 }));
@@ -122,12 +117,18 @@ function presetBases(preset: DeviceLayoutPreset, widths: number[], gap: number):
       return bases;
     }
     case "depth-pair": {
-      // One steps forward-left, one holds back-right, opposing toe.
+      // Devices step from forward-left to back-right, with the original pair as the endpoints.
       const xs = rowPositions(widths, gap).map((x) => x * 0.8);
-      return [
-        { x: xs[0], z: DEPTH_PAIR_FRONT_Z, yawDeg: DEPTH_PAIR_TOE_DEG, scale: 1 },
-        { x: xs[1], z: -DEPTH_PAIR_BACK_Z, yawDeg: -DEPTH_PAIR_TOE_DEG, scale: 1 },
-      ];
+      if (n === 1) return [{ x: xs[0], z: 0, yawDeg: 0, scale: 1 }];
+      return xs.map((x, i) => {
+        const progress = i / (n - 1);
+        return {
+          x,
+          z: DEPTH_PAIR_FRONT_Z - (DEPTH_PAIR_FRONT_Z + DEPTH_PAIR_BACK_Z) * progress,
+          yawDeg: DEPTH_PAIR_TOE_DEG * (1 - 2 * progress),
+          scale: 1,
+        };
+      });
     }
   }
 }

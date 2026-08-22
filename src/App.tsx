@@ -5,7 +5,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openFolderPicker } from "@tauri-apps/plugin-dialog";
 import {
   type CSSProperties,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -29,8 +28,7 @@ import {
 import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beatState";
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
-import { pollCaptureBridge } from "./engine/captureBridge";
-import { useChartTrackEditStore } from "./engine/chartTrackEditStore";
+import { ensureCaptureService } from "./engine/captureBridge";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -40,7 +38,6 @@ import {
   subscribeClipExtraction,
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
-import { useCompareEditStore } from "./engine/compareEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
@@ -52,7 +49,6 @@ import {
   verifyAllFormats,
 } from "./engine/exporter";
 import { isExporting } from "./engine/exportState";
-import { FramePanel } from "./engine/FramePanel";
 import { CAMERA, FORMATS, FPS, SHADOW_MAP_TYPE, STANDING_ASPECTS } from "./engine/format";
 import { mergeFrameSpec } from "./engine/frameSchema";
 import { useGizmoSectionOpen } from "./engine/gizmoSections";
@@ -65,10 +61,12 @@ import {
   takeRedo,
   takeUndo,
 } from "./engine/history";
+import { useImageEditStore } from "./engine/imageEditStore";
+import { useImageReconciliationStore } from "./engine/imageReconciliationStore";
 import { useLayeredScreenshotEditStore } from "./engine/layeredScreenshotEditStore";
+import { useLightingEditStore } from "./engine/lightingEditStore";
 import { ensureRectAreaLightUniforms } from "./engine/lightingState";
 import { importMedia } from "./engine/media";
-import { PersistentLayer } from "./engine/PersistentLayer";
 import {
   setPreviewAudioMuted,
   setPreviewAudioProject,
@@ -86,7 +84,6 @@ import {
   type ProjectListing,
   resolveAssetPath,
   sceneFileStem,
-  sceneMountKey,
   WORKSPACE_PROJECT_PREFIX,
   workspaceProjectPath,
   workspaceSlug,
@@ -102,10 +99,9 @@ import { TrustDeniedError } from "./engine/projectTrust";
 import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
-import { SceneHost } from "./engine/SceneHost";
+import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
-import { ProjectIdContext, ProjectLightingContext } from "./engine/sceneContext";
 import {
   applyEditRepoint,
   resyncFollowMediaDuration,
@@ -113,7 +109,7 @@ import {
   writeSceneDoc,
 } from "./engine/sceneDoc";
 import type { SceneDoc } from "./engine/sceneDocSchema";
-import { planMoves } from "./engine/sceneOrder";
+import { planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
@@ -137,15 +133,6 @@ import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
 import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
-import { ChartFallback } from "./toolkit/chart/ChartFallback";
-import { CompareChips } from "./toolkit/compare/CompareChips";
-import { DevicesFallback } from "./toolkit/device/Device";
-import { AssetBoundary } from "./toolkit/media/AssetBoundary";
-import { LayeredScreenshotFallback } from "./toolkit/media/LayeredScreenshot";
-import { VideoWindowFallback } from "./toolkit/media/VideoWindow";
-import { ObjectsFallback } from "./toolkit/objects/ObjectPrimitive";
-import { SceneBackground } from "./toolkit/stage/FixedBackdrop";
-import { TextFallback } from "./toolkit/text/TitleBlock";
 import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
@@ -159,11 +146,14 @@ import { openChartDataModal } from "./ui/chartDataModalStore";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
+import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
 import { newChartBlock } from "./ui/inspector/ChartSection";
 import { InspectorPanel } from "./ui/inspector/InspectorPanel";
 import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationLane";
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
+import { LightingAnimationLane } from "./ui/LightingAnimationLane";
+import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/laneSelection";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
@@ -182,7 +172,11 @@ import {
 } from "./ui/Titlebar";
 import { hasPendingTextEdit } from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
-import { commitSceneDuration } from "./ui/useSceneDocPatch";
+import {
+  commitSceneDuration,
+  docPatchMatchesProject,
+  resolveDocPatchIndex,
+} from "./ui/useSceneDocPatch";
 import { Welcome } from "./ui/Welcome";
 
 /** A recessed matte over the letterboxed stage while a freshly-opened project settles, with an honest step-based progress bar (no fabricated animation); never rendered in autorun. */
@@ -522,7 +516,7 @@ export default function App() {
     slug: string;
     index: number;
     editName: string;
-    slot: "device" | "background" | "videoWindow";
+    slot: "device" | "compareDevice" | "background" | "videoWindow";
     deviceId?: string;
   } | null>(null);
 
@@ -538,29 +532,33 @@ export default function App() {
 
   // Surgical edit plumbing (flicker fix): UI writes never bump the workspace reload token since app writes only touch sidecars/project.json, never TSX; handleDocChanged patches the doc in memory, handleTimingChanged does a nonce-only refresh.
   const handleDocChanged = useCallback(
-    (sceneIndex: number, doc: SceneDoc) => {
+    (sceneIndex: number, doc: SceneDoc, sceneFile?: string, writtenProjectId?: string) => {
       setProject((prev) => {
-        if (!prev || sceneIndex >= prev.sceneDocs.length) return prev;
+        if (!prev) return prev;
+        if (!docPatchMatchesProject(prev.id, writtenProjectId)) return prev;
+        // The written FILE addresses the slot, never the captured index: a write awaits real IPC, and an insert or reorder landing first shifts every later scene (the phantom-device bug).
+        const at = resolveDocPatchIndex(prev.sceneFiles, sceneIndex, sceneFile);
+        if (at === null) return prev;
         // Re-resolve this scene's overlay from the new sidecar override, mirroring loadProject:
         // the render reads sceneFrames (the deck+override merge), not doc.frame, so it must recompute.
         const merged = mergeFrameSpec(prev.deckFrame, doc.frame);
         const resolvedFrame = merged?.enabled === false ? undefined : merged;
         // Comparison side B derives from the doc, so the in-memory patch must re-derive it too (adding a comparison mounts the side-B host without a reload). A changed after-theme id resolves properly at the chained reload; until it lands the previous resolution (else the scene's own theme) stands in.
         const bDoc = deriveCompareBDoc(doc) ?? undefined;
-        const prevBDoc = prev.compareBDocs[sceneIndex];
+        const prevBDoc = prev.compareBDocs[at];
         const bTheme = bDoc
           ? bDoc.themeId
             ? bDoc.themeId === prevBDoc?.themeId
-              ? prev.compareBThemes[sceneIndex]
-              : (prev.compareBThemes[sceneIndex] ?? prev.sceneThemes[sceneIndex])
-            : prev.sceneThemes[sceneIndex]
+              ? prev.compareBThemes[at]
+              : (prev.compareBThemes[at] ?? prev.sceneThemes[at])
+            : prev.sceneThemes[at]
           : undefined;
         return {
           ...prev,
-          sceneDocs: prev.sceneDocs.map((d, i) => (i === sceneIndex ? doc : d)),
-          sceneFrames: prev.sceneFrames.map((f, i) => (i === sceneIndex ? resolvedFrame : f)),
-          compareBDocs: prev.compareBDocs.map((d, i) => (i === sceneIndex ? bDoc : d)),
-          compareBThemes: prev.compareBThemes.map((t, i) => (i === sceneIndex ? bTheme : t)),
+          sceneDocs: prev.sceneDocs.map((d, i) => (i === at ? doc : d)),
+          sceneFrames: prev.sceneFrames.map((f, i) => (i === at ? resolvedFrame : f)),
+          compareBDocs: prev.compareBDocs.map((d, i) => (i === at ? bDoc : d)),
+          compareBThemes: prev.compareBThemes.map((t, i) => (i === at ? bTheme : t)),
         };
       });
       const id = loadedProjectRef.current?.id;
@@ -730,7 +728,7 @@ export default function App() {
         if (trimmed) next.name = trimmed;
         else delete next.name;
         await writeSceneDoc(slug, file, next);
-        handleDocChanged(sceneIndex, next);
+        handleDocChanged(sceneIndex, next, file);
         pushHistory({
           label: "scene name",
           changes: [
@@ -798,9 +796,9 @@ export default function App() {
     const current = loadedProjectRef.current;
     if (!current || !isWorkspaceProjectId(current.id)) return;
     try {
-      // Descending, each copy after its original, so earlier indices stay valid.
-      for (const i of [...indices].sort((a, b) => b - a)) {
-        await duplicateProjectScene(workspaceSlug(current.id), i, i + 1);
+      // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows).
+      for (const { from, at } of planDuplicates(indices)) {
+        await duplicateProjectScene(workspaceSlug(current.id), from, at);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -868,7 +866,7 @@ export default function App() {
       else delete written.camera;
       try {
         await writeSceneDoc(slug, file, written);
-        handleDocChanged(sceneIndex, written);
+        handleDocChanged(sceneIndex, written, file);
         pushHistory({
           label,
           changes: [
@@ -969,7 +967,7 @@ export default function App() {
         next.background = clip.background ? structuredClone(clip.background) : undefined;
         next.backdrop = clip.backdrop ? structuredClone(clip.backdrop) : undefined;
         await writeSceneDoc(slug, file, next);
-        handleDocChanged(sceneIndex, next);
+        handleDocChanged(sceneIndex, next, file);
         pushHistory({
           label: "paste background",
           changes: [
@@ -1007,7 +1005,7 @@ export default function App() {
       const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
       next.chart = newChartBlock();
       await writeSceneDoc(slug, file, next);
-      handleDocChanged(sceneIndex, next);
+      handleDocChanged(sceneIndex, next, file);
       pushHistory({
         label: "add chart",
         changes: [
@@ -1026,7 +1024,7 @@ export default function App() {
       if (change.kind === "sceneDoc") {
         const target = (dir === "undo" ? change.before : change.after) ?? { version: 1 };
         await writeSceneDoc(change.slug, change.file, target);
-        handleDocChanged(change.sceneIndex, target);
+        handleDocChanged(change.sceneIndex, target, change.file);
         // A themeId revert resolves at load; without this the undo lands on disk invisibly until the next reload.
         if (change.reload) handleTimingChanged();
       } else {
@@ -1109,7 +1107,7 @@ export default function App() {
           try {
             await writeSceneDoc(pending.slug, sceneFile, next);
             // Surgical (flicker fix): patch the doc in memory since the scene re-binds its clip by src without a reload; only a duration change needs the timing refresh.
-            handleDocChanged(pending.index, next);
+            handleDocChanged(pending.index, next, sceneFile);
             pushHistory({
               label: "video re-point",
               changes: [
@@ -1123,7 +1121,11 @@ export default function App() {
                 },
               ],
             });
-            if (pending.slot === "device" || pending.slot === "videoWindow") {
+            if (
+              pending.slot === "device" ||
+              pending.slot === "compareDevice" ||
+              pending.slot === "videoWindow"
+            ) {
               const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
@@ -1436,13 +1438,16 @@ export default function App() {
   useEffect(() => {
     void loadedProjectId;
     useCameraEditStore.getState().reset();
+    useImageEditStore.getState().reset();
     useLayeredScreenshotEditStore.getState().reset();
+    useLightingEditStore.getState().reset();
   }, [loadedProjectId]);
 
   // The camera strip and tool overlay follow the playhead's dominant scene, like the edit bar (derive-don't-subscribe: re-renders only when the index changes, not per tick).
   const cameraEditOpen = useCameraEditStore((s) => s.open);
-  // The three 2D gizmo layers arm with their inspector section, through the one drill-family map.
+  // The 2D gizmo layers arm with their inspector section, through the one drill-family map.
   const decorationEditOpen = useGizmoSectionOpen("decorations");
+  const imageSectionOpen = useGizmoSectionOpen("images");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -1456,29 +1461,37 @@ export default function App() {
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
   const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
-  const compareLaneOpen = useCompareEditStore((s) => s.open);
   // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
   const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
-  const chartLaneOpen = useChartTrackEditStore((s) => s.open);
-  const stackedLanes = comparePresent || chartPresent;
+  const lightingLaneOpen = useLightingEditStore((state) => state.open);
+  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen;
+  const animationLaneOpen = animationLaneMasterOpen(lsActive, cameraEditOpen, lsLaneOpen);
+  useEffect(() => {
+    if (!animationLaneOpen) clearSecondaryLaneSelections();
+  }, [animationLaneOpen]);
+  useEffect(() => {
+    void camSceneIndex;
+    clearSecondaryLaneSelections();
+  }, [camSceneIndex]);
 
-  // The capture bridge: answer the embedded terminal's frame requests from the running app (engine/captureBridge.ts); mounts on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
+  // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
   useEffect(() => {
     if (isAutoRun) return;
     const timer = window.setInterval(() => {
       if (bridgeBusyRef.current) return;
       bridgeBusyRef.current = true;
-      void pollCaptureBridge({
+      void ensureCaptureService({
         project: loadedProjectRef.current,
+        format,
         exporting,
-        setExporting,
+        playing,
       }).finally(() => {
         bridgeBusyRef.current = false;
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isAutoRun, exporting]);
+  }, [isAutoRun, exporting, format, playing]);
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
@@ -1636,6 +1649,9 @@ export default function App() {
   /** Bounded replay (the text-motion panel's live preview): play [startMs, endMs) once and auto-pause, seeking back to where the playhead sat when the panel session began (`replayReturnMsRef`), cleared when manual transport takes over. */
   const playUntilRef = useRef<number | null>(null);
   const replayReturnMsRef = useRef<number | null>(null);
+  useEffect(() => {
+    useImageReconciliationStore.getState().bindProject(projectId);
+  }, [projectId]);
   const projectIdLoaded = project?.id;
   // A real project switch orphans any armed return position (never seek another project's clock); keyed on the id since in-memory doc patches swap the project object per pick.
   useEffect(() => {
@@ -1765,7 +1781,7 @@ export default function App() {
     async (
       sceneIndex: number,
       mediaRel: string,
-      slot: "device" | "background" | "videoWindow" = "device",
+      slot: "device" | "compareDevice" | "background" | "videoWindow" = "device",
       deviceId?: string,
     ) => {
       if (!project || !isWorkspaceProjectId(project.id)) return;
@@ -2002,6 +2018,7 @@ export default function App() {
                 key={project.id}
                 slug={workspaceSlug(project.id)}
                 cwd={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                projectName={project.name}
                 scenes={project.slots.map((s, i) => ({
                   index: i,
                   id: s.id,
@@ -2014,7 +2031,7 @@ export default function App() {
                 }))}
                 theme={project.theme}
                 readThumbs={() => listCachedSceneThumbs(project)}
-                captureThumbs={() => ensureSceneThumbs(project)}
+                captureThumbs={(signal) => ensureSceneThumbs(project, { signal })}
                 onProjectChanged={(focusSceneFile) => {
                   if (focusSceneFile) focusSceneFileRef.current = focusSceneFile;
                   bumpWorkspaceReloadToken();
@@ -2076,99 +2093,8 @@ export default function App() {
                       commitStamp={project}
                     />
                   )}
-                  {/* Scenes resolve assets against the project that owns them, the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
-                  <ProjectIdContext.Provider value={project?.id ?? null}>
-                    <ProjectLightingContext.Provider value={project?.projectLighting ?? null}>
-                      <Suspense fallback={null}>
-                        {project?.scenes.map((scene, i) => {
-                          const slot = project.slots[i];
-                          const SceneComponent = scene.Scene;
-                          return (
-                            <SceneHost
-                              key={sceneMountKey(project.id, project.sceneFiles[i])}
-                              index={i}
-                              id={project.sceneFiles[i]}
-                              startMs={slot.startMs}
-                              durationMs={slot.durationMs}
-                              doc={project.sceneDocs[i]}
-                              theme={project.sceneThemes[i]}
-                              frame={project.sceneFrames[i]}
-                            >
-                              {/* The backstop boundary: an uncontained scene render error degrades to an empty scene, never a torn-down canvas tree; the host's group/registry stay mounted. */}
-                              <AssetBoundary label={`scene ${i + 1}`}>
-                                {/* The fixed background mounts host-side for every scene, staged or not, so Background picks never depend on the scene authoring a <SceneStage> (staging/lighting stays opt-in). */}
-                                <SceneBackground />
-                                <SceneComponent />
-                                {/* Host-side fallbacks so Add device / Add text work on scenes whose TSX never wires the sidecar hooks; the registries suppress them when it does. */}
-                                <DevicesFallback />
-                                <ObjectsFallback />
-                                <LayeredScreenshotFallback />
-                                <VideoWindowFallback />
-                                <ChartFallback />
-                                <TextFallback />
-                                <CompareChips />
-                              </AssetBoundary>
-                            </SceneHost>
-                          );
-                        })}
-                        {/* Comparison side-B hosts: the same scene component mounted again with side B's derived doc and theme, so per-side media/background/lighting scope through the normal host machinery; the compositor renders the pair to its A/B targets and masks them. */}
-                        {project?.scenes.map((scene, i) => {
-                          const bDoc = project.compareBDocs[i];
-                          if (!bDoc) return null;
-                          const slot = project.slots[i];
-                          const SceneComponent = scene.Scene;
-                          return (
-                            <SceneHost
-                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:b`}
-                              index={i}
-                              side="b"
-                              id={project.sceneFiles[i]}
-                              startMs={slot.startMs}
-                              durationMs={slot.durationMs}
-                              doc={bDoc}
-                              theme={project.compareBThemes[i]}
-                              frame={project.sceneFrames[i]}
-                            >
-                              <AssetBoundary label={`scene ${i + 1} after`}>
-                                <SceneBackground />
-                                <SceneComponent />
-                                <DevicesFallback />
-                                <ObjectsFallback />
-                                <LayeredScreenshotFallback />
-                                <VideoWindowFallback />
-                                <ChartFallback />
-                                <TextFallback />
-                                <CompareChips />
-                              </AssetBoundary>
-                            </SceneHost>
-                          );
-                        })}
-                        {/* The persistent (hoisted morph) layer mounts once as a sibling of the scene hosts, outside every SceneContext, so it reads global time and tweens across scene seams. The compositor owns its per-frame visibility. */}
-                        {project?.persistent && (
-                          <PersistentLayer key={`${project.id}:persistent`}>
-                            <project.persistent />
-                          </PersistentLayer>
-                        )}
-                        {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
-                        {project?.scenes.map((_, i) => {
-                          const frame = project.sceneFrames[i];
-                          if (!frame) return null;
-                          const slot = project.slots[i];
-                          return (
-                            <FramePanel
-                              key={`${sceneMountKey(project.id, project.sceneFiles[i])}:panel`}
-                              index={i}
-                              startMs={slot.startMs}
-                              durationMs={slot.durationMs}
-                              doc={project.sceneDocs[i]}
-                              theme={project.sceneThemes[i]}
-                              frame={frame}
-                            />
-                          );
-                        })}
-                      </Suspense>
-                    </ProjectLightingContext.Provider>
-                  </ProjectIdContext.Provider>
+                  {/* The scene tree itself is shared with the hidden render window (engine/StageScenes): scenes resolve assets against the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
+                  <StageScenes project={project} />
                 </Canvas>
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
@@ -2209,6 +2135,13 @@ export default function App() {
                       aspect={format.width / format.height}
                       onDocChanged={handleDocChanged}
                     />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  imageSectionOpen && (
+                    <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
                   )}
                 {project &&
                   isWorkspaceProjectId(project.id) &&
@@ -2383,7 +2316,7 @@ export default function App() {
               }
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
-              onApplyTheme={(id) => void handleApplyTheme(id)}
+              onApplyTheme={handleApplyTheme}
               onDeleteScene={(i) => void handleDeleteScene(i)}
               onReorderScenes={handleReorderScenes}
               onDuplicateScenes={handleDuplicateScenes}
@@ -2400,14 +2333,10 @@ export default function App() {
         </div>
       )}
 
-      {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); the animation lane self-collapses on cameraEditStore.open and the dock draws the lane-to-cell connector. */}
+      {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); Animate scene controls the lane stack and its lane-to-cell connector. */}
       {editorView && (
         <TimelineDock
-          connectorActive={
-            (comparePresent && compareLaneOpen) ||
-            (chartPresent && chartLaneOpen) ||
-            (lsActive ? lsLaneOpen : cameraEditOpen)
-          }
+          connectorActive={animationLaneOpen || lightingLaneOpen}
           activeIndex={camSceneIndex}
           lane={
             project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
@@ -2416,12 +2345,22 @@ export default function App() {
                   <CompareAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
+                    open={animationLaneOpen}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
                   />
                 )}
                 {chartPresent && (
                   <ChartAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    open={animationLaneOpen}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {lightingLaneOpen && (
+                  <LightingAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     onDocChanged={handleDocChanged}
@@ -2443,7 +2382,6 @@ export default function App() {
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
                     label={stackedLanes ? "Camera" : undefined}
-                    alwaysOpen={stackedLanes}
                   />
                 )}
               </div>

@@ -17,6 +17,7 @@ mod pack;
 mod packs_win;
 mod present;
 mod pty;
+mod render_win;
 mod scene_doc;
 mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
@@ -41,6 +42,26 @@ use encode::{
     legacy_export_args, mezzanine_render_args, spec_export_args, transcode_pass_args, EncodeSpec,
     ExportOptions,
 };
+
+#[tauri::command]
+fn show_character_palette(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        app.run_on_main_thread(|| {
+            use objc2_app_kit::NSApp;
+            use objc2_foundation::MainThreadMarker;
+            // run_on_main_thread guarantees the marker required by AppKit.
+            let mtm = unsafe { MainThreadMarker::new_unchecked() };
+            NSApp(mtm).orderFrontCharacterPalette(None);
+        })
+        .map_err(|error| error.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("The system emoji picker is only available on macOS.".into())
+    }
+}
 
 /// Progress event streamed back to the frontend over an ipc `Channel`.
 #[derive(Clone, Serialize)]
@@ -549,6 +570,8 @@ struct AutorunEnv {
     at: Option<String>,
     /// option-previews: comma list of stale set names to capture (unset = all).
     sets: Option<String>,
+    /// theme-previews: comma list of stale bundled theme ids to capture (unset = all).
+    themes: Option<String>,
 }
 
 #[tauri::command]
@@ -569,6 +592,7 @@ fn get_autorun_config() -> AutorunEnv {
         scene: var("KOOKABURRA_SCENE"),
         at: var("KOOKABURRA_AT"),
         sets: var("KOOKABURRA_SETS"),
+        themes: var("KOOKABURRA_THEMES"),
     }
 }
 
@@ -970,9 +994,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Window size/position persist across launches; denylisting nothing, since the editor/settings windows restoring too is the desktop-standard behaviour, and autorun runs are indifferent to window geometry (the export reads its own fixed-size targets).
         // The present window's geometry is re-derived from the modal's display pick every launch; restoring a stale fullscreen rect (possibly on an unplugged display) would fight it.
+        // The render window is hidden by design; a restored state could resurrect it visible.
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_denylist(&["present"])
+                .with_denylist(&["present", "render"])
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -986,6 +1011,9 @@ pub fn run() {
         .manage(pty::PtyState::default())
         .manage(edit::EditorState::default())
         .manage(present::PresentState::default())
+        .manage(render_win::RenderWindowState::default())
+        .manage(render_win::ThumbQueueState::default())
+        .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
         .manage(pack::commands::PackState::default())
         .setup(|app| {
@@ -1143,9 +1171,21 @@ pub fn run() {
                     } else if event.id() == "find-project" {
                         let _ = app.emit("kookaburra://find-project", ());
                     } else if event.id() == "kookaburra-undo" {
-                        let _ = app.emit("kookaburra://undo", ());
+                        if let Some(window) = app
+                            .webview_windows()
+                            .into_values()
+                            .find(|window| window.is_focused().unwrap_or(false))
+                        {
+                            let _ = app.emit_to(window.label(), "kookaburra://undo", ());
+                        }
                     } else if event.id() == "kookaburra-redo" {
-                        let _ = app.emit("kookaburra://redo", ());
+                        if let Some(window) = app
+                            .webview_windows()
+                            .into_values()
+                            .find(|window| window.is_focused().unwrap_or(false))
+                        {
+                            let _ = app.emit_to(window.label(), "kookaburra://redo", ());
+                        }
                     } else if event.id() == "show-shortcuts" {
                         let _ = app.emit("kookaburra://show-shortcuts", ());
                     } else if event.id() == "check-for-updates" {
@@ -1181,6 +1221,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            show_character_palette,
             start_export,
             notify_export_done,
             media::probe_audio,
@@ -1242,6 +1283,7 @@ pub fn run() {
             scene_doc::remove_project_scene,
             scene_doc::move_project_scene,
             scene_doc::update_project_scene_transition,
+            scene_doc::apply_project_transition_to_all,
             scene_doc::set_project_theme,
             scene_doc::set_project_audio,
             scene_doc::scaffold_scene,
@@ -1252,6 +1294,17 @@ pub fn run() {
             bridge::bridge_write_response,
             bridge::begin_bridge_screenshot,
             bridge::save_bridge_screenshot,
+            bridge::bridge_pending_count,
+            bridge::set_editor_context,
+            bridge::get_editor_context,
+            render_win::ensure_render_window,
+            render_win::close_render_window,
+            render_win::render_heartbeat,
+            render_win::render_window_status,
+            render_win::render_submit_thumbs,
+            render_win::render_cancel_thumbs,
+            render_win::render_take_thumb_job,
+            render_win::thumbs_pending_count,
             objects::list_objects,
             objects::read_object,
             objects::import_object,
@@ -1270,6 +1323,7 @@ pub fn run() {
             export_presets::write_export_preset,
             export_presets::delete_export_preset,
             workspace::set_last_export_preset,
+            workspace::set_opening_poster_frame,
             fonts::list_system_fonts,
             fonts::list_workspace_fonts,
             fonts::pin_system_font,

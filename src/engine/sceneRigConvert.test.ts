@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { resolveDeviceLayout } from "../toolkit/device/layout";
+import { resolveDeviceWorldAnchor } from "../toolkit/device/worldAnchor";
+import { computeFormat, FORMATS } from "./format";
 import { orbitToView } from "./orbit";
 import type { CameraDoc, RigDoc } from "./sceneCameraEdit";
 import type { SceneDoc } from "./sceneDocSchema";
@@ -117,15 +120,66 @@ describe("object bindings", () => {
     expect(rebakeRigBindings(bound, doc([0, 0, 0]))).toBe(bound);
   });
 
+  it("rebakes an arranged device to its rendered placement for the active aspect", () => {
+    const arranged: SceneDoc = {
+      version: 1,
+      devices: [
+        { id: "other", model: "iphone-15-pro" },
+        { id: "phone", model: "iphone-15-pro" },
+      ],
+      deviceLayout: {
+        preset: "row",
+        gap: 0.6,
+        devices: { phone: { offset: [0.25, 0.1, -0.2] } },
+      },
+    };
+    const format = computeFormat(FORMATS["9:16"]);
+    const layout = arranged.deviceLayout;
+    if (!layout) throw new Error("device layout expected");
+    const expected = resolveDeviceLayout(arranged.devices ?? [], layout, format)[1].position;
+    expect(rebakeRigBindings(bound, arranged, format).keys[0].pose.aim.at).toEqual(expected);
+  });
+
   it("bakes a deleted binding to its last known point, keeping the shot", () => {
     const moved = rebakeRigBindings(bound, doc([1, 2, 3]));
     const baked = bakeRigBinding(moved, "phone");
     expect(baked.keys[0].pose.aim).toEqual({ mode: "point", at: [1, 2, 3] });
   });
 
+  it("rebakes and deletes a grounded binding at the exact mounted-floor anchor", () => {
+    const grounded: SceneDoc = {
+      version: 1,
+      devices: [
+        {
+          id: "phone",
+          model: "iphone-17-pro",
+          placement: { position: [1, 8, 3], scale: 1.2, ground: true },
+        },
+      ],
+    };
+    const expected = resolveDeviceWorldAnchor(
+      grounded.devices?.[0] ?? { model: "" },
+      grounded.devices?.[0]?.placement,
+      -0.8,
+    );
+    const resolved = rebakeRigBindings(bound, grounded, undefined, -0.8);
+
+    expect(bakeRigBinding(resolved, "phone").keys[0].pose.aim).toEqual({
+      mode: "point",
+      at: expected,
+    });
+  });
+
   it("reports bindings the doc can no longer resolve", () => {
     expect(brokenRigBindings(bound, doc([0, 0, 0]))).toEqual([]);
     expect(brokenRigBindings(bound, { version: 1 })).toEqual(["phone"]);
     expect(brokenRigBindings(bound, undefined)).toEqual(["phone"]);
+    expect(
+      brokenRigBindings(bound, {
+        version: 1,
+        devices: [{ id: "phone", model: "iphone-17-pro", placement: { ground: true } }],
+        deviceLayout: { preset: "row" },
+      }),
+    ).toEqual([]);
   });
 });

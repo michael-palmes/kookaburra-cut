@@ -6,6 +6,7 @@ import {
   clipTimelineMs,
   edgeTargetsMs,
   freezeAt,
+  freezeAtEnd,
   insertClipAt,
   MIN_CLIP_SOURCE_MS,
   MIN_HOLD_MS,
@@ -196,6 +197,29 @@ describe("freeze frames", () => {
     expect(freezeAt(laid, 1500, 1000)).toBeNull();
     const frozen = freezeAt(laid, 400, 1000);
     expect(frozen && freezeAt(frozen, 500, 1000)).toBeNull();
+  });
+
+  it("freezeAtEnd appends the final displayed source frame of a retimed last clip", () => {
+    const laid = relayout([
+      clip("c1", 0, 1000),
+      { ...clip("c2", 200, 2200), sourceId: "s2", speed: 2 },
+    ]);
+    const next = freezeAtEnd(laid, 50, 2000);
+    expect(next?.at(-1)).toMatchObject({
+      id: "c3",
+      sourceId: "s2",
+      inMs: 2160,
+      outMs: 2160,
+      holdMs: 2000,
+      startMs: 2000,
+    });
+  });
+
+  it("freezeAtEnd is disabled when the last timeline item is already a freeze", () => {
+    expect(
+      freezeAtEnd(relayout([clip("c1", 0, 1000), freeze("c2", 980, 2000)]), 50, 1000),
+    ).toBeNull();
+    expect(freezeAtEnd([], 50, 1000)).toBeNull();
   });
 
   it("setClipHold retimes only freezes, with a floor", () => {

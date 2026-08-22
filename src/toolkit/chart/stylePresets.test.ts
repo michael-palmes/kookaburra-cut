@@ -47,7 +47,7 @@ function leaves(value: unknown, path = ""): [string, unknown][] {
 }
 
 describe("catalogue", () => {
-  it("ships twelve presets in carousel order, boardroom first", () => {
+  it("preserves the existing shelves and appends the dark tier", () => {
     expect(CHART_STYLE_PRESET_IDS).toEqual([
       "boardroom",
       "print",
@@ -61,9 +61,12 @@ describe("catalogue", () => {
       "midnightGold",
       "neonLedger",
       "pulseGlass",
+      "nightEditorial",
+      "launchGlow",
+      "obsidian",
     ]);
-    expect(CHART_STYLE_PRESET_IDS).toHaveLength(12);
-    expect(new Set(CHART_STYLE_PRESET_IDS).size).toBe(12);
+    expect(CHART_STYLE_PRESET_IDS).toHaveLength(15);
+    expect(new Set(CHART_STYLE_PRESET_IDS).size).toBe(15);
     expect(CHART_STYLE_PRESET_IDS[0]).toBe(CHART_STYLE_DEFAULT_ID);
   });
 
@@ -94,6 +97,9 @@ describe("catalogue", () => {
       "market",
       "market",
       "market",
+      "dark",
+      "dark",
+      "dark",
     ]);
   });
 });
@@ -158,7 +164,13 @@ describe("preset intent", () => {
     const glassy = CHART_STYLE_PRESET_IDS.filter((id) => resolve(id).threed.transmission > 0);
     const glowing = CHART_STYLE_PRESET_IDS.filter((id) => resolve(id).threed.emissiveEdge > 0);
     expect(glassy).toEqual(["glass", "pulseGlass"]);
-    expect(glowing).toEqual(["midnightGold", "neonLedger", "pulseGlass"]);
+    expect(glowing).toEqual([
+      "midnightGold",
+      "neonLedger",
+      "pulseGlass",
+      "nightEditorial",
+      "launchGlow",
+    ]);
     expect(glassy.filter((id) => glowing.includes(id))).toEqual(["pulseGlass"]);
   });
 
@@ -174,7 +186,15 @@ describe("preset intent", () => {
 
   it("marks the dark-first looks and only those", () => {
     const darkFirst = CHART_STYLE_PRESET_IDS.filter((id) => isDarkFirstSurface(resolve(id)));
-    expect(darkFirst).toEqual(["glass", "midnightGold", "neonLedger", "pulseGlass"]);
+    expect(darkFirst).toEqual([
+      "glass",
+      "midnightGold",
+      "neonLedger",
+      "pulseGlass",
+      "nightEditorial",
+      "launchGlow",
+      "obsidian",
+    ]);
   });
 
   it("drops the gridlines on the presets that trade them for whitespace", () => {
@@ -185,13 +205,31 @@ describe("preset intent", () => {
 
   it("puts the vertical ramp on the gradient looks", () => {
     const ramped = CHART_STYLE_PRESET_IDS.filter((id) => resolve(id).twod.areaGradient !== "none");
-    expect(ramped).toEqual(["gradientRise", "horizon", "pulseGlass"]);
+    expect(ramped).toEqual(["gradientRise", "horizon", "pulseGlass", "launchGlow"]);
   });
 
   it("squares terminal's corners and steps paperCut's series", () => {
     expect(resolve("terminal").cornerRadiusScale).toBe(0);
     expect(resolve("paperCut").seriesLightnessStep).toBeGreaterThan(0);
     expect(resolve("boardroom").seriesLightnessStep).toBe(0);
+  });
+
+  it("gives the dark tier three materially different treatments", () => {
+    const editorial = resolve("nightEditorial");
+    const launch = resolve("launchGlow");
+    const material = resolve("obsidian");
+
+    expect(editorial.twod.labelPill).toBe(false);
+    expect(editorial.threed.roughness).toBeGreaterThan(0.7);
+    expect(editorial.threed.emissiveEdge).toBeLessThan(0.1);
+
+    expect(launch.twod.areaGradient).toBe("vertical");
+    expect(launch.twod.points).toBe(true);
+    expect(launch.threed.emissiveEdge).toBeGreaterThan(0.8);
+
+    expect(material.threed.metalness).toBeGreaterThan(0.8);
+    expect(material.threed.clearcoat).toBeGreaterThan(0.8);
+    expect(material.threed.emissiveEdge).toBe(0);
   });
 });
 

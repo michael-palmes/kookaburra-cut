@@ -3,7 +3,7 @@ import type { SceneTime } from "../toolkit/types";
 import { useClockStore } from "./clock";
 import { useSceneContext } from "./sceneContext";
 
-/** Disables anime.js's requestAnimationFrame main loop so frames advance only when the exporter ticks the clock; call this before a deterministic export run (anime.js v4: `engine.useDefaultMainLoop = false`). */
+/** Disables anime.js's requestAnimationFrame main loop so frames advance only when the exporter ticks the clock; call this before a deterministic export run (anime.js v4: `engine.useDefaultMainLoop = false`). One-way by design: nothing in the editor uses the default loop (the one global timeline is autoplay-off and seek-driven), so no path re-enables it. */
 export function configureDeterministicEngine(): void {
   (engine as unknown as { useDefaultMainLoop: boolean }).useDefaultMainLoop = false;
 }

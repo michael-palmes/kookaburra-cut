@@ -2,8 +2,9 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Color } from "three";
-import { drawEdgeX, droppedBaseline, revealedPoints } from "./chart2dMath";
+import { drawEdgeX, revealedPoints } from "./chart2dMath";
 import { buildAreaSolid, buildRibbonSolid, type ChartPoint2 } from "./geometry3d";
+import { chartTrimRuns } from "./layout";
 import { chartColourAt } from "./palette";
 import { revealAt } from "./reveal";
 import { type ChartRevealSource, chartRevealFn, chartSeriesReveal } from "./revealSource";
@@ -170,33 +171,38 @@ export function Series3D(props: Series3DProps) {
   const at = chartRevealFn(reveal);
   return (
     <>
-      {layout.series.map((series) => {
+      {layout.series.flatMap((series) => {
         const builds = series.points.map((p) => revealAt(at, series.seriesIndex, p.categoryIndex));
+        const grows = builds.map((b) => b.grow);
         const drops = builds.map((b) => b.drop);
-        const points = revealedPoints(
-          series.points,
-          series.baseline,
-          builds.map((b) => b.grow),
-          drops,
-        );
+        const points = revealedPoints(series.points, series.baseline, grows, drops);
+        // The fill boundary rides the same build out of the same origin, so a trimmed edge arrives with the curve above it and a falling series still translates as one band.
+        const baseline = revealedPoints(series.fillBaseline, series.baseline, grows, drops);
         const build = chartSeriesReveal(reveal, series.seriesIndex, layout.categoryCount);
-        return (
+        // An area is one solid between the two clamped curves; a line sweeps a ribbon along each run the trim left standing.
+        const spans: [number, number][] = filled
+          ? [[0, points.length]]
+          : chartTrimRuns(series.points);
+        const solid = {
+          space,
+          filled,
+          colour: chartColourAt(colours, series.seriesIndex, fallbackColour),
+          drawX: build.draw >= 1 ? null : drawEdgeX(points, build.draw),
+          headX: build.headX,
+          headColour: fallbackColour,
+          alpha: build.alpha * opacity,
+          yOffset: layout.stacked ? series.seriesIndex * space.stackEpsilon : 0,
+          shadows,
+          finish,
+        };
+        return spans.map(([from, to]) => (
           <SeriesSolid
-            key={series.seriesIndex}
-            points={points}
-            baseline={droppedBaseline(series.baseline, drops)}
-            space={space}
-            filled={filled}
-            colour={chartColourAt(colours, series.seriesIndex, fallbackColour)}
-            drawX={build.draw >= 1 ? null : drawEdgeX(points, build.draw)}
-            headX={build.headX}
-            headColour={fallbackColour}
-            alpha={build.alpha * opacity}
-            yOffset={layout.stacked ? series.seriesIndex * space.stackEpsilon : 0}
-            shadows={shadows}
-            finish={finish}
+            key={`${series.seriesIndex}-${from}`}
+            points={points.slice(from, to)}
+            baseline={baseline.slice(from, to)}
+            {...solid}
           />
-        );
+        ));
       })}
     </>
   );

@@ -1,6 +1,6 @@
 [package]
 name = "kookaburra-cut"
-version = "0.11.0"
+version = "0.12.0"
 description = "AI driven deterministic animated-video studio"
 authors = ["Michael Palmes"]
 license = "MIT OR Apache-2.0"
@@ -43,7 +43,7 @@ zip = "4"
 walkdir = "2"
 ed25519-dalek = "3"
 getrandom = "0.4"
-base64 = "0.22"
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 # Naming the type of `RunEvent::Opened { urls }` (Open With); already in the lock via tauri.
 url = "2"
 

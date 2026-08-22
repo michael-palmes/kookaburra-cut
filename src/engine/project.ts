@@ -77,6 +77,8 @@ export interface ProjectManifest {
   lighting?: unknown;
   /** The background "Apply everywhere" last stamped across the project, so NEW scenes scaffold with it (`scaffold_scene` reads it; nothing on the render path does). Absent means new scenes follow the theme, and clearing one scene's background in the inspector leaves that scene reverted. */
   appliedBackground?: { background?: ThemeBackground; backdrop?: ThemeBackdrop };
+  /** Transition seeded onto new boundaries. Missing keeps the catalogue crossfade for older projects; null explicitly means a hard cut. */
+  defaultTransition?: TransitionSpec | null;
 }
 
 /** Manifest transitions in outgoing terms: v2 reads them straight off each scene; legacy unversioned files stored each transition on the incoming scene, so they shift one scene earlier, which reproduces the exact pre-v2 timeline. */
@@ -242,14 +244,30 @@ const fixtureAssetUrls = (glob: Record<string, unknown>): Record<string, string>
 
 // Project-relative IMAGE assets, resolved to Vite-fingerprinted URLs that load inside the webview (textures for DeviceMockup screens, etc.); eager so the map is available synchronously during render. Scoped to images: video sources resolve to an absolute path (`resolveAssetPath`) for ffmpeg pre-extraction, not fetched as URLs.
 const assetUrlGlob: Record<string, string> = {
-  ...import.meta.glob<string>("/projects/*/assets/**/*.{png,jpg,jpeg,webp}", {
-    query: "?url",
-    import: "default",
-    eager: true,
-  }),
+  ...import.meta.glob<string>(
+    [
+      "/projects/*/assets/**/*.[pP][nN][gG]",
+      "/projects/*/assets/**/*.[jJ][pP][gG]",
+      "/projects/*/assets/**/*.[jJ][pP][eE][gG]",
+      "/projects/*/assets/**/*.[wW][eE][bB][pP]",
+    ],
+    {
+      query: "?url",
+      import: "default",
+      eager: true,
+    },
+  ),
   ...fixtureAssetUrls(
     import.meta.env.DEV
-      ? import.meta.glob("/fixtures/*/assets/**/*.{png,jpg,jpeg,webp}", { query: "?url" })
+      ? import.meta.glob(
+          [
+            "/fixtures/*/assets/**/*.[pP][nN][gG]",
+            "/fixtures/*/assets/**/*.[jJ][pP][gG]",
+            "/fixtures/*/assets/**/*.[jJ][pP][eE][gG]",
+            "/fixtures/*/assets/**/*.[wW][eE][bB][pP]",
+          ],
+          { query: "?url" },
+        )
       : {},
   ),
 };
@@ -700,7 +718,9 @@ export async function loadProject(
 
   // Sidecar scene documents, keyed off each entry's file stem; missing → undefined.
   const sceneDocs = await Promise.all(
-    manifest.scenes.map((entry) => loadSceneDoc(id, entry.file, sceneDocGlob)),
+    manifest.scenes.map((entry) =>
+      loadSceneDoc(id, entry.file, sceneDocGlob, bundledProjectDir(id)),
+    ),
   );
 
   // Overlap-aware placement: a transition pulls the next scene's start back, shortening the project.

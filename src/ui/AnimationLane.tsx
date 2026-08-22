@@ -45,7 +45,6 @@ export function AnimationLane({
   onDocChanged,
   onSceneDuration,
   label,
-  alwaysOpen = false,
 }: {
   project: LoadedProject;
   sceneIndex: number;
@@ -53,10 +52,8 @@ export function AnimationLane({
   onSceneDuration: (sceneIndex: number, ms: number) => void;
   /** Set when lanes stack (a comparison scene), naming this track. */
   label?: string;
-  /** Stacked lanes stay visible regardless of the Animate-scene toggle. */
-  alwaysOpen?: boolean;
 }) {
-  const open = useCameraEditStore((s) => s.open) || alwaysOpen;
+  const open = useCameraEditStore((s) => s.open);
   const selectedKeyId = useCameraEditStore((s) => s.selectedKeyId);
   const selectedSegment = useCameraEditStore((s) => s.selectedSegment);
   const writeError = useCameraEditStore((s) => s.writeError);

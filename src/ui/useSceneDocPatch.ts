@@ -12,125 +12,341 @@ import {
   writeSceneDoc,
 } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { resolveAimTarget } from "../engine/sceneRig";
 import { rebakeRigBindings } from "../engine/sceneRigConvert";
 import { resolveOverlapMs } from "../engine/sceneTimeline";
+import type { DeviceFloorY } from "../toolkit/device/worldAnchor";
+import type { FormatInfo } from "../toolkit/types";
 
-/** The one scene-document write funnel: `patchDoc` writes a patched copy of the doc, hands the exact written doc to the host for an in-memory patch (no reload, the no-flicker rule), and records one history entry (`history: false` for the text-motion panel's live writes, since its Done records the session); a themeId change flags `reload` because resolution bakes at load; `commitDuration` writes project.json, flips the sidecar to manual mode, and records one compound history entry, then the nonce-only timing refresh. */
+/** The host's in-memory doc patch. Always pass the `sceneFile` the write targeted: the index alone cannot survive the await (see `resolveDocPatchIndex`). */
+export type DocChangedHandler = (
+  sceneIndex: number,
+  doc: SceneDoc,
+  sceneFile?: string,
+  projectId?: string,
+) => void;
+
+export function docPatchMatchesProject(
+  currentProjectId: string,
+  writtenProjectId?: string,
+): boolean {
+  return writtenProjectId === undefined || currentProjectId === writtenProjectId;
+}
+
+/** Manifest module paths may carry a leading `./`; `sceneMountKey` normalises the same way. */
+const normFile = (file: string) => file.replace(/^\.?\//, "");
+
+interface SceneDocPatchQueue {
+  identity: string;
+  latestDoc: SceneDoc | undefined;
+  pending: number;
+  tail: Promise<void>;
+}
+
+const sceneDocPatchQueues = new Map<string, SceneDocPatchQueue>();
+
+function sceneDocPatchQueue(identity: string, doc: SceneDoc | undefined): SceneDocPatchQueue {
+  const existing = sceneDocPatchQueues.get(identity);
+  if (existing) {
+    if (existing.pending === 0) existing.latestDoc = doc;
+    return existing;
+  }
+  const created = { identity, latestDoc: doc, pending: 0, tail: Promise.resolve() };
+  sceneDocPatchQueues.set(identity, created);
+  return created;
+}
+
+function enqueueSceneDocPatch<T>(queue: SceneDocPatchQueue, execute: () => Promise<T>): Promise<T> {
+  queue.pending += 1;
+  const result = queue.tail.then(execute, execute);
+  const tracked = result.then(
+    (value) => {
+      queue.pending -= 1;
+      return value;
+    },
+    (error) => {
+      queue.pending -= 1;
+      throw error;
+    },
+  );
+  queue.tail = tracked.then(
+    () => {},
+    () => {},
+  );
+  return tracked;
+}
+
+export function applySceneDocPatch(
+  doc: SceneDoc,
+  patch: (next: SceneDoc) => void,
+  format?: FormatInfo,
+  floorY?: DeviceFloorY,
+): SceneDoc {
+  const next = structuredClone(doc);
+  patch(next);
+  preserveRemovedBindingPositions(doc, next, format, floorY);
+  if (next.cameraRig) {
+    next.cameraRig = rebakeRigBindings(next.cameraRig as RigDoc, next, format, floorY);
+  }
+  return next;
+}
+
+function applyAbortableSceneDocPatch(
+  doc: SceneDoc,
+  patch: (next: SceneDoc) => unknown,
+  format?: FormatInfo,
+  floorY?: DeviceFloorY,
+): SceneDoc | null {
+  const next = structuredClone(doc);
+  if (patch(next) === false) return null;
+  preserveRemovedBindingPositions(doc, next, format, floorY);
+  if (next.cameraRig) {
+    next.cameraRig = rebakeRigBindings(next.cameraRig as RigDoc, next, format, floorY);
+  }
+  return next;
+}
+
+function preserveRemovedBindingPositions(
+  before: SceneDoc,
+  next: SceneDoc,
+  format?: FormatInfo,
+  floorY?: DeviceFloorY,
+): void {
+  if (!before.cameraRig || !next.cameraRig) return;
+  const beforeById = new Map(before.cameraRig.keys.map((key) => [key.id, key]));
+  const converted = next.cameraRig.keys.some((key) => {
+    const previous = beforeById.get(key.id);
+    return previous?.pose.aim.mode === "object" && key.pose.aim.mode === "point";
+  });
+  if (!converted) return;
+
+  const resolvedBefore = rebakeRigBindings(before.cameraRig as RigDoc, before, format, floorY);
+  const resolvedById = new Map(resolvedBefore.keys.map((key) => [key.id, key]));
+  next.cameraRig = {
+    ...next.cameraRig,
+    keys: next.cameraRig.keys.map((key) => {
+      const previous = beforeById.get(key.id);
+      const resolved = resolvedById.get(key.id);
+      if (
+        previous?.pose.aim.mode !== "object" ||
+        key.pose.aim.mode !== "point" ||
+        resolveAimTarget(previous.pose.aim.id, next, format, floorY) !== null ||
+        resolved?.pose.aim.mode !== "object"
+      ) {
+        return key;
+      }
+      return {
+        ...key,
+        pose: { ...key.pose, aim: { mode: "point" as const, at: [...resolved.pose.aim.at] } },
+      };
+    }),
+  };
+}
+
+/** Which slot an awaited doc write must patch. A write is a real IPC round trip, so an insert or reorder that lands first shifts every later scene and the captured index now names someone else's scene: the FILE is the identity, exactly as it is for mount keys. Null drops the patch, the scene left the project mid-write. A caller with no file keeps the old bounds-checked behaviour. */
+export function resolveDocPatchIndex(
+  sceneFiles: readonly string[],
+  sceneIndex: number,
+  sceneFile?: string,
+): number | null {
+  if (sceneFile === undefined) {
+    return sceneIndex >= 0 && sceneIndex < sceneFiles.length ? sceneIndex : null;
+  }
+  const wanted = normFile(sceneFile);
+  const here = sceneFiles[sceneIndex];
+  if (here !== undefined && normFile(here) === wanted) return sceneIndex;
+  const moved = sceneFiles.findIndex((f) => normFile(f) === wanted);
+  return moved >= 0 ? moved : null;
+}
+
+/** The one scene-document write funnel: `patchDoc` writes a patched copy of the doc, hands the exact written doc AND its file to the host for an in-memory patch (no reload, the no-flicker rule), and records one history entry (`history: false` for the text-motion panel's live writes, since its Done records the session); a themeId change flags `reload` because resolution bakes at load; `commitDuration` writes project.json, flips the sidecar to manual mode, and records one compound history entry, then the nonce-only timing refresh. */
 export function useSceneDocPatch(
   project: LoadedProject,
   sceneIndex: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
   onTimingChanged: () => void,
+  format?: FormatInfo,
+  floorY?: DeviceFloorY,
 ) {
   const [error, setError] = useState<string | null>(null);
   const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const scene = project.slots[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
+  const queueIdentity = `${project.id}\u0000${sceneFile ?? sceneIndex}`;
+  const patchQueue = sceneDocPatchQueue(queueIdentity, doc);
 
-  /** Write a patched copy of the doc, re-sync duration when asked, and hand the exact written doc to the host for an in-memory patch (no reload, the flicker fix). */
+  /** Write a patched copy of the doc, re-sync duration when asked, and report whether the complete operation succeeded. */
+  async function patchDocResult(
+    patch: (next: SceneDoc) => unknown,
+    opts: { resync?: boolean; history?: string | false } = {},
+  ): Promise<boolean> {
+    if (!patchQueue.latestDoc || !sceneFile || !slug || (opts.resync && !scene)) return false;
+    const execute = async (): Promise<boolean> => {
+      const current = patchQueue.latestDoc;
+      if (!current) return false;
+      setError(null);
+      try {
+        const before = structuredClone(current);
+        const next = applyAbortableSceneDocPatch(current, patch, format, floorY);
+        if (!next) return false;
+        // Object-bound camera aims refresh in the SAME write, so moving a device and the keys
+        // following it are one undo. The engine only ever READS bindings; this is the editor's half.
+        const changes: HistoryChange[] = [];
+        let resyncFailed = false;
+        await writeSceneDoc(slug, sceneFile, next);
+        patchQueue.latestDoc = next;
+        onDocChanged(sceneIndex, next, sceneFile, project.id);
+        changes.push({
+          kind: "sceneDoc",
+          slug,
+          file: sceneFile,
+          sceneIndex,
+          before,
+          after: structuredClone(next),
+          // themeId resolution bakes at load; replay must nonce-reload.
+          reload: before.themeId !== next.themeId,
+        });
+        if (opts.resync) {
+          const manifestBefore = await readProjectManifestSnapshot(slug);
+          const { wrote, clampedDoc } = await resyncFollowMediaDuration(
+            slug,
+            sceneIndex,
+            next,
+            scene.durationMs,
+            sceneFile,
+          ).catch((e) => {
+            console.warn("[scene-doc] duration re-sync failed:", e);
+            setError(`Saved, but the scene length didn't re-sync: ${String(e)}`);
+            resyncFailed = true;
+            return { wrote: false, clampedDoc: null };
+          });
+          if (wrote) {
+            onTimingChanged();
+            changes.push({
+              kind: "manifest",
+              slug,
+              before: manifestBefore,
+              after: await readProjectManifestSnapshot(slug),
+              reload: false,
+            });
+          }
+          if (clampedDoc) {
+            patchQueue.latestDoc = clampedDoc;
+            onDocChanged(sceneIndex, clampedDoc, sceneFile, project.id);
+            changes.push({
+              kind: "sceneDoc",
+              slug,
+              file: sceneFile,
+              sceneIndex,
+              before: structuredClone(next),
+              after: structuredClone(clampedDoc),
+            });
+          }
+        }
+        // history === false: the text-motion panel's live writes; its Done records one session entry, Cancel already restores and must not be undoable noise.
+        if (opts.history !== false) {
+          pushHistory({ label: opts.history ?? "scene edit", changes });
+        }
+        return !resyncFailed;
+      } catch (e) {
+        setError(String(e));
+        return false;
+      }
+    };
+    return enqueueSceneDocPatch(patchQueue, execute);
+  }
+
+  /** Preserve the existing fire-and-forget-compatible API for callers that do not need a result. */
   async function patchDoc(
     patch: (next: SceneDoc) => void,
     opts: { resync?: boolean; history?: string | false } = {},
   ): Promise<void> {
-    if (!doc || !sceneFile) return;
-    setError(null);
-    try {
-      const before = structuredClone(doc);
-      const next = structuredClone(doc);
-      patch(next);
-      // Object-bound camera aims refresh in the SAME write, so moving a device and the keys
-      // following it are one undo. The engine only ever READS bindings; this is the editor's half.
-      if (next.cameraRig) {
-        next.cameraRig = rebakeRigBindings(next.cameraRig as RigDoc, next);
-      }
-      if (!slug) return;
-      const changes: HistoryChange[] = [];
-      await writeSceneDoc(slug, sceneFile, next);
-      onDocChanged(sceneIndex, next);
-      changes.push({
-        kind: "sceneDoc",
-        slug,
-        file: sceneFile,
-        sceneIndex,
-        before,
-        after: structuredClone(next),
-        // themeId resolution bakes at load; replay must nonce-reload.
-        reload: before.themeId !== next.themeId,
-      });
-      if (opts.resync) {
-        const manifestBefore = await readProjectManifestSnapshot(slug);
-        const { wrote, clampedDoc } = await resyncFollowMediaDuration(
-          slug,
-          sceneIndex,
-          next,
-          scene.durationMs,
-          sceneFile,
-        ).catch((e) => {
-          console.warn("[scene-doc] duration re-sync failed:", e);
-          setError(`Saved, but the scene length didn't re-sync: ${String(e)}`);
-          return { wrote: false, clampedDoc: null };
-        });
-        if (wrote) {
-          onTimingChanged();
-          changes.push({
-            kind: "manifest",
-            slug,
-            before: manifestBefore,
-            after: await readProjectManifestSnapshot(slug),
-            reload: false,
-          });
-        }
-        if (clampedDoc) {
-          onDocChanged(sceneIndex, clampedDoc);
-          changes.push({
-            kind: "sceneDoc",
-            slug,
-            file: sceneFile,
-            sceneIndex,
-            before: structuredClone(next),
-            after: structuredClone(clampedDoc),
-          });
-        }
-      }
-      // history === false: the text-motion panel's live writes; its Done records one session entry, Cancel already restores and must not be undoable noise.
-      if (opts.history !== false) {
-        pushHistory({ label: opts.history ?? "scene edit", changes });
-      }
-    } catch (e) {
-      setError(String(e));
-    }
+    await patchDocResult(patch, opts);
   }
 
   /** Commit a drag/gesture as ONE history entry: writes `patch` applied to `baseline` (the doc snapshotted at drag start) and records before=baseline, after. Live ticks during the drag go through `patchDoc(..., { history: false })`; this reconciles the final value and records the single undo step on release. */
+  async function commitFromBaselineResult(
+    baseline: SceneDoc,
+    patch: (next: SceneDoc) => unknown,
+  ): Promise<boolean> {
+    if (!slug || !sceneFile) return false;
+    const execute = async (): Promise<boolean> => {
+      setError(null);
+      try {
+        const after = applyAbortableSceneDocPatch(baseline, patch, format, floorY);
+        if (!after) return false;
+        await writeSceneDoc(slug, sceneFile, after);
+        patchQueue.latestDoc = after;
+        onDocChanged(sceneIndex, after, sceneFile, project.id);
+        pushHistory({
+          label: "scene edit",
+          changes: [
+            {
+              kind: "sceneDoc",
+              slug,
+              file: sceneFile,
+              sceneIndex,
+              before: baseline,
+              after: structuredClone(after),
+              reload: baseline.themeId !== after.themeId,
+            },
+          ],
+        });
+        return true;
+      } catch (e) {
+        setError(String(e));
+        return false;
+      }
+    };
+    return enqueueSceneDocPatch(patchQueue, execute);
+  }
+
   async function commitFromBaseline(
     baseline: SceneDoc,
     patch: (next: SceneDoc) => void,
   ): Promise<void> {
-    if (!slug || !sceneFile) return;
-    setError(null);
-    try {
-      const after = structuredClone(baseline);
-      patch(after);
-      await writeSceneDoc(slug, sceneFile, after);
-      onDocChanged(sceneIndex, after);
-      pushHistory({
-        label: "scene edit",
-        changes: [
-          {
-            kind: "sceneDoc",
-            slug,
-            file: sceneFile,
-            sceneIndex,
-            before: baseline,
-            after: structuredClone(after),
-            reload: baseline.themeId !== after.themeId,
-          },
-        ],
-      });
-    } catch (e) {
-      setError(String(e));
-    }
+    await commitFromBaselineResult(baseline, patch);
+  }
+
+  /** Finalise a live edit against the queued latest document while recording the drag-start document as the single undo baseline. */
+  async function commitRebasedFromBaselineResult(
+    baseline: SceneDoc,
+    patch: (next: SceneDoc) => unknown,
+    history = "scene edit",
+  ): Promise<boolean> {
+    if (!slug || !sceneFile) return false;
+    const execute = async (): Promise<boolean> => {
+      const current = patchQueue.latestDoc;
+      if (!current) return false;
+      setError(null);
+      try {
+        const after = applyAbortableSceneDocPatch(current, patch, format, floorY);
+        if (!after) return false;
+        await writeSceneDoc(slug, sceneFile, after);
+        patchQueue.latestDoc = after;
+        onDocChanged(sceneIndex, after, sceneFile, project.id);
+        pushHistory({
+          label: history,
+          changes: [
+            {
+              kind: "sceneDoc",
+              slug,
+              file: sceneFile,
+              sceneIndex,
+              before: structuredClone(baseline),
+              after: structuredClone(after),
+              reload: baseline.themeId !== after.themeId,
+            },
+          ],
+        });
+        return true;
+      } catch (e) {
+        setError(String(e));
+        return false;
+      }
+    };
+    return enqueueSceneDocPatch(patchQueue, execute);
   }
 
   async function commitDuration(ms: number) {
@@ -150,19 +366,22 @@ export function useSceneDocPatch(
     error,
     setError,
     patchDoc,
+    patchDocResult,
     commitFromBaseline,
+    commitFromBaselineResult,
+    commitRebasedFromBaselineResult,
     commitDuration,
   };
 }
 
 /** The hook-free scene-length writer (shared with the playback bar's right-click path): project.json write + the manual-mode flip + any shrink-fit of overhanging keyframe tracks as ONE compound history entry, then the nonce-only timing refresh; a shrink also lands the playhead just before the scene's new safe end. Throws so each caller surfaces errors its own way. */
-export async function commitSceneDuration(
+async function commitSceneDurationNow(
   project: LoadedProject,
   sceneIndex: number,
   ms: number,
-  onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
+  onDocChanged: DocChangedHandler,
   onTimingChanged: () => void,
-): Promise<void> {
+): Promise<SceneDoc | undefined> {
   const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
@@ -171,6 +390,7 @@ export async function commitSceneDuration(
   const nextSlot = project.slots[sceneIndex + 1];
   const shrinking = slot !== undefined && ms < slot.durationMs;
   const changes: HistoryChange[] = [];
+  let writtenDoc: SceneDoc | undefined;
   const manifestBefore = slug ? await readProjectManifestSnapshot(slug) : null;
   await invoke("update_project_scene", { slug, index: sceneIndex, durationMs: ms });
   if (slug && manifestBefore !== null) {
@@ -200,7 +420,8 @@ export async function commitSceneDuration(
     if (dirty) {
       const before = structuredClone(doc);
       await writeSceneDoc(slug, sceneFile, next);
-      onDocChanged(sceneIndex, next);
+      writtenDoc = next;
+      onDocChanged(sceneIndex, next, sceneFile, project.id);
       changes.push({
         kind: "sceneDoc",
         slug,
@@ -227,4 +448,36 @@ export async function commitSceneDuration(
     }
   }
   onTimingChanged();
+  return writtenDoc;
+}
+
+export async function commitSceneDuration(
+  project: LoadedProject,
+  sceneIndex: number,
+  ms: number,
+  onDocChanged: DocChangedHandler,
+  onTimingChanged: () => void,
+): Promise<SceneDoc | undefined> {
+  const sceneFile = project.sceneFiles[sceneIndex];
+  const identity = `${project.id}\u0000${sceneFile ?? sceneIndex}`;
+  const queue = sceneDocPatchQueue(identity, project.sceneDocs[sceneIndex]);
+  return enqueueSceneDocPatch(queue, async () => {
+    const queuedProject = queue.latestDoc
+      ? {
+          ...project,
+          sceneDocs: project.sceneDocs.map((candidate, index) =>
+            index === sceneIndex ? queue.latestDoc : candidate,
+          ),
+        }
+      : project;
+    const written = await commitSceneDurationNow(
+      queuedProject,
+      sceneIndex,
+      ms,
+      onDocChanged,
+      onTimingChanged,
+    );
+    if (written) queue.latestDoc = written;
+    return written;
+  });
 }

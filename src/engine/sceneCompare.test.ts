@@ -24,8 +24,20 @@ const compareDoc = (compare: SceneDoc["compare"]): SceneDoc =>
   docWith({
     themeId: "base-theme",
     devices: [
-      { id: "d1", model: "iphone-17-pro", media: { src: "assets/before.mp4", kind: "video" } },
-      { id: "d2", model: "iphone-17-pro", media: { src: "assets/before.mp4", kind: "video" } },
+      {
+        id: "d1",
+        model: "iphone-17-pro",
+        colour: "silver",
+        shadow: "soft",
+        media: { src: "assets/before.mp4", kind: "video" },
+      },
+      {
+        id: "d2",
+        model: "iphone-17-pro",
+        colour: "graphite",
+        shadow: "long",
+        media: { src: "assets/before.mp4", kind: "video" },
+      },
     ] as SceneDoc["devices"],
     compare,
   });
@@ -195,22 +207,30 @@ describe("deriveCompareBDoc", () => {
     expect(b?.compare).toBeDefined();
   });
 
-  it("applies side B's theme, background, lighting and per-device media", () => {
+  it("applies side B's theme, staging, lighting, media and narrow device appearance", () => {
     const b = deriveCompareBDoc(
       compareDoc({
         b: {
           themeId: "after-theme",
           background: { type: "color", color: "#123456" } as NonNullable<SceneDoc["background"]>,
+          backdrop: { type: "floor", color: "#654321" },
           lighting: { exposure: 1.2 } as NonNullable<SceneDoc["lighting"]>,
           media: { d2: { src: "assets/after.mp4", kind: "video" } },
+          deviceAppearance: {
+            d1: { colour: "blue", shadow: "none" },
+            missing: { colour: "ignored" },
+          },
         },
       }),
     );
     expect(b?.themeId).toBe("after-theme");
     expect(b?.background).toEqual({ type: "color", color: "#123456" });
+    expect(b?.backdrop).toEqual({ type: "floor", color: "#654321" });
     expect(b?.lighting).toEqual({ exposure: 1.2 });
     expect(b?.devices?.[0].media?.src).toBe("assets/before.mp4");
     expect(b?.devices?.[1].media?.src).toBe("assets/after.mp4");
+    expect(b?.devices?.[0]).toMatchObject({ colour: "blue", shadow: "none" });
+    expect(b?.devices?.[1]).toMatchObject({ colour: "graphite", shadow: "long" });
   });
 
   it("leaves the base doc untouched (a fresh clone)", () => {
@@ -218,6 +238,45 @@ describe("deriveCompareBDoc", () => {
     const before = structuredClone(base);
     deriveCompareBDoc(base);
     expect(base).toEqual(before);
+  });
+
+  it("inherits scene images without aliasing them or adding side-specific overrides", () => {
+    const base = compareDoc({});
+    base.images = [
+      {
+        id: "hero",
+        src: "assets/hero.png",
+        host: "stage",
+        stage: { position: [0, 0, 0], size: 1.5, rotationDeg: [0, 12, 0] },
+        overlay: {
+          position: [0.5, -0.5],
+          size: 0.2,
+          rotationDeg: 4,
+          shape: "none",
+          layer: "above",
+        },
+      },
+    ];
+
+    const b = deriveCompareBDoc(base);
+
+    expect(b?.images).toEqual(base.images);
+    expect(b?.images).not.toBe(base.images);
+    expect(b?.images?.[0]).not.toBe(base.images[0]);
+  });
+
+  it("inherits managed project-image icons without aliasing the managed block", () => {
+    const base = compareDoc({});
+    base.managedText = {
+      items: [{ key: "mark", type: "icon", icon: "assets/managed-mark.png" }],
+    };
+
+    const b = deriveCompareBDoc(base);
+
+    expect(b?.managedText).toEqual(base.managedText);
+    expect(b?.managedText).not.toBe(base.managedText);
+    expect(b?.managedText?.items[0]).not.toBe(base.managedText.items[0]);
+    expect(b?.managedText?.items[0]?.icon).toBe("assets/managed-mark.png");
   });
 });
 
@@ -228,20 +287,25 @@ describe("resolveCompareFrame", () => {
 
   it("resolves the active scene's spec with its side states", () => {
     const resolved: Resolved = { active: [{ index: 1, localMs: 500 }] };
-    const frame = resolveCompareFrame([null, spec], [stateA, stateA], [null, stateB], resolved);
-    expect(frame).toEqual({ index: 1, value: 0.5, spec, stateA, stateB });
+    const frames = resolveCompareFrame([null, spec], [stateA, stateA], [null, stateB], resolved);
+    expect(frames).toEqual([{ index: 1, value: 0.5, spec, stateA, stateB }]);
   });
 
-  it("null for plain scenes and for transition frames (two active scenes)", () => {
+  it("empty for plain scenes; transition frames resolve each comparing side at its own local time", () => {
     const solo: Resolved = { active: [{ index: 0, localMs: 0 }] };
-    expect(resolveCompareFrame([null, spec], null, null, solo)).toBeNull();
+    expect(resolveCompareFrame([null, spec], null, null, solo)).toEqual([]);
     const transition: Resolved = {
       active: [
         { index: 0, localMs: 900 },
         { index: 1, localMs: 100 },
       ],
     };
-    expect(resolveCompareFrame([null, spec], null, null, transition)).toBeNull();
+    const frames = resolveCompareFrame([null, spec], null, null, transition);
+    expect(frames).toHaveLength(1);
+    expect(frames[0].index).toBe(1);
+    expect(frames[0].value).toBe(0.5);
+    const both = resolveCompareFrame([spec, spec], null, null, transition);
+    expect(both.map((f) => f.index)).toEqual([0, 1]);
   });
 });
 

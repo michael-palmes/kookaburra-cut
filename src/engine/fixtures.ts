@@ -13,6 +13,7 @@ export interface FixtureInstance {
 }
 
 const AXIS_INDEX = { x: 0, y: 1, z: 2 } as const;
+const NO_ANIMATED_LIGHT_IDS: ReadonlySet<string> = new Set();
 
 /** djb2 over the fixture id: the jitter seed. EXPORT CONTRACT (a different hash re-rolls every jittered corridor). */
 export function fixtureSeed(id: string): number {
@@ -85,6 +86,7 @@ export interface FixturePlanEntry {
 export function resolveFixturePlan(
   fixtures: readonly FixtureSpec[] | undefined,
   lightBudget: number,
+  animatedLightIds: ReadonlySet<string> = NO_ANIMATED_LIGHT_IDS,
 ): { entries: FixturePlanEntry[]; droppedInstances: number; thinnedLights: number } {
   const entries: FixturePlanEntry[] = [];
   let remaining = Math.max(0, lightBudget);
@@ -95,7 +97,7 @@ export function resolveFixturePlan(
     const { instances, dropped } = expandFixture(spec);
     droppedInstances += dropped;
     let lights: boolean[];
-    if (spec.lightIntensity > 0) {
+    if (spec.lightIntensity > 0 || animatedLightIds.has(spec.id)) {
       lights = assignFixtureLights(instances.length, remaining);
       const used = lights.filter(Boolean).length;
       thinnedLights += instances.length - used;

@@ -4,6 +4,48 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-08-07
+
+### Added
+
+- One gizmo system for the stage. Objects, devices and staged charts take 3D
+  handles; text, hero charts and decorations take a 2D layer with move, corner
+  resize, rotate and alignment guides. Sections outline on hover and select on
+  a canvas click, and the camera tools stand down over a handle, with cmd,
+  ctrl or option to keep the camera instead. Text blocks gain a rotation.
+- A template browser built to scale past a hundred templates: a category rail
+  with live counts, search, a safe or bold tier chip and hover-cycled preview
+  cards, with Blank pinned first.
+- Ten chart colour schemes, a per-chart font with a project-wide default, and
+  value labels that nudge up or down and can sit on a coloured chip.
+- Gradient, image and transparent fills for overlay panels, and text
+  decorations with their own colour, face, font and line spacing.
+- A plain-English warning before the camera switches to Free mode, with Cancel
+  and a "Don't show this again" tick.
+
+### Changed
+
+- Live captures and scene thumbnails render in a hidden background window, so
+  a terminal capture or a wizard's thumbnail grid never seizes the editor's
+  canvas, playhead or selection. Thumbnails fill in as they land, and stand
+  down during playback and exports.
+- Adding a keyframe selects the new diamond and scrubs onto it, from every add
+  path and on every timeline lane.
+- Edit data leads the chart's Graph tab, and scaffolded decorations no longer
+  seed a starter chip.
+- The app ships lighter: dev-only spikes and preview labs left the bundled
+  project tree, taking it from 19 MB to 8.9 MB.
+
+### Fixed
+
+- Duplicating a scene no longer cross-wires text between scenes. Scene identity
+  comes from the manifest file rather than the id inside the scene source, ids
+  are minted unique, and projects carrying duplicates heal themselves on load.
+- Billboarded 3D chart labels render again, and 3D bar value labels anchor off
+  the mark end.
+- Image posters keep their alpha, titles recentre under a header icon, and
+  wrapped bullet lines hang under their text.
+
 ## [0.11.0] - 2026-08-06
 
 ### Added

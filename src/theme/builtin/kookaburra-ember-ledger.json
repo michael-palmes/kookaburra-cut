@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "id": "kookaburra-ember-ledger",
+  "name": "Ember Ledger",
+  "mode": "dark",
+  "catalogue": {
+    "category": "digital-assets",
+    "useLabel": "Retail digital asset launches",
+    "tags": ["digital-assets", "retail", "exchange", "market", "ember", "safe"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#19130e",
+    "text": "#fff4e8",
+    "accent": "#ffb36b",
+    "muted": "#f1ddc8"
+  },
+  "chartColors": ["#ffb36b", "#ffe08a", "#65c8b0", "#a8d1ff", "#d99cff", "#ffb0bc"],
+  "typography": {
+    "headline": { "family": "Barlow Condensed", "weight": 600 },
+    "body": { "family": "Libre Franklin", "weight": 600 },
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 190, "base": 470, "slow": 860 },
+    "easings": { "standard": "outQuad", "emphasized": "outCubic" }
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 45,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "hex-grid",
+    "colors": ["#19130e", "#503b28", "#7a5933"],
+    "speed": 0.35,
+    "params": {
+      "density": 7,
+      "lineWeight": 0.5,
+      "glow": 0.75,
+      "softness": 0.65,
+      "cadence": 0.8
+    },
+    "preset": "p7"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -28,
+      "elevationDeg": 44,
+      "intensity": 1.9,
+      "color": "#ffd0a6"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 130,
+        "elevationDeg": 18,
+        "intensity": 0.85,
+        "color": "#ff8a3d"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 32,
+        "intensity": 0.45,
+        "color": "#5d87a8"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

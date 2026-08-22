@@ -1,0 +1,68 @@
+{
+  "version": 2,
+  "id": "kookaburra-obsidian-optic",
+  "name": "Obsidian Optic",
+  "mode": "dark",
+  "catalogue": {
+    "category": "quiet-technology",
+    "useLabel": "Premium technical reveals",
+    "tags": ["premium", "technical", "product", "dark", "cinematic", "reveal"],
+    "stage": "lighting-only",
+    "order": 20
+  },
+  "colors": {
+    "background": "#04100f",
+    "text": "#f5fbfa",
+    "accent": "#5eead4",
+    "muted": "#d9e8e5"
+  },
+  "chartColors": ["#5eead4", "#a8c7ff", "#c4a7ff", "#ffd166", "#ffb3c1", "#6fd8a8"],
+  "typography": {
+    "headline": { "family": "Barlow Condensed", "weight": 600 },
+    "body": "Inter",
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 160, "base": 420, "slow": 800 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 35,
+    "stagger": "char",
+    "startScale": 0.84,
+    "shine": true
+  },
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#04100f", "#2d6b63"],
+    "speed": 0.4,
+    "params": { "thickness": 0.65, "radius": 0.25, "innerShape": 0.7, "noiseScale": 2.8 },
+    "preset": "p6"
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -25,
+      "elevationDeg": 45,
+      "intensity": 1.8,
+      "color": "#d8fff8"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 140,
+        "elevationDeg": 20,
+        "intensity": 0.9,
+        "color": "#4ec5b2"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 35,
+        "intensity": 0.55,
+        "color": "#8da6ff"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

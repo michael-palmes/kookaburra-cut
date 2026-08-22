@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback } from "react";
 import { type CompareTrackDoc, useCompareEditStore } from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
@@ -6,7 +6,7 @@ import { useCompareTrackDoc } from "./compareTrackDoc";
 import { clearOtherLaneSelections } from "./laneSelection";
 import { TrackLane } from "./TrackLane";
 
-/** The comparison divider's timeline lane: a thin wrapper binding the generic `TrackLane` to the compare edit store and doc funnel (the AnimationLane pattern). No armed tools (the divider is one channel, the diamonds are the gesture surface), so bare keys pass through; the lane mounts (and opens) for every comparison scene, stacked above the camera or stack lane with its own label and colour. */
+/** The comparison divider's timeline lane: a thin wrapper binding the generic `TrackLane` to the compare edit store and doc funnel (the AnimationLane pattern). No armed tools (the divider is one channel, the diamonds are the gesture surface), so bare keys pass through; the lane follows the scene's master animation visibility, stacked above the camera or stack lane with its own label and colour. */
 
 const getSelection = () => {
   const s = useCompareEditStore.getState();
@@ -25,15 +25,16 @@ const onToolKey = () => false;
 export function CompareAnimationLane({
   project,
   sceneIndex,
+  open,
   onDocChanged,
   onSceneDuration,
 }: {
   project: LoadedProject;
   sceneIndex: number;
+  open: boolean;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onSceneDuration: (sceneIndex: number, ms: number) => void;
 }) {
-  const open = useCompareEditStore((s) => s.open);
   const selectedKeyId = useCompareEditStore((s) => s.selectedKeyId);
   const selectedSegment = useCompareEditStore((s) => s.selectedSegment);
   const writeError = useCompareEditStore((s) => s.writeError);
@@ -42,10 +43,6 @@ export function CompareAnimationLane({
     sceneIndex,
     onDocChanged,
   );
-  useEffect(() => {
-    useCompareEditStore.getState().setOpen(true);
-    return () => useCompareEditStore.getState().setOpen(false);
-  }, []);
   const onDuration = useCallback(
     (ms: number) => onSceneDuration(sceneIndex, ms),
     [onSceneDuration, sceneIndex],

@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useState } from "react";
 import { revealApp } from "../engine/reveal";
+import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { ExportView } from "./ExportView";
 import { ImportFlow } from "./import/ImportFlow";
 import "./packs.css";
@@ -12,6 +13,7 @@ type PacksTarget = { mode: "export" } | { mode: "import"; path?: string | null; 
 
 /** The packs window shell. Export and import are separate flows sharing one window, chosen by the target the native side stashed before opening us. */
 export function PacksApp() {
+  useNativeTextUndo();
   const [target, setTarget] = useState<PacksTarget | null>(null);
   const [dropError, setDropError] = useState<string | null>(null);
 

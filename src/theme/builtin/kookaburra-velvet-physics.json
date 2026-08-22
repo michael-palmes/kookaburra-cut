@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "id": "kookaburra-velvet-physics",
+  "name": "Velvet Physics",
+  "mode": "dark",
+  "catalogue": {
+    "category": "sensory-and-surreal",
+    "useLabel": "Premium creative launches",
+    "tags": ["premium", "creative", "launch", "sensory", "surreal", "luxury"],
+    "stage": "lighting-only",
+    "order": 10
+  },
+  "colors": {
+    "background": "#230818",
+    "text": "#fff4df",
+    "accent": "#d9879b",
+    "muted": "#d8c4b3"
+  },
+  "chartColors": ["#d9879b", "#d2a85f", "#8c82c9", "#6eafa8", "#c96f5d", "#9caf6d"],
+  "typography": {
+    "headline": { "family": "Cormorant Garamond", "weight": 600 },
+    "body": "Open Sans",
+    "scale": 1.333
+  },
+  "motion": {
+    "durations": { "fast": 200, "base": 520, "slow": 940 },
+    "easings": { "standard": "outCubic", "emphasized": "outExpo" }
+  },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 0,
+    "startScale": 0.96
+  },
+  "background": {
+    "type": "image",
+    "src": "kookaburra:velvet-physics",
+    "parallax": 0.015
+  },
+  "lighting": {
+    "key": {
+      "azimuthDeg": -25,
+      "elevationDeg": 42,
+      "intensity": 1.7,
+      "color": "#ffd9c2"
+    },
+    "fills": [
+      {
+        "azimuthDeg": 135,
+        "elevationDeg": 20,
+        "intensity": 0.75,
+        "color": "#c86f89"
+      },
+      {
+        "azimuthDeg": 165,
+        "elevationDeg": 35,
+        "intensity": 0.45,
+        "color": "#d5b56b"
+      }
+    ],
+    "ambient": 0.3
+  }
+}

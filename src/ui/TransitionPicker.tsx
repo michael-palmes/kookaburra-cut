@@ -39,6 +39,7 @@ import {
   vertexShader300,
 } from "../engine/transitionShader";
 import { ColourPicker } from "./colour/ColourPicker";
+import { TransitionWriteQueue } from "./transitionWriteQueue";
 import { useEscapeClose } from "./useEscapeClose";
 
 function sceneStem(project: LoadedProject, i: number): string {
@@ -325,9 +326,21 @@ export function TransitionModal({
 }) {
   const existing = project.slots[boundaryIndex + 1]?.transitionIn ?? null;
   const [draft, setDraft] = useState<TransitionSpec | null>(existing ? { ...existing } : null);
-  useEscapeClose(onCancel);
+  useEscapeClose(onCancel, !embedded);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
+  const [writeQueue] = useState(() => new TransitionWriteQueue());
+  const applyingAll = useRef(false);
+
+  const persistDraft = (next: TransitionSpec | null) => {
+    if (applyingAll.current) return;
+    setDraft(next);
+    setConfirmAll(false);
+    setError(null);
+    const write = writeQueue.enqueue(() => onApply(next));
+    void write.catch((cause) => setError(String(cause)));
+  };
 
   const { fsUrlA, fsUrlB } = useMemo(() => {
     const a = thumbs[sceneStem(project, boundaryIndex)];
@@ -340,14 +353,14 @@ export function TransitionModal({
   const meta = draft ? TRANSITION_CATALOG.find((m) => m.type === draft.type) : null;
 
   const pick = (type: TransitionType | null) => {
-    setError(null);
     if (type === null) {
-      setDraft(null);
+      persistDraft(null);
       return;
     }
     const m = TRANSITION_CATALOG.find((mm) => mm.type === type);
     if (!m) return;
-    setDraft((prev) => ({
+    const prev = draft;
+    persistDraft({
       type,
       durationMs: prev?.durationMs ?? m.defaultDurationMs,
       ...(m.needsDirection && prev?.direction ? { direction: prev.direction } : {}),
@@ -355,21 +368,9 @@ export function TransitionModal({
       // A fresh transition defaults to the smooth feel; an existing spec keeps its stored ease (absent = linear, the byte contract).
       ...(prev ? (prev.ease ? { ease: prev.ease } : {}) : { ease: "smooth" as TransitionEase }),
       ...(m.presets ?? {}),
-    }));
+    });
   };
 
-  const apply = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await onApply(draft);
-    } catch (e) {
-      setError(String(e));
-      setBusy(false);
-    }
-  };
-
-  const [confirmAll, setConfirmAll] = useState(false);
   const applyAll = async () => {
     if (!onApplyAll) return;
     if (!confirmAll) {
@@ -377,12 +378,16 @@ export function TransitionModal({
       return;
     }
     setConfirmAll(false);
+    applyingAll.current = true;
     setBusy(true);
     setError(null);
     try {
+      await writeQueue.settle();
       await onApplyAll(draft);
     } catch (e) {
       setError(String(e));
+    } finally {
+      applyingAll.current = false;
       setBusy(false);
     }
   };
@@ -397,7 +402,7 @@ export function TransitionModal({
       setDurationText(durationSeconds);
       return;
     }
-    setDraft({ ...draft, durationMs: Math.round(seconds * 1000) });
+    persistDraft({ ...draft, durationMs: Math.round(seconds * 1000) });
   };
 
   const body = (
@@ -474,7 +479,7 @@ export function TransitionModal({
                         aria-pressed={active}
                         aria-label={opt.label}
                         title={opt.label}
-                        onClick={() => setDraft({ ...draft, direction: opt.value })}
+                        onClick={() => persistDraft({ ...draft, direction: opt.value })}
                       >
                         <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true">
                           <path
@@ -502,9 +507,9 @@ export function TransitionModal({
                       onClick={() => {
                         if (opt.id === "linear") {
                           const { ease: _drop, ...rest } = draft;
-                          setDraft(rest);
+                          persistDraft(rest);
                         } else {
-                          setDraft({ ...draft, ease: opt.id });
+                          persistDraft({ ...draft, ease: opt.id });
                         }
                       }}
                     >
@@ -522,7 +527,7 @@ export function TransitionModal({
                     aria-pressed={!draft.color}
                     onClick={() => {
                       const { color: _drop, ...rest } = draft;
-                      setDraft(rest);
+                      persistDraft(rest);
                     }}
                   >
                     Theme background
@@ -534,9 +539,9 @@ export function TransitionModal({
                     defaultValue={themeIn.colors.background}
                     onReset={() => {
                       const { color: _drop, ...rest } = draft;
-                      setDraft(rest);
+                      persistDraft(rest);
                     }}
-                    onCommit={(hex) => setDraft({ ...draft, color: hex })}
+                    onCommit={(hex) => persistDraft({ ...draft, color: hex })}
                   />
                 </span>
               )}
@@ -551,17 +556,15 @@ export function TransitionModal({
 
   const actions = (
     <>
-      <button type="button" className="btn" onClick={onCancel} disabled={busy}>
-        Cancel
-      </button>
       {onApplyAll && (
         <button type="button" className="btn" onClick={applyAll} disabled={busy}>
-          {confirmAll ? `Set all ${project.slots.length - 1} transitions?` : "Apply to all"}
+          {busy
+            ? "Applying…"
+            : confirmAll
+              ? `Set all ${project.slots.length - 1} transitions?`
+              : "Apply to all"}
         </button>
       )}
-      <button type="button" className="btn primary" onClick={apply} disabled={busy}>
-        {busy ? "Applying…" : "Apply"}
-      </button>
     </>
   );
 
@@ -569,7 +572,7 @@ export function TransitionModal({
     return (
       <>
         <div className="inspector-drill-body transition-embedded-body">{body}</div>
-        <div className="inspector-drill-actions">{actions}</div>
+        {onApplyAll && <div className="inspector-drill-actions">{actions}</div>}
       </>
     );
   return (

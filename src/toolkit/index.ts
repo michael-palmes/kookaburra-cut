@@ -1,11 +1,11 @@
-/** `@kookaburra/toolkit`, the SHIPPED authoring surface; scene files import everything from here. See .claude/skills/kookaburra-scene-authoring for the authoring rules. */
+/** `@kookaburra/toolkit`, the SHIPPED authoring surface; scene files import everything from here. See .agents/skills/kookaburra-scene-authoring for the authoring rules. */
 
 export { useFormat } from "../engine/format";
 // Seeded RNG for generative geometry; scenes must never call Math.random.
 export { createSeededRandom, type SeededRandom } from "../engine/rng";
 // The resolved sidecar chart block: every default baked and the data track sorted.
 export type { ResolvedChart } from "../engine/sceneChart";
-// Scene-document hooks: the sidecar-driven text map, devices array, layered-screenshot and chart blocks.
+// Scene-document hooks: sidecar-driven text ownership, devices, layered screenshots and charts.
 export {
   type SceneDeviceProps,
   useSceneChart,
@@ -59,6 +59,9 @@ export { liftColour } from "./colour";
 export { defineScene } from "./defineScene";
 // The device catalog + Device primitive, the device+media pillar.
 export {
+  AVAILABLE_DEVICE_IDS,
+  DEFAULT_DEVICE_ID,
+  DEVICE_AVAILABILITY,
   DEVICE_CATALOG,
   DEVICE_IDS,
   type DeviceColourSpec,
@@ -66,8 +69,12 @@ export {
   type DeviceId,
   type DeviceSpec,
   deviceColour,
+  FALLBACK_DEVICE_ID,
+  isDeviceAvailable,
   isDeviceId,
   preloadCatalogModels,
+  resolveAvailableDeviceId,
+  resolveAvailableDeviceSpec,
 } from "./device/catalog";
 export {
   Device,
@@ -131,6 +138,7 @@ export { AnimatedCounter, type AnimatedCounterProps } from "./text/AnimatedCount
 export { AnimatedHeadline, type AnimatedHeadlineProps } from "./text/AnimatedHeadline";
 // Horizontal app-icon + title/subtitle lockup revealed as one unit.
 export { BrandLockup, type BrandLockupProps } from "./text/BrandLockup";
+export { ManagedTextStack, type ManagedTextStackProps } from "./text/ManagedTextStack";
 // Text-animation presets: theme `textAnimation` defaults + per-primitive overrides.
 export {
   isTextPresetName,

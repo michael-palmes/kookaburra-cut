@@ -232,6 +232,7 @@ export function CameraPill({
         <div className="camera-pill-active" aria-hidden={!open}>
           <SegmentedRow
             className="camera-pill-modes"
+            ariaLabel="Camera mode"
             options={MODE_OPTIONS}
             value={free ? "free" : "orbit"}
             onChange={(next) => {
