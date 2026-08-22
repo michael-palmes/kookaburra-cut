@@ -8,6 +8,7 @@ export function NamePromptModal({
   initial,
   submitLabel,
   hint,
+  validate,
   onSubmit,
   onCancel,
 }: {
@@ -16,6 +17,8 @@ export function NamePromptModal({
   initial: string;
   submitLabel: string;
   hint?: string;
+  /** Live check on the typed name; a message renders as a warning and blocks submit (duplicate names). */
+  validate?: (value: string) => string | null;
   /** Resolve = done (the host closes); reject = shown inline, modal stays open. */
   onSubmit: (value: string) => Promise<void>;
   onCancel: () => void;
@@ -24,9 +27,10 @@ export function NamePromptModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEscapeClose(onCancel, !busy);
+  const warning = validate?.(value) ?? null;
 
   const submit = () => {
-    if (busy || !value.trim()) return;
+    if (busy || !value.trim() || warning) return;
     setBusy(true);
     setError(null);
     onSubmit(value.trim()).catch((e) => {
@@ -53,6 +57,7 @@ export function NamePromptModal({
           />
         </div>
         {hint && <p className="modal-hint">{hint}</p>}
+        {warning && <p className="modal-warn">{warning}</p>}
         {error && <p className="modal-error">{error}</p>}
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onCancel} disabled={busy}>
@@ -62,7 +67,7 @@ export function NamePromptModal({
             type="button"
             className="btn primary"
             onClick={submit}
-            disabled={busy || !value.trim()}
+            disabled={busy || !value.trim() || !!warning}
           >
             {busy ? "Working…" : submitLabel}
           </button>
