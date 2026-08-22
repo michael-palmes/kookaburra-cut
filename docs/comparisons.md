@@ -38,8 +38,9 @@ itself; deleting the block leaves a valid plain scene):
   },
   "chrome": {
     "line": { "width": 4, "colour": "accent", "softness": 0 },
-    "grip": true,              // linear masks only
-    "chips": true,             // labels from text.beforeLabel / text.afterLabel
+    // linear masks only; `true` is the legacy chevrons handle at size 1
+    "grip": { "size": 1, "style": "chevrons" },
+    "chips": true,             // real text content: text.beforeLabel / text.afterLabel
     "tint": { "b": "accent", "amount": 0.08 }
   }
 }
@@ -52,7 +53,18 @@ Rules:
   `shadow`. Model, placement, motion and lid remain shared with side A.
 - Chrome colours are THEME TOKEN names (`background | text | accent |
   muted`), resolved against the scene's theme at plan build; sizes are
-  1080-tall reference pixels so they hold across aspects.
+  1080-tall reference pixels so they hold across aspects. `line.colour`
+  also takes a `#rrggbb` hex, which resolves to itself (the picker writes
+  hex; old token docs keep resolving exactly as before). Three-digit hex
+  is rejected at parse, since `hexToSrgb` reads six.
+- **Grip styles:** `chrome.grip.style` is `chevrons` (the default ring and
+  chevrons), `dot` (a filled circle), `bar` (a rounded pill riding the
+  line) or `arrows` (two outward arrowheads, no ring), with `size` a
+  multiplier on the reference radius. `grip: true` still means chevrons at
+  size 1. The catalogue is `COMPARE_GRIP_CATALOG`
+  (`engine/compareCatalog.ts`) and the shader dispatch ids are
+  `COMPARE_GRIP_ID`; style 0 keeps the pre-style expressions character for
+  character, so legacy grips export byte-identically.
 - **Value semantics:** the divider's position along the mask's field with
   side A on the origin side. On the default vertical divider, value 0.3
   puts the line 30% in from the left with the before on its left. Circle
@@ -84,8 +96,9 @@ Rules:
   (`compareSampleAt` returns the value and angle pair, `compareValueAt` is
   the value-only convenience); the mask catalogue in
   `engine/compareCatalog.ts`, whose per-mask `needsAngle`, `needsCenter`,
-  `hasSoftness`, `hasLine` and `hasGrip` flags gate the drill's rows;
-  presets in `engine/comparePresets.ts`.
+  `hasSoftness`, `hasLine` and `hasGrip` flags gate the drill's rows (the
+  same file holds the grip-style catalogue); presets in
+  `engine/comparePresets.ts`.
 
 ## How it renders
 
@@ -103,6 +116,18 @@ Rules:
   text mounted INSIDE each side's subtree, so the mask clips a chip with
   its own half and its opacity fades by `compareCoverageAt` on the same
   sampled value and angle (the exact shader field maths).
+- **Chips are text content.** With `chrome.chips` on, `beforeLabel` and
+  `afterLabel` join the Content list as their own rows ("Before label",
+  "After label") and open the standard text drill, which writes copy to
+  `text` and typography to the usual `textStyle.<key>Color/Font/Size/
+  OffsetX/OffsetY/LineHeight/RotationDeg` keys. `engine/compareChipText.ts`
+  owns the contract (keys, defaults, row labels, style resolution) and
+  `CompareChips` applies it by the managed-text renderer's rules, so an
+  unstyled chip draws its coded defaults byte for byte. The chips are
+  HOST CHROME: they never enter `managedText.items`, so the safe-area
+  stack cannot render them and no structural action can move or delete
+  them; clearing a chip's copy hides it. The drill's chips toggle stays
+  the show/hide.
 - SDR composites in the display domain via `sampleDisplay`; the HDR (fx)
   variant tone-maps both samples, composites in display space and inverts
   back through the exact ACES pair.
