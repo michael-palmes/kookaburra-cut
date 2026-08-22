@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { isCompareChipTextKey } from "../../engine/compareChipText";
 import {
   deriveManagedTextModel,
+  isChromeManagedTextGroup,
   resolveManagedTextGroups,
   type VirtualManagedTextOptions,
   type VirtualManagedTextRegistration,
@@ -456,6 +458,9 @@ export function ManagedTextDrill({
   const groupItems = selectedGroup?.items ?? [];
   const isSingleItemGroup = groupItems.length === 1;
   const selected = groupItems.find((item) => item.key === selectedItemKey) ?? groupItems[0] ?? null;
+  // Host chrome (the comparison chips) owns copy and style only: it has no group, no type and no reveal of its own.
+  const chromeGroup = selectedGroup ? isChromeManagedTextGroup(selectedGroup) : false;
+  const chromeItem = selected ? isCompareChipTextKey(selected.key) : false;
   const resolvedVirtualOptions = optionsFor(doc);
   const legacyIcon = resolvedVirtualOptions.icon ?? doc.headerIcon;
   const legacyIconKey = legacyIcon ? (resolvedVirtualOptions.iconKey ?? "icon") : null;
@@ -1021,7 +1026,7 @@ export function ManagedTextDrill({
         title="Text"
         onClick={onBack}
         actions={
-          selectedGroup ? (
+          selectedGroup && !chromeGroup ? (
             <>
               <DrillHeaderAction
                 kind="duplicate"
@@ -1060,7 +1065,7 @@ export function ManagedTextDrill({
             {notice}
           </p>
         )}
-        {isSingleItemGroup ? (
+        {chromeGroup ? null : isSingleItemGroup ? (
           <section className="text-inspector-single-controls" aria-label="Text controls">
             <div className="text-inspector-section-heading">
               <span className="drill-group-label">Alignment</span>
@@ -1235,16 +1240,18 @@ export function ManagedTextDrill({
               className="text-inspector-element-editor"
               aria-label={`${itemLabel(selected.type)} element`}
             >
-              <SegmentedRow
-                className="text-inspector-type-segments"
-                ariaLabel="Element type"
-                options={TYPE_OPTIONS}
-                value={selected.type}
-                disabled={disabled}
-                onChange={(itemType) =>
-                  void runStructural({ type: "change-type", itemKey: selected.key, itemType })
-                }
-              />
+              {!chromeItem && (
+                <SegmentedRow
+                  className="text-inspector-type-segments"
+                  ariaLabel="Element type"
+                  options={TYPE_OPTIONS}
+                  value={selected.type}
+                  disabled={disabled}
+                  onChange={(itemType) =>
+                    void runStructural({ type: "change-type", itemKey: selected.key, itemType })
+                  }
+                />
+              )}
               <div className="text-inspector-element-fields">
                 {(selected.type === "title" || selected.type === "subtitle") && (
                   <CopyField
@@ -1663,7 +1670,7 @@ export function ManagedTextDrill({
               </DrillGroup>
             )}
 
-            {!selectedIconNeedsTakeover && (
+            {!selectedIconNeedsTakeover && !chromeItem && (
               <DrillGroup label="Motion">
                 <ActionRow
                   icon={<TextControlIcon type="motion" />}

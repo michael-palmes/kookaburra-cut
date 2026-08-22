@@ -641,6 +641,98 @@ describe("managed text ownership", () => {
   });
 });
 
+describe("comparison chip rows", () => {
+  const chipsOn: SceneDoc = { version: 1, compare: { chrome: { chips: true } } };
+
+  it("adds one editable item per chip, and none with chips off", () => {
+    expect(deriveManagedTextModel(chipsOn, [{ key: "title", text: "Scene title" }]).items).toEqual([
+      { key: "title", type: "title", text: "Scene title" },
+      { key: "beforeLabel", type: "subtitle", text: "Before" },
+      { key: "afterLabel", type: "subtitle", text: "After" },
+    ]);
+    expect(
+      deriveManagedTextModel({ version: 1, compare: { chrome: { chips: false } } }, []).items,
+    ).toEqual([]);
+  });
+
+  it("never surfaces chip copy through the legacy sidecar fallback", () => {
+    const model = deriveManagedTextModel({
+      version: 1,
+      text: { beforeLabel: "Orphaned", title: "Kept" },
+    });
+
+    expect(model.items.map(({ key }) => key)).toEqual(["title"]);
+  });
+
+  it("takes the chip copy from the sidecar when it has some", () => {
+    const model = deriveManagedTextModel({ ...chipsOn, text: { beforeLabel: "Pre-launch" } });
+
+    expect(model.items).toEqual([
+      { key: "beforeLabel", type: "subtitle", text: "Pre-launch" },
+      { key: "afterLabel", type: "subtitle", text: "After" },
+    ]);
+  });
+
+  it("keeps the rows after a managed takeover without joining the block", () => {
+    const managed: SceneDoc = {
+      ...chipsOn,
+      managedText: { items: [{ key: "title", type: "title", text: "Owned" }] },
+    };
+    const model = deriveManagedTextModel(managed);
+
+    expect(model.ownership).toBe("managed");
+    expect(model.items.map(({ key }) => key)).toEqual(["title", "beforeLabel", "afterLabel"]);
+    expect(managed.managedText?.items.map(({ key }) => key)).toEqual(["title"]);
+  });
+
+  it("leaves the chips out of the block a takeover writes", () => {
+    const doc: SceneDoc = { ...chipsOn, text: { title: "Owned" } };
+    const next = materialiseManagedText(doc, deriveManagedTextModel(doc));
+
+    expect(next.managedText?.items).toEqual([{ key: "title", type: "title", text: "Owned" }]);
+  });
+
+  it("gives each chip its own labelled group, after the content groups", () => {
+    const model = deriveManagedTextModel({ ...chipsOn, text: { title: "Owned" } });
+    const groups = resolveManagedTextGroups(model.items, undefined);
+
+    expect(groups.map((group) => group.key)).toEqual([
+      "text",
+      "compare-chip:beforeLabel",
+      "compare-chip:afterLabel",
+    ]);
+    expect(groups[0]?.itemKeys).toEqual(["title"]);
+    expect(groups[1]).toMatchObject({
+      itemKeys: ["beforeLabel"],
+      chrome: true,
+      label: "Before label",
+      implicit: false,
+    });
+    expect(groups[2]?.label).toBe("After label");
+  });
+
+  it("reads a raw block's items as owned, chip-named or not", () => {
+    const items = [{ key: "beforeLabel", type: "title" as const, text: "Authored by hand" }];
+
+    expect(resolveManagedTextGroups(items, undefined, [])).toEqual([
+      { key: "text", itemKeys: ["beforeLabel"], items, implicit: true },
+    ]);
+  });
+
+  it("keeps the safe-area stack out of chip rendering", () => {
+    const plan = resolveManagedTextRenderPlan(
+      {
+        ...chipsOn,
+        managedText: { items: [{ key: "title", type: "title", text: "Owned" }] },
+      },
+      landscape,
+      1,
+    );
+
+    expect(plan.nodes.map((node) => node.itemKey)).toEqual(["title"]);
+  });
+});
+
 describe("managed text render data", () => {
   const doc: SceneDoc = {
     version: 1,

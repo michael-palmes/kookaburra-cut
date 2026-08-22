@@ -1,12 +1,15 @@
+import { isCompareChipTextKey } from "../../engine/compareChipText";
 import { frameTextAlign } from "../../engine/framePanelLayout";
 import {
   clearTemplateManagedTextLayout,
   DEFAULT_MANAGED_TEXT_GROUP_KEY,
   deriveManagedTextModel,
+  isChromeManagedTextGroup,
   MANAGED_TEXT_FRAME_ICON_KEY,
   managedTextPoints,
   materialiseManagedFrameIcon,
   materialiseManagedText,
+  ownedManagedTextItems,
   type ResolvedManagedTextGroup,
   resolveManagedTextGroups,
   resolveTemplateManagedFrameIcon,
@@ -140,7 +143,7 @@ export function managedTextGroupAlignment(
 ): SceneTextAlign {
   if (!doc.managedText) return fallback;
   return (
-    resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups).find(
+    resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups, []).find(
       (group) => group.key === groupKey,
     )?.align ?? fallback
   );
@@ -153,7 +156,7 @@ export function setManagedTextGroupAlignment(
   virtualOptions: VirtualManagedTextOptions = {},
 ): SceneDoc | null {
   if (!doc.managedText) return null;
-  const resolved = resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups);
+  const resolved = resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups, []);
   const target = resolved.find((group) => group.key === groupKey);
   if (!target || target.align === align) return null;
   const next = structuredClone(doc);
@@ -377,11 +380,13 @@ function rawGroupsForItems(
   items: readonly SceneManagedTextItem[],
   groups: readonly SceneManagedTextGroup[] | undefined,
 ): SceneManagedTextGroup[] {
-  return resolveManagedTextGroups(items, groups).map((group) => ({
-    key: group.key,
-    itemKeys: [...group.itemKeys],
-    ...(group.align ? { align: group.align } : {}),
-  }));
+  return resolveManagedTextGroups(items, groups)
+    .filter((group) => !isChromeManagedTextGroup(group))
+    .map((group) => ({
+      key: group.key,
+      itemKeys: [...group.itemKeys],
+      ...(group.align ? { align: group.align } : {}),
+    }));
 }
 
 function normaliseItemsToGroupOrder(
@@ -444,7 +449,8 @@ export function applyManagedTextStructuralAction(
   virtualOptions: VirtualManagedTextOptions = {},
 ): ManagedTextStructuralResult | null {
   const model = deriveManagedTextModel(doc, registrations, virtualOptions);
-  const sourceItems = cloneItems(model.items);
+  // Host chrome never enters the block, so no structural action can move, copy or delete a chip row.
+  const sourceItems = cloneItems(ownedManagedTextItems(model.items));
   const items = cloneItems(sourceItems);
   const hadExplicitGroups = doc.managedText?.groups !== undefined;
   const groups = rawGroupsForItems(sourceItems, doc.managedText?.groups);
@@ -725,7 +731,9 @@ export async function performManagedTextStructuralAction({
     if (!confirmTakeover) return "cancelled";
     const accepted = await confirmTakeover({
       action,
-      itemCount: deriveManagedTextModel(doc, registrations, virtualOptions).items.length,
+      itemCount: ownedManagedTextItems(
+        deriveManagedTextModel(doc, registrations, virtualOptions).items,
+      ).length,
     });
     if (!accepted) return "cancelled";
   }
@@ -754,12 +762,14 @@ export function setManagedTextCopy(
   virtualOptions: VirtualManagedTextOptions = {},
 ): SceneDoc | null {
   const next = structuredClone(doc);
-  if (next.managedText) {
-    const item = next.managedText.items.find((candidate) => candidate.key === itemKey);
-    if (!item || item.text === value) return null;
-    item.text = value;
+  const blockItem = next.managedText?.items.find((candidate) => candidate.key === itemKey);
+  if (blockItem) {
+    if (blockItem.text === value) return null;
+    blockItem.text = value;
     return next;
   }
+  // Chip copy lives in `text` under both ownerships: the block never carries host chrome.
+  if (next.managedText && !isCompareChipTextKey(itemKey)) return null;
   const item = virtualItem(doc, itemKey, registrations, virtualOptions);
   if (!item || item.type === "icon" || doc.text?.[itemKey] === value) return null;
   next.text = { ...next.text, [itemKey]: value };

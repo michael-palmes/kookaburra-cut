@@ -1,5 +1,12 @@
 import type { TextAnimationSpec } from "../theme/tokens";
 import type { FormatInfo } from "../toolkit/types";
+import {
+  type CompareChipTextKey,
+  compareChipGroupKey,
+  compareChipRowLabel,
+  compareChipTextItems,
+  isCompareChipTextKey,
+} from "./compareChipText";
 import type {
   SceneDoc,
   SceneManagedTextGroup,
@@ -27,6 +34,27 @@ export interface ResolvedManagedTextGroup extends SceneManagedTextGroup {
   items: SceneManagedTextItem[];
   /** True only for the compatibility group derived from an absent `groups` field. */
   implicit: boolean;
+  /** Host chrome (the comparison's label chips): editable as its own row, never written to the document's groups. */
+  chrome?: boolean;
+  /** Fixed row name for chrome groups, replacing the numbered "Text n" label. */
+  label?: string;
+}
+
+/** True for a resolved group that only carries host chrome, so writers can drop it. */
+export function isChromeManagedTextGroup(group: ResolvedManagedTextGroup): boolean {
+  return group.chrome === true;
+}
+
+function chromeGroup(item: SceneManagedTextItem): ResolvedManagedTextGroup {
+  const key = item.key as CompareChipTextKey;
+  return {
+    key: compareChipGroupKey(key),
+    itemKeys: [item.key],
+    items: [item],
+    implicit: false,
+    chrome: true,
+    label: compareChipRowLabel(key),
+  };
 }
 
 export function managedTextPoints(item: SceneManagedTextItem): SceneManagedTextPoint[] {
@@ -39,13 +67,20 @@ function resolvedManagedTextItem(item: SceneManagedTextItem): SceneManagedTextIt
   return { ...item, points: managedTextPoints(item) };
 }
 
-/** Resolves Content-level groups without mutating flat leaf data or hiding unreferenced items. */
+/** Resolves Content-level groups without mutating flat leaf data or hiding unreferenced items. Host chrome (the comparison chips a model appends) rides one labelled single-item group each, after the content groups; `chromeKeys: []` reads a raw block, whose items are all owned. */
 export function resolveManagedTextGroups(
   items: readonly SceneManagedTextItem[],
   groups?: readonly SceneManagedTextGroup[],
+  chromeKeys?: readonly string[],
 ): ResolvedManagedTextGroup[] {
+  const chrome = new Set(
+    items
+      .map((item) => item.key)
+      .filter((key) => isCompareChipTextKey(key) && (chromeKeys?.includes(key) ?? true)),
+  );
+  const chromeGroups = items.filter((item) => chrome.has(item.key)).map(chromeGroup);
   const contentItems = items
-    .filter((item) => item.key !== MANAGED_TEXT_FRAME_ICON_KEY)
+    .filter((item) => item.key !== MANAGED_TEXT_FRAME_ICON_KEY && !chrome.has(item.key))
     .map(resolvedManagedTextItem);
   if (groups === undefined) {
     return [
@@ -55,6 +90,7 @@ export function resolveManagedTextGroups(
         items: [...contentItems],
         implicit: true,
       },
+      ...chromeGroups,
     ];
   }
 
@@ -98,7 +134,7 @@ export function resolveManagedTextGroups(
       implicit: false,
     });
   }
-  return resolved;
+  return [...resolved, ...chromeGroups];
 }
 
 export interface VirtualManagedTextRegistration {
@@ -480,6 +516,12 @@ function captureVirtualMetadata(
   if (registration.motion) textAnimationOverrides[registration.key] = registration.motion;
 }
 
+/** Host chrome the document itself contributes, appended to every ownership branch so a takeover cannot lose the rows. Keys already carried by the block win. */
+function chromeItemsFor(doc: SceneDoc, used: Iterable<string>): SceneManagedTextItem[] {
+  const taken = new Set(used);
+  return compareChipTextItems(doc).filter((item) => !taken.has(item.key));
+}
+
 /** Derives the pre-takeover list without writing. Existing managed blocks always win, including present-empty. */
 export function deriveManagedTextModel(
   doc: SceneDoc,
@@ -487,10 +529,14 @@ export function deriveManagedTextModel(
   options: VirtualManagedTextOptions = {},
 ): ManagedTextModel {
   if (doc.managedText !== undefined) {
+    const blockKeys = doc.managedText.items.map((item) => item.key);
+    const chrome = chromeItemsFor(doc, blockKeys);
+    const managedItems =
+      chrome.length > 0 ? [...doc.managedText.items, ...chrome] : doc.managedText.items;
     if (!isTemplateManagedText(doc)) {
-      return { ownership: "managed", items: doc.managedText.items };
+      return { ownership: "managed", items: managedItems };
     }
-    const keys = new Set(doc.managedText.items.map((item) => item.key));
+    const keys = new Set(blockKeys);
     const textStyle: Record<string, string | number> = {};
     const textAnimationOverrides: Record<string, TextAnimationSpec> = {};
     for (const registration of registrations) {
@@ -499,7 +545,7 @@ export function deriveManagedTextModel(
     }
     return {
       ownership: "managed",
-      items: doc.managedText.items,
+      items: managedItems,
       ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
       ...(Object.keys(textAnimationOverrides).length > 0 ? { textAnimationOverrides } : {}),
     };
@@ -538,8 +584,13 @@ export function deriveManagedTextModel(
     );
     captureVirtualMetadata(registration, textStyle, textAnimationOverrides);
   }
+  for (const item of chromeItemsFor(doc, used)) {
+    used.add(item.key);
+    items.push(item);
+  }
   for (const [key, text] of Object.entries(doc.text ?? {})) {
-    if (used.has(key) || excluded.has(key)) continue;
+    // Chip copy is chrome or nothing: CompareChips mounts on every scene, so the legacy fallback already never surfaced these keys.
+    if (used.has(key) || excluded.has(key) || isCompareChipTextKey(key)) continue;
     used.add(key);
     items.push(virtualItem({ key, text }));
   }
@@ -558,6 +609,13 @@ function cloneItem(item: SceneManagedTextItem): SceneManagedTextItem {
   };
 }
 
+/** The model's own items: host chrome is editable but never belongs to the block the stack renders. */
+export function ownedManagedTextItems(
+  items: readonly SceneManagedTextItem[],
+): SceneManagedTextItem[] {
+  return items.filter((item) => !isCompareChipTextKey(item.key));
+}
+
 /** Materialises one virtual snapshot while retaining every authored field for exact undo/removal. */
 export function materialiseManagedText(doc: SceneDoc, model: ManagedTextModel): SceneDoc {
   if (doc.managedText !== undefined) return doc;
@@ -567,7 +625,7 @@ export function materialiseManagedText(doc: SceneDoc, model: ManagedTextModel): 
     : doc.textAnimationOverrides;
   return {
     ...doc,
-    managedText: { items: model.items.map(cloneItem) },
+    managedText: { items: ownedManagedTextItems(model.items).map(cloneItem) },
     ...(textStyle && Object.keys(textStyle).length > 0 ? { textStyle } : {}),
     ...(textAnimationOverrides && Object.keys(textAnimationOverrides).length > 0
       ? { textAnimationOverrides }
@@ -731,7 +789,7 @@ export function resolveManagedTextRenderPlan(
         },
       ];
     });
-  const measuredGroups = resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups)
+  const measuredGroups = resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups, [])
     .map((group) => ({ group, measures: measureItems(group.items) }))
     .filter(({ measures }) => measures.length > 0);
   const groupGap = gap * 1.75;

@@ -1452,4 +1452,64 @@ describe("managed text editor model", () => {
       ease: "outExpo",
     });
   });
+
+  describe("comparison chip rows", () => {
+    const chipsOn: SceneDoc = {
+      version: 1,
+      text: { title: "Owned" },
+      compare: { chrome: { chips: true } },
+    };
+
+    it("writes chip copy to the sidecar under both ownerships", () => {
+      expect(setManagedTextCopy(chipsOn, "beforeLabel", "Pre-launch")?.text).toEqual({
+        title: "Owned",
+        beforeLabel: "Pre-launch",
+      });
+
+      const managed: SceneDoc = {
+        ...chipsOn,
+        managedText: { items: [{ key: "title", type: "title", text: "Owned" }] },
+      };
+      const next = setManagedTextCopy(managed, "beforeLabel", "Pre-launch");
+      expect(next?.text?.beforeLabel).toBe("Pre-launch");
+      expect(next?.managedText?.items.map(({ key }) => key)).toEqual(["title"]);
+    });
+
+    it("writes chip colour to the usual style key", () => {
+      expect(setManagedTextColour(chipsOn, "afterLabel", "#ff8800")?.textStyle).toEqual({
+        afterLabelColor: "#ff8800",
+      });
+    });
+
+    it("keeps chips out of a takeover, its item count and its written groups", async () => {
+      const commit = vi.fn();
+      const confirmTakeover = vi.fn().mockResolvedValue(true);
+      await performManagedTextStructuralAction({
+        doc: chipsOn,
+        action: { type: "add-group" },
+        confirmTakeover,
+        commit,
+      });
+
+      expect(confirmTakeover).toHaveBeenCalledWith({
+        action: { type: "add-group" },
+        itemCount: 1,
+      });
+      const result = commit.mock.calls[0]?.[0] as { doc: SceneDoc };
+      expect(result.doc.managedText?.items.map(({ key }) => key)).toEqual(["title", "title-2"]);
+      expect(result.doc.managedText?.groups?.map((group) => group.key)).toEqual(["text", "text-2"]);
+    });
+
+    it("refuses to remove or reorder a chip row", () => {
+      expect(
+        applyManagedTextStructuralAction(chipsOn, { type: "remove-item", itemKey: "beforeLabel" }),
+      ).toBeNull();
+      expect(
+        applyManagedTextStructuralAction(chipsOn, {
+          type: "remove-group",
+          groupKey: "compare-chip:beforeLabel",
+        }),
+      ).toBeNull();
+    });
+  });
 });
