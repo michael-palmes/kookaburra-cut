@@ -7,7 +7,7 @@ import { SceneGizmo } from "../../engine/SceneGizmo";
 import { SceneOutline } from "../../engine/SceneOutline";
 import { useSceneContext } from "../../engine/sceneContext";
 import type { SceneImageStagePlacement } from "../../engine/sceneDocSchema";
-import { stageImageGizmoCommit } from "./imageGizmoCommit";
+import { STAGE_MEDIA_SIZE_RANGE, stageImageGizmoCommit } from "./imageGizmoCommit";
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -44,7 +44,7 @@ export function StageImageOutline({
   return (
     <SceneOutline
       size={[localSize[0], localSize[1], 0]}
-      domain="images"
+      domain="media"
       selected={selected?.sceneIndex === sceneIndex && selected.imageId === imageId}
       onSelect={() => useImageEditStore.getState().select(target)}
     />
@@ -56,15 +56,18 @@ export function StageImageGizmo({
   imageId,
   sceneIndex,
   committed,
+  windowed = false,
 }: {
   imageId: string;
   sceneIndex: number;
   committed: SceneImageStagePlacement;
+  /** Windowed media drags within the wider window range, not the still image one. */
+  windowed?: boolean;
 }) {
   const context = useSceneContext();
   const selected = useImageEditStore((state) => state.selected);
   const mode = useImageEditStore((state) => state.gizmoMode);
-  const sectionOpen = useGizmoSectionOpen("images");
+  const sectionOpen = useGizmoSectionOpen("media");
   const proxyRef = useRef<Group>(null);
   const dragging = useRef(false);
   const synced = useRef<string | null>(null);
@@ -106,15 +109,20 @@ export function StageImageGizmo({
   const read = () => {
     const group = proxyRef.current;
     if (!group) return null;
-    return stageImageGizmoCommit(sceneIndex, imageId, {
-      position: [group.position.x, group.position.y, group.position.z],
-      rotationDeg: [
-        group.rotation.x * RAD2DEG,
-        group.rotation.y * RAD2DEG,
-        group.rotation.z * RAD2DEG,
-      ],
-      size: group.scale.x,
-    });
+    return stageImageGizmoCommit(
+      sceneIndex,
+      imageId,
+      {
+        position: [group.position.x, group.position.y, group.position.z],
+        rotationDeg: [
+          group.rotation.x * RAD2DEG,
+          group.rotation.y * RAD2DEG,
+          group.rotation.z * RAD2DEG,
+        ],
+        size: group.scale.x,
+      },
+      windowed ? STAGE_MEDIA_SIZE_RANGE.window : STAGE_MEDIA_SIZE_RANGE.image,
+    );
   };
 
   const uniformiseScale = (group: Group) => {
@@ -155,7 +163,7 @@ export function StageImageGizmo({
       <SceneGizmo
         object={proxyRef}
         mode={mode}
-        domain="images"
+        domain="media"
         itemId={imageId}
         sceneIndex={sceneIndex}
         onObjectChange={change}

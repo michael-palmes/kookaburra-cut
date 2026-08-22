@@ -1456,7 +1456,7 @@ export default function App() {
   const cameraEditOpen = useCameraEditStore((s) => s.open);
   // The 2D gizmo layers arm with their inspector section, through the one drill-family map.
   const decorationEditOpen = useGizmoSectionOpen("decorations");
-  const imageSectionOpen = useGizmoSectionOpen("images");
+  const mediaSectionOpen = useGizmoSectionOpen("media");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -2149,7 +2149,7 @@ export default function App() {
                   isWorkspaceProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
-                  imageSectionOpen && (
+                  mediaSectionOpen && (
                     <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
                   )}
                 {project &&

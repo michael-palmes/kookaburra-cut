@@ -20,14 +20,18 @@ import {
 import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
-import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
+import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
 } from "./sceneLayeredScreenshot";
-import { type NormalizedVideoWindow, normalizeVideoWindow } from "./sceneVideoWindow";
+import {
+  sceneMediaFamily as familyOfMedia,
+  resolveSceneDocMedia,
+  type SceneMediaFamily,
+} from "./sceneMedia";
+import { useSceneMediaRegistry } from "./sceneMediaRegistry";
 import { useTextKeyRegistry } from "./textKeyRegistry";
-import { useVideoWindowRegistry } from "./videoWindowRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
@@ -139,23 +143,22 @@ export function useSceneLayeredScreenshot(): NormalizedLayeredScreenshot | null 
   );
 }
 
-/** The scene document's videoWindow block, deep-validated, or null when absent; registers the scene as a consumer so `VideoWindowFallback` stands down (the useSceneLayeredScreenshot pattern). */
-export function useSceneVideoWindow(): NormalizedVideoWindow | null {
+/** The scene document's media entries for one fallback family; registers the scene as that family's consumer so `SceneMediaFallback` stands down for it (the useSceneLayeredScreenshot pattern). */
+export function useSceneMedia(family: SceneMediaFamily): SceneDocMediaSpec[] {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
-    useVideoWindowRegistry.getState().register(sceneIndex);
-    return () => useVideoWindowRegistry.getState().unregister(sceneIndex);
-  }, [sceneIndex]);
-  const block = doc?.videoWindow;
+    useSceneMediaRegistry.getState().register(sceneIndex, family);
+    return () => useSceneMediaRegistry.getState().unregister(sceneIndex, family);
+  }, [sceneIndex, family]);
   return useMemo(
-    () => normalizeVideoWindow(block, `scene ${sceneIndex ?? "?"}`),
-    [block, sceneIndex],
+    () => resolveSceneDocMedia(doc ?? undefined).filter((e) => familyOfMedia(e) === family),
+    [doc, family],
   );
 }
 
-/** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneVideoWindow pattern). */
+/** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneMedia pattern). */
 export function useSceneChart(): ResolvedChart | null {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;

@@ -1,0 +1,1064 @@
+import { useTexture } from "@react-three/drei";
+import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  DoubleSide,
+  type Group,
+  MeshBasicMaterial,
+  MeshDepthMaterial,
+  MeshDistanceMaterial,
+  RGBADepthPacking,
+  ShaderMaterial,
+  SRGBColorSpace,
+  type Texture,
+  Vector2,
+} from "three";
+import { useClipTexture } from "../../engine/clipTexture";
+import { isExporting } from "../../engine/exportState";
+import { useFormat } from "../../engine/format";
+import { frameLayerRenderOrder } from "../../engine/frameLayerOrder";
+import { useGizmoSectionOpen } from "../../engine/gizmoSections";
+import { useImageOverlayPreview, useImageStagePreview } from "../../engine/imageEditStore";
+import { resolveAssetUrl } from "../../engine/project";
+import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { useSceneMedia } from "../../engine/sceneDoc";
+import type {
+  SceneDocMediaSpec,
+  SceneImageOverlayPlacement,
+  SceneImageStagePlacement,
+} from "../../engine/sceneDocSchema";
+import {
+  resolveSceneDocMedia,
+  type SceneImageMotionSample,
+  sampleSceneMediaMotion,
+  sceneMediaFamily,
+  sceneMediaInFrame,
+  sceneMediaInWorld,
+} from "../../engine/sceneMedia";
+import { useSceneConsumesMedia } from "../../engine/sceneMediaRegistry";
+import {
+  type NormalizedVideoWindowShadow,
+  type NormalizedWindowChrome,
+  normalizeWindowChrome,
+  recordingCrop,
+} from "../../engine/sceneVideoWindow";
+import { useTimeline } from "../../engine/timeline";
+import { assetVersionKey, useAssetVersionStore } from "../../store/assetVersionStore";
+import { useEditorStore } from "../../store/editorStore";
+import { useStageMapShadows } from "../stage/context";
+import type { FormatInfo } from "../types";
+import { AssetBoundary } from "./AssetBoundary";
+import {
+  applyCardMask,
+  type CardUniforms,
+  cardUniforms,
+  SHADOW_FRAG,
+  SHADOW_VERT,
+} from "./LayeredScreenshot";
+import { preparingVideoTexture } from "./preparingTexture";
+import { StageImageGizmo, StageImageOutline } from "./StageImageGizmo";
+
+const DEG2RAD = Math.PI / 180;
+const IMAGE_ALPHA_TEST = 1 / 255;
+/** The shadow quad sits just behind the window inside the moving group, so it tracks the window's motion. */
+const SHADOW_BEHIND = 0.12;
+/** Last-resort aspect before a clip's intrinsics arrive; the entry's recorded `video.aspect` seeds first, so a window keeps its size across remounts and media swaps (exports have intrinsics by frame 0 behind the extract barrier). */
+const DEFAULT_CLIP_ASPECT = 16 / 9;
+
+export interface StageImageTransform {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  size: number;
+  opacity: number;
+}
+
+export interface OverlayImageTransform {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  width: number;
+  height: number;
+  opacity: number;
+  renderOrder: number;
+}
+
+/** A windowed entry's group: window chrome carries a drop shadow and rides its motion as one, so the group moves and the plane keeps its own size (the legacy videoWindow composition). */
+export interface WindowMediaTransform {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+  /** The box the plane fits inside, in the group's units; a null height leaves the width free (the Stage has no box to fit into). */
+  box: { width: number; height: number | null };
+}
+
+interface Rect {
+  width: number;
+  height: number;
+}
+
+/** The recording-mode source crop as a UV transform (v = 0 is the frame's bottom, the clip pipeline's pre-flipped upload). */
+interface WindowUv {
+  scale: [number, number];
+  offset: [number, number];
+}
+
+export function sampleRenderedSceneMediaMotion(
+  entry: SceneDocMediaSpec,
+  localMs: number,
+  editorOwnsMedia: boolean,
+): SceneImageMotionSample {
+  return sampleSceneMediaMotion(
+    entry.kind,
+    editorOwnsMedia ? undefined : entry.motion,
+    entry.host,
+    localMs,
+  );
+}
+
+export function shouldNeutraliseSceneMediaMotion(
+  sectionOpen: boolean,
+  exporting: boolean,
+): boolean {
+  return sectionOpen && !exporting;
+}
+
+export function createStageImageShadowMaterials(texture: Texture): {
+  depth: MeshDepthMaterial;
+  distance: MeshDistanceMaterial;
+} {
+  return {
+    depth: new MeshDepthMaterial({
+      depthPacking: RGBADepthPacking,
+      map: texture,
+      alphaTest: IMAGE_ALPHA_TEST,
+      side: DoubleSide,
+    }),
+    distance: new MeshDistanceMaterial({
+      map: texture,
+      alphaTest: IMAGE_ALPHA_TEST,
+      side: DoubleSide,
+    }),
+  };
+}
+
+export function resolveStageImageTransform(
+  placement: SceneImageStagePlacement,
+  motion: SceneImageMotionSample,
+): StageImageTransform {
+  return {
+    position: [
+      placement.position[0] + motion.position[0],
+      placement.position[1] + motion.position[1],
+      placement.position[2] + motion.position[2],
+    ],
+    rotation: [
+      (placement.rotationDeg[0] + motion.rotationDeg[0]) * DEG2RAD,
+      (placement.rotationDeg[1] + motion.rotationDeg[1]) * DEG2RAD,
+      (placement.rotationDeg[2] + motion.rotationDeg[2]) * DEG2RAD,
+    ],
+    size: placement.size * motion.scale,
+    opacity: motion.opacity,
+  };
+}
+
+export function resolveOverlayImageTransform(
+  placement: SceneImageOverlayPlacement,
+  motion: SceneImageMotionSample,
+  format: FormatInfo,
+  sourceAspect: number,
+  stackOrder: number,
+): OverlayImageTransform {
+  const width = placement.size * format.frame.width * motion.scale;
+  return {
+    position: [
+      ((placement.position[0] + motion.position[0]) * format.frame.width) / 2,
+      ((placement.position[1] + motion.position[1]) * format.frame.height) / 2,
+      motion.position[2],
+    ],
+    rotation: [
+      motion.rotationDeg[0] * DEG2RAD,
+      motion.rotationDeg[1] * DEG2RAD,
+      -(placement.rotationDeg + motion.rotationDeg[2]) * DEG2RAD,
+    ],
+    width,
+    height: placement.shape === "circle" ? width : width / sourceAspect,
+    opacity: motion.opacity,
+    renderOrder: frameLayerRenderOrder(placement.layer, stackOrder),
+  };
+}
+
+/** A windowed entry's world-space group, from whichever host placement is active: the Stage's world units, or the Overlay's frame fractions resolved against the frame (which is what the video window has always done, its `offset`/`scale` being exactly those fractions). */
+export function resolveWindowMediaTransform(
+  entry: SceneDocMediaSpec,
+  motion: SceneImageMotionSample,
+  format: FormatInfo,
+): WindowMediaTransform {
+  if (entry.host === "stage") {
+    const placement = entry.stage;
+    return {
+      position: [
+        placement.position[0] + motion.position[0],
+        placement.position[1] + motion.position[1],
+        placement.position[2] + motion.position[2],
+      ],
+      rotation: [
+        (placement.rotationDeg[0] + motion.rotationDeg[0]) * DEG2RAD,
+        (placement.rotationDeg[1] + motion.rotationDeg[1]) * DEG2RAD,
+        (placement.rotationDeg[2] + motion.rotationDeg[2]) * DEG2RAD,
+      ],
+      scale: motion.scale,
+      box: { width: placement.size, height: null },
+    };
+  }
+  const placement = entry.overlay;
+  return {
+    position: [
+      motion.position[0] + (placement.position[0] * format.frame.width) / 2,
+      motion.position[1] + (placement.position[1] * format.frame.height) / 2,
+      motion.position[2],
+    ],
+    rotation: [
+      motion.rotationDeg[0] * DEG2RAD,
+      motion.rotationDeg[1] * DEG2RAD,
+      -(placement.rotationDeg + motion.rotationDeg[2]) * DEG2RAD,
+    ],
+    scale: motion.scale,
+    box: {
+      width: placement.size * format.frame.width,
+      height: placement.size * format.frame.height,
+    },
+  };
+}
+
+export function resolveOverlayImageStackOrders(
+  entries: readonly SceneDocMediaSpec[],
+  orderStart: number,
+): number[] {
+  let fallback = entries.reduce(
+    (next, entry) =>
+      entry.overlay.stackOrder === undefined ? next : Math.max(next, entry.overlay.stackOrder + 1),
+    orderStart,
+  );
+  return entries.map((entry) => entry.overlay.stackOrder ?? fallback++);
+}
+
+function sourceAspect(texture: Texture): number {
+  const image = texture.image as { width?: number; height?: number } | undefined;
+  const width = image?.width ?? 1;
+  const height = image?.height ?? 1;
+  return width > 0 && height > 0 ? width / height : 1;
+}
+
+/** The still's loadable URL, or null for a clip (which the clip pipeline resolves from the project-relative src itself) and for anything unresolvable. */
+function useSceneImageUrl(src: string | null): string | null {
+  const contextProjectId = useContext(ProjectIdContext);
+  const storeProjectId = useEditorStore((state) => state.projectId);
+  const projectId = contextProjectId ?? storeProjectId;
+  const version = useAssetVersionStore((state) =>
+    src === null ? 0 : (state.versions[assetVersionKey(projectId, src)] ?? 0),
+  );
+  if (src === null) return null;
+  try {
+    const url = resolveAssetUrl(projectId, src);
+    return version > 0 ? `${url}?v=${version}` : url;
+  } catch (error) {
+    console.warn(`[image] "${src}" unresolved:`, error);
+    return null;
+  }
+}
+
+function useColourTexture(url: string): Texture {
+  const texture = useTexture(url) as Texture;
+  useLayoutEffect(() => {
+    texture.colorSpace = SRGBColorSpace;
+    texture.needsUpdate = true;
+  }, [texture]);
+  return texture;
+}
+
+function applyCircleMask(material: MeshBasicMaterial): void {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = `varying vec2 vSceneImageUv;\n${shader.vertexShader}`.replace(
+      "#include <begin_vertex>",
+      "#include <begin_vertex>\n  vSceneImageUv = uv;",
+    );
+    shader.fragmentShader = `varying vec2 vSceneImageUv;\n${shader.fragmentShader}`.replace(
+      "#include <opaque_fragment>",
+      `#include <opaque_fragment>
+      float sceneImageD = length(vSceneImageUv - 0.5) - 0.5;
+      gl_FragColor.a *= 1.0 - smoothstep(-0.01, 0.01, sceneImageD);`,
+    );
+  };
+  material.customProgramCacheKey = () => "kookaburra-scene-image-circle-v1";
+}
+
+// ── Window chrome (rounded mask, recording crop, border, analytic drop shadow) ─
+
+interface WindowUvUniforms {
+  uVwUvScale: { value: Vector2 };
+  uVwUvOffset: { value: Vector2 };
+}
+
+const windowUvUniforms = (): WindowUvUniforms => ({
+  uVwUvScale: { value: new Vector2(1, 1) },
+  uVwUvOffset: { value: new Vector2(0, 0) },
+});
+
+const WINDOW_UV_DEFS = /* glsl */ `
+uniform vec2 uVwUvScale;
+uniform vec2 uVwUvOffset;
+`;
+
+// Crop-aware map sampling; the identity transform samples exactly like the stock chunk, keeping non-recording windows byte-identical.
+const WINDOW_MAP_FRAGMENT = /* glsl */ `#ifdef USE_MAP
+	diffuseColor *= texture2D( map, vMapUv * uVwUvScale + uVwUvOffset );
+#endif`;
+
+/** The card mask plus the recording crop's UV remap, under a window-only program key. */
+function applyWindowMask(
+  material: MeshBasicMaterial,
+  card: CardUniforms,
+  uv: WindowUvUniforms,
+): void {
+  applyCardMask(material, card);
+  const base = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    base(shader, renderer);
+    Object.assign(shader.uniforms, uv);
+    shader.fragmentShader =
+      WINDOW_UV_DEFS +
+      shader.fragmentShader.replace("#include <map_fragment>", WINDOW_MAP_FRAGMENT);
+  };
+  material.customProgramCacheKey = () => "kookaburra-vw-card-v1";
+}
+
+interface WindowGeometry {
+  rect: Rect;
+  radiusFraction: number;
+  uv: WindowUv | null;
+}
+
+/** The plane a windowed entry draws on, plus its mask radius and source crop: the recording crop wins the aspect once the source's intrinsics arrive, and the macOS preset then follows the capture's true pixel radius. */
+function windowGeometry(
+  box: { width: number; height: number | null },
+  chrome: NormalizedWindowChrome,
+  intrinsics: { width: number; height: number } | null,
+  authoredAspect: number | null,
+): WindowGeometry {
+  const crop =
+    chrome.recording && intrinsics ? recordingCrop(intrinsics.width, intrinsics.height) : null;
+  const aspect = crop
+    ? crop.width / crop.height
+    : intrinsics
+      ? intrinsics.width / intrinsics.height
+      : (authoredAspect ?? DEFAULT_CLIP_ASPECT);
+  const width = box.height === null ? box.width : Math.min(box.width, box.height * aspect);
+  return {
+    rect: { width, height: width / aspect },
+    radiusFraction:
+      crop && chrome.radiusTracksRecording ? crop.radiusFraction : chrome.radiusFraction,
+    uv:
+      crop && intrinsics
+        ? {
+            scale: [crop.width / intrinsics.width, crop.height / intrinsics.height],
+            offset: [
+              crop.x / intrinsics.width,
+              (intrinsics.height - crop.y - crop.height) / intrinsics.height,
+            ],
+          }
+        : null,
+  };
+}
+
+/** The window's drop shadow (analytic, reuses the LayeredScreenshot shaders). */
+function WindowShadow({
+  rect,
+  shadow,
+  radiusFraction,
+}: {
+  rect: Rect;
+  shadow: NormalizedVideoWindowShadow;
+  radiusFraction: number;
+}) {
+  const short = Math.min(rect.width, rect.height);
+  const blur = shadow.blur * short;
+  const width = rect.width + blur * 2;
+  const height = rect.height + blur * 2;
+  const radius = radiusFraction * short;
+  const material = useMemo(
+    () =>
+      new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        vertexShader: SHADOW_VERT,
+        fragmentShader: SHADOW_FRAG,
+        uniforms: {
+          uSize: { value: new Vector2(width, height) },
+          uHalf: { value: new Vector2(rect.width / 2, rect.height / 2) },
+          uRadius: { value: radius },
+          uBlur: { value: blur },
+          uOpacity: { value: shadow.opacity },
+        },
+      }),
+    [width, height, rect.width, rect.height, radius, blur, shadow.opacity],
+  );
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  return (
+    <mesh
+      position={[shadow.offset[0] * short, shadow.offset[1] * short, -SHADOW_BEHIND]}
+      material={material}
+    >
+      <planeGeometry args={[width, height]} />
+    </mesh>
+  );
+}
+
+function applyWindowUniforms(
+  card: CardUniforms,
+  uvUniforms: WindowUvUniforms,
+  geometry: WindowGeometry,
+  chrome: NormalizedWindowChrome,
+): void {
+  const { rect, radiusFraction, uv } = geometry;
+  const short = Math.min(rect.width, rect.height);
+  card.uCardSize.value.set(rect.width, rect.height);
+  card.uCardRadius.value = radiusFraction * short;
+  card.uCardStrokeColor.value.set(chrome.border.color);
+  card.uCardStrokeWidth.value = chrome.border.width * short;
+  card.uCardStrokeAlpha.value = chrome.border.enabled ? chrome.border.opacity : 0;
+  uvUniforms.uVwUvScale.value.set(uv?.scale[0] ?? 1, uv?.scale[1] ?? 1);
+  uvUniforms.uVwUvOffset.value.set(uv?.offset[0] ?? 0, uv?.offset[1] ?? 0);
+}
+
+function useWindowMaterial(texture: Texture | null): {
+  material: MeshBasicMaterial;
+  card: CardUniforms;
+  uv: WindowUvUniforms;
+} {
+  const card = useMemo(() => cardUniforms(), []);
+  const uv = useMemo(() => windowUvUniforms(), []);
+  const material = useMemo(() => {
+    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false });
+    if (texture) next.map = texture;
+    next.toneMapped = false;
+    applyWindowMask(next, card, uv);
+    return next;
+  }, [card, texture, uv]);
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  return { material, card, uv };
+}
+
+// ── Clip-backed planes ────────────────────────────────────────────────────────
+
+/** Drives `material` from the deterministic clip pipeline and gates the plane on the first bound frame; the readiness node lives in this component's own subtree (the useClipTexture contract), so no untextured plane can paint. */
+function ClipPlane({
+  src,
+  startMs,
+  loop,
+  material,
+  rect,
+  renderOrder,
+  onIntrinsics,
+}: {
+  src: string;
+  startMs: number;
+  loop: boolean;
+  material: MeshBasicMaterial;
+  rect: Rect;
+  renderOrder?: number;
+  onIntrinsics: (width: number, height: number) => void;
+}) {
+  const readyRef = useRef<Group>(null);
+  const contentRef = useRef<Group>(null);
+  const onPending = useCallback(() => {
+    if (contentRef.current) contentRef.current.visible = false;
+  }, []);
+  const onBound = useCallback(() => {
+    if (contentRef.current) contentRef.current.visible = true;
+  }, []);
+  const { info } = useClipTexture({
+    src,
+    startMs,
+    loop,
+    material,
+    readyObjectRef: readyRef,
+    onPending,
+    onBound,
+  });
+  useLayoutEffect(() => {
+    if (info && info.height > 0) onIntrinsics(info.width, info.height);
+  }, [info, onIntrinsics]);
+  return (
+    <group ref={readyRef}>
+      <group ref={contentRef} visible={false}>
+        <mesh material={material} renderOrder={renderOrder}>
+          <planeGeometry args={[rect.width, rect.height]} />
+        </mesh>
+      </group>
+      {/* While frames extract, the shared "Preparing video…" card fills the plane, PREVIEW ONLY: `isExporting()` stands it down and the export barriers mean no captured frame can sample it anyway. */}
+      {!info && !isExporting() && (
+        <mesh renderOrder={renderOrder}>
+          <planeGeometry args={[rect.width, rect.height]} />
+          <meshBasicMaterial
+            map={preparingVideoTexture(rect.width / rect.height, true)}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function useClipIntrinsics(): [
+  { width: number; height: number } | null,
+  (width: number, height: number) => void,
+] {
+  const [intrinsics, setIntrinsics] = useState<{ width: number; height: number } | null>(null);
+  const onIntrinsics = useCallback(
+    (width: number, height: number) =>
+      setIntrinsics((prev) =>
+        prev && prev.width === width && prev.height === height ? prev : { width, height },
+      ),
+    [],
+  );
+  return [intrinsics, onIntrinsics];
+}
+
+// ── Windowed entries (either kind) ────────────────────────────────────────────
+
+/** The selection outline for a windowed entry, sized from the resolved plane; only the Stage host carries 3D chrome, the Overlay host is edited through the 2D gizmo. */
+function WindowOutline({
+  entry,
+  sceneIndex,
+  rect,
+}: {
+  entry: SceneDocMediaSpec;
+  sceneIndex: number;
+  rect: Rect;
+}) {
+  if (entry.host !== "stage") return null;
+  return (
+    <StageImageOutline
+      imageId={entry.id}
+      sceneIndex={sceneIndex}
+      localSize={[rect.width, rect.height]}
+    />
+  );
+}
+
+function WindowVideoSurface({
+  entry,
+  sceneIndex,
+  box,
+  chrome,
+}: {
+  entry: SceneDocMediaSpec;
+  sceneIndex: number;
+  box: { width: number; height: number | null };
+  chrome: NormalizedWindowChrome;
+}) {
+  const [intrinsics, onIntrinsics] = useClipIntrinsics();
+  const geometry = windowGeometry(box, chrome, intrinsics, entry.video?.aspect ?? null);
+  const { material, card, uv } = useWindowMaterial(null);
+  applyWindowUniforms(card, uv, geometry, chrome);
+  return (
+    <>
+      <WindowShadow
+        rect={geometry.rect}
+        shadow={chrome.shadow}
+        radiusFraction={geometry.radiusFraction}
+      />
+      <ClipPlane
+        src={entry.src}
+        startMs={entry.video?.startMs ?? 0}
+        loop={entry.video?.loop === true}
+        material={material}
+        rect={geometry.rect}
+        onIntrinsics={onIntrinsics}
+      />
+      <WindowOutline entry={entry} sceneIndex={sceneIndex} rect={geometry.rect} />
+    </>
+  );
+}
+
+function WindowImageSurface({
+  entry,
+  sceneIndex,
+  url,
+  box,
+  chrome,
+}: {
+  entry: SceneDocMediaSpec;
+  sceneIndex: number;
+  url: string;
+  box: { width: number; height: number | null };
+  chrome: NormalizedWindowChrome;
+}) {
+  const texture = useColourTexture(url);
+  const image = texture.image as { width?: number; height?: number } | undefined;
+  const geometry = windowGeometry(
+    box,
+    chrome,
+    image?.width && image.height ? { width: image.width, height: image.height } : null,
+    null,
+  );
+  const { material, card, uv } = useWindowMaterial(texture);
+  applyWindowUniforms(card, uv, geometry, chrome);
+  return (
+    <>
+      <WindowShadow
+        rect={geometry.rect}
+        shadow={chrome.shadow}
+        radiusFraction={geometry.radiusFraction}
+      />
+      <mesh material={material}>
+        <planeGeometry args={[geometry.rect.width, geometry.rect.height]} />
+      </mesh>
+      <WindowOutline entry={entry} sceneIndex={sceneIndex} rect={geometry.rect} />
+    </>
+  );
+}
+
+function WindowMedia({ entry }: { entry: SceneDocMediaSpec }) {
+  const context = useSceneContext();
+  const sceneIndex = context?.index ?? -1;
+  const exporting = isExporting();
+  const editable = context?.side === undefined && !exporting;
+  const sectionOpen = useGizmoSectionOpen("media");
+  const stagePreview = useImageStagePreview(
+    sceneIndex,
+    entry.id,
+    editable && entry.host === "stage",
+  );
+  const overlayPreview = useImageOverlayPreview(
+    sceneIndex,
+    entry.id,
+    editable && entry.host === "overlay",
+  );
+  const { localMs } = useTimeline();
+  const format = useFormat();
+  const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
+  const chrome = useMemo(
+    () => normalizeWindowChrome(entry.window ?? { radius: "macos" }),
+    [entry.window],
+  );
+  const placed: SceneDocMediaSpec = {
+    ...entry,
+    stage: stagePreview ?? entry.stage,
+    overlay: overlayPreview ?? entry.overlay,
+  };
+  const transform = resolveWindowMediaTransform(
+    placed,
+    sampleRenderedSceneMediaMotion(
+      entry,
+      localMs,
+      shouldNeutraliseSceneMediaMotion(sectionOpen, exporting),
+    ),
+    format,
+  );
+  if (entry.kind !== "video" && !url) return null;
+  return (
+    <>
+      <group position={transform.position} rotation={transform.rotation} scale={transform.scale}>
+        {entry.kind === "video" || !url ? (
+          <WindowVideoSurface
+            entry={entry}
+            sceneIndex={sceneIndex}
+            box={transform.box}
+            chrome={chrome}
+          />
+        ) : (
+          <AssetBoundary key={url} label={entry.src}>
+            <WindowImageSurface
+              entry={entry}
+              sceneIndex={sceneIndex}
+              url={url}
+              box={transform.box}
+              chrome={chrome}
+            />
+          </AssetBoundary>
+        )}
+      </group>
+      {entry.host === "stage" && (
+        <StageImageGizmo
+          imageId={entry.id}
+          sceneIndex={sceneIndex}
+          committed={entry.stage}
+          windowed
+        />
+      )}
+    </>
+  );
+}
+
+// ── Stage-hosted entries ──────────────────────────────────────────────────────
+
+function StageMedia({ entry, mapShadows }: { entry: SceneDocMediaSpec; mapShadows: boolean }) {
+  const context = useSceneContext();
+  const sceneIndex = context?.index ?? -1;
+  const exporting = isExporting();
+  const editable = context?.side === undefined && !exporting;
+  const sectionOpen = useGizmoSectionOpen("media");
+  const preview = useImageStagePreview(sceneIndex, entry.id, editable);
+  const { localMs } = useTimeline();
+  const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
+  const motion = sampleRenderedSceneMediaMotion(
+    entry,
+    localMs,
+    shouldNeutraliseSceneMediaMotion(sectionOpen, exporting),
+  );
+  const placement = preview ?? entry.stage;
+  if (entry.kind === "video") {
+    return (
+      <StageVideo entry={entry} placement={placement} motion={motion} sceneIndex={sceneIndex} />
+    );
+  }
+  if (!url) return null;
+  return (
+    <AssetBoundary key={url} label={entry.src}>
+      <LoadedStageImage
+        entry={entry}
+        url={url}
+        placement={placement}
+        motion={motion}
+        sceneIndex={sceneIndex}
+        castShadow={mapShadows && entry.castShadow === true}
+      />
+    </AssetBoundary>
+  );
+}
+
+function LoadedStageImage({
+  entry,
+  url,
+  placement,
+  motion,
+  sceneIndex,
+  castShadow,
+}: {
+  entry: SceneDocMediaSpec;
+  url: string;
+  placement: SceneImageStagePlacement;
+  motion: SceneImageMotionSample;
+  sceneIndex: number;
+  castShadow: boolean;
+}) {
+  const texture = useColourTexture(url);
+  const aspect = sourceAspect(texture);
+  const transform = resolveStageImageTransform(placement, motion);
+  const material = useMemo(() => {
+    const next = new MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: IMAGE_ALPHA_TEST,
+      depthWrite: true,
+      side: DoubleSide,
+    });
+    next.shadowSide = DoubleSide;
+    next.toneMapped = false;
+    return next;
+  }, [texture]);
+  const shadowMaterials = useMemo(
+    () => (castShadow ? createStageImageShadowMaterials(texture) : null),
+    [castShadow, texture],
+  );
+  useLayoutEffect(
+    () => () => {
+      material.dispose();
+      shadowMaterials?.depth.dispose();
+      shadowMaterials?.distance.dispose();
+    },
+    [material, shadowMaterials],
+  );
+  material.opacity = transform.opacity;
+
+  const baseRotation: [number, number, number] = [
+    placement.rotationDeg[0] * DEG2RAD,
+    placement.rotationDeg[1] * DEG2RAD,
+    placement.rotationDeg[2] * DEG2RAD,
+  ];
+
+  return (
+    <>
+      <group position={transform.position} rotation={transform.rotation} scale={transform.size}>
+        <mesh
+          material={material}
+          castShadow={castShadow}
+          customDepthMaterial={shadowMaterials?.depth}
+          customDistanceMaterial={shadowMaterials?.distance}
+        >
+          <planeGeometry args={[1, 1 / aspect]} />
+        </mesh>
+      </group>
+      <group position={placement.position} rotation={baseRotation} scale={placement.size}>
+        <StageImageOutline imageId={entry.id} sceneIndex={sceneIndex} localSize={[1, 1 / aspect]} />
+      </group>
+      <StageImageGizmo imageId={entry.id} sceneIndex={sceneIndex} committed={entry.stage} />
+    </>
+  );
+}
+
+/** A Stage-hosted video: the image plane's placement and outline over a clip-driven material. No cast shadow, since the shadow materials would have to be rebuilt per bound frame. */
+function StageVideo({
+  entry,
+  placement,
+  motion,
+  sceneIndex,
+}: {
+  entry: SceneDocMediaSpec;
+  placement: SceneImageStagePlacement;
+  motion: SceneImageMotionSample;
+  sceneIndex: number;
+}) {
+  const [intrinsics, onIntrinsics] = useClipIntrinsics();
+  const transform = resolveStageImageTransform(placement, motion);
+  const material = useMemo(() => {
+    const next = new MeshBasicMaterial({ transparent: true, depthWrite: true, side: DoubleSide });
+    next.toneMapped = false;
+    return next;
+  }, []);
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  material.opacity = transform.opacity;
+  const aspect = intrinsics
+    ? intrinsics.width / intrinsics.height
+    : (entry.video?.aspect ?? DEFAULT_CLIP_ASPECT);
+  const rect = { width: 1, height: 1 / aspect };
+  return (
+    <>
+      <group position={transform.position} rotation={transform.rotation} scale={transform.size}>
+        <ClipPlane
+          src={entry.src}
+          startMs={entry.video?.startMs ?? 0}
+          loop={entry.video?.loop === true}
+          material={material}
+          rect={rect}
+          onIntrinsics={onIntrinsics}
+        />
+      </group>
+      <group
+        position={placement.position}
+        rotation={[
+          placement.rotationDeg[0] * DEG2RAD,
+          placement.rotationDeg[1] * DEG2RAD,
+          placement.rotationDeg[2] * DEG2RAD,
+        ]}
+        scale={placement.size}
+      >
+        <StageImageOutline
+          imageId={entry.id}
+          sceneIndex={sceneIndex}
+          localSize={[rect.width, rect.height]}
+        />
+      </group>
+      <StageImageGizmo imageId={entry.id} sceneIndex={sceneIndex} committed={entry.stage} />
+    </>
+  );
+}
+
+// ── Overlay-hosted entries (the frame layer) ──────────────────────────────────
+
+function OverlayMedia({ entry, stackOrder }: { entry: SceneDocMediaSpec; stackOrder: number }) {
+  const context = useSceneContext();
+  const sceneIndex = context?.index ?? -1;
+  const exporting = isExporting();
+  const editable = context?.side === undefined && !exporting;
+  const sectionOpen = useGizmoSectionOpen("media");
+  const preview = useImageOverlayPreview(sceneIndex, entry.id, editable);
+  const { localMs } = useTimeline();
+  const format = useFormat();
+  const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
+  const placement = preview ?? entry.overlay;
+  const motion = sampleRenderedSceneMediaMotion(
+    entry,
+    localMs,
+    shouldNeutraliseSceneMediaMotion(sectionOpen, exporting),
+  );
+  if (entry.kind === "video") {
+    return (
+      <OverlayVideo
+        entry={entry}
+        placement={placement}
+        motion={motion}
+        format={format}
+        stackOrder={stackOrder}
+      />
+    );
+  }
+  if (!url) return null;
+  return (
+    <AssetBoundary key={url} label={entry.src}>
+      <LoadedOverlayImage
+        url={url}
+        placement={placement}
+        motion={motion}
+        format={format}
+        stackOrder={stackOrder}
+      />
+    </AssetBoundary>
+  );
+}
+
+function LoadedOverlayImage({
+  url,
+  placement,
+  motion,
+  format,
+  stackOrder,
+}: {
+  url: string;
+  placement: SceneImageOverlayPlacement;
+  motion: SceneImageMotionSample;
+  format: FormatInfo;
+  stackOrder: number;
+}) {
+  const texture = useColourTexture(url);
+  const transform = resolveOverlayImageTransform(
+    placement,
+    motion,
+    format,
+    sourceAspect(texture),
+    stackOrder,
+  );
+  const circle = placement.shape === "circle";
+  const material = useMemo(() => {
+    const next = new MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: DoubleSide,
+    });
+    next.toneMapped = false;
+    if (circle) applyCircleMask(next);
+    return next;
+  }, [circle, texture]);
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  material.opacity = transform.opacity;
+
+  return (
+    <mesh
+      position={transform.position}
+      rotation={transform.rotation}
+      material={material}
+      renderOrder={transform.renderOrder}
+    >
+      <planeGeometry args={[transform.width, transform.height]} />
+    </mesh>
+  );
+}
+
+function OverlayVideo({
+  entry,
+  placement,
+  motion,
+  format,
+  stackOrder,
+}: {
+  entry: SceneDocMediaSpec;
+  placement: SceneImageOverlayPlacement;
+  motion: SceneImageMotionSample;
+  format: FormatInfo;
+  stackOrder: number;
+}) {
+  const [intrinsics, onIntrinsics] = useClipIntrinsics();
+  const aspect = intrinsics
+    ? intrinsics.width / intrinsics.height
+    : (entry.video?.aspect ?? DEFAULT_CLIP_ASPECT);
+  const transform = resolveOverlayImageTransform(placement, motion, format, aspect, stackOrder);
+  const circle = placement.shape === "circle";
+  const material = useMemo(() => {
+    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false, side: DoubleSide });
+    next.toneMapped = false;
+    if (circle) applyCircleMask(next);
+    return next;
+  }, [circle]);
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  material.opacity = transform.opacity;
+  return (
+    <group position={transform.position} rotation={transform.rotation}>
+      <ClipPlane
+        src={entry.src}
+        startMs={entry.video?.startMs ?? 0}
+        loop={entry.video?.loop === true}
+        material={material}
+        rect={{ width: transform.width, height: transform.height }}
+        renderOrder={transform.renderOrder}
+        onIntrinsics={onIntrinsics}
+      />
+    </group>
+  );
+}
+
+// ── Mounts ────────────────────────────────────────────────────────────────────
+
+function WorldMedia({
+  entries,
+  mapShadows,
+}: {
+  entries: readonly SceneDocMediaSpec[];
+  mapShadows: boolean;
+}) {
+  return (
+    <>
+      {entries.map((entry) =>
+        entry.window !== undefined ? (
+          <WindowMedia key={entry.id} entry={entry} />
+        ) : (
+          <StageMedia key={entry.id} entry={entry} mapShadows={mapShadows} />
+        ),
+      )}
+    </>
+  );
+}
+
+/** The Stage family, mounted by `<SceneStage>`: every stage-hosted entry without window chrome. Registers the scene as that family's consumer so the host-side fallback stands down. */
+export function StageSceneMedia() {
+  const entries = useSceneMedia("stage");
+  const mapShadows = useStageMapShadows();
+  if (entries.length === 0) return null;
+  return <WorldMedia entries={entries} mapShadows={mapShadows} />;
+}
+
+/** The window family, mounted by a scene's own `<VideoWindow/>`: every entry carrying window chrome, of either kind. */
+export function SceneWindowMedia() {
+  const entries = useSceneMedia("window");
+  if (entries.length === 0) return null;
+  return <WorldMedia entries={entries} mapShadows={false} />;
+}
+
+/** Host-side world media for scenes whose TSX wires neither `<SceneStage>` nor `<VideoWindow/>` (mounted by SceneHost, the DevicesFallback pattern): reads the doc directly so it can't register as a consumer itself, and stands each family down separately. */
+export function SceneMediaFallback() {
+  const doc = useContext(SceneDocContext) ?? undefined;
+  const sceneIndex = useSceneContext()?.index;
+  const entries = useMemo(() => sceneMediaInWorld(resolveSceneDocMedia(doc)), [doc]);
+  if (entries.length === 0) return null;
+  return <SceneMediaFallbackContent entries={entries} sceneIndex={sceneIndex} />;
+}
+
+function SceneMediaFallbackContent({
+  entries,
+  sceneIndex,
+}: {
+  entries: readonly SceneDocMediaSpec[];
+  sceneIndex: number | undefined;
+}) {
+  const stageConsumed = useSceneConsumesMedia(sceneIndex, "stage");
+  const windowConsumed = useSceneConsumesMedia(sceneIndex, "window");
+  const left = entries.filter((entry) =>
+    sceneMediaFamily(entry) === "window" ? !windowConsumed : !stageConsumed,
+  );
+  if (left.length === 0) return null;
+  return <WorldMedia entries={left} mapShadows={false} />;
+}
+
+/** The frame layer's media: overlay-hosted entries with no window chrome, drawn over the composited slide. */
+export function OverlaySceneMedia({ orderStart }: { orderStart: number }) {
+  const doc = useContext(SceneDocContext) ?? undefined;
+  const entries = useMemo(() => sceneMediaInFrame(resolveSceneDocMedia(doc)), [doc]);
+  if (entries.length === 0) return null;
+  const stackOrders = resolveOverlayImageStackOrders(entries, orderStart);
+  return (
+    <>
+      {entries.map((entry, index) => (
+        <OverlayMedia key={entry.id} entry={entry} stackOrder={stackOrders[index]} />
+      ))}
+    </>
+  );
+}

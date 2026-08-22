@@ -5,12 +5,19 @@ import type { StageRect } from "../engine/gizmoRegistry";
 import { useGizmoSectionOpen } from "../engine/gizmoSections";
 import { useImageEditStore } from "../engine/imageEditStore";
 import { type LoadedProject, resolveAssetUrl } from "../engine/project";
-import type { SceneDocImageSpec, SceneImageOverlayPlacement } from "../engine/sceneDocSchema";
+import type { SceneDocMediaSpec, SceneImageOverlayPlacement } from "../engine/sceneDocSchema";
+import { resolveSceneDocMedia, sceneMediaForHost } from "../engine/sceneMedia";
 import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
-import { overlayImageGizmoCommit } from "../toolkit/media/imageGizmoCommit";
+import {
+  OVERLAY_MEDIA_SIZE_RANGE,
+  overlayImageGizmoCommit,
+} from "../toolkit/media/imageGizmoCommit";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
+
+/** What a video entry's box falls back to before its clip's intrinsics are recorded on the doc. */
+const DEFAULT_VIDEO_ASPECT = 16 / 9;
 
 function centrePx(placement: SceneImageOverlayPlacement, rect: StageRect): Pt {
   return [
@@ -19,6 +26,9 @@ function centrePx(placement: SceneImageOverlayPlacement, rect: StageRect): Pt {
   ];
 }
 
+const sizeRange = (entry: SceneDocMediaSpec): readonly [number, number] =>
+  entry.window === undefined ? OVERLAY_MEDIA_SIZE_RANGE.image : OVERLAY_MEDIA_SIZE_RANGE.window;
+
 function positionAt(px: Pt, rect: StageRect): [number, number] {
   return [(2 * (px[0] - rect.left)) / rect.width - 1, 1 - (2 * (px[1] - rect.top)) / rect.height];
 }
@@ -26,7 +36,7 @@ function positionAt(px: Pt, rect: StageRect): [number, number] {
 interface StartedGesture {
   id: string;
   kind: Gizmo2DGesture["kind"];
-  image: SceneDocImageSpec;
+  image: SceneDocMediaSpec;
 }
 
 /** Editor-only direct manipulation for Overlay-hosted images. Mount above the canvas under the same workspace/export/autorun guards as the other 2D gizmos. */
@@ -37,7 +47,7 @@ export function OverlayImageGizmo({
   project: LoadedProject;
   sceneIndex: number;
 }) {
-  const sectionOpen = useGizmoSectionOpen("images");
+  const sectionOpen = useGizmoSectionOpen("media");
   const selected = useImageEditStore((state) => state.selected);
   const livePlacement = useImageEditStore((state) =>
     state.previewPlacement?.sceneIndex === sceneIndex && state.previewPlacement.kind === "overlay"
@@ -50,7 +60,7 @@ export function OverlayImageGizmo({
   const [sourceAspects, setSourceAspects] = useState<Record<string, number>>({});
   const requested = useRef(new Set<string>());
   const images = useMemo(
-    () => (project.sceneDocs[sceneIndex]?.images ?? []).filter((image) => image.host === "overlay"),
+    () => sceneMediaForHost(resolveSceneDocMedia(project.sceneDocs[sceneIndex]), "overlay"),
     [project.sceneDocs, sceneIndex],
   );
   const versionSignal = useAssetVersionStore((state) =>
@@ -69,6 +79,7 @@ export function OverlayImageGizmo({
             src: image.src,
             key: `${project.id}\u0000${image.src}${suffix}`,
             suffix,
+            video: image.kind === "video",
           },
         ];
       }),
@@ -78,7 +89,8 @@ export function OverlayImageGizmo({
   useEffect(() => {
     let alive = true;
     for (const request of Object.values(sourceRequests)) {
-      if (requested.current.has(request.key)) continue;
+      // A clip has no decodable intrinsics here; video entries size off their recorded `video.aspect`.
+      if (request.video || requested.current.has(request.key)) continue;
       requested.current.add(request.key);
       let url: string;
       try {
@@ -136,18 +148,23 @@ export function OverlayImageGizmo({
     () =>
       images.map((image) => ({
         id: image.id,
-        label: "Image",
+        label: image.kind === "video" ? "Video" : "Image",
         can: { move: true, resize: true, rotate: true },
         frame: (rect: StageRect) => {
           const placement =
             livePlacement?.imageId === image.id ? livePlacement.placement : image.overlay;
           const [cx, cy] = centrePx(placement, rect);
-          const sourceAspect = sourceAspects[sourceRequests[image.id]?.key ?? ""] ?? 1;
-          const width = placement.size * rect.width;
+          const sourceAspect =
+            image.kind === "video"
+              ? (image.video?.aspect ?? DEFAULT_VIDEO_ASPECT)
+              : (sourceAspects[sourceRequests[image.id]?.key ?? ""] ?? 1);
+          // A windowed entry fits INSIDE a box that is `size` of the frame, so its box shrinks the same way the renderer's does for media narrower than the frame.
+          const fit = image.window === undefined ? 1 : Math.min(1, sourceAspect / format.aspect);
+          const width = placement.size * fit * rect.width;
           const height =
             placement.shape === "circle"
               ? width
-              : placement.size * (format.aspect / sourceAspect) * rect.height;
+              : placement.size * fit * (format.aspect / sourceAspect) * rect.height;
           return {
             cx,
             cy,
@@ -199,10 +216,12 @@ export function OverlayImageGizmo({
         position: positionAt([centre[0] + gesture.dxPx, centre[1] + gesture.dyPx], gesture.rect),
       };
     } else if (gesture.kind === "resize") {
-      const resized = overlayImageGizmoCommit(sceneIndex, gesture.id, {
-        ...base,
-        size: base.size * gesture.factor,
-      });
+      const resized = overlayImageGizmoCommit(
+        sceneIndex,
+        gesture.id,
+        { ...base, size: base.size * gesture.factor },
+        sizeRange(started.image),
+      );
       const size = resized.kind === "overlay" ? resized.placement.size : base.size;
       const ratio = size / base.size;
       placement = {
@@ -219,7 +238,12 @@ export function OverlayImageGizmo({
     } else {
       placement = { ...base, rotationDeg: gesture.deg };
     }
-    const preview = overlayImageGizmoCommit(sceneIndex, gesture.id, placement);
+    const preview = overlayImageGizmoCommit(
+      sceneIndex,
+      gesture.id,
+      placement,
+      sizeRange(started.image),
+    );
     pending.current = preview;
     useImageEditStore.getState().preview(preview);
   };

@@ -601,9 +601,9 @@ floating rounded window with an analytic drop shadow, floating over whatever the
 scene stages behind it (theme backdrop, fixed background, or nothing). The
 invariants:
 
-- **The null path is the old path, exactly.** The host-side `VideoWindowFallback`
-  renders nothing when the sidecar has no block (and stands down entirely when the
-  scene's TSX consumes it via `useSceneVideoWindow`), so every existing project
+- **The null path is the old path, exactly.** The host-side `SceneMediaFallback`
+  renders nothing when the sidecar declares no media (and stands its window family
+  down when the scene's TSX mounts `<VideoWindow/>`), so every existing project
   mounts zero new nodes and renders byte-identically (`ws:launch-2026` stays EQUAL).
 - **Genuine world-space layers, not an overlay.** The shadow and window are meshes
   at distinct depths inside one group; the per-scene camera track moves through

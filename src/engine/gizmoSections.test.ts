@@ -10,8 +10,9 @@ describe("gizmoDomainForDrill", () => {
     expect(gizmoDomainForDrill("device")).toBe("devices");
     expect(gizmoDomainForDrill("device.change")).toBe("devices");
     expect(gizmoDomainForDrill("device.position")).toBe("devices");
-    expect(gizmoDomainForDrill("image")).toBe("images");
-    expect(gizmoDomainForDrill("image.position")).toBe("images");
+    expect(gizmoDomainForDrill("image")).toBe("media");
+    expect(gizmoDomainForDrill("image.position")).toBe("media");
+    expect(gizmoDomainForDrill("media")).toBe("media");
     expect(gizmoDomainForDrill("legacyImage.edit")).toBe("decorations");
     expect(gizmoDomainForDrill("objects")).toBe("objects");
     expect(gizmoDomainForDrill("objects.placement")).toBe("objects");

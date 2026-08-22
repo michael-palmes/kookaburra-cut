@@ -1,5 +1,6 @@
 /** Fitting a camera to content: the maths behind the Frame-content button and the presets' scaling. Pure, so "what distance frames this box at this lens" is a pinned number rather than a feel. */
-import type { SceneDocRigPose } from "./sceneDocSchema";
+import type { SceneDoc, SceneDocRigPose } from "./sceneDocSchema";
+import { resolveSceneDocMedia } from "./sceneMedia";
 
 const DEG2RAD = Math.PI / 180;
 
@@ -30,14 +31,13 @@ export function frameContentDistance(
   return (Math.max(forHeight, forWidth) + depth / 2) * (1 + padding);
 }
 
-/** What a scene stages, as a box, derived from the SCENE DOC rather than the live scene graph: device placements, the video window and the screenshot stack, else the content plane itself. Doc-derived is the deliberate limit, and the honest one here: it needs no r3f bridge, resolves identically wherever it is called, and covers what an author actually reframes around. Content a scene's TSX places by hand is not counted. */
+/** What a scene stages, as a box, derived from the SCENE DOC rather than the live scene graph: device placements, video media and the screenshot stack, else the content plane itself. Doc-derived is the deliberate limit, and the honest one here: it needs no r3f bridge, resolves identically wherever it is called, and covers what an author actually reframes around. Content a scene's TSX places by hand is not counted. */
 export function stagedContentBounds(
   doc:
-    | {
+    | (Pick<SceneDoc, "media" | "images" | "videoWindow"> & {
         devices?: { placement?: { position?: [number, number, number] } }[];
-        videoWindow?: { offset?: [number, number] };
         layeredScreenshot?: { pose: { pan: [number, number] } };
-      }
+      })
     | undefined,
   frame: { width: number; height: number },
 ): ContentBounds {
@@ -45,11 +45,18 @@ export function stagedContentBounds(
   for (const device of doc?.devices ?? []) {
     if (device.placement?.position) points.push(device.placement.position);
   }
-  if (doc?.videoWindow) {
-    // The window's placement offset is a frame fraction; resolve it here so the fit follows a moved window.
-    const offset = doc.videoWindow.offset;
-    const valid = Array.isArray(offset) && offset.length === 2 && offset.every(Number.isFinite);
-    points.push(valid ? [offset[0] * frame.width, offset[1] * frame.height, 0] : [0, 0, 0]);
+  for (const entry of resolveSceneDocMedia(doc)) {
+    // Stills sit wherever the scene lays them out and are not what a reframe chases; a video is, and an Overlay-hosted one's placement is a frame fraction, resolved here so the fit follows a moved window.
+    if (entry.kind !== "video") continue;
+    points.push(
+      entry.host === "stage"
+        ? entry.stage.position
+        : [
+            (entry.overlay.position[0] * frame.width) / 2,
+            (entry.overlay.position[1] * frame.height) / 2,
+            0,
+          ],
+    );
   }
   if (doc?.layeredScreenshot) {
     const pan = doc.layeredScreenshot.pose.pan;

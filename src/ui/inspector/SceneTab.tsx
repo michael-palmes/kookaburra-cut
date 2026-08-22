@@ -2170,7 +2170,7 @@ export function SceneTab({
   );
   // Outlines, click-to-select and the handles all follow the open section, not one deep drill.
   const devicesSectionOpen = useGizmoSectionOpen("devices");
-  const imagesSectionOpen = useGizmoSectionOpen("images");
+  const imagesSectionOpen = useGizmoSectionOpen("media");
   const objectsSectionOpen = useGizmoSectionOpen("objects");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   // Which staged object the placement drill targets.
@@ -2561,7 +2561,7 @@ export function SceneTab({
       setOverviewSelection({
         sceneIndex,
         rowId: reconciliation.overviewRowId,
-        domain: "images",
+        domain: "media",
       });
       if (reconciliation.replaceDrill) replaceDrill("image.edit");
       return;
@@ -2572,7 +2572,7 @@ export function SceneTab({
       setOverviewSelection({
         sceneIndex,
         rowId: reconciliation.overviewRowId,
-        domain: "images",
+        domain: "media",
       });
       return;
     }
@@ -2620,7 +2620,7 @@ export function SceneTab({
         ? `device:${pickedDeviceId}`
         : overviewSelection.domain === "objects" && selectedObjectId
           ? `object:${selectedObjectId}`
-          : overviewSelection.domain === "images" && selectedImageId
+          : overviewSelection.domain === "media" && selectedImageId
             ? `image:${selectedImageId}`
             : overviewSelection.domain === "text" && selectedTextGroupKey
               ? `text:${selectedTextGroupKey}`
@@ -3644,7 +3644,7 @@ export function SceneTab({
     setOverviewSelection({
       sceneIndex: expectedSceneIndex,
       rowId: `image:${imageId}`,
-      domain: "images",
+      domain: "media",
     });
     replaceDrill("image.edit");
   };
@@ -3697,7 +3697,7 @@ export function SceneTab({
         setOverviewSelection({
           sceneIndex: expectedSceneIndex,
           rowId: `image:${id}`,
-          domain: "images",
+          domain: "media",
         });
         useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });
         focusContentAddActivator();
@@ -7349,7 +7349,7 @@ export function SceneTab({
           setOverviewSelection({
             sceneIndex: expectedSceneIndex,
             rowId: plan.nextRowId ?? `image:${selection.id}`,
-            domain: "images",
+            domain: "media",
           });
           replaceDrill("image.edit");
         })
@@ -8137,7 +8137,7 @@ export function SceneTab({
       case "device":
         return "devices";
       case "image":
-        return "images";
+        return "media";
       case "legacyImage":
         return "decorations";
       case "object":
@@ -8200,7 +8200,7 @@ export function SceneTab({
         : target.kind === "device"
           ? "devices"
           : target.kind === "image"
-            ? "images"
+            ? "media"
             : target.kind === "legacyImage"
               ? "decorations"
               : target.kind === "object"
