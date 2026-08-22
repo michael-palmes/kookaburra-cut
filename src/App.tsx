@@ -38,6 +38,7 @@ import {
   subscribeClipExtraction,
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
+import { useCompareEditStore } from "./engine/compareEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
@@ -1441,6 +1442,7 @@ export default function App() {
   useEffect(() => {
     void project;
     useCameraEditStore.getState().clearCommittedDraft();
+    useCompareEditStore.getState().clearCommittedDraft();
     useLayeredScreenshotEditStore.getState().clearCommittedDraft();
   }, [project]);
   const loadedProjectId = project?.id;

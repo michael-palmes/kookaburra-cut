@@ -28,6 +28,7 @@ interface CompareEditState {
   select: (keyId: string | null, segment: number | null) => void;
   setDraft: (draft: CompareDraft | null) => void;
   setWriteError: (err: string | null) => void;
+  clearCommittedDraft: () => void;
 }
 
 export const useCompareEditStore = create<CompareEditState>((set) => ({
@@ -38,4 +39,5 @@ export const useCompareEditStore = create<CompareEditState>((set) => ({
   select: (selectedKeyId, selectedSegment) => set({ selectedKeyId, selectedSegment }),
   setDraft: (draft) => set({ draft }),
   setWriteError: (writeError) => set({ writeError }),
+  clearCommittedDraft: () => set((s) => (s.draft?.committed ? { draft: null } : {})),
 }));
