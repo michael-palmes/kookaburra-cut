@@ -24,7 +24,7 @@
   "preview": {
     "poster": 2,
     "frames": [
-      { "scene": 1, "atMs": 1400 },
+      { "scene": 1, "atMs": 1000 },
       { "scene": 2, "atMs": 3000 },
       { "scene": 4, "atMs": 2400 },
       { "scene": 5, "atMs": 2600 }
