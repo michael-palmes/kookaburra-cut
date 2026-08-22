@@ -8,10 +8,23 @@ import { useLightingEditStore } from "../engine/lightingEditStore";
 
 export type LaneKind = "camera" | "compare" | "layeredScreenshot" | "chart" | "lighting";
 
+export function animationLaneMasterOpen(
+  layeredScreenshotActive: boolean,
+  cameraOpen: boolean,
+  layeredScreenshotOpen: boolean,
+): boolean {
+  return layeredScreenshotActive ? layeredScreenshotOpen : cameraOpen;
+}
+
 export function clearOtherLaneSelections(lane: LaneKind) {
   if (lane !== "camera") useCameraEditStore.getState().select(null, null);
   if (lane !== "compare") useCompareEditStore.getState().select(null, null);
   if (lane !== "layeredScreenshot") useLayeredScreenshotEditStore.getState().selectKey(null, null);
   if (lane !== "chart") useChartTrackEditStore.getState().select(null, null);
   if (lane !== "lighting") useLightingEditStore.getState().select(null, null);
+}
+
+export function clearSecondaryLaneSelections() {
+  useCompareEditStore.getState().select(null, null);
+  useChartTrackEditStore.getState().select(null, null);
 }

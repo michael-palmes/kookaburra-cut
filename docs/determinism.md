@@ -1004,7 +1004,9 @@ stays deterministic):
 `encode.rs::legacy_export_args()`: the original argv extracted VERBATIM and
 byte-pinned by Rust goldens (`legacy_argv_goldens`, audio + `-an` variants).
 Standing baselines and Verify ×2 never carry a spec, so presets can never move
-them; an edit to the legacy builder is a deliberate full rebase.
+them; an edit to the legacy builder is a deliberate full rebase. The modal's
+High quality row takes this path when Opening poster frame is off. When it is on,
+the row resolves the legacy-equivalent spec plus the runtime poster flag.
 
 **The spec family** (`spec_argv_goldens` pins every lane): the pinned vf chain is
 `vflip[,fps=N][,scale=W:H:flags=lanczos[:out_color_matrix=bt709,format=<pix_fmt>]]`.
@@ -1021,6 +1023,18 @@ upscaled. HEVC-in-mp4 carries `-tag:v hvc1`. VideoToolbox lanes are bitrate-only
 "fast drafts": excluded from Verify by policy. Software VBV lanes pin encoder
 threads to 1 (x264 VBV under threads is non-deterministic: identical frames,
 differing bytes; x265: `frame-threads=1:pools=1`).
+
+**The optional poster frame is runtime-only.** The export modal never stores it
+in a preset. Its default-on choice is remembered app-wide in `settings.json`,
+across projects and launches. `posterFrame: true` inserts exactly one encoded
+frame before timeline frame 0, using the lower-centre sample from the first scene
+on the selected output-fps grid. That poster renders scene one alone, even when
+its timestamp lies inside an outgoing transition. The video and audio durations
+grow by exactly `1 / fps`; Rust prepends one frame of sample-exact silence (800
+samples at 60 fps, 1600 at 30 fps) and shifts the soundtrack fades and padding
+with it. An absent or false field takes the existing frame and audio paths
+unchanged. Hosts still choose their own link-preview thumbnail, so this improves
+the candidate frame without guaranteeing selection.
 
 **Two-pass = the FFV1 mezzanine.** Pass 1 consumes its input, so two-pass presets
 render ONCE to a lossless FFV1 `.mkv` at OUTPUT res/fps/pix_fmt in
@@ -1200,7 +1214,7 @@ rolling-gate project (`showcase-tour`):
 | `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `8d293536…` | `ed66045e…` | `63dfb18b…` | `aa3cb9b1…` | — | — | — |
+| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
@@ -1232,6 +1246,14 @@ rolling-gate project (`showcase-tour`):
 > dependabot bumps (`postprocessing` 6.39.4, `@react-three/fiber` 9.7.0) are
 > pixel-NULL on this reel: `8cc778c` carries them and still verifies
 > `f304f1bd…`.
+
+> **2026-08-19 (comparison fixture, same upstream moves):** `compare-spike`
+> 16:9 re-records `8d293536…` → `b6883733…`, Verify ×2. The fixture was run
+> twice on the batch-23 branch and twice on a pristine `origin/main` at
+> `dc952e1` on the same machine, and both produce `b6883733…`, so the move is
+> the pair of upstream moves recorded above, not the branch. This leg was not
+> bisected itself, and its other aspects go stale rather than re-recorded,
+> since they were not re-run.
 
 > **2026-08-07 (batch 18):** two deliberate re-records. `ws:chart-spike` 16:9
 > (`c947c931…` → `d58ff1f2…`): a billboard `onBeforeRender` prop had shadowed
@@ -1342,6 +1364,22 @@ rolling-gate project (`showcase-tour`):
 > dof unchanged. `ws:dof-spike` re-recorded for the lane: 16:9 `a7a37eb0…`,
 > 9:16 `58d0ac28…`, both Verify ×2 EQUAL (the same-day `ae8b22f3…`/
 > `91680399…` pair and the original `cee2ab6f…`/`09f57c3c…` are STALE).
+
+> **2026-08-09 (device availability):** licensed device GLBs remain optional,
+> gitignored build inputs. A build now exposes only models whose complete GLB is
+> present, with committed Android always available and selected by default in a
+> clean clone. Existing documents keep their saved model id, but rendering,
+> screen binding, colours, fit, lid controls and layout resolve together to the
+> Android specification when that id is unavailable. The preload barrier now
+> rejects any available model whose declared screen material is missing, closing
+> the placeholder/material mismatch that left iPhone 17 and MacBook screens
+> black in worktrees. An asset-free screenshot of `ws:test-duplicate` scene 4
+> showed the Android fallback with its video bound; after the three licensed
+> GLBs were copied into the worktree, the same screenshot showed the iPhone 17
+> with the same video. The 2026-07-30 equal-layout note below remains historical:
+> current clean builds use Android's catalogue width for unavailable devices.
+> With licensed assets restored, `showcase-tour` Verify ×2 stayed EQUAL and
+> unchanged at `f304f1bd…`.
 
 > **2026-08-01 (macOS 27 text shader):** macOS 27's Metal compiler rejects the
 > code ANGLE generates for `inout` parameters bound to hoisted globals, so

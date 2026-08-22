@@ -16,8 +16,68 @@ const SCENE_DOC_VERSION: u64 = 1;
 /// Wizard/scaffold default when the scene has no video media to follow.
 const DEFAULT_SCENE_DURATION_MS: u64 = 4000;
 
+/// Title and title-icon scenes are compact openers by default.
+const TITLE_SCENE_DURATION_MS: u64 = 2600;
+
 /// Chart scenes start longer than the default: the build-in and its counters need room to land.
 const CHART_SCENE_DURATION_MS: u64 = 5000;
+
+fn default_scene_duration_ms(kind: &str) -> u64 {
+    match kind {
+        "title" | "titleicon" => TITLE_SCENE_DURATION_MS,
+        "chart" => CHART_SCENE_DURATION_MS,
+        _ => DEFAULT_SCENE_DURATION_MS,
+    }
+}
+
+fn device_model_and_colour<'a>(
+    model: Option<&'a str>,
+    colour: Option<&'a str>,
+) -> (&'a str, &'a str) {
+    let model = model.unwrap_or("android");
+    let default_colour = match model {
+        "iphone-15-pro" => "natural-titanium",
+        "iphone-17-pro" | "macbook-pro-16" => "silver",
+        _ => "graphite",
+    };
+    (model, colour.unwrap_or(default_colour))
+}
+
+fn transition_is_valid(spec: &Value) -> bool {
+    spec.as_object()
+        .and_then(|object| object.get("type"))
+        .map(Value::is_string)
+        .unwrap_or(false)
+}
+
+fn catalogue_default_transition() -> Value {
+    json!({ "type": "crossfade", "durationMs": 600 })
+}
+
+fn project_default_transition(manifest: &Value) -> Option<Value> {
+    match manifest.get("defaultTransition") {
+        Some(Value::Null) => None,
+        Some(spec) if transition_is_valid(spec) => Some(spec.clone()),
+        _ => Some(catalogue_default_transition()),
+    }
+}
+
+fn seed_inserted_scene_transitions(
+    scenes: &mut [Value],
+    at: usize,
+    default_transition: Option<&Value>,
+) {
+    let Some(default_transition) = default_transition else {
+        return;
+    };
+    let appended = at + 1 == scenes.len();
+    if appended && at > 0 && scenes[at - 1].get("transition").is_none() {
+        scenes[at - 1]["transition"] = default_transition.clone();
+    }
+    if !appended && scenes[at].get("transition").is_none() {
+        scenes[at]["transition"] = default_transition.clone();
+    }
+}
 
 /// Validate and resolve a `scenes/<stem>.json` path under the project, traversal-hardened: reject anything that isn't exactly one flat path segment under `scenes/` (the `resolve_asset` lesson).
 fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String> {
@@ -164,12 +224,7 @@ pub fn update_project_scene_transition(
     let root = workspace::require_root(&app, &state)?;
     workspace::validate_slug(&slug)?;
     if let Some(spec) = &transition {
-        let ok = spec
-            .as_object()
-            .and_then(|o| o.get("type"))
-            .map(Value::is_string)
-            .unwrap_or(false);
-        if !ok {
+        if !transition_is_valid(spec) {
             return Err("transition must be an object with a string `type`".into());
         }
     }
@@ -198,6 +253,55 @@ pub fn update_project_scene_transition(
             }
         }
     }
+    atomic_write_json(&path, &manifest)
+}
+
+fn apply_transition_to_manifest(
+    manifest: &mut Value,
+    transition: Option<&Value>,
+) -> Result<(), String> {
+    if let Some(spec) = &transition {
+        if !transition_is_valid(spec) {
+            return Err("transition must be an object with a string `type`".into());
+        }
+    }
+    migrate_manifest_transitions(manifest);
+    {
+        let scenes = manifest
+            .get_mut("scenes")
+            .and_then(Value::as_array_mut)
+            .ok_or("project.json has no scenes array")?;
+        let boundary_count = scenes.len().saturating_sub(1);
+        for scene in scenes.iter_mut().take(boundary_count) {
+            match transition {
+                Some(spec) => scene["transition"] = spec.clone(),
+                None => {
+                    if let Some(object) = scene.as_object_mut() {
+                        object.remove("transition");
+                    }
+                }
+            }
+        }
+    }
+    manifest["defaultTransition"] = transition.cloned().unwrap_or(Value::Null);
+    Ok(())
+}
+
+/// Apply one transition to every boundary and store it as the default for new boundaries. A null transition is an explicit hard-cut default, distinct from an older manifest with no default key.
+#[tauri::command]
+pub fn apply_project_transition_to_all(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+    transition: Option<Value>,
+) -> Result<(), String> {
+    let root = workspace::require_root(&app, &state)?;
+    workspace::validate_slug(&slug)?;
+    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
+    let mut manifest: Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    apply_transition_to_manifest(&mut manifest, transition.as_ref())?;
     atomic_write_json(&path, &manifest)
 }
 
@@ -358,7 +462,7 @@ fn remap_field(value: Option<&mut Value>, field: &str, map: &HashMap<String, Str
     }
 }
 
-/// Rewrite an id-keyed record's KEYS through a map (`deviceLayout.devices`, `compare.b.media`, the `ls-` text keys); every mapped entry lifts out before any lands back, so a swap can't clobber.
+/// Rewrite an id-keyed record's KEYS through a map (`deviceLayout.devices`, comparison device records, the `ls-` text keys); every mapped entry lifts out before any lands back, so a swap can't clobber.
 fn remap_keys(value: Option<&mut Value>, map: &HashMap<String, String>) {
     let Some(object) = value.and_then(Value::as_object_mut) else {
         return;
@@ -456,6 +560,12 @@ fn remint_scene_doc_ids(doc: &mut Value) {
         doc.get_mut("compare")
             .and_then(|c| c.get_mut("b"))
             .and_then(|b| b.get_mut("media")),
+        &devices,
+    );
+    remap_keys(
+        doc.get_mut("compare")
+            .and_then(|c| c.get_mut("b"))
+            .and_then(|b| b.get_mut("deviceAppearance")),
         &devices,
     );
 
@@ -1580,7 +1690,7 @@ fn scaffold_managed_text(kind: &str, doc: &Value, deck_frame: Option<&Value>) ->
     Some(json!({ "layout": "template", "items": items }))
 }
 
-/// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), everything else gets the 4000ms wizard default.
+/// Scaffold a scene natively: TSX from the bundled template + sidecar doc + project.json registration, all writes atomic; video media sets the duration to the media's length (duration-follow), title scenes use 2600ms, charts use 5000ms and other scenes use 4000ms.
 #[tauri::command]
 pub async fn scaffold_scene(
     app: AppHandle,
@@ -1648,11 +1758,7 @@ pub async fn scaffold_scene(
         "device" | "deviceonly" | "video" | "videowindow"
     ) && options.media_kind.as_deref() == Some("video")
         && options.media_rel.is_some();
-    let mut duration_ms = if options.kind == "chart" {
-        CHART_SCENE_DURATION_MS
-    } else {
-        DEFAULT_SCENE_DURATION_MS
-    };
+    let mut duration_ms = default_scene_duration_ms(&options.kind);
     let mut media_aspect: Option<f64> = None;
     if is_video {
         if let Some(rel) = &options.media_rel {
@@ -1895,10 +2001,12 @@ pub async fn scaffold_scene(
         if device_only {
             placement["ground"] = json!(true);
         }
+        let (model, colour) =
+            device_model_and_colour(options.device_model.as_deref(), options.colour.as_deref());
         let mut device = json!({
             "id": "d1",
-            "model": options.device_model.as_deref().unwrap_or("iphone-17-pro"),
-            "colour": options.colour.as_deref().unwrap_or("silver"),
+            "model": model,
+            "colour": colour,
             "placement": placement,
             "motion": { "preset": options.motion_preset.as_deref().unwrap_or("none") },
         });
@@ -1927,8 +2035,8 @@ pub async fn scaffold_scene(
     }
     if is_comparison {
         // Devices carry no placement: the deviceLayout block owns positions and the template resolves it per aspect.
-        let model = options.device_model.as_deref().unwrap_or("iphone-17-pro");
-        let colour = options.colour.as_deref().unwrap_or("silver");
+        let (model, colour) =
+            device_model_and_colour(options.device_model.as_deref(), options.colour.as_deref());
         let mut list = Vec::new();
         for (i, (rel, kind)) in comparison_slots.iter().enumerate() {
             let mut device = json!({
@@ -1967,6 +2075,8 @@ pub async fn scaffold_scene(
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
     migrate_manifest_transitions(&mut manifest);
+    // Resolve after every async media probe so an Apply-to-all default saved while the wizard was working cannot be overwritten by a stale value.
+    let default_transition = project_default_transition(&manifest);
     let scenes = manifest
         .get_mut("scenes")
         .and_then(Value::as_array_mut)
@@ -1982,14 +2092,8 @@ pub async fn scaffold_scene(
             scenes.len() - 1
         }
     };
-    // New scenes join with a crossfade by default (600ms, the catalogue default in transitionCatalog.ts): seed the previous scene's outgoing transition and, when the new scene isn't last, its own; never overwrite an existing choice.
-    let default_transition = json!({ "type": "crossfade", "durationMs": 600 });
-    if at > 0 && scenes[at - 1].get("transition").is_none() {
-        scenes[at - 1]["transition"] = default_transition.clone();
-    }
-    if at + 1 < scenes.len() && scenes[at].get("transition").is_none() {
-        scenes[at]["transition"] = default_transition;
-    }
+    // Preserve the predecessor's existing boundary, including a hard cut, and seed only the genuinely new boundary.
+    seed_inserted_scene_transitions(scenes, at, default_transition.as_ref());
     atomic_write_json(&manifest_path, &manifest)?;
 
     Ok(ScaffoldResult {
@@ -1998,6 +2102,121 @@ pub async fn scaffold_scene(
         scene_id,
         duration_ms,
     })
+}
+
+#[cfg(test)]
+mod scaffold_default_tests {
+    use super::{
+        apply_transition_to_manifest, default_scene_duration_ms, device_model_and_colour,
+        project_default_transition, seed_inserted_scene_transitions, transition_is_valid,
+    };
+    use serde_json::{json, Value};
+
+    #[test]
+    fn title_kinds_start_at_two_point_six_seconds() {
+        assert_eq!(default_scene_duration_ms("title"), 2600);
+        assert_eq!(default_scene_duration_ms("titleicon"), 2600);
+        assert_eq!(default_scene_duration_ms("overlaypanel"), 4000);
+        assert_eq!(default_scene_duration_ms("chart"), 5000);
+    }
+
+    #[test]
+    fn device_scaffolds_default_to_the_bundled_android() {
+        assert_eq!(device_model_and_colour(None, None), ("android", "graphite"));
+        assert_eq!(
+            device_model_and_colour(Some("iphone-17-pro"), None),
+            ("iphone-17-pro", "silver")
+        );
+        assert_eq!(
+            device_model_and_colour(Some("iphone-15-pro"), None),
+            ("iphone-15-pro", "natural-titanium")
+        );
+        assert_eq!(
+            device_model_and_colour(Some("android"), Some("white")),
+            ("android", "white")
+        );
+    }
+
+    #[test]
+    fn transition_defaults_require_a_string_type() {
+        assert!(transition_is_valid(&json!({ "type": "crossfade" })));
+        assert!(!transition_is_valid(&json!({ "type": 2 })));
+        assert!(!transition_is_valid(&json!(null)));
+    }
+
+    #[test]
+    fn a_missing_default_keeps_crossfade_while_null_means_cut() {
+        assert_eq!(
+            project_default_transition(&json!({})),
+            Some(json!({ "type": "crossfade", "durationMs": 600 }))
+        );
+        assert_eq!(
+            project_default_transition(&json!({ "defaultTransition": null })),
+            None
+        );
+    }
+
+    #[test]
+    fn apply_all_updates_every_boundary_and_the_object_default() {
+        let mut manifest = json!({
+            "version": 2,
+            "scenes": [
+                { "file": "scenes/a.tsx", "transition": { "type": "wipe" } },
+                { "file": "scenes/b.tsx" },
+                { "file": "scenes/c.tsx", "transition": { "type": "unused" } }
+            ]
+        });
+        let spec = json!({ "type": "dip", "durationMs": 400 });
+        apply_transition_to_manifest(&mut manifest, Some(&spec)).unwrap();
+        assert_eq!(manifest["scenes"][0]["transition"], spec);
+        assert_eq!(manifest["scenes"][1]["transition"], spec);
+        assert_eq!(
+            manifest["scenes"][2]["transition"],
+            json!({ "type": "unused" })
+        );
+        assert_eq!(manifest["defaultTransition"], spec);
+    }
+
+    #[test]
+    fn apply_all_hard_cut_removes_boundaries_and_saves_null() {
+        let mut manifest = json!({
+            "version": 2,
+            "scenes": [
+                { "file": "scenes/a.tsx", "transition": { "type": "wipe" } },
+                { "file": "scenes/b.tsx", "transition": { "type": "dip" } },
+                { "file": "scenes/c.tsx" }
+            ]
+        });
+        apply_transition_to_manifest(&mut manifest, None).unwrap();
+        assert!(manifest["scenes"][0].get("transition").is_none());
+        assert!(manifest["scenes"][1].get("transition").is_none());
+        assert_eq!(manifest["defaultTransition"], Value::Null);
+    }
+
+    #[test]
+    fn inserting_between_scenes_preserves_a_local_cut_and_defaults_the_new_boundary() {
+        let mut scenes = vec![
+            json!({ "file": "scenes/a.tsx" }),
+            json!({ "file": "scenes/new.tsx" }),
+            json!({ "file": "scenes/b.tsx" }),
+        ];
+        let spec = json!({ "type": "dip", "durationMs": 400 });
+        seed_inserted_scene_transitions(&mut scenes, 1, Some(&spec));
+        assert!(scenes[0].get("transition").is_none());
+        assert_eq!(scenes[1]["transition"], spec);
+    }
+
+    #[test]
+    fn appending_seeds_the_previously_terminal_boundary() {
+        let mut scenes = vec![
+            json!({ "file": "scenes/a.tsx" }),
+            json!({ "file": "scenes/new.tsx" }),
+        ];
+        let spec = json!({ "type": "crossfade", "durationMs": 600 });
+        seed_inserted_scene_transitions(&mut scenes, 1, Some(&spec));
+        assert_eq!(scenes[0]["transition"], spec);
+        assert!(scenes[1].get("transition").is_none());
+    }
 }
 
 #[cfg(test)]
@@ -2616,7 +2835,14 @@ mod remint_tests {
                 },
             },
             "compare": {
-                "b": { "media": { "d3": { "src": "assets/b.png", "kind": "image" } } },
+                "b": {
+                    "media": { "d3": { "src": "assets/b.png", "kind": "image" } },
+                    "deviceAppearance": {
+                        "d7": { "colour": "silver", "shadow": "long" },
+                        "d3": { "colour": "graphite", "shadow": "soft" },
+                        "missing": { "colour": "white" },
+                    },
+                },
                 "track": {
                     "keys": [
                         { "id": "c1", "tMs": 0, "pose": { "value": 0 } },
@@ -2718,6 +2944,18 @@ mod remint_tests {
             json!("assets/b.png")
         );
         assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d1"]["colour"],
+            json!("silver")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d2"]["shadow"],
+            json!("soft")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["missing"]["colour"],
+            json!("white")
+        );
+        assert_eq!(
             doc["cameraRig"]["keys"][0]["pose"]["aim"]["id"],
             json!("d2")
         );
@@ -2795,12 +3033,36 @@ mod remint_tests {
             "version": 1,
             "devices": [{ "id": "d2", "model": "a" }, { "id": "d1", "model": "b" }],
             "deviceLayout": { "preset": "row", "devices": { "d1": { "scale": 1.0 }, "d2": { "scale": 2.0 } } },
+            "compare": { "b": { "deviceAppearance": { "d1": { "colour": "silver" }, "d2": { "colour": "black" } } } },
         });
         remint_scene_doc_ids(&mut doc);
         assert_eq!(ids(&doc["devices"]), ["d1", "d2"]);
         assert_eq!(doc["devices"][0]["model"], json!("a"));
         assert_eq!(doc["deviceLayout"]["devices"]["d1"]["scale"], json!(2.0));
         assert_eq!(doc["deviceLayout"]["devices"]["d2"]["scale"], json!(1.0));
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d1"]["colour"],
+            json!("black")
+        );
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"]["d2"]["colour"],
+            json!("silver")
+        );
+    }
+
+    #[test]
+    fn malformed_comparison_device_appearance_is_left_untouched() {
+        let source = json!({
+            "version": 1,
+            "devices": [{ "id": "d7", "model": "a" }],
+            "compare": { "b": { "deviceAppearance": ["d7", null] } },
+        });
+        let doc = minted(&source);
+        assert_eq!(doc["devices"][0]["id"], json!("d1"));
+        assert_eq!(
+            doc["compare"]["b"]["deviceAppearance"],
+            source["compare"]["b"]["deviceAppearance"]
+        );
     }
 
     #[test]

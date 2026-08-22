@@ -1,6 +1,6 @@
 import type { SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import type { V3 } from "../types";
-import { DEVICE_CATALOG, DEVICE_FALLBACK_ID, type DeviceId } from "./catalog";
+import { resolveAvailableDeviceSpec } from "./catalog";
 import type { DevicePlacement } from "./Device";
 
 /** `undefined` means the scene's mounted floor is not known yet; `null` means it is known to have no floor. */
@@ -8,7 +8,7 @@ export type DeviceFloorY = number | null | undefined;
 
 /** The fitted body height shared by grounding, camera binding and licence-free fallback builds. */
 export function deviceFittedHeight(model: string): number {
-  return (DEVICE_CATALOG[model as DeviceId] ?? DEVICE_CATALOG[DEVICE_FALLBACK_ID]).fittedHeight;
+  return resolveAvailableDeviceSpec(model).fittedHeight;
 }
 
 /** Resolve the device group's rendered world anchor. An unknown floor preserves the baked camera point instead of guessing from authored Y. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeFormat, FORMATS } from "../../engine/format";
 import type { SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
+import { resolveAvailableDeviceSpec } from "./catalog";
 import { resolveDeviceLayout } from "./layout";
 import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
@@ -30,10 +31,14 @@ describe("resolveDeviceWorldAnchor", () => {
     };
     const anchor = resolveDeviceWorldAnchor(laptop, laptop.placement, -1.5);
 
-    expect(deviceFittedHeight("iphone-15-pro")).toBe(2.6);
-    expect(deviceFittedHeight("macbook-pro-16")).toBeCloseTo(2.3047930262049396, 12);
+    // A build without the licensed laptop renders, and so grounds, the Android fallback.
+    const laptopHeight = resolveAvailableDeviceSpec("macbook-pro-16").fittedHeight;
+    expect(deviceFittedHeight("iphone-15-pro")).toBe(
+      resolveAvailableDeviceSpec("iphone-15-pro").fittedHeight,
+    );
+    expect(deviceFittedHeight("macbook-pro-16")).toBeCloseTo(laptopHeight, 12);
     expect(anchor?.[0]).toBe(-1);
-    expect(anchor?.[1]).toBeCloseTo(-1.5 + (2.3047930262049396 * 1.5) / 2, 12);
+    expect(anchor?.[1]).toBeCloseTo(-1.5 + (laptopHeight * 1.5) / 2, 12);
     expect(anchor?.[2]).toBe(0.5);
   });
 

@@ -59,6 +59,9 @@ export { liftColour } from "./colour";
 export { defineScene } from "./defineScene";
 // The device catalog + Device primitive, the device+media pillar.
 export {
+  AVAILABLE_DEVICE_IDS,
+  DEFAULT_DEVICE_ID,
+  DEVICE_AVAILABILITY,
   DEVICE_CATALOG,
   DEVICE_IDS,
   type DeviceColourSpec,
@@ -66,8 +69,12 @@ export {
   type DeviceId,
   type DeviceSpec,
   deviceColour,
+  FALLBACK_DEVICE_ID,
+  isDeviceAvailable,
   isDeviceId,
   preloadCatalogModels,
+  resolveAvailableDeviceId,
+  resolveAvailableDeviceSpec,
 } from "./device/catalog";
 export {
   Device,

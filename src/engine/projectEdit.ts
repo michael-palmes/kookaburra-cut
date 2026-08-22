@@ -12,6 +12,14 @@ export async function updateSceneTransition(
   await invoke("update_project_scene_transition", { slug, index, transition: spec });
 }
 
+/** Atomically apply one transition to every boundary and save it as this project's new-boundary default. */
+export async function applyTransitionToAll(
+  slug: string,
+  spec: TransitionSpec | null,
+): Promise<void> {
+  await invoke("apply_project_transition_to_all", { slug, transition: spec });
+}
+
 /** Remove a scene (manifest entry; the TSX + sidecar ride to the Trash). */
 export function removeProjectScene(slug: string, index: number): Promise<void> {
   return invoke("remove_project_scene", { slug, index });

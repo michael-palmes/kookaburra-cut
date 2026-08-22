@@ -27,11 +27,13 @@ import {
   userHomeDir,
 } from "../engine/workspace";
 import { UpdateAvailableDialog } from "../ui/updateDialogs";
+import { useNativeTextUndo } from "../ui/useNativeTextUndo";
 import { PublisherPane } from "./PublisherPane";
 
 /** The Settings window: native titlebar, opened via the app menu (⌘,). Cache management (media previews + clip extractions), the workspace location (the only place it can be changed, since first run no longer asks), the opt-in update lane (toggle + Check now), and read-only info (sidecar versions, app version). */
 
 export function SettingsApp() {
+  useNativeTextUndo();
   // Fade the UI in on first commit (anti-flash reveal).
   useEffect(() => {
     revealApp();

@@ -302,10 +302,12 @@ valid.
 
 The device pillar uses a real glTF handset with the screen as a material whose
 map is the pre-extracted clip texture. The catalogue uses real product names
-with an accurately modelled, **licensed** vendor asset (a deliberate product
-decision); the model file itself is not committed; it lives in a gitignored
-folder (`src/assets/models/licensed/`) and is bundled into app builds only.
-Colour variants are material-value overrides on the one glb.
+with accurately modelled, **licensed** vendor assets where available (a
+deliberate product decision). Those files are not committed; they live in a
+gitignored folder (`src/assets/models/licensed/`) and are bundled into
+maintainer builds only. The generated Android model is committed, appears in
+every build and supplies the complete fallback specification for unavailable
+catalogue ids. Colour variants are per-model material-value overrides.
 
 The 3D authoring surface is four primitive families: `ExtrudedText`
 (FontLoader/TextGeometry over a bundled typeface JSON), generative shapes

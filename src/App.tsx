@@ -29,7 +29,6 @@ import { effectiveKeyMoments, setBeatProject, useBeatStore } from "./engine/beat
 import { CompositorDriver } from "./engine/CompositorDriver";
 import { useCameraEditStore } from "./engine/cameraEditStore";
 import { ensureCaptureService } from "./engine/captureBridge";
-import { useChartTrackEditStore } from "./engine/chartTrackEditStore";
 import {
   clipExtractionCount,
   clipExtractionProgress,
@@ -39,7 +38,6 @@ import {
   subscribeClipExtraction,
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
-import { useCompareEditStore } from "./engine/compareEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
@@ -155,6 +153,7 @@ import { LayeredScreenshotAnimationLane } from "./ui/LayeredScreenshotAnimationL
 import { LayeredScreenshotPill } from "./ui/LayeredScreenshotPill";
 import { LayeredScreenshotToolOverlay } from "./ui/LayeredScreenshotToolOverlay";
 import { LightingAnimationLane } from "./ui/LightingAnimationLane";
+import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/laneSelection";
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
@@ -517,7 +516,7 @@ export default function App() {
     slug: string;
     index: number;
     editName: string;
-    slot: "device" | "background" | "videoWindow";
+    slot: "device" | "compareDevice" | "background" | "videoWindow";
     deviceId?: string;
   } | null>(null);
 
@@ -1122,7 +1121,11 @@ export default function App() {
                 },
               ],
             });
-            if (pending.slot === "device" || pending.slot === "videoWindow") {
+            if (
+              pending.slot === "device" ||
+              pending.slot === "compareDevice" ||
+              pending.slot === "videoWindow"
+            ) {
               const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
@@ -1458,12 +1461,18 @@ export default function App() {
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
   const comparePresent = !!project?.sceneDocs[camSceneIndex]?.compare;
-  const compareLaneOpen = useCompareEditStore((s) => s.open);
   // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
   const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
-  const chartLaneOpen = useChartTrackEditStore((s) => s.open);
   const lightingLaneOpen = useLightingEditStore((state) => state.open);
   const stackedLanes = comparePresent || chartPresent || lightingLaneOpen;
+  const animationLaneOpen = animationLaneMasterOpen(lsActive, cameraEditOpen, lsLaneOpen);
+  useEffect(() => {
+    if (!animationLaneOpen) clearSecondaryLaneSelections();
+  }, [animationLaneOpen]);
+  useEffect(() => {
+    void camSceneIndex;
+    clearSecondaryLaneSelections();
+  }, [camSceneIndex]);
 
   // The capture bridge: captures are served by the hidden render window (src/render/bridgeService.ts), never on this canvas; the editor only watches for pending requests, pushes its context (open project, aspect, playhead, export lockout) and ensures the window exists. Runs on the welcome screen too, so a request with nothing open gets a prompt rejection instead of a timeout.
   const bridgeBusyRef = useRef(false);
@@ -1772,7 +1781,7 @@ export default function App() {
     async (
       sceneIndex: number,
       mediaRel: string,
-      slot: "device" | "background" | "videoWindow" = "device",
+      slot: "device" | "compareDevice" | "background" | "videoWindow" = "device",
       deviceId?: string,
     ) => {
       if (!project || !isWorkspaceProjectId(project.id)) return;
@@ -2324,15 +2333,10 @@ export default function App() {
         </div>
       )}
 
-      {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); the animation lane self-collapses on cameraEditStore.open and the dock draws the lane-to-cell connector. */}
+      {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); Animate scene controls the lane stack and its lane-to-cell connector. */}
       {editorView && (
         <TimelineDock
-          connectorActive={
-            (comparePresent && compareLaneOpen) ||
-            (chartPresent && chartLaneOpen) ||
-            lightingLaneOpen ||
-            (lsActive ? lsLaneOpen : cameraEditOpen)
-          }
+          connectorActive={animationLaneOpen || lightingLaneOpen}
           activeIndex={camSceneIndex}
           lane={
             project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
@@ -2341,6 +2345,7 @@ export default function App() {
                   <CompareAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
+                    open={animationLaneOpen}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
                   />
@@ -2349,6 +2354,7 @@ export default function App() {
                   <ChartAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
+                    open={animationLaneOpen}
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
                   />
@@ -2376,7 +2382,6 @@ export default function App() {
                     onDocChanged={handleDocChanged}
                     onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
                     label={stackedLanes ? "Camera" : undefined}
-                    alwaysOpen={stackedLanes}
                   />
                 )}
               </div>

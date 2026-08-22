@@ -8,6 +8,7 @@ import {
   deleteExportPreset,
   getSettings,
   listExportPresets,
+  setOpeningPosterFrame,
   writeExportPreset,
 } from "../engine/workspace";
 import { BUNDLED_EXPORT_PRESETS } from "../export/presetRegistry";
@@ -30,16 +31,19 @@ import {
   fitToCap,
   groupPresets,
   HIGH_QUALITY_DISPLAY_DOC,
+  highQualityEncode,
   isHardwareEncode,
   isProRes,
   isVideotoolbox,
   KOOKABURRA_STANDARD_ID,
+  openingPosterFrameEnabled,
   type PresetRow,
   presetAspects,
   railPresets,
   resolveDraft,
   slugifyPresetName,
   specChips,
+  withPosterFrame,
 } from "./exportOptions";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -66,8 +70,11 @@ interface LoudnessMeasure {
   truePeakDbtp: number;
 }
 
-/** Loudness graphs depend on output fps (sample counts), one measure per fps. */
-type LoudnessCache = Partial<Record<number, LoudnessMeasure | "pending">>;
+/** Loudness graphs depend on output fps and whether one leading silent frame is present. */
+type LoudnessCache = Partial<Record<string, LoudnessMeasure | "pending">>;
+
+const loudnessKey = (fps: number, posterFrame: boolean) =>
+  `${fps}:${posterFrame ? "poster" : "plain"}`;
 
 const RATE_IS_BITRATE = (
   r: ExportPresetDoc["video"]["rate"],
@@ -83,6 +90,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   const [draft, setDraft] = useState<CustomDraft>(customSeed);
   const [fitted, setFitted] = useState<ExportPresetDoc["video"]["rate"] | null>(null);
   const [loudness, setLoudness] = useState<LoudnessCache>({});
+  const [posterFrame, setPosterFrame] = useState(true);
   const [saveAs, setSaveAs] = useState<{ name: string; description: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -93,6 +101,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     return () => window.clearTimeout(timer);
   }, [confirmDelete]);
   const loudnessRef = useRef<LoudnessCache>({});
+  const posterFrameTouchedRef = useRef(false);
+  const posterFrameWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const posterFrameWriteNonceRef = useRef(0);
 
   const refreshUserPresets = useCallback(async () => {
     try {
@@ -122,6 +133,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       try {
         const settings = await getSettings();
         if (!live) return;
+        if (!posterFrameTouchedRef.current) {
+          setPosterFrame(openingPosterFrameEnabled(settings.disableOpeningPosterFrame));
+        }
         const last =
           settings.lastExportPresetByProject?.[project.id] ??
           settings.lastExportPreset ??
@@ -135,6 +149,21 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       live = false;
     };
   }, [project.id, refreshUserPresets]);
+
+  const changePosterFrame = useCallback((enabled: boolean) => {
+    posterFrameTouchedRef.current = true;
+    setPosterFrame(enabled);
+    setError(null);
+    const nonce = ++posterFrameWriteNonceRef.current;
+    const write = posterFrameWriteRef.current
+      .catch(() => {})
+      .then(() => setOpeningPosterFrame(enabled));
+    posterFrameWriteRef.current = write.catch((e) => {
+      if (posterFrameWriteNonceRef.current === nonce) {
+        setError(`Couldn't save the opening poster frame preference: ${String(e)}`);
+      }
+    });
+  }, []);
 
   // Joined the shared Escape stack: layered surfaces close top-first.
   useEscapeClose(onClose);
@@ -195,12 +224,14 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   );
 
   const measure = useCallback(
-    async (outFps: number): Promise<LoudnessMeasure | null> => {
+    async (outFps: number, posterFrame: boolean): Promise<LoudnessMeasure | null> => {
       if (!project.audio) return null;
-      const cached = loudnessRef.current[outFps];
+      const key = loudnessKey(outFps, posterFrame);
+      const cached = loudnessRef.current[key];
       if (cached && cached !== "pending") return cached;
       // The export graph's frame count at the output rate: the render steps at outFps directly, so the measured graph must match it exactly.
-      const outFrames = Math.max(1, Math.round((project.totalMs / 1000) * outFps));
+      const outFrames =
+        Math.max(1, Math.round((project.totalMs / 1000) * outFps)) + (posterFrame ? 1 : 0);
       const m = await invoke<LoudnessMeasure>("measure_loudness", {
         file: project.audio.abs,
         gainDb: project.audio.gainDb ?? 0,
@@ -209,8 +240,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
         startOffsetMs: project.audio.startOffsetMs ?? 0,
         totalFrames: outFrames,
         fps: outFps,
+        posterFrame,
       });
-      loudnessRef.current = { ...loudnessRef.current, [outFps]: m };
+      loudnessRef.current = { ...loudnessRef.current, [key]: m };
       setLoudness(loudnessRef.current);
       return m;
     },
@@ -223,19 +255,20 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   useEffect(() => {
     const target = targetOf(selectedId);
     if (target == null || !project.audio) return;
-    if (loudnessRef.current[selectedFps]) return;
-    loudnessRef.current = { ...loudnessRef.current, [selectedFps]: "pending" };
+    const key = loudnessKey(selectedFps, posterFrame);
+    if (loudnessRef.current[key]) return;
+    loudnessRef.current = { ...loudnessRef.current, [key]: "pending" };
     setLoudness(loudnessRef.current);
-    void measure(selectedFps).catch(() => {
-      delete loudnessRef.current[selectedFps];
+    void measure(selectedFps, posterFrame).catch(() => {
+      delete loudnessRef.current[key];
     });
-  }, [selectedId, selectedFps, targetOf, measure, project.audio]);
+  }, [selectedId, selectedFps, posterFrame, targetOf, measure, project.audio]);
 
   // Plain-language clipping warning (warn, never limit): the technical "-14 LUFS (correction +x dB)" readout was dropped since most people never need to see it; only shows when the volume match would push the loudest moments into audible distortion (projected true peak above -1.5 dBTP).
   const loudnessWarning = (() => {
     const target = targetOf(selectedId);
     if (target == null || !project.audio) return null;
-    const m = loudness[selectedFps];
+    const m = loudness[loudnessKey(selectedFps, posterFrame)];
     if (!m || m === "pending") return null;
     const delta = Math.round((target - m.integratedLufs) * 100) / 100;
     if (m.truePeakDbtp + delta <= -1.5) return null;
@@ -245,9 +278,13 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
   })();
 
   const loudnessGainFor = useCallback(
-    async (target: number | null, outFps: number): Promise<number | undefined> => {
+    async (
+      target: number | null,
+      outFps: number,
+      posterFrame: boolean,
+    ): Promise<number | undefined> => {
       if (target == null || !project.audio) return undefined;
-      const m = await measure(outFps);
+      const m = await measure(outFps, posterFrame);
       if (!m) return undefined;
       return Math.round((target - m.integratedLufs) * 100) / 100;
     },
@@ -259,7 +296,8 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     setError(null);
     try {
       if (selectedId === KOOKABURRA_STANDARD_ID) {
-        onExport({ presetId: KOOKABURRA_STANDARD_ID, aspect });
+        const encode = highQualityEncode(posterFrame);
+        onExport({ presetId: KOOKABURRA_STANDARD_ID, ...(encode ? { encode } : {}), aspect });
         return;
       }
       if (selectedId === CUSTOM_ID) {
@@ -268,8 +306,8 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
           setError(resolved.error);
           return;
         }
-        const spec = { ...resolved.spec };
-        const gain = await loudnessGainFor(draft.loudnessTarget, draft.fps);
+        const spec = withPosterFrame({ ...resolved.spec }, posterFrame);
+        const gain = await loudnessGainFor(draft.loudnessTarget, draft.fps, posterFrame);
         if (gain !== undefined && spec.audio) spec.audio = { ...spec.audio, loudnessGainDb: gain };
         onExport({ presetId: CUSTOM_ID, encode: spec, outputSuffix: "custom", aspect });
         return;
@@ -277,8 +315,12 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       const row = selectedRow;
       if (!row) return;
       const doc = fitted ? { ...row.doc, video: { ...row.doc.video, rate: fitted } } : row.doc;
-      const gain = await loudnessGainFor(doc.audio.loudnessTarget ?? null, doc.video.fps);
-      const spec = resolvePresetToEncodeSpec(doc, gain);
+      const gain = await loudnessGainFor(
+        doc.audio.loudnessTarget ?? null,
+        doc.video.fps,
+        posterFrame,
+      );
+      const spec = withPosterFrame(resolvePresetToEncodeSpec(doc, gain), posterFrame);
       onExport({
         presetId: row.id,
         encode: spec,
@@ -288,7 +330,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [selectedId, selectedRow, draft, fitted, aspect, onExport, loudnessGainFor]);
+  }, [selectedId, selectedRow, draft, fitted, aspect, posterFrame, onExport, loudnessGainFor]);
 
   // ── Save-as / duplicate / delete ───────────────────────────────────────────
   const duplicate = useCallback((doc: ExportPresetDoc) => {
@@ -488,6 +530,21 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                 loudnessWarning={loudnessWarning}
               />
             )}
+            <h4 className="export-section-title">Link previews</h4>
+            <div className="export-knobs export-link-previews">
+              <label className="export-check">
+                <input
+                  type="checkbox"
+                  checked={posterFrame}
+                  onChange={(e) => changePosterFrame(e.target.checked)}
+                />
+                Opening poster frame
+              </label>
+              <span className="export-notes">
+                Adds a middle frame from scene 1 at the start. This improves link-preview
+                thumbnails, but each host still chooses its own.
+              </span>
+            </div>
             {error && <p className="modal-error">{error}</p>}
           </section>
 

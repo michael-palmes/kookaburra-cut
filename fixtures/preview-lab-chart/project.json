@@ -52,6 +52,18 @@
     {
       "file": "scenes/chart-pulseGlass.tsx",
       "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-nightEditorial.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-launchGlow.tsx",
+      "durationMs": 2400
+    },
+    {
+      "file": "scenes/chart-obsidian.tsx",
+      "durationMs": 2400
     }
   ]
 }

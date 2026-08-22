@@ -1,5 +1,5 @@
 import type { SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
-import { DEVICE_CATALOG } from "../device/catalog";
+import { resolveAvailableDeviceSpec } from "../device/catalog";
 import type { DevicePlacement } from "../device/Device";
 import type { V3 } from "../types";
 
@@ -10,14 +10,14 @@ const BESIDE_GAP = 0.55;
 
 /** The device's approximate fitted world size from catalog metadata alone (the inspector has no loaded geometry): screen aspect stands in for body aspect, close enough for a starting placement. */
 function fittedDeviceSize(device: SceneDocDeviceSpec): { width: number; height: number } {
-  const spec = DEVICE_CATALOG[device.model as keyof typeof DEVICE_CATALOG];
-  const aspect = spec?.screen.aspect ?? 0.46;
+  const spec = resolveAvailableDeviceSpec(device.model);
+  const aspect = spec.screen.aspect;
   const scale = device.placement?.scale ?? 1;
-  if (spec?.fit?.axis === "width") {
+  if (spec.fit?.axis === "width") {
     const width = (spec.fit.target ?? DEVICE_TARGET_WORLD_HEIGHT) * scale;
     return { width, height: width / aspect };
   }
-  const height = (spec?.fit?.target ?? DEVICE_TARGET_WORLD_HEIGHT) * scale;
+  const height = (spec.fit?.target ?? DEVICE_TARGET_WORLD_HEIGHT) * scale;
   return { width: height * aspect, height };
 }
 

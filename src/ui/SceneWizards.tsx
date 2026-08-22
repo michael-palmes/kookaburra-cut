@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useClockStore } from "../engine/clock";
+import {
+  isSampleDeviceVideo,
+  SAMPLE_LAPTOP_VIDEO,
+  sampleVideoForDevice,
+} from "../engine/deviceSampleMedia";
 import { type HistoryChange, pushHistory } from "../engine/history";
 import { fsUrl, type MediaMeta } from "../engine/media";
 import { optionPreviewStill } from "../engine/optionPreviews";
@@ -16,15 +21,19 @@ import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
 import type { ChartDimension, ChartType } from "../toolkit/chart/types";
 import {
+  AVAILABLE_DEVICE_IDS,
   CUSTOM_COLOUR_PREFIX,
   customColourHex,
+  DEFAULT_DEVICE_ID,
   DEVICE_CATALOG,
-  DEVICE_IDS,
   type DeviceId,
   deviceColour,
+  resolveAvailableDeviceId,
 } from "../toolkit/device/catalog";
 import type { DeviceMotionPreset, DeviceShadowMode } from "../toolkit/device/Device";
+import { ComparisonSideIcon } from "./ComparisonSideIcon";
 import { ColourPicker } from "./colour/ColourPicker";
+import { applyDeviceChoice } from "./deviceChoice";
 import { ChartTypeIcon, SegmentedRow } from "./inspector/rows";
 import { MediaBrowser } from "./MediaBrowser";
 import { mediaCardMenu } from "./mediaCardMenu";
@@ -99,9 +108,6 @@ const SUBTITLE_KINDS: SceneKind[] = [
   "overlaypanel",
 ];
 
-/** The video kind's starting background, shipped in every project (`ensureSampleAssets`). */
-const SAMPLE_LAPTOP_VIDEO = "assets/sample-laptop-recording.mp4";
-
 const CHART_TYPE_OPTIONS: { id: ChartType; label: string }[] = [
   { id: "column", label: "Column" },
   { id: "stackedColumn", label: "Stacked column" },
@@ -174,32 +180,6 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
       <span className="wizard-label">{label}</span>
       {children}
     </div>
-  );
-}
-
-/** Split-square glyph for the comparison media steps: the filled half is the screen being picked (before = left, after = right, the scene's own layout). */
-function SideChipGlyph({ side }: { side: "before" | "after" }) {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-      <rect
-        x="1.5"
-        y="2.5"
-        width="13"
-        height="11"
-        rx="2"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <rect
-        x={side === "before" ? 3.2 : 8}
-        y="4.2"
-        width="4.8"
-        height="7.6"
-        rx="1"
-        fill="currentColor"
-      />
-    </svg>
   );
 }
 
@@ -302,7 +282,7 @@ function DevicePicker({
 }) {
   return (
     <div className="device-picker">
-      {DEVICE_IDS.map((id) => {
+      {AVAILABLE_DEVICE_IDS.map((id) => {
         const spec = DEVICE_CATALOG[id];
         const active = id === model;
         const activeColour = deviceColour(spec, active ? colour : spec.defaultColour);
@@ -437,8 +417,8 @@ export function NewSceneWizard({
   const [chartType, setChartType] = useState<ChartType>("column");
   const [chartDimension, setChartDimension] = useState<ChartDimension>("3d");
   const [chartData, setChartData] = useState(CHART_STARTER_DATA[0].id);
-  const [model, setModel] = useState<DeviceId>("iphone-17-pro");
-  const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
+  const [model, setModel] = useState<DeviceId>(DEFAULT_DEVICE_ID);
+  const [colour, setColour] = useState(DEVICE_CATALOG[DEFAULT_DEVICE_ID].defaultColour);
   const [media, setMedia] = useState<{
     rel: string;
     kind: "video" | "image";
@@ -657,8 +637,9 @@ export function NewSceneWizard({
                 type="button"
                 className="btn primary"
                 onClick={() => {
-                  // The video kinds' media step starts on the sample so "Use the sample video" is a one-click accept.
-                  if (VIDEO_MEDIA_KINDS.includes(kind) && media?.kind !== "video") {
+                  if (isDeviceKind && (!media || isSampleDeviceVideo(media.rel))) {
+                    setMedia({ rel: sampleVideoForDevice(model), kind: "video", meta: null });
+                  } else if (VIDEO_MEDIA_KINDS.includes(kind) && media?.kind !== "video") {
                     setMedia({ rel: SAMPLE_LAPTOP_VIDEO, kind: "video", meta: null });
                   }
                   setStep(
@@ -689,6 +670,9 @@ export function NewSceneWizard({
                 onChange={(m, c) => {
                   setModel(m);
                   setColour(c);
+                  if (isDeviceKind && (!media || isSampleDeviceVideo(media.rel))) {
+                    setMedia({ rel: sampleVideoForDevice(m), kind: "video", meta: null });
+                  }
                 }}
               />
             </Field>
@@ -733,7 +717,7 @@ export function NewSceneWizard({
                 isComparison && deviceCount === 2 ? (
                   <span className="wizard-side-label">
                     <span className={`wizard-side-chip${step === "mediaB" ? " after" : ""}`}>
-                      <SideChipGlyph side={step === "mediaB" ? "after" : "before"} />
+                      <ComparisonSideIcon side={step === "mediaB" ? "after" : "before"} />
                       {step === "mediaB" ? "After" : "Before"}
                     </span>
                     {step === "mediaB"
@@ -775,7 +759,7 @@ export function NewSceneWizard({
                       ? step === "mediaB"
                         ? (mediaExtra[mediaIndex - 1]?.rel ?? null)
                         : (media?.rel ?? null)
-                      : VIDEO_MEDIA_KINDS.includes(kind) || kind === "image"
+                      : kind !== "layeredscreenshot"
                         ? (media?.rel ?? null)
                         : undefined
                   }
@@ -1067,8 +1051,9 @@ export function EditSceneWizard({
   // Form state, seeded from the selected scene's sidecar when entering the form step.
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
-  const [model, setModel] = useState<DeviceId>("iphone-17-pro");
-  const [colour, setColour] = useState(DEVICE_CATALOG["iphone-17-pro"].defaultColour);
+  const [model, setModel] = useState<DeviceId>(DEFAULT_DEVICE_ID);
+  const [colour, setColour] = useState(DEVICE_CATALOG[DEFAULT_DEVICE_ID].defaultColour);
+  const [deviceChoiceChanged, setDeviceChoiceChanged] = useState(false);
   const [media, setMedia] = useState<{
     rel: string;
     kind: "video" | "image";
@@ -1150,10 +1135,15 @@ export function EditSceneWizard({
     setTextAnim(ta);
     setTextAnimSeed(ta);
     const d = doc.devices?.[0];
+    setDeviceChoiceChanged(false);
     if (d) {
-      const validModel = (d.model in DEVICE_CATALOG ? d.model : "iphone-15-pro") as DeviceId;
+      const validModel = resolveAvailableDeviceId(d.model);
       setModel(validModel);
-      setColour(d.colour ?? DEVICE_CATALOG[validModel].defaultColour);
+      setColour(
+        validModel === d.model
+          ? (d.colour ?? DEVICE_CATALOG[validModel].defaultColour)
+          : DEVICE_CATALOG[validModel].defaultColour,
+      );
       setMedia(d.media ? { rel: d.media.src, kind: d.media.kind, meta: null } : null);
       setMotion(d.motion?.preset ?? "none");
       setShadow(d.shadow ?? "soft");
@@ -1188,8 +1178,7 @@ export function EditSceneWizard({
         (device?.media?.src ?? null) !== (media?.rel ?? null) ||
         (device?.media?.kind ?? null) !== (media?.kind ?? null);
       if (d) {
-        d.model = model;
-        d.colour = colour;
+        applyDeviceChoice(d, { model, colour, changed: deviceChoiceChanged });
         d.media = media ? { ...d.media, src: media.rel, kind: media.kind } : undefined;
         d.motion = { ...d.motion, preset: motion as DeviceMotionPreset };
         d.shadow = shadow as DeviceShadowMode;
@@ -1369,6 +1358,7 @@ export function EditSceneWizard({
                     onChange={(m, c) => {
                       setModel(m);
                       setColour(c);
+                      setDeviceChoiceChanged(true);
                     }}
                   />
                 </Field>

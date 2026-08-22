@@ -3,13 +3,12 @@ import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { optionPreviewStill } from "../../engine/optionPreviews";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import {
+  AVAILABLE_DEVICE_IDS,
   CUSTOM_COLOUR_PREFIX,
   customColourHex,
   DEVICE_CATALOG,
-  DEVICE_FALLBACK_ID,
-  DEVICE_IDS,
   type DeviceId,
-  isDeviceId,
+  resolveAvailableDeviceId,
 } from "../../toolkit/device/catalog";
 import {
   type DeviceMotionPreset,
@@ -626,7 +625,7 @@ export function DeviceDrillIn({
     onSelectDevice(candidate.id);
   };
 
-  const modelId: DeviceId = isDeviceId(device.model) ? device.model : DEVICE_FALLBACK_ID;
+  const modelId: DeviceId = resolveAvailableDeviceId(device.model);
   const model = DEVICE_CATALOG[modelId];
   const colour = compatibleDeviceColour(modelId, device.colour);
   const customFinish = customColourHex(colour);
@@ -1084,7 +1083,7 @@ export function DeviceModelDrillIn({
           </fieldset>
         )}
         <fieldset className="inspector-device-switcher" aria-label="Device model">
-          {DEVICE_IDS.map((id) => (
+          {AVAILABLE_DEVICE_IDS.map((id) => (
             <button
               type="button"
               key={id}

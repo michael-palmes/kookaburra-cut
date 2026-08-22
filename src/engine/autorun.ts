@@ -699,7 +699,9 @@ export async function runAutoRun(
         // Renders at the output rate: a 30fps spec steps the clock at 30 directly, so the export graph's frame count is computed at outFps too.
         const outFps = encode?.fps ?? FPS;
         if (encode && config.loudnessTarget !== undefined && current.audio) {
-          const outFrames = Math.max(1, Math.round((current.totalMs / 1000) * outFps));
+          const posterFrame = encode.posterFrame === true;
+          const outFrames =
+            Math.max(1, Math.round((current.totalMs / 1000) * outFps)) + (posterFrame ? 1 : 0);
           const measured = await invoke<{ integratedLufs: number; truePeakDbtp: number }>(
             "measure_loudness",
             {
@@ -710,6 +712,7 @@ export async function runAutoRun(
               startOffsetMs: current.audio.startOffsetMs ?? 0,
               totalFrames: outFrames,
               fps: outFps,
+              posterFrame,
             },
           );
           const delta = Math.round((config.loudnessTarget - measured.integratedLufs) * 100) / 100;

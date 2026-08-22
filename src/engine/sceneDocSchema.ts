@@ -60,7 +60,7 @@ export function normaliseDeg(deg: number): number {
 /** One device entry, deliberately shaped as `Device` props plus a stable id. */
 export interface SceneDocDeviceSpec {
   id: string;
-  /** Catalog id, e.g. `"iphone-15-pro"` (unknown ids degrade inside `Device`). */
+  /** Catalog id, e.g. `"iphone-15-pro"` (unknown or unavailable ids render as Android). */
   model: string;
   colour?: string;
   media?: DeviceMediaSpec;
@@ -495,11 +495,19 @@ export interface SceneDoc {
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
 }
 
-/** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). `media` remaps device screens by device id; `themeId`/`background`/`lighting` replace the doc's own fields for side B only. */
+/** The narrow device appearance surface side B may override. Device identity, pose and motion remain shared. */
+export interface SceneDocCompareDeviceAppearance {
+  colour?: string;
+  shadow?: DeviceShadowMode;
+}
+
+/** Side B ("after") of a comparison: every field optional, absent means same as side A (the base doc). Device-keyed maps override screen media or appearance; the other fields replace the doc's own values for side B only. */
 export interface SceneDocCompareSide {
   media?: Record<string, DeviceMediaSpec>;
+  deviceAppearance?: Record<string, SceneDocCompareDeviceAppearance>;
   themeId?: string;
   background?: ThemeBackground;
+  backdrop?: ThemeBackdrop;
   lighting?: LightingSpec;
 }
 
@@ -855,6 +863,10 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       const background = parseBackgroundSpec(b.background, `${source} compare.b`, { video: true });
       if (background) side.background = background;
     }
+    if (b.backdrop !== undefined) {
+      const backdrop = parseBackdropSpec(b.backdrop, `${source} compare.b`);
+      if (backdrop) side.backdrop = backdrop;
+    }
     if (b.lighting !== undefined) {
       const lighting = normalizeLighting(b.lighting, `${source} compare.b`);
       if (lighting) side.lighting = lighting;
@@ -876,6 +888,51 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         }
       }
       if (Object.keys(media).length > 0) side.media = media;
+    }
+    if (
+      typeof b.deviceAppearance === "object" &&
+      b.deviceAppearance !== null &&
+      !Array.isArray(b.deviceAppearance)
+    ) {
+      const deviceAppearance: NonNullable<SceneDocCompareSide["deviceAppearance"]> = {};
+      for (const [id, rawAppearance] of Object.entries(
+        b.deviceAppearance as Record<string, unknown>,
+      )) {
+        if (
+          typeof rawAppearance !== "object" ||
+          rawAppearance === null ||
+          Array.isArray(rawAppearance)
+        ) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.b.deviceAppearance["${id}"] is malformed, dropped`,
+          );
+          continue;
+        }
+        const raw = rawAppearance as Record<string, unknown>;
+        const appearance: SceneDocCompareDeviceAppearance = {};
+        const colour = typeof raw.colour === "string" ? raw.colour.trim() : "";
+        if (colour.length > 0) {
+          appearance.colour = colour;
+        } else if (raw.colour !== undefined) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.b.deviceAppearance["${id}"].colour is malformed, dropped`,
+          );
+        }
+        if (
+          raw.shadow === "soft" ||
+          raw.shadow === "long" ||
+          raw.shadow === "sun" ||
+          raw.shadow === "none"
+        ) {
+          appearance.shadow = raw.shadow;
+        } else if (raw.shadow !== undefined) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.b.deviceAppearance["${id}"].shadow is malformed, dropped`,
+          );
+        }
+        if (Object.keys(appearance).length > 0) deviceAppearance[id] = appearance;
+      }
+      if (Object.keys(deviceAppearance).length > 0) side.deviceAppearance = deviceAppearance;
     }
     if (Object.keys(side).length > 0) out.b = side;
   }
