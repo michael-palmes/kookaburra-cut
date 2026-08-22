@@ -2,7 +2,7 @@ import type { Theme } from "../theme/tokens";
 import type { ComparePose } from "./compareEditStore";
 import { ease } from "./ease";
 import { trackLayout } from "./keyedTrack";
-import type { SceneDoc } from "./sceneDocSchema";
+import type { SceneDoc, SceneDocCompareGripStyle } from "./sceneDocSchema";
 import type { SceneRenderState } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
 
@@ -18,12 +18,24 @@ export const COMPARE_MASK_ID: Record<CompareMaskType, number> = {
   blend: 3,
 };
 
-/** Resolved chrome: colours are sRGB hex (token names resolved against side A's theme), sizes in 1080-tall reference pixels; zero width/size means off. */
+/** The grip handle's look; the schema owns the names, and `chevrons` is both the default and what a legacy `grip: true` means. */
+export type CompareGripStyle = SceneDocCompareGripStyle;
+
+/** Shader-ready grip-style ids (pinned by the catalogue test; the compare fragment dispatches on them). Chevrons MUST stay 0: style 0 compiles to the legacy ring-and-chevrons maths, which is the byte-identical null proof. */
+export const COMPARE_GRIP_ID: Record<CompareGripStyle, number> = {
+  chevrons: 0,
+  dot: 1,
+  bar: 2,
+  arrows: 3,
+};
+
+/** Resolved chrome: colours are sRGB hex (token names resolved against side A's theme, authored hex passed through), sizes in 1080-tall reference pixels; zero width/size means off. */
 export interface CompareChrome {
   lineWidth: number;
   lineColor: string;
   lineSoftness: number;
   gripSize: number;
+  gripStyle: CompareGripStyle;
   chips: boolean;
   tintA: string | null;
   tintB: string | null;
@@ -72,8 +84,9 @@ export function hexToSrgb(hex: string): [number, number, number] {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
-/** A chrome token resolved to hex against a theme; unknown tokens (or no theme) fall back to the accent. */
+/** A chrome colour resolved to hex: an authored `#rrggbb` passes straight through (lowercased), a token resolves against the theme, and unknown tokens (or no theme) fall back to the accent. */
 function tokenHex(token: string | undefined, theme: Theme | undefined, fallback: string): string {
+  if (token && /^#[0-9a-fA-F]{6}$/.test(token)) return token.toLowerCase();
   if (!theme) return fallback;
   const colours = theme.colors as unknown as Record<string, string>;
   return (token && colours[token]) || theme.colors.accent;
@@ -114,6 +127,7 @@ export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): Compare
     lineColor: tokenHex(line?.colour, theme, "#6f93a8"),
     lineSoftness: line?.softness ?? 0,
     gripSize: grip ? (typeof grip === "object" ? (grip.size ?? 1) : grip ? 1 : 0) : 0,
+    gripStyle: (typeof grip === "object" ? grip.style : undefined) ?? "chevrons",
     chips: chromeRaw?.chips === true,
     tintA: tint?.a ? tokenHex(tint.a, theme, "#6f93a8") : null,
     tintB: tint?.b ? tokenHex(tint.b, theme, "#6f93a8") : null,

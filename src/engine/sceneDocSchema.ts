@@ -526,10 +526,19 @@ export interface SceneDocCompareSegment {
   ease: string;
 }
 
-/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. Colours are THEME TOKEN NAMES (background | text | accent | muted), resolved against the scene's theme at plan build. Absent sub-blocks are off. */
+/** The grip handle's look, dispatched in the compare shader; `chevrons` is the default and the legacy `grip: true` shape. */
+export type SceneDocCompareGripStyle = "chevrons" | "dot" | "bar" | "arrows";
+
+/** The grip as authored: `size` is a multiplier on the reference radius, `style` picks the handle. */
+export interface SceneDocCompareGrip {
+  size?: number;
+  style?: SceneDocCompareGripStyle;
+}
+
+/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` is a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored; tints stay token names. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
 export interface SceneDocCompareChrome {
   line?: { width?: number; colour?: string; softness?: number };
-  grip?: boolean | { size?: number };
+  grip?: boolean | SceneDocCompareGrip;
   chips?: boolean;
   tint?: { a?: string; b?: string; amount?: number };
 }
@@ -798,12 +807,12 @@ function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | u
   return images;
 }
 
-const CHART_COLOUR_TOKENS = ["background", "text", "accent", "muted"];
+const THEME_COLOUR_TOKENS = ["background", "text", "accent", "muted"];
 const CHART_HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 /** A chart colour as authored: one of the four theme tokens by name, or a hex (the FrameChip rule). */
 const isChartColour = (v: unknown): v is string =>
-  typeof v === "string" && (CHART_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
+  typeof v === "string" && (THEME_COLOUR_TOKENS.includes(v) || CHART_HEX.test(v));
 
 /** Field-level parse for the deviceLayout block (degrade-not-throw): an unknown preset falls back to `row` so the block survives, malformed deltas drop alone. Resolution maths lives in `toolkit/device/layout.ts`. */
 function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout | undefined {
@@ -846,6 +855,13 @@ function parseDeviceLayout(raw: unknown, source: string): SceneDocDeviceLayout |
   }
   return out;
 }
+
+const COMPARE_GRIP_STYLES: SceneDocCompareGripStyle[] = ["chevrons", "dot", "bar", "arrows"];
+const COMPARE_HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** A divider-chrome colour as authored: one of the four theme tokens by name, or a `#rrggbb` hex passed straight through (three-digit hex is out, since `hexToSrgb` reads six). */
+const isCompareColour = (v: unknown): v is string =>
+  typeof v === "string" && (THEME_COLOUR_TOKENS.includes(v) || COMPARE_HEX.test(v));
 
 /** Field-level parse for the compare block (the degrade-not-throw rule): a non-object drops the block whole, a malformed sub-field drops alone so one typo can't kill the comparison. Deep normalisation (mask defaults, key sort, value sampling) lives in `sceneCompare.ts`. */
 function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined {
@@ -988,7 +1004,12 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         if (typeof line.width === "number" && Number.isFinite(line.width) && line.width >= 0) {
           l.width = line.width;
         }
-        if (typeof line.colour === "string") l.colour = line.colour;
+        if (isCompareColour(line.colour)) l.colour = line.colour;
+        else if (line.colour !== undefined) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.chrome.line.colour isn't a theme token or #rrggbb hex, dropped`,
+          );
+        }
         if (
           typeof line.softness === "number" &&
           Number.isFinite(line.softness) &&
@@ -999,10 +1020,25 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
         chrome.line = l;
       }
       if (typeof raw.grip === "boolean") chrome.grip = raw.grip;
-      else if (raw.grip && typeof raw.grip === "object") {
-        const size = (raw.grip as { size?: unknown }).size;
-        chrome.grip =
-          typeof size === "number" && Number.isFinite(size) && size > 0 ? { size } : true;
+      else if (raw.grip && typeof raw.grip === "object" && !Array.isArray(raw.grip)) {
+        const g = raw.grip as { size?: unknown; style?: unknown };
+        const grip: SceneDocCompareGrip = {};
+        if (typeof g.size === "number" && Number.isFinite(g.size) && g.size > 0) {
+          grip.size = g.size;
+        } else if (g.size !== undefined) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.chrome.grip.size isn't a positive number, dropped`,
+          );
+        }
+        if (COMPARE_GRIP_STYLES.includes(g.style as SceneDocCompareGripStyle)) {
+          grip.style = g.style as SceneDocCompareGripStyle;
+        } else if (g.style !== undefined) {
+          console.warn(`[sceneDoc] ${source}: compare.chrome.grip.style isn't known, dropped`);
+        }
+        // A grip that loses every field stays ON at the defaults: the handle was asked for.
+        chrome.grip = grip.size === undefined && grip.style === undefined ? true : grip;
+      } else if (raw.grip !== undefined) {
+        console.warn(`[sceneDoc] ${source}: compare.chrome.grip is malformed, dropped`);
       }
       if (typeof raw.chips === "boolean") chrome.chips = raw.chips;
       const tint = raw.tint as { a?: unknown; b?: unknown; amount?: unknown } | undefined;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Theme } from "../theme/tokens";
-import { COMPARE_MASK_CATALOG } from "./compareCatalog";
+import { COMPARE_GRIP_CATALOG, COMPARE_MASK_CATALOG } from "./compareCatalog";
 import {
+  COMPARE_GRIP_ID,
   COMPARE_MASK_ID,
   type CompareSpec,
   compareCoverageAt,
@@ -56,6 +57,7 @@ const specWith = (parts: Partial<CompareSpec>): CompareSpec => ({
     lineColor: "#ffffff",
     lineSoftness: 0,
     gripSize: 0,
+    gripStyle: "chevrons",
     chips: false,
     tintA: null,
     tintB: null,
@@ -101,6 +103,7 @@ describe("compareSpecOf", () => {
       lineColor: "#6f93a8",
       lineSoftness: 0,
       gripSize: 0,
+      gripStyle: "chevrons",
       chips: false,
       tintA: null,
       tintB: null,
@@ -164,6 +167,44 @@ describe("compareSpecOf", () => {
     expect(spec?.chrome.tintA).toBe("#ff5a36");
     expect(spec?.chrome.tintB).toBe("#ff5a36");
     expect(spec?.chrome.tintAmount).toBeCloseTo(0.08, 10);
+  });
+
+  it("resolves every theme token exactly as the theme holds it", () => {
+    for (const [token, hex] of Object.entries(fakeTheme.colors)) {
+      const spec = compareSpecOf(compareDoc({ chrome: { line: { colour: token } } }), fakeTheme);
+      expect(spec?.chrome.lineColor).toBe(hex);
+    }
+  });
+
+  it("passes an authored hex line colour straight through, theme or none", () => {
+    const themed = compareSpecOf(
+      compareDoc({ chrome: { line: { colour: "#3fa9c4" } } }),
+      fakeTheme,
+    );
+    expect(themed?.chrome.lineColor).toBe("#3fa9c4");
+    const bare = compareSpecOf(compareDoc({ chrome: { line: { colour: "#3FA9C4" } } }));
+    expect(bare?.chrome.lineColor).toBe("#3fa9c4");
+    // A non-token, non-hex string still falls back to the accent, never to the raw string.
+    expect(
+      compareSpecOf(compareDoc({ chrome: { line: { colour: "nonsense" } } }), fakeTheme)?.chrome
+        .lineColor,
+    ).toBe("#ff5a36");
+  });
+
+  it("THE GRIP NULL PROOF: legacy grip true is the chevrons handle at size 1", () => {
+    const legacy = compareSpecOf(compareDoc({ chrome: { grip: true } }));
+    expect(legacy?.chrome.gripSize).toBe(1);
+    expect(legacy?.chrome.gripStyle).toBe("chevrons");
+    const sized = compareSpecOf(compareDoc({ chrome: { grip: { size: 1.4 } } }));
+    expect(sized?.chrome.gripSize).toBe(1.4);
+    expect(sized?.chrome.gripStyle).toBe("chevrons");
+  });
+
+  it("carries the grip's authored style and size", () => {
+    const spec = compareSpecOf(compareDoc({ chrome: { grip: { size: 0.8, style: "bar" } } }));
+    expect(spec?.chrome.gripSize).toBe(0.8);
+    expect(spec?.chrome.gripStyle).toBe("bar");
+    expect(compareSpecOf(compareDoc({ chrome: {} }))?.chrome.gripStyle).toBe("chevrons");
   });
 });
 
@@ -454,6 +495,27 @@ describe("compare mask catalogue (structure pin)", () => {
         compareCoverageAt(specWith({ maskType: entry.id, softness }), 0.5, 90, uv, 16 / 9, "a");
       const feathered = probes.some((uv) => coverage(0.2, uv) !== coverage(0, uv));
       expect(feathered).toBe(entry.hasSoftness);
+    }
+  });
+});
+
+describe("compare grip catalogue (structure pin)", () => {
+  it("one entry per style, ids matching the shader dispatch, chevrons leading at 0", () => {
+    expect(COMPARE_GRIP_CATALOG.map((e) => e.id)).toEqual(Object.keys(COMPARE_GRIP_ID));
+    expect(COMPARE_GRIP_CATALOG[0].id).toBe("chevrons");
+    expect(COMPARE_GRIP_ID.chevrons).toBe(0);
+    expect(new Set(Object.values(COMPARE_GRIP_ID)).size).toBe(COMPARE_GRIP_CATALOG.length);
+    for (const entry of COMPARE_GRIP_CATALOG) {
+      expect(entry.label.length).toBeGreaterThan(0);
+      expect(entry.hint.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("every catalogued style survives the resolver onto a shader id", () => {
+    for (const entry of COMPARE_GRIP_CATALOG) {
+      const spec = compareSpecOf(compareDoc({ chrome: { grip: { style: entry.id } } }));
+      expect(spec?.chrome.gripStyle).toBe(entry.id);
+      expect(COMPARE_GRIP_ID[entry.id]).toBeTypeOf("number");
     }
   });
 });

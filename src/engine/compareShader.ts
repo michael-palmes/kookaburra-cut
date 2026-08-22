@@ -1,6 +1,6 @@
 import { ACES_FORWARD_GLSL, ACES_INVERSE_GLSL } from "./acesCurve";
 
-/** The comparison composite's mask shaders: side A (before) and side B (after) render to the transition machinery's A/B targets and blend under the mask here. Mask family: linear (a straight divider at any angle), circle (the after inside a growing window, the transition iris ramp), radial (the after sweeps around the centre, the transition radial ramp), blend (a held crossfade). Chrome is procedural SDF in the same pass: the divider line (linear + circle), the ring-and-chevrons grip (linear), per-side tints. Same contracts as the transition shaders: a pure function of (uv, uniforms), every animated value CPU-computed; the SDR variant re-encodes hardware-decoded samples via sampleDisplay (the snaps-dim lesson), the HDR variant tone-maps both samples, composites in the display domain and inverts back (the self-inverting ACES pair, seam-exact within fp32). All divider maths is aspect-corrected so lines are straight ON SCREEN and widths are 1080-tall reference pixels. */
+/** The comparison composite's mask shaders: side A (before) and side B (after) render to the transition machinery's A/B targets and blend under the mask here. Mask family: linear (a straight divider at any angle), circle (the after inside a growing window, the transition iris ramp), radial (the after sweeps around the centre, the transition radial ramp), blend (a held crossfade). Chrome is procedural SDF in the same pass: the divider line (linear + circle), the grip handle (linear, one of four styles dispatched on `gripStyle`, 0 being the legacy ring and chevrons), per-side tints. Same contracts as the transition shaders: a pure function of (uv, uniforms), every animated value CPU-computed; the SDR variant re-encodes hardware-decoded samples via sampleDisplay (the snaps-dim lesson), the HDR variant tone-maps both samples, composites in the display domain and inverts back (the self-inverting ACES pair, seam-exact within fp32). All divider maths is aspect-corrected so lines are straight ON SCREEN and widths are 1080-tall reference pixels. */
 
 const UNIFORMS_GLSL = /* glsl */ `
   varying vec2 vUv;
@@ -16,6 +16,7 @@ const UNIFORMS_GLSL = /* glsl */ `
   uniform vec3 lineColor;      // display sRGB
   uniform float lineSoftness;  // height-fraction
   uniform float gripSize;      // multiplier; 0 = off
+  uniform int gripStyle;       // 0 chevrons · 1 dot · 2 bar · 3 arrows
   uniform vec3 tintA;          // display sRGB
   uniform vec3 tintB;
   uniform float tintAmountA;
@@ -26,6 +27,13 @@ const UNIFORMS_GLSL = /* glsl */ `
     vec2 ba = b - a;
     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
     return length(pa - ba * h);
+  }
+
+  // A filled arrowhead pointing along +x: base plane at x = 0, apex at (len, 0), half-height h.
+  float sdHead(vec2 pt, float len, float h) {
+    vec2 q = vec2(pt.x, abs(pt.y));
+    vec2 n = normalize(vec2(h, len));
+    return max(-q.x, dot(q - vec2(0.0, h), n));
   }
 `;
 
@@ -74,15 +82,29 @@ const BODY_GLSL = /* glsl */ `
       vec2 l = vec2(dot(p - g, dir), dot(p - g, vec2(-dir.y, dir.x)));
       float R = 0.032 * gripSize;
       float w = max(lineWidth, 2.0) / 1080.0;
-      float ring = 1.0 - smoothstep(w, w * 2.2, abs(length(l) - R));
-      float chL = min(
-        sdSeg(l, vec2(-R * 0.25, R * 0.3), vec2(-R * 0.55, 0.0)),
-        sdSeg(l, vec2(-R * 0.25, -R * 0.3), vec2(-R * 0.55, 0.0)));
-      float chR = min(
-        sdSeg(l, vec2(R * 0.25, R * 0.3), vec2(R * 0.55, 0.0)),
-        sdSeg(l, vec2(R * 0.25, -R * 0.3), vec2(R * 0.55, 0.0)));
-      float chev = 1.0 - smoothstep(w * 0.9, w * 2.0, min(chL, chR));
-      chrome = max(chrome, max(ring, chev));
+      if (gripStyle == 1) {
+        float disc = 1.0 - smoothstep(R * 0.55, R * 0.55 + w, length(l));
+        chrome = max(chrome, disc);
+      } else if (gripStyle == 2) {
+        float pill = sdSeg(l, vec2(0.0, -R * 0.62), vec2(0.0, R * 0.62)) - R * 0.26;
+        chrome = max(chrome, 1.0 - smoothstep(0.0, w, pill));
+      } else if (gripStyle == 3) {
+        float heads = min(
+          sdHead(l - vec2(R * 0.2, 0.0), R * 0.72, R * 0.44),
+          sdHead(vec2(-l.x - R * 0.2, l.y), R * 0.72, R * 0.44));
+        chrome = max(chrome, 1.0 - smoothstep(0.0, w, heads));
+      } else {
+        // Style 0, the legacy handle: these expressions are character-identical to the pre-style shader (the byte-identical null proof).
+        float ring = 1.0 - smoothstep(w, w * 2.2, abs(length(l) - R));
+        float chL = min(
+          sdSeg(l, vec2(-R * 0.25, R * 0.3), vec2(-R * 0.55, 0.0)),
+          sdSeg(l, vec2(-R * 0.25, -R * 0.3), vec2(-R * 0.55, 0.0)));
+        float chR = min(
+          sdSeg(l, vec2(R * 0.25, R * 0.3), vec2(R * 0.55, 0.0)),
+          sdSeg(l, vec2(R * 0.25, -R * 0.3), vec2(R * 0.55, 0.0)));
+        float chev = 1.0 - smoothstep(w * 0.9, w * 2.0, min(chL, chR));
+        chrome = max(chrome, max(ring, chev));
+      }
     }
     outC = mix(outC, lineColor, chrome);
     OUTPUT_LINE
