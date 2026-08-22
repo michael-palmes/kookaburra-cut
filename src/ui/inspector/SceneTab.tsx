@@ -49,6 +49,7 @@ import {
   isSceneImageSource,
   type SceneDoc,
   type SceneDocCameraPose,
+  type SceneDocCompareGrip,
   type SceneDocDeviceLayoutDelta,
   type SceneDocRigPose,
   type SceneDocVideoWindow,
@@ -64,7 +65,11 @@ import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTex
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
 import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
-import { useSceneStageBackdrop, useSceneStageFloorY } from "../../engine/stageRegistry";
+import {
+  useSceneHostStageBackdrop,
+  useSceneStageBackdrop,
+  useSceneStageFloorY,
+} from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
 import { useTextEditStore } from "../../engine/textEditStore";
 import {
@@ -129,6 +134,7 @@ import {
 } from "../../toolkit/text/emojiRaster";
 import { prepareEmojiText } from "../../toolkit/text/emojiText";
 import { findUnrenderableChars } from "../../toolkit/text/textCoverage";
+import { ComparisonSideIcon } from "../ComparisonSideIcon";
 import { ContextMenu, type ContextMenuState } from "../ContextMenu";
 import { useCameraDoc } from "../cameraDoc";
 import { ColourPicker } from "../colour/ColourPicker";
@@ -178,7 +184,7 @@ import {
   type LightingAnimationScope,
   mutateComparisonLightingTarget,
 } from "./lightingEditorModel";
-import { ManagedTextDrill, type ManagedTextWrite } from "./ManagedTextDrill";
+import { ManagedTextDrill, type ManagedTextWrite, TextControlIcon } from "./ManagedTextDrill";
 import {
   applyManagedTextStructuralAction,
   type ManagedTextStructuralAction,
@@ -322,7 +328,9 @@ import { CompareSideSelector } from "./CompareSideSelector";
 import {
   CompareGripIcon,
   CompareMaskIcon,
+  CompareNoneIcon,
   ComparePresetIcon,
+  CompareSwatchIcon,
   CompareToggleIcon,
 } from "./compareIcons";
 import {
@@ -384,6 +392,10 @@ function resolveCompareColour(colour: string | undefined, theme: Theme | undefin
   const colours = theme?.colors as unknown as Record<string, string> | undefined;
   return (colour && colours?.[colour]) || theme?.colors.accent || "#6f93a8";
 }
+
+/** The theme tokens the After tint offers, each shown as its resolved swatch. */
+const COMPARE_TINT_TOKENS = ["accent", "text", "muted"] as const;
+type CompareTint = "none" | (typeof COMPARE_TINT_TOKENS)[number];
 
 /** The Move/Rotate/Scale pills every gizmo drill shows. */
 const GIZMO_MODE_OPTIONS: SegmentedOption<GizmoMode>[] = [
@@ -2121,7 +2133,11 @@ export function SceneTab({
   const managedTextGroups = useMemo(
     () =>
       managedTextModel
-        ? resolveManagedTextGroups(managedTextModel.items, doc?.managedText?.groups)
+        ? resolveManagedTextGroups(
+            managedTextModel.items,
+            doc?.managedText?.groups,
+            managedTextModel.chromeKeys,
+          )
         : [],
     [doc?.managedText?.groups, managedTextModel],
   );
@@ -2211,6 +2227,8 @@ export function SceneTab({
   const compareDragBaseline = useRef<SceneDoc | null>(null);
   // The scene-local time the running gesture edits at, so a drag stays on the key it started on even under playback.
   const compareGestureMs = useRef<number | null>(null);
+  // The grip a switched-off handle wore, so switching it back on restores the style and size instead of the bare default.
+  const compareGripMemory = useRef<SceneDocCompareGrip | null>(null);
   const compareSlot = project.slots[sceneIndex];
   const compareKeys = doc?.compare?.track?.keys;
   const compareLocalMs = () =>
@@ -2470,6 +2488,10 @@ export function SceneTab({
   const [backingTabOverride, setBackingTabOverride] = useState<"gradient" | "shader" | null>(null);
   /** The mounted stage's resolved backdrop type; null when the scene mounts no SceneStage. */
   const stagedBackdrop = useSceneStageBackdrop(sceneIndex);
+  /** The same per comparison host, so the Background drill reads the side it edits instead of Before's stage. */
+  const stagedBackdropBefore = useSceneHostStageBackdrop(sceneIndex, undefined);
+  const stagedBackdropAfter = useSceneHostStageBackdrop(sceneIndex, "b");
+  const bgStagedBackdrop = bgTarget === "compareB" ? stagedBackdropAfter : stagedBackdropBefore;
   const [themeChoices, setThemeChoices] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [themeDraft, setThemeDraft] = useState<string>("");
 
@@ -2852,6 +2874,8 @@ export function SceneTab({
     setCompareSide("a");
     setCompareMediaDeviceId(null);
     compareGestureMs.current = null;
+    compareDragBaseline.current = null;
+    compareGripMemory.current = null;
     setConfirmRemoveCompare(false);
     setOverviewSelection(null);
     setContentPickerOpen(false);
@@ -3558,7 +3582,9 @@ export function SceneTab({
             ? { type: "video", src: rel, parallax }
             : { type: "video", src: rel };
         // A staged backdrop would hide the video: clear it in the same undoable entry.
-        if (stagedBackdrop !== null && stagedBackdrop !== "none") next.backdrop = { type: "none" };
+        if (bgStagedBackdrop !== null && bgStagedBackdrop !== "none") {
+          next.backdrop = { type: "none" };
+        }
       },
       { resync: true },
     );
@@ -3577,7 +3603,9 @@ export function SceneTab({
           ? { type: "image", src: rel, parallax }
           : { type: "image", src: rel };
       // A staged backdrop would hide the image: clear it in the same undoable entry.
-      if (stagedBackdrop !== null && stagedBackdrop !== "none") next.backdrop = { type: "none" };
+      if (bgStagedBackdrop !== null && bgStagedBackdrop !== "none") {
+        next.backdrop = { type: "none" };
+      }
     });
   };
 
@@ -3935,9 +3963,10 @@ export function SceneTab({
           <div className="font-slot-row">
             <button
               type="button"
-              className={`chip${shownThemeId === "" ? " selected" : ""}`}
+              className={`chip chip-with-icon${shownThemeId === "" ? " selected" : ""}`}
               onClick={() => applySceneTheme("")}
             >
+              {editingAfter && <ComparisonSideIcon side="before" size={14} />}
               {editingAfter ? "Match the before side" : "Project theme"}
             </button>
           </div>
@@ -5283,9 +5312,12 @@ export function SceneTab({
     const colourOpt = bgOpts.find((o) => o.value?.type === "color")?.value;
     const docTab = bgActive === undefined ? "default" : bgActive.type;
     const bgTab = bgTabOverride ?? docTab;
-    // Staging state from the registry: null = the scene mounts no SceneStage (hide the toggle, never warn).
-    const stagingOn = stagedBackdrop !== null && stagedBackdrop !== "none";
-    const resolvedBackdrop = doc.backdrop ?? sceneTheme?.backdrop;
+    // Staging state from the registry, read off the host for the side being edited: null = that side mounts no SceneStage (hide the toggle, never warn).
+    const stagingOn = bgStagedBackdrop !== null && bgStagedBackdrop !== "none";
+    // After follows Before's backdrop until it overrides one, exactly as the side resolves at render.
+    const bgBackdrop =
+      bgTarget === "compareB" ? (doc.compare?.b?.backdrop ?? doc.backdrop) : doc.backdrop;
+    const resolvedBackdrop = bgBackdrop ?? sceneTheme?.backdrop;
     /** A floor of `hex`, keeping the resolved floor's fillet so write-through can't reshape the cyc. */
     const floorFor = (hex: string): ThemeBackdrop =>
       resolvedBackdrop?.type === "floor" && resolvedBackdrop.filletRadius !== undefined
@@ -5451,6 +5483,7 @@ export function SceneTab({
           ) : (
             <div className="popover-row">
               <button type="button" className="btn" onClick={() => commitBackground(undefined)}>
+                {editingAfter && <ComparisonSideIcon side="before" size={14} />}
                 {editingAfter ? "Match the before side" : "Reset to theme default"}
               </button>
             </div>
@@ -6028,7 +6061,7 @@ export function SceneTab({
               })
             }
           />
-          {stagedBackdrop !== null && (
+          {bgStagedBackdrop !== null && (
             <>
               <ToggleRow
                 label="Staging"
@@ -6066,7 +6099,7 @@ export function SceneTab({
                         ? bgActive.color
                         : (sceneTheme?.colors.background ?? "#ffffff");
                     const form =
-                      doc.backdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
+                      bgBackdrop === undefined ? "theme" : (resolvedBackdrop?.type ?? "none");
                     const chips: { id: string; label: string; disabled?: boolean }[] = [
                       { id: "theme", label: "Theme default" },
                       { id: "floor", label: "Floor" },
@@ -6643,6 +6676,19 @@ export function SceneTab({
         });
       else patchCompare(mutate);
     };
+    // A gesture that ends where it started commits nothing: put the baseline's comparison back and release it, so the NEXT commit can never build on a stale snapshot.
+    const cmpAbort = () => {
+      const baseline = compareDragBaseline.current;
+      compareDragBaseline.current = null;
+      compareGestureMs.current = null;
+      if (!baseline) return;
+      void patchDoc(
+        (next) => {
+          next.compare = structuredClone(baseline.compare);
+        },
+        { history: false },
+      );
+    };
     const maskType = cmp.mask?.type ?? "linear";
     const maskEntry = COMPARE_MASK_CATALOG.find((e) => e.id === maskType);
     const hasKeys = (cmp.track?.keys.length ?? 0) > 0;
@@ -6665,8 +6711,11 @@ export function SceneTab({
       void patchDoc(clearCompareTrack, { history: "clear divider keys" });
     };
     const staticAngleDeg = cmp.mask?.angleDeg ?? 90;
-    // The Divider and Angle fields edit the key nearest the playhead (the static value and angle with none), and never release the lane's draft: the patched project clears a committed one on its own.
-    const targetKey = cmp.track?.keys.find((k) => k.id === compareTargetKeyId) ?? null;
+    // The Divider and Angle fields edit the key nearest the playhead (the static value and angle with none), frozen mid-gesture on the key the writes are pinned to so a running clock can't hop them, and never release the lane's draft: the patched project clears a committed one on its own.
+    const targetKey =
+      (compareGestureMs.current !== null
+        ? nearestCompareKey(cmp.track?.keys, compareGestureMs.current)
+        : cmp.track?.keys.find((k) => k.id === compareTargetKeyId)) ?? null;
     const dividerValue = targetKey?.pose.value ?? cmp.value ?? 0.5;
     const dividerAngleDeg = targetKey?.pose.angleDeg ?? staticAngleDeg;
     const gestureMs = () => (compareGestureMs.current ??= compareLocalMs());
@@ -6679,6 +6728,16 @@ export function SceneTab({
     const grip = cmp.chrome?.grip;
     const gripObject = typeof grip === "object" ? grip : undefined;
     const lineColour = resolveCompareColour(cmp.chrome?.line?.colour, sceneTheme);
+    // Each token wears its resolved colour, so the choice is the swatch rather than the word.
+    const tintOptions: SegmentedOption<CompareTint>[] = [
+      { value: "none", label: "None", title: "No tint", icon: <CompareNoneIcon size={14} /> },
+      ...COMPARE_TINT_TOKENS.map((token) => ({
+        value: token,
+        label: `${token[0].toUpperCase()}${token.slice(1)}`,
+        title: `Tint the after side with the theme's ${token} colour`,
+        icon: <CompareSwatchIcon colour={resolveCompareColour(token, sceneTheme)} size={14} />,
+      })),
+    ];
     return (
       <div className="inspector-drill">
         <DrillBack
@@ -6744,6 +6803,9 @@ export function SceneTab({
                 onCommit={(v) => {
                   const ms = releaseGestureMs();
                   cmpCommit((c) => setCompareDividerAngle(c, ms, v));
+                }}
+                onDragEnd={(committed) => {
+                  if (!committed) cmpAbort();
                 }}
               />
             </div>
@@ -6892,8 +6954,11 @@ export function SceneTab({
                       }
                     />
                   </div>
-                  <div className="popover-row">
-                    <span className="popover-inline slider-row-label">Colour</span>
+                  <div className="popover-row text-inspector-colour-row">
+                    <span className="action-row-icon">
+                      <TextControlIcon type="colour" />
+                    </span>
+                    <span className="popover-inline">Colour</span>
                     <span className="action-row-value">{lineColour.toUpperCase()}</span>
                     <ColourPicker
                       value={lineColour}
@@ -6924,11 +6989,16 @@ export function SceneTab({
                   label="Grip handle"
                   description="The slider grip riding the divider."
                   checked={!!grip}
-                  onChange={(on) =>
+                  onChange={(on) => {
+                    if (!on && gripObject) compareGripMemory.current = structuredClone(gripObject);
+                    const remembered = on ? compareGripMemory.current : null;
                     patchCompare((c) => {
-                      c.chrome = { ...c.chrome, grip: on ? true : undefined };
-                    })
-                  }
+                      c.chrome = {
+                        ...c.chrome,
+                        grip: on ? (remembered ? structuredClone(remembered) : true) : undefined,
+                      };
+                    });
+                  }}
                 />
               )}
               {maskEntry?.hasGrip && grip && (
@@ -6976,13 +7046,8 @@ export function SceneTab({
             <SegmentedRow
               ariaLabel="After tint"
               className="subtabs-compact"
-              options={[
-                { value: "none", label: "None" },
-                { value: "accent", label: "accent" },
-                { value: "text", label: "text" },
-                { value: "muted", label: "muted" },
-              ]}
-              value={(cmp.chrome?.tint?.b ?? "none") as "none" | "accent" | "text" | "muted"}
+              options={tintOptions}
+              value={(cmp.chrome?.tint?.b ?? "none") as CompareTint}
               onChange={(t) =>
                 patchCompare((c) => {
                   c.chrome = {
@@ -7967,27 +8032,31 @@ export function SceneTab({
           else openDrill(LIGHTING_ROUTE_FOR_SCREEN[screen]);
         }}
         sideControls={
-          hasComparison(doc) && lightingScreen === "overview" ? (
+          hasComparison(doc) ? (
+            // Every lighting screen edits the chosen side, so every one carries the selector.
             <>
               <CompareSideSelector value={compareSideActive} onChange={setCompareSide} />
-              {forAfter && doc.compare?.b?.lighting !== undefined && (
-                <div className="inspector-drill-reset">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() =>
-                      void patchDoc(
-                        (next) => {
-                          if (next.compare?.b) next.compare.b.lighting = undefined;
-                        },
-                        { history: "match the before side" },
-                      )
-                    }
-                  >
-                    Match the before side
-                  </button>
-                </div>
-              )}
+              {forAfter &&
+                lightingScreen === "overview" &&
+                doc.compare?.b?.lighting !== undefined && (
+                  <div className="inspector-drill-reset">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() =>
+                        void patchDoc(
+                          (next) => {
+                            if (next.compare?.b) next.compare.b.lighting = undefined;
+                          },
+                          { history: "match the before side" },
+                        )
+                      }
+                    >
+                      <ComparisonSideIcon side="before" size={14} />
+                      Match the before side
+                    </button>
+                  </div>
+                )}
             </>
           ) : undefined
         }

@@ -15,6 +15,7 @@ export function useDragScrub({
   decimals,
   onCommit,
   onInput,
+  onDragEnd,
   onText,
   format,
   inputRef,
@@ -27,6 +28,8 @@ export function useDragScrub({
   decimals: number;
   onCommit: (n: number) => void;
   onInput?: (n: number) => void;
+  /** Every drag release, `committed` false when the value came back to where it started and no `onCommit` fired; the seam a live-write caller releases its gesture state on. */
+  onDragEnd?: (committed: boolean) => void;
   onText: (s: string) => void;
   /** How a scrubbed value is spelled into the field; omit for plain `toFixed(decimals)`. */
   format?: (n: number) => string;
@@ -75,8 +78,10 @@ export function useDragScrub({
       ev.preventDefault();
       setDragging(false);
       const v = at(ev);
-      if (changed(v)) onCommit(v);
+      const committed = changed(v);
+      if (committed) onCommit(v);
       else onText(write(value));
+      onDragEnd?.(committed);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -91,6 +96,7 @@ export function NumberField({
   decimals,
   onCommit,
   onInput,
+  onDragEnd,
   min,
   max,
   step,
@@ -103,6 +109,8 @@ export function NumberField({
   onCommit: (n: number) => void;
   /** Live tick while dragging (wire to a history-less write at the call site); omit for a local-only drag preview. */
   onInput?: (n: number) => void;
+  /** Every drag release, `committed` false when the drag ended where it started; release any gesture state `onInput` opened. */
+  onDragEnd?: (committed: boolean) => void;
   min?: number;
   max?: number;
   step?: number;
@@ -117,6 +125,7 @@ export function NumberField({
     decimals,
     onCommit,
     onInput,
+    onDragEnd,
     onText: setText,
     inputRef,
     min,

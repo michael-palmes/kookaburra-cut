@@ -163,3 +163,35 @@ export function CompareToggleIcon({ id, size = 16 }: { id: CompareToggleIconId; 
 export function CompareGripIcon({ id, size = 16 }: { id: CompareGripStyle; size?: number }) {
   return <CompareGlyph glyph={COMPARE_GRIP_GLYPHS[id]} size={size} />;
 }
+
+/** The "off" choice in a comparison option row (no tint): the house circle, struck through. */
+export function CompareNoneIcon({ size = 16 }: { size?: number }) {
+  return (
+    <CompareGlyph
+      glyph={
+        <>
+          <circle cx="8" cy="8" r="5.3" />
+          <path d="M4.25 11.75 11.75 4.25" />
+        </>
+      }
+      size={size}
+    />
+  );
+}
+
+/** A resolved colour as an option's icon: the filled swatch, ringed in `currentColor` so a swatch matching the panel still reads. */
+export function CompareSwatchIcon({ colour, size = 16 }: { colour: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true">
+      <circle
+        cx="8"
+        cy="8"
+        r="4.6"
+        fill={colour}
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeOpacity="0.45"
+      />
+    </svg>
+  );
+}

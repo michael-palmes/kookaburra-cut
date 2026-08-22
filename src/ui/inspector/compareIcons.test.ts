@@ -10,7 +10,9 @@ import {
   COMPARE_TOGGLE_GLYPHS,
   CompareGripIcon,
   CompareMaskIcon,
+  CompareNoneIcon,
   ComparePresetIcon,
+  CompareSwatchIcon,
   CompareToggleIcon,
 } from "./compareIcons";
 
@@ -59,6 +61,24 @@ describe("comparison drill glyphs (structure pin)", () => {
     expect(html).toContain('stroke-width="1.5"');
     expect(html).toContain('fill="none"');
     expect(html).toContain('aria-hidden="true"');
+  });
+
+  it("paints an option's swatch in the colour it is handed, ringed for contrast", () => {
+    const html = renderToStaticMarkup(
+      createElement(CompareSwatchIcon, { colour: "#6f93a8", size: 14 }),
+    );
+    expect(html).toContain('viewBox="0 0 16 16"');
+    expect(html).toContain('width="14"');
+    expect(html).toContain('fill="#6f93a8"');
+    expect(html).toContain('stroke="currentColor"');
+    expect(html).toContain('aria-hidden="true"');
+  });
+
+  it("strikes the circle for the off choice", () => {
+    const html = renderToStaticMarkup(createElement(CompareNoneIcon, { size: 14 }));
+    expect(html).toContain("<circle");
+    expect(html).toContain("M4.25 11.75 11.75 4.25");
+    expect(html).toContain('fill="none"');
   });
 
   it("falls back to the 16px grid size", () => {

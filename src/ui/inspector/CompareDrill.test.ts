@@ -20,6 +20,9 @@ const start = source.indexOf('if (drillIn === "compare.edit"');
 const end = source.indexOf('if (drillIn === "legacyImage.edit"', start);
 if (start < 0 || end < 0) throw new Error("compare.edit drill section not found in SceneTab");
 const drill = source.slice(start, end);
+const rows = testProcess
+  .getBuiltinModule("fs")
+  .readFileSync(new URL("./rows.tsx", import.meta.url), "utf8");
 
 describe("comparison drill (source pin)", () => {
   it("shows the Divider slider whatever the track holds", () => {
@@ -72,5 +75,51 @@ describe("comparison drill (source pin)", () => {
     expect(drill).toContain("<ColourPicker");
     expect(drill).not.toContain('ariaLabel="Divider colour"');
     expect(drill).not.toContain("lineTokens");
+  });
+
+  it("wears the shared colour-row layout on the divider colour", () => {
+    expect(drill).toContain('className="popover-row text-inspector-colour-row"');
+    expect(drill).toContain('<span className="action-row-icon">');
+    expect(drill).toContain('<TextControlIcon type="colour" />');
+  });
+
+  it("shows the key the gesture is pinned to, not the one under a running playhead", () => {
+    expect(drill).toContain("compareGestureMs.current !== null");
+    expect(drill).toContain("nearestCompareKey(cmp.track?.keys, compareGestureMs.current)");
+    expect(drill).toContain("cmp.track?.keys.find((k) => k.id === compareTargetKeyId)");
+  });
+
+  it("releases the gesture when a drag ends where it started", () => {
+    expect(drill).toContain("const cmpAbort = () => {");
+    expect(drill).toContain("next.compare = structuredClone(baseline.compare);");
+    expect(drill).toContain("onDragEnd={(committed) => {");
+    expect(drill).toContain("if (!committed) cmpAbort();");
+    // Both halves of the gesture state clear, or the next commit builds on a stale snapshot.
+    const abort = drill.slice(drill.indexOf("const cmpAbort = () => {"));
+    expect(abort.slice(0, abort.indexOf("};"))).toContain("compareGestureMs.current = null;");
+    expect(source).toContain("compareDragBaseline.current = null;\n    compareGripMemory.current");
+  });
+
+  it("hands useDragScrub the release seam, after the commit-or-restore branch", () => {
+    expect(rows).toContain("onDragEnd?: (committed: boolean) => void;");
+    expect(rows).toContain("const committed = changed(v);");
+    expect(rows).toMatch(
+      /if \(committed\) onCommit\(v\);\s*else onText\(write\(value\)\);\s*onDragEnd\?\.\(committed\);/,
+    );
+  });
+
+  it("restores the grip a switched-off handle wore", () => {
+    expect(drill).toContain("compareGripMemory.current = structuredClone(gripObject)");
+    expect(drill).toContain(
+      "grip: on ? (remembered ? structuredClone(remembered) : true) : undefined,",
+    );
+    expect(drill).not.toContain("grip: on ? true : undefined");
+  });
+
+  it("leads every After tint option with its resolved swatch", () => {
+    expect(drill).toContain("COMPARE_TINT_TOKENS.map((token)");
+    expect(drill).toContain("<CompareSwatchIcon colour={resolveCompareColour(token, sceneTheme)}");
+    expect(drill).toContain("<CompareNoneIcon size={14} />");
+    expect(drill).not.toContain('{ value: "accent", label: "accent" }');
   });
 });

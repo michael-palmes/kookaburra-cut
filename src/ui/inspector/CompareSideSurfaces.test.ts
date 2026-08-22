@@ -16,6 +16,7 @@ const read = (path: string) =>
 
 const sceneTab = read("./SceneTab.tsx");
 const lighting = read("./LightingInspectorSection.tsx");
+const deviceDrill = read("./DeviceDrillIn.tsx");
 
 const section = (source: string, start: string, end: string): string => {
   const from = source.indexOf(start);
@@ -71,6 +72,41 @@ describe("comparison side surfaces (source pin)", () => {
     expect(drill).not.toContain("compareSide");
     expect(sceneTab).not.toContain('drillIn === "compare.device"');
     expect(sceneTab).not.toContain('drillIn === "compare.theme"');
+  });
+
+  it("keeps the lighting selector on every screen, the match-before action on the overview", () => {
+    const sideControls = section(sceneTab, "sideControls={", "patchDoc={forAfter ?");
+
+    expect(sideControls).toContain("hasComparison(doc) ? (");
+    expect(sideControls).not.toContain('lightingScreen === "overview" ? (');
+    expect(sideControls).toContain('lightingScreen === "overview" &&');
+  });
+
+  it("leads every match-before action with the before-side glyph", () => {
+    // Theme, Background and Lighting here; Device carries its own, and the After-screen row leads with the media glyph.
+    expect(sceneTab.match(/<ComparisonSideIcon side="before" size=\{14\} \/>/g)).toHaveLength(3);
+    expect(deviceDrill).toContain('<ComparisonSideIcon side="before" size={16} />');
+    expect(sceneTab.match(/Match the before side/g)).toHaveLength(4);
+  });
+
+  it("reads staging off the host for the side the Background drill edits", () => {
+    expect(sceneTab).toContain(
+      'const stagedBackdropAfter = useSceneHostStageBackdrop(sceneIndex, "b");',
+    );
+    expect(sceneTab).toContain(
+      'const bgStagedBackdrop = bgTarget === "compareB" ? stagedBackdropAfter : stagedBackdropBefore;',
+    );
+    const background = section(
+      sceneTab,
+      'if (drillIn === "style.background" && doc) {',
+      'if (drillIn === "motion.transition"',
+    );
+    expect(background).toContain("const stagingOn = bgStagedBackdrop !== null");
+    expect(background).toContain(
+      'bgTarget === "compareB" ? (doc.compare?.b?.backdrop ?? doc.backdrop)',
+    );
+    expect(background).toContain('bgBackdrop === undefined ? "theme"');
+    expect(background).not.toContain("stagedBackdrop !== null && stagedBackdrop !==");
   });
 
   it("routes the Device media actions at the selected side", () => {
