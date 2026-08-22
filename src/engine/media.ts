@@ -82,6 +82,47 @@ export function deleteMedia(slug: string, rel: string): Promise<void> {
   return invoke("delete_media", { slug, rel });
 }
 
+/** One project asset nothing points at, as `unused_media` reports it. */
+export interface UnusedAsset {
+  rel: string;
+  bytes: number;
+  kind: "video" | "image";
+}
+
+/** One file the sweep could not trash, with the reason the native side gave. */
+export interface MediaDeleteFailure {
+  rel: string;
+  message: string;
+}
+
+/** Every media file in the project that no scene, edit or the manifest mentions, newest added first (the grid's order); decided by the same guard `deleteMedia` enforces, so the list can never disagree with what a delete will allow. */
+export function unusedMedia(slug: string): Promise<UnusedAsset[]> {
+  return invoke<UnusedAsset[]>("unused_media", { slug });
+}
+
+/** Trash each rel through the per-file guard, in order: a file another window started using since the list was built is refused rather than deleted, and named in the returned failures. One inventory refresh plus one media-changed broadcast at the end, so every window's pickers re-scan once instead of per file. */
+export async function deleteUnusedMedia(
+  slug: string,
+  rels: readonly string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<MediaDeleteFailure[]> {
+  const failures: MediaDeleteFailure[] = [];
+  let done = 0;
+  for (const rel of rels) {
+    try {
+      await deleteMedia(slug, rel);
+    } catch (e) {
+      failures.push({ rel, message: String(e) });
+    }
+    onProgress?.(++done, rels.length);
+  }
+  if (failures.length < rels.length) {
+    await refreshWorkspaceAssets(`ws:${slug}`);
+    await emit("kookaburra://media-changed", null);
+  }
+  return failures;
+}
+
 /** Reveal a file in Finder (the native side confines the path to workspace-readable roots). */
 export function revealPath(absPath: string): Promise<void> {
   return invoke("reveal_in_finder", { path: absPath });

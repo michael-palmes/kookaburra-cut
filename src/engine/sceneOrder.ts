@@ -21,6 +21,15 @@ export function planDuplicates(selected: readonly number[]): { from: number; at:
   return block.map((from, n) => ({ from, at: last + 1 + n }));
 }
 
+/** The scene indices to delete, in the order to issue them to `remove_scene`: DESCENDING, because each removal closes the array up and shifts every later index down by one. Empty when the selection is empty, out of range, or would empty the project (Rust refuses the last scene, and half a bulk delete is worse than none). */
+export function planDeletes(selected: readonly number[], sceneCount: number): number[] {
+  const unique = [...new Set(selected)].filter(
+    (i) => Number.isInteger(i) && i >= 0 && i < sceneCount,
+  );
+  if (unique.length === 0 || unique.length >= sceneCount) return [];
+  return unique.sort((a, b) => b - a);
+}
+
 /** Minimal `{from, to}` move sequence (current-index space) realising `desired`, a permutation of 0..n-1. */
 export function planMoves(desired: number[]): { from: number; to: number }[] {
   const current = desired.map((_, i) => i);

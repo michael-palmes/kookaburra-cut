@@ -31,6 +31,7 @@ import {
 } from "../engine/keyedTrack";
 import { useUiStore } from "../store/uiStore";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { ToggleRow } from "./inspector/rows";
 import { seekSceneLocal } from "./laneSeek";
 import { ResizeAnimationModal } from "./ResizeAnimationModal";
@@ -587,10 +588,8 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
     const text = durEdit;
     setDurEdit(null);
     if (!commitEdit || text === null) return;
-    const seconds = Number(text);
-    // The playback bar's floor: junk and sub-100ms values are dropped silently.
-    if (!Number.isFinite(seconds) || seconds < 0.1) return;
-    const ms = Math.round(seconds * 1000);
+    const ms = parseSceneLengthMs(text);
+    if (ms === null) return;
     if (ms !== durationMs) onSceneDuration(ms);
   }
 
@@ -685,14 +684,14 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
         </div>
 
         <span className="anim-readout">
-          {`${(playheadLocal / 1000).toFixed(1).padStart(4, "0")} / `}
+          {`${formatSceneLengthMs(playheadLocal)} / `}
           {durEdit !== null ? (
             <input
               className="anim-duration-input"
               value={durEdit}
               // biome-ignore lint/a11y/noAutofocus: entered by double-clicking the readout, so it IS the focus target
               autoFocus
-              aria-label="Scene length in seconds"
+              aria-label="Scene length in minutes and seconds"
               onChange={(e) => setDurEdit(e.target.value)}
               onBlur={() => finishDurationEdit(true)}
               onKeyDown={(e) => {
@@ -704,10 +703,10 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
             <button
               type="button"
               className="anim-duration"
-              title="Scene length; double-click to type a new one"
-              onDoubleClick={() => setDurEdit((durationMs / 1000).toFixed(2))}
+              title="Scene length; double-click to type m:ss or seconds"
+              onDoubleClick={() => setDurEdit(formatSceneLengthMs(durationMs))}
             >
-              {`${(durationMs / 1000).toFixed(1)}s`}
+              {formatSceneLengthMs(durationMs)}
             </button>
           )}
         </span>

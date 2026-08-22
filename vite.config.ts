@@ -54,7 +54,8 @@ export default defineConfig({
 
   server: {
     host: host || false,
-    port: 1420,
+    // 1420 is the interactive session's; agent runs pick their own (scripts/dev-port.mjs).
+    port: Number(process.env.KOOKABURRA_PORT ?? "1420"),
     strictPort: true,
     // Long exports starve the HMR websocket and vite's reconnect reloads the page mid-run, so no HMR under autorun.
     hmr: process.env.KOOKABURRA_ACTION
@@ -68,8 +69,9 @@ export default defineConfig({
       allow: [fileURLToPath(new URL(".", import.meta.url)), homedir()],
     },
     watch: {
-      // Rust source changes shouldn't trigger a frontend reload.
-      ignored: ["**/src-tauri/**"],
+      // Rust source changes shouldn't trigger a frontend reload, and neither should an
+      // agent editing a git worktree nested under this checkout.
+      ignored: ["**/src-tauri/**", "**/.claude/worktrees/**"],
     },
   },
 

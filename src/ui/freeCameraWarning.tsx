@@ -8,11 +8,7 @@ import {
   needsFreeCameraWarning,
   resolveFreeCameraWarning,
 } from "./freeCameraGate";
-
-/** The window's chrome root: the camera pill sits inside `.stage`, a size container, which would trap and clip a fixed overlay inside the stage box, and `--chrome-top` (the draggable titlebar strip) is set here. */
-function modalHost(): HTMLElement {
-  return document.querySelector<HTMLElement>(".app, .editor-window") ?? document.body;
-}
+import { modalHost } from "./modalHost";
 
 /** Gates a switch-to-Free intent behind the warning: once dismissed the intent runs on the spot, otherwise it waits for the modal's answer and Cancel drops it untouched. The pending intent is per call site, so the camera pill and the inspector each open their own dialog. */
 export function useFreeCameraWarning(
