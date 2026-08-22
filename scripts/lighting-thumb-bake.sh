@@ -4,7 +4,8 @@
 # src/assets/lighting-thumbs/. Deliberately NOT wired into option-previews or any stale
 # detection: re-run this by hand when a preset's spec (src/toolkit/lighting/presets.ts)
 # or the bake scenes change, then commit the JPEGs.
-# Needs a runnable dev app (pnpm install + pnpm setup:ffmpeg) and port 1420 free.
+# Needs a runnable dev app (pnpm install + pnpm setup:ffmpeg); each screenshot queues behind
+# any other autorun and picks its own dev port, so no port needs to be free.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

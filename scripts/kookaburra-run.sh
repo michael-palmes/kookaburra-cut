@@ -12,6 +12,16 @@
 #   pnpm kookaburra:run --action option-previews         # regenerate src/assets/option-previews/
 #   pnpm kookaburra:run --action render-spike --at 300   # hidden render window throttling spike
 #
+# Multi-worktree safe (v13): runs never need port 1420, so an interactive `pnpm tauri dev`
+# keeps running untouched.
+#   · PORT   each dev run picks its own free port (scripts/dev-port.mjs) and passes the
+#            matching devUrl + dev CSP through `tauri dev -c`; KOOKABURRA_PORT drives vite.
+#   · QUEUE  runs take a FIFO ticket in ~/Kookaburra Cut/_autorun/queue and wait their turn
+#            instead of failing fast, so parallel agents serialise rather than collide.
+#   · RESULT each run owns ~/Kookaburra Cut/_autorun/runs/<run-id>/ (KOOKABURRA_RESULT_DIR),
+#            so queued runs never clobber each other. last-run.json is copied back to the
+#            legacy ~/Kookaburra Cut/_autorun/last-run.json and dev.log is symlinked there.
+#
 # Flags:  --action verify|export|theme-previews|option-previews|perf|screenshot|packroundtrip|create|render-spike (required)
 #         --project <id[,id...]>   (default: the app's default project; theme-previews →
 #                  preview-lab-theme (incremental via the theme-preview manifest; --all re-records
@@ -28,11 +38,15 @@
 #                  without --aspect, the preset's favoured aspect is used
 #         --encode-json <path>  a fully-resolved EncodeSpec JSON (custom encodes)
 #         --app    <path/to/Kookaburra Cut.app>  run the PACKAGED app instead of `pnpm tauri dev`
-#                  (v9 · M2 — the packaged determinism gate; no dev server, no port 1420)
+#                  (v9 · M2 — the packaged determinism gate; no dev server, no port)
+#         --foreground  launch the app normally instead of in the background (no-focus-steal)
+#                  mode; always on for --action perf, which needs an honest visible window
+#         --no-wait  don't queue: exit 2 straight away when another run holds the queue
 #
 #   pnpm kookaburra:run --action create --project blank   # create-from-template smoke in a
 #                  throwaway workspace root; pass --app to prove the packaged resource layout
-# Env:    KOOKABURRA_RUN_TIMEOUT  seconds to wait for a result (default 1200)
+# Env:    KOOKABURRA_RUN_TIMEOUT    seconds to wait for a result (default 2400)
+#         KOOKABURRA_QUEUE_TIMEOUT  seconds to wait for the queue (default 1800)
 #
 # Exit codes: 0 = ok · 1 = ran but not ok (non-deterministic / run error) · 2 = setup/timeout.
 #
@@ -41,14 +55,25 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TRIPLE="aarch64-apple-darwin"
 SIDECAR="$ROOT/src-tauri/bin/ffmpeg-$TRIPLE"
-RESULT_DIR="$HOME/Kookaburra Cut/_autorun"
-RESULT_FILE="$RESULT_DIR/last-run.json"
-DEV_LOG="$RESULT_DIR/dev.log"
+# The autorun home is FIXED: never the (possibly throwaway) KOOKABURRA_WORKSPACE_ROOT, so
+# queue tickets and run dirs from every worktree land in the one place.
+AUTORUN_DIR="$HOME/Kookaburra Cut/_autorun"
+QUEUE_DIR="$AUTORUN_DIR/queue"
+RUNS_DIR="$AUTORUN_DIR/runs"
+RUN_ID="$(date -u +%Y%m%d-%H%M%S)-$$"
+RUN_DIR="$RUNS_DIR/$RUN_ID"
+RESULT_FILE="$RUN_DIR/last-run.json"
+LEGACY_RESULT="$AUTORUN_DIR/last-run.json"
+DEV_LOG="$RUN_DIR/dev.log"
 # 2400s default: an occluded/locked-display run used to throttle to a crawl (see
 # backgroundThrottling in tauri.conf.json); even with throttling disabled, AFK margin is cheap.
 TIMEOUT="${KOOKABURRA_RUN_TIMEOUT:-2400}"
+QUEUE_TIMEOUT="${KOOKABURRA_QUEUE_TIMEOUT:-1800}"
+KEEP_RUNS=20
+TICKET=""
 
 ACTION="" PROJECT="" ASPECT="all" CODEC="libx264" APP="" ASPECT_EXPLICIT=0 ALL_PREVIEWS=0
+FOREGROUND=0 NO_WAIT=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --action)  ACTION="${2:-}";  shift 2 ;;
@@ -61,6 +86,8 @@ while [[ $# -gt 0 ]]; do
     --scene)  SCENE="${2:-}";  shift 2 ;;
     --at)     AT="${2:-}";     shift 2 ;;
     --app)    APP="${2:-}";    shift 2 ;;
+    --foreground) FOREGROUND=1; shift ;;
+    --no-wait)    NO_WAIT=1;    shift ;;
     *) echo "kookaburra:run: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -97,28 +124,128 @@ if [[ -n "$PROJECT" ]]; then
     fi
   done
 fi
-# One app instance at a time: dev mode needs Vite's port 1420 to itself, and ANY concurrent
-# instance (dev or packaged) shares $APPDATA caches with this run. Fail fast with
-# guidance instead of a buried stack trace or a cache race.
-if lsof -nP -iTCP:1420 -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "kookaburra:run: port 1420 is already in use — another 'pnpm tauri dev' is running." >&2
-  echo "            stop it first." >&2
-  exit 2
-fi
+# A packaged instance still shares $APPDATA caches with this run in an unmanaged way (it
+# takes no queue ticket and no per-run result dir), so that one stays a hard fail.
 if pgrep -f "Kookaburra Cut.app/Contents/MacOS/" >/dev/null 2>&1; then
   echo "kookaburra:run: a packaged Kookaburra Cut is already running — quit it first (shared caches)." >&2
   exit 2
 fi
+# The perf probe measures this machine's spare capacity, so an app running alongside skews
+# every number. It still runs (the operator may have judged it harmless), just warned.
+if [[ "$ACTION" == "perf" ]]; then
+  FOREGROUND=1
+  if lsof -nP -iTCP:1420 -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "kookaburra:run: warning: something is already serving port 1420, which pollutes the fps numbers" >&2
+  fi
+fi
 
-mkdir -p "$RESULT_DIR"
-rm -f "$RESULT_FILE"
+echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
+echo "kookaburra:run: run dir → $RUN_DIR"
+
+# Recursively kill the dev process tree (pnpm → cargo → app → vite). On the happy path the
+# app self-exits (app.exit) and this is a no-op backstop; on a hang/timeout it's the teardown.
+# Never walks anything but our own tree: other runs' processes are theirs to reap.
+kill_tree() {
+  local pid=$1 child
+  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child"; done
+  kill "$pid" 2>/dev/null || true
+}
+
+cleanup() {
+  if [[ -n "${DEV_PID:-}" ]]; then kill_tree "$DEV_PID"; fi
+  if [[ -n "${TICKET:-}" ]]; then rm -f "$TICKET"; fi
+}
+trap cleanup EXIT INT TERM
+
+# One field out of a one-line ticket JSON.
+ticket_field() {
+  sed -n 's/.*"'"$2"'": *"\{0,1\}\([^",}]*\)"\{0,1\}.*/\1/p' "$1" 2>/dev/null || true
+}
+
+# Tickets are named <epoch>-<pid>.json, so the sorted glob IS the queue order.
+front_ticket() {
+  local f
+  for f in "$QUEUE_DIR"/*.json; do
+    if [[ -e "$f" ]]; then printf '%s' "$f"; return 0; fi
+  done
+  return 0
+}
+
+# A run killed mid-flight can't clear its own ticket; its pid dying is the release signal.
+drop_dead_tickets() {
+  local f pid
+  for f in "$QUEUE_DIR"/*.json; do
+    [[ -e "$f" ]] || continue
+    pid="$(ticket_field "$f" pid)"
+    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then rm -f "$f"; fi
+  done
+}
+
+queue_position() {
+  local f count=0
+  for f in "$QUEUE_DIR"/*.json; do
+    [[ -e "$f" ]] || continue
+    count=$((count + 1))
+    if [[ "$f" == "$TICKET" ]]; then break; fi
+  done
+  printf '%d' "$count"
+}
+
+write_ticket() {
+  printf '{"pid":%d,"action":"%s","project":"%s","worktree":"%s","started":"%s"}\n' \
+    "$$" "$ACTION" "$PROJECT" "$ROOT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$TICKET"
+}
+
+# FIFO across every worktree: write a ticket, then wait until it is the oldest live one.
+mkdir -p "$QUEUE_DIR"
+TICKET="$QUEUE_DIR/$(printf '%012d' "$(date -u +%s)")-$$.json"
+write_ticket
+waited=0
+next_notice=0
+while :; do
+  drop_dead_tickets
+  if [[ ! -f "$TICKET" ]]; then write_ticket; fi
+  FRONT="$(front_ticket)"
+  if [[ "$FRONT" == "$TICKET" ]]; then break; fi
+  if [[ "$NO_WAIT" == "1" ]]; then
+    echo "kookaburra:run: another run holds the queue and --no-wait was given" >&2
+    echo "            front: $(ticket_field "$FRONT" action) $(ticket_field "$FRONT" project) in $(ticket_field "$FRONT" worktree) (pid $(ticket_field "$FRONT" pid))" >&2
+    exit 2
+  fi
+  if [[ "$waited" -ge "$QUEUE_TIMEOUT" ]]; then
+    echo "kookaburra:run: gave up waiting for the queue after ${QUEUE_TIMEOUT}s" >&2
+    echo "            front: $(ticket_field "$FRONT" action) $(ticket_field "$FRONT" project) in $(ticket_field "$FRONT" worktree) (pid $(ticket_field "$FRONT" pid))" >&2
+    echo "            raise KOOKABURRA_QUEUE_TIMEOUT, or clear $QUEUE_DIR if that run is gone." >&2
+    exit 2
+  fi
+  if [[ "$waited" -ge "$next_notice" ]]; then
+    echo "kookaburra:run: queued behind $(ticket_field "$FRONT" action) $(ticket_field "$FRONT" project) in $(ticket_field "$FRONT" worktree) (pid $(ticket_field "$FRONT" pid)), position $(queue_position), waited ${waited}s"
+    next_notice=$((waited + 14))
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+if [[ "$waited" -gt 0 ]]; then echo "kookaburra:run: queue acquired after ${waited}s"; fi
+
+mkdir -p "$RUN_DIR"
+: >"$DEV_LOG"
+# Live tailing keeps working off the one stable path, whichever run is current.
+ln -sfn "$RUN_DIR/dev.log" "$AUTORUN_DIR/dev.log"
+rm -f "$LEGACY_RESULT"
+# Keep the last few runs for post-mortems; the rest are dead weight (frames, logs, roots).
+pruned=0
+for dir in $(ls -1 "$RUNS_DIR" 2>/dev/null | sort -r); do
+  pruned=$((pruned + 1))
+  if [[ "$pruned" -gt "$KEEP_RUNS" ]]; then rm -rf "$RUNS_DIR/$dir"; fi
+done
+
 # A fresh option-preview batch must not inherit frames from a previous (longer) run —
 # the encoder consumes the whole contiguous %03d sequence in each set directory.
 # Incremental by default: the manifest diff names the stale sets and the app only mounts
 # lab projects owning one; nothing stale skips the boot entirely. --all forces a full
 # re-record (deliberate engine-change refreshes, docs/backgrounds.md).
 if [[ "$ACTION" == "option-previews" ]]; then
-  rm -rf "$RESULT_DIR/option-previews"
+  rm -rf "$RUN_DIR/option-previews"
   if [[ "$ALL_PREVIEWS" != "1" ]]; then
     STALE_SETS="$(node "$ROOT/scripts/option-preview-stale.mjs" list)"
     if [[ -z "$STALE_SETS" ]]; then
@@ -132,7 +259,7 @@ fi
 # Same for theme previews: the promotion loop copies EVERY staged dir, so stale dirs from
 # renamed or removed themes would be resurrected into src/assets on each run.
 if [[ "$ACTION" == "theme-previews" ]]; then
-  rm -rf "$RESULT_DIR/theme-previews"
+  rm -rf "$RUN_DIR/theme-previews"
   THEME_PREVIEW_PROJECT="${PROJECT:-preview-lab-theme}"
   unset KOOKABURRA_THEMES 2>/dev/null || true
   node "$ROOT/scripts/theme-preview-stale.mjs" cleanup --project "$THEME_PREVIEW_PROJECT"
@@ -149,7 +276,7 @@ fi
 
 # The pack round trip renders in a THROWAWAY workspace root seeded from the real one, so the
 # import lands beside a copy and the user's workspace is never written to. `finish_autorun`
-# always writes to ~/Kookaburra Cut/_autorun, so the result still lands where we look for it.
+# writes to KOOKABURRA_RESULT_DIR, so the result still lands where we look for it.
 if [[ "$ACTION" == "packroundtrip" ]]; then
   if [[ "$PROJECT" != ws:* ]]; then
     echo "kookaburra:run: --action packroundtrip needs a workspace project (ws:<slug>); bundled projects do not live in the workspace" >&2
@@ -157,7 +284,7 @@ if [[ "$ACTION" == "packroundtrip" ]]; then
   fi
   RT_SLUG="${PROJECT#ws:}"
   RT_SRC="$HOME/Kookaburra Cut"
-  RT_ROOT="$RESULT_DIR/roundtrip-root"
+  RT_ROOT="$RUN_DIR/roundtrip-root"
   if [[ ! -d "$RT_SRC/$RT_SLUG" ]]; then
     echo "kookaburra:run: no project at '$RT_SRC/$RT_SLUG'" >&2
     exit 2
@@ -184,7 +311,7 @@ if [[ "$ACTION" == "create" ]]; then
     echo "kookaburra:run: '$PROJECT' has no projects/$PROJECT/template.json, so it is not a template" >&2
     exit 2
   fi
-  CREATE_ROOT="$RESULT_DIR/create-root"
+  CREATE_ROOT="$RUN_DIR/create-root"
   rm -rf "$CREATE_ROOT"
   mkdir -p "$CREATE_ROOT"
   export KOOKABURRA_WORKSPACE_ROOT="$CREATE_ROOT"
@@ -195,6 +322,8 @@ fi
 # get_autorun_config).
 export KOOKABURRA_ACTION="$ACTION"
 export KOOKABURRA_PROJECT="$PROJECT"
+export KOOKABURRA_RESULT_DIR="$RUN_DIR"
+[ "$FOREGROUND" = "1" ] && export KOOKABURRA_FOREGROUND=1
 # --preset without an explicit --aspect: leave KOOKABURRA_ASPECT unset so the app uses
 # the preset's favoured aspect (the wrapper's "all" default would override it).
 if [ -n "${PRESET:-}" ] && [ "$ASPECT_EXPLICIT" != "1" ]; then
@@ -208,46 +337,76 @@ export KOOKABURRA_CODEC="$CODEC"
 [ -n "${SCENE:-}" ] && export KOOKABURRA_SCENE="$SCENE"
 [ -n "${AT:-}" ] && export KOOKABURRA_AT="$AT"
 
-echo "kookaburra:run: $ACTION  project='${PROJECT:-<default>}'  aspect='$ASPECT'  codec='$CODEC'  ${APP:+app='$APP'  }(timeout ${TIMEOUT}s)"
-echo "kookaburra:run: dev log → $DEV_LOG"
-
-# Recursively kill the dev process tree (pnpm → cargo → app → vite). On the happy path the
-# app self-exits (app.exit) and this is a no-op backstop; on a hang/timeout it's the teardown.
-kill_tree() {
-  local pid=$1 child
-  for child in $(pgrep -P "$pid" 2>/dev/null); do kill_tree "$child"; done
-  kill "$pid" 2>/dev/null || true
+# Dev runs never touch 1420: pick a free port and hand tauri the matching devUrl + dev CSP.
+pick_port() {
+  PORT="$(node "$ROOT/scripts/dev-port.mjs" pick)"
+  export KOOKABURRA_PORT="$PORT"
+  OVERRIDE="$(node "$ROOT/scripts/dev-port.mjs" override "$PORT")"
 }
+if [[ -z "$APP" ]]; then
+  pick_port
+  echo "kookaburra:run: dev server on port $PORT"
+fi
+echo "kookaburra:run: dev log → $DEV_LOG"
 
 # Launch the app in the background; it auto-runs and writes $RESULT_FILE before self-exiting.
 # caffeinate: an AFK run must survive display/system sleep — WKWebView suspends rAF (and
 # throttles timers) for occluded/sleeping content, which stalled runs before the fix in
 # App.tsx/autorun.ts; keeping the display awake avoids the whole throttling class.
 # Packaged mode execs the .app binary directly (env inherits; `open` would drop it).
-if [[ -n "$APP" ]]; then
-  caffeinate -dimsu "$APP_BIN" >"$DEV_LOG" 2>&1 &
-else
-  caffeinate -dimsu pnpm tauri dev >"$DEV_LOG" 2>&1 &
-fi
-DEV_PID=$!
-trap 'kill_tree "$DEV_PID"' EXIT INT TERM
+launch_dev() {
+  if [[ -n "$APP" ]]; then
+    caffeinate -dimsu "$APP_BIN" >"$DEV_LOG" 2>&1 &
+  else
+    caffeinate -dimsu pnpm tauri dev -c "$OVERRIDE" >"$DEV_LOG" 2>&1 &
+  fi
+  DEV_PID=$!
+}
 
 # Poll for the result file (the source of truth — independent of dev-process exit semantics).
-elapsed=0
-while [[ ! -f "$RESULT_FILE" ]]; do
-  if ! kill -0 "$DEV_PID" 2>/dev/null; then
+# 0 = result written · 3 = early death on a taken port (retryable) · 4 = other death · 5 = timeout.
+poll_result() {
+  local elapsed=0
+  while [[ ! -f "$RESULT_FILE" ]]; do
+    if ! kill -0 "$DEV_PID" 2>/dev/null; then
+      if [[ -z "$APP" && "$elapsed" -le 60 ]] &&
+        grep -qiE "EADDRINUSE|address already in use|is already in use" "$DEV_LOG"; then
+        return 3
+      fi
+      return 4
+    fi
+    if [[ "$elapsed" -ge "$TIMEOUT" ]]; then return 5; fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+  return 0
+}
+
+attempt=1
+while :; do
+  launch_dev
+  status=0
+  poll_result || status=$?
+  if [[ "$status" -eq 0 ]]; then break; fi
+  kill_tree "$DEV_PID"
+  if [[ "$status" -eq 3 && "$attempt" -lt 3 ]]; then
+    attempt=$((attempt + 1))
+    pick_port
+    echo "kookaburra:run: port was taken between the pick and the bind, retrying on $PORT (attempt $attempt/3)" >&2
+    continue
+  fi
+  if [[ "$status" -eq 5 ]]; then
+    echo "kookaburra:run: timed out after ${TIMEOUT}s with no result — see $DEV_LOG" >&2
+  else
     # Dev process exited without a result → build/crash before the auto-run finished.
     echo "kookaburra:run: dev process exited before writing a result — last log lines:" >&2
     tail -n 25 "$DEV_LOG" >&2 || true
-    exit 2
   fi
-  if [[ "$elapsed" -ge "$TIMEOUT" ]]; then
-    echo "kookaburra:run: timed out after ${TIMEOUT}s with no result — see $DEV_LOG" >&2
-    exit 2
-  fi
-  sleep 2
-  elapsed=$((elapsed + 2))
+  exit 2
 done
+
+# Other scripts and docs read the legacy path, so every run leaves its result there too.
+cp -f "$RESULT_FILE" "$LEGACY_RESULT"
 
 echo "----- kookaburra:run result -----"
 cat "$RESULT_FILE"
@@ -271,7 +430,7 @@ fi
 # theme-previews: promote the batch into the repo so the bundled previews can be committed
 # (the app writes only under ~/Kookaburra Cut — the repo copy is deliberately the wrapper's job).
 if [[ "$ACTION" == "theme-previews" ]]; then
-  SRC="$RESULT_DIR/theme-previews"
+  SRC="$RUN_DIR/theme-previews"
   DEST="$ROOT/src/assets/theme-previews"
   mkdir -p "$DEST"
   copied=0
@@ -313,7 +472,7 @@ fi
 # Single-frame sets are stills (<set>.jpg); multi-frame sets become <set>.mp4 at
 # 20fps (OPTION_CLIP_FPS in engine/optionPreviews.ts) + a middle-frame poster.
 if [[ "$ACTION" == "option-previews" ]]; then
-  SRC="$RESULT_DIR/option-previews"
+  SRC="$RUN_DIR/option-previews"
   DEST="$ROOT/src/assets/option-previews"
   mkdir -p "$DEST"
   sets=0
