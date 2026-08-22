@@ -1,37 +1,37 @@
 {
-  "version": 1,
-  "name": "Fixed",
-  "text": {
-    "title": "Steadier",
-    "subtitle": "",
-    "bullets": "Sync stalls\nTimezone drift\nWidget refresh\nExport crash"
-  },
-  "textAnimation": {
-    "in": "fade-up",
-    "out": "none",
-    "staggerMs": 160,
-    "delivery": "by-paragraph"
-  },
-  "frame": {
-    "cutout": {
-      "shape": "rounded-rect",
-      "side": "end",
-      "size": 0.33,
-      "inset": 0.06,
-      "radius": 0.1
-    },
-    "chip": {
-      "label": "Fixed",
-      "icon": "circle-x",
-      "colour": "text"
-    },
-    "textAlign": "left"
-  },
   "backdrop": {
     "type": "none"
   },
   "background": {
-    "type": "image",
-    "src": "assets/shot-c-sample.jpg"
-  }
+    "src": "assets/shot-c-sample.jpg",
+    "type": "image"
+  },
+  "frame": {
+    "chip": {
+      "colour": "#2fb170",
+      "icon": "circle-check",
+      "label": "Fixed"
+    },
+    "cutout": {
+      "inset": 0.06,
+      "radius": 0.1,
+      "shape": "rounded-rect",
+      "side": "end",
+      "size": 0.33
+    },
+    "textAlign": "left"
+  },
+  "name": "Fixed",
+  "text": {
+    "bullets": "Sync stalls\nTimezone drift\nWidget refresh\nExport crash",
+    "subtitle": "",
+    "title": "Steadier"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "version": 1
 }

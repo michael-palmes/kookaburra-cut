@@ -1,40 +1,42 @@
 {
-  "version": 1,
-  "name": "Version chip",
-  "text": {
-    "title": "sdk 4.2.0",
-    "subtitle": "Breaking: 1"
-  },
-  "headerIcon": "assets/kooka-icon-dark-sample.png",
-  "textLayout": {
-    "align": "center"
-  },
-  "textStyle": {
-    "titleFont": "JetBrains Mono",
-    "subtitleFont": "JetBrains Mono"
-  },
-  "textAnimation": {
-    "in": "fade",
-    "out": "none",
-    "staggerMs": 160,
-    "delivery": "by-paragraph"
-  },
   "backdrop": {
     "type": "none"
   },
   "background": {
-    "type": "shader",
-    "shader": "dot-grid",
     "colors": ["#0f141b", "#2e405b", "#416198"],
-    "speed": 0.25,
     "parallax": 0,
     "params": {
       "density": 50,
       "dotSize": 0.19,
+      "driftAngle": 70,
       "pulse": 0.45,
-      "waveWidth": 0.5,
-      "driftAngle": 70
+      "waveWidth": 0.5
     },
-    "preset": "p6"
-  }
+    "preset": "p6",
+    "shader": "dot-grid",
+    "speed": 0.25,
+    "type": "shader"
+  },
+  "headerIcon": "assets/kooka-icon-dark-sample.png",
+  "name": "Version chip",
+  "text": {
+    "subtitle": "Breaking: 1",
+    "title": "sdk 4.2.0"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "subtitleFont": "JetBrains Mono",
+    "subtitleOffsetY": -0.61,
+    "titleFont": "JetBrains Mono",
+    "titleOffsetY": -0.44
+  },
+  "version": 1
 }

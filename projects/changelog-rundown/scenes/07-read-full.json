@@ -1,31 +1,49 @@
 {
-  "version": 1,
-  "name": "Read the full notes",
-  "text": {
-    "title": "example.com/changelog",
-    "subtitle": "Full notes"
-  },
-  "textAnimation": {
-    "in": "fade-up",
-    "out": "none",
-    "staggerMs": 160,
-    "delivery": "by-paragraph"
-  },
   "backdrop": {
     "type": "none"
   },
   "background": {
-    "type": "shader",
-    "shader": "dot-grid",
     "colors": ["#0f141b", "#2e405b", "#416198"],
-    "speed": 0.25,
     "params": {
       "density": 50,
       "dotSize": 0.19,
+      "driftAngle": 70,
       "pulse": 0.45,
-      "waveWidth": 0.5,
-      "driftAngle": 70
+      "waveWidth": 0.5
     },
-    "preset": "p6"
-  }
+    "preset": "p6",
+    "shader": "dot-grid",
+    "speed": 0.25,
+    "type": "shader"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": -0.049420586230402186,
+          "distance": 5,
+          "elevationDeg": 0,
+          "target": [0, 0, 0]
+        },
+        "tMs": 0
+      }
+    ],
+    "segments": []
+  },
+  "name": "Read the full notes",
+  "text": {
+    "subtitle": "Full notes",
+    "title": "example.com/changes"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "textStyle": {
+    "titleOffsetY": -0.01
+  },
+  "version": 1
 }

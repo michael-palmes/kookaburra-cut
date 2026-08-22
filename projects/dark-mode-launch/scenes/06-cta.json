@@ -1,36 +1,54 @@
 {
-  "version": 1,
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "backing": {
+      "spec": {
+        "angleDeg": 180,
+        "space": "oklch",
+        "stops": [["#000000", 0], ["#071021", 1]],
+        "type": "linear"
+      },
+      "type": "gradient"
+    },
+    "colors": ["#071021", "#100d21"],
+    "look": "halo-rings",
+    "params": {
+      "count": 5,
+      "depth": 14,
+      "drift": 0.9,
+      "size": 1.05,
+      "spread": 2.5,
+      "tube": 0.18
+    },
+    "preset": "p9",
+    "speed": 0.9,
+    "type": "scene3d"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": -0.049252717391304345,
+          "distance": 5,
+          "elevationDeg": -0.05344202898550725,
+          "target": [0, 0, 0]
+        },
+        "tMs": 0
+      }
+    ],
+    "segments": []
+  },
   "name": "Update now",
-  "themeId": "kookaburra-abyss",
   "text": {
-    "title": "Kooka 2.4",
-    "subtitle": "Update"
+    "subtitle": "Update",
+    "title": "Kooka 2.4"
   },
   "textStyle": {
     "titleFont": "JetBrains Mono"
   },
-  "backdrop": { "type": "none" },
-  "background": {
-    "type": "scene3d",
-    "look": "halo-rings",
-    "colors": ["#332e3c", "#503b55"],
-    "speed": 0.9,
-    "params": { "count": 5, "spread": 2.5, "depth": 14, "size": 1.05, "tube": 0.18, "drift": 0.9 },
-    "backing": {
-      "type": "gradient",
-      "spec": {
-        "type": "linear",
-        "angleDeg": 180,
-        "space": "oklch",
-        "stops": [
-          ["#08262B", 0],
-          ["#092A2F", 0.25],
-          ["#092D32", 0.5],
-          ["#0A2F34", 0.75],
-          ["#0A3236", 1]
-        ]
-      }
-    },
-    "preset": "p9"
-  }
+  "themeId": "kookaburra-abyss",
+  "version": 1
 }

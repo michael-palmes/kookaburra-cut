@@ -1,7 +1,28 @@
 {
-  "version": 1,
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "backing": {
+      "gradient": "brand",
+      "type": "gradient"
+    },
+    "colors": ["#496489", "#72612f"],
+    "look": "dust-drift",
+    "params": {
+      "count": 900,
+      "drift": 1,
+      "innerRadius": 10,
+      "opacity": 0.95,
+      "outerRadius": 26,
+      "pointSize": 0.09,
+      "twinkle": 0.6
+    },
+    "preset": "p6",
+    "speed": 1,
+    "type": "scene3d"
+  },
   "name": "The payoff",
-  "themeId": "kookaburra-ember",
   "text": {
     "headline": "Now it takes",
     "unit": "seconds"
@@ -9,12 +30,9 @@
   "textAnimation": {
     "in": "fade-up",
     "out": "fade",
-    "staggerMs": 90,
-    "stagger": "word"
+    "stagger": "word",
+    "staggerMs": 90
   },
-  "background": {
-    "type": "gradient",
-    "gradient": "brand",
-    "parallax": 0.03
-  }
+  "themeId": "kookaburra-ember",
+  "version": 1
 }

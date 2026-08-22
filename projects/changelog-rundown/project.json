@@ -46,14 +46,6 @@
       }
     },
     {
-      "file": "scenes/06-known-issues.tsx",
-      "durationMs": 3400,
-      "transition": {
-        "type": "dip",
-        "durationMs": 400
-      }
-    },
-    {
       "file": "scenes/07-read-full.tsx",
       "durationMs": 2600
     }

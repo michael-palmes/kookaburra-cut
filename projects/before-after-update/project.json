@@ -15,7 +15,12 @@
     },
     {
       "file": "scenes/02-wipe.tsx",
-      "durationMs": 3600
+      "durationMs": 4200,
+      "transition": {
+        "type": "whip",
+        "durationMs": 600,
+        "ease": "smooth"
+      }
     },
     {
       "file": "scenes/03-new-way.tsx",

@@ -1,44 +1,47 @@
 {
-  "version": 1,
-  "name": "Added in action",
-  "text": {
-    "title": "Offline mode",
-    "subtitle": ""
-  },
-  "textAnimation": {
-    "in": "fade-up",
-    "out": "none",
-    "staggerMs": 160,
-    "delivery": "by-paragraph"
-  },
-  "videoWindow": {
-    "media": {
-      "src": "assets/kooka-feed-loop-sample.mp4",
-      "startMs": 0,
-      "loop": true
-    },
-    "radius": "macos",
-    "scale": 0.68,
-    "offset": [0, -0.08],
-    "motion": {
-      "preset": "none"
-    }
-  },
   "backdrop": {
     "type": "none"
   },
   "background": {
-    "type": "shader",
-    "shader": "dot-grid",
     "colors": ["#0f141b", "#2e405b", "#416198"],
-    "speed": 0.25,
     "params": {
       "density": 50,
       "dotSize": 0.19,
+      "driftAngle": 70,
       "pulse": 0.45,
-      "waveWidth": 0.5,
-      "driftAngle": 70
+      "waveWidth": 0.5
     },
-    "preset": "p6"
+    "preset": "p6",
+    "shader": "dot-grid",
+    "speed": 0.25,
+    "type": "shader"
+  },
+  "name": "Added in action",
+  "text": {
+    "subtitle": "",
+    "title": "Offline mode"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "textStyle": {
+    "titleOffsetY": -0.24
+  },
+  "version": 1,
+  "videoWindow": {
+    "media": {
+      "loop": true,
+      "src": "assets/kooka-feed-loop-sample.mp4",
+      "startMs": 0
+    },
+    "motion": {
+      "preset": "none"
+    },
+    "offset": [0, -0.08],
+    "radius": "macos",
+    "scale": 0.68
   }
 }

@@ -1,39 +1,39 @@
 {
-  "version": 1,
-  "name": "Release header",
-  "text": {
-    "title": "v2.4.0",
-    "subtitle": "6 August 2026"
-  },
-  "headerIcon": "assets/app-icon.png",
-  "textLayout": {
-    "align": "center"
-  },
-  "textStyle": {
-    "titleFont": "JetBrains Mono",
-    "subtitleFont": "JetBrains Mono"
-  },
-  "textAnimation": {
-    "in": "fade-up",
-    "out": "none",
-    "staggerMs": 160,
-    "delivery": "by-paragraph"
-  },
   "backdrop": {
     "type": "none"
   },
   "background": {
-    "type": "shader",
-    "shader": "graph-grid",
-    "colors": ["#0d1218", "#2f485c", "#3a6588", "#25343e"],
-    "speed": 0.3,
+    "colors": ["#0c1017", "#3d5375", "#3d638f"],
     "params": {
-      "density": 8,
-      "lineWeight": 0.6,
-      "highlightWidth": 0.55,
-      "fillDensity": 0.12,
-      "cadence": 0.15
+      "density": 20,
+      "fade": 0.75,
+      "glow": 0.35,
+      "horizon": 0.02,
+      "lineWeight": 0.3
     },
-    "preset": "p8"
-  }
+    "preset": "p7",
+    "shader": "horizon-grid",
+    "speed": 1.85,
+    "type": "shader"
+  },
+  "headerIcon": "assets/app-icon.png",
+  "name": "Release header",
+  "text": {
+    "subtitle": "6 August 2026",
+    "title": "v2.4.0"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "textLayout": {
+    "align": "center"
+  },
+  "textStyle": {
+    "subtitleFont": "JetBrains Mono",
+    "titleFont": "JetBrains Mono"
+  },
+  "version": 1
 }

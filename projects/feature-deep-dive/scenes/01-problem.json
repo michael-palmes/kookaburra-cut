@@ -1,26 +1,41 @@
 {
-  "version": 1,
+  "background": {
+    "backing": {
+      "gradient": "brand",
+      "type": "gradient"
+    },
+    "colors": ["#496489", "#72612f"],
+    "look": "dust-drift",
+    "params": {
+      "count": 900,
+      "drift": 1,
+      "innerRadius": 10,
+      "opacity": 0.95,
+      "outerRadius": 26,
+      "pointSize": 0.09,
+      "twinkle": 0.6
+    },
+    "preset": "p6",
+    "speed": 1,
+    "type": "scene3d"
+  },
   "name": "The problem",
   "text": {
-    "title": "Finding it\ntook too long",
-    "subtitle": "Until now"
+    "subtitle": "Until now",
+    "title": "Finding it\ntook too long"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 160
   },
   "textLayout": {
     "align": "center"
   },
   "textStyle": {
-    "titleSize": 0.75,
-    "subtitleSize": 1.4
+    "subtitleSize": 1.4,
+    "titleSize": 0.75
   },
-  "textAnimation": {
-    "in": "fade-up",
-    "out": "fade",
-    "staggerMs": 160,
-    "delivery": "by-paragraph"
-  },
-  "background": {
-    "type": "gradient",
-    "gradient": "brand",
-    "parallax": 0.03
-  }
+  "version": 1
 }

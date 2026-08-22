@@ -1,127 +1,124 @@
 {
-  "version": 1,
-  "name": "Now",
-  "text": {
-    "title": "Now"
-  },
-  "textAnimation": {
-    "in": "fade-up",
-    "out": "fade",
-    "staggerMs": 0,
-    "delivery": "all-at-once"
-  },
-  "background": {
-    "type": "shader",
-    "shader": "warp",
-    "preset": "p6",
-    "speed": 0.4,
-    "colors": ["#0e0905", "#4a3119", "#1d1309", "#5c3b1a"],
-    "params": {
-      "proportion": 0.5,
-      "softness": 1,
-      "distortion": 0.12,
-      "swirl": 0.35
-    }
-  },
   "backdrop": {
     "type": "none"
   },
-  "lighting": {
-    "preset": "hard-keynote",
-    "environment": {
-      "source": "kookaburra:monochrome-studio",
-      "intensity": 0.4,
-      "rotationDeg": 0
+  "background": {
+    "colors": ["#17121e", "#4e3465", "#7f48a7"],
+    "params": {
+      "density": 66,
+      "dotSize": 0.14,
+      "driftAngle": 120,
+      "pulse": 0.4,
+      "waveWidth": 0.9
     },
-    "sun": {
-      "azimuthDeg": 50,
-      "elevationDeg": 55,
-      "intensity": 3.2,
-      "kelvin": 5200,
-      "angularDeg": 1
-    },
-    "ambient": 0.15,
-    "lights": [
+    "preset": "p7",
+    "shader": "dot-grid",
+    "speed": 0.7,
+    "type": "shader"
+  },
+  "camera": {
+    "keys": [
       {
-        "id": "rim",
-        "type": "spot",
-        "intensity": 60,
-        "kelvin": 5000,
-        "angleDeg": 40,
-        "penumbra": 0.5,
-        "placement": {
-          "mode": "orbit",
-          "azimuthDeg": 180,
-          "elevationDeg": 35,
-          "distance": 7
-        }
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": -174.94137695978188,
+          "distance": 5.428641196651268,
+          "elevationDeg": 1.9976993865030672,
+          "target": [-0.011312952170461674, -3.828299581425252, -0.1278014432782076]
+        },
+        "tMs": 50
+      },
+      {
+        "id": "k2",
+        "pose": {
+          "azimuthDeg": 0,
+          "distance": 3.5867850089771274,
+          "elevationDeg": 2,
+          "target": [0, -0.15, 0]
+        },
+        "tMs": 2150
       }
     ],
-    "shadow": {
-      "technique": "map",
-      "softness": 0.3,
-      "opacity": 0.45,
-      "mapSize": 2048,
-      "bias": -0.0005
-    }
+    "segments": [
+      {
+        "ease": "inOutCubic",
+        "from": "k1",
+        "to": "k2"
+      }
+    ]
   },
   "devices": [
     {
-      "id": "d1",
-      "model": "iphone-17-pro",
       "colour": "silver",
+      "id": "d1",
       "media": {
-        "src": "assets/kooka-feed-loop-sample.mp4",
         "kind": "video",
+        "src": "assets/kooka-feed-loop-sample.mp4",
         "startMs": -300
+      },
+      "model": "iphone-17-pro",
+      "motion": {
+        "preset": "none"
       },
       "placement": {
         "position": [0, -0.35, 0],
         "rotationDeg": [0, 0, 0],
         "scale": 1
       },
-      "motion": {
-        "preset": "none"
-      },
       "shadow": "long"
     }
   ],
-  "camera": {
-    "keys": [
+  "lighting": {
+    "ambient": 0.15,
+    "environment": {
+      "intensity": 0.4,
+      "rotationDeg": 0,
+      "source": "kookaburra:monochrome-studio"
+    },
+    "lights": [
       {
-        "id": "k1",
-        "tMs": 0,
-        "pose": {
-          "target": [0, -0.15, 0],
-          "azimuthDeg": 8,
-          "elevationDeg": 5,
-          "distance": 6.2,
-          "dof": {
-            "mode": "depth",
-            "blur": 0.5,
-            "range": 0.9,
-            "squeeze": 1.4,
-            "focus": "auto"
-          }
-        }
-      },
-      {
-        "id": "k2",
-        "tMs": 2100,
-        "pose": {
-          "target": [0, -0.15, 0],
-          "azimuthDeg": 0,
-          "elevationDeg": 2,
-          "distance": 5.1
-        }
+        "angleDeg": 40,
+        "id": "rim",
+        "intensity": 60,
+        "kelvin": 5000,
+        "penumbra": 0.5,
+        "placement": {
+          "azimuthDeg": 180,
+          "distance": 7,
+          "elevationDeg": 35,
+          "mode": "orbit"
+        },
+        "type": "spot"
       }
     ],
-    "segments": [
-      {
-        "from": "k1",
-        "to": "k2",
-        "ease": "inOutCubic"
-      }
-    ]
-  }
+    "preset": "hard-keynote",
+    "shadow": {
+      "bias": -0.0005,
+      "mapSize": 2048,
+      "opacity": 0.45,
+      "softness": 0.3,
+      "technique": "map"
+    },
+    "sun": {
+      "angularDeg": 1,
+      "azimuthDeg": 50,
+      "elevationDeg": 55,
+      "intensity": 3.2,
+      "kelvin": 5200
+    }
+  },
+  "name": "Now",
+  "text": {
+    "title": "Now"
+  },
+  "textAnimation": {
+    "delivery": "all-at-once",
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "textStyle": {
+    "titleOffsetY": -0.5
+  },
+  "version": 1
 }

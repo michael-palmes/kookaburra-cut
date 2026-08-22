@@ -1,32 +1,34 @@
 {
-  "version": 1,
-  "name": "Update now",
-  "text": {
-    "title": "App Store",
-    "subtitle": "Update"
-  },
-  "textAnimation": {
-    "in": "fade-scale",
-    "out": "none",
-    "startScale": 0.9,
-    "shine": true,
-    "staggerMs": 0,
-    "delivery": "all-at-once"
-  },
-  "background": {
-    "type": "shader",
-    "shader": "warp",
-    "preset": "p6",
-    "speed": 0.4,
-    "colors": ["#0e0905", "#4a3119", "#1d1309", "#5c3b1a"],
-    "params": {
-      "proportion": 0.5,
-      "softness": 1,
-      "distortion": 0.12,
-      "swirl": 0.35
-    }
-  },
   "backdrop": {
     "type": "none"
-  }
+  },
+  "background": {
+    "colors": ["#17121e", "#4e3465", "#7f48a7"],
+    "params": {
+      "density": 66,
+      "dotSize": 0.14,
+      "driftAngle": 120,
+      "pulse": 0.4,
+      "waveWidth": 0.9
+    },
+    "preset": "p7",
+    "shader": "dot-grid",
+    "speed": 0.7,
+    "type": "shader"
+  },
+  "name": "Update now",
+  "text": {
+    "subtitle": "Update",
+    "title": "App Store"
+  },
+  "textAnimation": {
+    "delivery": "all-at-once",
+    "in": "fade-scale",
+    "out": "none",
+    "shine": true,
+    "staggerMs": 0,
+    "startScale": 0.9
+  },
+  "themeId": "kookaburra-porcelain-field",
+  "version": 1
 }

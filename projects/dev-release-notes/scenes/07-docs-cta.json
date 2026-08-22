@@ -1,29 +1,33 @@
 {
-  "version": 1,
-  "name": "Docs",
-  "text": {
-    "title": "Full notes",
-    "subtitle": "docs.example.com"
-  },
   "backdrop": {
     "type": "none"
   },
   "background": {
-    "type": "shader",
-    "shader": "dot-grid",
     "colors": ["#0f141b", "#2e405b", "#416198"],
-    "speed": 0.25,
     "parallax": 0,
     "params": {
       "density": 50,
       "dotSize": 0.19,
+      "driftAngle": 70,
       "pulse": 0.45,
-      "waveWidth": 0.5,
-      "driftAngle": 70
+      "waveWidth": 0.5
     },
-    "preset": "p6"
+    "preset": "p6",
+    "shader": "dot-grid",
+    "speed": 0.25,
+    "type": "shader"
+  },
+  "name": "Docs",
+  "text": {
+    "subtitle": "docs.example.com",
+    "title": "Full notes"
   },
   "textStyle": {
-    "subtitleSize": 0.6
-  }
+    "subtitleOffsetX": 0.15,
+    "subtitleOffsetY": -0.14,
+    "subtitleSize": 0.6,
+    "titleOffsetX": 0.15,
+    "titleOffsetY": -0.1
+  },
+  "version": 1
 }
