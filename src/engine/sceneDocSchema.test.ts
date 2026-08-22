@@ -5,7 +5,23 @@ import themeSpikeStudioDoc from "./__fixtures__/theme-spike/02-studio.json";
 import themeSpikeGradientDoc from "./__fixtures__/theme-spike/03-gradient.json";
 import themeSpikeImageDoc from "./__fixtures__/theme-spike/04-image.json";
 import themeSpikeAbyssDoc from "./__fixtures__/theme-spike/05-abyss.json";
-import { collectSceneDocFontRefs, parseSceneDoc, SCENE_DOC_VERSION } from "./sceneDocSchema";
+import {
+  collectSceneDocFontRefs,
+  isSceneImageSource,
+  parseSceneDoc,
+  SCENE_DOC_VERSION,
+} from "./sceneDocSchema";
+
+describe("isSceneImageSource", () => {
+  it("accepts supported project image paths and rejects unsafe paths and GIFs", () => {
+    expect(isSceneImageSource("assets/brand/hero.PNG")).toBe(true);
+    expect(isSceneImageSource("assets/Kākāpō @2 (final).WebP")).toBe(true);
+    expect(isSceneImageSource("assets/photo.jpeg")).toBe(true);
+    expect(isSceneImageSource("assets/../outside.png")).toBe(false);
+    expect(isSceneImageSource("assets/animated.gif")).toBe(false);
+    expect(isSceneImageSource("/tmp/hero.png")).toBe(false);
+  });
+});
 
 // parseSceneDoc must degrade (warn + ignore), never throw; a bad sidecar cannot tear down the canvas tree.
 describe("parseSceneDoc", () => {
@@ -777,7 +793,7 @@ describe("parseSceneDoc", () => {
     expect(doc?.videoWindow).toBeUndefined();
   });
 
-  it("takes an authored media array as the source of truth and derives the legacy views", () => {
+  it("takes an authored media array as the source of truth, the legacy blocks beside it dropping", () => {
     const doc = parseSceneDoc(
       {
         version: 1,
@@ -808,27 +824,20 @@ describe("parseSceneDoc", () => {
     );
 
     expect(doc?.media).toHaveLength(2);
-    expect(doc?.images).toEqual([
-      {
-        id: "img1",
-        src: "assets/hero.png",
-        host: "stage",
-        stage: { position: [1, 0, 0], size: 2, rotationDeg: [0, 90, 0] },
-        overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
-        motion: { preset: "turntable", degPerSec: 30 },
-        castShadow: true,
-      },
-    ]);
-    expect(doc?.videoWindow?.media).toEqual({
-      src: "assets/clip.mp4",
-      startMs: 500,
-      loop: true,
-      aspect: 2,
+    expect(doc?.media?.[0]).toEqual({
+      id: "img1",
+      kind: "image",
+      src: "assets/hero.png",
+      host: "stage",
+      stage: { position: [1, 0, 0], size: 2, rotationDeg: [0, 90, 0] },
+      overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
+      motion: { preset: "turntable", degPerSec: 30 },
+      castShadow: true,
     });
-    expect(doc?.videoWindow?.radius).toEqual({ custom: 0.1 });
-    expect(doc?.videoWindow?.recording).toBe(true);
-    expect(doc?.videoWindow?.offset).toEqual([0.2, 0]);
-    expect(doc?.videoWindow?.motion).toEqual({ preset: "drift", hz: 0.2 });
+    expect(doc?.media?.[1]?.window).toEqual({ radius: { custom: 0.1 }, recording: true });
+    expect(doc?.media?.[1]?.video).toEqual({ startMs: 500, loop: true, aspect: 2 });
+    expect(doc?.images).toBeUndefined();
+    expect(doc?.videoWindow).toBeUndefined();
     expect(JSON.parse(JSON.stringify(doc))).toEqual({ version: 1, media: doc?.media });
   });
 

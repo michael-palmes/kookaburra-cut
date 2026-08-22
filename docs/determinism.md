@@ -596,10 +596,12 @@ stack pose, animates that scene. The invariants:
 
 ## Video window
 
-A scene's sidecar may declare a `videoWindow` block: a macOS screen recording as a
-floating rounded window with an analytic drop shadow, floating over whatever the
-scene stages behind it (theme backdrop, fixed background, or nothing). The
-invariants:
+A scene's sidecar may declare a video `media` entry carrying a `window` block: a
+macOS screen recording as a floating rounded window with an analytic drop shadow,
+floating over whatever the scene stages behind it (theme backdrop, fixed
+background, or nothing). Sidecars written before the two media families merged
+carry the older `videoWindow` block and read forward into the same entry at parse
+(2026-08-22 below). The invariants:
 
 - **The null path is the old path, exactly.** The host-side `SceneMediaFallback`
   renders nothing when the sidecar declares no media (and stands its window family
@@ -1228,6 +1230,26 @@ rolling-gate project (`showcase-tour`):
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — | — | — |
+
+> **2026-08-22 (scene media: images and the video window merged):** a scene's
+> stills and its floating screen recording became ONE sidecar family, `media[]`,
+> each entry carrying a `kind` ("image" or "video"), a source, both host
+> placements and the optional `window` chrome block the video window
+> contributed. Nothing renders differently by construction: a sidecar written
+> before the merge keeps its own `images`/`videoWindow` blocks and reads FORWARD
+> into the same array at parse (attached non-enumerably, so an untouched
+> document writes back byte-identically), and the first media edit promotes it
+> to `media` in the same entry. A plain-image scene and a scene with no media at
+> all are null paths: the fallback mounts nothing, and the entries a legacy doc
+> promotes to sample through the same placement and motion maths as before
+> (`windowOverlayPlaneWidth` reproduces the old contain fit at every aspect,
+> `sampleSceneMediaMotion` dispatches to each kind's original sampler). The rig
+> aim and the follow-media duration now bind by media id; the legacy
+> `"videoWindow"` spelling stays valid on both and keeps resolving to the entry
+> serving as the window, whose aim point stays exactly `[0, 0, 0]` so recorded
+> fixtures do not move. RE-RECORDS PENDING: `ws:video-window-spike` and
+> `ws:overlay-spike` are the two feature-matched fixtures for this batch and
+> have not been re-run since the merge; run both before the pre-merge pair.
 
 > **2026-08-22 (Phone and Phone Landscape aspects):** `phone` (1206×2622) and
 > `phone-landscape` (2622×1206) joined the first-class, feature-scoped set: the

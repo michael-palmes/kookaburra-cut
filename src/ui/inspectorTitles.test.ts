@@ -13,8 +13,10 @@ describe("sceneInspectorScreenTitle", () => {
     expect(sceneInspectorScreenTitle("frame.decorations")).toBe("Decorations");
     expect(sceneInspectorScreenTitle("frame.icon")).toBe("Panel icon");
     expect(sceneInspectorScreenTitle("compare.edit")).toBe("Comparison");
-    expect(sceneInspectorScreenTitle("image.edit")).toBe("Image");
-    expect(sceneInspectorScreenTitle("media.picker")).toBe("Choose image");
+    expect(sceneInspectorScreenTitle("media.edit")).toBe("Media");
+    expect(sceneInspectorScreenTitle("image.edit")).toBe("Media");
+    expect(sceneInspectorScreenTitle("videoWindow.edit")).toBe("Media");
+    expect(sceneInspectorScreenTitle("media.picker")).toBe("Choose media");
     expect(sceneInspectorScreenTitle("legacyImage.edit")).toBe("Image");
     expect(sceneInspectorScreenTitle("objects")).toBe("Objects");
     expect(sceneInspectorScreenTitle("objects.picker")).toBe("Choose object");

@@ -43,7 +43,7 @@ import {
 import { readProjectManifestSnapshot, updateSceneTransition } from "../../engine/projectEdit";
 import { defaultOrbitPose } from "../../engine/sceneCamera";
 import { type CameraDoc, nearestKey, type RigDoc, setKeyPose } from "../../engine/sceneCameraEdit";
-import { applyBackgroundToAllScenes } from "../../engine/sceneDoc";
+import { applyBackgroundToAllScenes, type EditRepointSlot } from "../../engine/sceneDoc";
 import {
   type DeviceLayoutPreset,
   isSceneImageSource,
@@ -51,19 +51,24 @@ import {
   type SceneDocCameraPose,
   type SceneDocCompareDeviceAppearance,
   type SceneDocDeviceLayoutDelta,
+  type SceneDocMediaSpec,
   type SceneDocRigPose,
-  type SceneDocVideoWindow,
+  type SceneMediaKind,
   type SceneTextAlign,
   TEXT_LINE_HEIGHT_MAX,
   TEXT_LINE_HEIGHT_MIN,
-  type VideoWindowMotionPreset,
 } from "../../engine/sceneDocSchema";
-import { createSceneImage } from "../../engine/sceneImage";
+import {
+  createSceneMedia,
+  DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
+  editSceneDocMedia,
+  nextSceneMediaId,
+  resolveSceneDocMedia,
+} from "../../engine/sceneMedia";
 import { defaultRigPose } from "../../engine/sceneRig";
 import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/sceneRigConvert";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
-import { resolveVideoWindowRadius } from "../../engine/sceneVideoWindow";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import { useSceneStageBackdrop, useSceneStageFloorY } from "../../engine/stageRegistry";
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
@@ -167,14 +172,6 @@ import {
   planContentDelete,
   planContentDuplicate,
 } from "./contentMenuActions";
-import { ImageDrillIn, type ImageMutation, type ImageMutationOptions } from "./ImageDrillIn";
-import {
-  defaultSceneImageHost,
-  duplicateImage,
-  promoteLegacyImage,
-  reconcileImageEditor,
-  removeImage,
-} from "./imageEditorModel";
 import { type LightingInspectorScreen, LightingInspectorSection } from "./LightingInspectorSection";
 import {
   comparisonLightingEditorDoc,
@@ -182,6 +179,7 @@ import {
   mutateComparisonLightingTarget,
 } from "./lightingEditorModel";
 import { ManagedTextDrill, type ManagedTextWrite } from "./ManagedTextDrill";
+import { MediaDrillIn, type MediaMutation, type MediaMutationOptions } from "./MediaDrillIn";
 import {
   applyManagedTextStructuralAction,
   type ManagedTextStructuralAction,
@@ -196,6 +194,19 @@ import {
   setManagedTextAlignment,
   setManagedTextIcon,
 } from "./managedTextEditorModel";
+import {
+  defaultSceneMediaHost,
+  duplicateSceneMedia,
+  isMediaDrillRoute,
+  LEGACY_MEDIA_DRILL_ROUTE,
+  legacyMediaRowId,
+  MEDIA_DRILL_ROUTE,
+  mediaRowId,
+  promoteLegacyMedia,
+  reconcileMediaEditor,
+  removeSceneMedia,
+  replaceSceneDoc,
+} from "./mediaEditorModel";
 import {
   TextIconEmojiPickerDrill,
   TextIconImagePickerDrill,
@@ -233,14 +244,6 @@ const LIGHTING_ROUTE_FOR_SCREEN: Record<LightingInspectorScreen, string> = {
   shadows: "lighting.shadows",
   animation: "lighting.animation",
 };
-
-function overwriteSceneDoc(target: SceneDoc, replacement: SceneDoc): void {
-  const record = target as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (!(key in replacement)) delete record[key];
-  }
-  Object.assign(target, replacement);
-}
 
 /** The Position drill's two write branches, module-scoped so the sliders and the preview gizmo share one write path: with a `deviceLayout` block an edit lands on that device's DELTA (0 = on the preset), without one on its raw placement. */
 function mutateDelta(
@@ -649,7 +652,6 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M3.5 9.8l6.5 3 6.5-3M3.5 13.3L10 16.3l6.5-3" />
         </svg>
       );
-    case "videoWindow.add":
     case "videoWindow.edit":
       return (
         <svg
@@ -1155,61 +1157,6 @@ function FrameShapeIcon({ id }: { id: FrameShape }) {
       aria-hidden="true"
     >
       {shape}
-    </svg>
-  );
-}
-
-/** Corner-preset glyphs: one magnified top-left corner drawn at the preset's real rounding. */
-function VwCornerIcon({ id }: { id: "sharp" | "subtle" | "macos" | "rounded" }) {
-  const r = { sharp: 0, subtle: 1.5, macos: 3.5, rounded: 7 }[id];
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      {r === 0 ? (
-        <path d="M16.5 4.5H4.5V16.5" />
-      ) : (
-        <path d={`M16.5 4.5H${4.5 + r}A${r} ${r} 0 0 0 4.5 ${4.5 + r}V16.5`} />
-      )}
-    </svg>
-  );
-}
-
-/** Motion-preset pictograms matching sampleVideoWindowMotion: float bobs on Y, drift sways in rotation, tilt swings flush from a tilted start, push grows from 90%. */
-function VwMotionIcon({ id }: { id: VideoWindowMotionPreset }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden="true"
-    >
-      {id === "none" ? (
-        <rect x="4.5" y="6" width="11" height="8" rx="1.5" />
-      ) : id === "float" ? (
-        <>
-          <rect x="4.5" y="6.5" width="11" height="7" rx="1.5" />
-          <path d="M10 2.5v2M10 15.5v2" />
-        </>
-      ) : id === "drift" ? (
-        <rect x="4.5" y="6.5" width="11" height="7" rx="1.5" transform="rotate(-9 10 10)" />
-      ) : id === "tilt-reveal" ? (
-        <path d="M5 4.5l10.5 2v7L5 15.5z" />
-      ) : (
-        <>
-          <rect x="3.5" y="5" width="13" height="10" rx="1.5" />
-          <rect x="6.5" y="7.5" width="7" height="5" rx="1" />
-        </>
-      )}
     </svg>
   );
 }
@@ -1939,21 +1886,42 @@ function BgTypeIcon({ id }: { id: string }) {
   }
 }
 
-/** Applies a picked recording to the doc's video window and defaults the scene length to follow it (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so the window keeps its size before frames arrive, and `recording` (when detection ran) sets the window-recording crop to match the new clip. */
-function applyVideoWindowMedia(
+/** Applies a picked source to one media entry and defaults the scene length to follow a clip (a manual length stays put, the device-picker rule); `meta` seeds the stored aspect so a video keeps its size before frames arrive, and `recording` (when detection ran) sets the window-recording crop to match the new source. */
+function applyPickedMediaSource(
   next: SceneDoc,
+  entryId: string,
   src: string,
+  kind: SceneMediaKind,
   meta: MediaMeta | null,
   recording?: boolean,
 ) {
-  if (!next.videoWindow) return;
-  const media = { ...next.videoWindow.media, src };
-  if (meta && meta.width > 0 && meta.height > 0) media.aspect = meta.width / meta.height;
-  else delete media.aspect;
-  next.videoWindow.media = media;
-  if (recording !== undefined) next.videoWindow.recording = recording;
-  if (next.duration?.mode !== "manual") {
-    next.duration = { mode: "follow-media", source: "videoWindow" };
+  const media = resolveSceneDocMedia(next);
+  const entry = media.find((candidate) => candidate.id === entryId);
+  if (!entry) return;
+  entry.src = src;
+  entry.kind = kind;
+  if (kind === "video") {
+    const video = { ...entry.video };
+    if (meta && meta.width > 0 && meta.height > 0) video.aspect = meta.width / meta.height;
+    else delete video.aspect;
+    entry.video = video;
+  } else {
+    delete entry.video;
+  }
+  // A detected macOS capture gets the window chrome that carries the crop, whichever kind it is; a negative verdict only clears an existing flag.
+  if (recording === true) {
+    entry.window = {
+      radius: DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
+      ...entry.window,
+      recording: true,
+    };
+  } else if (recording === false && entry.window) {
+    entry.window.recording = false;
+  }
+  editSceneDocMedia(next, () => media);
+  // Any video entry can drive the scene's length, pinned by its own id.
+  if (kind === "video" && next.duration?.mode !== "manual") {
+    next.duration = { mode: "follow-media", source: "media", sourceMediaId: entryId };
   }
 }
 
@@ -1970,13 +1938,13 @@ interface LegacyImagePromotionSession {
   decorationId: string;
   baseline: SceneDoc;
   resolvedDecorations: FrameDecorationSpec[];
-  imageId: string | null;
-  draftImage?: NonNullable<SceneDoc["images"]>[number];
+  mediaId: string | null;
+  draftEntry?: SceneDocMediaSpec;
 }
 
 type SceneMediaTarget =
   | { kind: "device"; deviceId?: string }
-  | { kind: "image"; replaceId?: string; legacyId?: string }
+  | { kind: "media"; mediaKind: SceneMediaKind; replaceId?: string; legacyId?: string }
   | { kind: "decoration"; replaceId?: string };
 
 export function SceneTab({
@@ -1999,8 +1967,8 @@ export function SceneTab({
   onOpenEditVideo: (
     sceneIndex: number,
     mediaRel: string,
-    slot?: "device" | "compareDevice" | "background" | "videoWindow",
-    deviceId?: string,
+    slot?: EditRepointSlot,
+    targetId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
@@ -2170,7 +2138,7 @@ export function SceneTab({
   );
   // Outlines, click-to-select and the handles all follow the open section, not one deep drill.
   const devicesSectionOpen = useGizmoSectionOpen("devices");
-  const imagesSectionOpen = useGizmoSectionOpen("media");
+  const mediaSectionOpen = useGizmoSectionOpen("media");
   const objectsSectionOpen = useGizmoSectionOpen("objects");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   // Which staged object the placement drill targets.
@@ -2192,7 +2160,6 @@ export function SceneTab({
   });
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
   const [contentPickerOpen, setContentPickerOpen] = useState(false);
   const [contentActionBusy, setContentActionBusy] = useState(false);
   const [contentMenu, setContentMenu] = useState<(ContextMenuState & { key: string }) | null>(null);
@@ -2351,7 +2318,7 @@ export function SceneTab({
       const apply = (next: SceneDoc) => {
         const replacement = request.applyToCurrent(next);
         if (replacement === next && !request.historyFromBaseline) return false;
-        overwriteSceneDoc(next, replacement);
+        replaceSceneDoc(next, replacement);
       };
       if (request.history === false) {
         return patchDocResult(apply, { history: false });
@@ -2368,7 +2335,7 @@ export function SceneTab({
     [commitRebasedFromBaselineResult, patchDocResult],
   );
   useEffect(() => {
-    if (drillIn === "legacyImage.edit") return;
+    if (drillIn === LEGACY_MEDIA_DRILL_ROUTE) return;
     legacyImagePromotionRef.current = null;
     setLegacyImageNotice(null);
   }, [drillIn]);
@@ -2406,8 +2373,6 @@ export function SceneTab({
   const restoreContentAddActivatorFocus = () => {
     window.requestAnimationFrame(focusContentAddActivator);
   };
-  // Snapshot of the doc at the start of a videoWindow slider drag: live ticks write history-less, release records one entry.
-  const vwDragBaseline = useRef<SceneDoc | null>(null);
   // The bottom Delete-scene row's two-step confirm (the house self-disarming pattern).
   const [confirmDeleteScene, setConfirmDeleteScene] = useState(false);
   const [confirmApplyAll, setConfirmApplyAll] = useState(false);
@@ -2457,7 +2422,8 @@ export function SceneTab({
   }, [deviceMediaSrc, mediaRefresh, mediaRefreshKey, slug]);
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
-  const imageIds = useMemo(() => (doc?.images ?? []).map((image) => image.id), [doc?.images]);
+  const mediaEntries = useMemo(() => resolveSceneDocMedia(doc), [doc]);
+  const mediaIds = useMemo(() => mediaEntries.map((entry) => entry.id), [mediaEntries]);
   // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
   const patchDocRef = useRef(patchDoc);
   patchDocRef.current = patchDoc;
@@ -2492,12 +2458,14 @@ export function SceneTab({
       void patchDocResultRef
         .current(
           (next) => {
-            const image = next.images?.find((candidate) => candidate.id === commit.imageId);
-            if (!image) return false;
-            if (commit.kind === "stage") image.stage = commit.placement;
-            else image.overlay = commit.placement;
+            const media = resolveSceneDocMedia(next);
+            const entry = media.find((candidate) => candidate.id === commit.imageId);
+            if (!entry) return false;
+            if (commit.kind === "stage") entry.stage = commit.placement;
+            else entry.overlay = commit.placement;
+            editSceneDocMedia(next, () => media);
           },
-          { history: commit.kind === "stage" ? "transform image" : "place image" },
+          { history: commit.kind === "stage" ? "transform media" : "place media" },
         )
         .then((succeeded) => {
           if (!succeeded) clearFailedPreview();
@@ -2506,21 +2474,21 @@ export function SceneTab({
   }, [sceneIndex]);
   useEffect(() => {
     const store = useImageEditStore.getState();
-    const firstImageId = imageIds[0];
-    if (!imagesSectionOpen) {
+    const firstMediaId = mediaIds[0];
+    if (!mediaSectionOpen) {
       if (store.selected?.sceneIndex === sceneIndex) store.select(null);
       return;
     }
-    if (firstImageId === undefined) return;
+    if (firstMediaId === undefined) return;
     const ensure = () => {
       const current = useImageEditStore.getState();
       const selected = current.selected;
       if (selected?.sceneIndex === sceneIndex) return;
-      current.select({ sceneIndex, imageId: firstImageId });
+      current.select({ sceneIndex, imageId: firstMediaId });
     };
     ensure();
     return useImageEditStore.subscribe(ensure);
-  }, [imageIds, imagesSectionOpen, sceneIndex]);
+  }, [mediaIds, mediaSectionOpen, sceneIndex]);
   useEffect(() => {
     const inspector = useUiStore.getState().inspector;
     const currentSceneFile = project.sceneFiles[sceneIndex] ?? null;
@@ -2533,12 +2501,12 @@ export function SceneTab({
     if (activePromotionId && !imageDecorationIds.includes(activePromotionId)) {
       imageDecorationIds.push(activePromotionId);
     }
-    const reconciliation = reconcileImageEditor({
+    const reconciliation = reconcileMediaEditor({
       drillIn: inspector.drillIn,
       overviewRowId: inspector.overviewSelection?.rowId ?? null,
-      selectedImageId,
+      selectedMediaId: selectedImageId,
       selectedDecorationId: selectedDecoId,
-      imageIds,
+      mediaIds,
       imageDecorationIds,
       origins: useImageReconciliationStore.getState().originsFor(project.id, currentSceneFile),
     });
@@ -2552,23 +2520,23 @@ export function SceneTab({
         rowId: reconciliation.overviewRowId,
         domain: "decorations",
       });
-      if (reconciliation.replaceDrill) replaceDrill("legacyImage.edit");
+      if (reconciliation.replaceDrill) replaceDrill(LEGACY_MEDIA_DRILL_ROUTE);
       return;
     }
-    if (reconciliation.kind === "switch-to-image") {
+    if (reconciliation.kind === "switch-to-media") {
       useDecorationEditStore.getState().select(null);
-      useImageEditStore.getState().select({ sceneIndex, imageId: reconciliation.imageId });
+      useImageEditStore.getState().select({ sceneIndex, imageId: reconciliation.mediaId });
       setOverviewSelection({
         sceneIndex,
         rowId: reconciliation.overviewRowId,
         domain: "media",
       });
-      if (reconciliation.replaceDrill) replaceDrill("image.edit");
+      if (reconciliation.replaceDrill) replaceDrill(MEDIA_DRILL_ROUTE);
       return;
     }
-    if (reconciliation.kind === "select-image") {
+    if (reconciliation.kind === "select-media") {
       useDecorationEditStore.getState().select(null);
-      useImageEditStore.getState().select({ sceneIndex, imageId: reconciliation.imageId });
+      useImageEditStore.getState().select({ sceneIndex, imageId: reconciliation.mediaId });
       setOverviewSelection({
         sceneIndex,
         rowId: reconciliation.overviewRowId,
@@ -2577,7 +2545,7 @@ export function SceneTab({
       return;
     }
     if (reconciliation.kind === "close-stale-editor") {
-      if (reconciliation.editor === "image") useImageEditStore.getState().select(null);
+      if (reconciliation.editor === "media") useImageEditStore.getState().select(null);
       else useDecorationEditStore.getState().select(null);
       setOverviewSelection(null);
       closeDrill();
@@ -2585,7 +2553,7 @@ export function SceneTab({
   }, [
     closeDrill,
     doc?.frame?.decorations,
-    imageIds,
+    mediaIds,
     project.id,
     project.sceneFiles,
     replaceDrill,
@@ -2621,11 +2589,11 @@ export function SceneTab({
         : overviewSelection.domain === "objects" && selectedObjectId
           ? `object:${selectedObjectId}`
           : overviewSelection.domain === "media" && selectedImageId
-            ? `image:${selectedImageId}`
+            ? mediaRowId(selectedImageId)
             : overviewSelection.domain === "text" && selectedTextGroupKey
               ? `text:${selectedTextGroupKey}`
               : overviewSelection.domain === "decorations" && selectedDecoId
-                ? `image:legacy:${selectedDecoId}`
+                ? legacyMediaRowId(selectedDecoId)
                 : null;
     if (rowId && rowId !== overviewSelection.rowId) {
       setOverviewSelection({ sceneIndex, rowId, domain: overviewSelection.domain });
@@ -2801,7 +2769,6 @@ export function SceneTab({
     setLegacyImageBusy(false);
     setLegacyImageNotice(null);
     setConfirmRemove(false);
-    setConfirmRemoveVideoWindow(false);
     setConfirmRemoveObjectId(null);
     pickDevice(null);
     useImageEditStore.getState().select(null);
@@ -2853,14 +2820,13 @@ export function SceneTab({
   }, [confirmRemove]);
 
   useEffect(() => {
-    if (!confirmRemoveVideoWindow && !confirmRemoveCompare && !confirmRemoveObjectId) return;
+    if (!confirmRemoveCompare && !confirmRemoveObjectId) return;
     const t = window.setTimeout(() => {
-      setConfirmRemoveVideoWindow(false);
       setConfirmRemoveCompare(false);
       setConfirmRemoveObjectId(null);
     }, 3000);
     return () => window.clearTimeout(t);
-  }, [confirmRemoveVideoWindow, confirmRemoveCompare, confirmRemoveObjectId]);
+  }, [confirmRemoveCompare, confirmRemoveObjectId]);
 
   // The Delete-scene confirmation disarms itself, and on any scene change.
   useEffect(() => {
@@ -3585,17 +3551,17 @@ export function SceneTab({
 
   const promoteLegacyImageOnce = async (
     decorationId: string,
-    mutate: ImageMutation,
+    mutate: MediaMutation,
     history: string,
   ): Promise<string | null> => {
     const resolved = structuredClone(resolvedDecorationsRef.current ?? []);
     let promotedId: string | null = null;
     const succeeded = await patchDocResultRef.current(
       (next) => {
-        const result = promoteLegacyImage(next, resolved, decorationId, mutate);
+        const result = promoteLegacyMedia(next, resolved, decorationId, mutate);
         if (!result) return false;
-        Object.assign(next, result.doc);
-        promotedId = result.imageId;
+        replaceSceneDoc(next, result.doc);
+        promotedId = result.mediaId;
       },
       { history },
     );
@@ -3610,7 +3576,7 @@ export function SceneTab({
   };
 
   const finishLegacyImagePromotion = (
-    imageId: string,
+    mediaId: string,
     decorationId: string,
     operationToken: symbol,
     expectedProjectId: string,
@@ -3621,7 +3587,7 @@ export function SceneTab({
     useImageReconciliationStore.getState().recordOrigin(expectedProjectId, expectedSceneFile, {
       kind: "legacy-promotion",
       decorationId,
-      imageId,
+      imageId: mediaId,
     });
     if (
       projectIdRef.current !== expectedProjectId ||
@@ -3638,18 +3604,18 @@ export function SceneTab({
     ) {
       return;
     }
-    if (inspector.tab !== "scene" || inspector.drillIn !== "legacyImage.edit") return;
+    if (inspector.tab !== "scene" || inspector.drillIn !== LEGACY_MEDIA_DRILL_ROUTE) return;
     useDecorationEditStore.getState().select(null);
-    useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId });
+    useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: mediaId });
     setOverviewSelection({
       sceneIndex: expectedSceneIndex,
-      rowId: `image:${imageId}`,
+      rowId: mediaRowId(mediaId),
       domain: "media",
     });
-    replaceDrill("image.edit");
+    replaceDrill(MEDIA_DRILL_ROUTE);
   };
 
-  const addPickedImage = (src: string) => {
+  const addPickedMedia = (src: string, kind: SceneMediaKind, meta: MediaMeta | null) => {
     if (contentActionPendingRef.current) return;
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
@@ -3657,8 +3623,8 @@ export function SceneTab({
     const expectedUi = useUiStore.getState();
     const expectedDrillStack = [...expectedUi.inspector.drillStack];
     const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
-    const host = defaultSceneImageHost(sceneFrame !== undefined);
-    const actionToken = Symbol("add-image");
+    const host = defaultSceneMediaHost(kind, sceneFrame !== undefined);
+    const actionToken = Symbol("add-media");
     contentActionPendingRef.current = {
       token: actionToken,
       projectId: expectedProjectId,
@@ -3667,18 +3633,40 @@ export function SceneTab({
     };
     setContentActionBusy(true);
     let createdId: string | null = null;
-    void patchDocResult(
-      (next) => {
-        const images = next.images ?? [];
-        const id = nextNumberedContentId(
-          "img",
-          images.map((image) => image.id),
-        );
-        createdId = id;
-        next.images = [...images, createSceneImage(id, src, host)];
-      },
-      { history: "add image" },
-    )
+    // Detection runs on the cached poster before the patch, so the recording crop lands in the same undoable entry as the pick.
+    void detectWindowRecording(meta)
+      .then((recording) =>
+        patchDocResult(
+          (next) => {
+            const id = nextSceneMediaId(
+              kind,
+              resolveSceneDocMedia(next).map((entry) => entry.id),
+            );
+            createdId = id;
+            editSceneDocMedia(next, (entries) => [
+              ...entries,
+              createSceneMedia(id, src, kind, host),
+            ]);
+            applyPickedMediaSource(next, id, src, kind, meta, recording);
+            const added = resolveSceneDocMedia(next).find((entry) => entry.id === id);
+            if (added?.window) {
+              // A freshly added window starts rimless, the look the video-window add flow always shipped.
+              added.window.border ??= {
+                enabled: false,
+                color: "#ffffff",
+                width: 0.0035,
+                opacity: 0.12,
+              };
+              editSceneDocMedia(next, (entries) => entries);
+              // Staged scenery sits in front of the window shadow plane and clips it: stand staging down in the same undoable entry.
+              if (stagedBackdrop !== null && stagedBackdrop !== "none") {
+                next.backdrop = { type: "none" };
+              }
+            }
+          },
+          { history: "add media", resync: kind === "video" },
+        ),
+      )
       .then((succeeded) => {
         const id = createdId;
         const state = useUiStore.getState();
@@ -3690,18 +3678,18 @@ export function SceneTab({
           state.inspectorNavigation.sequence === expectedNavigationSequence &&
           state.inspector.drillStack.join("\u0000") === expectedDrillStack.join("\u0000");
         if (!succeeded || !id || !stillOwnsAction) {
-          if (stillOwnsAction) setImagePickError("Couldn’t add the image.");
+          if (stillOwnsAction) setImagePickError("Couldn’t add the media.");
           else contentAddActivatorRef.current = null;
           return;
         }
         setOverviewSelection({
           sceneIndex: expectedSceneIndex,
-          rowId: `image:${id}`,
+          rowId: mediaRowId(id),
           domain: "media",
         });
         useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });
         focusContentAddActivator();
-        jumpDrill(["image.edit"]);
+        jumpDrill([MEDIA_DRILL_ROUTE]);
       })
       .finally(() => {
         if (contentActionPendingRef.current?.token === actionToken) {
@@ -3712,10 +3700,11 @@ export function SceneTab({
   };
 
   const pickSceneMedia = (rel: string, meta: MediaMeta | null) => {
-    if (mediaTarget.kind === "image") {
-      if (meta && meta.kind !== "image") return;
-      if (!isSceneImageSource(rel)) {
-        setImagePickError("Stage and Overlay Images support still PNG, JPEG and WebP files.");
+    if (mediaTarget.kind === "media") {
+      const kind = mediaTarget.mediaKind;
+      if (meta && meta.kind !== kind) return;
+      if (kind === "image" && !isSceneImageSource(rel)) {
+        setImagePickError("Scene images support still PNG, JPEG and WebP files.");
         return;
       }
       setImagePickError(null);
@@ -3730,15 +3719,15 @@ export function SceneTab({
         restoreImageSourceFocus();
         void promoteLegacyImageOnce(
           legacyId,
-          (image) => {
-            image.src = rel;
+          (entry) => {
+            entry.src = rel;
           },
-          "replace image source",
+          "replace media source",
         )
-          .then((imageId) => {
-            if (imageId) {
+          .then((mediaId) => {
+            if (mediaId) {
               finishLegacyImagePromotion(
-                imageId,
+                mediaId,
                 legacyId,
                 operationToken,
                 expectedProjectId,
@@ -3754,12 +3743,14 @@ export function SceneTab({
         const replaceId = mediaTarget.replaceId;
         closeDrill();
         restoreImageSourceFocus();
-        void patchDoc((next) => {
-          const image = next.images?.find((candidate) => candidate.id === replaceId);
-          if (image) image.src = rel;
-        });
+        // Detection runs on the cached poster before the patch, so the recording crop lands in the same undoable entry as the pick.
+        void detectWindowRecording(meta).then((recording) =>
+          patchDoc((next) => applyPickedMediaSource(next, replaceId, rel, kind, meta, recording), {
+            resync: kind === "video",
+          }),
+        );
       } else {
-        addPickedImage(rel);
+        addPickedMedia(rel, kind, meta);
       }
       return;
     }
@@ -3815,9 +3806,9 @@ export function SceneTab({
     const selectedRel =
       mediaTarget.kind === "device"
         ? (targetDevice?.media?.src ?? null)
-        : mediaTarget.kind === "image"
+        : mediaTarget.kind === "media"
           ? mediaTarget.replaceId
-            ? (doc?.images?.find((candidate) => candidate.id === mediaTarget.replaceId)?.src ??
+            ? (mediaEntries.find((candidate) => candidate.id === mediaTarget.replaceId)?.src ??
               null)
             : mediaTarget.legacyId
               ? (sceneFrame?.decorations?.find((candidate) => candidate.id === mediaTarget.legacyId)
@@ -3827,31 +3818,38 @@ export function SceneTab({
             ? (sceneFrame?.decorations?.find((candidate) => candidate.id === mediaTarget.replaceId)
                 ?.src ?? null)
             : null;
+    const mediaPickerKind = mediaTarget.kind === "media" ? mediaTarget.mediaKind : "image";
     const closeMediaPicker = () => {
-      const restoreImageFocus =
-        mediaTarget.kind === "image" &&
+      const restoreEntryFocus =
+        mediaTarget.kind === "media" &&
         (mediaTarget.replaceId !== undefined || mediaTarget.legacyId !== undefined);
       setImagePickError(null);
       closeDrill();
-      if (restoreImageFocus) restoreImageSourceFocus();
-      else if (mediaTarget.kind === "image") restoreContentAddActivatorFocus();
+      if (restoreEntryFocus) restoreImageSourceFocus();
+      else if (mediaTarget.kind === "media") restoreContentAddActivatorFocus();
     };
     return (
       <div className="inspector-drill">
         <DrillBack
           label={backLabel}
-          title={mediaTarget.kind === "device" ? "Screen media" : "Choose image"}
+          title={
+            mediaTarget.kind === "device"
+              ? "Screen media"
+              : mediaPickerKind === "video"
+                ? "Choose video"
+                : "Choose image"
+          }
           onClick={closeMediaPicker}
         />
         <div className="inspector-drill-body">
-          {mediaTarget.kind === "image" && imagePickError && (
+          {mediaTarget.kind === "media" && imagePickError && (
             <p className="modal-error">{imagePickError}</p>
           )}
           <div className="inspector-media-host">
             <MediaBrowser
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
-              kinds={mediaTarget.kind === "device" ? undefined : ["image"]}
+              kinds={mediaTarget.kind === "device" ? undefined : [mediaPickerKind]}
               kindToggle={mediaTarget.kind === "device"}
               kindDefault={targetDevice?.media?.kind === "image" ? "image" : "video"}
               globalToggle
@@ -3864,6 +3862,16 @@ export function SceneTab({
                 onPrimary: pickSceneMedia,
                 onChanged: () => setMediaRefresh((n) => n + 1),
                 onError: setError,
+                onEdit:
+                  mediaTarget.kind === "media" && mediaTarget.replaceId
+                    ? (rel) => {
+                        const entryId = mediaTarget.replaceId;
+                        const entry = mediaEntries.find((candidate) => candidate.id === entryId);
+                        if (!entry || entry.src !== rel) return false;
+                        onOpenEditVideo(sceneIndex, rel, "media", entry.id);
+                        return true;
+                      }
+                    : undefined,
               })}
             />
           </div>
@@ -4706,477 +4714,6 @@ export function SceneTab({
               />
             ))}
           </div>
-        </div>
-      </div>
-    );
-  }
-  if (drillIn === "videoWindow.media" && doc) {
-    const vw = doc.videoWindow;
-    // Detection runs on the cached poster before the patch, so the recording crop lands in the same undoable entry as the pick.
-    const createFrom = (src: string, meta: MediaMeta | null) =>
-      void detectWindowRecording(meta).then((recording) =>
-        patchDoc(
-          (next) => {
-            next.videoWindow = {
-              media: { src },
-              radius: "macos",
-              border: { enabled: false, color: "#ffffff", width: 0.0035, opacity: 0.12 },
-            };
-            applyVideoWindowMedia(next, src, meta, recording);
-            // Staged scenery sits in front of the shadow plane and clips it: stand staging down in the same undoable entry.
-            if (stagedBackdrop !== null && stagedBackdrop !== "none")
-              next.backdrop = { type: "none" };
-          },
-          { resync: true },
-        ),
-      );
-    const pickVideoWindowMedia = (rel: string, meta: MediaMeta | null) => {
-      if (meta && meta.kind !== "video") return;
-      if (vw)
-        void detectWindowRecording(meta).then((recording) =>
-          patchDoc((next) => applyVideoWindowMedia(next, rel, meta, recording), { resync: true }),
-        );
-      else createFrom(rel, meta);
-    };
-    return (
-      <div className="inspector-drill">
-        <DrillBack label={backLabel} title="Recording" onClick={() => closeDrill()} />
-        <div className="inspector-drill-body">
-          <div className="inspector-media-host">
-            <MediaBrowser
-              slug={slug}
-              projectPath={workspaceProjectPath(slug) ?? ""}
-              kinds={["video"]}
-              globalToggle
-              refreshKey={mediaRefreshKey + mediaRefresh}
-              selectedRel={vw?.media.src ?? null}
-              onPick={pickVideoWindowMedia}
-              cardMenu={mediaCardMenu({
-                slug,
-                primaryLabel: "Select",
-                onPrimary: pickVideoWindowMedia,
-                onChanged: () => setMediaRefresh((n) => n + 1),
-                onError: setError,
-                onEdit: (rel) => {
-                  if (!vw || vw.media.src !== rel) return false;
-                  onOpenEditVideo(sceneIndex, rel, "videoWindow");
-                  return true;
-                },
-              })}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-  if (drillIn === "videoWindow.edit" && doc) {
-    const vw = doc.videoWindow;
-    const patchVW = (mutate: (v: SceneDocVideoWindow) => void, opts?: { resync?: boolean }) =>
-      void patchDoc((next) => {
-        if (next.videoWindow) mutate(next.videoWindow);
-      }, opts);
-    // Live slider ticks write history-less; the release records one entry from the drag-start snapshot.
-    const vwLive = (mutate: (v: SceneDocVideoWindow) => void) => {
-      if (!vwDragBaseline.current && doc) vwDragBaseline.current = structuredClone(doc);
-      void patchDoc(
-        (next) => {
-          if (next.videoWindow) mutate(next.videoWindow);
-        },
-        { history: false },
-      );
-    };
-    const vwCommit = (mutate: (v: SceneDocVideoWindow) => void) => {
-      const baseline = vwDragBaseline.current;
-      vwDragBaseline.current = null;
-      if (baseline)
-        void commitFromBaseline(baseline, (next) => {
-          if (next.videoWindow) mutate(next.videoWindow);
-        });
-      else patchVW(mutate);
-    };
-    const createFrom = (src: string, meta: MediaMeta | null) =>
-      void detectWindowRecording(meta).then((recording) =>
-        patchDoc(
-          (next) => {
-            next.videoWindow = {
-              media: { src },
-              radius: "macos",
-              border: { enabled: false, color: "#ffffff", width: 0.0035, opacity: 0.12 },
-            };
-            applyVideoWindowMedia(next, src, meta, recording);
-            // Staged scenery sits in front of the shadow plane and clips it: stand staging down in the same undoable entry.
-            if (stagedBackdrop !== null && stagedBackdrop !== "none")
-              next.backdrop = { type: "none" };
-          },
-          { resync: true },
-        ),
-      );
-    const RADII: { id: "sharp" | "subtle" | "macos" | "rounded"; label: string; title: string }[] =
-      [
-        { id: "sharp", label: "Sharp", title: "Square corners" },
-        { id: "subtle", label: "Subtle", title: "A whisper of rounding" },
-        { id: "macos", label: "macOS", title: "The macOS window look" },
-        { id: "rounded", label: "Rounded", title: "Boldly rounded corners" },
-      ];
-    const MOTIONS: { id: VideoWindowMotionPreset; label: string; title: string }[] = [
-      { id: "none", label: "None", title: "No motion" },
-      { id: "float", label: "Float", title: "A gentle vertical bob" },
-      { id: "drift", label: "Drift", title: "A slow rotational sway" },
-      { id: "tilt-reveal", label: "Tilt", title: "Swings flush from a tilted start" },
-      { id: "push-in", label: "Push", title: "Eases up from 90% to full size" },
-    ];
-    const radiusPreset = vw && typeof vw.radius === "string" ? vw.radius : null;
-    const shadow = vw?.shadow ?? {
-      opacity: 0.32,
-      blur: 0.14,
-      offset: [0, -0.05] as [number, number],
-    };
-    const border = vw?.border ?? { enabled: true, color: "#ffffff", width: 0.0035, opacity: 0.12 };
-    const motionPreset = vw?.motion?.preset ?? "none";
-    return (
-      <div className="inspector-drill">
-        <DrillBack
-          label="Scene"
-          title="Video window"
-          onClick={() => {
-            setConfirmRemoveVideoWindow(false);
-            closeDrill();
-          }}
-          actions={
-            vw ? (
-              <DrillHeaderAction
-                kind="remove"
-                label={
-                  confirmRemoveVideoWindow ? "Confirm remove video window" : "Remove video window"
-                }
-                armed={confirmRemoveVideoWindow}
-                onClick={() => {
-                  if (!confirmRemoveVideoWindow) {
-                    setConfirmRemoveVideoWindow(true);
-                    return;
-                  }
-                  setConfirmRemoveVideoWindow(false);
-                  void patchDoc((next) => {
-                    next.videoWindow = undefined;
-                  });
-                  closeDrill();
-                }}
-              />
-            ) : undefined
-          }
-        />
-        <div className="inspector-drill-body">
-          {!vw ? (
-            <>
-              <p className="modal-hint">
-                Pick a screen recording to float in a window over a backing stage.
-              </p>
-              <div className="inspector-media-host">
-                <MediaBrowser
-                  slug={slug}
-                  projectPath={workspaceProjectPath(slug) ?? ""}
-                  kinds={["video"]}
-                  globalToggle
-                  refreshKey={mediaRefreshKey + mediaRefresh}
-                  onPick={(rel, meta) => {
-                    if (meta && meta.kind !== "video") return;
-                    createFrom(rel, meta);
-                  }}
-                  cardMenu={mediaCardMenu({
-                    slug,
-                    primaryLabel: "Select",
-                    onPrimary: (rel, meta) => {
-                      if (meta && meta.kind !== "video") return;
-                      createFrom(rel, meta);
-                    },
-                    onChanged: () => setMediaRefresh((n) => n + 1),
-                    onError: setError,
-                  })}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <ActionRow
-                icon={<SceneRowIcon id="device.media" />}
-                label="Recording"
-                value={middleTruncate(vw.media.src.split("/").pop() ?? "None")}
-                chevron
-                onClick={() => openDrill("videoWindow.media")}
-              />
-              <ActionRow
-                icon={<SceneRowIcon id="device.editVideo" />}
-                label="Edit recording"
-                chevron
-                onClick={() => onOpenEditVideo(sceneIndex, vw.media.src, "videoWindow")}
-              />
-              <ToggleRow
-                label="Window recording"
-                description="Crops the margins and shadow baked into a macOS window recording."
-                checked={vw.recording === true || (vw.radius as unknown) === "recording"}
-                onChange={(on) =>
-                  patchVW((v) => {
-                    v.recording = on;
-                    // An early branch-only build stored the mode on the radius; normalise it away on first touch.
-                    if ((v.radius as unknown) === "recording") v.radius = "macos";
-                  })
-                }
-              />
-              <DrillGroup label="Corners">
-                <SegmentedRow
-                  ariaLabel="Corner style"
-                  className="subtabs-compact"
-                  options={RADII.map((r) => ({
-                    value: r.id,
-                    label: r.label,
-                    icon: <VwCornerIcon id={r.id} />,
-                    title: r.title,
-                  }))}
-                  // A custom radius leaves no preset tab active.
-                  value={(radiusPreset ?? "custom") as (typeof RADII)[number]["id"]}
-                  onChange={(id) =>
-                    patchVW((v) => {
-                      v.radius = id;
-                    })
-                  }
-                />
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Corner radius</span>
-                  <DebouncedRange
-                    value={resolveVideoWindowRadius(vw.radius)}
-                    min={0}
-                    max={0.2}
-                    step={0.005}
-                    label="Corner radius"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.radius = { custom: val };
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.radius = { custom: val };
-                      })
-                    }
-                  />
-                </div>
-              </DrillGroup>
-
-              <DrillGroup label="Border">
-                <ToggleRow
-                  label="Show border"
-                  description="A thin edge line around the window."
-                  checked={border.enabled}
-                  onChange={(on) =>
-                    patchVW((v) => {
-                      v.border = { ...border, enabled: on };
-                    })
-                  }
-                />
-                {border.enabled && (
-                  <>
-                    <div className="popover-row">
-                      <span className="popover-inline slider-row-label">Colour</span>
-                      <ColourPicker
-                        value={border.color}
-                        label="Border colour"
-                        onCommit={(hex) =>
-                          patchVW((v) => {
-                            v.border = { ...border, color: hex };
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="popover-row">
-                      <span className="popover-inline slider-row-label">Width</span>
-                      <DebouncedRange
-                        value={border.width}
-                        min={0}
-                        max={0.02}
-                        step={0.0005}
-                        label="Border width"
-                        onInput={(val) =>
-                          vwLive((v) => {
-                            v.border = { ...border, width: val };
-                          })
-                        }
-                        onCommit={(val) =>
-                          vwCommit((v) => {
-                            v.border = { ...border, width: val };
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="popover-row">
-                      <span className="popover-inline slider-row-label">Strength</span>
-                      <DebouncedRange
-                        value={border.opacity}
-                        min={0}
-                        max={1}
-                        step={0.02}
-                        label="Border strength"
-                        onInput={(val) =>
-                          vwLive((v) => {
-                            v.border = { ...border, opacity: val };
-                          })
-                        }
-                        onCommit={(val) =>
-                          vwCommit((v) => {
-                            v.border = { ...border, opacity: val };
-                          })
-                        }
-                      />
-                    </div>
-                  </>
-                )}
-              </DrillGroup>
-
-              <DrillGroup label="Shadow">
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Strength</span>
-                  <DebouncedRange
-                    value={shadow.opacity}
-                    min={0}
-                    max={0.8}
-                    step={0.02}
-                    label="Shadow strength"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.shadow = { ...shadow, opacity: val };
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.shadow = { ...shadow, opacity: val };
-                      })
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Softness</span>
-                  <DebouncedRange
-                    value={shadow.blur}
-                    min={0}
-                    max={0.4}
-                    step={0.01}
-                    label="Shadow softness"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.shadow = { ...shadow, blur: val };
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.shadow = { ...shadow, blur: val };
-                      })
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Drop</span>
-                  <DebouncedRange
-                    value={shadow.offset[1]}
-                    min={-0.2}
-                    max={0.2}
-                    step={0.01}
-                    label="Shadow drop"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.shadow = { ...shadow, offset: [shadow.offset[0], val] };
-                      })
-                    }
-                  />
-                </div>
-              </DrillGroup>
-
-              <DrillGroup label="Placement">
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Window size</span>
-                  <DebouncedRange
-                    value={vw.scale ?? 0.72}
-                    min={0.3}
-                    max={1}
-                    step={0.01}
-                    label="Window size"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.scale = val;
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.scale = val;
-                      })
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Left/right (X)</span>
-                  <DebouncedRange
-                    value={vw.offset?.[0] ?? 0}
-                    min={-0.5}
-                    max={0.5}
-                    step={0.01}
-                    label="Left/right (X)"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.offset = [val, v.offset?.[1] ?? 0];
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.offset = [val, v.offset?.[1] ?? 0];
-                      })
-                    }
-                  />
-                </div>
-                <div className="popover-row">
-                  <span className="popover-inline slider-row-label">Up/down (Y)</span>
-                  <DebouncedRange
-                    value={vw.offset?.[1] ?? 0}
-                    min={-0.5}
-                    max={0.5}
-                    step={0.01}
-                    label="Up/down (Y)"
-                    onInput={(val) =>
-                      vwLive((v) => {
-                        v.offset = [v.offset?.[0] ?? 0, val];
-                      })
-                    }
-                    onCommit={(val) =>
-                      vwCommit((v) => {
-                        v.offset = [v.offset?.[0] ?? 0, val];
-                      })
-                    }
-                  />
-                </div>
-              </DrillGroup>
-
-              <DrillGroup label="Motion">
-                <SegmentedRow
-                  ariaLabel="Video window motion"
-                  className="subtabs-compact"
-                  options={MOTIONS.map((m) => ({
-                    value: m.id,
-                    label: m.label,
-                    icon: <VwMotionIcon id={m.id} />,
-                    title: m.title,
-                  }))}
-                  value={motionPreset}
-                  onChange={(id) =>
-                    patchVW((v) => {
-                      v.motion = { preset: id };
-                    })
-                  }
-                />
-              </DrillGroup>
-            </>
-          )}
         </div>
       </div>
     );
@@ -7155,7 +6692,7 @@ export function SceneTab({
       </div>
     );
   }
-  if (drillIn === "legacyImage.edit" && doc && sceneFrame) {
+  if (drillIn === LEGACY_MEDIA_DRILL_ROUTE && doc && sceneFrame) {
     const activeSession = legacyImagePromotionRef.current;
     const legacyId =
       activeSession?.decorationId ??
@@ -7165,16 +6702,17 @@ export function SceneTab({
     const resolvedDecoration = sceneFrame.decorations?.find(
       (decoration) => decoration.id === legacyId && decoration.src !== undefined,
     );
-    let displayImage = activeSession?.imageId
-      ? doc.images?.find((image) => image.id === activeSession.imageId)
+    let displayEntry = activeSession?.mediaId
+      ? mediaEntries.find((entry) => entry.id === activeSession.mediaId)
       : undefined;
-    if (!displayImage && resolvedDecoration?.src) {
-      displayImage = createSceneImage(
+    if (!displayEntry && resolvedDecoration?.src) {
+      displayEntry = createSceneMedia(
         `legacy:${resolvedDecoration.id}`,
         resolvedDecoration.src,
+        "image",
         "overlay",
       );
-      displayImage.overlay = {
+      displayEntry.overlay = {
         position: [...resolvedDecoration.position],
         size: resolvedDecoration.size,
         rotationDeg: resolvedDecoration.rotationDeg ?? 0,
@@ -7183,16 +6721,16 @@ export function SceneTab({
         stackOrder: resolvedDecoration.stackOrder,
       };
     }
-    const syntheticDoc: SceneDoc = {
-      ...doc,
-      images: displayImage ? [displayImage] : [],
-    };
+    // The shell edits ONE entry: the promoted one when it exists, else a throwaway view of the inherited decoration.
+    const syntheticDoc: SceneDoc = { ...doc, media: displayEntry ? [displayEntry] : [] };
+    delete syntheticDoc.images;
+    delete syntheticDoc.videoWindow;
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
     const mutateLegacyImage = async (
-      mutate: ImageMutation,
-      options: ImageMutationOptions,
+      mutate: MediaMutation,
+      options: MediaMutationOptions,
     ): Promise<void> => {
       if (!legacyId || legacyImageOperationRef.current) return;
       let session = legacyImagePromotionRef.current;
@@ -7201,40 +6739,44 @@ export function SceneTab({
           decorationId: legacyId,
           baseline: structuredClone(docRef.current ?? doc),
           resolvedDecorations: structuredClone(resolvedDecorationsRef.current ?? []),
-          imageId: null,
+          mediaId: null,
         };
         legacyImagePromotionRef.current = session;
       }
       if (options.history === false) {
         const succeeded = await patchDocResultRef.current(
           (next) => {
-            if (session.imageId) {
-              const image = next.images?.find((candidate) => candidate.id === session.imageId);
-              if (!image) return false;
-              mutate(image);
-              session.draftImage = structuredClone(image);
+            if (session.mediaId) {
+              const media = resolveSceneDocMedia(next);
+              const entry = media.find((candidate) => candidate.id === session.mediaId);
+              if (!entry) return false;
+              mutate(entry);
+              editSceneDocMedia(next, () => media);
+              session.draftEntry = structuredClone(entry);
               return;
             }
-            const result = promoteLegacyImage(
+            const result = promoteLegacyMedia(
               next,
               session.resolvedDecorations,
               session.decorationId,
               mutate,
             );
             if (!result) return false;
-            Object.assign(next, result.doc);
-            session.imageId = result.imageId;
-            session.draftImage = structuredClone(
-              result.doc.images?.find((image) => image.id === result.imageId),
+            replaceSceneDoc(next, result.doc);
+            session.mediaId = result.mediaId;
+            session.draftEntry = structuredClone(
+              resolveSceneDocMedia(result.doc).find((entry) => entry.id === result.mediaId),
             );
           },
           { history: false },
         );
-        if (!succeeded || !session.imageId) {
-          if (!succeeded && session.imageId) {
-            const liveImage = docRef.current?.images?.find((image) => image.id === session.imageId);
-            session.draftImage = liveImage ? structuredClone(liveImage) : undefined;
-            if (!liveImage) session.imageId = null;
+        if (!succeeded || !session.mediaId) {
+          if (!succeeded && session.mediaId) {
+            const live = resolveSceneDocMedia(docRef.current).find(
+              (entry) => entry.id === session.mediaId,
+            );
+            session.draftEntry = live ? structuredClone(live) : undefined;
+            if (!live) session.mediaId = null;
           }
           setLegacyImageNotice(
             "This inherited image could not be taken over. Choose a still PNG, JPEG or WebP source first.",
@@ -7251,34 +6793,36 @@ export function SceneTab({
       let promotedId: string | null = null;
       try {
         const succeeded = await commitFromBaselineResult(baselineSession.baseline, (next) => {
-          const result = promoteLegacyImage(
+          const result = promoteLegacyMedia(
             next,
             baselineSession.resolvedDecorations,
             baselineSession.decorationId,
-            (image) => {
-              if (baselineSession.draftImage) {
-                const id = image.id;
-                Object.assign(image, structuredClone(baselineSession.draftImage), { id });
+            (entry) => {
+              if (baselineSession.draftEntry) {
+                const id = entry.id;
+                Object.assign(entry, structuredClone(baselineSession.draftEntry), { id });
               }
-              mutate(image);
+              mutate(entry);
             },
           );
           if (!result) return false;
-          Object.assign(next, result.doc);
-          promotedId = result.imageId;
-          baselineSession.draftImage = structuredClone(
-            result.doc.images?.find((image) => image.id === result.imageId),
+          replaceSceneDoc(next, result.doc);
+          promotedId = result.mediaId;
+          baselineSession.draftEntry = structuredClone(
+            resolveSceneDocMedia(result.doc).find((entry) => entry.id === result.mediaId),
           );
         });
         if (!succeeded || !promotedId) {
-          const liveImage = baselineSession.imageId
-            ? docRef.current?.images?.find((image) => image.id === baselineSession.imageId)
+          const live = baselineSession.mediaId
+            ? resolveSceneDocMedia(docRef.current).find(
+                (entry) => entry.id === baselineSession.mediaId,
+              )
             : undefined;
-          if (liveImage) {
-            baselineSession.draftImage = structuredClone(liveImage);
+          if (live) {
+            baselineSession.draftEntry = structuredClone(live);
           } else {
-            baselineSession.imageId = null;
-            baselineSession.draftImage = undefined;
+            baselineSession.mediaId = null;
+            baselineSession.draftEntry = undefined;
           }
           legacyImagePromotionRef.current = baselineSession;
           setLegacyImageNotice(
@@ -7303,11 +6847,11 @@ export function SceneTab({
     const duplicateLegacyImage = () => {
       if (!legacyId || legacyImageOperationRef.current) return;
       const row: SceneOverviewRowModel = {
-        id: `image:legacy:${legacyId}`,
+        id: legacyMediaRowId(legacyId),
         type: "image",
         label: resolvedDecoration?.src?.split("/").at(-1) ?? "Image",
         selectionTarget: { kind: "legacyImage", id: legacyId },
-        openRoute: "legacyImage.edit",
+        openRoute: LEGACY_MEDIA_DRILL_ROUTE,
         readOnly: true,
       };
       const plan = planContentDuplicate(row, {
@@ -7332,11 +6876,11 @@ export function SceneTab({
           if (
             !succeeded ||
             legacyImageOperationRef.current !== operationToken ||
-            selection?.kind !== "image" ||
+            selection?.kind !== "media" ||
             projectIdRef.current !== expectedProjectId ||
             sceneIndexRef.current !== expectedSceneIndex ||
             sceneFileRef.current !== expectedSceneFile ||
-            inspector.drillIn !== "legacyImage.edit" ||
+            inspector.drillIn !== LEGACY_MEDIA_DRILL_ROUTE ||
             useDecorationEditStore.getState().selectedId !== legacyId
           ) {
             return;
@@ -7348,21 +6892,21 @@ export function SceneTab({
             .select({ sceneIndex: expectedSceneIndex, imageId: selection.id });
           setOverviewSelection({
             sceneIndex: expectedSceneIndex,
-            rowId: plan.nextRowId ?? `image:${selection.id}`,
+            rowId: plan.nextRowId ?? mediaRowId(selection.id),
             domain: "media",
           });
-          replaceDrill("image.edit");
+          replaceDrill(MEDIA_DRILL_ROUTE);
         })
         .finally(() => endLegacyImageOperation(operationToken));
     };
     const removeLegacyImage = () => {
       if (!legacyId || legacyImageOperationRef.current) return;
       const row: SceneOverviewRowModel = {
-        id: `image:legacy:${legacyId}`,
+        id: legacyMediaRowId(legacyId),
         type: "image",
         label: resolvedDecoration?.src?.split("/").at(-1) ?? "Image",
         selectionTarget: { kind: "legacyImage", id: legacyId },
-        openRoute: "legacyImage.edit",
+        openRoute: LEGACY_MEDIA_DRILL_ROUTE,
         readOnly: true,
       };
       const plan = planContentDelete(row, {
@@ -7382,7 +6926,7 @@ export function SceneTab({
             projectIdRef.current !== expectedProjectId ||
             sceneIndexRef.current !== expectedSceneIndex ||
             sceneFileRef.current !== expectedSceneFile ||
-            inspector.drillIn !== "legacyImage.edit" ||
+            inspector.drillIn !== LEGACY_MEDIA_DRILL_ROUTE ||
             useDecorationEditStore.getState().selectedId !== legacyId
           ) {
             return;
@@ -7392,24 +6936,24 @@ export function SceneTab({
         })
         .finally(() => endLegacyImageOperation(operationToken));
     };
-    const unsupportedSource = displayImage ? !isSceneImageSource(displayImage.src) : false;
+    const unsupportedSource = displayEntry ? !isSceneImageSource(displayEntry.src) : false;
     return (
-      <ImageDrillIn
+      <MediaDrillIn
         key={`${project.id}\u0000${expectedSceneFile ?? expectedSceneIndex}\u0000legacy:${legacyId ?? "missing"}`}
         doc={syntheticDoc}
-        imageId={displayImage?.id ?? ""}
+        mediaId={displayEntry?.id ?? ""}
         sourcePreviewUrl={
-          displayImage ? inspectorAssetUrl(project.id, displayImage.src) : undefined
+          displayEntry ? inspectorAssetUrl(project.id, displayEntry.src) : undefined
         }
         overlayAvailable
         backLabel={backLabel}
         onBack={closeDrill}
-        onSelectImage={() => {}}
+        onSelectMedia={() => {}}
         onChangeSource={() => {
           if (!legacyId || legacyImageBusy) return;
-          openMediaPicker({ kind: "image", legacyId });
+          openMediaPicker({ kind: "media", mediaKind: "image", legacyId });
         }}
-        mutateImage={mutateLegacyImage}
+        mutateMedia={mutateLegacyImage}
         sourceButtonRef={imageSourceButtonRef}
         sourceDisabled={legacyImageBusy}
         settingsDisabled={legacyImageBusy || unsupportedSource}
@@ -7423,78 +6967,78 @@ export function SceneTab({
           error ??
           legacyImageNotice ??
           (unsupportedSource
-            ? "This inherited source must be changed to a still PNG, JPEG or WebP before other Image edits can take over."
+            ? "This inherited source must be changed to a still PNG, JPEG or WebP before other media edits can take over."
             : "This inherited Overlay image remains unchanged until your first edit.")
         }
       />
     );
   }
-  if (drillIn === "image.edit" && doc) {
-    const currentImageId =
+  if (isMediaDrillRoute(drillIn) && doc) {
+    const currentMediaId =
       selectedImageId === null
-        ? (doc.images?.[0]?.id ?? null)
-        : doc.images?.some((image) => image.id === selectedImageId)
+        ? (mediaEntries[0]?.id ?? null)
+        : mediaEntries.some((entry) => entry.id === selectedImageId)
           ? selectedImageId
           : null;
-    const currentImage = doc.images?.find((image) => image.id === currentImageId);
+    const currentEntry = mediaEntries.find((entry) => entry.id === currentMediaId);
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
-    const stillEditingImage = () => {
+    const stillEditingMedia = () => {
       const inspector = useUiStore.getState().inspector;
       return (
         projectIdRef.current === expectedProjectId &&
         sceneIndexRef.current === expectedSceneIndex &&
         sceneFileRef.current === expectedSceneFile &&
         inspector.tab === "scene" &&
-        inspector.drillIn === "image.edit"
+        isMediaDrillRoute(inspector.drillIn)
       );
     };
-    const duplicateCurrentImage = () => {
-      if (!currentImageId) return;
+    const duplicateCurrentMedia = () => {
+      if (!currentMediaId) return;
       let duplicateId: string | null = null;
       void patchDocResult(
         (next) => {
-          duplicateId = duplicateImage(next, currentImageId);
+          duplicateId = duplicateSceneMedia(next, currentMediaId);
         },
-        { history: "duplicate image" },
+        { history: "duplicate media" },
       ).then((succeeded) => {
         const createdId = duplicateId;
         if (!succeeded || !createdId) return;
         useImageReconciliationStore.getState().recordOrigin(expectedProjectId, expectedSceneFile, {
           kind: "duplicate",
           imageId: createdId,
-          sourceImageId: currentImageId,
+          sourceImageId: currentMediaId,
         });
-        if (!stillEditingImage()) return;
+        if (!stillEditingMedia()) return;
         const selected = useImageEditStore.getState().selected;
-        if (selected?.sceneIndex !== expectedSceneIndex || selected.imageId !== currentImageId) {
+        if (selected?.sceneIndex !== expectedSceneIndex || selected.imageId !== currentMediaId) {
           return;
         }
         useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: createdId });
       });
     };
-    const removeCurrentImage = () => {
-      if (!currentImageId) return;
-      let nextImageId: string | null = null;
+    const removeCurrentMedia = () => {
+      if (!currentMediaId) return;
+      let nextMediaId: string | null = null;
       void patchDocResult(
         (next) => {
-          nextImageId = removeImage(next, currentImageId);
+          nextMediaId = removeSceneMedia(next, currentMediaId);
         },
-        { history: "remove image" },
+        { history: "remove media" },
       ).then((succeeded) => {
-        if (!succeeded || !stillEditingImage()) return;
+        if (!succeeded || !stillEditingMedia()) return;
         const selected = useImageEditStore.getState().selected;
         if (
           selected &&
-          (selected.sceneIndex !== expectedSceneIndex || selected.imageId !== currentImageId)
+          (selected.sceneIndex !== expectedSceneIndex || selected.imageId !== currentMediaId)
         ) {
           return;
         }
-        if (nextImageId) {
+        if (nextMediaId) {
           useImageEditStore
             .getState()
-            .select({ sceneIndex: expectedSceneIndex, imageId: nextImageId });
+            .select({ sceneIndex: expectedSceneIndex, imageId: nextMediaId });
         } else {
           useImageEditStore.getState().select(null);
           closeDrill();
@@ -7502,20 +7046,35 @@ export function SceneTab({
       });
     };
     return (
-      <ImageDrillIn
-        key={`${project.id}\u0000${expectedSceneFile ?? expectedSceneIndex}\u0000image:${currentImageId ?? "missing"}`}
+      <MediaDrillIn
+        key={`${project.id}\u0000${expectedSceneFile ?? expectedSceneIndex}\u0000media:${currentMediaId ?? "missing"}`}
         doc={doc}
-        imageId={currentImageId ?? ""}
+        mediaId={currentMediaId ?? ""}
         sourcePreviewUrl={
-          currentImage ? inspectorAssetUrl(project.id, currentImage.src) : undefined
+          currentEntry?.kind === "image"
+            ? inspectorAssetUrl(project.id, currentEntry.src)
+            : undefined
         }
         overlayAvailable={sceneFrame !== undefined}
         backLabel={backLabel}
         onBack={closeDrill}
-        onSelectImage={(imageId) => useImageEditStore.getState().select({ sceneIndex, imageId })}
-        onChangeSource={(imageId) => openMediaPicker({ kind: "image", replaceId: imageId })}
-        onDuplicate={duplicateCurrentImage}
-        onRemove={removeCurrentImage}
+        onSelectMedia={(mediaId) =>
+          useImageEditStore.getState().select({ sceneIndex, imageId: mediaId })
+        }
+        onChangeSource={(mediaId) => {
+          const entry = mediaEntries.find((candidate) => candidate.id === mediaId);
+          openMediaPicker({
+            kind: "media",
+            mediaKind: entry?.kind ?? "image",
+            replaceId: mediaId,
+          });
+        }}
+        onEditSource={(mediaId) => {
+          const entry = mediaEntries.find((candidate) => candidate.id === mediaId);
+          if (entry) onOpenEditVideo(sceneIndex, entry.src, "media", entry.id);
+        }}
+        onDuplicate={duplicateCurrentMedia}
+        onRemove={removeCurrentMedia}
         sourceButtonRef={imageSourceButtonRef}
         patchDoc={patchDoc}
         commitFromBaseline={commitFromBaseline}
@@ -7967,9 +7526,6 @@ export function SceneTab({
         // Both paths drill into the builder; it seeds the first layer for scenes without a block.
         "layeredScreenshot.edit": () => openDrill("layeredScreenshot.edit"),
         "layeredScreenshot.add": () => openDrill("layeredScreenshot.edit"),
-        // Both paths drill into the editor; it creates the block on the first media pick.
-        "videoWindow.edit": () => openDrill("videoWindow.edit"),
-        "videoWindow.add": () => openDrill("videoWindow.edit"),
         "device.remove": () => {
           if (!confirmRemove) {
             setConfirmRemove(true);
@@ -8136,7 +7692,7 @@ export function SceneTab({
         return "text";
       case "device":
         return "devices";
-      case "image":
+      case "media":
         return "media";
       case "legacyImage":
         return "decorations";
@@ -8162,7 +7718,7 @@ export function SceneTab({
       case "device":
         pickDevice(target.id);
         break;
-      case "image":
+      case "media":
         useImageEditStore.getState().select({ sceneIndex, imageId: target.id });
         break;
       case "legacyImage": {
@@ -8178,7 +7734,6 @@ export function SceneTab({
       case "chart":
         useChartEditStore.getState().select({ sceneIndex });
         break;
-      case "videoWindow":
       case "screenshotStack":
       case "comparison":
         break;
@@ -8199,7 +7754,7 @@ export function SceneTab({
         ? "text"
         : target.kind === "device"
           ? "devices"
-          : target.kind === "image"
+          : target.kind === "media"
             ? "media"
             : target.kind === "legacyImage"
               ? "decorations"
@@ -8216,7 +7771,7 @@ export function SceneTab({
       case "device":
         pickDevice(target.id);
         break;
-      case "image":
+      case "media":
         useImageEditStore.getState().select({ sceneIndex, imageId: target.id });
         break;
       case "legacyImage": {
@@ -8232,7 +7787,6 @@ export function SceneTab({
       case "chart":
         useChartEditStore.getState().select({ sceneIndex });
         break;
-      case "videoWindow":
       case "screenshotStack":
       case "comparison":
         break;
@@ -8250,7 +7804,7 @@ export function SceneTab({
       case "device":
         pickDevice(null);
         break;
-      case "image":
+      case "media":
         useImageEditStore.getState().select(null);
         break;
       case "legacyImage":
@@ -8266,7 +7820,6 @@ export function SceneTab({
       case "screenshotStack":
         useLayeredScreenshotEditStore.getState().reset();
         break;
-      case "videoWindow":
       case "comparison":
         break;
     }
@@ -8357,7 +7910,7 @@ export function SceneTab({
             .getState()
             .recordOrigin(expectedProjectId, expectedSceneFile, origin);
         }
-      } else if (row.selectionTarget?.kind === "image" && plan.nextSelection?.kind === "image") {
+      } else if (row.selectionTarget?.kind === "media" && plan.nextSelection?.kind === "media") {
         useImageReconciliationStore.getState().recordOrigin(expectedProjectId, expectedSceneFile, {
           kind: "duplicate",
           imageId: plan.nextSelection.id,
@@ -8674,10 +8227,11 @@ export function SceneTab({
           break;
         case "image":
           captureContentAddActivator();
-          openMediaPicker({ kind: "image" });
+          openMediaPicker({ kind: "media", mediaKind: "image" });
           break;
         case "video":
-          openDrill("videoWindow.edit");
+          captureContentAddActivator();
+          openMediaPicker({ kind: "media", mediaKind: "video" });
           break;
         case "object":
           openObjectPicker();

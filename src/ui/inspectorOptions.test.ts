@@ -146,18 +146,11 @@ describe("deriveSceneOverview", () => {
       },
     );
 
-    expect(model.groups.map((group) => group.id)).toEqual([
-      "text",
-      "devices",
-      "images",
-      "videos",
-      "objects",
-    ]);
+    expect(model.groups.map((group) => group.id)).toEqual(["text", "devices", "media", "objects"]);
     expect(model.groups.map((group) => group.label)).toEqual([
       "Text",
       "Devices",
-      "Images",
-      "Videos",
+      "Media",
       "Objects",
     ]);
     const rows = Object.fromEntries(
@@ -176,25 +169,26 @@ describe("deriveSceneOverview", () => {
       selectionTarget: { kind: "device", id: "phone" },
       openRoute: "device",
     });
-    expect(rows["image:hero"]).toMatchObject({
+    expect(rows["media:hero"]).toMatchObject({
       label: "hero.png",
-      value: "Stage",
+      value: "Image · Stage",
       thumbnail: "assets/hero.png",
-      selectionTarget: { kind: "image", id: "hero" },
-      openRoute: "image.edit",
+      selectionTarget: { kind: "media", id: "hero" },
+      openRoute: "media.edit",
     });
-    expect(rows["image:legacy:logo"]).toMatchObject({
+    expect(rows["media:legacy:logo"]).toMatchObject({
       label: "logo.png",
       value: "24%",
       readOnly: true,
       selectionTarget: { kind: "legacyImage", id: "logo" },
       openRoute: "legacyImage.edit",
     });
-    expect(rows["video:window"]).toMatchObject({
+    expect(rows["media:videoWindow"]).toMatchObject({
       label: "demo-recording.mov",
-      value: "Window",
-      selectionTarget: { kind: "videoWindow" },
-      openRoute: "videoWindow.edit",
+      value: "Video · Window",
+      mediaHint: { kind: "video", src: "assets/demo-recording.mov" },
+      selectionTarget: { kind: "media", id: "videoWindow" },
+      openRoute: "media.edit",
     });
     expect(rows["object:cup"]).toMatchObject({
       label: "Coffee cup",
@@ -362,8 +356,7 @@ describe("deriveSceneOverview", () => {
     expect(model.groups.map((group) => [group.id, group.rows.length])).toEqual([
       ["text", 2],
       ["devices", 6],
-      ["images", 2],
-      ["videos", 1],
+      ["media", 3],
       ["objects", 3],
     ]);
     expect(model.standalone.map((row) => row.id)).toEqual([
@@ -404,10 +397,10 @@ describe("deriveSceneOverview", () => {
       { frame: { cutout: { shape: "rounded-rect" } } },
     );
     const options = Object.fromEntries(model.addOptions.map((option) => [option.id, option]));
-    for (const id of ["device", "text", "image", "object"] as const) {
+    for (const id of ["device", "text", "image", "video", "object"] as const) {
       expect(options[id]).toMatchObject({ singleton: false, disabled: false });
     }
-    for (const id of ["video", "chart", "screenshotStack", "comparison"] as const) {
+    for (const id of ["chart", "screenshotStack", "comparison"] as const) {
       expect(options[id]).toMatchObject({
         singleton: true,
         disabled: true,

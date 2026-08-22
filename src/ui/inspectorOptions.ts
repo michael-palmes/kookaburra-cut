@@ -1,10 +1,22 @@
 import { type AspectName, aspectLabel } from "../engine/format";
 import { frameTextAlign } from "../engine/framePanelLayout";
 import type { ResolvedManagedTextGroup } from "../engine/managedText";
-import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocChart,
+  SceneDocMediaSpec,
+  SceneManagedTextItem,
+} from "../engine/sceneDocSchema";
+import { resolveSceneDocMedia } from "../engine/sceneMedia";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
+import {
+  LEGACY_MEDIA_DRILL_ROUTE,
+  legacyMediaRowId,
+  MEDIA_DRILL_ROUTE,
+  mediaRowId,
+} from "./inspector/mediaEditorModel";
 import { textIconInspectorScreenForRoute } from "./inspectorTitles";
 
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
@@ -101,7 +113,7 @@ export function objectRowLabel(objectId: string): string {
   return words ? words[0].toUpperCase() + words.slice(1) : "Object";
 }
 
-export type SceneOverviewGroupId = "text" | "devices" | "images" | "videos" | "objects";
+export type SceneOverviewGroupId = "text" | "devices" | "media" | "objects";
 
 export type SceneOverviewContentType =
   | "text"
@@ -125,9 +137,8 @@ export type SceneOverviewSettingType =
 export type SceneOverviewSelectionTarget =
   | { kind: "text"; id: string }
   | { kind: "device"; id: string }
-  | { kind: "image"; id: string }
+  | { kind: "media"; id: string }
   | { kind: "legacyImage"; id: string }
-  | { kind: "videoWindow" }
   | { kind: "object"; id: string }
   | { kind: "chart" }
   | { kind: "screenshotStack" }
@@ -193,8 +204,7 @@ export interface SceneOverviewModel {
 const OVERVIEW_GROUP_LABELS: Record<SceneOverviewGroupId, string> = {
   text: "Text",
   devices: "Devices",
-  images: "Images",
-  videos: "Videos",
+  media: "Media",
   objects: "Objects",
 };
 
@@ -207,7 +217,7 @@ const DEVICE_LAYOUT_LABELS: Record<NonNullable<SceneDoc["deviceLayout"]>["preset
   "depth-pair": "Depth",
 };
 
-function assetBasename(src: string): string {
+export function assetBasename(src: string): string {
   return src.split("/").pop() || src;
 }
 
@@ -276,6 +286,12 @@ function deviceOverviewThumbnail(
   return spec.previews[device.colour ?? spec.defaultColour] ?? spec.previews[spec.defaultColour];
 }
 
+/** Where a media entry sits: window chrome reads as its own placement, since a windowed entry always draws in the scene's world. */
+function mediaPlacementValue(entry: SceneDocMediaSpec): string {
+  if (entry.window) return "Window";
+  return entry.host === "stage" ? "Stage" : "Overlay";
+}
+
 function placementValue(placement: NonNullable<SceneDoc["objects"]>[number]["placement"]): string {
   if (placement?.ground) return "Floor";
   const x = placement?.position?.[0] ?? 0;
@@ -335,7 +351,7 @@ function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
     { id: "device", label: "Device", singleton: false, present: false },
     { id: "text", label: "Text", singleton: false, present: false },
     { id: "image", label: "Image", singleton: false, present: false },
-    { id: "video", label: "Video", singleton: true, present: !!doc?.videoWindow },
+    { id: "video", label: "Video", singleton: false, present: false },
     { id: "object", label: "Object", singleton: false, present: false },
     { id: "chart", label: "Chart", singleton: true, present: !!doc?.chart },
     {
@@ -362,8 +378,7 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
   const groupedRows: Record<SceneOverviewGroupId, SceneOverviewRowModel[]> = {
     text: [],
     devices: [],
-    images: [],
-    videos: [],
+    media: [],
     objects: [],
   };
 
@@ -448,18 +463,6 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
       });
     }
 
-    if (doc.videoWindow) {
-      groupedRows.videos.push({
-        id: "video:window",
-        type: "video",
-        label: assetBasename(doc.videoWindow.media.src),
-        value: "Window",
-        mediaHint: { kind: "video", src: doc.videoWindow.media.src },
-        selectionTarget: { kind: "videoWindow" },
-        openRoute: "videoWindow.edit",
-      });
-    }
-
     for (const object of doc.objects ?? []) {
       groupedRows.objects.push({
         id: `object:${object.id}`,
@@ -472,30 +475,30 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
     }
   }
 
-  for (const image of doc?.images ?? []) {
-    groupedRows.images.push({
-      id: `image:${image.id}`,
-      type: "image",
-      label: assetBasename(image.src),
-      value: image.host === "stage" ? "Stage" : "Overlay",
-      thumbnail: image.src,
-      mediaHint: { kind: "image", src: image.src },
-      selectionTarget: { kind: "image", id: image.id },
-      openRoute: "image.edit",
+  for (const entry of resolveSceneDocMedia(doc)) {
+    groupedRows.media.push({
+      id: mediaRowId(entry.id),
+      type: entry.kind,
+      label: assetBasename(entry.src),
+      value: `${entry.kind === "video" ? "Video" : "Image"} · ${mediaPlacementValue(entry)}`,
+      thumbnail: entry.kind === "image" ? entry.src : undefined,
+      mediaHint: { kind: entry.kind, src: entry.src },
+      selectionTarget: { kind: "media", id: entry.id },
+      openRoute: MEDIA_DRILL_ROUTE,
     });
   }
 
   for (const decoration of frame?.decorations ?? []) {
     if (!decoration.src) continue;
-    groupedRows.images.push({
-      id: `image:legacy:${decoration.id}`,
+    groupedRows.media.push({
+      id: legacyMediaRowId(decoration.id),
       type: "image",
       label: assetBasename(decoration.src),
       value: `${Math.round(decoration.size * 100)}%`,
       thumbnail: decoration.src,
       mediaHint: { kind: "image", src: decoration.src },
       selectionTarget: { kind: "legacyImage", id: decoration.id },
-      openRoute: "legacyImage.edit",
+      openRoute: LEGACY_MEDIA_DRILL_ROUTE,
       readOnly: true,
     });
   }
@@ -506,8 +509,7 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
   }> = [
     { id: "text", addType: "text" },
     { id: "devices", addType: "device" },
-    { id: "images", addType: "image" },
-    { id: "videos", addType: "video" },
+    { id: "media", addType: "image" },
     { id: "objects", addType: "object" },
   ];
   const groups = groupOrder.flatMap(({ id, addType }) =>

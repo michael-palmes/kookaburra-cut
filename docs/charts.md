@@ -23,7 +23,7 @@ slideware.
 | Number formatting | Hand-rolled, no `Intl` | Locale data varies across macOS versions, which would break byte-identical export. |
 | Appearance | 15 presets in four tiers, resolved to one surface | No renderer ever sees a preset id, so the 2D and 3D paths cannot disagree. |
 | Build-in | 19 presets in three tiers, sampled per element | A preset is a row of channel parameters, never bespoke motion code. |
-| One per scene | One `chart` block | Mirrors `layeredScreenshot` / `videoWindow` / `compare`. |
+| One per scene | One `chart` block | Mirrors `layeredScreenshot` / `compare`. |
 
 ## Architecture
 
@@ -58,7 +58,7 @@ three.js.
 ### Sidecar-driven
 
 `useSceneChart()` resolves the block and registers the scene as a consumer
-(`chartRegistry.ts`, the videoWindow pattern). When a scene's TSX never mounts a
+(`chartRegistry.ts`, the scene-media pattern). When a scene's TSX never mounts a
 chart, `ChartFallback` draws it host-side instead, so a `chart` block renders with no
 scene code at all. The fallback calls `MountedChart` rather than `<Chart />`, which
 would register it as its own consumer and cycle its render gate.

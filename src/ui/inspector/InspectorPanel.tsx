@@ -9,6 +9,7 @@ import {
   workspaceSlug,
 } from "../../engine/project";
 import { EXPOSURE_MAX, EXPOSURE_MIN, type RenderSettings } from "../../engine/renderSettings";
+import type { EditRepointSlot } from "../../engine/sceneDoc";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { activeSceneIndex } from "../../engine/sceneTimeline";
 import { useUiStore } from "../../store/uiStore";
@@ -153,8 +154,8 @@ export function InspectorPanel({
   onOpenEditVideo: (
     sceneIndex: number,
     mediaRel: string,
-    slot?: "device" | "compareDevice" | "background" | "videoWindow",
-    deviceId?: string,
+    slot?: EditRepointSlot,
+    targetId?: string,
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;

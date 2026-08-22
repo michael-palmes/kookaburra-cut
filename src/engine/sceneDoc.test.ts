@@ -48,7 +48,7 @@ import {
   resyncFollowMediaDuration,
   writeSceneDoc,
 } from "./sceneDoc";
-import type { SceneDoc } from "./sceneDocSchema";
+import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
 
@@ -91,6 +91,17 @@ describe("writeSceneDoc", () => {
     }
   });
 });
+
+function mediaEntry(id: string, src: string, kind: "image" | "video"): SceneDocMediaSpec {
+  return {
+    id,
+    kind,
+    src,
+    host: "overlay",
+    stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+    overlay: { position: [0, 0], size: 0.5, rotationDeg: 0, shape: "none", layer: "above" },
+  };
+}
 
 describe("applyEditRepoint (edit-render re-point targeting)", () => {
   const rel = "assets/clip-edited.mp4";
@@ -183,9 +194,39 @@ describe("applyEditRepoint (edit-render re-point targeting)", () => {
       videoWindow: { media: { src: "assets/win.mp4" } } as SceneDoc["videoWindow"],
     });
     const next = applyEditRepoint(doc, "videoWindow", rel);
-    expect(next?.videoWindow?.media?.src).toBe(rel);
+    expect(next?.media?.[0]?.src).toBe(rel);
+    expect(next?.videoWindow).toBeUndefined();
     expect(next?.devices?.[0]?.media?.src).toBe("assets/a.mp4");
     expect(doc.videoWindow?.media?.src).toBe("assets/win.mp4");
+  });
+
+  it("a media slot re-points the named entry alone and never a neighbour", () => {
+    const doc = docWith({
+      media: [
+        mediaEntry("vid1", "assets/one.mp4", "video"),
+        mediaEntry("vid2", "assets/two.mp4", "video"),
+      ],
+    });
+    const next = applyEditRepoint(doc, "media", rel, "vid2");
+    expect(next?.media?.map((entry) => entry.src)).toEqual(["assets/one.mp4", rel]);
+    expect(applyEditRepoint(doc, "media", rel, "gone")).toBeNull();
+  });
+
+  it("an edited still becomes a clip from its head (the render is an mp4)", () => {
+    const still = mediaEntry("img1", "assets/shot.png", "image");
+    still.video = { startMs: 2_000 };
+    const next = applyEditRepoint(docWith({ media: [still] }), "media", rel, "img1");
+    expect(next?.media?.[0]).toMatchObject({ kind: "video", src: rel, video: {} });
+    expect(next?.media?.[0]?.video?.startMs).toBeUndefined();
+  });
+
+  it("a media slot promotes a legacy doc rather than writing the old blocks", () => {
+    const doc = docWith({
+      videoWindow: { media: { src: "assets/win.mp4" } } as SceneDoc["videoWindow"],
+    });
+    const next = applyEditRepoint(doc, "media", rel, "videoWindow");
+    expect(JSON.parse(JSON.stringify(next)).videoWindow).toBeUndefined();
+    expect(next?.media?.[0]?.src).toBe(rel);
   });
 });
 
@@ -262,6 +303,68 @@ describe("followMediaSources (the follow-media source rule)", () => {
       compare: { b: { media: { d2: { src: "assets/after.mp4", kind: "video" } } } },
     });
     expect(followMediaSources(pinned)).toEqual(["assets/b.mp4", "assets/after.mp4"]);
+  });
+
+  it("a media pin follows that entry alone, whichever entry it is", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media", source: "media", sourceMediaId: "vid2" },
+      media: [
+        mediaEntry("vid1", "assets/one.mp4", "video"),
+        mediaEntry("vid2", "assets/two.mp4", "video"),
+      ],
+      devices: [videoDevice("d1", "assets/a.mp4")] as SceneDoc["devices"],
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/two.mp4"]);
+  });
+
+  it("a media pin at a still or a missing entry follows nothing", () => {
+    expect(
+      followMediaSources(
+        docWith({
+          duration: { mode: "follow-media", source: "media", sourceMediaId: "img1" },
+          media: [mediaEntry("img1", "assets/hero.png", "image")],
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      followMediaSources(
+        docWith({
+          duration: { mode: "follow-media", source: "media", sourceMediaId: "gone" },
+          media: [mediaEntry("vid1", "assets/one.mp4", "video")],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("the legacy videoWindow spelling reads forward to the entry serving as the window", () => {
+    const promoted = parseSceneDoc(
+      {
+        version: 1,
+        duration: { mode: "follow-media", source: "videoWindow" },
+        videoWindow: { media: { src: "assets/win.mp4" }, radius: "macos" },
+      },
+      "test",
+    );
+    expect(followMediaSources(promoted)).toEqual(["assets/win.mp4"]);
+    const media = docWith({
+      duration: { mode: "follow-media", source: "videoWindow" },
+      media: [
+        { ...mediaEntry("vid1", "assets/one.mp4", "video"), window: { radius: "macos" as const } },
+      ],
+    });
+    expect(followMediaSources(media)).toEqual(["assets/one.mp4"]);
+  });
+
+  it("an unpinned device-less doc follows its video entries before the background", () => {
+    const doc = docWith({
+      duration: { mode: "follow-media" },
+      media: [
+        mediaEntry("img1", "assets/hero.png", "image"),
+        mediaEntry("vid1", "assets/one.mp4", "video"),
+      ],
+      background: { type: "video", src: "assets/bg.mp4" } as SceneDoc["background"],
+    });
+    expect(followMediaSources(doc)).toEqual(["assets/one.mp4"]);
   });
 
   it("source videoWindow pins the window; device-less docs fall to the background video", () => {

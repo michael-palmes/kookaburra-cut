@@ -1,8 +1,9 @@
-/** Scene media: the one content family behind still images and floating video windows. Pure (plain data in, plain data out, no clock reads) so parse, preview and export agree by construction; the sidecar schema and its degrade-don't-crash validation stay in `sceneDocSchema.ts` while this module owns the semantics: the legacy `images`/`videoWindow` derivations, the window placement conversion and the authoring factory. Mirrors `sceneImage.ts`'s role for the image family. */
+/** Scene media: the one content family behind still images and floating video windows. Pure (plain data in, plain data out, no clock reads) so parse, preview and export agree by construction; the sidecar schema and its degrade-don't-crash validation stay in `sceneDocSchema.ts` while this module owns the semantics: the legacy `images`/`videoWindow` read-forward, the window placement conversion and the authoring factory. */
 
 import { ease } from "./ease";
 import type {
   SceneDoc,
+  SceneDocDuration,
   SceneDocImageSpec,
   SceneDocMediaSpec,
   SceneDocVideoWindow,
@@ -12,12 +13,9 @@ import type {
   SceneImageStagePlacement,
   SceneMediaHost,
   SceneMediaKind,
-  SceneMediaMotionPreset,
   SceneMediaMotionSpec,
   SceneMediaVideoSpec,
   SceneMediaWindow,
-  VideoWindowMotion,
-  VideoWindowMotionPreset,
   VideoWindowRadius,
 } from "./sceneDocSchema";
 import { DEFAULT_VIDEO_WINDOW_SCALE, sampleVideoWindowMotion } from "./sceneVideoWindow";
@@ -59,12 +57,6 @@ const clampWindowScale = (value: number | undefined): number =>
 /** Legacy `videoWindow.scale` as an overlay size: the same number, because a windowed entry keeps the window's own sizing (it fits INSIDE a box that is `size` of the frame, `windowOverlayPlaneWidth`) rather than the plain image rule of "size IS the width". Aspect-free by design: the effective aspect is a render-time fact (live intrinsics, and the recording crop's aspect is not the clip's), so folding it in here mis-sizes every window whose doc never recorded one. */
 export function videoWindowScaleToOverlaySize(scale: number | undefined): number {
   return clampWindowScale(scale);
-}
-
-/** The inverse, for the legacy `videoWindow` view derived from a media-native doc. */
-export function overlaySizeToVideoWindowScale(size: number | undefined): number {
-  if (!Number.isFinite(size)) return DEFAULT_VIDEO_WINDOW_SCALE;
-  return clamp(size as number, 0.1, 1);
 }
 
 /** The width a windowed Overlay entry's plane draws at: a contain fit inside a box that is `size` of the frame, so a clip at least as wide as the frame spans `size` of the width and a narrower one stays inside the frame height. Byte-for-byte the legacy window fit (`clipPlaneSize("contain", …)`), at every aspect. */
@@ -119,21 +111,6 @@ export const DEFAULT_SCENE_MEDIA_VIDEO_OVERLAY: SceneImageOverlayPlacement = {
   layer: "below",
 };
 
-const isVideoWindowMotionPreset = (
-  preset: SceneMediaMotionPreset,
-): preset is VideoWindowMotionPreset => preset !== "turntable";
-
-function videoWindowMotionFromMedia(
-  motion: SceneMediaMotionSpec | undefined,
-): VideoWindowMotion | undefined {
-  if (!motion || !isVideoWindowMotionPreset(motion.preset)) return undefined;
-  const out: VideoWindowMotion = { preset: motion.preset };
-  if (motion.amplitude !== undefined) out.amplitude = motion.amplitude;
-  if (motion.hz !== undefined) out.hz = motion.hz;
-  if (motion.durationMs !== undefined) out.durationMs = motion.durationMs;
-  return out;
-}
-
 export function sceneMediaFromImage(image: SceneDocImageSpec): SceneDocMediaSpec {
   const entry: SceneDocMediaSpec = {
     id: image.id,
@@ -183,63 +160,74 @@ export function sceneMediaFromLegacy(
   return media;
 }
 
-/** The legacy `images` view of a media-native doc: image entries keep their placements, any window chrome drops (the legacy renderer has nowhere to put it). */
-export function sceneImagesFromMedia(media: readonly SceneDocMediaSpec[]): SceneDocImageSpec[] {
-  return media
-    .filter((entry) => entry.kind === "image")
-    .map((entry) => {
-      const image: SceneDocImageSpec = {
-        id: entry.id,
-        src: entry.src,
-        host: entry.host,
-        stage: cloneStage(entry.stage),
-        overlay: cloneOverlay(entry.overlay),
-      };
-      const motion = entry.motion;
-      if (motion && motion.preset !== "drift") image.motion = { ...motion, preset: motion.preset };
-      if (entry.castShadow !== undefined) image.castShadow = entry.castShadow;
-      return image;
-    });
-}
-
-/** The legacy `videoWindow` view of a media-native doc: the first video entry carrying window chrome, or the promoted entry by id. */
-export function videoWindowFromMedia(
+/** Which entry serves as the scene's video window: the first video carrying window chrome, or the promoted entry by id. It is what the legacy `videoWindow` duration source and the rig's `VIDEO_WINDOW_AIM_ID` both name. */
+export function videoWindowMediaEntry(
   media: readonly SceneDocMediaSpec[],
-): SceneDocVideoWindow | undefined {
-  const entry = media.find(
+): SceneDocMediaSpec | undefined {
+  return media.find(
     (candidate) =>
       candidate.kind === "video" &&
       (candidate.window !== undefined || candidate.id === VIDEO_WINDOW_MEDIA_ID),
   );
-  if (!entry) return undefined;
-  const window: SceneDocVideoWindow = {
-    media: { src: entry.src },
-    radius: entry.window?.radius ?? DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
-    scale: overlaySizeToVideoWindowScale(entry.overlay.size),
-    offset: [
-      clamp(entry.overlay.position[0] / 2, -1, 1),
-      clamp(entry.overlay.position[1] / 2, -1, 1),
-    ],
-  };
-  if (entry.video?.startMs !== undefined) window.media.startMs = entry.video.startMs;
-  if (entry.video?.loop !== undefined) window.media.loop = entry.video.loop;
-  if (entry.video?.aspect !== undefined) window.media.aspect = entry.video.aspect;
-  if (entry.window?.recording !== undefined) window.recording = entry.window.recording;
-  if (entry.window?.border) window.border = { ...entry.window.border };
-  if (entry.window?.shadow) {
-    window.shadow = { ...entry.window.shadow, offset: [...entry.window.shadow.offset] };
-  }
-  const motion = videoWindowMotionFromMedia(entry.motion);
-  if (motion) window.motion = motion;
-  return window;
 }
 
-/** The scene's media whichever family it was authored in: an authored `media` array wins, otherwise the legacy blocks derive one. Renderers go through this rather than reading `doc.media`, since a parsed doc's derived views are deliberately non-enumerable and do not survive `structuredClone` (see the bridge note in `sceneDocSchema.ts`). */
+/** Does this duration follow a media entry rather than a device? Both spellings count, so a device edit leaves a media-pinned length alone. */
+export function followsSceneMedia(duration: SceneDocDuration | undefined): boolean {
+  return (
+    duration?.mode === "follow-media" &&
+    (duration.source === "media" || duration.source === "videoWindow")
+  );
+}
+
+/** The entry a follow-media duration pins, if it pins one: `sourceMediaId` names it directly, and the legacy `source: "videoWindow"` names whichever entry serves as the window. Undefined when the duration pins no entry, or when the pin is stale. */
+export function pinnedFollowMediaEntry(
+  duration: SceneDocDuration | undefined,
+  media: readonly SceneDocMediaSpec[],
+): SceneDocMediaSpec | undefined {
+  if (duration?.mode !== "follow-media") return undefined;
+  if (duration.source === "media") {
+    return duration.sourceMediaId === undefined
+      ? undefined
+      : media.find((entry) => entry.id === duration.sourceMediaId);
+  }
+  if (duration.source === "videoWindow") return videoWindowMediaEntry(media);
+  return undefined;
+}
+
+/** The scene's media whichever family it was authored in: an authored `media` array wins, otherwise the legacy blocks derive one. Readers go through this rather than `doc.media`, since a legacy document's derived array is deliberately non-enumerable and does not survive `structuredClone` (see the bridge note in `sceneDocSchema.ts`). */
 export function resolveSceneDocMedia(
   doc: Pick<SceneDoc, "media" | "images" | "videoWindow"> | undefined,
 ): SceneDocMediaSpec[] {
   if (!doc) return [];
   return doc.media ?? sceneMediaFromLegacy(doc.images, doc.videoWindow);
+}
+
+// ── Authoring writes (the inspector's one seam onto `media`) ──────────────────
+
+/** Writes an authored media array and drops the legacy blocks it supersedes, so the sidecar carries `media` alone. Defined rather than assigned: a legacy document's derived array is non-enumerable, and a plain assignment would inherit that and keep the promotion out of the file. */
+export function setSceneDocMedia(doc: SceneDoc, media: readonly SceneDocMediaSpec[]): void {
+  delete doc.images;
+  delete doc.videoWindow;
+  if (media.length === 0) {
+    delete doc.media;
+    return;
+  }
+  Object.defineProperty(doc, "media", {
+    value: [...media],
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/** Every inspector media write: resolve the scene's media whichever family authored it, hand that array to `mutate`, and store what it returns as the authored `media` (promote-on-write, so the legacy blocks leave the sidecar in the same entry). Editing entries in place returns the same array. */
+export function editSceneDocMedia(
+  doc: SceneDoc,
+  mutate: (media: SceneDocMediaSpec[]) => SceneDocMediaSpec[],
+): SceneDocMediaSpec[] {
+  const next = mutate(resolveSceneDocMedia(doc));
+  setSceneDocMedia(doc, next);
+  return next;
 }
 
 export function createSceneMedia(

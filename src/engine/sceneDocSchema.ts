@@ -38,9 +38,7 @@ import {
   DEFAULT_SCENE_MEDIA_VIDEO_OVERLAY,
   DEFAULT_SCENE_MEDIA_VIDEO_STAGE,
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
-  sceneImagesFromMedia,
   sceneMediaFromLegacy,
-  videoWindowFromMedia,
 } from "./sceneMedia";
 
 export type { SceneDocDof } from "./dof";
@@ -179,7 +177,13 @@ export interface SceneDocObjectSpec {
 
 export type SceneDocDuration =
   | { mode: "manual" }
-  | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
+  | {
+      mode: "follow-media";
+      sourceDeviceId?: string;
+      /** `media` follows the entry `sourceMediaId` names; `videoWindow` is the legacy spelling for whichever entry serves as the window. */
+      source?: "device" | "videoWindow" | "media";
+      sourceMediaId?: string;
+    };
 
 export const MANAGED_TEXT_ITEM_TYPES = ["title", "subtitle", "bullets", "icon"] as const;
 export type SceneManagedTextItemType = (typeof MANAGED_TEXT_ITEM_TYPES)[number];
@@ -503,9 +507,9 @@ export interface SceneDoc {
   /** Inspector-owned ordered text. Absence preserves the authored renderer; present-empty intentionally renders no scene text. */
   managedText?: SceneManagedTextBlock;
   devices?: SceneDocDeviceSpec[];
-  /** The one media family (stills and videos). Authored here in a media-native doc; on a legacy doc the parse derives it from `images` + `videoWindow` (see the bridge note in `parseSceneDoc`). */
+  /** The one media family (stills and videos). Authored here; a document written before the merge reads its `images` + `videoWindow` forward into this array at parse (see the note above `bridgeSceneMedia`). */
   media?: SceneDocMediaSpec[];
-  /** Ordered, scene-owned still images that retain independent Stage and Overlay placements. */
+  /** LEGACY, read-only: pre-merge still images. Kept so an untouched old sidecar writes back unchanged; every reader goes through `resolveSceneDocMedia`, and the first media edit promotes the document to `media`. */
   images?: SceneDocImageSpec[];
   /** The live multi-device layout block; see `SceneDocDeviceLayout`. */
   deviceLayout?: SceneDocDeviceLayout;
@@ -542,7 +546,7 @@ export interface SceneDoc {
   frame?: FrameOverrideSpec;
   /** The layered-screenshot composition (one per scene; layers carry the multiplicity). Deep graph validation lives in `sceneLayeredScreenshot.ts`. */
   layeredScreenshot?: SceneDocLayeredScreenshot;
-  /** The video-window composition (one per scene): a macOS screen recording as a floating window over a backing stage. Deep validation lives in `sceneVideoWindow.ts`. */
+  /** LEGACY, read-only: the pre-merge video-window composition (one per scene), now a video `media` entry with a `window` block. Deep validation lives in `sceneVideoWindow.ts`. */
   videoWindow?: SceneDocVideoWindow;
   /** The before/after comparison block: side B's overrides plus the shared mask and divider track; side A is this doc itself. Deep normalisation lives in `sceneCompare.ts`. */
   compare?: SceneDocCompare;
@@ -1730,31 +1734,25 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
 }
 
 /*
- * The media bridge, alive only while the images/videoWindow inspectors still write the legacy
- * blocks (it dies with them in stage C3/C4). Authored `media` is the source of truth and the
- * legacy views derive from it; a legacy doc keeps its own blocks and derives `media`.
- * Derived views are attached NON-ENUMERABLY, so `JSON.stringify` and `structuredClone` see only
- * what was authored: a sidecar can never gain a stale mirror of the other family, which would
- * otherwise resurrect content the user just deleted. That also means an in-memory clone loses
- * them, so consumers read `resolveSceneDocMedia(doc)` in `sceneMedia.ts`, not `doc.media`.
+ * The media read-forward: sidecars written before the two families merged keep their own
+ * `images`/`videoWindow` blocks and gain the `media` array every reader speaks. It is attached
+ * NON-ENUMERABLY, so `JSON.stringify` sees only what was authored and an untouched legacy
+ * document still writes back byte-identically; the first media edit promotes it (`setSceneDocMedia`).
+ * A clone loses the derived array, so consumers read `resolveSceneDocMedia(doc)` in
+ * `sceneMedia.ts`, never `doc.media`.
  */
 function bridgeSceneMedia(doc: SceneDoc, authoredMedia: SceneDocMediaSpec[] | undefined): void {
-  const derive = <K extends keyof SceneDoc>(key: K, value: NonNullable<SceneDoc[K]>) =>
-    Object.defineProperty(doc, key, {
-      value,
-      enumerable: false,
-      writable: true,
-      configurable: true,
-    });
   if (authoredMedia) {
     doc.media = authoredMedia;
-    derive("images", sceneImagesFromMedia(authoredMedia));
-    const videoWindow = videoWindowFromMedia(authoredMedia);
-    if (videoWindow) derive("videoWindow", videoWindow);
     return;
   }
   if (doc.images === undefined && doc.videoWindow === undefined) return;
-  derive("media", sceneMediaFromLegacy(doc.images, doc.videoWindow));
+  Object.defineProperty(doc, "media", {
+    value: sceneMediaFromLegacy(doc.images, doc.videoWindow),
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
 }
 
 /** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */

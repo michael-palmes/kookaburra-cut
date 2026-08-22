@@ -569,7 +569,7 @@ fn remint_scene_doc_ids(doc: &mut Value) {
         &devices,
     );
 
-    // Object-mode rig aims bind to a DEVICE and nothing else (`resolveAimTarget`, and `bindables` only ever offers devices); the videoWindow and layeredScreenshot sentinels aren't in the map and stay verbatim, as does an id that resolves to nothing.
+    // Only DEVICE ids move here, so only device-bound aims are remapped; media entries keep their own ids (nothing renumbers them, so a `duration.sourceMediaId` or a media aim still finds its entry), and the videoWindow and layeredScreenshot sentinels aren't in the map and stay verbatim, as does an id that resolves to nothing.
     if let Some(keys) = doc
         .get_mut("cameraRig")
         .and_then(|rig| rig.get_mut("keys"))
@@ -1824,7 +1824,7 @@ pub async fn scaffold_scene(
         } else if is_video && is_device_kind {
             json!({ "mode": "follow-media", "sourceDeviceId": "d1" })
         } else if is_video && options.kind == "videowindow" {
-            json!({ "mode": "follow-media", "source": "videoWindow" })
+            json!({ "mode": "follow-media", "source": "media", "sourceMediaId": "vid1" })
         } else if is_video {
             // No device: the resync falls back to the video background as the source.
             json!({ "mode": "follow-media" })
@@ -1897,19 +1897,18 @@ pub async fn scaffold_scene(
     }
     if options.kind == "videowindow" {
         if let Some(rel) = &options.media_rel {
-            let mut media = json!({ "src": rel });
+            let mut video = json!({});
             if let Some(aspect) = media_aspect {
-                media["aspect"] = json!(aspect);
+                video["aspect"] = json!(aspect);
             }
-            doc["videoWindow"] = json!({
-                "media": media,
+            let mut window = json!({
                 "radius": "macos",
                 "border": { "enabled": false, "color": "#ffffff", "width": 0.0035, "opacity": 0.12 },
             });
             if options.recording == Some(true) {
-                doc["videoWindow"]["recording"] = json!(true);
+                window["recording"] = json!(true);
             }
-            // Text sits above the window: one line steps the window down, two also shrink it.
+            // Text sits above the window: one line steps the window down, two also shrink it. The overlay position is half-frame relative, so it doubles the legacy whole-frame offset.
             let title_line = options
                 .title
                 .as_deref()
@@ -1918,12 +1917,29 @@ pub async fn scaffold_scene(
                 .subtitle
                 .as_deref()
                 .is_some_and(|t| !t.trim().is_empty());
-            if title_line && subtitle_line {
-                doc["videoWindow"]["scale"] = json!(0.65);
-                doc["videoWindow"]["offset"] = json!([0.0, -0.08]);
+            let (size, offset_y) = if title_line && subtitle_line {
+                (0.65, -0.16)
             } else if title_line || subtitle_line {
-                doc["videoWindow"]["offset"] = json!([0.0, -0.05]);
-            }
+                (0.72, -0.10)
+            } else {
+                (0.72, 0.0)
+            };
+            doc["media"] = json!([{
+                "id": "vid1",
+                "kind": "video",
+                "src": rel,
+                "host": "overlay",
+                "stage": { "position": [0.0, 0.0, 0.0], "size": 5.3, "rotationDeg": [0.0, 0.0, 0.0] },
+                "overlay": {
+                    "position": [0.0, offset_y],
+                    "size": size,
+                    "rotationDeg": 0.0,
+                    "shape": "none",
+                    "layer": "below",
+                },
+                "window": window,
+                "video": video,
+            }]);
             // The window floats over the scene's own background; staged scenery would clip its shadow.
             doc["backdrop"] = json!({ "type": "none" });
         }

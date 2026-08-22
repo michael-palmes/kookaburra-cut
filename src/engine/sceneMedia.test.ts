@@ -1,27 +1,38 @@
 import { describe, expect, it } from "vitest";
 import { clipPlaneSize } from "./clipFrame";
+import type { SceneDocImageSpec, SceneImageHost } from "./sceneDocSchema";
 import { parseSceneDoc, type SceneDocVideoWindow } from "./sceneDocSchema";
-import { createSceneImage } from "./sceneImage";
 import {
   createSceneMedia,
   DEFAULT_SCENE_MEDIA_VIDEO_STAGE_SIZE,
+  editSceneDocMedia,
   nextSceneMediaId,
-  overlaySizeToVideoWindowScale,
+  pinnedFollowMediaEntry,
   resolveSceneDocMedia,
   sampleSceneImageMotion,
   sampleSceneMediaMotion,
-  sceneImagesFromMedia,
   sceneMediaFamily,
   sceneMediaFromLegacy,
   sceneMediaFromVideoWindow,
   sceneMediaInFrame,
   sceneMediaInWorld,
   VIDEO_WINDOW_MEDIA_ID,
-  videoWindowFromMedia,
+  videoWindowMediaEntry,
   videoWindowScaleToOverlaySize,
   windowOverlayPlaneWidth,
 } from "./sceneMedia";
 import { sampleVideoWindowMotion } from "./sceneVideoWindow";
+
+/** A legacy `images` entry, the shape the retired image factory built. */
+function legacyImage(id: string, src: string, host: SceneImageHost): SceneDocImageSpec {
+  return {
+    id,
+    src,
+    host,
+    stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+    overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
+  };
+}
 
 /** Any frame rectangle: the fit is a ratio, so the units cancel. */
 const FRAME_16_9 = { width: 16, height: 9 };
@@ -51,16 +62,6 @@ describe("videoWindowScaleToOverlaySize", () => {
     expect(videoWindowScaleToOverlaySize(Number.NaN)).toBe(0.72);
     expect(videoWindowScaleToOverlaySize(4)).toBe(1);
     expect(videoWindowScaleToOverlaySize(0)).toBe(0.1);
-  });
-
-  it("round-trips through the inverse", () => {
-    for (const scale of [0.72, 0.5, 0.9]) {
-      expect(overlaySizeToVideoWindowScale(videoWindowScaleToOverlaySize(scale))).toBeCloseTo(
-        scale,
-        10,
-      );
-    }
-    expect(overlaySizeToVideoWindowScale(undefined)).toBe(0.72);
   });
 });
 
@@ -172,29 +173,17 @@ describe("legacy <-> media derivation", () => {
     ]);
   });
 
-  it("round-trips back to the legacy views", () => {
-    const media = doc?.media ?? [];
-    expect(sceneImagesFromMedia(media)).toEqual(doc?.images);
-    const window = videoWindowFromMedia(media);
-    expect(window?.media).toEqual({ src: "assets/clip.mp4", aspect: 4 / 3 });
-    expect(window?.radius).toBe("macos");
-    expect(window?.scale).toBeCloseTo(0.6, 10);
-    expect(window?.offset?.[0]).toBeCloseTo(0, 10);
-    expect(window?.offset?.[1]).toBeCloseTo(0.25, 10);
+  it("keeps the legacy blocks enumerable and the derived array out of the file", () => {
+    expect(Object.keys(JSON.parse(JSON.stringify(doc ?? {})))).toEqual([
+      "version",
+      "images",
+      "videoWindow",
+    ]);
   });
 
   it("takes no video window from an image-only doc", () => {
-    expect(videoWindowFromMedia(sceneMediaFromLegacy(doc?.images, undefined))).toBeUndefined();
+    expect(videoWindowMediaEntry(sceneMediaFromLegacy(doc?.images, undefined))).toBeUndefined();
     expect(sceneMediaFromLegacy(undefined, undefined)).toEqual([]);
-  });
-
-  it("drops a drift preset an image host cannot sample", () => {
-    const images = sceneImagesFromMedia([
-      { ...createSceneMedia("img1", "assets/a.png", "image"), motion: { preset: "drift", hz: 1 } },
-      { ...createSceneMedia("img2", "assets/b.png", "image"), motion: { preset: "float" } },
-    ]);
-    expect(images[0]?.motion).toBeUndefined();
-    expect(images[1]?.motion).toEqual({ preset: "float" });
   });
 });
 
@@ -221,9 +210,9 @@ describe("resolveSceneDocMedia", () => {
 });
 
 describe("createSceneMedia", () => {
-  it("matches the image factory, plus the kind", () => {
+  it("matches the legacy image defaults, plus the kind", () => {
     expect(createSceneMedia("img1", "assets/a.png", "image", "overlay")).toEqual({
-      ...createSceneImage("img1", "assets/a.png", "overlay"),
+      ...legacyImage("img1", "assets/a.png", "overlay"),
       kind: "image",
     });
   });
@@ -246,6 +235,67 @@ describe("nextSceneMediaId", () => {
     expect(nextSceneMediaId("image", ["img1", "img2", "vid1"])).toBe("img3");
     expect(nextSceneMediaId("video", ["img1", "vid1", "vid3"])).toBe("vid2");
     expect(nextSceneMediaId("video", [VIDEO_WINDOW_MEDIA_ID])).toBe("vid1");
+  });
+});
+
+describe("sampleSceneImageMotion", () => {
+  it("keeps absent and explicit static motion exactly neutral on either host", () => {
+    const identity = { position: [0, 0, 0], rotationDeg: [0, 0, 0], scale: 1, opacity: 1 };
+
+    expect(sampleSceneImageMotion(undefined, "stage", 900)).toEqual(identity);
+    expect(sampleSceneImageMotion({ preset: "none" }, "overlay", 900)).toEqual(identity);
+  });
+
+  it("maps turntable and float into host-specific coordinate spaces", () => {
+    expect(sampleSceneImageMotion({ preset: "turntable" }, "stage", 2000).rotationDeg).toEqual([
+      0, 36, 0,
+    ]);
+    expect(sampleSceneImageMotion({ preset: "turntable" }, "overlay", 2000).rotationDeg).toEqual([
+      0, 0, 12.6,
+    ]);
+
+    expect(sampleSceneImageMotion({ preset: "float" }, "stage", 625).position[1]).toBeCloseTo(0.12);
+    expect(sampleSceneImageMotion({ preset: "float" }, "overlay", 625).position[1]).toBeCloseTo(
+      0.03,
+    );
+  });
+
+  it("samples deterministic host-aware entrance transforms and settles at rest", () => {
+    expect(sampleSceneImageMotion({ preset: "tilt-reveal" }, "stage", 500)).toEqual({
+      position: [0, 0, 0],
+      rotationDeg: [-1.75, -5, 0],
+      scale: 1,
+      opacity: 1,
+    });
+    expect(sampleSceneImageMotion({ preset: "tilt-reveal" }, "overlay", 500)).toEqual({
+      position: [0.01, 0, 0],
+      rotationDeg: [0, 0, -1.25],
+      scale: 0.995,
+      opacity: 1,
+    });
+    expect(sampleSceneImageMotion({ preset: "push-in" }, "stage", 600)).toEqual({
+      position: [0, 0, 0],
+      rotationDeg: [0, -1, 0],
+      scale: 0.9825,
+      opacity: 1,
+    });
+    expect(sampleSceneImageMotion({ preset: "push-in" }, "overlay", 600).scale).toBe(0.9875);
+    expect(sampleSceneImageMotion({ preset: "push-in" }, "stage", 1200)).toEqual({
+      position: [0, 0, 0],
+      rotationDeg: [0, 0, 0],
+      scale: 1,
+      opacity: 1,
+    });
+  });
+
+  it("sanitises malformed direct-call numbers without reading another clock", () => {
+    expect(
+      sampleSceneImageMotion(
+        { preset: "float", amplitude: Number.NaN, hz: Number.POSITIVE_INFINITY },
+        "stage",
+        Number.NaN,
+      ),
+    ).toEqual({ position: [0, 0, 0], rotationDeg: [0, 0, 0], scale: 1, opacity: 1 });
   });
 });
 
@@ -290,10 +340,7 @@ describe("sampleSceneMediaMotion", () => {
 
 describe("render families", () => {
   const media = sceneMediaFromLegacy(
-    [
-      createSceneImage("img1", "assets/a.png", "stage"),
-      createSceneImage("img2", "assets/b.png", "overlay"),
-    ],
+    [legacyImage("img1", "assets/a.png", "stage"), legacyImage("img2", "assets/b.png", "overlay")],
     { media: { src: "assets/clip.mp4" }, radius: "macos" },
   );
 
@@ -304,5 +351,101 @@ describe("render families", () => {
 
   it("keeps the two fallback families disjoint", () => {
     expect(media.map(sceneMediaFamily)).toEqual(["stage", null, "window"]);
+  });
+});
+
+describe("authoring writes", () => {
+  const legacyDoc = () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        images: [legacyImage("img1", "assets/a.png", "stage")],
+        videoWindow: { media: { src: "assets/clip.mp4" }, radius: "macos", scale: 0.5 },
+      },
+      "test",
+    );
+    if (!doc) throw new Error("fixture did not parse");
+    return structuredClone(doc);
+  };
+
+  it("promotes a legacy doc on the first write and keeps the sidecar media-only", () => {
+    const doc = legacyDoc();
+
+    editSceneDocMedia(doc, (media) => media.filter((entry) => entry.kind === "image"));
+
+    expect(doc.media?.map((entry) => entry.id)).toEqual(["img1"]);
+    expect(doc.videoWindow).toBeUndefined();
+    expect(Object.keys(JSON.parse(JSON.stringify(doc)))).toEqual(["version", "media"]);
+  });
+
+  it("carries the promoted entries across, window chrome and all", () => {
+    const doc = legacyDoc();
+
+    editSceneDocMedia(doc, (media) => media);
+
+    expect(doc.media?.map((entry) => entry.id)).toEqual(["img1", VIDEO_WINDOW_MEDIA_ID]);
+    expect(doc.media?.[1]?.window).toEqual({ radius: "macos" });
+    expect(doc.media?.[1]?.overlay.size).toBe(0.5);
+    expect(doc.images).toBeUndefined();
+  });
+
+  it("drops every block when the last entry goes", () => {
+    const doc = legacyDoc();
+
+    editSceneDocMedia(doc, () => []);
+
+    expect(doc.media).toBeUndefined();
+    expect(doc.images).toBeUndefined();
+    expect(doc.videoWindow).toBeUndefined();
+  });
+
+  it("survives a clone of a promoted doc, unlike the parse-derived array", () => {
+    const doc = legacyDoc();
+    editSceneDocMedia(doc, (media) => media);
+
+    const clone = structuredClone(doc);
+    expect(resolveSceneDocMedia(clone).map((entry) => entry.id)).toEqual([
+      "img1",
+      VIDEO_WINDOW_MEDIA_ID,
+    ]);
+  });
+});
+
+describe("pinnedFollowMediaEntry", () => {
+  const media = [
+    createSceneMedia("img1", "assets/a.png", "image"),
+    createSceneMedia("vid1", "assets/one.mp4", "video"),
+    createSceneMedia("vid2", "assets/two.mp4", "video"),
+  ];
+
+  it("names the entry a media pin points at", () => {
+    expect(
+      pinnedFollowMediaEntry(
+        { mode: "follow-media", source: "media", sourceMediaId: "vid2" },
+        media,
+      )?.id,
+    ).toBe("vid2");
+  });
+
+  it("reads the legacy spelling forward to whichever entry serves as the window", () => {
+    expect(pinnedFollowMediaEntry({ mode: "follow-media", source: "videoWindow" }, media)?.id).toBe(
+      "vid1",
+    );
+  });
+
+  it("pins nothing for a device source, a stale id or a manual length", () => {
+    expect(
+      pinnedFollowMediaEntry({ mode: "follow-media", sourceDeviceId: "d1" }, media),
+    ).toBeUndefined();
+    expect(
+      pinnedFollowMediaEntry(
+        { mode: "follow-media", source: "media", sourceMediaId: "gone" },
+        media,
+      ),
+    ).toBeUndefined();
+    expect(
+      pinnedFollowMediaEntry({ mode: "follow-media", source: "media" }, media),
+    ).toBeUndefined();
+    expect(pinnedFollowMediaEntry({ mode: "manual" }, media)).toBeUndefined();
   });
 });

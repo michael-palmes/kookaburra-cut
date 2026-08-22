@@ -1,7 +1,8 @@
 import type { ImageReconciliationOrigin } from "../../engine/imageReconciliationStore";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocObjectSpec } from "../../engine/sceneDocSchema";
-import { LAYERED_SCREENSHOT_AIM_ID, VIDEO_WINDOW_AIM_ID } from "../../engine/sceneRig";
+import { followsSceneMedia, resolveSceneDocMedia } from "../../engine/sceneMedia";
+import { LAYERED_SCREENSHOT_AIM_ID } from "../../engine/sceneRig";
 import { bakeRigBinding } from "../../engine/sceneRigConvert";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import type {
@@ -11,7 +12,14 @@ import type {
 } from "../inspectorOptions";
 import { nextNumberedContentId } from "./contentIds";
 import { duplicateDevice } from "./deviceEditorModel";
-import { deleteLegacyImage, duplicateImage, duplicateLegacyImage } from "./imageEditorModel";
+import {
+  deleteLegacyMedia,
+  duplicateLegacyMedia,
+  duplicateSceneMedia,
+  mediaRowId,
+  removeSceneMedia,
+  replaceSceneDoc,
+} from "./mediaEditorModel";
 
 export type ContentMenuAction = "edit" | "duplicate" | "delete";
 
@@ -57,7 +65,7 @@ export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuActio
   if (
     kind === "text" ||
     kind === "device" ||
-    kind === "image" ||
+    kind === "media" ||
     kind === "legacyImage" ||
     kind === "object"
   ) {
@@ -66,9 +74,8 @@ export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuActio
   if (
     kind === "text" ||
     kind === "device" ||
-    kind === "image" ||
+    kind === "media" ||
     kind === "legacyImage" ||
-    kind === "videoWindow" ||
     kind === "object" ||
     kind === "chart" ||
     kind === "screenshotStack" ||
@@ -106,18 +113,17 @@ export function planContentDuplicate(
     return plan;
   }
 
-  if (target?.kind === "image") {
-    const source = context.doc.images?.find((image) => image.id === target.id);
-    if (!source) return null;
+  if (target?.kind === "media") {
+    if (!resolveSceneDocMedia(context.doc).some((entry) => entry.id === target.id)) return null;
     const plan: ContentDocActionPlan = {
-      history: "duplicate image",
+      history: "duplicate media",
       nextRowId: null,
       nextSelection: null,
       apply: (next) => {
-        const id = duplicateImage(next, target.id);
+        const id = duplicateSceneMedia(next, target.id);
         if (!id) return false;
-        plan.nextRowId = `image:${id}`;
-        plan.nextSelection = { kind: "image", id };
+        plan.nextRowId = mediaRowId(id);
+        plan.nextSelection = { kind: "media", id };
       },
     };
     return plan;
@@ -125,10 +131,10 @@ export function planContentDuplicate(
 
   if (target?.kind === "legacyImage") {
     const decorations = context.resolvedDecorations ?? [];
-    if (!duplicateLegacyImage(context.doc, decorations, target.id)) return null;
+    if (!duplicateLegacyMedia(context.doc, decorations, target.id)) return null;
     const fallbackDecorations = structuredClone([...decorations]);
     const plan: ContentDocActionPlan = {
-      history: "duplicate image",
+      history: "duplicate media",
       nextRowId: null,
       nextSelection: null,
       imageOrigins: [],
@@ -136,21 +142,21 @@ export function planContentDuplicate(
         plan.nextRowId = null;
         plan.nextSelection = null;
         plan.imageOrigins = [];
-        const result = duplicateLegacyImage(next, fallbackDecorations, target.id);
+        const result = duplicateLegacyMedia(next, fallbackDecorations, target.id);
         if (!result) return false;
-        Object.assign(next, result.doc);
-        plan.nextRowId = `image:${result.duplicateId}`;
-        plan.nextSelection = { kind: "image", id: result.duplicateId };
+        replaceSceneDoc(next, result.doc);
+        plan.nextRowId = mediaRowId(result.duplicateId);
+        plan.nextSelection = { kind: "media", id: result.duplicateId };
         plan.imageOrigins = [
           {
             kind: "legacy-promotion",
             decorationId: target.id,
-            imageId: result.imageId,
+            imageId: result.mediaId,
           },
           {
             kind: "duplicate",
             imageId: result.duplicateId,
-            sourceImageId: result.imageId,
+            sourceImageId: result.mediaId,
           },
         ];
       },
@@ -209,22 +215,11 @@ function deviceHasFollowVideo(next: SceneDoc, id: string): boolean {
 
 function preserveDurationAfterRemovingDevice(next: SceneDoc, id: string): void {
   const duration = next.duration;
-  if (duration?.mode !== "follow-media" || duration.source === "videoWindow") return;
+  if (duration?.mode !== "follow-media" || followsSceneMedia(duration)) return;
   const pinned = next.devices?.find((device) => device.id === duration.sourceDeviceId);
   if (pinned ? pinned.id === id : deviceHasFollowVideo(next, id)) {
     next.duration = { mode: "manual" };
   }
-}
-
-function videoWindowDrivesDuration(next: SceneDoc): boolean {
-  const duration = next.duration;
-  if (duration?.mode !== "follow-media" || !next.videoWindow?.media.src) return false;
-  if (duration.source === "videoWindow") return true;
-  const devices = next.devices ?? [];
-  const pinned = devices.find((device) => device.id === duration.sourceDeviceId);
-  return !(pinned
-    ? deviceHasFollowVideo(next, pinned.id)
-    : devices.some((device) => deviceHasFollowVideo(next, device.id)));
 }
 
 function removeLayeredScreenshotText(next: SceneDoc): void {
@@ -266,32 +261,32 @@ export function planContentDelete(
     };
   }
 
-  if (target.kind === "image") {
-    if (!context.doc.images?.some((image) => image.id === target.id)) return null;
+  if (target.kind === "media") {
+    if (!resolveSceneDocMedia(context.doc).some((entry) => entry.id === target.id)) return null;
     return {
-      history: "delete image",
+      history: "delete media",
       nextRowId: null,
       nextSelection: null,
       apply: (next) => {
-        const remaining = (next.images ?? []).filter((image) => image.id !== target.id);
-        if (remaining.length > 0) next.images = remaining;
-        else delete next.images;
+        if (!resolveSceneDocMedia(next).some((entry) => entry.id === target.id)) return false;
+        // The removal owns the bindings that named the entry: the length it drove and any rig aim.
+        removeSceneMedia(next, target.id);
       },
     };
   }
 
   if (target.kind === "legacyImage") {
     const decorations = context.resolvedDecorations ?? [];
-    if (!deleteLegacyImage(context.doc, decorations, target.id)) return null;
+    if (!deleteLegacyMedia(context.doc, decorations, target.id)) return null;
     const fallbackDecorations = structuredClone([...decorations]);
     return {
-      history: "delete image",
+      history: "delete media",
       nextRowId: null,
       nextSelection: null,
       apply: (next) => {
-        const result = deleteLegacyImage(next, fallbackDecorations, target.id);
+        const result = deleteLegacyMedia(next, fallbackDecorations, target.id);
         if (!result) return false;
-        Object.assign(next, result);
+        replaceSceneDoc(next, result);
       },
     };
   }
@@ -304,19 +299,6 @@ export function planContentDelete(
       nextSelection: null,
       apply: (next) => {
         next.objects = (next.objects ?? []).filter((object) => object.id !== target.id);
-      },
-    };
-  }
-
-  if (target.kind === "videoWindow" && context.doc.videoWindow) {
-    return {
-      history: "delete video window",
-      nextRowId: null,
-      nextSelection: null,
-      apply: (next) => {
-        if (videoWindowDrivesDuration(next)) next.duration = { mode: "manual" };
-        delete next.videoWindow;
-        bakeBinding(next, VIDEO_WINDOW_AIM_ID);
       },
     };
   }

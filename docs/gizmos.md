@@ -30,6 +30,7 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Staged object | 3D | `ObjectPrimitive` → `SceneGizmo` | move / rotate / scale | `objects[].placement` |
 | Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | `deviceLayout` delta, else `devices[].placement` |
 | Stage media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
+| Windowed media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` or `media[].overlay`, whichever host is active |
 | Staged chart | 3D | `Chart.tsx` (`StagedChart`) → `SceneGizmo` | move / rotate / scale | `chart.placement` |
 | Scene text, per key | 2D | `TextGizmo` → `Gizmo2D` | move / size / rotate | `textStyle.<key>OffsetX,OffsetY,Size,RotationDeg` |
 | Hero chart | 2D | `ChartHeroGizmo` → `Gizmo2D` | move / scale | `chart.style.offset`, `chart.style.scale` |
@@ -71,7 +72,10 @@ troika's first typeset landing.
 (`device` → devices, `image`/`media` → media, `objects`, `chart`, `text`,
 `frame.decorations`), reading the whole drill stack top down so a drill carrying
 another family's id (Shadow lives under Device as `style.shadow`) still reads as
-the section the user drilled through. `useGizmoSectionOpen(domain)` is a boolean
+the section the user drilled through. The media domain covers both kinds and
+both hosts, since a still and a floating clip are one entry shape
+(`resolveSceneDocMedia`): opening Media outlines every image and video the scene
+stages. `useGizmoSectionOpen(domain)` is a boolean
 selector, so moving between drills inside one family re-renders nothing.
 
 While a section is open:
@@ -289,6 +293,7 @@ in the tree.
 | 2D layer, geometry, projection | `src/ui/gizmo/Gizmo2D.tsx`, `gizmo2dMath.ts`, `gizmo2dProject.ts` |
 | Routing, modifiers, camera yield | `src/ui/gizmo/gizmoRouting.ts`, `modifierKeys.ts`, `useGizmoYield.ts` |
 | Write helpers | `src/ui/gizmo/gizmoDocWrite.ts`, `textGizmoWrite.ts`, `chartGizmoWrite.ts`, `src/toolkit/device/gizmoCommit.ts` |
+| Media entries | `src/engine/sceneMedia.ts` (`resolveSceneDocMedia`, `editSceneDocMedia`), `src/toolkit/media/SceneMedia.tsx` |
 | Media writes | `src/toolkit/media/imageGizmoCommit.ts`, `src/engine/imageEditStore.ts` |
 | Hosts | `src/ui/TextGizmo.tsx`, `src/ui/ChartHeroGizmo.tsx`, `src/ui/DecorationGizmo.tsx`, `src/ui/ImageOverlayGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/media/StageImageGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx` |
 
@@ -300,8 +305,7 @@ in the tree.
   that pixel can be dropped (never misrouted). Closing it would need a per-frame
   raycast during playback, which is not worth the cost.
 - Layered screenshot keeps its own overlay; folding it onto `Gizmo2D` is a later
-  job. The video window folded into the media family, so it drags like any other
-  media entry: on the Stage host through `StageImageGizmo`, on the Overlay host
-  through `Gizmo2D`. A windowed Overlay entry renders in world space (its drop
-  shadow belongs against the staged content), so its 2D box is exact under the
-  default camera and drifts under a moved one.
+  job.
+- A windowed Overlay entry renders in world space (its drop shadow belongs
+  against the staged content), so its 2D box is exact under the default camera
+  and drifts under a moved one.

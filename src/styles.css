@@ -9569,39 +9569,39 @@ textarea.text-inspector-copy-input {
   display: block;
 }
 
-.image-drill-identity {
+.media-drill-identity {
   min-height: 52px;
   padding: 9px 12px;
 }
 
-.image-drill-identity .inspector-scene-preview {
+.media-drill-identity .inspector-scene-preview {
   width: 56px;
   height: 32px;
   aspect-ratio: auto;
 }
 
-.image-drill-identity .inspector-scene-preview img {
+.media-drill-identity .inspector-scene-preview img {
   object-fit: contain;
 }
 
-.image-drill-identity .inspector-scene-id {
+.media-drill-identity .inspector-scene-id {
   flex: 1;
 }
 
-.image-drill-identity > .wizard-presets {
+.media-drill-identity > .wizard-presets {
   flex: none;
   flex-wrap: nowrap;
   gap: var(--space-1);
 }
 
-.image-drill-identity > .wizard-presets .chip {
+.media-drill-identity > .wizard-presets .chip {
   width: 22px;
   min-width: 22px;
   height: 22px;
   padding: 0;
 }
 
-.image-settings-fieldset {
+.media-settings-fieldset {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -9611,7 +9611,7 @@ textarea.text-inspector-copy-input {
   border: 0;
 }
 
-.image-settings-fieldset > .visually-hidden + .drill-group {
+.media-settings-fieldset > .visually-hidden + .drill-group {
   margin-top: var(--space-4);
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { SceneDoc, SceneDocImageSpec } from "../../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocMediaSpec } from "../../engine/sceneDocSchema";
 import type { FrameDecorationSpec } from "../../toolkit/frame/types";
 import type {
   SceneOverviewContentType,
@@ -27,6 +27,17 @@ function row(
   };
 }
 
+function mediaEntry(id: string, src: string, kind: "image" | "video"): SceneDocMediaSpec {
+  return {
+    id,
+    kind,
+    src,
+    host: "overlay",
+    stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+    overlay: { position: [0, 0], size: 0.5, rotationDeg: 0, shape: "none", layer: "above" },
+  };
+}
+
 function apply(plan: ReturnType<typeof planContentDuplicate>, doc: SceneDoc): SceneDoc {
   if (!plan) throw new Error("Expected a mutation plan");
   const next = structuredClone(doc);
@@ -40,8 +51,8 @@ describe("contentMenuActions", () => {
     [row("text"), ["edit"]],
     [row("device", { kind: "device", id: "d1" }), ["edit", "duplicate", "delete"]],
     [row("image", { kind: "legacyImage", id: "logo" }), ["edit", "duplicate", "delete"]],
-    [row("image", { kind: "image", id: "img1" }), ["edit", "duplicate", "delete"]],
-    [row("video", { kind: "videoWindow" }), ["edit", "delete"]],
+    [row("image", { kind: "media", id: "img1" }), ["edit", "duplicate", "delete"]],
+    [row("video", { kind: "media", id: "vid1" }), ["edit", "duplicate", "delete"]],
     [row("object", { kind: "object", id: "o1" }), ["edit", "duplicate", "delete"]],
     [row("chart", { kind: "chart" }), ["edit", "delete"]],
     [row("screenshotStack", { kind: "screenshotStack" }), ["edit", "delete"]],
@@ -154,9 +165,10 @@ describe("planContentDuplicate", () => {
   it("duplicates a Stage image and nudges only its active placement", () => {
     const doc: SceneDoc = {
       version: 1,
-      images: [
+      media: [
         {
           id: "img1",
+          kind: "image",
           src: "assets/hero.png",
           host: "stage",
           stage: { position: [1, 2, 3], size: 1.4, rotationDeg: [4, 5, 6] },
@@ -171,6 +183,7 @@ describe("planContentDuplicate", () => {
         },
         {
           id: "img2",
+          kind: "image",
           src: "assets/second.png",
           host: "stage",
           stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
@@ -184,28 +197,29 @@ describe("planContentDuplicate", () => {
         },
       ],
     };
-    const plan = planContentDuplicate(row("image", { kind: "image", id: "img1" }), { doc });
+    const plan = planContentDuplicate(row("image", { kind: "media", id: "img1" }), { doc });
     const next = apply(plan, doc);
 
-    expect(plan?.history).toBe("duplicate image");
-    expect(plan?.nextRowId).toBe("image:img3");
-    expect(plan?.nextSelection).toEqual({ kind: "image", id: "img3" });
-    expect(next.images?.map((image) => image.id)).toEqual(["img1", "img2", "img3"]);
-    expect(next.images?.[2]).toEqual({
-      ...doc.images?.[0],
+    expect(plan?.history).toBe("duplicate media");
+    expect(plan?.nextRowId).toBe("media:img3");
+    expect(plan?.nextSelection).toEqual({ kind: "media", id: "img3" });
+    expect(next.media?.map((entry) => entry.id)).toEqual(["img1", "img2", "img3"]);
+    expect(next.media?.[2]).toEqual({
+      ...doc.media?.[0],
       id: "img3",
       stage: { position: [1.25, 2, 3], size: 1.4, rotationDeg: [4, 5, 6] },
-      overlay: doc.images?.[0]?.overlay,
+      overlay: doc.media?.[0]?.overlay,
     });
-    expect(next.images?.[2]?.overlay.position).toEqual(doc.images?.[0]?.overlay.position);
+    expect(next.media?.[2]?.overlay.position).toEqual(doc.media?.[0]?.overlay.position);
   });
 
   it("clones an Overlay image from execution-time state and retains its Stage placement", () => {
     const plannedDoc: SceneDoc = {
       version: 1,
-      images: [
+      media: [
         {
           id: "img1",
+          kind: "image",
           src: "assets/planned.png",
           host: "stage",
           stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
@@ -219,8 +233,9 @@ describe("planContentDuplicate", () => {
         },
       ],
     };
-    const currentImage: SceneDocImageSpec = {
+    const currentImage: SceneDocMediaSpec = {
       id: "img1",
+      kind: "image",
       src: "assets/current.png",
       host: "overlay",
       stage: {
@@ -239,7 +254,7 @@ describe("planContentDuplicate", () => {
     };
     const currentDoc: SceneDoc = {
       version: 1,
-      images: [
+      media: [
         currentImage,
         {
           ...currentImage,
@@ -248,13 +263,13 @@ describe("planContentDuplicate", () => {
         },
       ],
     };
-    const plan = planContentDuplicate(row("image", { kind: "image", id: "img1" }), {
+    const plan = planContentDuplicate(row("image", { kind: "media", id: "img1" }), {
       doc: plannedDoc,
     });
     const next = apply(plan, currentDoc);
 
-    expect(plan?.nextRowId).toBe("image:img3");
-    expect(next.images?.[2]).toEqual({
+    expect(plan?.nextRowId).toBe("media:img3");
+    expect(next.media?.[2]).toEqual({
       ...currentImage,
       id: "img3",
       overlay: {
@@ -265,7 +280,7 @@ describe("planContentDuplicate", () => {
         ],
       },
     });
-    expect(next.images?.[2]?.stage).toEqual(currentImage.stage);
+    expect(next.media?.[2]?.stage).toEqual(currentImage.stage);
   });
 
   it("takes over an inherited image and selects its first-class duplicate", () => {
@@ -291,18 +306,18 @@ describe("planContentDuplicate", () => {
     });
     const next = apply(plan, doc);
 
-    expect(plan?.nextSelection).toEqual({ kind: "image", id: "img2" });
-    expect(plan?.nextRowId).toBe("image:img2");
+    expect(plan?.nextSelection).toEqual({ kind: "media", id: "img2" });
+    expect(plan?.nextRowId).toBe("media:img2");
     expect(plan?.imageOrigins).toEqual([
       { kind: "legacy-promotion", decorationId: "logo", imageId: "img1" },
       { kind: "duplicate", imageId: "img2", sourceImageId: "img1" },
     ]);
     expect(next.frame?.background).toBe("accent");
     expect(next.frame?.decorations?.map((decoration) => decoration.id)).toEqual(["logo-copy"]);
-    expect(next.images?.map((image) => image.id)).toEqual(["img1", "img2"]);
-    expect(next.images?.[0]?.overlay.position).toEqual([0.1, 0.2]);
-    expect(next.images?.[1]?.overlay.position[0]).toBeCloseTo(0.15);
-    expect(next.images?.[1]?.overlay.position[1]).toBeCloseTo(0.15);
+    expect(next.media?.map((entry) => entry.id)).toEqual(["img1", "img2"]);
+    expect(next.media?.[0]?.overlay.position).toEqual([0.1, 0.2]);
+    expect(next.media?.[1]?.overlay.position[0]).toBeCloseTo(0.15);
+    expect(next.media?.[1]?.overlay.position[1]).toBeCloseTo(0.15);
     expect(resolved).toHaveLength(2);
   });
 
@@ -327,9 +342,9 @@ describe("planContentDuplicate", () => {
 
     const next = apply(plan, currentDoc);
 
-    expect(plan?.nextRowId).toBe("image:img2");
+    expect(plan?.nextRowId).toBe("media:img2");
     expect(next.frame?.decorations?.map((decoration) => decoration.id)).toEqual(["logo-copy"]);
-    expect(next.images?.map((image) => image.id)).toEqual(["img1", "img2"]);
+    expect(next.media?.map((entry) => entry.id)).toEqual(["img1", "img2"]);
   });
 
   it("duplicates the execution-time legacy image rather than the resolved snapshot", () => {
@@ -360,7 +375,7 @@ describe("planContentDuplicate", () => {
 
     const next = apply(plan, currentDoc);
 
-    expect(next.images?.[0]).toMatchObject({
+    expect(next.media?.[0]).toMatchObject({
       id: "img1",
       src: "assets/current.png",
       overlay: {
@@ -369,8 +384,8 @@ describe("planContentDuplicate", () => {
         shape: "circle",
       },
     });
-    expect(next.images?.[1]?.overlay.position[0]).toBeCloseTo(-0.35);
-    expect(next.images?.[1]?.overlay.position[1]).toBeCloseTo(0.55);
+    expect(next.media?.[1]?.overlay.position[0]).toBeCloseTo(-0.35);
+    expect(next.media?.[1]?.overlay.position[1]).toBeCloseTo(0.55);
     expect(next.frame?.decorations?.map((decoration) => decoration.id)).toEqual(["queued"]);
   });
 
@@ -396,7 +411,7 @@ describe("planContentDuplicate", () => {
 
     expect(result).toBe(false);
     expect(next.frame?.decorations).toEqual(currentDoc.frame?.decorations);
-    expect(next.images).toBeUndefined();
+    expect(next.media).toBeUndefined();
     expect(plan?.nextSelection).toBeNull();
     expect(plan?.imageOrigins).toEqual([]);
   });
@@ -602,8 +617,9 @@ describe("planContentDelete", () => {
     expect(next.frame).toEqual(currentDoc.frame);
   });
 
-  it("removes exactly one first-class image and preserves order", () => {
-    const image: Omit<SceneDocImageSpec, "id"> = {
+  it("removes exactly one first-class media entry and preserves order", () => {
+    const image: Omit<SceneDocMediaSpec, "id"> = {
+      kind: "image",
       src: "assets/image.png",
       host: "stage",
       stage: {
@@ -621,26 +637,27 @@ describe("planContentDelete", () => {
     };
     const doc: SceneDoc = {
       version: 1,
-      images: [
+      media: [
         { ...image, id: "img1" },
         { ...image, id: "img2" },
         { ...image, id: "img3" },
-      ],
+      ] as SceneDocMediaSpec[],
     };
     const next = apply(
-      planContentDelete(row("image", { kind: "image", id: "img2" }), { doc }),
+      planContentDelete(row("image", { kind: "media", id: "img2" }), { doc }),
       doc,
     );
 
-    expect(next.images?.map((entry) => entry.id)).toEqual(["img1", "img3"]);
+    expect(next.media?.map((entry) => entry.id)).toEqual(["img1", "img3"]);
   });
 
-  it("omits the first-class image list when its last item is deleted", () => {
+  it("omits the media list when its last entry is deleted", () => {
     const doc: SceneDoc = {
       version: 1,
-      images: [
+      media: [
         {
           id: "img1",
+          kind: "image",
           src: "assets/image.png",
           host: "overlay",
           stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
@@ -655,11 +672,11 @@ describe("planContentDelete", () => {
       ],
     };
     const next = apply(
-      planContentDelete(row("image", { kind: "image", id: "img1" }), { doc }),
+      planContentDelete(row("image", { kind: "media", id: "img1" }), { doc }),
       doc,
     );
 
-    expect(next.images).toBeUndefined();
+    expect(next.media).toBeUndefined();
   });
 
   it("removes an object", () => {
@@ -705,6 +722,41 @@ describe("planContentDelete", () => {
     expect(next.layeredScreenshot).toBeUndefined();
   });
 
+  it("removes only the named video and leaves a second one aiming", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      media: [
+        {
+          id: "vid1",
+          kind: "video",
+          src: "assets/one.mp4",
+          host: "overlay",
+          stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
+          overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
+          window: { radius: "macos" },
+        },
+        {
+          id: "vid2",
+          kind: "video",
+          src: "assets/two.mp4",
+          host: "overlay",
+          stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
+          overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
+          window: { radius: "macos" },
+        },
+      ],
+      duration: { mode: "follow-media", source: "videoWindow" },
+    };
+    const next = apply(
+      planContentDelete(row("video", { kind: "media", id: "vid2" }), { doc }),
+      doc,
+    );
+
+    expect(next.media?.map((entry) => entry.id)).toEqual(["vid1"]);
+    // vid1 still serves the window, so the scene keeps following it.
+    expect(next.duration).toEqual({ mode: "follow-media", source: "videoWindow" });
+  });
+
   it("removes video and screenshot camera bindings while preserving their shots", () => {
     const videoDoc: SceneDoc = {
       version: 1,
@@ -725,7 +777,7 @@ describe("planContentDelete", () => {
       },
     };
     const videoNext = apply(
-      planContentDelete(row("video", { kind: "videoWindow" }), { doc: videoDoc }),
+      planContentDelete(row("video", { kind: "media", id: "videoWindow" }), { doc: videoDoc }),
       videoDoc,
     );
     expect(videoNext.videoWindow).toBeUndefined();
@@ -775,9 +827,60 @@ describe("planContentDelete", () => {
       ],
       videoWindow: { media: { src: "assets/demo.mp4" }, radius: "macos" },
     };
-    const next = apply(planContentDelete(row("video", { kind: "videoWindow" }), { doc }), doc);
+    const next = apply(
+      planContentDelete(row("video", { kind: "media", id: "videoWindow" }), { doc }),
+      doc,
+    );
 
     expect(next.duration).toEqual({ mode: "follow-media", sourceDeviceId: "d1" });
+  });
+
+  it("hands the length back to manual when the pinned media entry goes", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      duration: { mode: "follow-media", source: "media", sourceMediaId: "vid2" },
+      media: [
+        mediaEntry("vid1", "assets/one.mp4", "video"),
+        mediaEntry("vid2", "assets/two.mp4", "video"),
+      ],
+    };
+    const pinned = apply(
+      planContentDelete(row("video", { kind: "media", id: "vid2" }), { doc }),
+      doc,
+    );
+    expect(pinned.duration).toEqual({ mode: "manual" });
+
+    const other = apply(
+      planContentDelete(row("video", { kind: "media", id: "vid1" }), { doc }),
+      doc,
+    );
+    expect(other.duration).toEqual({
+      mode: "follow-media",
+      source: "media",
+      sourceMediaId: "vid2",
+    });
+  });
+
+  it("keeps an unpinned length while another video entry can still drive it", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      duration: { mode: "follow-media" },
+      media: [
+        mediaEntry("vid1", "assets/one.mp4", "video"),
+        mediaEntry("vid2", "assets/two.mp4", "video"),
+      ],
+    };
+    const next = apply(
+      planContentDelete(row("video", { kind: "media", id: "vid2" }), { doc }),
+      doc,
+    );
+    expect(next.duration).toEqual({ mode: "follow-media" });
+
+    const last = apply(
+      planContentDelete(row("video", { kind: "media", id: "vid1" }), { doc: next }),
+      next,
+    );
+    expect(last.duration).toEqual({ mode: "manual" });
   });
 
   it("preserves the current length when an unpinned video window is the fallback source", () => {
@@ -787,7 +890,10 @@ describe("planContentDelete", () => {
       devices: [{ id: "d1", model: "iphone-17-pro" }],
       videoWindow: { media: { src: "assets/demo.mp4" }, radius: "macos" },
     };
-    const next = apply(planContentDelete(row("video", { kind: "videoWindow" }), { doc }), doc);
+    const next = apply(
+      planContentDelete(row("video", { kind: "media", id: "videoWindow" }), { doc }),
+      doc,
+    );
 
     expect(next.duration).toEqual({ mode: "manual" });
   });

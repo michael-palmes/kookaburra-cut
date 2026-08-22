@@ -46,6 +46,7 @@ import { formatMediaDuration, importMediaBytes, type MediaMeta, mediaMeta } from
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import { revealApp } from "../engine/reveal";
 import { parseSceneDoc } from "../engine/sceneDocSchema";
+import { resolveSceneDocMedia } from "../engine/sceneMedia";
 import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
@@ -512,8 +513,9 @@ export function EditorApp() {
           const i = devices.findIndex((d) => d.id === id);
           entries.push({ rel: m.src, label: `After side · Device ${i >= 0 ? i + 1 : id}` });
         }
-        if (sceneDoc.videoWindow?.media?.src) {
-          entries.push({ rel: sceneDoc.videoWindow.media.src, label: "Video window" });
+        for (const entry of resolveSceneDocMedia(sceneDoc)) {
+          if (entry.kind !== "video") continue;
+          entries.push({ rel: entry.src, label: entry.window ? "Video window" : "Video" });
         }
         if (sceneDoc.background?.type === "video") {
           entries.push({ rel: sceneDoc.background.src, label: "Background" });
