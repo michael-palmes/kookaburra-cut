@@ -418,6 +418,23 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("holds the tints to the same token-or-hex rule as the divider colour", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tint = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { tint: raw } } }, "test")?.compare?.chrome
+        ?.tint;
+    for (const token of ["background", "text", "accent", "muted"]) {
+      expect(tint({ a: token, b: token })).toEqual({ a: token, b: token });
+    }
+    expect(tint({ a: "#3fa9c4", b: "#3FA9C4" })).toEqual({ a: "#3fa9c4", b: "#3FA9C4" });
+    expect(tint({ a: "accent", amount: 0.2 })).toEqual({ a: "accent", amount: 0.2 });
+    expect(warn).not.toHaveBeenCalled();
+    expect(tint({ a: "rebeccapurple", b: "#abc" })).toEqual({});
+    expect(tint({ a: 42, b: "muted" })).toEqual({ b: "muted" });
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
   it("keeps an optional per-key divider angle, dropping a malformed one alone", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const doc = parseSceneDoc(

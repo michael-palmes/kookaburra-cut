@@ -535,7 +535,7 @@ export interface SceneDocCompareGrip {
   style?: SceneDocCompareGripStyle;
 }
 
-/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` is a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored; tints stay token names. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
+/** The exported chrome: a divider line along the mask edge, a grip riding a linear divider, label chips per half, per-side tints. `line.colour` and both tints are each a THEME TOKEN NAME (background | text | accent | muted) resolved against the scene's theme at plan build, or a `#rrggbb` hex used as authored. Absent sub-blocks are off, and `grip: true` is the legacy chevrons handle at size 1. */
 export interface SceneDocCompareChrome {
   line?: { width?: number; colour?: string; softness?: number };
   grip?: boolean | SceneDocCompareGrip;
@@ -1044,8 +1044,18 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
       const tint = raw.tint as { a?: unknown; b?: unknown; amount?: unknown } | undefined;
       if (tint && typeof tint === "object") {
         const t: NonNullable<SceneDocCompareChrome["tint"]> = {};
-        if (typeof tint.a === "string") t.a = tint.a;
-        if (typeof tint.b === "string") t.b = tint.b;
+        if (isCompareColour(tint.a)) t.a = tint.a;
+        else if (tint.a !== undefined) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.chrome.tint.a isn't a theme token or #rrggbb hex, dropped`,
+          );
+        }
+        if (isCompareColour(tint.b)) t.b = tint.b;
+        else if (tint.b !== undefined) {
+          console.warn(
+            `[sceneDoc] ${source}: compare.chrome.tint.b isn't a theme token or #rrggbb hex, dropped`,
+          );
+        }
         if (typeof tint.amount === "number" && Number.isFinite(tint.amount)) {
           t.amount = Math.min(1, Math.max(0, tint.amount));
         }
