@@ -161,35 +161,39 @@ The `comparison` scene kind scaffolds the two-device pair (labels
 yaws, scale 0.85; the template compresses x and scale in portrait). For a
 masked split on any scene: add the block above, or use the inspector's Add
 comparison (Scene tab), which seeds a visible default (line + chips). The
-Device, Theme, Background and Lighting inspectors each show a Before/After
-selector. The scene overview exposes Change and Edit video actions for both
-sides through a compact Before/After picker, while Device exposes those actions
-for its selected side. The Device selector also routes colour and shadow, with
-After inheriting Before until it is explicitly changed. After values write
-through `compare.b`; choosing Match before clears that override. Comparison
-video actions target device screens only.
+Device, Theme, Background and Lighting each show a Before/After selector at
+the top (the split-screen glyph, Before filling the left half), and all four
+share ONE side per scene, reset when the playhead moves to another scene.
+Device owns the screen media: Change and Edit video follow the selected side,
+and the After side narrows to finish, screen and shadow, because model,
+arrangement, position, motion and lid are shared. After values write through
+`compare.b` and inherit Before until they are explicitly changed; Match the
+before side clears the override. Editing an inherited After video creates that
+override rather than re-pointing Before. Comparison video actions target
+device screens only. The routing rules are pure functions in
+`ui/inspector/compareSideRouting.ts`.
 
-The Comparison drill runs the mask row and its parameters, then Animation,
-Motion presets, Divider line and Labels. Every mask option, motion chip and
-chrome toggle wears a leading line icon (`ui/inspector/compareIcons.tsx`: one
-16px grid at 1.5px stroke in `currentColor`, the glyph maps pinned complete
-against the mask and preset catalogues). Rows the mask cannot use never
-render: Edge softness hides on Ghost (`blend`), the line width and colour rows
-hide without a line, and the whole Divider line group hides when the mask has
-neither line nor grip.
+The Comparison drill runs the mask row and its parameters, then Motion
+presets, Divider line and Labels. It carries no side controls of its own,
+pointing at those four inspectors instead. Every mask option, motion chip,
+chrome toggle and grip style wears a leading line icon
+(`ui/inspector/compareIcons.tsx`: one 16px grid at 1.5px stroke in
+`currentColor`, the glyph maps pinned complete against the mask, preset and
+grip catalogues). Rows the mask cannot use never render: Edge softness hides
+on Ghost (`blend`), the line width and colour rows hide without a line, the
+grip-style picker shows only with a grip, and the whole Divider line group
+hides when the mask has neither line nor grip. Divider colour uses the app's
+colour picker (the text inspector's control) and writes `#rrggbb`; Reset puts
+the `accent` token back so the divider follows the theme.
 
-Animation is the in-inspector alternative to hand-editing keys: From / to,
-Start / length in ms, Ease, plus Animate the angle (linear masks only) with
-Angle from / to. Every field writes the WHOLE track through the doc funnel,
-two keys (`k1`, `k2`) joined by one eased segment, whole ms and clamped to the
-scene, so the result stays hand-tunable in the lane (the camera-preset rule).
-With no keys the fields seed from the static divider (From = `value`, To = 0,
-Start = 0, length 85% of the scene). A track of at most two keys and one
-segment reads back into the fields; a richer one (Peek then commit, Sweep and
-settle, hand edits) shows its key count and the warning that the next field
-edit replaces it. Leaving the angle toggle off writes no `pose.angleDeg`, so a
-plain divider stays angle-free. The field-to-track mapping lives in
-`ui/inspector/compareAnimationModel.ts`.
+The Divider slider is always shown, and the Angle field (linear masks) beside
+it. With no keys they write the static `compare.value` and `mask.angleDeg`.
+With keys they edit the key NEAREST the playhead (the earlier key takes a
+tie), live while dragging and one history entry on release; the angle write
+lands on that key's `pose.angleDeg`, and keys without one keep holding the
+static angle. The nearest-key maths is
+`ui/inspector/comparisonTarget.ts`. Key times, eases and everything richer
+belong to the timeline lane, which is the animation surface.
 
 Motion presets lead with Manual, which clears the keys (`compare.track`
 undefined, one history entry) and brings the static Divider slider back; the
