@@ -620,7 +620,7 @@ function setCompareUniforms(
   u.texA.value = texA;
   u.texB.value = texB;
   u.value.value = plan.value;
-  u.sweepRad.value = ((spec.angleDeg - 90) * Math.PI) / 180;
+  u.sweepRad.value = ((plan.angleDeg - 90) * Math.PI) / 180;
   u.softness.value = spec.softness;
   u.aspect.value = aspect;
   u.maskType.value = COMPARE_MASK_ID[spec.maskType];

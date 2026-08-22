@@ -5,6 +5,7 @@ import {
   COMPARE_MASK_ID,
   type CompareSpec,
   compareCoverageAt,
+  compareSampleAt,
   compareSpecOf,
   compareValueAt,
   deriveCompareBDoc,
@@ -63,6 +64,23 @@ const specWith = (parts: Partial<CompareSpec>): CompareSpec => ({
   ...parts,
 });
 
+/** A spec key at the static angle unless the case pins its own. */
+const specKey = (tMs: number, value: number, angleDeg = 90) => ({ tMs, value, angleDeg });
+
+const specSegment = (
+  from: ReturnType<typeof specKey>,
+  to: ReturnType<typeof specKey>,
+  ease = "linear",
+) => ({
+  fromTMs: from.tMs,
+  fromValue: from.value,
+  fromAngleDeg: from.angleDeg,
+  toTMs: to.tMs,
+  toValue: to.value,
+  toAngleDeg: to.angleDeg,
+  ease,
+});
+
 describe("compareSpecOf", () => {
   it("null for docs without a compare block", () => {
     expect(compareSpecOf(undefined)).toBeNull();
@@ -104,13 +122,27 @@ describe("compareSpecOf", () => {
       }),
     );
     expect(spec?.value).toBe(1);
-    expect(spec?.keys).toEqual([
-      { tMs: 100, value: 0.25 },
-      { tMs: 900, value: 0 },
-    ]);
-    expect(spec?.segments).toEqual([
-      { fromTMs: 100, fromValue: 0.25, toTMs: 900, toValue: 0, ease: "linear" },
-    ]);
+    expect(spec?.keys).toEqual([specKey(100, 0.25), specKey(900, 0)]);
+    expect(spec?.segments).toEqual([specSegment(specKey(100, 0.25), specKey(900, 0))]);
+  });
+
+  it("resolves each key's EFFECTIVE angle: its own, else the mask's, else 90", () => {
+    const track = {
+      keys: [
+        { id: "k1", tMs: 0, pose: { value: 1 } },
+        { id: "k2", tMs: 800, pose: { value: 0, angleDeg: 135 } },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "linear" }],
+    };
+    const plain = compareSpecOf(compareDoc({ track }));
+    expect(plain?.angleDeg).toBe(90);
+    expect(plain?.keys.map((k) => k.angleDeg)).toEqual([90, 135]);
+    expect(plain?.segments[0].fromAngleDeg).toBe(90);
+    expect(plain?.segments[0].toAngleDeg).toBe(135);
+
+    const angled = compareSpecOf(compareDoc({ mask: { type: "linear", angleDeg: 20 }, track }));
+    expect(angled?.keys.map((k) => k.angleDeg)).toEqual([20, 135]);
+    expect(angled?.segments[0].fromAngleDeg).toBe(20);
   });
 
   it("resolves chrome tokens against the theme, falling back to the accent", () => {
@@ -137,11 +169,8 @@ describe("compareSpecOf", () => {
 
 describe("compareValueAt", () => {
   const spec = specWith({
-    keys: [
-      { tMs: 200, value: 0.2 },
-      { tMs: 1200, value: 0.7 },
-    ],
-    segments: [{ fromTMs: 200, fromValue: 0.2, toTMs: 1200, toValue: 0.7, ease: "linear" }],
+    keys: [specKey(200, 0.2), specKey(1200, 0.7)],
+    segments: [specSegment(specKey(200, 0.2), specKey(1200, 0.7))],
   });
 
   it("holds the boundary keys outside the segment span", () => {
@@ -170,25 +199,95 @@ describe("compareValueAt", () => {
   });
 });
 
+describe("compareSampleAt (the angle rides the same keys)", () => {
+  const angled = specWith({
+    angleDeg: 90,
+    keys: [specKey(200, 0.2, 40), specKey(1200, 0.7, 140)],
+    segments: [specSegment(specKey(200, 0.2, 40), specKey(1200, 0.7, 140))],
+  });
+
+  it("eases the angle with the value, off the SAME segment", () => {
+    const mid = compareSampleAt(angled, 700);
+    expect(mid.value).toBeCloseTo(0.45, 10);
+    expect(mid.angleDeg).toBeCloseTo(90, 10);
+    const eased = specWith({
+      keys: angled.keys,
+      segments: [{ ...angled.segments[0], ease: "inOutQuad" }],
+    });
+    const at450 = compareSampleAt(eased, 450);
+    const e = 2 * 0.25 * 0.25;
+    expect(at450.value).toBeCloseTo(0.2 + 0.5 * e, 10);
+    expect(at450.angleDeg).toBeCloseTo(40 + 100 * e, 10);
+  });
+
+  it("holds the latest key's angle outside the segments, both ends", () => {
+    expect(compareSampleAt(angled, 0).angleDeg).toBe(40);
+    expect(compareSampleAt(angled, 5000).angleDeg).toBe(140);
+    const holdy = specWith({ keys: angled.keys });
+    expect(compareSampleAt(holdy, 700).angleDeg).toBe(40);
+    expect(compareSampleAt(holdy, 1300).angleDeg).toBe(140);
+  });
+
+  it("keyless specs hold the static angle", () => {
+    expect(compareSampleAt(specWith({ angleDeg: 33 }), 700)).toEqual({ value: 0.5, angleDeg: 33 });
+  });
+
+  it("interpolates numerically, never the shortest way round", () => {
+    const wrap = specWith({
+      keys: [specKey(0, 0, 350), specKey(1000, 1, 10)],
+      segments: [specSegment(specKey(0, 0, 350), specKey(1000, 1, 10))],
+    });
+    expect(compareSampleAt(wrap, 500).angleDeg).toBeCloseTo(180, 10);
+  });
+
+  it("THE NULL PROOF: keys without an angle sample exactly the static angle", () => {
+    const doc = compareDoc({
+      mask: { type: "linear", angleDeg: 37.5 },
+      track: {
+        keys: [
+          { id: "k1", tMs: 0, pose: { value: 1 } },
+          { id: "k2", tMs: 900, pose: { value: 0 } },
+        ],
+        segments: [{ from: "k1", to: "k2", ease: "inOutCubic" }],
+      },
+    });
+    const spec = compareSpecOf(doc);
+    if (!spec) throw new Error("expected a spec");
+    for (const t of [-100, 0, 1, 123, 450, 899, 900, 5000]) {
+      const sample = compareSampleAt(spec, t);
+      expect(sample.angleDeg).toBe(37.5);
+      expect(sample.value).toBe(compareValueAt(spec, t));
+    }
+  });
+});
+
 describe("compareCoverageAt (the chips' fade)", () => {
   it("a vertical divider at half: full A on the left, full B on the right", () => {
     const spec = specWith({});
-    expect(compareCoverageAt(spec, 0.5, [0.2, 0.5], 16 / 9, "a")).toBe(1);
-    expect(compareCoverageAt(spec, 0.5, [0.2, 0.5], 16 / 9, "b")).toBe(0);
-    expect(compareCoverageAt(spec, 0.5, [0.8, 0.5], 16 / 9, "a")).toBe(0);
-    expect(compareCoverageAt(spec, 0.5, [0.8, 0.5], 16 / 9, "b")).toBe(1);
+    expect(compareCoverageAt(spec, 0.5, 90, [0.2, 0.5], 16 / 9, "a")).toBe(1);
+    expect(compareCoverageAt(spec, 0.5, 90, [0.2, 0.5], 16 / 9, "b")).toBe(0);
+    expect(compareCoverageAt(spec, 0.5, 90, [0.8, 0.5], 16 / 9, "a")).toBe(0);
+    expect(compareCoverageAt(spec, 0.5, 90, [0.8, 0.5], 16 / 9, "b")).toBe(1);
+  });
+
+  it("takes the SAMPLED angle, not the spec's static one", () => {
+    const spec = specWith({});
+    // Rotated a quarter turn the sweep runs downwards, so A takes the top half instead of the left.
+    expect(compareCoverageAt(spec, 0.5, 0, [0.5, 0.8], 16 / 9, "a")).toBe(1);
+    expect(compareCoverageAt(spec, 0.5, 0, [0.5, 0.2], 16 / 9, "a")).toBe(0);
+    expect(compareCoverageAt(spec, 0.5, 0, [0.2, 0.5], 16 / 9, "a")).toBeCloseTo(0.5, 10);
   });
 
   it("a circle window: B inside the centre, A far outside", () => {
     const spec = specWith({ maskType: "circle" });
-    expect(compareCoverageAt(spec, 0.4, [0.5, 0.5], 16 / 9, "b")).toBe(1);
-    expect(compareCoverageAt(spec, 0.4, [0.02, 0.02], 16 / 9, "a")).toBe(1);
+    expect(compareCoverageAt(spec, 0.4, 90, [0.5, 0.5], 16 / 9, "b")).toBe(1);
+    expect(compareCoverageAt(spec, 0.4, 90, [0.02, 0.02], 16 / 9, "a")).toBe(1);
   });
 
   it("blend coverage is the divider value itself", () => {
     const spec = specWith({ maskType: "blend" });
-    expect(compareCoverageAt(spec, 0.3, [0.5, 0.5], 16 / 9, "a")).toBeCloseTo(0.7, 10);
-    expect(compareCoverageAt(spec, 0.3, [0.5, 0.5], 16 / 9, "b")).toBeCloseTo(0.3, 10);
+    expect(compareCoverageAt(spec, 0.3, 90, [0.5, 0.5], 16 / 9, "a")).toBeCloseTo(0.7, 10);
+    expect(compareCoverageAt(spec, 0.3, 90, [0.5, 0.5], 16 / 9, "b")).toBeCloseTo(0.3, 10);
   });
 });
 
@@ -288,7 +387,7 @@ describe("resolveCompareFrame", () => {
   it("resolves the active scene's spec with its side states", () => {
     const resolved: Resolved = { active: [{ index: 1, localMs: 500 }] };
     const frames = resolveCompareFrame([null, spec], [stateA, stateA], [null, stateB], resolved);
-    expect(frames).toEqual([{ index: 1, value: 0.5, spec, stateA, stateB }]);
+    expect(frames).toEqual([{ index: 1, value: 0.5, angleDeg: 60, spec, stateA, stateB }]);
   });
 
   it("empty for plain scenes; transition frames resolve each comparing side at its own local time", () => {
@@ -306,6 +405,18 @@ describe("resolveCompareFrame", () => {
     expect(frames[0].value).toBe(0.5);
     const both = resolveCompareFrame([spec, spec], null, null, transition);
     expect(both.map((f) => f.index)).toEqual([0, 1]);
+  });
+
+  it("carries the sampled angle to the compositor, not the spec's static one", () => {
+    const keyed = specWith({
+      angleDeg: 90,
+      keys: [specKey(0, 1, 0), specKey(1000, 0, 180)],
+      segments: [specSegment(specKey(0, 1, 0), specKey(1000, 0, 180))],
+    });
+    const resolved: Resolved = { active: [{ index: 0, localMs: 250 }] };
+    const [frame] = resolveCompareFrame([keyed], null, null, resolved);
+    expect(frame.angleDeg).toBeCloseTo(45, 10);
+    expect(frame.value).toBeCloseTo(0.75, 10);
   });
 });
 

@@ -1,7 +1,7 @@
 import { Text } from "@react-three/drei";
 import { useContext, useMemo } from "react";
 import { useFormat } from "../../engine/format";
-import { compareCoverageAt, compareSpecOf, compareValueAt } from "../../engine/sceneCompare";
+import { compareCoverageAt, compareSampleAt, compareSpecOf } from "../../engine/sceneCompare";
 import { SceneDocContext, useSceneContext } from "../../engine/sceneContext";
 import { useSceneText } from "../../engine/sceneDoc";
 import { useTimeline } from "../../engine/timeline";
@@ -27,8 +27,8 @@ export function CompareChips() {
   const x = (side === "a" ? -1 : 1) * format.frame.width * 0.25;
   const y = format.frame.height / 2 - format.safe.top - (portrait ? 0.24 : 0.3);
   const uv: [number, number] = [0.5 + x / format.frame.width, 0.5 + y / format.frame.height];
-  const value = compareValueAt(spec, localMs);
-  const opacity = compareCoverageAt(spec, value, uv, format.aspect, side);
+  const sample = compareSampleAt(spec, localMs);
+  const opacity = compareCoverageAt(spec, sample.value, sample.angleDeg, uv, format.aspect, side);
   if (opacity <= 0.01) return null;
   return (
     <Text

@@ -511,12 +511,12 @@ export interface SceneDocCompareSide {
   lighting?: LightingSpec;
 }
 
-/** One divider key on the shared KeyedTrack model: the mask value (0..1) at a scene-local time. Eased interpolation happens inside segments; outside them the latest key holds (the camera-track semantics). */
+/** One divider key on the shared KeyedTrack model: the mask value (0..1) at a scene-local time, and optionally the divider angle from that key on (absent means `mask.angleDeg`). Eased interpolation happens inside segments; outside them the latest key holds (the camera-track semantics). */
 export interface SceneDocCompareKey {
   id: string;
   /** Scene-local time, ms. */
   tMs: number;
-  pose: { value: number };
+  pose: { value: number; angleDeg?: number };
 }
 
 export interface SceneDocCompareSegment {
@@ -534,7 +534,7 @@ export interface SceneDocCompareChrome {
   tint?: { a?: string; b?: string; amount?: number };
 }
 
-/** The comparison block. `mask.type`: `linear` (a straight divider, `angleDeg` is the LINE's angle, 90 = vertical), `circle` (the after inside a growing circle at `center`), `radial` (the after sweeps around `center`), `blend` (the after fades over the before). `softness` feathers the edge; `value` is the static divider position when no track keys exist (default 0.5). */
+/** The comparison block. `mask.type`: `linear` (a straight divider, `angleDeg` is the LINE's angle, 90 = vertical), `circle` (the after inside a growing circle at `center`), `radial` (the after sweeps around `center`), `blend` (the after fades over the before). `softness` feathers the edge; `value` is the static divider position when no track keys exist (default 0.5). `mask.angleDeg` is the STATIC angle: a track key carrying its own `pose.angleDeg` overrides it and rides the track. */
 export interface SceneDocCompare {
   b?: SceneDocCompareSide;
   mask?: {
@@ -1024,19 +1024,28 @@ function parseCompare(raw: unknown, source: string): SceneDocCompare | undefined
     const track = c.track as { keys?: unknown; segments?: unknown } | null;
     const rawKeys =
       track && typeof track === "object" && Array.isArray(track.keys) ? track.keys : [];
-    const keys = rawKeys.filter((k): k is SceneDocCompareKey => {
+    const keys: SceneDocCompareKey[] = [];
+    for (const k of rawKeys) {
       const key = k as SceneDocCompareKey | null;
-      const ok =
-        !!key &&
-        typeof key === "object" &&
-        typeof key.id === "string" &&
-        Number.isFinite(key.tMs) &&
-        !!key.pose &&
-        typeof key.pose === "object" &&
-        Number.isFinite(key.pose.value);
-      if (!ok) console.warn(`[sceneDoc] ${source}: compare.track key is malformed, dropped`);
-      return ok;
-    });
+      if (
+        !key ||
+        typeof key !== "object" ||
+        typeof key.id !== "string" ||
+        !Number.isFinite(key.tMs) ||
+        !key.pose ||
+        typeof key.pose !== "object" ||
+        !Number.isFinite(key.pose.value)
+      ) {
+        console.warn(`[sceneDoc] ${source}: compare.track key is malformed, dropped`);
+        continue;
+      }
+      const pose: SceneDocCompareKey["pose"] = { value: key.pose.value };
+      if (finiteNum(key.pose.angleDeg)) pose.angleDeg = key.pose.angleDeg;
+      else if (key.pose.angleDeg !== undefined) {
+        console.warn(`[sceneDoc] ${source}: compare.track key pose.angleDeg is malformed, dropped`);
+      }
+      keys.push({ id: key.id, tMs: key.tMs, pose });
+    }
     const rawSegments =
       track && typeof track === "object" && Array.isArray(track.segments) ? track.segments : [];
     const segments = rawSegments.filter((s): s is SceneDocCompareSegment => {

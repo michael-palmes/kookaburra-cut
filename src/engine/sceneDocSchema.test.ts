@@ -366,6 +366,35 @@ describe("parseSceneDoc", () => {
     warn.mockRestore();
   });
 
+  it("keeps an optional per-key divider angle, dropping a malformed one alone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        compare: {
+          mask: { type: "linear", angleDeg: 120 },
+          track: {
+            keys: [
+              { id: "k1", tMs: 0, pose: { value: 1 } },
+              { id: "k2", tMs: 500, pose: { value: 0.5, angleDeg: 135 } },
+              { id: "k3", tMs: 900, pose: { value: 0, angleDeg: "sideways" } },
+              { id: "k4", tMs: 1200, pose: { angleDeg: 45 } },
+            ],
+            segments: [{ from: "k1", to: "k2", ease: "linear" }],
+          },
+        },
+      },
+      "test",
+    );
+    expect(doc?.compare?.track?.keys).toEqual([
+      { id: "k1", tMs: 0, pose: { value: 1 } },
+      { id: "k2", tMs: 500, pose: { value: 0.5, angleDeg: 135 } },
+      { id: "k3", tMs: 900, pose: { value: 0 } },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
   it("keeps a non-empty string themeId and drops other shapes (v8)", () => {
     expect(parseSceneDoc({ version: 1, themeId: "kookaburra-studio-white" }, "test")?.themeId).toBe(
       "kookaburra-studio-white",

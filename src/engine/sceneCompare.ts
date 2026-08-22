@@ -1,11 +1,12 @@
 import type { Theme } from "../theme/tokens";
+import type { ComparePose } from "./compareEditStore";
 import { ease } from "./ease";
 import { trackLayout } from "./keyedTrack";
 import type { SceneDoc } from "./sceneDocSchema";
 import type { SceneRenderState } from "./sceneState";
 import type { Resolved } from "./sceneTimeline";
 
-/** The before/after comparison engine: pure helpers deriving side B's doc from the base (side A), normalising the compare block (mask, divider track, chrome with theme-token colours resolved), and resolving the per-frame divider. The compositor renders side A and side B to the transition machinery's A/B targets and composites them under the mask; both preview and export resolve through `resolveCompareFrame` so they cannot drift. Divider values are CPU-computed here, never time-derived in GLSL (the transition invariant). See docs/determinism.md. */
+/** The before/after comparison engine: pure helpers deriving side B's doc from the base (side A), normalising the compare block (mask, divider track, chrome with theme-token colours resolved), and resolving the per-frame divider. The compositor renders side A and side B to the transition machinery's A/B targets and composites them under the mask; both preview and export resolve through `resolveCompareFrame` so they cannot drift. Divider values AND angles are CPU-computed here, never time-derived in GLSL (the transition invariant). See docs/determinism.md. */
 
 export type CompareMaskType = "linear" | "circle" | "radial" | "blend";
 
@@ -29,10 +30,10 @@ export interface CompareChrome {
   tintAmount: number;
 }
 
-/** A normalised comparison, precomputed once per doc: mask params with defaults baked, track keys sorted, chrome resolved. */
+/** A normalised comparison, precomputed once per doc: mask params with defaults baked, track keys sorted with their EFFECTIVE angles resolved, chrome resolved. */
 export interface CompareSpec {
   maskType: CompareMaskType;
-  /** The divider LINE's angle in degrees (linear only; 90 = vertical divider sweeping horizontally). */
+  /** The divider LINE's STATIC angle in degrees (linear only; 90 = vertical divider sweeping horizontally), used when no key carries its own. */
   angleDeg: number;
   /** Feathered edge half-width in normalised units; 0 = hard edge. */
   softness: number;
@@ -40,17 +41,25 @@ export interface CompareSpec {
   center: [number, number];
   /** Static divider position, used when `keys` is empty. */
   value: number;
-  /** Sorted (tMs ascending) divider keys; the latest key HOLDS outside segments (the camera semantics). */
-  keys: readonly { tMs: number; value: number }[];
-  /** Resolved segments (bad references dropped, sorted); eased interpolation inside each. */
+  /** Sorted (tMs ascending) divider keys, each carrying its effective angle (its own, else the static one); the latest key HOLDS outside segments (the camera semantics). */
+  keys: readonly { tMs: number; value: number; angleDeg: number }[];
+  /** Resolved segments (bad references dropped, sorted); eased interpolation inside each, value and angle sharing the one ease. */
   segments: readonly {
     fromTMs: number;
     fromValue: number;
+    fromAngleDeg: number;
     toTMs: number;
     toValue: number;
+    toAngleDeg: number;
     ease: string;
   }[];
   chrome: CompareChrome;
+}
+
+/** One sampled divider state: the position and the angle that belong together, always resolved from the SAME segment. */
+export interface CompareSample {
+  value: number;
+  angleDeg: number;
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -74,17 +83,26 @@ function tokenHex(token: string | undefined, theme: Theme | undefined, fallback:
 export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): CompareSpec | null {
   const c = doc?.compare;
   if (!c) return null;
-  const layout = trackLayout<{ value: number }>({
+  const layout = trackLayout<ComparePose>({
     keys: c.track?.keys ?? [],
     segments: c.track?.segments ?? [],
   });
-  const keys = layout.keys.map((k) => ({ tMs: k.tMs, value: clamp01(k.pose.value) }));
+  const staticAngleDeg = c.mask?.angleDeg ?? 90;
+  // A key without its own angle holds the static one, which is what keeps angle-free tracks sampling bit for bit as before.
+  const angleOf = (pose: ComparePose | undefined) => pose?.angleDeg ?? staticAngleDeg;
+  const keys = layout.keys.map((k) => ({
+    tMs: k.tMs,
+    value: clamp01(k.pose.value),
+    angleDeg: angleOf(k.pose),
+  }));
   const byId = new Map(layout.keys.map((k) => [k.id, k]));
   const segments = layout.segments.map((seg) => ({
     fromTMs: seg.fromTMs,
     fromValue: clamp01(byId.get(seg.fromId)?.pose.value ?? 0),
+    fromAngleDeg: angleOf(byId.get(seg.fromId)?.pose),
     toTMs: seg.toTMs,
     toValue: clamp01(byId.get(seg.toId)?.pose.value ?? 0),
+    toAngleDeg: angleOf(byId.get(seg.toId)?.pose),
     ease: seg.ease,
   }));
   const chromeRaw = c.chrome;
@@ -103,7 +121,7 @@ export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): Compare
   };
   return {
     maskType: c.mask?.type ?? "linear",
-    angleDeg: c.mask?.angleDeg ?? 90,
+    angleDeg: staticAngleDeg,
     softness: c.mask?.softness ?? 0,
     center: c.mask?.center ?? [0.5, 0.5],
     value: clamp01(c.value ?? 0.5),
@@ -113,30 +131,44 @@ export function compareSpecOf(doc: SceneDoc | undefined, theme?: Theme): Compare
   };
 }
 
-/** Sample the divider at a scene-local time: eased interpolation inside a segment, hold the latest key outside (the sceneCamera semantics, byte for byte); the static value with no keys. */
-export function compareValueAt(spec: CompareSpec, localMs: number): number {
+/** Sample the divider at a scene-local time: ONE walk feeding both channels, so position and angle can never come from different segments. Eased interpolation inside a segment (the same ease for both), hold the latest key outside (the sceneCamera semantics, byte for byte); the static value and angle with no keys. Angle interpolates numerically, with no wrap-around shortest path: 350 to 10 travels backwards through 180. */
+export function compareSampleAt(spec: CompareSpec, localMs: number): CompareSample {
   for (const seg of spec.segments) {
     if (localMs >= seg.fromTMs && localMs < seg.toTMs) {
       const p = (localMs - seg.fromTMs) / (seg.toTMs - seg.fromTMs);
-      return seg.fromValue + (seg.toValue - seg.fromValue) * ease(seg.ease, p);
+      const e = ease(seg.ease, p);
+      return {
+        value: seg.fromValue + (seg.toValue - seg.fromValue) * e,
+        angleDeg: seg.fromAngleDeg + (seg.toAngleDeg - seg.fromAngleDeg) * e,
+      };
     }
   }
   const keys = spec.keys;
-  if (keys.length === 0) return spec.value;
+  if (keys.length === 0) return { value: spec.value, angleDeg: spec.angleDeg };
   let held = keys[0];
   for (const key of keys) {
     if (key.tMs <= localMs) held = key;
     else break;
   }
-  return held.value;
+  return { value: held.value, angleDeg: held.angleDeg };
 }
 
-/** The mask's scalar field at a uv point, in the same normalised units the shader uses (linear: position along the sweep axis; circle: distance from centre over the far corner; radial: angle around the centre; blend has no field). Exported so the chips' fade shares the exact shader maths. */
-export function compareFieldAt(spec: CompareSpec, uv: [number, number], aspect: number): number {
+/** The divider position alone, over the one shared walk: the convenience for callers with no interest in the angle. */
+export function compareValueAt(spec: CompareSpec, localMs: number): number {
+  return compareSampleAt(spec, localMs).value;
+}
+
+/** The mask's scalar field at a uv point under the SAMPLED angle, in the same normalised units the shader uses (linear: position along the sweep axis; circle: distance from centre over the far corner; radial: angle around the centre; blend has no field). Exported so the chips' fade shares the exact shader maths. */
+export function compareFieldAt(
+  spec: CompareSpec,
+  angleDeg: number,
+  uv: [number, number],
+  aspect: number,
+): number {
   if (spec.maskType === "linear") {
     const px = (uv[0] - 0.5) * aspect;
     const py = uv[1] - 0.5;
-    const sweepRad = ((spec.angleDeg - 90) * Math.PI) / 180;
+    const sweepRad = ((angleDeg - 90) * Math.PI) / 180;
     const dx = Math.cos(sweepRad);
     const dy = Math.sin(sweepRad);
     const hi = 0.5 * (aspect * Math.abs(dx) + Math.abs(dy));
@@ -152,16 +184,17 @@ export function compareFieldAt(spec: CompareSpec, uv: [number, number], aspect: 
   return Math.hypot(qx, qy) / Math.max(Math.hypot(cx, cy), 1e-5);
 }
 
-/** How much side `side` covers a uv point, 0..1 (soft within the mask's feather band): side A holds where the field is BELOW the divider on linear masks and OUTSIDE the window on circle/radial; blend is the divider value itself. Chips fade by this. */
+/** How much side `side` covers a uv point, 0..1 (soft within the mask's feather band): side A holds where the field is BELOW the divider on linear masks and OUTSIDE the window on circle/radial; blend is the divider value itself. `value` and `angleDeg` are one `compareSampleAt` pair, so the fade stays in lockstep with the shader. Chips fade by this. */
 export function compareCoverageAt(
   spec: CompareSpec,
   value: number,
+  angleDeg: number,
   uv: [number, number],
   aspect: number,
   side: "a" | "b",
 ): number {
   if (spec.maskType === "blend") return side === "a" ? 1 - value : value;
-  const field = compareFieldAt(spec, uv, aspect);
+  const field = compareFieldAt(spec, angleDeg, uv, aspect);
   const band = Math.max(spec.softness, 0.04);
   const inA =
     spec.maskType === "linear"
@@ -191,11 +224,13 @@ export function deriveCompareBDoc(doc: SceneDoc | undefined): SceneDoc | null {
   return b;
 }
 
-/** Everything the compositor needs for one compare frame: the divider sampled at the scene's local time, the whole normalised spec (mask + chrome), and each side's root-scene render state (absent when the project never opts into themed scene state). */
+/** Everything the compositor needs for one compare frame: the divider sampled at the scene's local time (position and angle together), the whole normalised spec (mask + chrome), and each side's root-scene render state (absent when the project never opts into themed scene state). */
 export interface CompareFrame {
   index: number;
   /** Divider position 0..1 along the mask's field (side A below it on linear masks). */
   value: number;
+  /** The divider LINE's angle in degrees at this frame (linear only), sampled with the value. */
+  angleDeg: number;
   spec: CompareSpec;
   stateA?: SceneRenderState;
   stateB?: SceneRenderState;
@@ -212,9 +247,11 @@ export function resolveCompareFrame(
   for (const active of resolved.active) {
     const spec = specs[active.index];
     if (!spec) continue;
+    const sample = compareSampleAt(spec, active.localMs);
     plans.push({
       index: active.index,
-      value: compareValueAt(spec, active.localMs),
+      value: sample.value,
+      angleDeg: sample.angleDeg,
       spec,
       stateA: statesA?.[active.index],
       stateB: statesB?.[active.index] ?? undefined,
