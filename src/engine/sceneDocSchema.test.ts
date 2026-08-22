@@ -5,6 +5,7 @@ import themeSpikeStudioDoc from "./__fixtures__/theme-spike/02-studio.json";
 import themeSpikeGradientDoc from "./__fixtures__/theme-spike/03-gradient.json";
 import themeSpikeImageDoc from "./__fixtures__/theme-spike/04-image.json";
 import themeSpikeAbyssDoc from "./__fixtures__/theme-spike/05-abyss.json";
+import { COMPARE_GRIP_CATALOG } from "./compareCatalog";
 import { collectSceneDocFontRefs, parseSceneDoc, SCENE_DOC_VERSION } from "./sceneDocSchema";
 
 // parseSceneDoc must degrade (warn + ignore), never throw; a bad sidecar cannot tear down the canvas tree.
@@ -363,6 +364,103 @@ describe("parseSceneDoc", () => {
       d3: { shadow: "long" },
     });
     expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
+  it("keeps the legacy boolean grip and the sized/styled object form", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const grip = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { grip: raw } } }, "test")?.compare?.chrome
+        ?.grip;
+    expect(grip(true)).toBe(true);
+    expect(grip(false)).toBe(false);
+    expect(grip({})).toBe(true);
+    expect(grip({ size: 1.4 })).toEqual({ size: 1.4 });
+    expect(grip({ style: "arrows" })).toEqual({ style: "arrows" });
+    expect(grip({ size: 0.8, style: "dot" })).toEqual({ size: 0.8, style: "dot" });
+    expect(warn).not.toHaveBeenCalled();
+    for (const entry of COMPARE_GRIP_CATALOG) {
+      expect(grip({ style: entry.id })).toEqual({ style: entry.id });
+    }
+    warn.mockRestore();
+  });
+
+  it("drops a malformed grip size or style alone, keeping the handle on", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const grip = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { grip: raw } } }, "test")?.compare?.chrome
+        ?.grip;
+    expect(grip({ size: -1 })).toBe(true);
+    expect(grip({ size: "big", style: "bar" })).toEqual({ style: "bar" });
+    expect(grip({ style: "wheel" })).toBe(true);
+    expect(grip({ size: 1.2, style: "wheel" })).toEqual({ size: 1.2 });
+    expect(grip("yes")).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(5);
+    warn.mockRestore();
+  });
+
+  it("keeps a divider colour that is a theme token or a #rrggbb hex, dropping anything else", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const colour = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { line: { colour: raw } } } }, "test")?.compare
+        ?.chrome?.line?.colour;
+    for (const token of ["background", "text", "accent", "muted"]) {
+      expect(colour(token)).toBe(token);
+    }
+    expect(colour("#3fa9c4")).toBe("#3fa9c4");
+    expect(colour("#3FA9C4")).toBe("#3FA9C4");
+    expect(warn).not.toHaveBeenCalled();
+    // Three-digit hex is out: the resolver only reads six, so it would render mid grey.
+    expect(colour("#abc")).toBeUndefined();
+    expect(colour("rebeccapurple")).toBeUndefined();
+    expect(colour(42)).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
+  it("holds the tints to the same token-or-hex rule as the divider colour", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tint = (raw: unknown) =>
+      parseSceneDoc({ version: 1, compare: { chrome: { tint: raw } } }, "test")?.compare?.chrome
+        ?.tint;
+    for (const token of ["background", "text", "accent", "muted"]) {
+      expect(tint({ a: token, b: token })).toEqual({ a: token, b: token });
+    }
+    expect(tint({ a: "#3fa9c4", b: "#3FA9C4" })).toEqual({ a: "#3fa9c4", b: "#3FA9C4" });
+    expect(tint({ a: "accent", amount: 0.2 })).toEqual({ a: "accent", amount: 0.2 });
+    expect(warn).not.toHaveBeenCalled();
+    expect(tint({ a: "rebeccapurple", b: "#abc" })).toEqual({});
+    expect(tint({ a: 42, b: "muted" })).toEqual({ b: "muted" });
+    expect(warn).toHaveBeenCalledTimes(3);
+    warn.mockRestore();
+  });
+
+  it("keeps an optional per-key divider angle, dropping a malformed one alone", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        compare: {
+          mask: { type: "linear", angleDeg: 120 },
+          track: {
+            keys: [
+              { id: "k1", tMs: 0, pose: { value: 1 } },
+              { id: "k2", tMs: 500, pose: { value: 0.5, angleDeg: 135 } },
+              { id: "k3", tMs: 900, pose: { value: 0, angleDeg: "sideways" } },
+              { id: "k4", tMs: 1200, pose: { angleDeg: 45 } },
+            ],
+            segments: [{ from: "k1", to: "k2", ease: "linear" }],
+          },
+        },
+      },
+      "test",
+    );
+    expect(doc?.compare?.track?.keys).toEqual([
+      { id: "k1", tMs: 0, pose: { value: 1 } },
+      { id: "k2", tMs: 500, pose: { value: 0.5, angleDeg: 135 } },
+      { id: "k3", tMs: 900, pose: { value: 0 } },
+    ]);
+    expect(warn).toHaveBeenCalledTimes(2);
     warn.mockRestore();
   });
 

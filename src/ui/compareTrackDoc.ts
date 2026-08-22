@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { type CompareTrackDoc, useCompareEditStore } from "../engine/compareEditStore";
+import {
+  type ComparePose,
+  type CompareTrackDoc,
+  useCompareEditStore,
+} from "../engine/compareEditStore";
 import { pushHistory } from "../engine/history";
 import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
-import { compareSpecOf, compareValueAt } from "../engine/sceneCompare";
+import { compareSampleAt, compareSpecOf } from "../engine/sceneCompare";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 
-/** Shared compare-track doc plumbing (the useLayeredScreenshotDoc pattern) for the divider lane: the in-flight draft, live preview via the edit store (the CompositorDriver merges it per frame), sidecar commit with history + write-error surface, and the applied-value sampler that seeds Add-animation so adding never visibly moves the divider. */
+/** Shared compare-track doc plumbing (the useLayeredScreenshotDoc pattern) for the divider lane: the in-flight draft, live preview via the edit store (the CompositorDriver merges it per frame), sidecar commit with history + write-error surface, and the applied-pose sampler that seeds Add-animation and splits so adding never visibly moves or rotates the divider. */
 export function useCompareTrackDoc(
   project: LoadedProject,
   sceneIndex: number,
@@ -70,18 +74,22 @@ export function useCompareTrackDoc(
     [slug, sceneFile, doc, preview, onDocChanged, sceneIndex],
   );
 
-  /** The divider value the scene actually shows at scene-local `t` under the current track. */
-  const appliedValueAt = useCallback(
-    (localT: number): number => {
+  /** The divider pose the scene actually shows at scene-local `t` under the current track. The angle rides along ONLY on tracks that already animate it, so seeding a key on a plain divider still writes an angle-free pose and existing docs stay byte-identical. */
+  const appliedPoseAt = useCallback(
+    (localT: number): ComparePose => {
       const spec = compareSpecOf(
         doc
           ? { ...doc, compare: { ...(doc.compare ?? {}), track } }
           : ({ version: 1, compare: { track } } as SceneDoc),
       );
-      return spec ? compareValueAt(spec, localT) : 0.5;
+      if (!spec) return { value: 0.5 };
+      const sample = compareSampleAt(spec, localT);
+      return track.keys.some((k) => k.pose.angleDeg !== undefined)
+        ? { value: sample.value, angleDeg: sample.angleDeg }
+        : { value: sample.value };
     },
     [doc, track],
   );
 
-  return { slug, doc, track, preview, commit, appliedValueAt };
+  return { slug, doc, track, preview, commit, appliedPoseAt };
 }

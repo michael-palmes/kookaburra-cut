@@ -1631,6 +1631,19 @@ export function ChartPlacementDrillIn({
     if (baseline) void commitFromBaseline(baseline, writePlacement(mutate));
     else void patchDoc(writePlacement(mutate), { history: "chart placement" });
   };
+  // A gesture that ends where it started commits nothing: put the baseline's placement back and release it, so the next commit can never build on a stale snapshot.
+  const abortDrag = (committed: boolean) => {
+    if (committed) return;
+    const baseline = dragBaseline.current;
+    dragBaseline.current = null;
+    if (!baseline) return;
+    void patchDoc(
+      (next) => {
+        if (next.chart) next.chart.placement = structuredClone(baseline.chart?.placement);
+      },
+      { history: false },
+    );
+  };
   const setAxis = (
     field: "position" | "rotationDeg",
     axis: number,
@@ -1681,6 +1694,7 @@ export function ChartPlacementDrillIn({
                 decimals={2}
                 onInput={(n) => setAxis("position", axis, n, false)}
                 onCommit={(n) => setAxis("position", axis, n, true)}
+                onDragEnd={abortDrag}
               />
             ))}
           </div>
@@ -1693,6 +1707,7 @@ export function ChartPlacementDrillIn({
                 decimals={1}
                 onInput={(n) => setAxis("rotationDeg", axis, n, false)}
                 onCommit={(n) => setAxis("rotationDeg", axis, n, true)}
+                onDragEnd={abortDrag}
               />
             ))}
           </div>
@@ -1712,6 +1727,7 @@ export function ChartPlacementDrillIn({
                   p.scale = Math.max(0.05, n);
                 })
               }
+              onDragEnd={abortDrag}
             />
           </div>
         </DrillGroup>

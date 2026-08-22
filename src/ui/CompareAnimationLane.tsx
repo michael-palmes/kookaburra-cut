@@ -1,5 +1,9 @@
 import { useCallback } from "react";
-import { type CompareTrackDoc, useCompareEditStore } from "../engine/compareEditStore";
+import {
+  type ComparePose,
+  type CompareTrackDoc,
+  useCompareEditStore,
+} from "../engine/compareEditStore";
 import type { LoadedProject } from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { useCompareTrackDoc } from "./compareTrackDoc";
@@ -38,7 +42,7 @@ export function CompareAnimationLane({
   const selectedKeyId = useCompareEditStore((s) => s.selectedKeyId);
   const selectedSegment = useCompareEditStore((s) => s.selectedSegment);
   const writeError = useCompareEditStore((s) => s.writeError);
-  const { track, preview, commit, appliedValueAt } = useCompareTrackDoc(
+  const { track, preview, commit, appliedPoseAt } = useCompareTrackDoc(
     project,
     sceneIndex,
     onDocChanged,
@@ -53,7 +57,7 @@ export function CompareAnimationLane({
   const windowStartMs = (slot.transitionIn?.durationMs ?? 0) / 2;
   const windowEndMs = slot.durationMs - (nextSlot?.transitionIn?.durationMs ?? 0) / 2;
   return (
-    <TrackLane<{ value: number }, CompareTrackDoc>
+    <TrackLane<ComparePose, CompareTrackDoc>
       open={open}
       slotStartMs={slot.startMs}
       durationMs={slot.durationMs}
@@ -72,7 +76,7 @@ export function CompareAnimationLane({
       onEscape={onEscape}
       preview={(t) => preview(t, false)}
       commit={(t) => commit(t)}
-      poseAt={(localT) => ({ value: appliedValueAt(localT) })}
+      poseAt={appliedPoseAt}
       onSceneDuration={onDuration}
       addTitle="Add a divider animation after the last one, or ending at the playhead when it is past it"
       label="Comparison"

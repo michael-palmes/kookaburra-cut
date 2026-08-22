@@ -1,3 +1,4 @@
+import { isCompareChipTextKey } from "../../engine/compareChipText";
 import { frameTextAlign } from "../../engine/framePanelLayout";
 import {
   clearTemplateManagedTextLayout,
@@ -7,6 +8,7 @@ import {
   managedTextPoints,
   materialiseManagedFrameIcon,
   materialiseManagedText,
+  ownedManagedTextItems,
   type ResolvedManagedTextGroup,
   resolveManagedTextGroups,
   resolveTemplateManagedFrameIcon,
@@ -140,7 +142,7 @@ export function managedTextGroupAlignment(
 ): SceneTextAlign {
   if (!doc.managedText) return fallback;
   return (
-    resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups).find(
+    resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups, []).find(
       (group) => group.key === groupKey,
     )?.align ?? fallback
   );
@@ -153,7 +155,7 @@ export function setManagedTextGroupAlignment(
   virtualOptions: VirtualManagedTextOptions = {},
 ): SceneDoc | null {
   if (!doc.managedText) return null;
-  const resolved = resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups);
+  const resolved = resolveManagedTextGroups(doc.managedText.items, doc.managedText.groups, []);
   const target = resolved.find((group) => group.key === groupKey);
   if (!target || target.align === align) return null;
   const next = structuredClone(doc);
@@ -377,7 +379,8 @@ function rawGroupsForItems(
   items: readonly SceneManagedTextItem[],
   groups: readonly SceneManagedTextGroup[] | undefined,
 ): SceneManagedTextGroup[] {
-  return resolveManagedTextGroups(items, groups).map((group) => ({
+  // Chrome is already out of these items, so every group here is content the document owns.
+  return resolveManagedTextGroups(items, groups, []).map((group) => ({
     key: group.key,
     itemKeys: [...group.itemKeys],
     ...(group.align ? { align: group.align } : {}),
@@ -444,7 +447,8 @@ export function applyManagedTextStructuralAction(
   virtualOptions: VirtualManagedTextOptions = {},
 ): ManagedTextStructuralResult | null {
   const model = deriveManagedTextModel(doc, registrations, virtualOptions);
-  const sourceItems = cloneItems(model.items);
+  // Appended host chrome never enters the block, so no structural action can move, copy or delete a chip row.
+  const sourceItems = cloneItems(ownedManagedTextItems(model.items, model.chromeKeys));
   const items = cloneItems(sourceItems);
   const hadExplicitGroups = doc.managedText?.groups !== undefined;
   const groups = rawGroupsForItems(sourceItems, doc.managedText?.groups);
@@ -723,9 +727,10 @@ export async function performManagedTextStructuralAction({
 }: PerformManagedTextStructuralActionOptions): Promise<ManagedTextStructuralStatus> {
   if (doc.managedText === undefined) {
     if (!confirmTakeover) return "cancelled";
+    const model = deriveManagedTextModel(doc, registrations, virtualOptions);
     const accepted = await confirmTakeover({
       action,
-      itemCount: deriveManagedTextModel(doc, registrations, virtualOptions).items.length,
+      itemCount: ownedManagedTextItems(model.items, model.chromeKeys).length,
     });
     if (!accepted) return "cancelled";
   }
@@ -754,12 +759,14 @@ export function setManagedTextCopy(
   virtualOptions: VirtualManagedTextOptions = {},
 ): SceneDoc | null {
   const next = structuredClone(doc);
-  if (next.managedText) {
-    const item = next.managedText.items.find((candidate) => candidate.key === itemKey);
-    if (!item || item.text === value) return null;
-    item.text = value;
+  const blockItem = next.managedText?.items.find((candidate) => candidate.key === itemKey);
+  if (blockItem) {
+    if (blockItem.text === value) return null;
+    blockItem.text = value;
     return next;
   }
+  // Chip copy lives in `text` under both ownerships: the block never carries host chrome.
+  if (next.managedText && !isCompareChipTextKey(itemKey)) return null;
   const item = virtualItem(doc, itemKey, registrations, virtualOptions);
   if (!item || item.type === "icon" || doc.text?.[itemKey] === value) return null;
   next.text = { ...next.text, [itemKey]: value };

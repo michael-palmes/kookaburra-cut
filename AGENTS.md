@@ -132,6 +132,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - **Keep `AGENTS.md` and `CLAUDE.md` byte-identical.** Update both in the same change and verify with `cmp -s AGENTS.md CLAUDE.md`.
 - **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
 - **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.
+- **Icons by default in the UI**: EVERY toggle and option control in the app chrome (toggle rows, action rows, segmented options, preset/option chips, side selectors) carries a leading line icon; text-only is a justified exception, not a default (`docs/design.md` section 10).
 - PR descriptions ALWAYS follow the `kookaburra-pr-descriptions` skill: one fixed shape (summary, What changed, a Verification line when gated), under ~120 words, nothing that lives outside the repo.
 
 ## Current state

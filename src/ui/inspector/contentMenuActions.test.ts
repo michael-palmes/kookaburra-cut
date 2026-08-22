@@ -37,6 +37,8 @@ function apply(plan: ReturnType<typeof planContentDuplicate>, doc: SceneDoc): Sc
 describe("contentMenuActions", () => {
   const cases: Array<[SceneOverviewRowModel, ContentMenuAction[]]> = [
     [row("text", { kind: "text", id: "title" }), ["edit", "duplicate", "delete"]],
+    [row("text", { kind: "text", id: "compare-chip:beforeLabel" }), ["edit"]],
+    [row("text", { kind: "text", id: "compare-chip:afterLabel" }), ["edit"]],
     [row("text"), ["edit"]],
     [row("device", { kind: "device", id: "d1" }), ["edit", "duplicate", "delete"]],
     [row("image", { kind: "legacyImage", id: "logo" }), ["edit", "duplicate", "delete"]],

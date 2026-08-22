@@ -60,7 +60,7 @@ import {
 import { getPersistentLayers } from "./persistentLayerRegistry";
 import { previewDofOff, previewEnvironmentOff } from "./previewMedia";
 import type { FrameCameraPlan } from "./sceneCamera";
-import { COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
+import { COMPARE_GRIP_ID, COMPARE_MASK_ID, type CompareFrame, hexToSrgb } from "./sceneCompare";
 import type { SceneHostHandle } from "./sceneHostRegistry";
 import { type FrameLightingPlan, lightingSampleForCompareSide } from "./sceneLighting";
 import {
@@ -192,6 +192,7 @@ function makeCompareMaterial(fragment: string): ShaderMaterial {
       lineColor: { value: new Vector3(1, 1, 1) },
       lineSoftness: { value: 0 },
       gripSize: { value: 0 },
+      gripStyle: { value: 0 },
       tintA: { value: new Vector3(0, 0, 0) },
       tintB: { value: new Vector3(0, 0, 0) },
       tintAmountA: { value: 0 },
@@ -620,7 +621,7 @@ function setCompareUniforms(
   u.texA.value = texA;
   u.texB.value = texB;
   u.value.value = plan.value;
-  u.sweepRad.value = ((spec.angleDeg - 90) * Math.PI) / 180;
+  u.sweepRad.value = ((plan.angleDeg - 90) * Math.PI) / 180;
   u.softness.value = spec.softness;
   u.aspect.value = aspect;
   u.maskType.value = COMPARE_MASK_ID[spec.maskType];
@@ -629,6 +630,7 @@ function setCompareUniforms(
   (u.lineColor.value as Vector3).set(...hexToSrgb(spec.chrome.lineColor));
   u.lineSoftness.value = spec.chrome.lineSoftness / 1080;
   u.gripSize.value = spec.chrome.gripSize;
+  u.gripStyle.value = COMPARE_GRIP_ID[spec.chrome.gripStyle];
   (u.tintA.value as Vector3).set(...hexToSrgb(spec.chrome.tintA ?? "#000000"));
   (u.tintB.value as Vector3).set(...hexToSrgb(spec.chrome.tintB ?? "#000000"));
   u.tintAmountA.value = spec.chrome.tintA ? spec.chrome.tintAmount : 0;

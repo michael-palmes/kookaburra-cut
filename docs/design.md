@@ -504,6 +504,12 @@ confirms). Theme cards and animation segments use it today.
   `--text-disabled`.
 - **Monochrome only**: no multicolour icons in chrome. Author as SVG (inherently Retina-crisp);
   never mix stroke weights within one toolbar.
+- **Icons by default**: EVERY toggle and option control in the app chrome carries a leading line
+  icon. That covers toggle rows, action rows, segmented options, preset and option chips, and side
+  (Before/After) selectors, anywhere in the chrome, not just the inspector. Shipping one of these
+  controls without an icon is a defect, not a style choice.
+- Text-only is a justified exception, never a default: give the reason (for example a dense token
+  picker where swatches or names already do the work).
 
 ---
 
