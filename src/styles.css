@@ -7650,6 +7650,24 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   height: auto;
 }
 
+/* Drill rows hold the rail instead of scrolling it sideways: flex items default to min-width: auto,
+   so a slider row's intrinsic parts (the 116px label + the range's 129px UA width + the 52px value
+   box) beat the 293px a .drill-group row leaves, and the body's overflow-y made that a scrollbar. */
+.inspector-drill-body .popover-row > .slider-row-label {
+  flex-shrink: 1;
+  max-width: 50%;
+}
+.inspector-drill-body .popover-row > :not(.slider-row-label, .popover-group-label) {
+  min-width: 0;
+}
+.inspector-drill-body .popover-row > .popover-inline:has(input[type="range"]) {
+  flex: 1;
+}
+.inspector-drill-body .popover-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Pinned footer for drill-ins with terminal actions (Cancel/Apply/Save). */
 .inspector-drill-actions {
   display: flex;
