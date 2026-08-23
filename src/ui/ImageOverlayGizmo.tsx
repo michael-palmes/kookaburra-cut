@@ -335,6 +335,7 @@ export function OverlayImageGizmo({
   return (
     <Gizmo2D
       items={items}
+      domain="media"
       selectedId={selected?.sceneIndex === sceneIndex ? selected.imageId : null}
       onSelect={(imageId) =>
         useImageEditStore.getState().select(imageId ? { sceneIndex, imageId } : null)

@@ -103,7 +103,7 @@ the same scene index, so a write from there would land on the A doc.
 
 ## Pointer routing
 
-The whole batch hangs off one pure function, `routePointer`
+Camera versus gizmo hangs off one pure function, `routePointer`
 (`src/ui/gizmo/gizmoRouting.ts`):
 
 | Condition (first match wins) | Owner |
@@ -140,6 +140,19 @@ camera tool is armed and no drag is in flight, a held override adds
 whole (`pointer-events: auto`) for the length of a rotate drag: a captured pointer
 does not carry its cursor, so the layer has to be hit-testable for the rotate
 cursor to hold.
+
+**Both families in one domain.** Media is the first section to stage both hosts
+at once, so a Stage-hosted image's `TransformControls` can sit under an
+Overlay-hosted image's 2D box, and being DOM the box would swallow every press.
+`routeLayerPointer` gives that pointer to a 3D handle of the layer's OWN domain
+(`gizmoHandleAt` filtered by domain, so no other family is affected) unless a 2D
+drag is already in flight, and `useSceneGizmoYield` then puts
+`.scene-gizmo-yield` on the layer, which stands the hit elements down exactly as
+a held override does, so the press reaches the canvas. Such a press also skips
+the layer's deselect, since clearing the selection would unmount the gizmo being
+pressed. A hover the world moved out from under cannot misroute either: the
+box's own pointer-down re-tests the handles synchronously and drops the press
+rather than taking it.
 
 Inside a 2D drag, ⌃ suppresses snapping and hides the guides, and Shift snaps a
 rotation to 15°.

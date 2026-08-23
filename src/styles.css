@@ -5410,8 +5410,10 @@ button.beat-status {
 .gizmo-hit {
   pointer-events: auto;
 }
-/* Camera override held: handles stand down so the drag reaches the tool surface. */
-.gizmo-layer.camera-override .gizmo-hit {
+/* Camera override held: handles stand down so the drag reaches the tool surface. A 3D gizmo handle
+   of this same section under the pointer does the same, so the press reaches the canvas below. */
+.gizmo-layer.camera-override .gizmo-hit,
+.gizmo-layer.scene-gizmo-yield .gizmo-hit {
   pointer-events: none;
 }
 

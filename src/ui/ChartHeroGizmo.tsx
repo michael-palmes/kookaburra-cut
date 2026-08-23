@@ -172,6 +172,7 @@ export function ChartHeroGizmo({
   return (
     <Gizmo2D
       items={items}
+      domain="chart"
       selectedId={selected?.sceneIndex === sceneIndex ? ITEM_ID : null}
       onSelect={(id) => useChartEditStore.getState().select(id === ITEM_ID ? { sceneIndex } : null)}
       resizeAbout="pivot"

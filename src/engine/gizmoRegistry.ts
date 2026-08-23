@@ -49,6 +49,15 @@ export function gizmoPickerHandles(): GizmoPickerHandle[] {
   return [...handles.values()];
 }
 
+/** Whether any gizmo is mounted, optionally in one domain: the cheap early-out for a hover test that runs on every pointer move. */
+export function hasGizmoPickers(domain?: GizmoDomain): boolean {
+  if (domain === undefined) return handles.size > 0;
+  for (const handle of handles.values()) {
+    if (handle.domain === domain) return true;
+  }
+  return false;
+}
+
 /** Fires whenever the pickable set changes. Readers cache their hover truth off pointer moves, and a gizmo mounts or unmounts with the pointer parked, so they must re-test on this. */
 export function subscribeGizmoPickers(listener: () => void): () => void {
   listeners.add(listener);
@@ -89,13 +98,18 @@ export function stageCanvasRect(): StageRect | null {
 const raycaster = new Raycaster();
 const pointer = new Vector2();
 
-/** The registered handle whose picker geometry sits under these NDC coordinates, else null. */
-export function gizmoHandleAt(ndcX: number, ndcY: number): GizmoPickerHandle | null {
+/** The registered handle whose picker geometry sits under these NDC coordinates, else null. `domain` narrows the search to one family, which is how a 2D layer asks whether the pointer belongs to a 3D gizmo of its OWN section. */
+export function gizmoHandleAt(
+  ndcX: number,
+  ndcY: number,
+  domain?: GizmoDomain,
+): GizmoPickerHandle | null {
   if (handles.size === 0) return null;
   const camera = stageCamera();
   if (!camera) return null;
   raycaster.setFromCamera(pointer.set(ndcX, ndcY), camera);
   for (const handle of handles.values()) {
+    if (domain !== undefined && handle.domain !== domain) continue;
     const targets = handle.pickers();
     if (targets.length === 0) continue;
     if (raycaster.intersectObjects(targets, true).length > 0) return handle;
