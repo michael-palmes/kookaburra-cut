@@ -19,6 +19,16 @@ const sceneTabSource = readSource("./SceneTab.tsx");
 const layeredScreenshotSource = readSource("../LayeredScreenshotBuilder.tsx");
 const objectPickerSource = readSource("../ObjectPicker.tsx");
 
+/** Every file that mounts a MediaBrowser inside the inspector: the panel's own screens plus the Screenshot Stack builder. */
+function mediaBrowserSources(): string[] {
+  const inspectorSources = testFs
+    .readdirSync(new URL(".", import.meta.url))
+    .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
+    .map((file) => readSource(`./${file}`))
+    .filter((source) => source.includes("<MediaBrowser"));
+  return [...inspectorSources, layeredScreenshotSource];
+}
+
 function sourceSection(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start);
   const endIndex = source.indexOf(end, startIndex + start.length);
@@ -84,20 +94,21 @@ describe("inspector media routing", () => {
   });
 
   it("keeps every inspector media browser inside the inspector media host", () => {
-    const inspectorSources = testFs
-      .readdirSync(new URL(".", import.meta.url))
-      .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
-      .map((file) => readSource(`./${file}`))
-      .filter((source) => source.includes("<MediaBrowser"));
-    const sources = [...inspectorSources, layeredScreenshotSource];
-
-    for (const source of sources) {
+    for (const source of mediaBrowserSources()) {
       const browsers = source.match(/<MediaBrowser\b/g) ?? [];
       const inspectorHosts = source.match(/className="inspector-media-host"/g) ?? [];
       expect(browsers.length).toBeGreaterThan(0);
       expect(inspectorHosts).toHaveLength(browsers.length);
       expect(source).not.toContain("wizard-media-host");
       expect(source).not.toContain("media-modal-wide");
+    }
+  });
+
+  it("opts every inspector media browser into the panel-scoped preview", () => {
+    for (const source of mediaBrowserSources()) {
+      const browsers = source.match(/<MediaBrowser\b/g) ?? [];
+      const scoped = source.match(/\binspectorPreview\b/g) ?? [];
+      expect(scoped).toHaveLength(browsers.length);
     }
   });
 

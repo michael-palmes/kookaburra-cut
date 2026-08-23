@@ -3916,6 +3916,7 @@ export function SceneTab({
           )}
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={mediaTarget.kind === "device" ? undefined : ["image"]}
@@ -4222,6 +4223,7 @@ export function SceneTab({
         <div className="inspector-drill-body">
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={["image"]}
@@ -4821,6 +4823,7 @@ export function SceneTab({
         <div className="inspector-drill-body">
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={["video"]}
@@ -4950,6 +4953,7 @@ export function SceneTab({
               </p>
               <div className="inspector-media-host">
                 <MediaBrowser
+                  inspectorPreview
                   slug={slug}
                   projectPath={workspaceProjectPath(slug) ?? ""}
                   kinds={["video"]}
@@ -5278,6 +5282,7 @@ export function SceneTab({
         <div className="inspector-drill-body">
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kinds={[kind]}
@@ -6632,6 +6637,7 @@ export function SceneTab({
           )}
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={workspaceProjectPath(slug) ?? ""}
               kindToggle

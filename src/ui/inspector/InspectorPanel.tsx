@@ -389,6 +389,7 @@ export function InspectorPanel({
               {mediaError && <p className="modal-error">{mediaError}</p>}
               <div className="inspector-media-host">
                 <MediaBrowser
+                  inspectorPreview
                   slug={workspaceSlug(project.id)}
                   projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                   kinds={["image"]}
@@ -419,6 +420,7 @@ export function InspectorPanel({
               {mediaError && <p className="modal-error">{mediaError}</p>}
               <div className="inspector-media-host">
                 <MediaBrowser
+                  inspectorPreview
                   slug={workspaceSlug(project.id)}
                   projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                   kindToggle

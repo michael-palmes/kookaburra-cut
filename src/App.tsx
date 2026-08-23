@@ -1758,13 +1758,14 @@ export default function App() {
     if (!playing) playUntilRef.current = null;
   }, [playing]);
 
-  // Spacebar toggles play/pause; arrows step one frame (shift = 10) on the export frame grid. Skipped while a form control is focused (xterm's hidden textarea included) or a modal is open. Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
+  // Spacebar toggles play/pause; arrows step one frame (shift = 10) on the export frame grid. Skipped while a form control is focused (xterm's hidden textarea included), or a modal or media preview is open (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (document.querySelector(".modal-overlay")) return;
+      if (document.querySelector(".media-preview")) return;
       if (e.code === "Space" && !e.repeat) {
         if (target === playBtnRef.current) return;
         e.preventDefault();

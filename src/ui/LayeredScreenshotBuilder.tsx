@@ -300,6 +300,7 @@ export function LayeredScreenshotBuilder({
           {mediaError && <p className="modal-error">{mediaError}</p>}
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={projectPath}
               kindToggle
@@ -343,6 +344,7 @@ export function LayeredScreenshotBuilder({
           {mediaError && <p className="modal-error">{mediaError}</p>}
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={projectPath}
               kindToggle
