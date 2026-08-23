@@ -39,6 +39,8 @@ export function ScenesDrillIn({
   onPasteBackground,
   onDelete,
   onCopyToProject,
+  onInsertPreset,
+  onSaveAsPreset,
 }: {
   scenes: SceneManagerRow[];
   /** An op is in flight; interactions disable rather than queue. */
@@ -59,6 +61,10 @@ export function ScenesDrillIn({
   onDelete: (indices: number[]) => void;
   /** Open the copy-to-project picker for the given selection (the host mounts CopySceneModal). */
   onCopyToProject: (indices: number[]) => void;
+  /** Open the preset gallery, inserting at this manifest index (the host mounts PresetGalleryModal). */
+  onInsertPreset: (position: number) => void;
+  /** Save one scene into the preset library (the host mounts SavePresetModal, which owns the write). */
+  onSaveAsPreset: (index: number) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -192,6 +198,8 @@ export function ScenesDrillIn({
           onDelete(deletable);
         },
         onCopyToProject: () => onCopyToProject(bulk ?? [scene.index]),
+        onInsertPreset: () => onInsertPreset(scene.index + 1),
+        onSaveAsPreset: () => onSaveAsPreset(scene.index),
       }),
     });
   };
@@ -286,6 +294,20 @@ export function ScenesDrillIn({
         </p>
       </div>
       <div className="inspector-drill-actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          title="Insert a scene from your preset library"
+          onClick={() =>
+            onInsertPreset(
+              selection.length > 0 ? selection[selection.length - 1] + 1 : scenes.length,
+            )
+          }
+        >
+          <SceneMenuIcon id="insert-preset" />
+          From preset
+        </button>
         <button
           type="button"
           className="btn"

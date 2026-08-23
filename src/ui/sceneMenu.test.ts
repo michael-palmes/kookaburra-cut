@@ -23,6 +23,8 @@ function items(overrides: Partial<SceneMenuOptions> = {}) {
     onPasteBackground: vi.fn(),
     onDelete: vi.fn(),
     onCopyToProject: vi.fn(),
+    onInsertPreset: vi.fn(),
+    onSaveAsPreset: vi.fn(),
     ...overrides,
   });
 }
@@ -81,7 +83,9 @@ describe("sceneMenuItems", () => {
     expect(ids(items({ onManage: vi.fn() }))).toEqual([
       "rename",
       "duplicate",
+      "insert-preset",
       "copy-to-project",
+      "save-preset",
       "duration",
       "manage",
       "separator",
@@ -90,7 +94,11 @@ describe("sceneMenuItems", () => {
       "separator",
       "delete",
     ]);
-    expect(ids(items({ onCopyToProject: undefined }))).toEqual([
+    expect(
+      ids(
+        items({ onCopyToProject: undefined, onInsertPreset: undefined, onSaveAsPreset: undefined }),
+      ),
+    ).toEqual([
       "rename",
       "duplicate",
       "duration",
@@ -100,6 +108,13 @@ describe("sceneMenuItems", () => {
       "separator",
       "delete",
     ]);
+  });
+
+  it("refuses Save as preset for a multi-selection", () => {
+    const bulk = item(items({ selectionCount: 3 }), "save-preset");
+    expect(bulk.disabled).toBe(true);
+    expect(bulk.title).toBe("Presets hold a single scene");
+    expect(item(items(), "save-preset").disabled).toBe(false);
   });
 
   it("routes Delete to its handler", () => {
@@ -123,6 +138,8 @@ describe("SceneMenuIcon", () => {
       "rename",
       "duplicate",
       "copy-to-project",
+      "insert-preset",
+      "save-preset",
       "duration",
       "manage",
       "copy-background",

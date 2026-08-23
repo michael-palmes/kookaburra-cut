@@ -21,6 +21,8 @@ import { BeatLane } from "./BeatLane";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { CopySceneModal } from "./CopySceneModal";
 import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
+import { PresetGalleryModal } from "./PresetGalleryModal";
+import { SavePresetModal } from "./SavePresetModal";
 import { SceneInsertTimeline } from "./SceneInsertTimeline";
 import type { WizardSceneInfo } from "./SceneWizards";
 import { sceneMenuItems } from "./sceneMenu";
@@ -51,6 +53,7 @@ export function PlaybackBar({
   onUpdateAudioMarkers,
   onAddCameraKeyAtBeat,
   onSyncCameraToBeats,
+  onSceneInserted,
 }: {
   project: LoadedProject | null;
   playing: boolean;
@@ -85,6 +88,8 @@ export function PlaybackBar({
   onAddCameraKeyAtBeat: (ms: number) => void;
   /** Generate the owning scene's camera track from its key beats (the host resolves the scene). */
   onSyncCameraToBeats: (ms: number) => void;
+  /** A preset insert landed a new scene file: reload and select it. Optional, since the host's on-disk fingerprint poll picks the change up within a couple of seconds anyway. */
+  onSceneInserted?: (file: string) => void;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const scrubbing = useRef(false);
@@ -94,6 +99,8 @@ export function PlaybackBar({
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
   const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
   const [duplicating, setDuplicating] = useState<number | null>(null);
+  const [insertingPreset, setInsertingPreset] = useState<number | null>(null);
+  const [savingPreset, setSavingPreset] = useState<number | null>(null);
 
   const spans = project ? sceneCellSpans(project.slots, durationMs) : [];
   const active = project ? activeSceneIndex(project.slots, currentMs) : 0;
@@ -130,6 +137,8 @@ export function PlaybackBar({
         onPasteBackground: () => onPasteBackground(index),
         onDelete: () => onDeleteScene(index),
         onCopyToProject: () => setCopying(index),
+        onInsertPreset: () => setInsertingPreset(index + 1),
+        onSaveAsPreset: () => setSavingPreset(index),
         onManage: () => {
           const ui = useUiStore.getState();
           ui.setInspectorTab("project");
@@ -415,6 +424,26 @@ export function PlaybackBar({
           sceneLabel={`“${sceneName(copying)}”`}
           onDone={() => setCopying(null)}
           onCancel={() => setCopying(null)}
+        />
+      )}
+      {insertingPreset !== null && project && (
+        <PresetGalleryModal
+          slug={workspaceSlug(project.id)}
+          sceneCount={project.slots.length}
+          position={insertingPreset}
+          onDone={(inserted) => {
+            setInsertingPreset(null);
+            onSceneInserted?.(inserted.file);
+          }}
+          onCancel={() => setInsertingPreset(null)}
+        />
+      )}
+      {savingPreset !== null && project && (
+        <SavePresetModal
+          projectSlug={workspaceSlug(project.id)}
+          sceneStem={sceneFileStem(project.sceneFiles[savingPreset])}
+          sceneName={sceneName(savingPreset)}
+          onClose={() => setSavingPreset(null)}
         />
       )}
       {duplicating !== null && project && (

@@ -20,6 +20,8 @@ import { projectRows } from "../inspectorOptions";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { DuplicateSceneDialog } from "../PlaybackBar";
+import { PresetGalleryModal } from "../PresetGalleryModal";
+import { SavePresetModal } from "../SavePresetModal";
 import { DebouncedRange } from "../TextAnimationPicker";
 import {
   builtinThemeChoices,
@@ -117,6 +119,7 @@ export function InspectorPanel({
   onOpenEditVideo,
   onDocChanged,
   onTimingChanged,
+  onSceneInserted,
   onApplyTheme,
   onDeleteScene,
   onReorderScenes,
@@ -157,6 +160,8 @@ export function InspectorPanel({
   ) => void;
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void;
   onTimingChanged: () => void;
+  /** A preset insert landed a new scene file: reload and select it (falls back to `onTimingChanged`). */
+  onSceneInserted?: (file: string) => void;
   /** Apply a project theme (the picking drill-in; management stays in the ThemeMode modal behind "Manage themes…"). */
   onApplyTheme: (themeId: string) => Promise<void>;
   /** Trash-recoverable scene removal (the Scene tab's bottom Delete). */
@@ -299,6 +304,9 @@ export function InspectorPanel({
   // The Duplicate… placement dialog for the Scenes drill-in's context menu.
   const [duplicating, setDuplicating] = useState<number | null>(null);
   const [copyingScenes, setCopyingScenes] = useState<number[] | null>(null);
+  // The Scenes drill-in's preset flows: the gallery's target index, and the scene being saved.
+  const [insertingPreset, setInsertingPreset] = useState<number | null>(null);
+  const [savingPreset, setSavingPreset] = useState<number | null>(null);
   const [fontSlot, setFontSlot] = useState<TypographySlot>("headline");
   /** The slot's effective font: the manifest override when set, else the (already-overridden) resolved theme's face; charts fall back to the body face, which is what their labels take unset. */
   const typographyRef = (slot: TypographySlot) => {
@@ -554,6 +562,8 @@ export function InspectorPanel({
                 void onDeleteScenes(indices).finally(() => setScenesBusy(false));
               }}
               onCopyToProject={setCopyingScenes}
+              onInsertPreset={setInsertingPreset}
+              onSaveAsPreset={setSavingPreset}
             />
             {duplicating !== null && (
               <DuplicateSceneDialog
@@ -581,6 +591,31 @@ export function InspectorPanel({
                 }
                 onDone={() => setCopyingScenes(null)}
                 onCancel={() => setCopyingScenes(null)}
+              />
+            )}
+            {insertingPreset !== null && (
+              <PresetGalleryModal
+                slug={workspaceSlug(project.id)}
+                sceneCount={project.slots.length}
+                position={insertingPreset}
+                // A new scene file, so the whole project reloads; the host selects it when it takes the file.
+                onDone={(inserted) => {
+                  setInsertingPreset(null);
+                  if (onSceneInserted) onSceneInserted(inserted.file);
+                  else onTimingChanged();
+                }}
+                onCancel={() => setInsertingPreset(null)}
+              />
+            )}
+            {savingPreset !== null && (
+              <SavePresetModal
+                projectSlug={workspaceSlug(project.id)}
+                sceneStem={sceneFileStem(project.sceneFiles[savingPreset])}
+                sceneName={
+                  project.sceneDocs[savingPreset]?.name ??
+                  sceneFileStem(project.sceneFiles[savingPreset])
+                }
+                onClose={() => setSavingPreset(null)}
               />
             )}
           </>

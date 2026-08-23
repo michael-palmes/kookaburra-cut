@@ -27,6 +27,7 @@ import { type AspectName, FORMATS, type FormatSpec, FPS, STANDING_ASPECTS } from
 import { captureOptionPreviews, optionPreviewSetsOf } from "./optionPreviews";
 import { runPackRoundTrip } from "./packRoundTrip";
 import { runPerfProbe } from "./perfProbe";
+import { listPresets, PRESET_PREVIEW_WIDTH, presetPreviewFrame } from "./presets";
 import { type LoadedProject, loadProject, previewLabProjectIds, sceneFileStem } from "./project";
 import type { RenderStateFingerprint } from "./renderFingerprint";
 import { findTemplate, listTemplates, TEMPLATE_PREVIEW_WIDTH } from "./templates";
@@ -45,6 +46,7 @@ export type AutoRunAction =
   | "export"
   | "theme-previews"
   | "template-previews"
+  | "preset-previews"
   | "option-previews"
   | "perf"
   | "screenshot"
@@ -211,6 +213,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "export" &&
     action !== "theme-previews" &&
     action !== "template-previews" &&
+    action !== "preset-previews" &&
     action !== "option-previews" &&
     action !== "perf" &&
     action !== "screenshot" &&
@@ -219,7 +222,7 @@ export function getAutoRunConfig(): AutoRunConfig | null {
     action !== "render-spike"
   ) {
     throw new Error(
-      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike)`,
+      `unknown KOOKABURRA_ACTION "${action}" (expected verify | export | theme-previews | template-previews | preset-previews | option-previews | perf | screenshot | packroundtrip | create | render-spike)`,
     );
   }
   const at = env.at?.trim();
@@ -250,21 +253,29 @@ export function getAutoRunConfig(): AutoRunConfig | null {
         ? listTemplates()
             .map((entry) => entry.id)
             .join(",")
-        : action === "option-previews"
-          ? (previewLabProjectIds()[0] ?? "preview-lab-text")
-          : useEditorStore.getState().projectId)
+        : action === "preset-previews"
+          ? // Empty until the starter set is authored; the run then reports "nothing to capture" against whatever project boots.
+            listPresets()
+              .map((entry) => entry.projectId)
+              .join(",") || useEditorStore.getState().projectId
+          : action === "option-previews"
+            ? (previewLabProjectIds()[0] ?? "preview-lab-text")
+            : useEditorStore.getState().projectId)
   )
     .split(",")
     .map((p) => p.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    // A preset is addressed by folder slug on the command line and by scoped project id everywhere else.
+    .map((p) => (action === "preset-previews" && !p.includes(":") ? `preset:${p}` : p));
   if (
     projects.length > 1 &&
     action !== "verify" &&
     action !== "export" &&
-    action !== "template-previews"
+    action !== "template-previews" &&
+    action !== "preset-previews"
   ) {
     throw new Error(
-      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export and template-previews accept a list`,
+      `KOOKABURRA_PROJECT lists ${projects.length} projects; only verify, export, template-previews and preset-previews accept a list`,
     );
   }
   return {
@@ -573,6 +584,79 @@ export async function runAutoRun(
           aspect: "16:9",
           project: templateId,
           path: `template-previews/${templateId}`,
+        });
+      }
+    } catch (e) {
+      ok = false;
+      error = String(e);
+    }
+    await finish({
+      action: config.action,
+      project: config.project,
+      codec: config.codec,
+      ok,
+      durationMs: Math.round(performance.now() - startedAt),
+      results,
+      ...(error ? { error } : {}),
+    });
+    return;
+  }
+
+  if (config.action === "preset-previews") {
+    // Bundled scene-preset card art: a preset IS a single-scene project folder, so each one loads through its scoped id (`preset:<slug>`) with no throwaway workspace involved, and its manifest's ONE preview frame renders through the EXPORT path (captureFrameRgba, the template-previews rationale: a borrowed clock freezes text motion) into a 16:9 JPEG the wrapper promotes into src/assets/preset-previews/.
+    try {
+      if (!applyProject) throw new Error("preset-previews needs the applyProject hook");
+      useEditorStore.getState().setFormat(FORMATS["16:9"]);
+      await nextCommit();
+      await preloadBundledBackdrops();
+      const bundled = listPresets();
+      // No bundled presets yet: the boot project is whatever App loaded, and there is nothing to capture.
+      const requested = bundled.length === 0 ? [] : config.projects;
+      if (requested.length === 0) {
+        results.push({ aspect: "16:9", path: "preset-previews (no bundled presets to capture)" });
+      }
+      for (const projectId of requested) {
+        const entry = bundled.find((preset) => preset.projectId === projectId);
+        if (!entry) throw new Error(`preset-previews: unknown preset "${projectId}"`);
+        console.warn(`[autorun] preset-previews ${entry.slug} starting`);
+        releaseCompositorPools();
+        releaseComposer();
+        const loaded = await loadProject(entry.projectId);
+        applyProject(loaded);
+        await nextCommit();
+        await awaitProjectCommitted(loaded);
+        await awaitSceneHostsCommitted(loaded.slots.length);
+        const frame = presetPreviewFrame(entry.manifest);
+        const tMs = resolveScreenshotTimeMs(
+          loaded,
+          String(frame.scene),
+          frame.atMs === undefined ? undefined : frame.atMs / 1000,
+        );
+        const shot = await captureFrameRgba(
+          {
+            projectId: loaded.id,
+            fps: FPS,
+            durationMs: loaded.totalMs,
+            slots: loaded.slots,
+            cameraTrack: loaded.cameraTrack,
+            sceneDocs: loaded.sceneDocs,
+            theme: loaded.theme,
+            sceneThemes: loaded.sceneThemes,
+            projectLighting: loaded.projectLighting,
+            sceneFrames: loaded.sceneFrames,
+            compareBDocs: loaded.compareBDocs,
+            compareBThemes: loaded.compareBThemes,
+            codec: config.codec,
+            format: FORMATS["16:9"],
+          },
+          tMs,
+        );
+        const jpeg = await rgbaToJpeg(shot.rgba, shot.width, shot.height, PRESET_PREVIEW_WIDTH);
+        await writeThemePreviews("preset", entry.slug, [jpeg]);
+        results.push({
+          aspect: "16:9",
+          project: entry.slug,
+          path: `preset-previews/${entry.slug}`,
         });
       }
     } catch (e) {

@@ -159,6 +159,7 @@ pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Resu
     let base = match kind.as_str() {
         "autorun" => preview_autorun_root(&app, "theme-previews")?,
         "template" => preview_autorun_root(&app, "template-previews")?,
+        "preset" => preview_autorun_root(&app, "preset-previews")?,
         "cache" => preview_cache_root(&app)?,
         other => return Err(format!("unknown preview kind {other:?}")),
     };

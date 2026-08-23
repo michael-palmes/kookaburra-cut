@@ -50,6 +50,10 @@ pnpm kookaburra:run --action create --project blank
 # four preview frames (16:9, 640px JPEG), promote into src/assets/template-previews/.
 pnpm kookaburra:run --action template-previews          # --project <id,...> selects
 
+# Scene-preset card art: load each bundled preset through its scoped id, capture its
+# manifest's one preview frame (16:9, 640px JPEG), promote into src/assets/preset-previews/.
+pnpm kookaburra:run --action preset-previews            # --project <slug,...> selects
+
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
 pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG
