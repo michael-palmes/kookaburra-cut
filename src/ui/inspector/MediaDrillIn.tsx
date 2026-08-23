@@ -614,6 +614,7 @@ export function MediaDrillIn({
           <legend className="visually-hidden">Media settings</legend>
           <DrillGroup label="Host">
             <SegmentedRow
+              className="subtabs-compact"
               ariaLabel="Media host"
               options={mediaHostOptions(entry.kind).map((option) =>
                 option.value === "overlay"
