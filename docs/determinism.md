@@ -1219,6 +1219,7 @@ rolling-gate project (`showcase-tour`):
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — |
+| `image-flip-spike` (image-orientation gate, eyeball it) | `ca4419d4…` | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |

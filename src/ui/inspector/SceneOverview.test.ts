@@ -240,6 +240,7 @@ describe("SceneOverview semantic markup", () => {
         label: "Content",
         onAdd: vi.fn(),
         addLabel: "Add content",
+        addText: "Add",
         expanded: true,
         controls: "scene-content-picker",
       }),
@@ -255,6 +256,8 @@ describe("SceneOverview semantic markup", () => {
     expect(sectionHtml).toContain(
       'class="inspector-scene-overview-add" aria-label="Add content" aria-expanded="true" aria-controls="scene-content-picker" aria-haspopup="dialog"',
     );
+    expect(sectionHtml).toContain("</svg>Add</button>");
+    expect(groupHtml).toContain("</svg></button>");
   });
 
   it("keeps an actionable group body separate from its add control", () => {

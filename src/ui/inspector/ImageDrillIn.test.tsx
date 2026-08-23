@@ -2,7 +2,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import {
-  armImageRemoveConfirmation,
   duplicateFirstClassImage,
   duplicateImage,
   ImageDrillIn,
@@ -356,22 +355,6 @@ describe("ImageDrillIn", () => {
 });
 
 describe("Image inspector structural actions", () => {
-  it("self-disarms remove confirmation after three seconds", () => {
-    vi.useFakeTimers();
-    const onDisarm = vi.fn();
-    const cancel = armImageRemoveConfirmation(onDisarm);
-
-    try {
-      vi.advanceTimersByTime(2_999);
-      expect(onDisarm).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(1);
-      expect(onDisarm).toHaveBeenCalledOnce();
-    } finally {
-      cancel();
-      vi.useRealTimers();
-    }
-  });
-
   it("duplicates once at execution time, retains the dormant placement and selects the copy", async () => {
     let working = imageDoc();
     const histories: Array<string | false | undefined> = [];

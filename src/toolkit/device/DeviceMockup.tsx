@@ -1,14 +1,6 @@
 import { Environment, Lightformer, useGLTF, useTexture } from "@react-three/drei";
-import { useContext, useLayoutEffect, useMemo } from "react";
-import {
-  Box3,
-  type Material,
-  type Mesh,
-  MeshBasicMaterial,
-  type Object3D,
-  SRGBColorSpace,
-  Vector3,
-} from "three";
+import { useContext, useMemo } from "react";
+import { Box3, type Material, type Mesh, MeshBasicMaterial, type Object3D, Vector3 } from "three";
 import { resolveAssetUrl } from "../../engine/project";
 import { ProjectIdContext } from "../../engine/sceneContext";
 import { useTimeline } from "../../engine/timeline";
@@ -17,6 +9,7 @@ import { AssetBoundary } from "../media/AssetBoundary";
 import { useSceneStaged } from "../stage/context";
 import type { V3 } from "../types";
 import { DEVICE_MODELS, type DeviceModelName, HIDDEN_NODES, SCREEN_MATERIAL } from "./models";
+import { useScreenImageTexture } from "./screenTexture";
 
 export interface DeviceMockupProps {
   /** Which bundled handset model to render. */
@@ -73,7 +66,8 @@ function DeviceMockupLoaded(props: DeviceMockupProps & { screenUrl: string }) {
 
   const { localMs } = useTimeline();
   const { scene } = useGLTF(DEVICE_MODELS[model]);
-  const screenTex = useTexture(screenUrl);
+  const loaded = useTexture(screenUrl);
+  const screenTex = useScreenImageTexture(loaded);
 
   // Clone once per (model, texture) since drei's useGLTF cache is shared: hide the studio backdrop, swap the display mesh to an unlit material showing the screen, then recentre + auto-fit to a fixed world height.
   const { root, fit } = useMemo(() => {
@@ -101,13 +95,6 @@ function DeviceMockupLoaded(props: DeviceMockupProps & { screenUrl: string }) {
     const fit = size.y > 1e-6 ? TARGET_WORLD_HEIGHT / size.y : 1;
     return { root: clone, fit };
   }, [scene, screenTex]);
-
-  // Match the loader's colour space and the glTF flipY convention so the screen image is neither washed out nor upside down on the model's UVs.
-  useLayoutEffect(() => {
-    screenTex.colorSpace = SRGBColorSpace;
-    screenTex.flipY = false;
-    screenTex.needsUpdate = true;
-  }, [screenTex]);
 
   // Idle spin: pure function of the timeline value, never the wall clock (determinism).
   const spinY = ((spinDegPerSec * localMs) / 1000) * DEG2RAD;

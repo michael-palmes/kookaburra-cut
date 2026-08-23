@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, useCallback, useEffect, useRef } from "react";
 import { useImageEditStore } from "../../engine/imageEditStore";
 import type {
   SceneDoc,
@@ -108,13 +108,6 @@ const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
   { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
   { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
 ];
-
-const REMOVE_CONFIRMATION_MS = 3_000;
-
-export function armImageRemoveConfirmation(onDisarm: () => void): () => void {
-  const timeout = setTimeout(onDisarm, REMOVE_CONFIRMATION_MS);
-  return () => clearTimeout(timeout);
-}
 
 function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
   if (typeof ref === "function") ref(value);
@@ -295,7 +288,6 @@ export function ImageDrillIn({
 }: ImageDrillInProps) {
   const dragBaseline = useRef<SceneDoc | null>(null);
   const pendingGesture = useRef<(() => void) | null>(null);
-  const [removeConfirmImageId, setRemoveConfirmImageId] = useState<string | null>(null);
   const gizmoMode = useImageEditStore((state) => state.gizmoMode);
   const images = doc.images ?? [];
   const imageIndex = images.findIndex((candidate) => candidate.id === imageId);
@@ -316,11 +308,6 @@ export function ImageDrillIn({
     },
     [],
   );
-
-  useEffect(() => {
-    if (removeConfirmImageId == null) return;
-    return armImageRemoveConfirmation(() => setRemoveConfirmImageId(null));
-  }, [removeConfirmImageId]);
 
   if (!image) {
     return (
@@ -379,11 +366,6 @@ export function ImageDrillIn({
   };
   const remove = () => {
     if (removeDisabled) return;
-    if (removeConfirmImageId !== image.id) {
-      setRemoveConfirmImageId(image.id);
-      return;
-    }
-    setRemoveConfirmImageId(null);
     if (onRemove) {
       onRemove();
       return;
@@ -411,9 +393,8 @@ export function ImageDrillIn({
             />
             <DrillHeaderAction
               kind="remove"
-              label={removeConfirmImageId === image.id ? "Confirm remove image" : "Remove image"}
+              label="Remove image"
               disabled={removeDisabled}
-              armed={removeConfirmImageId === image.id}
               onClick={remove}
             />
           </>

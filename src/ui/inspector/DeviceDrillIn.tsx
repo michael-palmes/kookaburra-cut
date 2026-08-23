@@ -96,7 +96,6 @@ export interface DeviceModelDrillInProps {
 type DeviceMutation = (doc: SceneDoc, device: SceneDocDeviceSpec) => void;
 type DeviceAxis = 0 | 1 | 2;
 
-const REMOVE_CONFIRMATION_MS = 3_000;
 const ZERO: V3 = [0, 0, 0];
 
 const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
@@ -149,11 +148,6 @@ export function deviceNavigationFocusTarget(
   }
   if (deviceIndex < deviceCount - 1) return "next";
   return deviceIndex > 0 ? "previous" : null;
-}
-
-export function armDeviceRemoveConfirmation(onDisarm: () => void): () => void {
-  const timeout = setTimeout(onDisarm, REMOVE_CONFIRMATION_MS);
-  return () => clearTimeout(timeout);
 }
 
 export async function changeFirstClassDeviceModel(
@@ -536,7 +530,6 @@ export function DeviceDrillIn({
   const previousDeviceButtonRef = useRef<HTMLButtonElement>(null);
   const nextDeviceButtonRef = useRef<HTMLButtonElement>(null);
   const pendingNavigationFocus = useRef<"previous" | "next" | null>(null);
-  const [removeConfirmDeviceId, setRemoveConfirmDeviceId] = useState<string | null>(null);
   const gizmoMode = useDeviceEditStore((state) => state.gizmoMode);
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
@@ -566,11 +559,6 @@ export function DeviceDrillIn({
     target?.focus({ preventScroll: true });
     pendingNavigationFocus.current = null;
   }, [device, deviceIndex, devices.length]);
-
-  useEffect(() => {
-    if (removeConfirmDeviceId == null) return;
-    return armDeviceRemoveConfirmation(() => setRemoveConfirmDeviceId(null));
-  }, [removeConfirmDeviceId]);
 
   if (!device) {
     return (
@@ -613,11 +601,6 @@ export function DeviceDrillIn({
 
   const remove = () => {
     if (removeDisabled) return;
-    if (removeConfirmDeviceId !== device.id) {
-      setRemoveConfirmDeviceId(device.id);
-      return;
-    }
-    setRemoveConfirmDeviceId(null);
     if (onRemove) {
       onRemove(device.id);
       return;
@@ -727,11 +710,8 @@ export function DeviceDrillIn({
             />
             <DrillHeaderAction
               kind="remove"
-              label={
-                removeConfirmDeviceId === device.id ? "Confirm remove device" : "Remove device"
-              }
+              label="Remove device"
               disabled={removeDisabled}
-              armed={removeConfirmDeviceId === device.id}
               onClick={remove}
             />
           </>

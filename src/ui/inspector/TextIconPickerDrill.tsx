@@ -153,6 +153,7 @@ export function TextIconImagePickerDrill({
         <div className="inspector-media-host">
           <fieldset disabled={disabled} className="text-icon-image-picker-fieldset">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={projectPath}
               refreshKey={refreshKey}

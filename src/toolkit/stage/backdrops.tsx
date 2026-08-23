@@ -21,6 +21,7 @@ import { useTheme } from "../../theme";
 import { hexToOklch, mixOklch, type Oklch, oklchToBytes } from "../../theme/oklch";
 import type { GradientSpec, ThemeBackdrop, ThemeShadowSpec } from "../../theme/tokens";
 import { AssetBoundary } from "../media/AssetBoundary";
+import { backdropCoverCrop, useBackdropImageTexture } from "./backdropTexture";
 import { stageShadowCatcherMode } from "./shadowRig";
 
 /** Staging backdrops, mounted by `<SceneStage>` from the scene's resolved backdrop spec: all three surface kinds render UNLIT with `toneMapped: false` so theme hexes/gradients/images land EXACTLY (a `#ffffff` background through ACES would render grey, the device-screen precedent), and receive real shadows through a `ShadowMaterial` catcher overlay drawn just in front (polygon offset); geometry/texture constants below are EXPORT CONTRACT. See docs/determinism.md ("Staging"). */
@@ -362,28 +363,26 @@ function ImagePlaneMesh({
   shadow?: ThemeShadowSpec;
 }) {
   const catcherMode = stageShadowCatcherMode(spec.type, shadow);
+  const cropped = useBackdropImageTexture(texture);
   useLayoutEffect(() => {
-    texture.colorSpace = SRGBColorSpace;
-    // Cover-fit: crop via repeat/offset so the image fills the plane without stretching.
-    const img = texture.image as { width: number; height: number } | undefined;
+    cropped.repeat.set(1, 1);
+    cropped.offset.set(0, 0);
+    const img = cropped.image as { width: number; height: number } | undefined;
     if (img && spec.fit !== "contain") {
-      const planeAspect = BACKDROP_WIDTH / BACKDROP_HEIGHT;
-      const imageAspect = img.width / img.height;
-      if (imageAspect > planeAspect) {
-        texture.repeat.set(planeAspect / imageAspect, 1);
-        texture.offset.set((1 - texture.repeat.x) / 2, 0);
-      } else {
-        texture.repeat.set(1, imageAspect / planeAspect);
-        texture.offset.set(0, (1 - texture.repeat.y) / 2);
-      }
+      const { repeat, offset } = backdropCoverCrop(
+        img.width / img.height,
+        BACKDROP_WIDTH / BACKDROP_HEIGHT,
+      );
+      cropped.repeat.set(repeat[0], repeat[1]);
+      cropped.offset.set(offset[0], offset[1]);
     }
-    texture.needsUpdate = true;
-  }, [texture, spec.fit]);
+    cropped.needsUpdate = true;
+  }, [cropped, spec.fit]);
   const material = useExactMaterial(
     (m) => {
-      m.map = texture;
+      m.map = cropped;
     },
-    [texture],
+    [cropped],
   );
   const geometry = useMemo(() => cycPlaneGeometry(), []);
   useLayoutEffect(() => () => geometry.dispose(), [geometry]);

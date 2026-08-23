@@ -1067,7 +1067,8 @@ body {
   outline-offset: -2px;
 }
 
-/* Fullscreen preview: playback-only (never the export path). */
+/* Media preview: playback-only (never the export path). Window-wide here (the media
+   library modal and the editor side panel); `.panel` below scopes it to an inspector drill. */
 /* Flex centring (not grid place-items) — the pattern the editor stage uses, which centres
    portrait media reliably in WKWebView. Starts below the drag strip like .modal-overlay. */
 .media-preview {
@@ -1213,6 +1214,84 @@ body {
 
 .toast-close.media-preview-close:hover {
   background: var(--surface-elevated);
+}
+
+/* ── Panel-scoped preview (inspector media pickers) ────────────────────────── */
+/* A picker raised from the 342px rail dims the rail, not the window. `inset` resets the
+   base `top: var(--chrome-top)`; `.inspector-drill` is the containing block, and its
+   `.inspector-drill-body` scroller never clips this because the scroller is a descendant
+   of that block, not an ancestor. */
+.media-preview.panel {
+  position: absolute;
+  inset: 0;
+  padding: var(--space-6);
+}
+
+.media-preview.panel img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.media-preview.panel .video-player {
+  width: 100%;
+  max-width: 100%;
+}
+
+.media-preview.panel .video-player video {
+  max-width: 100%;
+  /* Leave room for the control bar inside the panel. */
+  max-height: calc(100% - 60px);
+}
+
+/* The base bar floors at 320px, which overflows the rail. */
+.media-preview.panel .video-player-bar {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 0,3,0, to beat the `.toast-close.media-preview-close` compound above. */
+.media-preview.panel .media-preview-close {
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 30px;
+  height: 30px;
+}
+
+/* Prev/next through the grid; the arrow keys do the same while the overlay is open. */
+.media-preview-step {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--text-primary);
+  background: rgba(4, 6, 8, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-full);
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard);
+}
+
+.media-preview-step.prev {
+  left: var(--space-4);
+}
+
+.media-preview-step.next {
+  right: var(--space-4);
+}
+
+.media-preview-step:hover:not(:disabled) {
+  background: var(--surface-elevated);
+}
+
+.media-preview-step:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .terminal-host {
@@ -7140,7 +7219,6 @@ img.inspector-scene-thumb {
   color: var(--text-secondary);
 }
 
-.inspector-scene-overview-add,
 .inspector-scene-overview-group-add,
 .inspector-scene-overview-entity-open {
   display: inline-flex;
@@ -7155,28 +7233,61 @@ img.inspector-scene-thumb {
   cursor: pointer;
 }
 
-.inspector-scene-overview-add,
-.inspector-scene-overview-group-add {
-  color: var(--accent-text);
-}
-
-.inspector-scene-overview-add,
 .inspector-scene-overview-group-add {
   width: 24px;
   height: 24px;
   margin-left: auto;
+  color: var(--accent-text);
 }
 
-.inspector-scene-overview-add:hover:not(:disabled),
 .inspector-scene-overview-group-add:hover:not(:disabled),
 .inspector-scene-overview-entity-open:hover:not(:disabled) {
   color: var(--text-primary);
   background: var(--surface-hover);
 }
 
-.inspector-scene-overview-add:disabled,
 .inspector-scene-overview-group-add:disabled {
   color: var(--text-disabled);
+  cursor: default;
+}
+
+/* Accent-filled so the section add outranks the quiet group plus icons (§4.4). */
+.inspector-scene-overview-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  flex: none;
+  height: var(--control-h-sm);
+  margin-left: auto;
+  padding: 0 var(--space-4) 0 var(--space-3);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 590;
+  white-space: nowrap;
+  color: var(--text-on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.inspector-scene-overview-add svg {
+  width: 14px;
+  height: 14px;
+}
+
+.inspector-scene-overview-add:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.inspector-scene-overview-add:active:not(:disabled),
+.inspector-scene-overview-add[aria-expanded="true"] {
+  background: var(--accent-pressed);
+}
+
+.inspector-scene-overview-add:disabled {
+  opacity: 0.45;
   cursor: default;
 }
 
@@ -7608,8 +7719,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-drill-header-action.danger:hover:not(:disabled),
-.inspector-drill-header-action.danger:focus-visible,
-.inspector-drill-header-action.danger.armed {
+.inspector-drill-header-action.danger:focus-visible {
   border-color: var(--danger);
 }
 

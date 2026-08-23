@@ -11,6 +11,7 @@ lists or loads one.
 | `preview-lab-*` | Option-preview sources: one per family (text, stage, chart, chart build-ins) plus one per background. `pnpm kookaburra:run --action option-previews` renders them into `src/assets/option-previews/`, incrementally via `scripts/option-preview-stale.mjs` |
 | `transition-spike`, `transition-bg-spike` | Transition determinism fixtures with recorded verify baselines (`docs/determinism.md`) |
 | `compare-spike` | The before/after comparison fixture |
+| `image-flip-spike` | One image staged BOTH ways in one frame (device screen + plain stage plane), so an orientation regression is visible in a single `--action screenshot` |
 
 Adding a background means adding its `preview-lab-bg-<id>` project here; a vitest
 guards the pairing. The theme-preview fixture is NOT here: it ships, as

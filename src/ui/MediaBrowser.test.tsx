@@ -1,10 +1,13 @@
+import { createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   MediaBrowser,
   MediaBrowserError,
   MediaCard,
+  MediaPreviewOverlay,
   mediaCardActions,
+  mediaPreviewStep,
   mediaPreviewTabTarget,
   runMediaPickSingleFlight,
 } from "./MediaBrowser";
@@ -18,9 +21,9 @@ const testProcess = (
     };
   }
 ).process;
-const styles = testProcess
-  .getBuiltinModule("fs")
-  .readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+const testFs = testProcess.getBuiltinModule("fs");
+const readSource = (path: string) => testFs.readFileSync(new URL(path, import.meta.url), "utf8");
+const styles = readSource("../styles.css");
 
 describe("MediaBrowser accessibility", () => {
   it("names the source and media type controls", () => {
@@ -127,5 +130,109 @@ describe("MediaBrowser accessibility", () => {
     release?.();
     await expect(first).resolves.toBe(true);
     expect(busyRef.current).toBe(false);
+  });
+});
+
+describe("panel-scoped media preview", () => {
+  it("steps through the visible grid and wraps at both ends", () => {
+    const list = ["assets/a.png", "assets/b.png", "assets/c.png"];
+
+    expect(mediaPreviewStep(list, "assets/a.png", 1)).toBe("assets/b.png");
+    expect(mediaPreviewStep(list, "assets/c.png", 1)).toBe("assets/a.png");
+    expect(mediaPreviewStep(list, "assets/a.png", -1)).toBe("assets/c.png");
+    expect(mediaPreviewStep(["assets/only.png"], "assets/only.png", 1)).toBe("assets/only.png");
+    expect(mediaPreviewStep(["assets/only.png"], "assets/only.png", -1)).toBe("assets/only.png");
+    expect(mediaPreviewStep([], "assets/gone.png", 1)).toBeNull();
+    // A refresh that dropped the previewed file restarts from the top of the grid.
+    expect(mediaPreviewStep(list, "assets/gone.png", 1)).toBe("assets/b.png");
+    expect(mediaPreviewStep(list, "assets/gone.png", -1)).toBe("assets/c.png");
+  });
+
+  it("adds prev/next chevrons only when scoped to the inspector panel", () => {
+    const panel = renderToStaticMarkup(
+      <MediaPreviewOverlay
+        name="assets/shot.png"
+        src="asset://assets/shot.png"
+        kind="image"
+        panel
+        canStep
+        onStep={() => undefined}
+        onClose={() => undefined}
+        closeRef={createRef<HTMLButtonElement>()}
+      />,
+    );
+
+    expect(panel).toContain('class="media-preview panel"');
+    expect(panel).toContain('role="dialog"');
+    expect(panel).toContain('aria-modal="true"');
+    expect(panel).toContain('aria-label="Preview assets/shot.png"');
+    expect(panel).toContain('aria-label="Previous file"');
+    expect(panel).toContain('aria-label="Next file"');
+    expect(panel).toContain('class="toast-close media-preview-close"');
+    // Tab order: player controls, prev, next, close.
+    expect(panel.indexOf("media-preview-step prev")).toBeLessThan(
+      panel.indexOf("media-preview-step next"),
+    );
+    expect(panel.indexOf("media-preview-step next")).toBeLessThan(
+      panel.indexOf("media-preview-close"),
+    );
+
+    const windowWide = renderToStaticMarkup(
+      <MediaPreviewOverlay
+        name="assets/shot.png"
+        src="asset://assets/shot.png"
+        kind="image"
+        canStep
+        onStep={() => undefined}
+        onClose={() => undefined}
+        closeRef={createRef<HTMLButtonElement>()}
+      />,
+    );
+
+    expect(windowWide).toContain('class="media-preview"');
+    expect(windowWide).not.toContain("media-preview-step");
+  });
+
+  it("disables the chevrons when the grid holds a single file", () => {
+    const html = renderToStaticMarkup(
+      <MediaPreviewOverlay
+        name="assets/only.png"
+        src="asset://assets/only.png"
+        kind="image"
+        panel
+        canStep={false}
+        onStep={() => undefined}
+        onClose={() => undefined}
+        closeRef={createRef<HTMLButtonElement>()}
+      />,
+    );
+
+    expect(html.match(/class="media-preview-step [a-z]+" [^>]*disabled=""/g)).toHaveLength(2);
+  });
+
+  it("scopes the panel overlay to the drill and fits the player to the rail", () => {
+    // The modal and editor hosts keep the window-wide preview.
+    expect(styles).toMatch(/\.media-preview\s*\{[^}]*position: fixed;/s);
+    expect(styles).toMatch(/\.media-preview\.panel\s*\{[^}]*position: absolute;[^}]*inset: 0;/s);
+    // The base bar's 320px floor overflows the 342px rail.
+    expect(styles).toMatch(/\.media-preview\.panel \.video-player-bar\s*\{[^}]*min-width: 0;/s);
+    expect(styles).toContain(".media-preview-step {");
+  });
+
+  it("keeps the window-wide preview on the modal and editor hosts", () => {
+    for (const path of [
+      "./MediaLibrary.tsx",
+      "./SceneWizards.tsx",
+      "./SceneTextFields.tsx",
+      "../editor/EditorApp.tsx",
+    ]) {
+      expect(readSource(path)).not.toContain("inspectorPreview");
+    }
+  });
+
+  it("stands the timeline transport down while a preview is open", () => {
+    expect(readSource("../App.tsx")).toContain(
+      'if (document.querySelector(".media-preview")) return;',
+    );
   });
 });

@@ -28,6 +28,7 @@ import {
   ThemeBrowser,
   type ThemeChoice,
 } from "../ThemePicker";
+import { commitFocusedInspectorEdit } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
@@ -199,16 +200,7 @@ export function InspectorPanel({
       const next = activeSceneIndex(project.slots, state.currentMs);
       if (next === previous) return;
       previous = next;
-      const active = document.activeElement;
-      if (
-        active instanceof HTMLElement &&
-        active.closest(".inspector") &&
-        active.matches(
-          'textarea, [contenteditable="true"], input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"])',
-        )
-      ) {
-        active.blur();
-      }
+      commitFocusedInspectorEdit();
     });
   }, [project.slots]);
 
@@ -389,6 +381,7 @@ export function InspectorPanel({
               {mediaError && <p className="modal-error">{mediaError}</p>}
               <div className="inspector-media-host">
                 <MediaBrowser
+                  inspectorPreview
                   slug={workspaceSlug(project.id)}
                   projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                   kinds={["image"]}
@@ -419,6 +412,7 @@ export function InspectorPanel({
               {mediaError && <p className="modal-error">{mediaError}</p>}
               <div className="inspector-media-host">
                 <MediaBrowser
+                  inspectorPreview
                   slug={workspaceSlug(project.id)}
                   projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                   kindToggle

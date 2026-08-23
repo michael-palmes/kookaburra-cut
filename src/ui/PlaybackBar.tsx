@@ -360,6 +360,7 @@ export function PlaybackBar({
               <input
                 key={span.index}
                 className="modal-input pb-label-input pb-label-duration"
+                data-space-plays=""
                 style={{ flexGrow: span.weight }}
                 value={timing.text}
                 // biome-ignore lint/a11y/noAutofocus: entered from the context menu — it IS the focus target

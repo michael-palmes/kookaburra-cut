@@ -9,7 +9,6 @@ import {
 } from "../../toolkit/device/catalog";
 import { effectiveDeviceShadowMode } from "../../toolkit/device/Device";
 import {
-  armDeviceRemoveConfirmation,
   changeFirstClassDeviceModel,
   DeviceDrillIn,
   type DeviceDrillInProps,
@@ -663,17 +662,5 @@ describe("device editor actions", () => {
       nextDeviceId: null,
     });
     expect(selections).toEqual([]);
-  });
-
-  it("disarms the two-step remove confirmation", () => {
-    vi.useFakeTimers();
-    const disarm = vi.fn();
-    const cancel = armDeviceRemoveConfirmation(disarm);
-    vi.advanceTimersByTime(2_999);
-    expect(disarm).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(disarm).toHaveBeenCalledOnce();
-    cancel();
-    vi.useRealTimers();
   });
 });
