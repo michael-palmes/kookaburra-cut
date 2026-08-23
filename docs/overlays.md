@@ -24,6 +24,7 @@ edge.
 | Shapes | rect, rounded-rect, squircle, circle, capsule, none | Superellipse squircle is its own SDF, not a rounded rect. `none` removes the cutout: the panel fills the whole frame, no scene shows through, `side`/`size`/`inset`/`radius` are no-ops, and content centres by default. |
 | Colour | Theme tokens, with a custom override | Overlays restyle with the theme, one-off brand colours still possible. |
 | Panel fill | Colour, gradient, image, transparent | The panel is the slide's surface, so it needs the stage's fill vocabulary; animated shaders and 3D looks need extra render-target passes and are deferred. |
+| Cutout vs fill (2026-08-23) | The cutout SHAPE alone decides whether the world renders through a window; the fill only decides what paints outside it | Layout and render must agree. `SceneHost` narrows `useFormat()` on the shape, so a transparent panel that rendered full-bleed laid a scene out for a window it never got. |
 
 ## Architecture
 
@@ -253,7 +254,7 @@ pass:
 | `color` (or a plain string) | `panelColor` uniform, the flat fill. Unset = the neutral surface lifted off the scene's backdrop. |
 | `gradient` | Baked once by the stage's `gradientTexture` (same pixels as a background gradient), cached in `overlayPanelTexture.ts` and stretched over the frame, so the effective angle is per-aspect exactly as `FixedGradient`'s is. |
 | `image` | The project asset, cover-cropped per aspect (`fixedCoverCrop`), so one asset serves all four formats. Settled before frame 0 by `preloadOverlayPanelImages`. |
-| `transparent` | No slide pass at all: the scene renders full-bleed (the legacy path, byte for byte) and only the panel's content draws over it. The cutout has nothing to cut, so shape is a no-op. |
+| `transparent` | No surface of its own. With a SHAPED cutout the slide pass runs exactly as it does for an opaque panel (the world composes into the cutout) and the region outside takes the scene's own backdrop, proxied flat by `overlayPlan.ts`, so the panel reads as absent rather than as a surface. With `shape: "none"` there is no window to compose into, so there is no slide pass at all: the scene renders full-bleed (the legacy path, byte for byte) and only the panel's content draws over it. |
 
 The sampled routes ride one `panelMode` branch in `overlayShader.ts`; mode 0 is
 the flat colour path, arithmetically untouched, so every existing frame keeps its

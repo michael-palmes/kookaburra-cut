@@ -154,10 +154,19 @@ describe("resolveOverlays", () => {
     expect(resolveOverlays([image], [theme])?.[0]?.panel.kind).toBe("colour");
   });
 
-  it("a transparent panel keeps the neutral fallback colour it never paints", () => {
-    const out = resolveOverlays([panelFrame({ type: "transparent" })], [theme]);
+  it("a transparent panel fills with the backdrop itself, not the lifted surface", () => {
+    const themed = {
+      colors: { background: "#ffffff", text: "#000000", accent: "#ff0000", muted: "#808080" },
+      background: { type: "color", color: "#0000ff" },
+    } as Theme;
+    const out = resolveOverlays([panelFrame({ type: "transparent" })], [themed]);
     expect(out?.[0]?.panel.kind).toBe("transparent");
-    expect(out?.[0]?.panelColor).toEqual(resolveOverlays([frame], [theme])?.[0]?.panelColor);
+    // The backdrop verbatim, so the panel region reads as the backdrop continuing behind the cutout.
+    expect(out?.[0]?.panelColor).toEqual(
+      resolveOverlays([panelFrame("#0000ff")], [themed])?.[0]?.panelColor,
+    );
+    // And distinctly not the neutral surface an unset panel takes on the same theme.
+    expect(out?.[0]?.panelColor).not.toEqual(resolveOverlays([frame], [themed])?.[0]?.panelColor);
   });
 
   it("lists every panel image source once, for the preload barrier", () => {

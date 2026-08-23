@@ -43,13 +43,20 @@ describe("frameWorldCutout", () => {
   it("is null wherever the world still fills the frame", () => {
     expect(frameWorldCutout(undefined, WIDE)).toBeNull();
     expect(frameWorldCutout(spec({ cutout: { shape: "none" } }), WIDE)).toBeNull();
-    // A transparent panel skips the slide pass, so the scene renders full-bleed exactly as an unframed one does.
+    // Only the shape decides: a transparent panel with no cutout still renders full-bleed.
     expect(
       frameWorldCutout(
-        spec({ cutout: { shape: "rounded-rect" }, background: { type: "transparent" } }),
+        spec({ cutout: { shape: "none" }, background: { type: "transparent" } }),
         WIDE,
       ),
     ).toBeNull();
+  });
+
+  it("keeps a transparent panel on the cutout path, matching the render", () => {
+    const cutout = { shape: "rounded-rect" as const };
+    expect(frameWorldCutout(spec({ cutout, background: { type: "transparent" } }), WIDE)).toEqual(
+      frameLayout(WIDE, cutout).cutout,
+    );
   });
 
   it("is the layout's cutout for a painted panel, on either side and either axis", () => {

@@ -4168,8 +4168,9 @@ export function SceneTab({
           )}
           {panelTab === "transparent" && (
             <p className="modal-hint">
-              No panel fill: the scene fills the whole frame and the overlay's text, chip and
-              decorations sit over it.
+              {sceneFrame.cutout.shape === "none"
+                ? "No panel fill: the scene fills the whole frame and the overlay's text, chip and decorations sit over it."
+                : "No panel fill: the scene stays in its cutout, the panel takes the scene's own backdrop colour, and the overlay's text, chip and decorations sit over it."}
             </p>
           )}
         </div>

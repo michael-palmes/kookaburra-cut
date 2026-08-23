@@ -3,7 +3,7 @@ import type { Group } from "three";
 import { useEditorStore } from "../store/editorStore";
 import type { Theme } from "../theme/tokens";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { resolveCutoutRender } from "./frameFormat";
+import { framesThroughCutout, resolveCutoutRender } from "./frameFormat";
 import {
   AnimatedFixtureLightIdsContext,
   FormatContext,
@@ -54,8 +54,7 @@ export function SceneHost({
   // The cutout as its own frame: null (no override, store fallback) unless the scene has an overlay. Recomputed only when the export format or this scene's frame changes, so a framed scene lays out stably, never per render.
   const format = useEditorStore((s) => s.format);
   const cutoutFormat = useMemo(
-    () =>
-      frame && frame.cutout.shape !== "none" ? resolveCutoutRender(format, frame).format : null,
+    () => (frame && framesThroughCutout(frame) ? resolveCutoutRender(format, frame).format : null),
     [frame, format],
   );
   // The overlay claims the scene's headline unless it opted out; `TitleBlock` reads this and renders null so the title lives only in the panel.

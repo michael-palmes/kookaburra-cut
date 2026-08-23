@@ -2,6 +2,7 @@
 
 import { type FrameRect, frameLayout } from "../toolkit/frame/frameLayout";
 import type { FrameSpec } from "../toolkit/frame/types";
+import { framesThroughCutout } from "./frameFormat";
 import type { StageRect } from "./gizmoRegistry";
 
 let published: FrameRect | null = null;
@@ -15,11 +16,9 @@ export function stageCutout(): FrameRect | null {
   return published;
 }
 
-/** The cutout a framed scene's world renders into, or null when it renders full-bleed: a transparent panel skips the slide pass and takes the whole frame, and `shape: "none"` has no window at all (the compositor's `usesSceneTarget`). */
+/** The cutout a framed scene's world renders into, or null when it renders full-bleed: only `shape: "none"` has no window. Shape-driven, matching the compositor's `usesSceneTarget` and `SceneHost`'s format narrowing, so the panel fill (transparent included) never moves the world. */
 export function frameWorldCutout(frame: FrameSpec | undefined, aspect: number): FrameRect | null {
-  if (!frame || frame.cutout.shape === "none") return null;
-  const background = frame.background;
-  if (typeof background === "object" && background.type === "transparent") return null;
+  if (!frame || !framesThroughCutout(frame)) return null;
   return frameLayout(aspect, frame.cutout).cutout;
 }
 

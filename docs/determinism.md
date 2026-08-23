@@ -1231,6 +1231,25 @@ rolling-gate project (`showcase-tour`):
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `e5bc2b79…` | — | — | — | — | — | — | — | — |
 
+> **2026-08-23 (transparent panel + shaped cutout: a DELIBERATE render
+> change):** an overlay whose panel is transparent and whose cutout carries a
+> shape now composes exactly as an opaque panel does: the world renders into
+> the cutout-sized target and the slide pass keys it through the cutout, with
+> the region outside taking the scene's own backdrop instead of the panel
+> surface. It used to skip the slide pass and render the scene full-bleed,
+> while `SceneHost` had always narrowed `useFormat()` on the SHAPE, so those
+> scenes were laid out for a window they never got (the owner ruling of
+> 2026-08-23; `docs/decisions.md`, "Overlay cutout vs panel fill"). One rule
+> now serves all three seams, `framesThroughCutout` in `frameFormat.ts`.
+> Everything else is byte-null by construction: opaque, gradient and image
+> panels take the same branch they always did, `shape: "none"` still fills
+> flat (and still stands the whole slide pass down when the panel is
+> transparent, the full-bleed-chrome idiom), and an unframed scene never
+> reaches this code. NO bundled project, template or repo fixture pairs a
+> transparent panel with a shape (`grep -rn '"transparent"' projects
+> src-tauri/templates` is empty), so the standing baselines cannot move on
+> data grounds; gate legs and any re-records are pending the batch's gate run.
+
 > **2026-08-22 (scene media: images and the video window merged):** a scene's
 > stills and its floating screen recording became ONE sidecar family, `media[]`,
 > each entry carrying a `kind` ("image" or "video"), a source, both host
