@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SceneDoc, SceneDocMediaSpec } from "../../engine/sceneDocSchema";
+import type { SceneDoc, SceneDocMediaSpec, SceneMediaHost } from "../../engine/sceneDocSchema";
 import {
   armMediaRemoveConfirmation,
   duplicateFirstClassMedia,
@@ -16,6 +16,8 @@ import { duplicateSceneMedia, removeSceneMedia } from "./mediaEditorModel";
 interface CapturedSliderProps {
   label: string;
   value: number;
+  min?: number;
+  max?: number;
   onInput?: (value: number) => void;
   onCommit: (value: number) => void;
 }
@@ -153,12 +155,12 @@ function secondImage(): SceneDocMediaSpec {
   };
 }
 
-function video(): SceneDocMediaSpec {
+function video(host: SceneMediaHost = "window"): SceneDocMediaSpec {
   return {
     id: "vid1",
     kind: "video",
     src: "assets/demo-recording.mov",
-    host: "overlay",
+    host,
     stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
     overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
     window: { radius: "macos" },
@@ -415,6 +417,14 @@ describe("MediaDrillIn", () => {
 
     expect(html).toContain('aria-label="Back to Scene from Video"');
     expect(html).toContain("Video · 1 of 1");
+    // A clip is offered all three hosts, and the Window one drops the frame layer's own controls.
+    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+      "Stage",
+      "Overlay",
+      "Window",
+    ]);
+    expect(captures.segments[0]?.value).toBe("window");
+    expect(captures.sliders.find((slider) => slider.label === "Size")?.max).toBe(1);
     expect(captures.segments.at(-1)?.options.map((option) => option.label)).toEqual([
       "None",
       "Float",
@@ -423,7 +433,6 @@ describe("MediaDrillIn", () => {
       "Push",
     ]);
     expect(captures.toggles.map((toggle) => toggle.label)).toEqual([
-      "Circle crop",
       "Window recording",
       "Show border",
       "Loop",
@@ -460,6 +469,32 @@ describe("MediaDrillIn", () => {
 
     expect(writes[0]?.window).toBeUndefined();
     expect(writes[1]?.window).toEqual({ radius: "rounded" });
+  });
+
+  it("gives an Overlay-hosted video the frame layer's own controls and size range", () => {
+    const doc: SceneDoc = { version: 1, media: [video("overlay")] };
+    renderToStaticMarkup(<MediaDrillIn {...props(doc, "vid1")} />);
+
+    expect(captures.segments[0]?.value).toBe("overlay");
+    expect(captures.sliders.map((slider) => slider.label)).toEqual(["X", "Y", "Size", "Roll"]);
+    // The still's rule: `size` IS the width, so the still range applies, and crop and layer are live.
+    expect(captures.sliders.find((slider) => slider.label === "Size")?.max).toBe(0.6);
+    expect(captures.toggles.map((toggle) => toggle.label)).toContain("Circle crop");
+    expect(
+      captures.segments.some((segment) =>
+        segment.options.some((option) => option.label === "Above"),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps the Window host off a still, which would render nowhere", () => {
+    const doc: SceneDoc = { version: 1, media: [image("overlay")] };
+    renderToStaticMarkup(<MediaDrillIn {...props(doc)} />);
+
+    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+      "Stage",
+      "Overlay",
+    ]);
   });
 
   it("offers the chrome presets to a still image too", () => {

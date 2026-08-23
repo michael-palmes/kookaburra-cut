@@ -30,11 +30,11 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Staged object | 3D | `ObjectPrimitive` → `SceneGizmo` | move / rotate / scale | `objects[].placement` |
 | Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | `deviceLayout` delta, else `devices[].placement` |
 | Stage media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
-| Windowed clip | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` or `media[].overlay`, whichever host is active |
+| Stage clip with chrome | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
 | Staged chart | 3D | `Chart.tsx` (`StagedChart`) → `SceneGizmo` | move / rotate / scale | `chart.placement` |
 | Scene text, per key | 2D | `TextGizmo` → `Gizmo2D` | move / size / rotate | `textStyle.<key>OffsetX,OffsetY,Size,RotationDeg` |
 | Hero chart | 2D | `ChartHeroGizmo` → `Gizmo2D` | move / scale | `chart.style.offset`, `chart.style.scale` |
-| Overlay media | 2D | `OverlayImageGizmo` → `Gizmo2D` | move / resize / rotate | `media[].overlay` |
+| Overlay-placed media (Overlay and Window hosts) | 2D | `OverlayImageGizmo` → `Gizmo2D` | move / resize / rotate | `media[].overlay` |
 | Panel decoration | 2D | `DecorationGizmo` → `Gizmo2D` | move / resize / rotate | `frame.decorations[].position,size,rotationDeg` |
 
 `SceneGizmo` (`src/engine/SceneGizmo.tsx`) is the only place drei's
@@ -72,8 +72,8 @@ troika's first typeset landing.
 (`device` → devices, `image`/`media` → media, `objects`, `chart`, `text`,
 `frame.decorations`), reading the whole drill stack top down so a drill carrying
 another family's id (Shadow lives under Device as `style.shadow`) still reads as
-the section the user drilled through. The media domain covers both kinds and
-both hosts, since a still and a floating clip are one entry shape
+the section the user drilled through. The media domain covers both kinds and all
+three hosts, since a still and a floating clip are one entry shape
 (`resolveSceneDocMedia`): opening Media outlines every image and video the scene
 stages. `useGizmoSectionOpen(domain)` is a boolean
 selector, so moving between drills inside one family re-renders nothing.
@@ -212,10 +212,11 @@ Three coordinate spaces are in play:
   onto the stage rect, and panel headlines map world units against
   `format.frame` (`panelToStagePx`). No camera is involved. A panel group is left
   hidden between compositor passes, so the drawn check for panel text stops its
-  ancestor walk at the panel. Overlay media splits between the two: a still is
-  panel space, while a clip is world content (its drop shadow belongs against the
-  staged content), so it maps onto the cutout rect against the cutout's own
-  format, and the Media layer's guides follow whichever space it stages.
+  ancestor walk at the panel. Overlay-placed media splits between the two by
+  HOST, not by kind: an Overlay-hosted entry (either kind) is panel space, while
+  a Window-hosted one is world content, so it maps onto the cutout rect against
+  the cutout's own format, and the Media layer's guides follow whichever space it
+  stages.
 - **Cutout-hosted text is excluded**, by the scope decision above rather than by
   the maths: the stage viewport now covers the projection its exclusion was
   originally written against. The Text drill still edits it numerically.
@@ -230,7 +231,7 @@ precision as the inspector's own controls.
 | Object / staged chart | `placement.position,rotationDeg,scale` | The group is read back at pointer-up, so the doc lands exactly what is on screen; scale is uniformised to the furthest-moved axis |
 | Device | `deviceLayout` delta `offset,rotationDeg,scale` when a layout block is live, else `placement` | `committed = authored + (dragged - rendered)`, scale multiplying; 3dp positions, 1dp degrees, 3dp scale, minimum scale 0.01 |
 | Stage media | `media[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for clips, `STAGE_MEDIA_SIZE_RANGE`) |
-| Overlay media | `media[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for clips, `OVERLAY_MEDIA_SIZE_RANGE`) |
+| Overlay-placed media | `media[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for the Window host, `OVERLAY_MEDIA_SIZE_RANGE`) |
 | Text | `<key>OffsetX/OffsetY`, `<key>Size`, `<key>RotationDeg` | 2dp world units, whole percent (0.01..10 multiplier), 1dp degrees; a neutral value deletes the key so the scene's own layout resurfaces |
 | Hero chart | `chart.style.offset`, `chart.style.scale` | 2dp, clamped to the resolver's own ±20 and 0.2..3, so a drag can never write a value the resolver would silently clamp back |
 | Decoration | `position`, `size`, `rotationDeg` | Size clamped 0.02..1.5 of the frame width |
@@ -250,9 +251,9 @@ box's screen angle, so a tilt the scene itself authored stays out of the sidecar
   canvas. `SceneTab` subscribes, clears the pending commit (even for another
   scene, so an unclaimed drag is dropped rather than landing late) and writes
   once.
-- Overlay media uses the same Image-store route as Stage media. Live ticks stay
-  in `previewPlacement`, and pointer-up posts one `pendingCommit`, so changing
-  host never changes the image's history contract.
+- Overlay-placed media uses the same Image-store route as Stage media. Live ticks
+  stay in `previewPlacement`, and pointer-up posts one `pendingCommit`, so
+  changing host never changes the entry's history contract.
 - Media motion is neutralised on all mounted editor sides while the Media domain
   owns the Stage, keeping comparison renders, outlines, hit areas and handles on
   the authored placement. Leaving the domain restores sampled motion immediately.
@@ -341,9 +342,13 @@ in the tree.
   raycast during playback, which is not worth the cost.
 - Layered screenshot keeps its own overlay; folding it onto `Gizmo2D` is a later
   job.
-- An Overlay-hosted clip renders in world space (its drop shadow belongs
-  against the staged content), so its 2D box is exact under the default camera
-  and drifts under a moved one.
+- A Window-hosted clip renders in world space (the floating window the video
+  window always was), so its 2D box is exact under the default camera and drifts
+  under a moved one.
+- A clip's 2D box takes the aspect its doc recorded at pick time, then the native
+  probe, then 16:9, while the render prefers the clip's own intrinsics and, under
+  `window.recording`, the crop's aspect. The two disagree only when a doc records
+  an aspect its source no longer has, or on a cropped recording.
 - The stage viewport carries the projection, not the clip: a pointer over the
   panel still maps to a world ray (past the viewport's own edges for the r3f
   compute, which bounds-checks nothing, and inside the margin it adds beyond the

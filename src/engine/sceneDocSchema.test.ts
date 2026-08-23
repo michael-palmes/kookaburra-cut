@@ -865,12 +865,41 @@ describe("parseSceneDoc", () => {
       id: "vid1",
       kind: "video",
       src: "assets/clip.mp4",
-      host: "overlay",
+      host: "window",
       stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
       overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
       video: {},
     });
     expect(doc?.media?.[1]?.window).toBeUndefined();
+  });
+
+  it("parses all three media hosts, degrading a window-hosted still to the frame layer", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        media: [
+          { id: "vid1", kind: "video", src: "assets/a.mp4", host: "window" },
+          { id: "vid2", kind: "video", src: "assets/b.mp4", host: "overlay" },
+          { id: "vid3", kind: "video", src: "assets/c.mp4", host: "stage" },
+          { id: "vid4", kind: "video", src: "assets/d.mp4", host: "nowhere" },
+          { id: "img1", src: "assets/a.png", host: "window" },
+          { id: "img2", src: "assets/b.png", host: "overlay" },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.media?.map((entry) => entry.host)).toEqual([
+      "window",
+      "overlay",
+      "stage",
+      "window",
+      "overlay",
+      "overlay",
+    ]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('media[4].host "window"'));
+    vi.restoreAllMocks();
   });
 
   it("degrades malformed media entries, keeping the rest", () => {

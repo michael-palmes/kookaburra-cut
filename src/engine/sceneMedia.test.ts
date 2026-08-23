@@ -16,6 +16,7 @@ import {
   sceneMediaFromVideoWindow,
   sceneMediaInFrame,
   sceneMediaInWorld,
+  sceneMediaOverlayPlaced,
   sceneMediaUsesWindowPath,
   VIDEO_WINDOW_MEDIA_ID,
   videoWindowMediaEntry,
@@ -102,11 +103,11 @@ describe("sceneMediaFromVideoWindow", () => {
     offset: [0.25, -0.1],
   };
 
-  it("promotes one overlay-hosted video entry under the rig aim id", () => {
+  it("promotes one window-hosted video entry under the rig aim id", () => {
     const entry = sceneMediaFromVideoWindow(window);
     expect(entry.id).toBe(VIDEO_WINDOW_MEDIA_ID);
     expect(entry.kind).toBe("video");
-    expect(entry.host).toBe("overlay");
+    expect(entry.host).toBe("window");
     expect(entry.src).toBe("assets/screencast.mp4");
     expect(entry.window).toEqual({
       radius: "rounded",
@@ -218,9 +219,9 @@ describe("createSceneMedia", () => {
     });
   });
 
-  it("starts a video overlay-hosted with macOS window chrome at the legacy default size", () => {
+  it("starts a video window-hosted with macOS window chrome at the legacy default size", () => {
     const entry = createSceneMedia("vid1", "assets/clip.mp4", "video");
-    expect(entry.host).toBe("overlay");
+    expect(entry.host).toBe("window");
     expect(entry.window).toEqual({ radius: "macos" });
     expect(entry.video).toEqual({});
     expect(entry.overlay.size).toBe(0.72);
@@ -345,7 +346,7 @@ describe("render families", () => {
     { media: { src: "assets/clip.mp4" }, radius: "macos" },
   );
 
-  it("splits the world from the frame layer, Overlay clips going to the world", () => {
+  it("splits the world from the frame layer, the promoted window going to the world", () => {
     expect(sceneMediaInWorld(media).map((e) => e.id)).toEqual(["img1", VIDEO_WINDOW_MEDIA_ID]);
     expect(sceneMediaInFrame(media).map((e) => e.id)).toEqual(["img2"]);
   });
@@ -354,32 +355,57 @@ describe("render families", () => {
     expect(media.map(sceneMediaFamily)).toEqual(["stage", null, "window"]);
   });
 
-  it("splits by kind, never by chrome: a chromed still keeps its host's own layer", () => {
-    const chromed = createSceneMedia("img3", "assets/shot.png", "image", "overlay");
-    chromed.window = { radius: "macos" };
+  it("splits by host, never by kind or chrome: an Overlay-hosted entry stays on the frame layer", () => {
+    const chromedStill = createSceneMedia("img3", "assets/shot.png", "image", "overlay");
+    chromedStill.window = { radius: "macos" };
     const staged = createSceneMedia("img4", "assets/shot.png", "image", "stage");
     staged.window = { radius: "rounded" };
+    const overlayClip = createSceneMedia("vid1", "assets/clip.mp4", "video", "overlay");
+    const chromedOverlayClip = createSceneMedia("vid2", "assets/clip.mp4", "video", "overlay");
+    chromedOverlayClip.window = { radius: "macos" };
 
-    expect(sceneMediaFamily(chromed)).toBeNull();
+    expect(sceneMediaFamily(chromedStill)).toBeNull();
     expect(sceneMediaFamily(staged)).toBe("stage");
-    expect(sceneMediaInFrame([chromed, staged]).map((e) => e.id)).toEqual(["img3"]);
-    expect(sceneMediaInWorld([chromed, staged]).map((e) => e.id)).toEqual(["img4"]);
-    expect([chromed, staged].map(sceneMediaUsesWindowPath)).toEqual([false, false]);
+    expect(sceneMediaFamily(overlayClip)).toBeNull();
+    expect(sceneMediaFamily(chromedOverlayClip)).toBeNull();
+    expect(sceneMediaInFrame([chromedStill, staged, overlayClip]).map((e) => e.id)).toEqual([
+      "img3",
+      "vid1",
+    ]);
+    expect(sceneMediaInWorld([chromedStill, staged, overlayClip]).map((e) => e.id)).toEqual([
+      "img4",
+    ]);
+    expect(
+      [chromedStill, staged, overlayClip, chromedOverlayClip].map(sceneMediaUsesWindowPath),
+    ).toEqual([false, false, false, false]);
   });
 
-  it("keeps an Overlay clip on the window path once its chrome is removed", () => {
-    const bare = createSceneMedia("vid1", "assets/clip.mp4", "video", "overlay");
+  it("keeps a window-hosted clip on the window path with or without chrome", () => {
+    const bare = createSceneMedia("vid1", "assets/clip.mp4", "video", "window");
     delete bare.window;
-    const staged = createSceneMedia("vid2", "assets/clip.mp4", "video", "stage");
+    const chromed = createSceneMedia("vid2", "assets/clip.mp4", "video", "window");
+    const staged = createSceneMedia("vid3", "assets/clip.mp4", "video", "stage");
     delete staged.window;
-    const stagedWindow = createSceneMedia("vid3", "assets/clip.mp4", "video", "stage");
+    const stagedWindow = createSceneMedia("vid4", "assets/clip.mp4", "video", "stage");
 
     expect(sceneMediaFamily(bare)).toBe("window");
     expect(sceneMediaUsesWindowPath(bare)).toBe(true);
+    expect(sceneMediaUsesWindowPath(chromed)).toBe(true);
     // A Stage clip stays on the stage plane until chrome asks for the window sizing.
     expect(sceneMediaFamily(staged)).toBe("stage");
     expect(sceneMediaUsesWindowPath(staged)).toBe(false);
     expect(sceneMediaUsesWindowPath(stagedWindow)).toBe(true);
+  });
+
+  it("takes every overlay-placed entry for the 2D gizmo, both layers", () => {
+    const staged = createSceneMedia("img1", "assets/a.png", "image", "stage");
+    const framed = createSceneMedia("img2", "assets/b.png", "image", "overlay");
+    const windowed = createSceneMedia("vid1", "assets/clip.mp4", "video", "window");
+
+    expect(sceneMediaOverlayPlaced([staged, framed, windowed]).map((e) => e.id)).toEqual([
+      "img2",
+      "vid1",
+    ]);
   });
 });
 

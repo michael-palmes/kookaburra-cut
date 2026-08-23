@@ -953,7 +953,8 @@ only block-less scenes, or delete the field first. Gate fixture:
   "id": "vid1",                  // img1/vid1 style; NEVER re-mint an existing id
   "kind": "video",               // "image" | "video"
   "src": "assets/screencast.mp4",
-  "host": "overlay",             // "stage" (world-space card) | "overlay" (frame-relative)
+  "host": "window",              // "stage" (world-space card) | "overlay" (frame layer)
+                                 // | "window" (world-space floating window, VIDEO only)
   "stage":   { "position": [0, 1.2, 0], "size": 5.3, "rotationDeg": [0, 0, 0] },
   "overlay": { "position": [0, 0], "size": 0.72, "rotationDeg": 0,
                "shape": "none", "layer": "below" },   // both placements always authored
@@ -973,12 +974,21 @@ only block-less scenes, or delete the field first. Gate fixture:
 
 Scene media is the one content family for stills and videos (it superseded the separate
 `images[]` and singleton `videoWindow` blocks in v0.13; both legacy shapes still parse
-forward, and the first inspector write promotes a doc to `media`). Where an entry renders
-follows its KIND, never its chrome: an overlay-hosted STILL is camera-locked editorial
-artwork on the frame layer, chrome or not; a stage-hosted entry, and EVERY overlay-hosted
-VIDEO, sits in real world space, so the per-scene `camera` track orbits it with genuine
-parallax. A video fits inside a box `size` of the frame (contain); a still's `size` IS its
-width, and its chrome (mask, border, crop, drop shadow) is painted on that same plane.
+forward as `host: "window"`, and the first inspector write promotes a doc to `media`).
+Where an entry renders follows its HOST alone, never its kind or its chrome, so
+re-pointing a still to a clip (the Edit render) leaves it exactly where it was placed:
+
+| Host | Draws | Sizing (`size`) | Notes |
+| --- | --- | --- | --- |
+| `stage` | World space, among devices and objects | World-unit width | Either kind; the per-scene `camera` orbits it with real parallax |
+| `overlay` | The overlay's frame layer, camera-locked | Fraction of the frame WIDTH, height from the source aspect | Either kind; renders nowhere in a scene with no overlay |
+| `window` | World space, floating (the video window) | Fraction of the frame the plane contain-fits INSIDE | VIDEO only (a still asking for it degrades to `overlay`); needs no overlay |
+
+The `window` host reads the `overlay` placement numbers (position, size, roll), which is
+what the legacy `videoWindow` `offset`/`scale` always were, so switching host keeps every
+number. Window chrome (mask, border, recording crop, drop shadow) is a look painted on
+whichever plane the host draws, available to both kinds on every host.
+
 Video rides the SAME deterministic clip pipeline as `VideoClip` (`useClipTexture`). Under
 `window.recording: true` the capture margins (baked shadow and margin) crop off a Retina 2x
 macOS window recording and the `macos` radius masks at the true corner radius; the flag is

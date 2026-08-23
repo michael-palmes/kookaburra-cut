@@ -7,7 +7,7 @@ import type {
   SceneDocMediaSpec,
   SceneManagedTextItem,
 } from "../engine/sceneDocSchema";
-import { resolveSceneDocMedia, sceneMediaUsesWindowPath } from "../engine/sceneMedia";
+import { resolveSceneDocMedia } from "../engine/sceneMedia";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
@@ -286,10 +286,10 @@ function deviceOverviewThumbnail(
   return spec.previews[device.colour ?? spec.defaultColour] ?? spec.previews[spec.defaultColour];
 }
 
-/** Where a media entry sits: an Overlay-hosted clip reads as its own placement, since it draws as a window in the scene's world rather than on the frame layer. */
+/** Where a media entry sits: its authored host, Window being the floating world-space clip and Overlay the frame layer. */
 function mediaPlacementValue(entry: SceneDocMediaSpec): string {
   if (entry.host === "stage") return "Stage";
-  return sceneMediaUsesWindowPath(entry) ? "Window" : "Overlay";
+  return entry.host === "window" ? "Window" : "Overlay";
 }
 
 function placementValue(placement: NonNullable<SceneDoc["objects"]>[number]["placement"]): string {

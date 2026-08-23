@@ -188,7 +188,7 @@ export function resolveOverlayImageTransform(
   };
 }
 
-/** A windowed entry's world-space group, from whichever host placement is active: the Stage's world units, or the Overlay's frame fractions resolved against the frame (which is what the video window has always done, its `offset`/`scale` being exactly those fractions). */
+/** A windowed entry's world-space group, from whichever host placement is active: the Stage's world units, or the Window host's frame fractions resolved against the frame (which is what the video window has always done, its `offset`/`scale` being exactly those fractions, and why the window host needs no placement block of its own). */
 export function resolveWindowMediaTransform(
   entry: SceneDocMediaSpec,
   motion: SceneImageMotionSample,
@@ -376,6 +376,17 @@ export function windowChromeSurface(
   };
 }
 
+/** The aspect a clip's plane draws at, whichever layer draws it: the recording crop's, else the clip's own intrinsics, else the size the doc recorded at pick time (which holds the plane steady until the extract lands; an export has intrinsics by frame 0 behind the extract barrier). */
+export function resolveClipAspect(
+  cropAspect: number | null,
+  intrinsics: { width: number; height: number } | null,
+  authoredAspect: number | null,
+): number {
+  if (cropAspect !== null) return cropAspect;
+  if (intrinsics && intrinsics.height > 0) return intrinsics.width / intrinsics.height;
+  return authoredAspect ?? DEFAULT_CLIP_ASPECT;
+}
+
 /** The plane a windowed clip draws on: a contain fit inside the size box, at the cropped aspect once the source's intrinsics arrive. */
 export function windowGeometry(
   box: { width: number; height: number | null },
@@ -384,9 +395,7 @@ export function windowGeometry(
   authoredAspect: number | null,
 ): WindowGeometry {
   const surface = windowChromeSurface(chrome, intrinsics);
-  const aspect =
-    surface.cropAspect ??
-    (intrinsics ? intrinsics.width / intrinsics.height : (authoredAspect ?? DEFAULT_CLIP_ASPECT));
+  const aspect = resolveClipAspect(surface.cropAspect, intrinsics, authoredAspect);
   const width = box.height === null ? box.width : Math.min(box.width, box.height * aspect);
   return {
     rect: { width, height: width / aspect },
@@ -634,7 +643,7 @@ function WindowMedia({ entry }: { entry: SceneDocMediaSpec }) {
   const overlayPreview = useImageOverlayPreview(
     sceneIndex,
     entry.id,
-    editable && entry.host === "overlay",
+    editable && entry.host !== "stage",
   );
   const { localMs } = useTimeline();
   const format = useFormat();
@@ -932,7 +941,7 @@ function StageVideo({
   );
 }
 
-// ── Overlay-hosted stills (the frame layer) ───────────────────────────────────
+// ── Overlay-hosted media (the frame layer) ────────────────────────────────────
 
 function OverlayMedia({ entry, stackOrder }: { entry: SceneDocMediaSpec; stackOrder: number }) {
   const context = useSceneContext();
@@ -943,13 +952,24 @@ function OverlayMedia({ entry, stackOrder }: { entry: SceneDocMediaSpec; stackOr
   const preview = useImageOverlayPreview(sceneIndex, entry.id, editable);
   const { localMs } = useTimeline();
   const format = useFormat();
-  const url = useSceneImageUrl(entry.src);
+  const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
   const placement = preview ?? entry.overlay;
   const motion = sampleRenderedSceneMediaMotion(
     entry,
     localMs,
     shouldNeutraliseSceneMediaMotion(sectionOpen, exporting),
   );
+  if (entry.kind === "video") {
+    return (
+      <OverlayVideo
+        entry={entry}
+        placement={placement}
+        motion={motion}
+        format={format}
+        stackOrder={stackOrder}
+      />
+    );
+  }
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={entry.src}>
@@ -1076,6 +1096,86 @@ function ChromedOverlayImage({
   );
 }
 
+/** The frame layer's clip material: the window card mask when the entry authors chrome, otherwise the plain plane the stills use, circle crop included. One hook either way, so the branch never moves a hook. */
+function useOverlayVideoMaterial(
+  chromed: boolean,
+  circle: boolean,
+): { material: MeshBasicMaterial; card: CardUniforms; uv: WindowUvUniforms } {
+  const card = useMemo(() => cardUniforms(), []);
+  const uv = useMemo(() => windowUvUniforms(), []);
+  const material = useMemo(() => {
+    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false, side: DoubleSide });
+    next.toneMapped = false;
+    if (chromed) applyWindowMask(next, card, uv);
+    else if (circle) applyCircleMask(next);
+    return next;
+  }, [card, chromed, circle, uv]);
+  useLayoutEffect(() => () => material.dispose(), [material]);
+  return { material, card, uv };
+}
+
+/** An Overlay-hosted clip: the still's frame-layer plane and sizing (`size` IS the width, the source aspect sets the height) over the deterministic clip pipeline, wearing the window chrome as plane decoration exactly as `ChromedOverlayImage` does. The window HOST is the floating world-space clip; this is the camera-locked one. */
+function OverlayVideo({
+  entry,
+  placement,
+  motion,
+  format,
+  stackOrder,
+}: {
+  entry: SceneDocMediaSpec;
+  placement: SceneImageOverlayPlacement;
+  motion: SceneImageMotionSample;
+  format: FormatInfo;
+  stackOrder: number;
+}) {
+  const [intrinsics, onIntrinsics] = useClipIntrinsics();
+  const chromed = entry.window !== undefined;
+  const chrome = useMemo(
+    () => normalizeWindowChrome(entry.window ?? BARE_WINDOW_CHROME),
+    [entry.window],
+  );
+  const surface = windowChromeSurface(chrome, intrinsics);
+  const transform = resolveOverlayImageTransform(
+    placement,
+    motion,
+    format,
+    resolveClipAspect(surface.cropAspect, intrinsics, entry.video?.aspect ?? null),
+    stackOrder,
+  );
+  const rect: Rect = { width: transform.width, height: transform.height };
+  const { material, card, uv } = useOverlayVideoMaterial(chromed, placement.shape === "circle");
+  if (chromed) {
+    applyWindowUniforms(
+      card,
+      uv,
+      { rect, radiusFraction: surface.radiusFraction, uv: surface.uv },
+      chrome,
+    );
+  }
+  material.opacity = transform.opacity;
+  return (
+    <group position={transform.position} rotation={transform.rotation}>
+      {chromed && (
+        <WindowShadow
+          rect={rect}
+          shadow={chrome.shadow}
+          radiusFraction={surface.radiusFraction}
+          renderOrder={transform.renderOrder}
+        />
+      )}
+      <ClipPlane
+        src={entry.src}
+        startMs={entry.video?.startMs ?? 0}
+        loop={entry.video?.loop === true}
+        material={material}
+        rect={rect}
+        renderOrder={transform.renderOrder}
+        onIntrinsics={onIntrinsics}
+      />
+    </group>
+  );
+}
+
 // ── Mounts ────────────────────────────────────────────────────────────────────
 
 function WorldMedia({
@@ -1098,7 +1198,7 @@ function WorldMedia({
   );
 }
 
-/** The Stage family, mounted by `<SceneStage>`: every stage-hosted entry without window chrome. Registers the scene as that family's consumer so the host-side fallback stands down. */
+/** The Stage family, mounted by `<SceneStage>`: every Stage-hosted entry, chrome or not. Registers the scene as that family's consumer so the host-side fallback stands down. */
 export function StageSceneMedia() {
   const entries = useSceneMedia("stage");
   const mapShadows = useStageMapShadows();
@@ -1106,7 +1206,7 @@ export function StageSceneMedia() {
   return <WorldMedia entries={entries} mapShadows={mapShadows} />;
 }
 
-/** The window family, mounted by a scene's own `<VideoWindow/>`: every entry carrying window chrome, of either kind. */
+/** The window family, mounted by a scene's own `<VideoWindow/>`: every window-hosted clip, the floating world-space window. */
 export function SceneWindowMedia() {
   const entries = useSceneMedia("window");
   if (entries.length === 0) return null;
@@ -1138,7 +1238,7 @@ function SceneMediaFallbackContent({
   return <WorldMedia entries={left} mapShadows={false} />;
 }
 
-/** The frame layer's media: overlay-hosted entries with no window chrome, drawn over the composited slide. */
+/** The frame layer's media: every Overlay-hosted entry, either kind, drawn over the composited slide. */
 export function OverlaySceneMedia({ orderStart }: { orderStart: number }) {
   const doc = useContext(SceneDocContext) ?? undefined;
   const entries = useMemo(() => sceneMediaInFrame(resolveSceneDocMedia(doc)), [doc]);

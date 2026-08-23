@@ -5,6 +5,7 @@ import { normalizeWindowChrome, RECORDING_INSETS } from "../../engine/sceneVideo
 import type { FormatInfo } from "../types";
 import {
   createStageImageShadowMaterials,
+  resolveClipAspect,
   resolveOverlayImageStackOrders,
   resolveOverlayImageTransform,
   resolveStageImageTransform,
@@ -68,10 +69,10 @@ describe("SceneMedia transforms", () => {
     ).toEqual(identity);
   });
 
-  it("places an Overlay-hosted window at the frame fractions the video window used", () => {
+  it("places a window-hosted clip at the frame fractions the video window used", () => {
     const windowed = entry({
       kind: "video",
-      host: "overlay",
+      host: "window",
       window: { radius: "macos" },
       overlay: {
         position: [0.5, -0.4],
@@ -222,6 +223,29 @@ describe("SceneMedia transforms", () => {
         height: 1400,
       }).radiusFraction,
     ).toBe(normalizeWindowChrome({ radius: "rounded" }).radiusFraction);
+  });
+
+  it("takes a clip's aspect from the crop, then its intrinsics, then the recorded size", () => {
+    expect(resolveClipAspect(2, { width: 1920, height: 1080 }, 4 / 3)).toBe(2);
+    expect(resolveClipAspect(null, { width: 1080, height: 1920 }, 4 / 3)).toBeCloseTo(
+      1080 / 1920,
+      6,
+    );
+    expect(resolveClipAspect(null, null, 4 / 3)).toBeCloseTo(4 / 3, 6);
+    expect(resolveClipAspect(null, null, null)).toBeCloseTo(16 / 9, 6);
+  });
+
+  it("sizes an Overlay-hosted clip like a still: the size IS the width", () => {
+    // The frame-layer rule, so the repointed still of a scene keeps the box it was placed at.
+    const transform = resolveOverlayImageTransform(
+      { position: [0, 0], size: 0.2, rotationDeg: 0, shape: "none", layer: "above" },
+      identity,
+      format,
+      9 / 16,
+      0,
+    );
+    expect(transform.width).toBeCloseTo(0.2 * format.frame.width, 6);
+    expect(transform.height).toBeCloseTo(transform.width / (9 / 16), 6);
   });
 
   it("contain-fits a clip inside its size box, and leaves the Stage width free", () => {

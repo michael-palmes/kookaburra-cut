@@ -596,12 +596,12 @@ stack pose, animates that scene. The invariants:
 
 ## Video window
 
-A scene's sidecar may declare a video `media` entry carrying a `window` block: a
-macOS screen recording as a floating rounded window with an analytic drop shadow,
+A scene's sidecar may declare a video `media` entry hosted on `window`: a macOS
+screen recording as a floating rounded window with an analytic drop shadow,
 floating over whatever the scene stages behind it (theme backdrop, fixed
 background, or nothing). Sidecars written before the two media families merged
 carry the older `videoWindow` block and read forward into the same entry at parse
-(2026-08-22 below). The invariants:
+(2026-08-22 below), on the `window` host (2026-08-23 below). The invariants:
 
 - **The null path is the old path, exactly.** The host-side `SceneMediaFallback`
   renders nothing when the sidecar declares no media (and stands its window family
@@ -1230,6 +1230,30 @@ rolling-gate project (`showcase-tour`):
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
 | `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
 | `ws:overlay-spike` (overlay gate, machine-local) | `e5bc2b79…` | — | — | — | — | — | — | — | — |
+
+> **2026-08-23 (media hosting is authored: the `window` host):** where a media
+> entry renders now follows its HOST alone, never its kind or its chrome.
+> `SceneMediaHost` gained `window` (video-only; a still asking for it degrades to
+> `overlay` at parse), which is the floating world-space clip the video window
+> always was, reading the OVERLAY placement numbers exactly as
+> `resolveWindowMediaTransform` already did, so no placement block was added. The
+> legacy `videoWindow` promotion now lands on `host: "window"`: the same entry,
+> the same family, the same maths, so `ws:video-window-spike` and
+> `ws:overlay-spike` must stay byte-identical (`sceneMediaFromVideoWindow` is the
+> only line that changed, and `sceneMediaFamily`/`sceneMediaUsesWindowPath` both
+> answer as before for it). A hand-authored clip with no `host` still parses to
+> `window`, which is what an unhosted clip has always rendered as. The ONE
+> combination whose pixels move is media-native `kind: "video"` + `host:
+> "overlay"`, which used to take the world-space window path and now draws on the
+> overlay's frame layer beside the overlay stills (the still's sizing rule, `size`
+> IS the width, with the window chrome as optional plane decoration). That was the
+> owner's bug: an Edit render re-points a still to a clip, and the kind flip
+> silently moved a placed frame-layer image into the scene's world. NO bundled
+> project, template or repo fixture carries that combination (`grep -rn '"kind":
+> "video"' projects fixtures src-tauri/templates` finds device screens only, and
+> the one repo fixture with a clip window carries the legacy `videoWindow`
+> block), so the standing baselines cannot move on data grounds; gate legs are
+> pending the batch's gate run.
 
 > **2026-08-23 (transparent panel + shaped cutout: a DELIBERATE render
 > change):** an overlay whose panel is transparent and whose cutout carries a

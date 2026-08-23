@@ -89,7 +89,7 @@ const cloneOverlay = (overlay: SceneImageOverlayPlacement): SceneImageOverlayPla
   return next;
 };
 
-/** Overlay placement for a legacy window: `offset` is a whole-frame fraction while the overlay position is half-frame relative, so it doubles; the size follows the parity conversion, and the window sits below the frame chrome the way its world-space ancestor did. */
+/** The placement numbers a legacy window carries into its entry (the window host reads them, exactly as it always did): `offset` is a whole-frame fraction while the overlay position is half-frame relative, so it doubles; the size follows the parity conversion, and `layer` stays dormant for the day the entry moves to the frame layer. */
 export function videoWindowOverlayPlacement(
   window: SceneDocVideoWindow,
 ): SceneImageOverlayPlacement {
@@ -140,7 +140,7 @@ export function sceneMediaFromVideoWindow(window: SceneDocVideoWindow): SceneDoc
     id: VIDEO_WINDOW_MEDIA_ID,
     kind: "video",
     src: window.media.src,
-    host: "overlay",
+    host: "window",
     stage: cloneStage(DEFAULT_SCENE_MEDIA_VIDEO_STAGE),
     overlay: videoWindowOverlayPlacement(window),
     window: chrome,
@@ -234,7 +234,7 @@ export function createSceneMedia(
   id: string,
   src: string,
   kind: SceneMediaKind,
-  host: SceneMediaHost = kind === "video" ? "overlay" : "stage",
+  host: SceneMediaHost = kind === "video" ? "window" : "stage",
 ): SceneDocMediaSpec {
   if (kind === "video") {
     return {
@@ -272,11 +272,9 @@ export function nextSceneMediaId(kind: SceneMediaKind, used: readonly string[]):
   return `${prefix}${n}`;
 }
 
-export function sceneMediaForHost(
-  media: readonly SceneDocMediaSpec[],
-  host: SceneMediaHost,
-): SceneDocMediaSpec[] {
-  return media.filter((entry) => entry.host === host);
+/** Media placed by the OVERLAY numbers, whichever layer draws it: the frame layer's own entries plus the world-space windows. What the 2D overlay gizmo owns. */
+export function sceneMediaOverlayPlaced(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
+  return media.filter((entry) => entry.host !== "stage");
 }
 
 // ── Where an entry renders ────────────────────────────────────────────────────
@@ -284,23 +282,26 @@ export function sceneMediaForHost(
 /** Which fallback family owns an entry: `<SceneStage>` consumes the stage family and `<VideoWindow/>` the window family, so a scene's own mounts stand exactly their family down. Disjoint by construction, so nothing renders twice. */
 export type SceneMediaFamily = "stage" | "window";
 
-/** The split is by KIND, never by chrome: a still keeps its host's own layer (chrome is a look painted on that plane), while an Overlay-hosted clip always draws in the world, where a frameless scene can draw it at all. */
+/** The split is by HOST, never by kind or chrome: hosting is authored, so re-pointing a still to a clip (or dropping its chrome) never moves it. A frame-layer entry owns no world family, so it returns null. */
 export function sceneMediaFamily(entry: SceneDocMediaSpec): SceneMediaFamily | null {
   if (entry.host === "stage") return "stage";
-  return entry.kind === "video" ? "window" : null;
+  // The window host is video-only (the parse degrade); a still that carries it anyway takes the frame layer.
+  if (entry.host === "window") return entry.kind === "video" ? "window" : null;
+  return null;
 }
 
-/** Does this entry draw through the window path (a world-space plane contain-fitted inside its size box) rather than its host's plain plane? Every Overlay clip does, and a Stage clip does once chrome is authored. */
+/** Does this entry draw through the window path (a world-space plane contain-fitted inside its size box) rather than its host's plain plane? Every window-hosted clip does, and a Stage clip does once chrome is authored. */
 export function sceneMediaUsesWindowPath(entry: SceneDocMediaSpec): boolean {
-  return entry.kind === "video" && (entry.window !== undefined || entry.host === "overlay");
+  if (entry.kind !== "video") return false;
+  return entry.host === "window" || (entry.host === "stage" && entry.window !== undefined);
 }
 
-/** Media the scene's own world hosts: everything on the Stage, plus every Overlay-hosted clip. */
+/** Media the scene's own world hosts: everything on the Stage, plus every window-hosted clip. */
 export function sceneMediaInWorld(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
   return media.filter((entry) => sceneMediaFamily(entry) !== null);
 }
 
-/** Media the overlay frame layer hosts, drawn over the composited slide: Overlay-hosted stills, chrome or not. */
+/** Media the overlay frame layer hosts, drawn over the composited slide: every Overlay-hosted entry, either kind, chrome or not. */
 export function sceneMediaInFrame(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
   return media.filter((entry) => sceneMediaFamily(entry) === null);
 }
@@ -395,9 +396,11 @@ export function sampleSceneMediaMotion(
   const preset = motion?.preset;
   if (!motion || preset === undefined || preset === "none") return identityMotion();
   if (kind !== "video") {
+    // The image family knows two hosts; a still never carries the window one (the parse degrade), and its frame-layer adaptation is the overlay's.
+    const imageHost: SceneImageHost = host === "stage" ? "stage" : "overlay";
     return preset === "drift"
       ? identityMotion()
-      : sampleSceneImageMotion({ ...motion, preset }, host, localMs);
+      : sampleSceneImageMotion({ ...motion, preset }, imageHost, localMs);
   }
   if (preset === "turntable") return identityMotion();
   const sample = sampleVideoWindowMotion({ ...motion, preset }, localMs);

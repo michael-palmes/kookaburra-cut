@@ -15,9 +15,9 @@ import {
 import type {
   SceneDocMediaSpec,
   SceneImageOverlayPlacement,
-  SceneMediaKind,
+  SceneMediaHost,
 } from "../engine/sceneDocSchema";
-import { resolveSceneDocMedia, sceneMediaFamily, sceneMediaForHost } from "../engine/sceneMedia";
+import { resolveSceneDocMedia, sceneMediaOverlayPlaced } from "../engine/sceneMedia";
 import { cutoutStageRect, frameWorldCutout } from "../engine/stageViewport";
 import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
@@ -28,7 +28,7 @@ import {
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import { frameGuideLines, type Pt } from "./gizmo/gizmo2dMath";
 
-/** What a video entry's box falls back to before its clip's intrinsics are recorded on the doc. */
+/** What a video entry's box falls back to before either the doc's recorded aspect or the native probe answers. */
 const DEFAULT_VIDEO_ASPECT = 16 / 9;
 
 function centrePx(placement: SceneImageOverlayPlacement, rect: StageRect): Pt {
@@ -38,9 +38,9 @@ function centrePx(placement: SceneImageOverlayPlacement, rect: StageRect): Pt {
   ];
 }
 
-/** A clip drags within the window range wherever its chrome stands, a still within the image one: the ranges follow the sizing rule each kind renders by. */
+/** A window-hosted entry drags within the window range, a frame-layer one within the image range: the ranges follow the sizing rule each HOST renders by, since that is what decides whether `size` is a box to fit inside or the width itself. */
 const sizeRange = (entry: SceneDocMediaSpec): readonly [number, number] =>
-  entry.kind === "video" ? OVERLAY_MEDIA_SIZE_RANGE.window : OVERLAY_MEDIA_SIZE_RANGE.image;
+  entry.host === "window" ? OVERLAY_MEDIA_SIZE_RANGE.window : OVERLAY_MEDIA_SIZE_RANGE.image;
 
 function decodeImageAspect(url: string): Promise<number | null> {
   return new Promise((resolve) => {
@@ -52,7 +52,7 @@ function decodeImageAspect(url: string): Promise<number | null> {
   });
 }
 
-/** An overlay still's pixel aspect, from the same `media_meta` probe the inspector reads (cached per asset by content hash), falling back to a decode for a project outside the workspace. Null when neither answers, which keeps that item's box off the layer instead of guessing a square. */
+/** An overlay source's pixel aspect, from the same `media_meta` probe the inspector reads (cached per asset by content hash), falling back to an image decode for a project outside the workspace. Null when neither answers, which keeps a still's box off the layer instead of guessing a square. */
 async function probeImageAspect(
   projectId: string,
   src: string,
@@ -97,15 +97,15 @@ function fetchImageAspect(
   return flight;
 }
 
-/** One Overlay entry's box in stage pixels, matching what the renderer draws: a clip fits INSIDE a box that is `size` of the frame (the window rule, so a clip narrower than the frame shrinks), while a still's `size` IS its width and its height follows the source aspect (or the width, cropped to a circle). */
+/** One overlay-placed entry's box in stage pixels, matching what the renderer draws: a window-hosted entry fits INSIDE a box that is `size` of the frame (the window rule, so a clip narrower than the frame shrinks), while a frame-layer entry's `size` IS its width and its height follows the source aspect (or the width, cropped to a circle). */
 export function overlayMediaGizmoBox(
-  kind: SceneMediaKind,
+  host: SceneMediaHost,
   placement: SceneImageOverlayPlacement,
   sourceAspect: number,
   frameAspect: number,
   rect: { width: number; height: number },
 ): { width: number; height: number } {
-  const fit = kind === "video" ? Math.min(1, sourceAspect / frameAspect) : 1;
+  const fit = host === "window" ? Math.min(1, sourceAspect / frameAspect) : 1;
   const width = placement.size * fit * rect.width;
   return {
     width,
@@ -126,7 +126,7 @@ interface StartedGesture {
   image: SceneDocMediaSpec;
 }
 
-/** Editor-only direct manipulation for Overlay-hosted images. Mount above the canvas under the same workspace/export/autorun guards as the other 2D gizmos. */
+/** Editor-only direct manipulation for overlay-placed media: the frame layer's own entries and the world-space windows, both edited through the overlay placement numbers. Mount above the canvas under the same workspace/export/autorun guards as the other 2D gizmos. */
 export function OverlayImageGizmo({
   project,
   sceneIndex,
@@ -146,13 +146,13 @@ export function OverlayImageGizmo({
   const format = useMemo(() => computeFormat(formatSpec), [formatSpec]);
   const [sourceAspects, setSourceAspects] = useState<Record<string, number>>({});
   const images = useMemo(
-    () => sceneMediaForHost(resolveSceneDocMedia(project.sceneDocs[sceneIndex]), "overlay"),
+    () => sceneMediaOverlayPlaced(resolveSceneDocMedia(project.sceneDocs[sceneIndex])),
     [project.sceneDocs, sceneIndex],
   );
   const versionSignal = useAssetVersionStore((state) =>
     images.map((image) => state.versions[assetVersionKey(project.id, image.src)] ?? 0).join("|"),
   );
-  // Two spaces in one layer: a still draws on the frame layer against the whole frame, while a clip is world content and lands inside an overlay's cutout, laid out against the cutout's own format.
+  // Two spaces in one layer: a frame-layer entry draws against the whole frame, while a window-hosted one is world content and lands inside an overlay's cutout, laid out against the cutout's own format.
   const frameSpec = project.sceneFrames[sceneIndex];
   const cutout = useMemo(
     () => frameWorldCutout(frameSpec, formatSpec.width / formatSpec.height),
@@ -164,9 +164,9 @@ export function OverlayImageGizmo({
   );
   const spaceOf = useCallback(
     (entry: SceneDocMediaSpec, rect: StageRect) =>
-      sceneMediaFamily(entry) === null
-        ? { rect, aspect: format.aspect }
-        : { rect: cutoutStageRect(rect, cutout), aspect: worldFormat.aspect },
+      entry.host === "window"
+        ? { rect: cutoutStageRect(rect, cutout), aspect: worldFormat.aspect }
+        : { rect, aspect: format.aspect },
     [cutout, format.aspect, worldFormat.aspect],
   );
 
@@ -182,7 +182,8 @@ export function OverlayImageGizmo({
             src: image.src,
             key: `${project.id}\u0000${image.src}${suffix}`,
             suffix,
-            video: image.kind === "video",
+            // A clip sizes off the aspect its doc recorded at pick time; an edit render re-points a still without one, so the native probe answers for those.
+            probe: image.kind === "image" || image.video?.aspect === undefined,
           },
         ];
       }),
@@ -192,8 +193,7 @@ export function OverlayImageGizmo({
   useEffect(() => {
     let alive = true;
     for (const request of Object.values(sourceRequests)) {
-      // A clip has no decodable intrinsics here; video entries size off their recorded `video.aspect`.
-      if (request.video) continue;
+      if (!request.probe) continue;
       void fetchImageAspect(project.id, request.src, request.suffix, request.key).then((aspect) => {
         if (alive && aspect !== null) {
           setSourceAspects((current) =>
@@ -241,10 +241,11 @@ export function OverlayImageGizmo({
     () =>
       images.flatMap((image) => {
         const video = image.kind === "video";
-        // A still's aspect comes from the probe; until it lands the item stays off the layer rather than drawing a square box over a portrait screenshot.
+        const probed = sourceAspects[sourceRequests[image.id]?.key ?? ""];
+        // A still's aspect comes from the probe; until it lands the item stays off the layer rather than drawing a square box over a portrait screenshot. A clip always has a box: its recorded aspect, the probe, then 16:9.
         const sourceAspect = video
-          ? (image.video?.aspect ?? DEFAULT_VIDEO_ASPECT)
-          : sourceAspects[sourceRequests[image.id]?.key ?? ""];
+          ? (image.video?.aspect ?? probed ?? DEFAULT_VIDEO_ASPECT)
+          : probed;
         if (sourceAspect === undefined && image.overlay.shape !== "circle") return [];
         const aspect = sourceAspect ?? 1;
         return [
@@ -258,7 +259,7 @@ export function OverlayImageGizmo({
               const space = spaceOf(image, rect);
               const [cx, cy] = centrePx(placement, space.rect);
               const box = overlayMediaGizmoBox(
-                image.kind,
+                image.host,
                 placement,
                 aspect,
                 space.aspect,
@@ -279,8 +280,8 @@ export function OverlayImageGizmo({
     [images, livePlacement, sourceAspects, sourceRequests, spaceOf],
   );
 
-  // Guides follow the space the layer's items live in: a scene staging any world-hosted clip inside a cutout snaps to the cutout, since the frame's own centre and safe edges sit under the panel.
-  const worldHosted = images.some((image) => sceneMediaFamily(image) !== null);
+  // Guides follow the space the layer's items live in: a scene staging any window-hosted clip inside a cutout snaps to the cutout, since the frame's own centre and safe edges sit under the panel.
+  const worldHosted = images.some((image) => image.host === "window");
   const frameGuides = useCallback(
     (rect: StageRect) => {
       const guideRect = worldHosted ? cutoutStageRect(rect, cutout) : rect;

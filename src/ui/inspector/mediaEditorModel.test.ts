@@ -13,10 +13,11 @@ import {
 } from "./mediaEditorModel";
 
 describe("defaultSceneMediaHost", () => {
-  it("prefers an enabled Overlay for a still and always floats a video", () => {
+  it("prefers an enabled Overlay for a still and always windows a video", () => {
     expect(defaultSceneMediaHost("image", true)).toBe("overlay");
     expect(defaultSceneMediaHost("image", false)).toBe("stage");
-    expect(defaultSceneMediaHost("video", false)).toBe("overlay");
+    expect(defaultSceneMediaHost("video", false)).toBe("window");
+    expect(defaultSceneMediaHost("video", true)).toBe("window");
   });
 });
 
@@ -61,7 +62,7 @@ describe("promote-on-write", () => {
     expect(next.media?.map((entry) => entry.id)).toEqual(["videoWindow"]);
     expect(JSON.parse(JSON.stringify(next))).toEqual({
       version: 1,
-      media: [expect.objectContaining({ id: "videoWindow", kind: "video", host: "overlay" })],
+      media: [expect.objectContaining({ id: "videoWindow", kind: "video", host: "window" })],
     });
     // The legacy blocks the promotion superseded are gone, in memory as well as on disk.
     expect(next.videoWindow).toBeUndefined();
@@ -74,7 +75,7 @@ describe("removeSceneMedia", () => {
     id,
     kind: "video",
     src,
-    host: "overlay",
+    host: "window",
     stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
     overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
     window: { radius: "macos" },

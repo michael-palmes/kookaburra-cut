@@ -94,6 +94,12 @@ function MediaHostIcon({ host }: { host: SceneMediaHost }) {
           <path d="m10 3.2 6 3.3v7L10 16.8l-6-3.3v-7z" />
           <path d="m4 6.5 6 3.4 6-3.4M10 9.9v6.9" />
         </>
+      ) : host === "window" ? (
+        <>
+          <rect x="2.5" y="5.5" width="11" height="9" rx="1.5" />
+          <path d="M2.5 8.4h11" />
+          <path d="M16.5 4.5v9" />
+        </>
       ) : (
         <>
           <rect x="3.5" y="4" width="13" height="12" rx="1.5" />
@@ -118,7 +124,20 @@ const MEDIA_HOST_OPTIONS: SegmentedOption<SceneMediaHost>[] = [
     title: "Frame-relative editorial artwork",
     icon: <MediaHostIcon host="overlay" />,
   },
+  {
+    value: "window",
+    label: "Window",
+    title: "A window floating in the scene's world",
+    icon: <MediaHostIcon host="window" />,
+  },
 ];
+
+/** The Window host is the video window's own home, so it is offered to clips alone; a still asking for it would render nowhere. */
+function mediaHostOptions(kind: SceneMediaKind): SegmentedOption<SceneMediaHost>[] {
+  return kind === "video"
+    ? MEDIA_HOST_OPTIONS
+    : MEDIA_HOST_OPTIONS.filter((option) => option.value !== "window");
+}
 
 const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
   { value: "translate", label: "Move", icon: <GizmoModeIcon mode="translate" /> },
@@ -511,10 +530,11 @@ export function MediaDrillIn({
   const overlay = entry.overlay;
   const fileName = mediaFileName(entry.src);
   const windowed = entry.window !== undefined;
-  // The ranges follow the sizing rule each kind renders by, not its chrome: a clip fits inside its size box, a still's size IS its width.
-  const clip = entry.kind === "video";
-  const stageSizeRange = clip ? STAGE_MEDIA_SIZE_RANGE.window : STAGE_MEDIA_SIZE_RANGE.image;
-  const overlaySizeRange = clip ? OVERLAY_MEDIA_SIZE_RANGE.window : OVERLAY_MEDIA_SIZE_RANGE.image;
+  // The ranges follow the sizing rule each host renders by: a Window-hosted entry fits inside its size box, a frame-layer one's size IS its width, and any clip on the Stage keeps the window family's wider world-unit range.
+  const stageSizeRange =
+    entry.kind === "video" ? STAGE_MEDIA_SIZE_RANGE.window : STAGE_MEDIA_SIZE_RANGE.image;
+  const overlaySizeRange =
+    entry.host === "window" ? OVERLAY_MEDIA_SIZE_RANGE.window : OVERLAY_MEDIA_SIZE_RANGE.image;
   const border = entry.window?.border ?? DEFAULT_WINDOW_BORDER;
   const shadow = entry.window?.shadow ?? DEFAULT_WINDOW_SHADOW;
   const castShadowAvailable = entry.kind === "image" && entry.host === "stage";
@@ -598,7 +618,7 @@ export function MediaDrillIn({
           <DrillGroup label="Host">
             <SegmentedRow
               ariaLabel="Media host"
-              options={MEDIA_HOST_OPTIONS.map((option) =>
+              options={mediaHostOptions(entry.kind).map((option) =>
                 option.value === "overlay"
                   ? {
                       ...option,
@@ -865,31 +885,34 @@ export function MediaDrillIn({
                   }
                 />
               </DrillGroup>
-              <DrillGroup label="Appearance">
-                <ToggleRow
-                  label="Circle crop"
-                  description="Crop the source to a circle."
-                  checked={overlay.shape === "circle"}
-                  onChange={(checked) =>
-                    patchMedia((candidate) => {
-                      candidate.overlay.shape = checked ? "circle" : "none";
-                    }, "media crop")
-                  }
-                />
-                <SegmentedRow
-                  ariaLabel="Media layer"
-                  options={[
-                    { value: "above" as const, label: "Above" },
-                    { value: "below" as const, label: "Below" },
-                  ]}
-                  value={overlay.layer}
-                  onChange={(layer) =>
-                    patchMedia((candidate) => {
-                      candidate.overlay.layer = layer;
-                    }, "media layer")
-                  }
-                />
-              </DrillGroup>
+              {/* Crop and layer belong to the frame layer; a Window-hosted entry draws in the world, where neither applies. */}
+              {entry.host === "overlay" && (
+                <DrillGroup label="Appearance">
+                  <ToggleRow
+                    label="Circle crop"
+                    description="Crop the source to a circle."
+                    checked={overlay.shape === "circle"}
+                    onChange={(checked) =>
+                      patchMedia((candidate) => {
+                        candidate.overlay.shape = checked ? "circle" : "none";
+                      }, "media crop")
+                    }
+                  />
+                  <SegmentedRow
+                    ariaLabel="Media layer"
+                    options={[
+                      { value: "above" as const, label: "Above" },
+                      { value: "below" as const, label: "Below" },
+                    ]}
+                    value={overlay.layer}
+                    onChange={(layer) =>
+                      patchMedia((candidate) => {
+                        candidate.overlay.layer = layer;
+                      }, "media layer")
+                    }
+                  />
+                </DrillGroup>
+              )}
             </>
           )}
 

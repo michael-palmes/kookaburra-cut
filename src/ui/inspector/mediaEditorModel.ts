@@ -70,12 +70,12 @@ export interface MediaEditorReconciliationInput {
   origins: readonly ImageReconciliationOrigin[];
 }
 
-/** Where a freshly added entry lands: a still prefers an Overlay when the scene has one, a video always floats over the frame. */
+/** Where a freshly added entry lands: a still prefers the Overlay when the scene has one, a video always floats in the scene's world as a window (which needs no overlay to render). */
 export function defaultSceneMediaHost(
   kind: SceneMediaKind,
   overlayAvailable: boolean,
 ): SceneMediaHost {
-  if (kind === "video") return "overlay";
+  if (kind === "video") return "window";
   return overlayAvailable ? "overlay" : "stage";
 }
 

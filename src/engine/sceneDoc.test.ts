@@ -49,6 +49,7 @@ import {
   writeSceneDoc,
 } from "./sceneDoc";
 import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
+import { sceneMediaFamily, sceneMediaUsesWindowPath } from "./sceneMedia";
 
 const docWith = (parts: Partial<SceneDoc>): SceneDoc => ({ version: 1, ...parts }) as SceneDoc;
 
@@ -218,6 +219,19 @@ describe("applyEditRepoint (edit-render re-point targeting)", () => {
     const next = applyEditRepoint(docWith({ media: [still] }), "media", rel, "img1");
     expect(next?.media?.[0]).toMatchObject({ kind: "video", src: rel, video: {} });
     expect(next?.media?.[0]?.video?.startMs).toBeUndefined();
+  });
+
+  it("keeps the host the kind flip: an Overlay still repoints to an Overlay clip, in place", () => {
+    const still = mediaEntry("img1", "assets/shot.png", "image");
+    still.overlay = { ...still.overlay, position: [-0.52, 0.25], size: 0.17 };
+    const entry = applyEditRepoint(docWith({ media: [still] }), "media", rel, "img1")?.media?.[0];
+
+    expect(entry?.host).toBe("overlay");
+    expect(entry?.overlay).toEqual(still.overlay);
+    expect(entry?.stage).toEqual(still.stage);
+    // Hosting is authored, so the frame layer keeps it: the entry stays where it was placed.
+    expect(sceneMediaFamily(entry as SceneDocMediaSpec)).toBeNull();
+    expect(sceneMediaUsesWindowPath(entry as SceneDocMediaSpec)).toBe(false);
   });
 
   it("a media slot promotes a legacy doc rather than writing the old blocks", () => {

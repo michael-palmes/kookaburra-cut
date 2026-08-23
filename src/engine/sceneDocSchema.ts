@@ -438,8 +438,8 @@ export interface SceneDocVideoWindow {
 
 export type SceneMediaKind = "image" | "video";
 
-/** Media keeps the image family's two hosts. */
-export type SceneMediaHost = SceneImageHost;
+/** Media adds a third host to the image family's two: `window` floats an entry in the scene's own world space (the video window's home), placed by the OVERLAY numbers so no third placement block is needed. Video-only for now, so a still asking for it degrades to `overlay` at parse. */
+export type SceneMediaHost = SceneImageHost | "window";
 
 /** The union of both legacy preset lists: `turntable` stays the stage-host image look, `drift` comes from the window family; a sampler decides what a preset means for its kind. */
 export const SCENE_MEDIA_MOTION_PRESETS = [
@@ -912,9 +912,21 @@ function sceneMediaSource(raw: unknown, kind: SceneMediaKind): string | null {
   return isSceneImageSource(raw) ? raw : null;
 }
 
-/** Videos default to the overlay host (where the window family lived), stills to the stage. */
-function parseSceneMediaHost(raw: unknown, kind: SceneMediaKind): SceneMediaHost {
-  if (kind === "video") return raw === "stage" ? "stage" : "overlay";
+/** Videos default to the window host (where the video-window family lived, and what an unhosted clip has always rendered as), stills to the stage. `window` is video-only, so a still asking for it lands on the frame layer instead. */
+function parseSceneMediaHost(
+  raw: unknown,
+  kind: SceneMediaKind,
+  source: string,
+  label: string,
+): SceneMediaHost {
+  if (kind === "video") {
+    if (raw === "stage") return "stage";
+    return raw === "overlay" ? "overlay" : "window";
+  }
+  if (raw === "window") {
+    console.warn(`[sceneDoc] ${source}: ${label}.host "window" is video-only, using overlay`);
+    return "overlay";
+  }
   return raw === "overlay" ? "overlay" : "stage";
 }
 
@@ -948,7 +960,7 @@ function parseSceneMedia(raw: unknown, source: string): SceneDocMediaSpec[] | un
       id: entry.id,
       kind,
       src,
-      host: parseSceneMediaHost(entry.host, kind),
+      host: parseSceneMediaHost(entry.host, kind, source, label),
       stage: parseSceneImageStage(
         entry.stage,
         video ? DEFAULT_SCENE_MEDIA_VIDEO_STAGE : DEFAULT_SCENE_IMAGE_STAGE,

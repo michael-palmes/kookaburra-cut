@@ -15,18 +15,18 @@ const placement = (over: Partial<SceneImageOverlayPlacement> = {}): SceneImageOv
 });
 
 describe("overlayMediaGizmoBox", () => {
-  it("sizes a still by its own aspect: the size IS the width", () => {
-    const phone = overlayMediaGizmoBox("image", placement(), 1170 / 2532, FRAME_ASPECT, RECT);
+  it("sizes a frame-layer entry by its own aspect: the size IS the width", () => {
+    const phone = overlayMediaGizmoBox("overlay", placement(), 1170 / 2532, FRAME_ASPECT, RECT);
     expect(phone.width).toBeCloseTo(0.3 * RECT.width, 6);
     expect(phone.height).toBeCloseTo(phone.width / (1170 / 2532), 6);
     // A landscape still keeps the same rule, so the box is never square by default.
-    const wide = overlayMediaGizmoBox("image", placement(), 16 / 9, FRAME_ASPECT, RECT);
+    const wide = overlayMediaGizmoBox("overlay", placement(), 16 / 9, FRAME_ASPECT, RECT);
     expect(wide.height).toBeCloseTo(wide.width / (16 / 9), 6);
   });
 
-  it("keeps the window's contain fit for a clip, whatever chrome it wears", () => {
+  it("keeps the window's contain fit for a window-hosted entry, whatever chrome it wears", () => {
     const wide = overlayMediaGizmoBox(
-      "video",
+      "window",
       placement({ size: 0.72 }),
       16 / 9,
       FRAME_ASPECT,
@@ -34,7 +34,7 @@ describe("overlayMediaGizmoBox", () => {
     );
     expect(wide.width).toBeCloseTo(0.72 * RECT.width, 6);
     const tall = overlayMediaGizmoBox(
-      "video",
+      "window",
       placement({ size: 0.72 }),
       9 / 16,
       FRAME_ASPECT,
@@ -44,9 +44,15 @@ describe("overlayMediaGizmoBox", () => {
     expect(tall.width).toBeCloseTo(tall.height * (9 / 16), 6);
   });
 
+  it("keys the fit on the host, so a frame-layer clip boxes like a still", () => {
+    const clip = overlayMediaGizmoBox("overlay", placement({ size: 0.2 }), 9 / 16, 16 / 9, RECT);
+    expect(clip.width).toBeCloseTo(0.2 * RECT.width, 6);
+    expect(clip.height).toBeCloseTo(clip.width / (9 / 16), 6);
+  });
+
   it("makes a circle crop square", () => {
     const circle = overlayMediaGizmoBox(
-      "image",
+      "overlay",
       placement({ shape: "circle" }),
       1170 / 2532,
       FRAME_ASPECT,
