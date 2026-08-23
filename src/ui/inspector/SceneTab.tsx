@@ -162,6 +162,7 @@ import { HEADER_EMOJIS } from "../SceneTextFields";
 import { detectWindowRecording } from "../windowRecordingDetect";
 import { ArrangeDevicesDrill } from "./ArrangeDevicesDrill";
 import { ChartDrillIn, ChartPlacementDrillIn, newChartBlock } from "./ChartSection";
+import { clickInspectorRemoveAction, contentDeleteRoute } from "./contentDeleteKey";
 import { nextNumberedContentId } from "./contentIds";
 import {
   type ContentDocActionPlan,
@@ -171,6 +172,7 @@ import {
   planContentDuplicate,
 } from "./contentMenuActions";
 import { ImageDrillIn, type ImageMutation, type ImageMutationOptions } from "./ImageDrillIn";
+import { modalOwnsKeyboard } from "./InspectorNavigationShell";
 import {
   defaultSceneImageHost,
   duplicateImage,
@@ -301,6 +303,7 @@ function DevicePillIcon({ model }: { model: string }) {
 }
 
 import { LayeredScreenshotBuilder } from "../LayeredScreenshotBuilder";
+import { laneSelectionActive } from "../laneSelection";
 import { MediaBrowser } from "../MediaBrowser";
 import { mediaCardMenu } from "../mediaCardMenu";
 import { ObjectPicker } from "../ObjectPicker";
@@ -318,7 +321,7 @@ import {
 } from "../ThemePicker";
 import { TransitionModal } from "../TransitionPicker";
 import { describeSpec } from "../textAnimationOptions";
-import { isTypingIn } from "../textEditFocus";
+import { isEditableTextTarget, isTypingIn } from "../textEditFocus";
 import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { useSceneDocPatch } from "../useSceneDocPatch";
@@ -2218,12 +2221,10 @@ export function SceneTab({
   const chartSectionOpen = useGizmoSectionOpen("chart");
   // Which staged object the placement drill targets.
   const [pickedObjectId, setPickedObjectId] = useState<string | null>(null);
-  const [confirmRemoveObjectId, setConfirmRemoveObjectId] = useState<string | null>(null);
   const gizmoMode = useObjectEditStore((s) => s.gizmoMode);
   // The one comparison side the Device, Theme, Background and Lighting surfaces share (reset on scene change), plus the After media screen's target device.
   const [compareSide, setCompareSide] = useState<CompareSide>("a");
   const [compareMediaDeviceId, setCompareMediaDeviceId] = useState<string | null>(null);
-  const [confirmRemoveCompare, setConfirmRemoveCompare] = useState(false);
   // Snapshot at the start of a comparison slider drag: live ticks write history-less, release records one entry.
   const compareDragBaseline = useRef<SceneDoc | null>(null);
   // The scene-local time the running gesture edits at, so a drag stays on the key it started on even under playback.
@@ -2252,8 +2253,6 @@ export function SceneTab({
     kind: "rig",
   });
   const [thumbs, setThumbs] = useState<Record<string, string> | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const [confirmRemoveVideoWindow, setConfirmRemoveVideoWindow] = useState(false);
   const [contentPickerOpen, setContentPickerOpen] = useState(false);
   const [contentActionBusy, setContentActionBusy] = useState(false);
   const [contentMenu, setContentMenu] = useState<(ContextMenuState & { key: string }) | null>(null);
@@ -2272,6 +2271,8 @@ export function SceneTab({
   const imageSourceButtonRef = useRef<HTMLButtonElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const overviewRootRef = useRef<HTMLDivElement>(null);
+  // Assigned during the overview render, which the drill returns skip; the mount-once Delete handler can only reach the plan path through a ref.
+  const deleteOverviewSelectionRef = useRef<(() => void) | null>(null);
   const sceneIndexRef = useRef(sceneIndex);
   const projectIdRef = useRef(project.id);
   const sceneFileRef = useRef(project.sceneFiles[sceneIndex] ?? null);
@@ -2867,9 +2868,6 @@ export function SceneTab({
     legacyImageOperationRef.current = null;
     setLegacyImageBusy(false);
     setLegacyImageNotice(null);
-    setConfirmRemove(false);
-    setConfirmRemoveVideoWindow(false);
-    setConfirmRemoveObjectId(null);
     pickDevice(null);
     useImageEditStore.getState().select(null);
     setCompareSide("a");
@@ -2877,7 +2875,6 @@ export function SceneTab({
     compareGestureMs.current = null;
     compareDragBaseline.current = null;
     compareGripMemory.current = null;
-    setConfirmRemoveCompare(false);
     setOverviewSelection(null);
     setContentPickerOpen(false);
     setContentMenu(null);
@@ -2912,22 +2909,25 @@ export function SceneTab({
   // biome-ignore lint/correctness/useExhaustiveDependencies: every document replacement invalidates any armed menu action
   useEffect(() => setContentMenu(null), [doc]);
 
-  // The remove confirmation disarms itself (the EditBar pattern).
+  // Delete removes the selected content: inside a content drill through that drill's own trash, at the overview through the row's delete plan. The lanes bind Delete too, so a live keyframe selection wins.
   useEffect(() => {
-    if (!confirmRemove) return;
-    const t = window.setTimeout(() => setConfirmRemove(false), 3000);
-    return () => window.clearTimeout(t);
-  }, [confirmRemove]);
-
-  useEffect(() => {
-    if (!confirmRemoveVideoWindow && !confirmRemoveCompare && !confirmRemoveObjectId) return;
-    const t = window.setTimeout(() => {
-      setConfirmRemoveVideoWindow(false);
-      setConfirmRemoveCompare(false);
-      setConfirmRemoveObjectId(null);
-    }, 3000);
-    return () => window.clearTimeout(t);
-  }, [confirmRemoveVideoWindow, confirmRemoveCompare, confirmRemoveObjectId]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isEditableTextTarget(e.target as HTMLElement | null)) return;
+      if (isExporting() || modalOwnsKeyboard() || laneSelectionActive()) return;
+      const route = contentDeleteRoute(useUiStore.getState().inspector);
+      if (route === "drill") {
+        if (clickInspectorRemoveAction()) e.preventDefault();
+        return;
+      }
+      if (route !== "overview") return;
+      e.preventDefault();
+      deleteOverviewSelectionRef.current?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // The Delete-scene confirmation disarms itself, and on any scene change.
   useEffect(() => {
@@ -4919,24 +4919,13 @@ export function SceneTab({
         <DrillBack
           label="Scene"
           title="Video window"
-          onClick={() => {
-            setConfirmRemoveVideoWindow(false);
-            closeDrill();
-          }}
+          onClick={closeDrill}
           actions={
             vw ? (
               <DrillHeaderAction
                 kind="remove"
-                label={
-                  confirmRemoveVideoWindow ? "Confirm remove video window" : "Remove video window"
-                }
-                armed={confirmRemoveVideoWindow}
+                label="Remove video window"
                 onClick={() => {
-                  if (!confirmRemoveVideoWindow) {
-                    setConfirmRemoveVideoWindow(true);
-                    return;
-                  }
-                  setConfirmRemoveVideoWindow(false);
                   void patchDoc((next) => {
                     next.videoWindow = undefined;
                   });
@@ -6750,21 +6739,12 @@ export function SceneTab({
         <DrillBack
           label={backLabel}
           title="Comparison"
-          onClick={() => {
-            setConfirmRemoveCompare(false);
-            closeDrill();
-          }}
+          onClick={closeDrill}
           actions={
             <DrillHeaderAction
               kind="remove"
-              label={confirmRemoveCompare ? "Confirm remove comparison" : "Remove comparison"}
-              armed={confirmRemoveCompare}
+              label="Remove comparison"
               onClick={() => {
-                if (!confirmRemoveCompare) {
-                  setConfirmRemoveCompare(true);
-                  return;
-                }
-                setConfirmRemoveCompare(false);
                 void patchDoc((next) => {
                   next.compare = undefined;
                   if (next.animatedTrack === "compare") next.animatedTrack = undefined;
@@ -7620,10 +7600,7 @@ export function SceneTab({
         <DrillBack
           label={backLabel}
           title={objectRowLabel(stagedObject.objectId)}
-          onClick={() => {
-            setConfirmRemoveObjectId(null);
-            closeDrill();
-          }}
+          onClick={closeDrill}
           actions={
             <>
               <DrillHeaderAction
@@ -7634,21 +7611,9 @@ export function SceneTab({
               />
               <DrillHeaderAction
                 kind="remove"
-                label={
-                  confirmRemoveObjectId === stagedObject.id
-                    ? "Confirm remove object"
-                    : "Remove object"
-                }
+                label="Remove object"
                 disabled={contentActionBusy}
-                armed={confirmRemoveObjectId === stagedObject.id}
-                onClick={() => {
-                  if (confirmRemoveObjectId !== stagedObject.id) {
-                    setConfirmRemoveObjectId(stagedObject.id);
-                    return;
-                  }
-                  setConfirmRemoveObjectId(null);
-                  removeSceneObject(stagedObject.id);
-                }}
+                onClick={() => removeSceneObject(stagedObject.id)}
               />
             </>
           }
@@ -7924,11 +7889,6 @@ export function SceneTab({
         "videoWindow.edit": () => openDrill("videoWindow.edit"),
         "videoWindow.add": () => openDrill("videoWindow.edit"),
         "device.remove": () => {
-          if (!confirmRemove) {
-            setConfirmRemove(true);
-            return;
-          }
-          setConfirmRemove(false);
           if (deviceId) removeSceneDevice(deviceId);
         },
         "motion.transition": () => {
@@ -7996,7 +7956,7 @@ export function SceneTab({
         <ActionRow
           key={row.id}
           icon={<SceneRowIcon id={row.id} />}
-          label={row.id === "device.remove" && confirmRemove ? "Really remove?" : row.label}
+          label={row.label}
           value={value}
           chevron={row.chevron}
           danger={row.danger}
@@ -8454,6 +8414,30 @@ export function SceneTab({
       focusOverviewAfterMutation(expectedProjectId, expectedSceneIndex, expectedSceneFile, null);
     }
   };
+
+  // The Delete key's overview route: the same plan the row menu's Delete runs, resolved from the selected row.
+  const deleteSelectedOverviewContent = () => {
+    const selection = useUiStore.getState().inspector.overviewSelection;
+    if (!selection || selection.sceneIndex !== sceneIndex || !doc || contentActionBusy) return;
+    const row = [
+      ...sceneOverview.groups.flatMap((group) => group.rows),
+      ...sceneOverview.standalone,
+    ].find((candidate) => candidate.id === selection.rowId);
+    if (!row || !contentMenuActions(row).includes("delete")) return;
+    const sceneFile = project.sceneFiles[sceneIndex] ?? null;
+    if (row.selectionTarget?.kind === "text") {
+      void applyManagedTextContentAction(
+        row,
+        { type: "remove-group", groupKey: row.selectionTarget.id },
+        project.id,
+        sceneIndex,
+        sceneFile,
+      );
+      return;
+    }
+    void applyCurrentContentPlan(row, "delete", project.id, sceneIndex, sceneFile);
+  };
+  deleteOverviewSelectionRef.current = deleteSelectedOverviewContent;
 
   const addManagedTextOverviewItem = async () => {
     const currentDoc = docRef.current;

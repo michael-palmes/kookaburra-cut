@@ -708,18 +708,16 @@ export function DrillHeaderAction({
   label,
   onClick,
   disabled = false,
-  armed = false,
 }: {
   kind: "duplicate" | "remove";
   label: string;
   onClick: () => void;
   disabled?: boolean;
-  armed?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`inspector-drill-header-action${kind === "remove" ? " danger" : ""}${armed ? " armed" : ""}`}
+      className={`inspector-drill-header-action${kind === "remove" ? " danger" : ""}`}
       aria-label={label}
       title={label}
       disabled={disabled}

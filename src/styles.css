@@ -7719,8 +7719,7 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 }
 
 .inspector-drill-header-action.danger:hover:not(:disabled),
-.inspector-drill-header-action.danger:focus-visible,
-.inspector-drill-header-action.danger.armed {
+.inspector-drill-header-action.danger:focus-visible {
   border-color: var(--danger);
 }
 

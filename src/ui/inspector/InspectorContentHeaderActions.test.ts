@@ -24,22 +24,20 @@ const screenshotStackSource = readSource("../LayeredScreenshotBuilder.tsx");
 describe("content inspector header actions", () => {
   it("puts duplicate and trash icons in every repeatable content header", () => {
     expect(deviceSource).toContain('label="Duplicate device"');
-    expect(deviceSource).toContain('? "Confirm remove device" : "Remove device"');
+    expect(deviceSource).toContain('label="Remove device"');
     expect(imageSource).toContain('label="Duplicate image"');
-    expect(imageSource).toContain('? "Confirm remove image" : "Remove image"');
+    expect(imageSource).toContain('label="Remove image"');
     expect(textSource).toContain('label="Duplicate text group"');
-    expect(textSource).toContain(': "Remove text group"');
+    expect(textSource).toContain('label="Remove text group"');
     expect(sceneTabSource).toContain('label="Duplicate object"');
-    expect(sceneTabSource).toContain('? "Confirm remove object"');
+    expect(sceneTabSource).toContain('label="Remove object"');
   });
 
   it("puts trash icons in singleton content headers without inventing duplication", () => {
-    expect(chartSource).toContain('? "Confirm remove chart" : "Remove chart"');
-    expect(sceneTabSource).toContain('? "Confirm remove video window"');
-    expect(sceneTabSource).toContain('? "Confirm remove comparison" : "Remove comparison"');
-    expect(screenshotStackSource).toContain(
-      '? "Confirm remove screenshot stack" : "Remove screenshot stack"',
-    );
+    expect(chartSource).toContain('label="Remove chart"');
+    expect(sceneTabSource).toContain('label="Remove video window"');
+    expect(sceneTabSource).toContain('label="Remove comparison"');
+    expect(screenshotStackSource).toContain('label="Remove screenshot stack"');
   });
 
   it("removes the old fixed and in-body content action rows", () => {
@@ -53,6 +51,19 @@ describe("content inspector header actions", () => {
     expect(sceneTabSource).not.toContain(
       'label={confirmRemoveCompare ? "Really remove?" : "Remove comparison"}',
     );
-    expect(sceneTabSource).not.toContain('label="Remove object"');
+  });
+
+  it("deletes on one click, with no armed confirmation step", () => {
+    for (const source of [
+      deviceSource,
+      imageSource,
+      textSource,
+      chartSource,
+      sceneTabSource,
+      screenshotStackSource,
+    ]) {
+      expect(source).not.toContain("Confirm remove");
+      expect(source).not.toContain("armed={");
+    }
   });
 });
