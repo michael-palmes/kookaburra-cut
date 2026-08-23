@@ -15,13 +15,15 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 /// Folder names the workspace root already owns; a pack project claiming one would shadow a whole library.
-const RESERVED_PROJECT_SLUGS: [&str; 6] = [
+const RESERVED_PROJECT_SLUGS: [&str; 8] = [
     "themes",
     "fonts",
     "gradients",
     "export-presets",
     "objects",
     "screenshots",
+    crate::library::TEMPLATES_DIR_NAME,
+    crate::library::PRESETS_DIR_NAME,
 ];
 
 /// How far the `-2`, `-3`, … walk goes before giving up.

@@ -348,6 +348,27 @@ pub(crate) fn slugify(name: &str) -> String {
     slug
 }
 
+/// Workspace folders owned by the app rather than by projects; a project taking one of these names would shadow a library, so creation and duplication both refuse them.
+const RESERVED_SLUGS: [&str; 8] = [
+    "themes",
+    "fonts",
+    "gradients",
+    "export-presets",
+    "objects",
+    "screenshots",
+    crate::library::TEMPLATES_DIR_NAME,
+    crate::library::PRESETS_DIR_NAME,
+];
+
+fn reject_reserved_slug(slug: &str) -> Result<(), String> {
+    if RESERVED_SLUGS.contains(&slug) {
+        return Err(format!(
+            "\"{slug}\" is a reserved folder name: pick another"
+        ));
+    }
+    Ok(())
+}
+
 /// Reject slugs that could escape the workspace when joined onto the root.
 pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     let ok = !slug.is_empty()
@@ -362,13 +383,14 @@ pub(crate) fn validate_slug(slug: &str) -> Result<(), String> {
     }
 }
 
-/// The roots a frontend-supplied absolute path is allowed to resolve inside: the configured workspace (ws: assets + their exports/), the bundled projects tree (VideoClip/device media), the dev-only fixtures tree (gate spikes and preview labs, debug builds only) and the default ~/Kookaburra Cut (where bundled-project exports land); any may be absent since a missing root simply can't contain the file, best-effort so an unconfigured workspace still permits bundled assets.
+/// The roots a frontend-supplied absolute path is allowed to resolve inside: the configured workspace (ws: assets + their exports/), the bundled projects and presets trees (VideoClip/device media), the dev-only fixtures tree (gate spikes and preview labs, debug builds only) and the default ~/Kookaburra Cut (where bundled-project exports land); any may be absent since a missing root simply can't contain the file, best-effort so an unconfigured workspace still permits bundled assets.
 pub fn allowed_read_roots(app: &AppHandle, state: &State<'_, SettingsState>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(root) = require_root(app, state) {
         roots.push(root);
     }
     roots.push(templates_root(app));
+    roots.push(presets_root(app));
     if let Some(fixtures) = dev_fixtures_root() {
         roots.push(fixtures);
     }
@@ -403,7 +425,7 @@ pub fn confine_readable(
 }
 
 /// Where the bundled templates live: DEBUG binaries prefer the LIVE repo tree (baked in at compile time) because in dev, Tauri also copies resources beside the debug exe and that stale copy has previously shadowed newly added templates, matching the frontend's dev-tree-first resolution (engine/project.ts). RELEASE binaries prefer the resource tree (`bundle.resources` maps ../projects → Resources/projects): the packaged frontend resolves bundled assets against the resource dir, and preferring a dev checkout that happens to exist on the machine put that dir outside `allowed_read_roots`, silently failing clip extraction and breaking dev/packaged export parity on dev machines.
-fn templates_root(app: &AppHandle) -> PathBuf {
+pub(crate) fn templates_root(app: &AppHandle) -> PathBuf {
     let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../projects");
     if cfg!(debug_assertions) && dev.is_dir() {
         return dev;
@@ -415,6 +437,101 @@ fn templates_root(app: &AppHandle) -> PathBuf {
         }
     }
     dev
+}
+
+/// Where the bundled scene presets live (`presets/` beside `projects/`), resolved with the same debug-tree-first / release-resource-first split as `templates_root` and for the same reasons.
+pub(crate) fn presets_root(app: &AppHandle) -> PathBuf {
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../presets");
+    if cfg!(debug_assertions) && dev.is_dir() {
+        return dev;
+    }
+    if let Ok(dir) = app.path().resource_dir() {
+        let bundled = dir.join("presets");
+        if bundled.is_dir() {
+            return bundled;
+        }
+    }
+    dev
+}
+
+/// The workspace folder holding the user's own templates; the writers create it on demand, so a missing folder reads as an empty library rather than an error (the themes/objects pattern).
+pub(crate) fn templates_dir(root: &Path) -> PathBuf {
+    root.join(crate::library::TEMPLATES_DIR_NAME)
+}
+
+/// The workspace folder holding the user's own scene presets, created on demand like `templates_dir`.
+pub(crate) fn presets_dir(root: &Path) -> PathBuf {
+    root.join(crate::library::PRESETS_DIR_NAME)
+}
+
+// Which tree a project id points into. Bare slugs are workspace projects (every caller before the library existed); the scoped forms address a template or preset folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProjectScope {
+    Workspace,
+    UserTemplate,
+    UserPreset,
+    BundledTemplate,
+    BundledPreset,
+}
+
+/// Split a project id into its scope and slug. The slug is validated, so every caller's join can only land one level under a fixed root; the bundled scopes resolve in DEBUG builds alone, since a release app must never write into a checkout it happens to sit beside.
+pub(crate) fn parse_project_id(id: &str) -> Result<(ProjectScope, &str), String> {
+    let Some((scope, slug)) = id.split_once(':') else {
+        validate_slug(id)?;
+        return Ok((ProjectScope::Workspace, id));
+    };
+    validate_slug(slug)?;
+    match scope {
+        "ws-template" => Ok((ProjectScope::UserTemplate, slug)),
+        "ws-preset" => Ok((ProjectScope::UserPreset, slug)),
+        "template" if cfg!(debug_assertions) => Ok((ProjectScope::BundledTemplate, slug)),
+        "preset" if cfg!(debug_assertions) => Ok((ProjectScope::BundledPreset, slug)),
+        "template" | "preset" => Err(format!(
+            "\"{id}\" is a bundled item: duplicate it to your library before editing"
+        )),
+        _ => Err(format!("unknown project id: {id:?}")),
+    }
+}
+
+/// The folder a project id names, ready to read or write.
+pub fn project_dir(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    id: &str,
+) -> Result<PathBuf, String> {
+    let (scope, slug) = parse_project_id(id)?;
+    Ok(match scope {
+        ProjectScope::Workspace => require_root(app, state)?.join(slug),
+        ProjectScope::UserTemplate => templates_dir(&require_root(app, state)?).join(slug),
+        ProjectScope::UserPreset => presets_dir(&require_root(app, state)?).join(slug),
+        ProjectScope::BundledTemplate => templates_root(app).join(slug),
+        ProjectScope::BundledPreset => presets_root(app).join(slug),
+    })
+}
+
+/// Where a `create_project` template id points: `ws:<slug>` is one of the user's own templates, anything else is a bundled one. The slug is validated first, so the join stays one level under whichever root it picked.
+pub(crate) fn template_source(
+    template_id: &str,
+    workspace: &Path,
+    bundled: &Path,
+) -> Result<PathBuf, String> {
+    match template_id.strip_prefix("ws:") {
+        Some(slug) => {
+            validate_slug(slug)?;
+            Ok(workspace.join(slug))
+        }
+        None => {
+            validate_slug(template_id)?;
+            Ok(bundled.join(template_id))
+        }
+    }
+}
+
+/// A filesystem-safe cache key for a project id: the scoped forms carry a colon, which `validate_slug` (rightly) refuses, so caches keyed by id fold the scope into the name.
+pub(crate) fn project_cache_key(id: &str) -> Result<String, String> {
+    let key = id.replace(':', "-");
+    validate_slug(&key)?;
+    Ok(key)
 }
 
 /// The repo's dev-only fixture tree (`fixtures/`: gate spikes and preview labs), which is never bundled: DEBUG binaries read its clips like any bundled project, release binaries never see one (the frontend's fixture globs are dev-gated too).
@@ -440,7 +557,7 @@ fn skills_root(app: &AppHandle) -> PathBuf {
 
 /// Symlinks are recreated, never followed: a link pointing at an ancestor would recurse until the disk gave out, and a
 /// broken one would abort the whole copy on a file nobody can read.
-fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
+pub(crate) fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
     for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -509,7 +626,7 @@ fn file_mtime_ms(path: &Path) -> Option<u64> {
 }
 
 /// A workspace project's snapshot image path (`.kookaburra/snapshots/<slug>.png`).
-fn snapshot_file(root: &Path, slug: &str) -> PathBuf {
+pub(crate) fn snapshot_file(root: &Path, slug: &str) -> PathBuf {
     root.join(STATE_DIR_NAME)
         .join("snapshots")
         .join(format!("{slug}.png"))
@@ -829,13 +946,11 @@ pub fn rename_project(
     slug: String,
     name: String,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
     let display_name = name.trim().to_owned();
     if display_name.is_empty() {
         return Err("the project needs a name".into());
     }
-    let root = require_root(&app, &state)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -885,14 +1000,12 @@ pub fn set_project_typography(
     body: Option<String>,
     chart: Option<String>,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
     let headline = headline
         .map(|v| v.trim().to_owned())
         .filter(|v| !v.is_empty());
     let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
     let chart = chart.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-    let root = require_root(&app, &state)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -931,16 +1044,7 @@ pub fn duplicate_project(
     let display_name = name.trim().to_owned();
     let new_slug = slugify(&display_name);
     validate_slug(&new_slug)?;
-    if new_slug == "themes"
-        || new_slug == "fonts"
-        || new_slug == "gradients"
-        || new_slug == "export-presets"
-        || new_slug == "objects"
-    {
-        return Err(format!(
-            "\"{new_slug}\" is a reserved folder name — pick another"
-        ));
-    }
+    reject_reserved_slug(&new_slug)?;
     let root = require_root(&app, &state)?;
     let src = root.join(&slug);
     if !src.join(MANIFEST_FILENAME).is_file() {
@@ -1144,8 +1248,8 @@ pub fn list_scene_thumbs(
     slug: String,
 ) -> Result<SceneThumbs, String> {
     let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    let dir = scene_thumbs_dir(&root, &slug);
+    let project = project_dir(&app, &state, &slug)?;
+    let dir = scene_thumbs_dir(&root, &project_cache_key(&slug)?);
     let stamp = std::fs::read_to_string(dir.join(".stamp"))
         .ok()
         .map(|s| s.trim().to_owned());
@@ -1174,7 +1278,7 @@ pub fn list_scene_thumbs(
         stamp,
         thumbs,
         stamps,
-        source_stamps: scene_source_stamps(&root.join(&slug)),
+        source_stamps: scene_source_stamps(&project),
     })
 }
 
@@ -1196,7 +1300,7 @@ pub fn write_scene_thumb(
     let slug = header("x-kookaburra-slug")?;
     let stem = header("x-kookaburra-stem")?;
     let stamp = header("x-kookaburra-stamp")?;
-    validate_slug(&slug)?;
+    let key = project_cache_key(&slug)?;
     validate_slug(&stem)?;
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
         return Err("write_scene_thumb expects a raw binary body".into());
@@ -1209,7 +1313,7 @@ pub fn write_scene_thumb(
         return Err("thumb too large".into());
     }
     let root = require_root(&app, &state)?;
-    let dir = scene_thumbs_dir(&root, &slug);
+    let dir = scene_thumbs_dir(&root, &key);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(format!("{stem}.png")), bytes).map_err(|e| e.to_string())?;
     std::fs::write(dir.join(format!("{stem}.stamp")), stamp).map_err(|e| e.to_string())
@@ -1232,7 +1336,6 @@ pub fn write_emoji_raster(
     };
     let slug = header("x-kookaburra-slug")?;
     let key = header("x-kookaburra-key")?;
-    validate_slug(&slug)?;
     // Key shape: hex codepoints dash-joined plus a @size suffix, e.g. `1f680-fe0f@256`.
     let valid_key = !key.is_empty()
         && key.len() <= 128
@@ -1254,8 +1357,9 @@ pub fn write_emoji_raster(
     if bytes.len() > 512 * 1024 {
         return Err("raster too large".into());
     }
-    let root = require_root(&app, &state)?;
-    let dir = root.join(&slug).join("assets").join(".emoji-cache");
+    let dir = project_dir(&app, &state, &slug)?
+        .join("assets")
+        .join(".emoji-cache");
     let file = dir.join(format!("{key}.png"));
     if file.exists() {
         return Ok(());
@@ -1276,7 +1380,7 @@ fn require_template(template: &Path, template_id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Create a project from a bundled template: copy `project.json` + `scenes/` + `assets/`, rewrite the manifest id/name, add `exports/`/`edits/`, stamp the Claude Code provisioning (CLAUDE.md, `.claude/settings.json`, the scene-authoring skill), and `git init` (best-effort, since Claude Code only persists folder trust for git repos).
+/// Create a project from a template, bundled or one of the user's own (`ws:<slug>`): copy `project.json` + `scenes/` + `assets/` (never `template.json`), rewrite the manifest id/name, add `exports/`/`edits/`, stamp the Claude Code provisioning (CLAUDE.md, `.claude/settings.json`, the scene-authoring skill), and `git init` (best-effort, since Claude Code only persists folder trust for git repos).
 #[tauri::command]
 pub fn create_project(
     app: AppHandle,
@@ -1289,20 +1393,9 @@ pub fn create_project(
     let display_name = name.trim().to_owned();
     let slug = slugify(&display_name);
     validate_slug(&slug)?;
-    validate_slug(&template_id)?;
-    // Workspace folders owned by the app, not by projects, so these names are reserved.
-    if slug == "themes"
-        || slug == "fonts"
-        || slug == "gradients"
-        || slug == "export-presets"
-        || slug == "objects"
-    {
-        return Err(format!(
-            "\"{slug}\" is a reserved folder name — pick another"
-        ));
-    }
+    reject_reserved_slug(&slug)?;
 
-    let template = templates_root(&app).join(&template_id);
+    let template = template_source(&template_id, &templates_dir(&root), &templates_root(&app))?;
     require_template(&template, &template_id)?;
 
     let dir = root.join(&slug);
@@ -1538,9 +1631,9 @@ pub fn project_fingerprint(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    Ok(compute_project_fingerprint(&root.join(&slug)))
+    Ok(compute_project_fingerprint(&project_dir(
+        &app, &state, &slug,
+    )?))
 }
 
 /// The fingerprint behind `project_fingerprint`, shared with the trust gate so consent is bound to the exact sources it was given for.
@@ -1598,13 +1691,11 @@ pub fn is_project_trusted(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<bool, String> {
-    validate_slug(&slug)?;
-    let root = require_root(&app, &state)?;
+    let dir = project_dir(&app, &state, &slug)?;
     let settings = load_settings(&app, &state)?;
     let Some(record) = settings.trusted_projects.get(&slug) else {
         return Ok(false);
     };
-    let dir = root.join(&slug);
     Ok(trust_record_matches(
         record,
         &dir,
@@ -1619,9 +1710,7 @@ pub fn trust_project(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<(), String> {
-    validate_slug(&slug)?;
-    let root = require_root(&app, &state)?;
-    let dir = root.join(&slug);
+    let dir = project_dir(&app, &state, &slug)?;
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("no project named \"{slug}\""));
     }
@@ -1641,16 +1730,14 @@ pub fn trust_project(
     save_settings(&app, &state, settings)
 }
 
-/// A workspace project's manifest text (the frontend parses + validates it).
+/// A project's manifest text (the frontend parses + validates it); `slug` is a workspace slug or a scoped library id (`project_dir`).
 #[tauri::command]
 pub fn read_project_manifest(
     app: AppHandle,
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    std::fs::read_to_string(root.join(&slug).join(MANIFEST_FILENAME))
+    std::fs::read_to_string(project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME))
         .map_err(|e| format!("reading {slug}/project.json: {e}"))
 }
 
@@ -1662,8 +1749,7 @@ pub fn read_scene_source(
     slug: String,
     file: String,
 ) -> Result<String, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
+    let project = project_dir(&app, &state, &slug)?;
     let rest = file
         .strip_prefix("scenes/")
         .ok_or_else(|| format!("scene module path must live under scenes/: {file:?}"))?;
@@ -1674,8 +1760,7 @@ pub fn read_scene_source(
     if !ok {
         return Err(format!("invalid scene module path: {file:?}"));
     }
-    std::fs::read_to_string(root.join(&slug).join(&file))
-        .map_err(|e| format!("reading {slug}/{file}: {e}"))
+    std::fs::read_to_string(project.join(&file)).map_err(|e| format!("reading {slug}/{file}: {e}"))
 }
 
 pub(crate) const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
@@ -1715,21 +1800,21 @@ pub fn list_project_media(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<Vec<String>, String> {
-    project_media_rels(&require_root(&app, &state)?, &slug)
+    project_media_rels(&project_dir(&app, &state, &slug)?)
 }
 
-/// Every media rel in a project's `assets/`, newest added first: `list_project_media`'s body with the root already in hand, so other modules can list without plumbing a `State` through.
-pub(crate) fn project_media_rels(root: &Path, slug: &str) -> Result<Vec<String>, String> {
-    let mut files = list_by_extension_in(root, slug, MEDIA_EXTENSIONS)?;
-    sort_media_by_added(&root.join(slug), &mut files);
+/// Every media rel in a project's `assets/`, newest added first: `list_project_media`'s body with the folder already in hand, so other modules can list without plumbing a `State` through.
+pub(crate) fn project_media_rels(project: &Path) -> Result<Vec<String>, String> {
+    let mut files = list_by_extension_in(project, MEDIA_EXTENSIONS)?;
+    sort_media_by_added(project, &mut files);
     Ok(files)
 }
 
 /// Newest ADDED first: creation time, stamped now by touch_now at every user action and ancient on bundled content, so imports always surface, in-place rewrites never resurface a file, and seeded samples sit last. Stable, so the alphabetical pass breaks ties; unreadable stamps sink last. Rels carry the `assets/` prefix, so they join the PROJECT dir (joining the assets dir made every stat miss and silently left the list alphabetical).
-fn sort_media_by_added(project_dir: &Path, files: &mut [String]) {
+fn sort_media_by_added(project: &Path, files: &mut [String]) {
     files.sort_by_cached_key(|rel| {
         std::cmp::Reverse(
-            std::fs::metadata(project_dir.join(rel))
+            std::fs::metadata(project.join(rel))
                 .and_then(|m| m.created().or_else(|_| m.modified()))
                 .ok(),
         )
@@ -1742,16 +1827,11 @@ fn list_by_extension(
     slug: &str,
     extensions: &[&str],
 ) -> Result<Vec<String>, String> {
-    list_by_extension_in(&require_root(app, state)?, slug, extensions)
+    list_by_extension_in(&project_dir(app, state, slug)?, extensions)
 }
 
-fn list_by_extension_in(
-    root: &Path,
-    slug: &str,
-    extensions: &[&str],
-) -> Result<Vec<String>, String> {
-    validate_slug(slug)?;
-    let assets = root.join(slug).join("assets");
+fn list_by_extension_in(project: &Path, extensions: &[&str]) -> Result<Vec<String>, String> {
+    let assets = project.join("assets");
     let mut files = Vec::new();
     collect_files(&assets, &assets, extensions, &mut files)?;
     files.sort();
@@ -1988,6 +2068,98 @@ mod tests {
             settings.trusted_projects["sibling"].path,
             "/Users/x/Desktop/Vids/Kookaburra Cut copy/sibling"
         );
+    }
+
+    #[test]
+    fn the_app_s_own_workspace_folders_are_reserved_slugs() {
+        for name in [
+            "themes",
+            "fonts",
+            "gradients",
+            "export-presets",
+            "objects",
+            "screenshots",
+            "templates",
+            "presets",
+        ] {
+            assert!(reject_reserved_slug(name).is_err(), "{name} was allowed");
+        }
+        assert!(reject_reserved_slug("my-video").is_ok());
+        // The library dirs are the pair that must never drift out of the guard.
+        assert!(RESERVED_SLUGS.contains(&crate::library::TEMPLATES_DIR_NAME));
+        assert!(RESERVED_SLUGS.contains(&crate::library::PRESETS_DIR_NAME));
+    }
+
+    #[test]
+    fn project_ids_resolve_to_one_tree_each_and_never_escape() {
+        assert_eq!(
+            parse_project_id("launch-2026").unwrap(),
+            (ProjectScope::Workspace, "launch-2026")
+        );
+        assert_eq!(
+            parse_project_id("ws-template:my-launch").unwrap(),
+            (ProjectScope::UserTemplate, "my-launch")
+        );
+        assert_eq!(
+            parse_project_id("ws-preset:stat-hero").unwrap(),
+            (ProjectScope::UserPreset, "stat-hero")
+        );
+        // Bundled scopes open in dev only; a release build refuses them outright.
+        let bundled = parse_project_id("template:blank");
+        if cfg!(debug_assertions) {
+            assert_eq!(bundled.unwrap(), (ProjectScope::BundledTemplate, "blank"));
+            assert_eq!(
+                parse_project_id("preset:stat-hero").unwrap(),
+                (ProjectScope::BundledPreset, "stat-hero")
+            );
+        } else {
+            assert!(bundled.is_err());
+            assert!(parse_project_id("preset:stat-hero").is_err());
+        }
+        // Every escape shape is refused, scoped or bare.
+        for id in [
+            "ws-template:../themes",
+            "ws-preset:a/b",
+            "ws-template:.hidden",
+            "ws-template:",
+            "..",
+            "a/b",
+            "",
+            "ws:launch",
+            "nonsense:launch",
+        ] {
+            assert!(parse_project_id(id).is_err(), "{id} was allowed");
+        }
+    }
+
+    #[test]
+    fn a_template_id_picks_the_users_library_or_the_bundled_tree() {
+        let workspace = PathBuf::from("/ws/templates");
+        let bundled = PathBuf::from("/app/projects");
+        assert_eq!(
+            template_source("blank", &workspace, &bundled).unwrap(),
+            bundled.join("blank")
+        );
+        assert_eq!(
+            template_source("ws:my-launch", &workspace, &bundled).unwrap(),
+            workspace.join("my-launch")
+        );
+        for id in ["ws:../themes", "ws:", "../projects", "ws:a/b"] {
+            assert!(
+                template_source(id, &workspace, &bundled).is_err(),
+                "{id} was allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_scoped_id_folds_its_colon_into_the_cache_key() {
+        assert_eq!(project_cache_key("launch").unwrap(), "launch");
+        assert_eq!(
+            project_cache_key("ws-preset:stat-hero").unwrap(),
+            "ws-preset-stat-hero"
+        );
+        assert!(project_cache_key("../escape").is_err());
     }
 
     #[test]

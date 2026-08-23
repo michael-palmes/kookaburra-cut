@@ -80,7 +80,7 @@ fn seed_inserted_scene_transitions(
 }
 
 /// Validate and resolve a `scenes/<stem>.json` path under the project, traversal-hardened: reject anything that isn't exactly one flat path segment under `scenes/` (the `resolve_asset` lesson).
-fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String> {
+fn scene_doc_path(project: &Path, file: &str) -> Result<PathBuf, String> {
     let rest = file
         .strip_prefix("scenes/")
         .ok_or_else(|| format!("scene doc path must live under scenes/: {file:?}"))?;
@@ -91,7 +91,7 @@ fn scene_doc_path(root: &Path, slug: &str, file: &str) -> Result<PathBuf, String
     if !ok {
         return Err(format!("invalid scene doc path: {file:?}"));
     }
-    Ok(root.join(slug).join(file))
+    Ok(project.join(file))
 }
 
 /// Atomic JSON write: tmp + rename so a crash mid-save can never corrupt a document (the `edit.rs::write_doc` pattern; `project.json` writes here go through this too).
@@ -125,9 +125,7 @@ pub fn read_scene_doc(
     slug: String,
     file: String,
 ) -> Result<Option<String>, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = scene_doc_path(&root, &slug, &file)?;
+    let path = scene_doc_path(&workspace::project_dir(&app, &state, &slug)?, &file)?;
     match std::fs::read_to_string(&path) {
         Ok(text) => Ok(Some(text)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -155,9 +153,7 @@ pub fn write_scene_doc(
             "this scene doc uses version {version} — it needs a newer Kookaburra Cut"
         ));
     }
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = scene_doc_path(&root, &slug, &file)?;
+    let path = scene_doc_path(&workspace::project_dir(&app, &state, &slug)?, &file)?;
     atomic_write_json(&path, &doc)
 }
 
@@ -194,9 +190,7 @@ pub fn update_project_scene(
     index: usize,
     duration_ms: u64,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -221,14 +215,12 @@ pub fn update_project_scene_transition(
     index: usize,
     transition: Option<Value>,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
     if let Some(spec) = &transition {
         if !transition_is_valid(spec) {
             return Err("transition must be an object with a string `type`".into());
         }
     }
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -295,9 +287,7 @@ pub fn apply_project_transition_to_all(
     slug: String,
     transition: Option<Value>,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -312,9 +302,8 @@ pub fn read_project_manifest_snapshot(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    std::fs::read_to_string(root.join(&slug).join(MANIFEST_FILENAME)).map_err(|e| e.to_string())
+    std::fs::read_to_string(workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME))
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a whole project.json snapshot, the undo/redo write surface only (feature edits keep their narrow commands); validated as JSON with a scenes array so a corrupt snapshot can never land, atomic tmp+rename.
@@ -325,14 +314,12 @@ pub fn write_project_manifest_snapshot(
     slug: String,
     text: String,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
     let manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("manifest isn't valid JSON: {e}"))?;
     if !manifest.get("scenes").map(Value::is_array).unwrap_or(false) {
         return Err("manifest needs a scenes array".into());
     }
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     atomic_write_json(&path, &manifest)
 }
 
@@ -344,9 +331,7 @@ pub fn remove_project_scene(
     slug: String,
     index: usize,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
     let path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
@@ -389,9 +374,7 @@ pub fn move_project_scene(
     from: usize,
     to: usize,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -627,9 +610,7 @@ pub fn duplicate_scene(
     index: usize,
     position: Option<usize>,
 ) -> Result<ScaffoldResult, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("reading project.json: {e}"))?;
@@ -697,7 +678,7 @@ pub fn duplicate_scene(
             doc["name"] = json!(format!("{name} copy"));
         }
         remint_scene_doc_ids(&mut doc);
-        atomic_write_json(&scene_doc_path(&root, &slug, &new_doc_file)?, &doc)?;
+        atomic_write_json(&scene_doc_path(&project, &new_doc_file)?, &doc)?;
     }
 
     let scenes = manifest
@@ -738,7 +719,7 @@ fn is_project_asset_ref(value: &str) -> bool {
 }
 
 /// Every `assets/...` path a scene's TSX mentions; over-capture is harmless because callers gate on the file existing in the source project.
-fn scan_asset_refs(text: &str) -> Vec<String> {
+pub(crate) fn scan_asset_refs(text: &str) -> Vec<String> {
     let bytes = text.as_bytes();
     let mut found: Vec<String> = Vec::new();
     let mut from = 0;
@@ -937,14 +918,11 @@ pub fn copy_scene_to_project(
     index: usize,
     dest_slug: String,
 ) -> Result<ScaffoldResult, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    workspace::validate_slug(&dest_slug)?;
     if slug == dest_slug {
         return Err("pick a different project to copy into".into());
     }
-    let project = root.join(&slug);
-    let dest = root.join(&dest_slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
+    let dest = workspace::project_dir(&app, &state, &dest_slug)?;
     let dest_manifest_path = dest.join(MANIFEST_FILENAME);
     if !dest_manifest_path.is_file() {
         return Err(format!("no project named {dest_slug} in the workspace"));
@@ -1012,7 +990,7 @@ pub fn copy_scene_to_project(
     atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
     if let Some(doc) = &mut doc {
         remint_scene_doc_ids(doc);
-        atomic_write_json(&scene_doc_path(&root, &dest_slug, &new_doc_file)?, doc)?;
+        atomic_write_json(&scene_doc_path(&dest, &new_doc_file)?, doc)?;
     }
 
     let dest_text = std::fs::read_to_string(&dest_manifest_path)
@@ -1051,9 +1029,7 @@ pub fn set_project_theme(
     slug: String,
     theme_id: String,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1069,8 +1045,6 @@ pub fn set_project_audio(
     slug: String,
     audio: Option<Value>,
 ) -> Result<(), String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
     if let Some(spec) = &audio {
         let ok = spec
             .as_object()
@@ -1081,7 +1055,7 @@ pub fn set_project_audio(
             return Err("audio must be an object with a string `file`".into());
         }
     }
-    let path = root.join(&slug).join(MANIFEST_FILENAME);
+    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1404,9 +1378,9 @@ pub fn ensure_unique_scene_ids(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<SceneIdHeal, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    Ok(heal_scene_ids(&root.join(&slug)))
+    Ok(heal_scene_ids(&workspace::project_dir(
+        &app, &state, &slug,
+    )?))
 }
 
 // ── Scaffolder ────────────────────────────────────────────────────────────────
@@ -1698,9 +1672,7 @@ pub async fn scaffold_scene(
     slug: String,
     mut options: ScaffoldOptions,
 ) -> Result<ScaffoldResult, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let project = root.join(&slug);
+    let project = workspace::project_dir(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     if !manifest_path.is_file() {
         return Err(format!("project \"{slug}\" has no project.json"));
@@ -2067,7 +2039,7 @@ pub async fn scaffold_scene(
         .replace("__DURATION_MS__", &duration_ms.to_string());
     atomic_write_text(&scenes_dir.join(format!("{stem}.tsx")), &tsx)?;
 
-    atomic_write_json(&scene_doc_path(&root, &slug, &doc_file)?, &doc)?;
+    atomic_write_json(&scene_doc_path(&project, &doc_file)?, &doc)?;
 
     // Register in project.json (atomic), at `position` when given (in range), else appended.
     let text = std::fs::read_to_string(&manifest_path)
