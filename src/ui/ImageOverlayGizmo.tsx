@@ -71,6 +71,30 @@ async function probeImageAspect(
   }
 }
 
+/** Module-level so StrictMode's mount, cleanup, remount re-attaches to the same probe instead of marking it requested and dropping the result (the batch 26 eyedropper failure shape). */
+const imageAspectCache = new Map<string, number>();
+const imageAspectInFlight = new Map<string, Promise<number | null>>();
+
+function fetchImageAspect(
+  projectId: string,
+  src: string,
+  suffix: string,
+  key: string,
+): Promise<number | null> {
+  const cached = imageAspectCache.get(key);
+  if (cached !== undefined) return Promise.resolve(cached);
+  let flight = imageAspectInFlight.get(key);
+  if (!flight) {
+    flight = probeImageAspect(projectId, src, suffix).then((aspect) => {
+      imageAspectInFlight.delete(key);
+      if (aspect !== null) imageAspectCache.set(key, aspect);
+      return aspect;
+    });
+    imageAspectInFlight.set(key, flight);
+  }
+  return flight;
+}
+
 /** One Overlay entry's box in stage pixels, matching what the renderer draws: a clip fits INSIDE a box that is `size` of the frame (the window rule, so a clip narrower than the frame shrinks), while a still's `size` IS its width and its height follows the source aspect (or the width, cropped to a circle). */
 export function overlayMediaGizmoBox(
   kind: SceneMediaKind,
@@ -119,7 +143,6 @@ export function OverlayImageGizmo({
   const formatSpec = useEditorStore((state) => state.format);
   const format = useMemo(() => computeFormat(formatSpec), [formatSpec]);
   const [sourceAspects, setSourceAspects] = useState<Record<string, number>>({});
-  const requested = useRef(new Set<string>());
   const images = useMemo(
     () => sceneMediaForHost(resolveSceneDocMedia(project.sceneDocs[sceneIndex]), "overlay"),
     [project.sceneDocs, sceneIndex],
@@ -151,11 +174,12 @@ export function OverlayImageGizmo({
     let alive = true;
     for (const request of Object.values(sourceRequests)) {
       // A clip has no decodable intrinsics here; video entries size off their recorded `video.aspect`.
-      if (request.video || requested.current.has(request.key)) continue;
-      requested.current.add(request.key);
-      void probeImageAspect(project.id, request.src, request.suffix).then((aspect) => {
+      if (request.video) continue;
+      void fetchImageAspect(project.id, request.src, request.suffix, request.key).then((aspect) => {
         if (alive && aspect !== null) {
-          setSourceAspects((current) => ({ ...current, [request.key]: aspect }));
+          setSourceAspects((current) =>
+            current[request.key] === aspect ? current : { ...current, [request.key]: aspect },
+          );
         }
       });
     }
