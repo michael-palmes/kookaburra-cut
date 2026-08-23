@@ -212,6 +212,89 @@ export function bundledPresetPreview(slug: string): string | null {
   return previewGlob[`../assets/preset-previews/${slug}.jpg`] ?? null;
 }
 
+// ── Preview staleness (dev only) ──────────────────────────────────────────
+
+/** The card-art ledger both bundled catalogues share: one content hash per slug, written by the preview autoruns through `scripts/preset-preview-stale.mjs`. Comparing it against the tree in a dev checkout is what badges a card whose art is older than the item; release ships no ledger read at all, since `import.meta.env.DEV` folds these globs away. */
+export interface PreviewLedger {
+  version: number;
+  items: Record<string, string>;
+}
+
+/** Object keys sorted, no whitespace: the same document has to hash the same here and in `scripts/preset-preview-stale.mjs`, which sees raw files rather than Vite-parsed modules. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/** FNV-1a over two independent lanes, concatenated as 16 hex chars. Mirrored exactly in `scripts/preset-preview-stale.mjs`; staleness is a hint, so a cheap non-cryptographic digest is the right trade. */
+export function contentDigest(text: string): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    a = Math.imul(a ^ code, 0x01000193);
+    b = Math.imul(b ^ (code + i), 0x85ebca6b);
+  }
+  return `${(a >>> 0).toString(16).padStart(8, "0")}${(b >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+/** The ledger hash for one bundled item: its manifest, its `project.json` and every scene sidecar, keyed by folder-relative path and sorted. TSX is deliberately outside the hash, so a code-only scene edit goes unbadged and still needs a manual re-render. */
+export function previewContentHash(docs: readonly (readonly [string, unknown])[]): string {
+  return contentDigest(
+    [...docs]
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([path, doc]) => `${path}\n${canonicalJson(doc)}\n`)
+      .join(""),
+  );
+}
+
+// Dev-only: the sidecars and the ledger are read solely to badge stale cards, so a release build folds both globs (and everything they would pull into the bundle) away.
+const sidecarGlob: Record<string, unknown> = import.meta.env.DEV
+  ? import.meta.glob<unknown>("/presets/*/scenes/*.json", { eager: true, import: "default" })
+  : {};
+const ledgerGlob: Record<string, PreviewLedger> = import.meta.env.DEV
+  ? import.meta.glob<PreviewLedger>("../assets/preset-previews/*.json", {
+      eager: true,
+      import: "default",
+    })
+  : {};
+
+/** Ledger entries for one catalogue, keyed by slug; empty until the promotion step has written one. */
+export function ledgerItems(ledger: PreviewLedger | undefined): Record<string, string> {
+  return ledger?.items ?? {};
+}
+
+const staleCache = new Map<string, boolean>();
+
+/** Dev only: this bundled preset's committed still is older than its authored JSON. False in release, for a preset with no art yet (the swatch already says so) and for the user's own presets. */
+export function isPresetPreviewStale(slug: string): boolean {
+  if (!import.meta.env.DEV) return false;
+  const cached = staleCache.get(slug);
+  if (cached !== undefined) return cached;
+  const manifest = presetGlob[`/presets/${slug}/preset.json`];
+  const project = projectGlob[`/presets/${slug}/project.json`];
+  if (!manifest || !project || !bundledPresetPreview(slug)) return false;
+  const prefix = `/presets/${slug}/`;
+  const docs: [string, unknown][] = [
+    ["preset.json", manifest],
+    ["project.json", project],
+  ];
+  for (const [path, doc] of Object.entries(sidecarGlob)) {
+    if (path.startsWith(`${prefix}scenes/`)) docs.push([path.slice(prefix.length), doc]);
+  }
+  const ledger = ledgerItems(ledgerGlob["../assets/preset-previews/ledger.json"]);
+  const stale = ledger[slug] !== previewContentHash(docs);
+  staleCache.set(slug, stale);
+  return stale;
+}
+
 /** One catalogue row: the authored manifest, flattened, plus everything derived from `project.json`. */
 export interface PresetEntry {
   /** Catalogue id: the folder slug for bundled presets, `ws:<slug>` for the user's own. */

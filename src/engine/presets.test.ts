@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPresetEntry,
+  canonicalJson,
   comparePresetEntries,
   formatPresetDuration,
   listPresets,
@@ -13,6 +14,7 @@ import {
   presetManifestSchema,
   presetPreviewFrame,
   presetProjectId,
+  previewContentHash,
   searchPresets,
   sortPresetEntries,
 } from "./presets";
@@ -270,6 +272,31 @@ describe("bundled presets", () => {
   });
 });
 
+describe("preview content hash", () => {
+  it("canonicalises objects by sorted key", () => {
+    expect(canonicalJson({ b: 2, a: [1, { d: 4, c: 3 }] })).toBe('{"a":[1,{"c":3,"d":4}],"b":2}');
+  });
+
+  // The golden vector scripts/preset-preview-stale.test.mjs pins too: the app and the
+  // ledger writer must digest identically or every bundled card would read as stale.
+  it("hashes to the golden vector the ledger script pins", () => {
+    expect(
+      previewContentHash([
+        ["scenes/01.json", { z: [1, 2], a: "x", n: null }],
+        ["preset.json", { version: 1, name: "Golden" }],
+      ]),
+    ).toBe("68cbea3520274af8");
+  });
+
+  it("is order-independent across documents", () => {
+    const docs: [string, unknown][] = [
+      ["preset.json", { version: 1 }],
+      ["project.json", { id: "a" }],
+    ];
+    expect(previewContentHash(docs)).toBe(previewContentHash([...docs].reverse()));
+  });
+});
+
 describe.skipIf(presetSlugs.length === 0)("each bundled preset", () => {
   it.each(presetSlugs)("%s carries a manifest the schema accepts", (slug) => {
     const parsed = presetManifestSchema.safeParse(
@@ -298,6 +325,6 @@ describe.skipIf(presetSlugs.length === 0)("each bundled preset", () => {
 
   it.each(presetSlugs)("%s targets every aspect", (slug) => {
     const formats = projectGlob[`../../presets/${slug}/project.json`]?.formats ?? [];
-    expect([...formats].sort()).toEqual(["1:1", "16:9", "4:5", "9:16"]);
+    expect([...formats].sort()).toEqual(["16:9", "9:16", "1:1", "4:5"].sort());
   });
 });

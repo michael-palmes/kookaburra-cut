@@ -115,6 +115,26 @@ export const PRESET_CATEGORY_ICONS: Record<string, ReactElement> = {
   ),
 };
 
+/** Dev-only card badge: the item's card art is older than its authored JSON. */
+export function LibraryStaleIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="10" cy="10" r="7" />
+      <path d="M10 6v4.3l2.8 1.7" />
+    </svg>
+  );
+}
+
 /** Welcome-rail rows: the project groups above, the library catalogues below. */
 export type LibraryRailIconId =
   | "all"

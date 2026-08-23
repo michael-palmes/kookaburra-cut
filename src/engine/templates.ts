@@ -1,5 +1,6 @@
 import { createUserCatalogue, type LibraryItemInfo, listUserTemplates } from "./library";
 import { fsUrl } from "./media";
+import { ledgerItems, type PreviewLedger, previewContentHash } from "./presets";
 import {
   outgoingSceneTransitions,
   type ProjectManifest,
@@ -351,6 +352,41 @@ export function bundledTemplatePreviews(templateId: string): string[] | null {
     urls.push(url);
   }
   return urls;
+}
+
+// Dev-only staleness, the preset catalogue's ledger one tree over (src/engine/presets.ts owns the hash and the contract); a release build folds both globs away.
+const sidecarGlob: Record<string, unknown> = import.meta.env.DEV
+  ? import.meta.glob<unknown>("/projects/*/scenes/*.json", { eager: true, import: "default" })
+  : {};
+const ledgerGlob: Record<string, PreviewLedger> = import.meta.env.DEV
+  ? import.meta.glob<PreviewLedger>("../assets/template-previews/*.json", {
+      eager: true,
+      import: "default",
+    })
+  : {};
+
+const staleCache = new Map<string, boolean>();
+
+/** Dev only: this bundled template's committed stills are older than its authored JSON. False in release, for a template with no art yet and for the user's own templates. */
+export function isTemplatePreviewStale(slug: string): boolean {
+  if (!import.meta.env.DEV) return false;
+  const cached = staleCache.get(slug);
+  if (cached !== undefined) return cached;
+  const manifest = templateGlob[`/projects/${slug}/template.json`];
+  const project = projectGlob[`/projects/${slug}/project.json`];
+  if (!manifest || !project || !bundledTemplatePreviews(slug)) return false;
+  const prefix = `/projects/${slug}/`;
+  const docs: [string, unknown][] = [
+    ["template.json", manifest],
+    ["project.json", project],
+  ];
+  for (const [path, doc] of Object.entries(sidecarGlob)) {
+    if (path.startsWith(`${prefix}scenes/`)) docs.push([path.slice(prefix.length), doc]);
+  }
+  const ledger = ledgerItems(ledgerGlob["../assets/template-previews/ledger.json"]);
+  const stale = ledger[slug] !== previewContentHash(docs);
+  staleCache.set(slug, stale);
+  return stale;
 }
 
 /** One catalogue row: the authored manifest, flattened, plus everything derived from `project.json`. */

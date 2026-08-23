@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, type ReactNode, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type CatalogueOrderEntry, renumberOrders } from "../engine/catalogueOrder";
 import {
   deleteUserPreset,
@@ -13,6 +13,7 @@ import {
   setUserTemplateOrders,
 } from "../engine/library";
 import {
+  isPresetPreviewStale,
   listAllPresets,
   PRESET_CATEGORIES,
   type PresetEntry,
@@ -22,6 +23,7 @@ import {
 } from "../engine/presets";
 import { isEditableProjectId } from "../engine/project";
 import {
+  isTemplatePreviewStale,
   listAllTemplates,
   refreshUserTemplates,
   searchTemplates,
@@ -31,7 +33,7 @@ import {
 } from "../engine/templates";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import type { ItemDetailsTarget, LibraryKind, LibrarySource } from "./libraryDetails";
-import { PRESET_CATEGORY_ICONS, TEMPLATE_CATEGORY_ICONS } from "./libraryIcons";
+import { LibraryStaleIcon, PRESET_CATEGORY_ICONS, TEMPLATE_CATEGORY_ICONS } from "./libraryIcons";
 import { libraryCardMenuItems } from "./libraryMenus";
 import { dropTargetIndex, gridInsertionIndex } from "./libraryReorder";
 import { PresetCard } from "./PresetCard";
@@ -40,6 +42,9 @@ import { TemplateCard } from "./TemplateCard";
 /** One catalogue as a card grid, grouped by category and reorderable inside each group: the welcome screen's Templates, Presets, App templates and App presets. The four differ only in which list they read and which write commands a drag or a delete lands on, so they share this component; the bundled pair renders in a dev checkout only, which is also the only place its write commands exist. */
 
 const CARD_DRAG_THRESHOLD_PX = 5;
+
+const STALE_HINT =
+  "The card art is older than this item's manifest, project or scene documents. Re-render it with the previews autorun.";
 
 type LibraryCard =
   | { kind: "template"; id: string; slug: string; entry: TemplateEntry }
@@ -89,6 +94,14 @@ function groupByCategory(cards: LibraryCard[], kind: LibraryKind): CategoryGroup
     (group ?? uncategorised).cards.push(card);
   }
   return [...groups, uncategorised].filter((group) => group.cards.length > 0);
+}
+
+/** Dev only, bundled only: the committed card art predates the item's authored JSON (a TSX-only edit is outside the hash, so it stays unbadged). */
+function isCardPreviewStale(card: LibraryCard): boolean {
+  if (card.entry.source !== "bundled") return false;
+  return card.kind === "template"
+    ? isTemplatePreviewStale(card.slug)
+    : isPresetPreviewStale(card.slug);
 }
 
 /** The creation path, spelled out where the catalogue is still empty. */
@@ -322,24 +335,33 @@ function CategoryGrid({
             onPointerMove,
             onPointerUp: () => onPointerUp(index),
           };
-          return card.kind === "template" ? (
-            <TemplateCard
-              key={card.id}
-              entry={card.entry}
-              selected={false}
-              tabStop
-              onSelect={() => onActivate(card)}
-              interaction={interaction}
-            />
-          ) : (
-            <PresetCard
-              key={card.id}
-              entry={card.entry}
-              selected={false}
-              tabStop
-              onSelect={() => onActivate(card)}
-              interaction={interaction}
-            />
+          const rendered =
+            card.kind === "template" ? (
+              <TemplateCard
+                entry={card.entry}
+                selected={false}
+                tabStop
+                onSelect={() => onActivate(card)}
+                interaction={interaction}
+              />
+            ) : (
+              <PresetCard
+                entry={card.entry}
+                selected={false}
+                tabStop
+                onSelect={() => onActivate(card)}
+                interaction={interaction}
+              />
+            );
+          if (!isCardPreviewStale(card)) return <Fragment key={card.id}>{rendered}</Fragment>;
+          return (
+            <div key={card.id} className="library-card-slot">
+              {rendered}
+              <span className="library-stale-badge" title={STALE_HINT}>
+                <LibraryStaleIcon />
+                Previews stale
+              </span>
+            </div>
           );
         })}
       </div>

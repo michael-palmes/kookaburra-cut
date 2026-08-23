@@ -543,6 +543,7 @@ if [[ "$ACTION" == "template-previews" ]]; then
       copied=$((copied + 1))
     done
   done
+  node "$ROOT/scripts/preset-preview-stale.mjs" commit template "${PROMOTED[@]}"
   echo "kookaburra:run: promoted $copied preview(s) → src/assets/template-previews/"
 fi
 
@@ -575,6 +576,7 @@ if [[ "$ACTION" == "preset-previews" ]]; then
     mv -f "$tmp" "$DEST/$preset.jpg"
     copied=$((copied + 1))
   done
+  node "$ROOT/scripts/preset-preview-stale.mjs" commit preset "${PROMOTED[@]}"
   echo "kookaburra:run: promoted $copied preview(s) → src/assets/preset-previews/"
 fi
 
