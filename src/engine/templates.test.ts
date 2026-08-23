@@ -11,6 +11,7 @@ import {
   type TemplateManifest,
   type TemplateManifestResult,
   templateManifestSchema,
+  templateProjectId,
 } from "./templates";
 
 /**
@@ -224,6 +225,45 @@ describe("bundled templates", () => {
   });
 });
 
+describe("template manifest source", () => {
+  const minimal = (over: Record<string, unknown> = {}) => ({
+    version: 1,
+    name: "Converted project",
+    // A converted project ships an empty tagline until the details modal fills it in.
+    tagline: "",
+    tags: [],
+    personas: [],
+    level: "standard",
+    tier: "safe",
+    uses: [],
+    preview: { poster: 0, frames: [0, 0, 0, 0] },
+    order: 10,
+    status: "stable",
+    ...over,
+  });
+
+  it("accepts the manifest a converted project writes", () => {
+    expect(templateManifestSchema.safeParse(minimal()).success).toBe(true);
+  });
+
+  it.each(["bundled", "pack", "user"])("accepts source %s", (source) => {
+    expect(templateManifestSchema.parse(minimal({ source })).source).toBe(source);
+  });
+
+  it("rejects a source it doesn't know", () => {
+    const parsed = templateManifestSchema.safeParse(minimal({ source: "downloaded" }));
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues.map((i) => i.path)).toEqual(["source"]);
+  });
+
+  it("marks a workspace template's entry as user-owned", () => {
+    const entry = findTemplate(BLANK_TEMPLATE_ID);
+    expect(entry?.source).toBe("bundled");
+    expect(entry?.projectId).toBe(`template:${BLANK_TEMPLATE_ID}`);
+    expect(templateProjectId("ws:mine")).toBe("ws-template:mine");
+  });
+});
+
 describe.skipIf(templateIds.length === 0)("each bundled template", () => {
   it.each(templateIds)("%s carries a manifest the schema accepts", (id) => {
     const { parsed } = template(id);
@@ -231,6 +271,10 @@ describe.skipIf(templateIds.length === 0)("each bundled template", () => {
       ? []
       : parsed.error.issues.map((issue) => `${issue.path}: ${issue.message}`);
     expect(issues).toEqual([]);
+  });
+
+  it.each(templateIds)("%s ships a tagline (the schema allows an empty one)", (id) => {
+    expect((template(id).manifest?.tagline ?? "").trim().length).toBeGreaterThan(0);
   });
 
   it.each(templateIds)("%s files itself under a known category and personas", (id) => {

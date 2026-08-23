@@ -16,6 +16,10 @@ const projectsDir = fileURLToPath(new URL("./projects", import.meta.url));
 // ever answers in dev; engine/project.ts gates every fixture glob on import.meta.env.DEV.
 const fixturesDir = fileURLToPath(new URL("./fixtures", import.meta.url));
 
+// The bundled scene-preset tree: one preset is a single-scene project folder, so it resolves
+// exactly like `projects/` (tauri.conf.json maps ../presets → Resources/presets).
+const presetsDir = fileURLToPath(new URL("./presets", import.meta.url));
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -23,6 +27,7 @@ export default defineConfig({
   define: {
     __PROJECTS_DIR__: JSON.stringify(projectsDir),
     __FIXTURES_DIR__: JSON.stringify(fixturesDir),
+    __PRESETS_DIR__: JSON.stringify(presetsDir),
   },
 
   // Tauri serves the built bundle over a custom protocol (tauri://localhost),

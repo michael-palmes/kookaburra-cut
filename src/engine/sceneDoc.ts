@@ -12,8 +12,10 @@ import { useLayeredScreenshotRegistry } from "./layeredScreenshotRegistry";
 import { type ManagedTextRenderRole, resolveTemplateManagedTextCopy } from "./managedText";
 import { useObjectRegistry } from "./objectRegistry";
 import {
+  isWorkspaceBackedProjectId,
   isWorkspaceProjectId,
   type LoadedProject,
+  nativeProjectSlug,
   type ProjectManifest,
   workspaceSlug,
 } from "./project";
@@ -40,8 +42,8 @@ export async function loadSceneDoc(
 ): Promise<SceneDoc | undefined> {
   const docFile = sceneFile.replace(/\.tsx$/, ".json");
   if (docFile === sceneFile) return undefined;
-  if (isWorkspaceProjectId(projectId)) {
-    const slug = workspaceSlug(projectId);
+  if (isWorkspaceBackedProjectId(projectId)) {
+    const slug = nativeProjectSlug(projectId);
     try {
       const text = await invoke<string | null>("read_scene_doc", { slug, file: docFile });
       if (text == null) return undefined;
