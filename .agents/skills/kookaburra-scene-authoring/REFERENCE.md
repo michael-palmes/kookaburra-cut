@@ -973,11 +973,12 @@ only block-less scenes, or delete the field first. Gate fixture:
 
 Scene media is the one content family for stills and videos (it superseded the separate
 `images[]` and singleton `videoWindow` blocks in v0.13; both legacy shapes still parse
-forward, and the first inspector write promotes a doc to `media`). Where an entry renders:
-an overlay-hosted entry WITHOUT window chrome is camera-locked editorial artwork on the
-frame layer; a stage-hosted entry, and EVERY entry with a `window` block, sits in real
-world space, so the per-scene `camera` track orbits it with genuine parallax. A windowed
-entry fits inside a box `size` of the frame (contain); a plain entry's `size` IS its width.
+forward, and the first inspector write promotes a doc to `media`). Where an entry renders
+follows its KIND, never its chrome: an overlay-hosted STILL is camera-locked editorial
+artwork on the frame layer, chrome or not; a stage-hosted entry, and EVERY overlay-hosted
+VIDEO, sits in real world space, so the per-scene `camera` track orbits it with genuine
+parallax. A video fits inside a box `size` of the frame (contain); a still's `size` IS its
+width, and its chrome (mask, border, crop, drop shadow) is painted on that same plane.
 Video rides the SAME deterministic clip pipeline as `VideoClip` (`useClipTexture`). Under
 `window.recording: true` the capture margins (baked shadow and margin) crop off a Retina 2x
 macOS window recording and the `macos` radius masks at the true corner radius; the flag is

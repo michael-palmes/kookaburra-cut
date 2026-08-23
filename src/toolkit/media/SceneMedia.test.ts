@@ -1,6 +1,7 @@
 import { DoubleSide, Texture } from "three";
 import { describe, expect, it } from "vitest";
 import type { SceneDocMediaSpec } from "../../engine/sceneDocSchema";
+import { normalizeWindowChrome, RECORDING_INSETS } from "../../engine/sceneVideoWindow";
 import type { FormatInfo } from "../types";
 import {
   createStageImageShadowMaterials,
@@ -10,6 +11,8 @@ import {
   resolveWindowMediaTransform,
   sampleRenderedSceneMediaMotion,
   shouldNeutraliseSceneMediaMotion,
+  windowChromeSurface,
+  windowGeometry,
 } from "./SceneMedia";
 
 const entry = (over: Partial<SceneDocMediaSpec> = {}): SceneDocMediaSpec => ({
@@ -178,6 +181,68 @@ describe("SceneMedia transforms", () => {
       expect(material.side).toBe(DoubleSide);
       material.dispose();
     }
+  });
+
+  it("leaves an unrecorded chrome sampling the whole source at the authored radius", () => {
+    const chrome = normalizeWindowChrome({ radius: "macos" });
+    expect(windowChromeSurface(chrome, { width: 1920, height: 1080 })).toEqual({
+      cropAspect: null,
+      radiusFraction: chrome.radiusFraction,
+      uv: null,
+    });
+    // Recording mode waits for the source's pixel size before it can crop anything.
+    expect(
+      windowChromeSurface(normalizeWindowChrome({ radius: "macos", recording: true }), null),
+    ).toEqual({ cropAspect: null, radiusFraction: chrome.radiusFraction, uv: null });
+  });
+
+  it("crops a recording to the window itself, in source pixels, and follows its true radius", () => {
+    const surface = windowChromeSurface(
+      normalizeWindowChrome({ radius: "macos", recording: true }),
+      {
+        width: 2000,
+        height: 1400,
+      },
+    );
+    if (!surface.uv) throw new Error("recording mode did not crop");
+    expect(surface.cropAspect).toBeCloseTo(
+      (2000 - 2 * RECORDING_INSETS.left - 4) /
+        (1400 - RECORDING_INSETS.top - RECORDING_INSETS.bottom - 4),
+      6,
+    );
+    expect(surface.uv.scale[0]).toBeCloseTo((2000 - 2 * RECORDING_INSETS.left - 4) / 2000, 6);
+    expect(surface.uv.offset[0]).toBeCloseTo((RECORDING_INSETS.left + 2) / 2000, 6);
+    // The macOS preset tracks the capture; a hand-set radius stays as authored.
+    expect(surface.radiusFraction).not.toBe(
+      normalizeWindowChrome({ radius: "macos" }).radiusFraction,
+    );
+    expect(
+      windowChromeSurface(normalizeWindowChrome({ radius: "rounded", recording: true }), {
+        width: 2000,
+        height: 1400,
+      }).radiusFraction,
+    ).toBe(normalizeWindowChrome({ radius: "rounded" }).radiusFraction);
+  });
+
+  it("contain-fits a clip inside its size box, and leaves the Stage width free", () => {
+    const chrome = normalizeWindowChrome({ radius: "macos" });
+    const wide = windowGeometry(
+      { width: 8, height: 4.5 },
+      chrome,
+      { width: 1920, height: 1080 },
+      null,
+    );
+    expect(wide.rect).toEqual({ width: 8, height: 4.5 });
+    const tall = windowGeometry(
+      { width: 8, height: 4.5 },
+      chrome,
+      { width: 1080, height: 1920 },
+      null,
+    );
+    expect(tall.rect.height).toBeCloseTo(4.5, 6);
+    expect(tall.rect.width).toBeCloseTo(4.5 * (1080 / 1920), 6);
+    const staged = windowGeometry({ width: 3, height: null }, chrome, null, 2);
+    expect(staged.rect).toEqual({ width: 3, height: 1.5 });
   });
 
   it("places unnumbered images after explicit image and decoration orders", () => {

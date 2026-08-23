@@ -1925,6 +1925,56 @@ function applyPickedMediaSource(
   }
 }
 
+/** The probed meta for one project asset, refetched whenever the media library changes; null until it lands, and never a stale answer for a previous src. */
+function useAssetMeta(
+  slug: string | null | undefined,
+  src: string | undefined,
+  refreshToken: number,
+): MediaMeta | null {
+  const [probed, setProbed] = useState<{ src: string; meta: MediaMeta } | null>(null);
+  useEffect(() => {
+    void refreshToken;
+    if (!slug || !src) return;
+    let active = true;
+    void mediaMeta(slug, src)
+      .then((meta) => {
+        if (active) setProbed({ src, meta });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [refreshToken, slug, src]);
+  return probed && probed.src === src ? probed.meta : null;
+}
+
+/** What the shared media source group shows for one source: the still itself or a clip's poster, the pixel aspect its thumbnail is cut to, and a detail line of dimensions (a clip leading with its duration). */
+function mediaSourceSummary(
+  projectId: string,
+  src: string | undefined,
+  kind: SceneMediaKind | undefined,
+  meta: MediaMeta | null,
+): { previewUrl?: string; aspectRatio?: number; detail?: string } {
+  if (!src || !kind) return {};
+  const sized = meta && meta.width > 0 && meta.height > 0 ? meta : null;
+  const dimensions = sized ? `${sized.width}×${sized.height}` : undefined;
+  return {
+    previewUrl:
+      kind === "image"
+        ? inspectorAssetUrl(projectId, src)
+        : meta?.posterPath
+          ? fsUrl(meta.posterPath)
+          : undefined,
+    aspectRatio: sized ? sized.width / sized.height : undefined,
+    detail:
+      kind === "video"
+        ? [meta ? formatMediaDuration(meta.durationMs) : undefined, dimensions]
+            .filter(Boolean)
+            .join(" · ") || "Video"
+        : (dimensions ?? "Image"),
+  };
+}
+
 function inspectorAssetUrl(projectId: string, src: string): string {
   if (/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(src)) return src;
   try {
@@ -2402,28 +2452,17 @@ export function SceneTab({
   const deviceIds = devices.map((candidate) => candidate.id);
   const deviceIdsKey = deviceIds.join("\u0000");
   const deviceMediaSrc = device?.media?.src;
-  const [deviceMediaMeta, setDeviceMediaMeta] = useState<{
-    src: string;
-    meta: MediaMeta;
-  } | null>(null);
-  useEffect(() => {
-    void mediaRefresh;
-    void mediaRefreshKey;
-    if (!slug || !deviceMediaSrc) return;
-    let active = true;
-    void mediaMeta(slug, deviceMediaSrc)
-      .then((meta) => {
-        if (active) setDeviceMediaMeta({ src: deviceMediaSrc, meta });
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [deviceMediaSrc, mediaRefresh, mediaRefreshKey, slug]);
+  const assetMetaToken = mediaRefresh + mediaRefreshKey;
+  const deviceMediaMeta = useAssetMeta(slug, deviceMediaSrc, assetMetaToken);
   const objects = doc?.objects ?? [];
   const stagedObject = objects.find((o) => o.id === pickedObjectId) ?? objects[0];
   const mediaEntries = useMemo(() => resolveSceneDocMedia(doc), [doc]);
   const mediaIds = useMemo(() => mediaEntries.map((entry) => entry.id), [mediaEntries]);
+  const selectedMediaEntry =
+    selectedImageId === null
+      ? mediaEntries[0]
+      : mediaEntries.find((entry) => entry.id === selectedImageId);
+  const selectedMediaMeta = useAssetMeta(slug, selectedMediaEntry?.src, assetMetaToken);
   // The gizmo posts drags here (patchDoc lives in this DOM tree, not the canvas): land ONE history entry per drag.
   const patchDocRef = useRef(patchDoc);
   patchDocRef.current = patchDoc;
@@ -6981,6 +7020,12 @@ export function SceneTab({
           ? selectedImageId
           : null;
     const currentEntry = mediaEntries.find((entry) => entry.id === currentMediaId);
+    const source = mediaSourceSummary(
+      project.id,
+      currentEntry?.src,
+      currentEntry?.kind,
+      currentEntry && currentEntry.src === selectedMediaEntry?.src ? selectedMediaMeta : null,
+    );
     const expectedProjectId = project.id;
     const expectedSceneIndex = sceneIndex;
     const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
@@ -7050,11 +7095,9 @@ export function SceneTab({
         key={`${project.id}\u0000${expectedSceneFile ?? expectedSceneIndex}\u0000media:${currentMediaId ?? "missing"}`}
         doc={doc}
         mediaId={currentMediaId ?? ""}
-        sourcePreviewUrl={
-          currentEntry?.kind === "image"
-            ? inspectorAssetUrl(project.id, currentEntry.src)
-            : undefined
-        }
+        sourcePreviewUrl={source.previewUrl}
+        sourceAspectRatio={source.aspectRatio}
+        sourceDetail={source.detail}
         overlayAvailable={sceneFrame !== undefined}
         backLabel={backLabel}
         onBack={closeDrill}
@@ -7127,41 +7170,21 @@ export function SceneTab({
     );
   }
   if (drillIn === "device" && doc && device && deviceId) {
-    const resolvedMeta =
-      deviceMediaMeta && deviceMediaMeta.src === device.media?.src
-        ? deviceMediaMeta.meta
-        : undefined;
-    const screenMediaPreviewUrl = device.media
-      ? device.media.kind === "image"
-        ? inspectorAssetUrl(project.id, device.media.src)
-        : resolvedMeta?.posterPath
-          ? fsUrl(resolvedMeta.posterPath)
-          : undefined
-      : undefined;
-    const dimensions =
-      resolvedMeta && resolvedMeta.width > 0 && resolvedMeta.height > 0
-        ? `${resolvedMeta.width}×${resolvedMeta.height}`
-        : undefined;
-    const screenMediaAspectRatio =
-      resolvedMeta && resolvedMeta.width > 0 && resolvedMeta.height > 0
-        ? resolvedMeta.width / resolvedMeta.height
-        : undefined;
-    const screenMediaDetail = device.media
-      ? device.media.kind === "video"
-        ? [resolvedMeta ? formatMediaDuration(resolvedMeta.durationMs) : undefined, dimensions]
-            .filter(Boolean)
-            .join(" · ") || "Video"
-        : (dimensions ?? "Image")
-      : undefined;
+    const screen = mediaSourceSummary(
+      project.id,
+      device.media?.src,
+      device.media?.kind,
+      deviceMediaMeta,
+    );
     return (
       <DeviceDrillIn
         key={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}\u0000device`}
         doc={doc}
         deviceId={deviceId}
         backLabel={backLabel}
-        screenMediaPreviewUrl={screenMediaPreviewUrl}
-        screenMediaAspectRatio={screenMediaAspectRatio}
-        screenMediaDetail={screenMediaDetail}
+        screenMediaPreviewUrl={screen.previewUrl}
+        screenMediaAspectRatio={screen.aspectRatio}
+        screenMediaDetail={screen.detail}
         onBack={closeDrill}
         onSelectDevice={(id) => {
           pickDevice(id);

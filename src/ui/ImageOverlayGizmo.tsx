@@ -4,8 +4,18 @@ import { computeFormat } from "../engine/format";
 import type { StageRect } from "../engine/gizmoRegistry";
 import { useGizmoSectionOpen } from "../engine/gizmoSections";
 import { useImageEditStore } from "../engine/imageEditStore";
-import { type LoadedProject, resolveAssetUrl } from "../engine/project";
-import type { SceneDocMediaSpec, SceneImageOverlayPlacement } from "../engine/sceneDocSchema";
+import { mediaMeta } from "../engine/media";
+import {
+  isWorkspaceProjectId,
+  type LoadedProject,
+  resolveAssetUrl,
+  workspaceSlug,
+} from "../engine/project";
+import type {
+  SceneDocMediaSpec,
+  SceneImageOverlayPlacement,
+  SceneMediaKind,
+} from "../engine/sceneDocSchema";
 import { resolveSceneDocMedia, sceneMediaForHost } from "../engine/sceneMedia";
 import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
@@ -26,8 +36,59 @@ function centrePx(placement: SceneImageOverlayPlacement, rect: StageRect): Pt {
   ];
 }
 
+/** A clip drags within the window range wherever its chrome stands, a still within the image one: the ranges follow the sizing rule each kind renders by. */
 const sizeRange = (entry: SceneDocMediaSpec): readonly [number, number] =>
-  entry.window === undefined ? OVERLAY_MEDIA_SIZE_RANGE.image : OVERLAY_MEDIA_SIZE_RANGE.window;
+  entry.kind === "video" ? OVERLAY_MEDIA_SIZE_RANGE.window : OVERLAY_MEDIA_SIZE_RANGE.image;
+
+function decodeImageAspect(url: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const loader = new Image();
+    loader.onload = () =>
+      resolve(loader.naturalHeight > 0 ? loader.naturalWidth / loader.naturalHeight : null);
+    loader.onerror = () => resolve(null);
+    loader.src = url;
+  });
+}
+
+/** An overlay still's pixel aspect, from the same `media_meta` probe the inspector reads (cached per asset by content hash), falling back to a decode for a project outside the workspace. Null when neither answers, which keeps that item's box off the layer instead of guessing a square. */
+async function probeImageAspect(
+  projectId: string,
+  src: string,
+  suffix: string,
+): Promise<number | null> {
+  if (isWorkspaceProjectId(projectId)) {
+    try {
+      const meta = await mediaMeta(workspaceSlug(projectId), src);
+      if (meta.width > 0 && meta.height > 0) return meta.width / meta.height;
+    } catch {
+      // The decode below is the fallback.
+    }
+  }
+  try {
+    return await decodeImageAspect(resolveAssetUrl(projectId, src) + suffix);
+  } catch {
+    return null;
+  }
+}
+
+/** One Overlay entry's box in stage pixels, matching what the renderer draws: a clip fits INSIDE a box that is `size` of the frame (the window rule, so a clip narrower than the frame shrinks), while a still's `size` IS its width and its height follows the source aspect (or the width, cropped to a circle). */
+export function overlayMediaGizmoBox(
+  kind: SceneMediaKind,
+  placement: SceneImageOverlayPlacement,
+  sourceAspect: number,
+  frameAspect: number,
+  rect: { width: number; height: number },
+): { width: number; height: number } {
+  const fit = kind === "video" ? Math.min(1, sourceAspect / frameAspect) : 1;
+  const width = placement.size * fit * rect.width;
+  return {
+    width,
+    height:
+      placement.shape === "circle"
+        ? width
+        : placement.size * fit * (frameAspect / sourceAspect) * rect.height,
+  };
+}
 
 function positionAt(px: Pt, rect: StageRect): [number, number] {
   return [(2 * (px[0] - rect.left)) / rect.width - 1, 1 - (2 * (px[1] - rect.top)) / rect.height];
@@ -92,22 +153,11 @@ export function OverlayImageGizmo({
       // A clip has no decodable intrinsics here; video entries size off their recorded `video.aspect`.
       if (request.video || requested.current.has(request.key)) continue;
       requested.current.add(request.key);
-      let url: string;
-      try {
-        url = resolveAssetUrl(project.id, request.src) + request.suffix;
-      } catch {
-        continue;
-      }
-      const loader = new Image();
-      loader.onload = () => {
-        if (alive && loader.naturalHeight > 0) {
-          setSourceAspects((current) => ({
-            ...current,
-            [request.key]: loader.naturalWidth / loader.naturalHeight,
-          }));
+      void probeImageAspect(project.id, request.src, request.suffix).then((aspect) => {
+        if (alive && aspect !== null) {
+          setSourceAspects((current) => ({ ...current, [request.key]: aspect }));
         }
-      };
-      loader.src = url;
+      });
     }
     return () => {
       alive = false;
@@ -146,35 +196,36 @@ export function OverlayImageGizmo({
 
   const items = useMemo<Gizmo2DItem[]>(
     () =>
-      images.map((image) => ({
-        id: image.id,
-        label: image.kind === "video" ? "Video" : "Image",
-        can: { move: true, resize: true, rotate: true },
-        frame: (rect: StageRect) => {
-          const placement =
-            livePlacement?.imageId === image.id ? livePlacement.placement : image.overlay;
-          const [cx, cy] = centrePx(placement, rect);
-          const sourceAspect =
-            image.kind === "video"
-              ? (image.video?.aspect ?? DEFAULT_VIDEO_ASPECT)
-              : (sourceAspects[sourceRequests[image.id]?.key ?? ""] ?? 1);
-          // A windowed entry fits INSIDE a box that is `size` of the frame, so its box shrinks the same way the renderer's does for media narrower than the frame.
-          const fit = image.window === undefined ? 1 : Math.min(1, sourceAspect / format.aspect);
-          const width = placement.size * fit * rect.width;
-          const height =
-            placement.shape === "circle"
-              ? width
-              : placement.size * fit * (format.aspect / sourceAspect) * rect.height;
-          return {
-            cx,
-            cy,
-            w: width,
-            h: height,
-            deg: placement.rotationDeg,
-            pivot: [cx, cy] as Pt,
-          };
-        },
-      })),
+      images.flatMap((image) => {
+        const video = image.kind === "video";
+        // A still's aspect comes from the probe; until it lands the item stays off the layer rather than drawing a square box over a portrait screenshot.
+        const sourceAspect = video
+          ? (image.video?.aspect ?? DEFAULT_VIDEO_ASPECT)
+          : sourceAspects[sourceRequests[image.id]?.key ?? ""];
+        if (sourceAspect === undefined && image.overlay.shape !== "circle") return [];
+        const aspect = sourceAspect ?? 1;
+        return [
+          {
+            id: image.id,
+            label: video ? "Video" : "Image",
+            can: { move: true, resize: true, rotate: true },
+            frame: (rect: StageRect) => {
+              const placement =
+                livePlacement?.imageId === image.id ? livePlacement.placement : image.overlay;
+              const [cx, cy] = centrePx(placement, rect);
+              const box = overlayMediaGizmoBox(image.kind, placement, aspect, format.aspect, rect);
+              return {
+                cx,
+                cy,
+                w: box.width,
+                h: box.height,
+                deg: placement.rotationDeg,
+                pivot: [cx, cy] as Pt,
+              };
+            },
+          },
+        ];
+      }),
     [format.aspect, images, livePlacement, sourceAspects, sourceRequests],
   );
 

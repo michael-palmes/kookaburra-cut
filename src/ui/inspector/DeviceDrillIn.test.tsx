@@ -16,7 +16,6 @@ import {
   DeviceModelDrillIn,
   type DevicePatchDoc,
   type DevicePatchDocResult,
-  deviceMediaThumbnailSize,
   deviceNavigationFocusTarget,
   duplicateFirstClassDevice,
   removeFirstClassDevice,
@@ -228,14 +227,6 @@ describe("DeviceDrillIn", () => {
       "None",
     ]);
     expect(captures.options[0]?.selected).toBe(true);
-  });
-
-  it("fits screen thumbnails to their source aspect ratio", () => {
-    expect(deviceMediaThumbnailSize(1170 / 2532)).toEqual({ width: 26.8, height: 58 });
-    expect(deviceMediaThumbnailSize(1920 / 1080)).toEqual({ width: 58, height: 32.63 });
-    expect(deviceMediaThumbnailSize(1)).toEqual({ width: 58, height: 58 });
-    expect(deviceMediaThumbnailSize(0)).toBeUndefined();
-    expect(deviceMediaThumbnailSize()).toBeUndefined();
   });
 
   it("keeps keyboard focus in device navigation after Previous or Next changes identity", () => {

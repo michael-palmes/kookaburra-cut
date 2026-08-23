@@ -30,7 +30,7 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Staged object | 3D | `ObjectPrimitive` → `SceneGizmo` | move / rotate / scale | `objects[].placement` |
 | Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | `deviceLayout` delta, else `devices[].placement` |
 | Stage media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
-| Windowed media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` or `media[].overlay`, whichever host is active |
+| Windowed clip | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` or `media[].overlay`, whichever host is active |
 | Staged chart | 3D | `Chart.tsx` (`StagedChart`) → `SceneGizmo` | move / rotate / scale | `chart.placement` |
 | Scene text, per key | 2D | `TextGizmo` → `Gizmo2D` | move / size / rotate | `textStyle.<key>OffsetX,OffsetY,Size,RotationDeg` |
 | Hero chart | 2D | `ChartHeroGizmo` → `Gizmo2D` | move / scale | `chart.style.offset`, `chart.style.scale` |
@@ -195,8 +195,8 @@ precision as the inspector's own controls.
 | --- | --- | --- |
 | Object / staged chart | `placement.position,rotationDeg,scale` | The group is read back at pointer-up, so the doc lands exactly what is on screen; scale is uniformised to the furthest-moved axis |
 | Device | `deviceLayout` delta `offset,rotationDeg,scale` when a layout block is live, else `placement` | `committed = authored + (dragged - rendered)`, scale multiplying; 3dp positions, 1dp degrees, 3dp scale, minimum scale 0.01 |
-| Stage media | `media[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for windowed media, `STAGE_MEDIA_SIZE_RANGE`) |
-| Overlay media | `media[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for windowed media, `OVERLAY_MEDIA_SIZE_RANGE`) |
+| Stage media | `media[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for clips, `STAGE_MEDIA_SIZE_RANGE`) |
+| Overlay media | `media[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for clips, `OVERLAY_MEDIA_SIZE_RANGE`) |
 | Text | `<key>OffsetX/OffsetY`, `<key>Size`, `<key>RotationDeg` | 2dp world units, whole percent (0.01..10 multiplier), 1dp degrees; a neutral value deletes the key so the scene's own layout resurfaces |
 | Hero chart | `chart.style.offset`, `chart.style.scale` | 2dp, clamped to the resolver's own ±20 and 0.2..3, so a drag can never write a value the resolver would silently clamp back |
 | Decoration | `position`, `size`, `rotationDeg` | Size clamped 0.02..1.5 of the frame width |
@@ -306,6 +306,6 @@ in the tree.
   raycast during playback, which is not worth the cost.
 - Layered screenshot keeps its own overlay; folding it onto `Gizmo2D` is a later
   job.
-- A windowed Overlay entry renders in world space (its drop shadow belongs
+- An Overlay-hosted clip renders in world space (its drop shadow belongs
   against the staged content), so its 2D box is exact under the default camera
   and drifts under a moved one.

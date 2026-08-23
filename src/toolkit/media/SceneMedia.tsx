@@ -2,6 +2,7 @@ import { useTexture } from "@react-three/drei";
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DoubleSide,
+  FrontSide,
   type Group,
   MeshBasicMaterial,
   MeshDepthMaterial,
@@ -25,6 +26,7 @@ import type {
   SceneDocMediaSpec,
   SceneImageOverlayPlacement,
   SceneImageStagePlacement,
+  SceneMediaWindow,
 } from "../../engine/sceneDocSchema";
 import {
   resolveSceneDocMedia,
@@ -33,6 +35,7 @@ import {
   sceneMediaFamily,
   sceneMediaInFrame,
   sceneMediaInWorld,
+  sceneMediaUsesWindowPath,
 } from "../../engine/sceneMedia";
 import { useSceneConsumesMedia } from "../../engine/sceneMediaRegistry";
 import {
@@ -247,6 +250,12 @@ function sourceAspect(texture: Texture): number {
   return width > 0 && height > 0 ? width / height : 1;
 }
 
+/** A still's own pixel size, which the recording crop is measured in; null until the decode lands. */
+function textureIntrinsics(texture: Texture): { width: number; height: number } | null {
+  const image = texture.image as { width?: number; height?: number } | undefined;
+  return image?.width && image.height ? { width: image.width, height: image.height } : null;
+}
+
 /** The still's loadable URL, or null for a clip (which the clip pipeline resolves from the project-relative src itself) and for anything unresolvable. */
 function useSceneImageUrl(src: string | null): string | null {
   const contextProjectId = useContext(ProjectIdContext);
@@ -336,23 +345,22 @@ interface WindowGeometry {
   uv: WindowUv | null;
 }
 
-/** The plane a windowed entry draws on, plus its mask radius and source crop: the recording crop wins the aspect once the source's intrinsics arrive, and the macOS preset then follows the capture's true pixel radius. */
-function windowGeometry(
-  box: { width: number; height: number | null },
+interface WindowChromeSurface {
+  /** The aspect the visible content shows once cropped, or null when nothing is cropped. */
+  cropAspect: number | null;
+  radiusFraction: number;
+  uv: WindowUv | null;
+}
+
+/** What the chrome takes from the source pixels, shared by every chromed plane: the recording crop's UV remap, the aspect that crop leaves, and the radius the mask draws at (the macOS preset follows the capture's true pixel radius under `recording`). */
+export function windowChromeSurface(
   chrome: NormalizedWindowChrome,
   intrinsics: { width: number; height: number } | null,
-  authoredAspect: number | null,
-): WindowGeometry {
+): WindowChromeSurface {
   const crop =
     chrome.recording && intrinsics ? recordingCrop(intrinsics.width, intrinsics.height) : null;
-  const aspect = crop
-    ? crop.width / crop.height
-    : intrinsics
-      ? intrinsics.width / intrinsics.height
-      : (authoredAspect ?? DEFAULT_CLIP_ASPECT);
-  const width = box.height === null ? box.width : Math.min(box.width, box.height * aspect);
   return {
-    rect: { width, height: width / aspect },
+    cropAspect: crop ? crop.width / crop.height : null,
     radiusFraction:
       crop && chrome.radiusTracksRecording ? crop.radiusFraction : chrome.radiusFraction,
     uv:
@@ -368,15 +376,36 @@ function windowGeometry(
   };
 }
 
-/** The window's drop shadow (analytic, reuses the LayeredScreenshot shaders). */
+/** The plane a windowed clip draws on: a contain fit inside the size box, at the cropped aspect once the source's intrinsics arrive. */
+export function windowGeometry(
+  box: { width: number; height: number | null },
+  chrome: NormalizedWindowChrome,
+  intrinsics: { width: number; height: number } | null,
+  authoredAspect: number | null,
+): WindowGeometry {
+  const surface = windowChromeSurface(chrome, intrinsics);
+  const aspect =
+    surface.cropAspect ??
+    (intrinsics ? intrinsics.width / intrinsics.height : (authoredAspect ?? DEFAULT_CLIP_ASPECT));
+  const width = box.height === null ? box.width : Math.min(box.width, box.height * aspect);
+  return {
+    rect: { width, height: width / aspect },
+    radiusFraction: surface.radiusFraction,
+    uv: surface.uv,
+  };
+}
+
+/** The window's drop shadow (analytic, reuses the LayeredScreenshot shaders). On the frame layer it takes its plane's own render order, where the shared order plus its greater depth draws it first. */
 function WindowShadow({
   rect,
   shadow,
   radiusFraction,
+  renderOrder = 0,
 }: {
   rect: Rect;
   shadow: NormalizedVideoWindowShadow;
   radiusFraction: number;
+  renderOrder?: number;
 }) {
   const short = Math.min(rect.width, rect.height);
   const blur = shadow.blur * short;
@@ -405,6 +434,7 @@ function WindowShadow({
     <mesh
       position={[shadow.offset[0] * short, shadow.offset[1] * short, -SHADOW_BEHIND]}
       material={material}
+      renderOrder={renderOrder}
     >
       <planeGeometry args={[width, height]} />
     </mesh>
@@ -428,7 +458,11 @@ function applyWindowUniforms(
   uvUniforms.uVwUvOffset.value.set(uv?.offset[0] ?? 0, uv?.offset[1] ?? 0);
 }
 
-function useWindowMaterial(texture: Texture | null): {
+/** `side` is the one knob a chromed still needs: its plane can be turned on Stage, where the clip window never is. */
+function useWindowMaterial(
+  texture: Texture | null,
+  side: MeshBasicMaterial["side"] = FrontSide,
+): {
   material: MeshBasicMaterial;
   card: CardUniforms;
   uv: WindowUvUniforms;
@@ -436,12 +470,12 @@ function useWindowMaterial(texture: Texture | null): {
   const card = useMemo(() => cardUniforms(), []);
   const uv = useMemo(() => windowUvUniforms(), []);
   const material = useMemo(() => {
-    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false });
+    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false, side });
     if (texture) next.map = texture;
     next.toneMapped = false;
     applyWindowMask(next, card, uv);
     return next;
-  }, [card, texture, uv]);
+  }, [card, side, texture, uv]);
   useLayoutEffect(() => () => material.dispose(), [material]);
   return { material, card, uv };
 }
@@ -579,43 +613,12 @@ function WindowVideoSurface({
   );
 }
 
-function WindowImageSurface({
-  entry,
-  sceneIndex,
-  url,
-  box,
-  chrome,
-}: {
-  entry: SceneDocMediaSpec;
-  sceneIndex: number;
-  url: string;
-  box: { width: number; height: number | null };
-  chrome: NormalizedWindowChrome;
-}) {
-  const texture = useColourTexture(url);
-  const image = texture.image as { width?: number; height?: number } | undefined;
-  const geometry = windowGeometry(
-    box,
-    chrome,
-    image?.width && image.height ? { width: image.width, height: image.height } : null,
-    null,
-  );
-  const { material, card, uv } = useWindowMaterial(texture);
-  applyWindowUniforms(card, uv, geometry, chrome);
-  return (
-    <>
-      <WindowShadow
-        rect={geometry.rect}
-        shadow={chrome.shadow}
-        radiusFraction={geometry.radiusFraction}
-      />
-      <mesh material={material}>
-        <planeGeometry args={[geometry.rect.width, geometry.rect.height]} />
-      </mesh>
-      <WindowOutline entry={entry} sceneIndex={sceneIndex} rect={geometry.rect} />
-    </>
-  );
-}
+/** A clip drawn through the window path with no chrome authored: a bare sharp-cornered plane, same contain sizing. The blur stays non-zero so the shadow shader's smoothstep keeps a band, invisible at zero opacity. */
+const BARE_WINDOW_CHROME: SceneMediaWindow = {
+  radius: "sharp",
+  border: { enabled: false, color: "#ffffff", width: 0, opacity: 0 },
+  shadow: { opacity: 0, blur: 0.14, offset: [0, 0] },
+};
 
 function WindowMedia({ entry }: { entry: SceneDocMediaSpec }) {
   const context = useSceneContext();
@@ -635,9 +638,8 @@ function WindowMedia({ entry }: { entry: SceneDocMediaSpec }) {
   );
   const { localMs } = useTimeline();
   const format = useFormat();
-  const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
   const chrome = useMemo(
-    () => normalizeWindowChrome(entry.window ?? { radius: "macos" }),
+    () => normalizeWindowChrome(entry.window ?? BARE_WINDOW_CHROME),
     [entry.window],
   );
   const placed: SceneDocMediaSpec = {
@@ -654,28 +656,15 @@ function WindowMedia({ entry }: { entry: SceneDocMediaSpec }) {
     ),
     format,
   );
-  if (entry.kind !== "video" && !url) return null;
   return (
     <>
       <group position={transform.position} rotation={transform.rotation} scale={transform.scale}>
-        {entry.kind === "video" || !url ? (
-          <WindowVideoSurface
-            entry={entry}
-            sceneIndex={sceneIndex}
-            box={transform.box}
-            chrome={chrome}
-          />
-        ) : (
-          <AssetBoundary key={url} label={entry.src}>
-            <WindowImageSurface
-              entry={entry}
-              sceneIndex={sceneIndex}
-              url={url}
-              box={transform.box}
-              chrome={chrome}
-            />
-          </AssetBoundary>
-        )}
+        <WindowVideoSurface
+          entry={entry}
+          sceneIndex={sceneIndex}
+          box={transform.box}
+          chrome={chrome}
+        />
       </group>
       {entry.host === "stage" && (
         <StageImageGizmo
@@ -712,16 +701,28 @@ function StageMedia({ entry, mapShadows }: { entry: SceneDocMediaSpec; mapShadow
     );
   }
   if (!url) return null;
+  const castShadow = mapShadows && entry.castShadow === true;
   return (
     <AssetBoundary key={url} label={entry.src}>
-      <LoadedStageImage
-        entry={entry}
-        url={url}
-        placement={placement}
-        motion={motion}
-        sceneIndex={sceneIndex}
-        castShadow={mapShadows && entry.castShadow === true}
-      />
+      {entry.window ? (
+        <ChromedStageImage
+          entry={entry}
+          url={url}
+          placement={placement}
+          motion={motion}
+          sceneIndex={sceneIndex}
+          castShadow={castShadow}
+        />
+      ) : (
+        <LoadedStageImage
+          entry={entry}
+          url={url}
+          placement={placement}
+          motion={motion}
+          sceneIndex={sceneIndex}
+          castShadow={castShadow}
+        />
+      )}
     </AssetBoundary>
   );
 }
@@ -796,6 +797,84 @@ function LoadedStageImage({
   );
 }
 
+/** The same Stage plane and placement as `LoadedStageImage`, wearing the window chrome: the card mask and border on the plane, the recording crop remapping its UVs (and setting the aspect the crop leaves), and the drop shadow riding the same group. It takes the window path's material, so a chromed card sorts with the other transparent content instead of writing depth, and its cast shadow stays the plane's rectangle (the depth material never sees the mask). */
+function ChromedStageImage({
+  entry,
+  url,
+  placement,
+  motion,
+  sceneIndex,
+  castShadow,
+}: {
+  entry: SceneDocMediaSpec;
+  url: string;
+  placement: SceneImageStagePlacement;
+  motion: SceneImageMotionSample;
+  sceneIndex: number;
+  castShadow: boolean;
+}) {
+  const texture = useColourTexture(url);
+  const chrome = useMemo(
+    () => normalizeWindowChrome(entry.window ?? BARE_WINDOW_CHROME),
+    [entry.window],
+  );
+  const surface = windowChromeSurface(chrome, textureIntrinsics(texture));
+  const aspect = surface.cropAspect ?? sourceAspect(texture);
+  const rect: Rect = { width: 1, height: 1 / aspect };
+  const transform = resolveStageImageTransform(placement, motion);
+  const { material, card, uv } = useWindowMaterial(texture, DoubleSide);
+  applyWindowUniforms(
+    card,
+    uv,
+    { rect, radiusFraction: surface.radiusFraction, uv: surface.uv },
+    chrome,
+  );
+  material.opacity = transform.opacity;
+  const shadowMaterials = useMemo(
+    () => (castShadow ? createStageImageShadowMaterials(texture) : null),
+    [castShadow, texture],
+  );
+  useLayoutEffect(
+    () => () => {
+      shadowMaterials?.depth.dispose();
+      shadowMaterials?.distance.dispose();
+    },
+    [shadowMaterials],
+  );
+
+  return (
+    <>
+      <group position={transform.position} rotation={transform.rotation} scale={transform.size}>
+        <WindowShadow rect={rect} shadow={chrome.shadow} radiusFraction={surface.radiusFraction} />
+        <mesh
+          material={material}
+          castShadow={castShadow}
+          customDepthMaterial={shadowMaterials?.depth}
+          customDistanceMaterial={shadowMaterials?.distance}
+        >
+          <planeGeometry args={[rect.width, rect.height]} />
+        </mesh>
+      </group>
+      <group
+        position={placement.position}
+        rotation={[
+          placement.rotationDeg[0] * DEG2RAD,
+          placement.rotationDeg[1] * DEG2RAD,
+          placement.rotationDeg[2] * DEG2RAD,
+        ]}
+        scale={placement.size}
+      >
+        <StageImageOutline
+          imageId={entry.id}
+          sceneIndex={sceneIndex}
+          localSize={[rect.width, rect.height]}
+        />
+      </group>
+      <StageImageGizmo imageId={entry.id} sceneIndex={sceneIndex} committed={entry.stage} />
+    </>
+  );
+}
+
 /** A Stage-hosted video: the image plane's placement and outline over a clip-driven material. No cast shadow, since the shadow materials would have to be rebuilt per bound frame. */
 function StageVideo({
   entry,
@@ -853,7 +932,7 @@ function StageVideo({
   );
 }
 
-// ── Overlay-hosted entries (the frame layer) ──────────────────────────────────
+// ── Overlay-hosted stills (the frame layer) ───────────────────────────────────
 
 function OverlayMedia({ entry, stackOrder }: { entry: SceneDocMediaSpec; stackOrder: number }) {
   const context = useSceneContext();
@@ -864,34 +943,34 @@ function OverlayMedia({ entry, stackOrder }: { entry: SceneDocMediaSpec; stackOr
   const preview = useImageOverlayPreview(sceneIndex, entry.id, editable);
   const { localMs } = useTimeline();
   const format = useFormat();
-  const url = useSceneImageUrl(entry.kind === "image" ? entry.src : null);
+  const url = useSceneImageUrl(entry.src);
   const placement = preview ?? entry.overlay;
   const motion = sampleRenderedSceneMediaMotion(
     entry,
     localMs,
     shouldNeutraliseSceneMediaMotion(sectionOpen, exporting),
   );
-  if (entry.kind === "video") {
-    return (
-      <OverlayVideo
-        entry={entry}
-        placement={placement}
-        motion={motion}
-        format={format}
-        stackOrder={stackOrder}
-      />
-    );
-  }
   if (!url) return null;
   return (
     <AssetBoundary key={url} label={entry.src}>
-      <LoadedOverlayImage
-        url={url}
-        placement={placement}
-        motion={motion}
-        format={format}
-        stackOrder={stackOrder}
-      />
+      {entry.window ? (
+        <ChromedOverlayImage
+          entry={entry}
+          url={url}
+          placement={placement}
+          motion={motion}
+          format={format}
+          stackOrder={stackOrder}
+        />
+      ) : (
+        <LoadedOverlayImage
+          url={url}
+          placement={placement}
+          motion={motion}
+          format={format}
+          stackOrder={stackOrder}
+        />
+      )}
     </AssetBoundary>
   );
 }
@@ -944,44 +1023,55 @@ function LoadedOverlayImage({
   );
 }
 
-function OverlayVideo({
+/** The same frame-layer plane and sizing as `LoadedOverlayImage`, wearing the window chrome. The card mask supersedes the circle crop while a window block exists, and the shadow shares the plane's render order (it sits behind, so the depth tiebreak draws it first). */
+function ChromedOverlayImage({
   entry,
+  url,
   placement,
   motion,
   format,
   stackOrder,
 }: {
   entry: SceneDocMediaSpec;
+  url: string;
   placement: SceneImageOverlayPlacement;
   motion: SceneImageMotionSample;
   format: FormatInfo;
   stackOrder: number;
 }) {
-  const [intrinsics, onIntrinsics] = useClipIntrinsics();
-  const aspect = intrinsics
-    ? intrinsics.width / intrinsics.height
-    : (entry.video?.aspect ?? DEFAULT_CLIP_ASPECT);
-  const transform = resolveOverlayImageTransform(placement, motion, format, aspect, stackOrder);
-  const circle = placement.shape === "circle";
-  const material = useMemo(() => {
-    const next = new MeshBasicMaterial({ transparent: true, depthWrite: false, side: DoubleSide });
-    next.toneMapped = false;
-    if (circle) applyCircleMask(next);
-    return next;
-  }, [circle]);
-  useLayoutEffect(() => () => material.dispose(), [material]);
+  const texture = useColourTexture(url);
+  const chrome = useMemo(
+    () => normalizeWindowChrome(entry.window ?? BARE_WINDOW_CHROME),
+    [entry.window],
+  );
+  const surface = windowChromeSurface(chrome, textureIntrinsics(texture));
+  const transform = resolveOverlayImageTransform(
+    placement,
+    motion,
+    format,
+    surface.cropAspect ?? sourceAspect(texture),
+    stackOrder,
+  );
+  const rect: Rect = { width: transform.width, height: transform.height };
+  const { material, card, uv } = useWindowMaterial(texture, DoubleSide);
+  applyWindowUniforms(
+    card,
+    uv,
+    { rect, radiusFraction: surface.radiusFraction, uv: surface.uv },
+    chrome,
+  );
   material.opacity = transform.opacity;
   return (
     <group position={transform.position} rotation={transform.rotation}>
-      <ClipPlane
-        src={entry.src}
-        startMs={entry.video?.startMs ?? 0}
-        loop={entry.video?.loop === true}
-        material={material}
-        rect={{ width: transform.width, height: transform.height }}
+      <WindowShadow
+        rect={rect}
+        shadow={chrome.shadow}
+        radiusFraction={surface.radiusFraction}
         renderOrder={transform.renderOrder}
-        onIntrinsics={onIntrinsics}
       />
+      <mesh material={material} renderOrder={transform.renderOrder}>
+        <planeGeometry args={[rect.width, rect.height]} />
+      </mesh>
     </group>
   );
 }
@@ -998,7 +1088,7 @@ function WorldMedia({
   return (
     <>
       {entries.map((entry) =>
-        entry.window !== undefined ? (
+        sceneMediaUsesWindowPath(entry) ? (
           <WindowMedia key={entry.id} entry={entry} />
         ) : (
           <StageMedia key={entry.id} entry={entry} mapShadows={mapShadows} />

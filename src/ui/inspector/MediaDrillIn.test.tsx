@@ -207,7 +207,8 @@ describe("MediaDrillIn", () => {
     expect(html).toContain('aria-label="Previous media"');
     expect(html).toContain('aria-label="Next media"');
     expect(html).toContain("Change");
-    expect(html).toContain('data-media-source-action="true"');
+    expect(html).toContain('<span class="drill-group-label">Image</span>');
+    expect(html).toContain('<div class="device-editor-media-summary">');
     expect(html).toContain('<legend class="visually-hidden">Media settings</legend>');
     expect(html).toContain("Add an Overlay to this scene before moving media there.");
     expect(html).toContain('aria-label="Duplicate media"');
@@ -240,14 +241,31 @@ describe("MediaDrillIn", () => {
     ]);
   });
 
-  it("hides the Edit row until an entry can be re-pointed", () => {
+  it("disables Edit until an entry can be re-pointed", () => {
     const without = renderToStaticMarkup(<MediaDrillIn {...props(mediaDoc())} />);
     const withEdit = renderToStaticMarkup(
       <MediaDrillIn {...props(mediaDoc())} onEditSource={() => undefined} />,
     );
+    const editButton = (html: string) =>
+      html.match(/<button[^>]*>(?:(?!<\/button>)[\s\S])*Edit<\/button>/)?.[0];
 
-    expect(without).not.toContain(">Edit<");
-    expect(withEdit).toContain(">Edit<");
+    expect(editButton(without)).toContain('disabled=""');
+    expect(editButton(withEdit)).not.toContain('disabled=""');
+  });
+
+  it("shows the shared source summary with the probed detail line", () => {
+    const html = renderToStaticMarkup(
+      <MediaDrillIn
+        {...props(mediaDoc())}
+        sourceAspectRatio={1170 / 2532}
+        sourceDetail="1170×2532"
+      />,
+    );
+
+    expect(html).toContain(
+      '<div class="device-editor-media-thumb" style="width:26.8px;height:58px">',
+    );
+    expect(html).toContain('<span class="device-editor-media-detail">1170×2532</span>');
   });
 
   it("independently disables source, settings and structural actions", () => {
@@ -262,7 +280,7 @@ describe("MediaDrillIn", () => {
       />,
     );
 
-    const sourceButton = html.match(/<button[^>]*class="action-row"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    const sourceButton = html.match(/<button[^>]*>(?:(?!<\/button>)[\s\S])*Change<\/button>/)?.[0];
     const duplicateButton = html.match(
       /<button[^>]*aria-label="Duplicate media"[^>]*>[\s\S]*?<\/button>/,
     )?.[0];

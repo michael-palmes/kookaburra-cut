@@ -16,6 +16,7 @@ import {
   sceneMediaFromVideoWindow,
   sceneMediaInFrame,
   sceneMediaInWorld,
+  sceneMediaUsesWindowPath,
   VIDEO_WINDOW_MEDIA_ID,
   videoWindowMediaEntry,
   videoWindowScaleToOverlaySize,
@@ -344,13 +345,41 @@ describe("render families", () => {
     { media: { src: "assets/clip.mp4" }, radius: "macos" },
   );
 
-  it("splits the world from the frame layer, windowed entries going to the world", () => {
+  it("splits the world from the frame layer, Overlay clips going to the world", () => {
     expect(sceneMediaInWorld(media).map((e) => e.id)).toEqual(["img1", VIDEO_WINDOW_MEDIA_ID]);
     expect(sceneMediaInFrame(media).map((e) => e.id)).toEqual(["img2"]);
   });
 
   it("keeps the two fallback families disjoint", () => {
     expect(media.map(sceneMediaFamily)).toEqual(["stage", null, "window"]);
+  });
+
+  it("splits by kind, never by chrome: a chromed still keeps its host's own layer", () => {
+    const chromed = createSceneMedia("img3", "assets/shot.png", "image", "overlay");
+    chromed.window = { radius: "macos" };
+    const staged = createSceneMedia("img4", "assets/shot.png", "image", "stage");
+    staged.window = { radius: "rounded" };
+
+    expect(sceneMediaFamily(chromed)).toBeNull();
+    expect(sceneMediaFamily(staged)).toBe("stage");
+    expect(sceneMediaInFrame([chromed, staged]).map((e) => e.id)).toEqual(["img3"]);
+    expect(sceneMediaInWorld([chromed, staged]).map((e) => e.id)).toEqual(["img4"]);
+    expect([chromed, staged].map(sceneMediaUsesWindowPath)).toEqual([false, false]);
+  });
+
+  it("keeps an Overlay clip on the window path once its chrome is removed", () => {
+    const bare = createSceneMedia("vid1", "assets/clip.mp4", "video", "overlay");
+    delete bare.window;
+    const staged = createSceneMedia("vid2", "assets/clip.mp4", "video", "stage");
+    delete staged.window;
+    const stagedWindow = createSceneMedia("vid3", "assets/clip.mp4", "video", "stage");
+
+    expect(sceneMediaFamily(bare)).toBe("window");
+    expect(sceneMediaUsesWindowPath(bare)).toBe(true);
+    // A Stage clip stays on the stage plane until chrome asks for the window sizing.
+    expect(sceneMediaFamily(staged)).toBe("stage");
+    expect(sceneMediaUsesWindowPath(staged)).toBe(false);
+    expect(sceneMediaUsesWindowPath(stagedWindow)).toBe(true);
   });
 });
 

@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 import { useImageEditStore } from "../../engine/imageEditStore";
 import type {
   SceneDoc,
@@ -15,15 +15,14 @@ import {
 } from "../../toolkit/media/imageGizmoCommit";
 import { ColourPicker } from "../colour/ColourPicker";
 import { DebouncedRange } from "../TextAnimationPicker";
+import { MediaSourceGroup } from "./MediaSourceGroup";
 import { duplicateSceneMedia, removeSceneMedia } from "./mediaEditorModel";
 import {
-  ActionRow,
   DrillBack,
   DrillGroup,
   DrillHeaderAction,
   GizmoModeIcon,
   InspectorSliderRow,
-  middleTruncate,
   NumberField,
   type SegmentedOption,
   SegmentedRow,
@@ -42,6 +41,10 @@ export interface MediaDrillInProps {
   doc: SceneDoc;
   mediaId: string;
   sourcePreviewUrl?: string;
+  /** The source's pixel aspect, which shapes the thumbnail; omitted until the probe lands. */
+  sourceAspectRatio?: number;
+  /** The source's dimensions (and duration for a clip); falls back to the kind. */
+  sourceDetail?: string;
   overlayAvailable: boolean;
   sourceButtonRef?: Ref<HTMLButtonElement>;
   sourceDisabled?: boolean;
@@ -128,11 +131,6 @@ const REMOVE_CONFIRMATION_MS = 3_000;
 export function armMediaRemoveConfirmation(onDisarm: () => void): () => void {
   const timeout = setTimeout(onDisarm, REMOVE_CONFIRMATION_MS);
   return () => clearTimeout(timeout);
-}
-
-function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
-  if (typeof ref === "function") ref(value);
-  else if (ref) ref.current = value;
 }
 
 function MediaControlIcon({ type }: { type: "x" | "y" | "depth" | "size" | "roll" }) {
@@ -371,6 +369,8 @@ export function MediaDrillIn({
   doc,
   mediaId,
   sourcePreviewUrl,
+  sourceAspectRatio,
+  sourceDetail,
   overlayAvailable,
   sourceButtonRef,
   sourceDisabled = false,
@@ -397,12 +397,6 @@ export function MediaDrillIn({
   const media = resolveSceneDocMedia(doc);
   const mediaIndex = media.findIndex((candidate) => candidate.id === mediaId);
   const entry = media[mediaIndex];
-  const sourceActionRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      assignRef(sourceButtonRef, node?.querySelector<HTMLButtonElement>(".action-row") ?? null);
-    },
-    [sourceButtonRef],
-  );
 
   useEffect(
     () => () => {
@@ -517,10 +511,10 @@ export function MediaDrillIn({
   const overlay = entry.overlay;
   const fileName = mediaFileName(entry.src);
   const windowed = entry.window !== undefined;
-  const stageSizeRange = windowed ? STAGE_MEDIA_SIZE_RANGE.window : STAGE_MEDIA_SIZE_RANGE.image;
-  const overlaySizeRange = windowed
-    ? OVERLAY_MEDIA_SIZE_RANGE.window
-    : OVERLAY_MEDIA_SIZE_RANGE.image;
+  // The ranges follow the sizing rule each kind renders by, not its chrome: a clip fits inside its size box, a still's size IS its width.
+  const clip = entry.kind === "video";
+  const stageSizeRange = clip ? STAGE_MEDIA_SIZE_RANGE.window : STAGE_MEDIA_SIZE_RANGE.image;
+  const overlaySizeRange = clip ? OVERLAY_MEDIA_SIZE_RANGE.window : OVERLAY_MEDIA_SIZE_RANGE.image;
   const border = entry.window?.border ?? DEFAULT_WINDOW_BORDER;
   const shadow = entry.window?.shadow ?? DEFAULT_WINDOW_SHADOW;
   const castShadowAvailable = entry.kind === "image" && entry.host === "stage";
@@ -587,23 +581,17 @@ export function MediaDrillIn({
 
       <div className="inspector-drill-body inspector-section-body media-drill-body">
         {notice != null && <div className="inspector-stub-note media-drill-notice">{notice}</div>}
-        <DrillGroup label="Source">
-          <div ref={sourceActionRef} data-media-source-action="true">
-            <ActionRow
-              label="Change"
-              value={middleTruncate(fileName)}
-              disabled={sourceDisabled}
-              onClick={() => onChangeSource(entry.id)}
-            />
-          </div>
-          {onEditSource && (
-            <ActionRow
-              label="Edit"
-              disabled={sourceDisabled}
-              onClick={() => onEditSource(entry.id)}
-            />
-          )}
-        </DrillGroup>
+        <MediaSourceGroup
+          label={kindLabel}
+          previewUrl={sourcePreviewUrl}
+          aspectRatio={sourceAspectRatio}
+          name={fileName}
+          detail={sourceDetail ?? kindLabel}
+          disabled={sourceDisabled}
+          changeButtonRef={sourceButtonRef}
+          onChange={() => onChangeSource(entry.id)}
+          onEdit={onEditSource ? () => onEditSource(entry.id) : undefined}
+        />
 
         <fieldset className="media-settings-fieldset" disabled={settingsDisabled}>
           <legend className="visually-hidden">Media settings</legend>

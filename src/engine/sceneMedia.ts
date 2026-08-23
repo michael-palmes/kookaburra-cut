@@ -281,22 +281,28 @@ export function sceneMediaForHost(
 
 // ── Where an entry renders ────────────────────────────────────────────────────
 
-/** Media the scene's own world hosts: everything on the Stage, plus any windowed entry wherever it is hosted. Window chrome carries a drop shadow that has to sit against the staged content, which is where the video window has always drawn (and the only place a frameless scene can draw at all). */
-export function sceneMediaInWorld(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
-  return media.filter((entry) => entry.window !== undefined || entry.host === "stage");
-}
-
-/** Media the overlay frame layer hosts, drawn over the composited slide. */
-export function sceneMediaInFrame(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
-  return media.filter((entry) => entry.window === undefined && entry.host === "overlay");
-}
-
 /** Which fallback family owns an entry: `<SceneStage>` consumes the stage family and `<VideoWindow/>` the window family, so a scene's own mounts stand exactly their family down. Disjoint by construction, so nothing renders twice. */
 export type SceneMediaFamily = "stage" | "window";
 
+/** The split is by KIND, never by chrome: a still keeps its host's own layer (chrome is a look painted on that plane), while an Overlay-hosted clip always draws in the world, where a frameless scene can draw it at all. */
 export function sceneMediaFamily(entry: SceneDocMediaSpec): SceneMediaFamily | null {
-  if (entry.window !== undefined) return "window";
-  return entry.host === "stage" ? "stage" : null;
+  if (entry.host === "stage") return "stage";
+  return entry.kind === "video" ? "window" : null;
+}
+
+/** Does this entry draw through the window path (a world-space plane contain-fitted inside its size box) rather than its host's plain plane? Every Overlay clip does, and a Stage clip does once chrome is authored. */
+export function sceneMediaUsesWindowPath(entry: SceneDocMediaSpec): boolean {
+  return entry.kind === "video" && (entry.window !== undefined || entry.host === "overlay");
+}
+
+/** Media the scene's own world hosts: everything on the Stage, plus every Overlay-hosted clip. */
+export function sceneMediaInWorld(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
+  return media.filter((entry) => sceneMediaFamily(entry) !== null);
+}
+
+/** Media the overlay frame layer hosts, drawn over the composited slide: Overlay-hosted stills, chrome or not. */
+export function sceneMediaInFrame(media: readonly SceneDocMediaSpec[]): SceneDocMediaSpec[] {
+  return media.filter((entry) => sceneMediaFamily(entry) === null);
 }
 
 // ── Motion ────────────────────────────────────────────────────────────────────
