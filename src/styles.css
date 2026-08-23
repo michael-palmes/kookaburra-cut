@@ -7637,6 +7637,8 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   gap: var(--space-5);
   min-height: 0;
   padding: 12px 16px;
+  /* A vertical rail: overflow-y alone computes overflow-x to auto, which turns any 1px overshoot into a scrollbar. */
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -9574,6 +9576,11 @@ textarea.text-inspector-copy-input {
 .media-drill-identity {
   min-height: 52px;
   padding: 9px 12px;
+}
+
+/* The slider rows (116px label + native range + 52px value) need the device editor's slimmer inline padding. */
+.media-drill-body {
+  padding-inline: 12px;
 }
 
 .media-drill-identity .inspector-scene-preview {
