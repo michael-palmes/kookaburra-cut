@@ -24,6 +24,7 @@ mod settings_win;
 #[path = "tap_dot_frames.generated.rs"]
 mod tap_dot_frames;
 mod theme;
+mod theme_editor_win;
 mod updater;
 mod workspace;
 
@@ -1311,6 +1312,8 @@ macro_rules! kookaburra_handler {
             packs_win::open_pack_export,
             packs_win::open_pack_import,
             packs_win::next_queued_pack,
+            theme_editor_win::open_theme_editor_window,
+            theme_editor_win::get_theme_editor_target,
             fonts::font_embedding_for,
             fonts::pin_fonts_for_pack,
             pack::publisher::get_publisher_profile,
@@ -1368,6 +1371,7 @@ pub fn run() {
         .manage(render_win::ThumbQueueState::default())
         .manage(bridge::EditorContextState::default())
         .manage(packs_win::PacksState::default())
+        .manage(theme_editor_win::ThemeEditorState::default())
         .manage(pack::commands::PackState::default())
         .setup(move |app| {
             // The main window exists (config-created); strip its webview's white layer.

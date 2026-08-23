@@ -11,6 +11,7 @@ import {
   ThemeBrowser,
   type ThemeChoice,
 } from "./ThemePicker";
+import { canEditTheme, onThemeSaved, openThemeEditor } from "./theme-editor/themeEditorIo";
 import { useEscapeClose } from "./useEscapeClose";
 
 /** Main-window theme mode: browse the theme library, apply one to the project, or duplicate any theme into a workspace theme (the starting point for user themes, locked decision 11: token-level tweaks duplicate the theme, deep edits go through Claude on the JSON); modal shell per the MediaLibrary pattern. */
@@ -97,6 +98,18 @@ export function ThemeMode({
   };
   useEffect(refresh, []);
 
+  // The theme editor window saved a document: re-list so the card follows it, and hand the new JSON to the host so previews regenerate and an open project using the theme reloads.
+  useEffect(() => {
+    return onThemeSaved(({ themeId, json }) => {
+      void listThemeChoices().then(setChoices);
+      if (themeId.startsWith(WORKSPACE_THEME_PREFIX)) {
+        void onThemeEdited(themeId, json).catch((e) =>
+          console.warn("[theme] refreshing after an editor save failed:", e),
+        );
+      }
+    });
+  }, [onThemeEdited]);
+
   // Land on the fonts pane when asked (the context menu's Edit fonts); its draft seeding is async, so it rides the same openFonts the button uses.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only
   useEffect(() => {
@@ -145,12 +158,29 @@ export function ThemeMode({
               <button
                 type="button"
                 className="btn"
+                onClick={() =>
+                  run(async () => {
+                    await openThemeEditor(selected);
+                  })
+                }
+                disabled={busy || !canEditTheme(selected)}
+                title={
+                  canEditTheme(selected)
+                    ? "Open this theme in the theme editor"
+                    : "Built-in themes are read-only: duplicate first"
+                }
+              >
+                Edit…
+              </button>
+              <button
+                type="button"
+                className="btn"
                 onClick={openFonts}
                 disabled={busy || !selectedIsWs}
                 title={
                   selectedIsWs
                     ? "Change this theme's headline and body faces"
-                    : "Built-in themes are read-only — duplicate first"
+                    : "Built-in themes are read-only: duplicate first"
                 }
               >
                 Edit fonts…
