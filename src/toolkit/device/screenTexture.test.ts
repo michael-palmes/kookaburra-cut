@@ -35,6 +35,17 @@ describe("screenImageTexture", () => {
     expect(screenImageTexture(loaded).source).toBe(loaded.source);
   });
 
+  // A world-space image backdrop still cover-crops the shared texture through repeat/offset, so the clone must not inherit whatever mounted first.
+  it("resets a cover crop another consumer left on the shared texture", () => {
+    const loaded = new Texture();
+    loaded.repeat.set(0.5, 1);
+    loaded.offset.set(0.25, 0);
+    const clone = screenImageTexture(loaded);
+    expect([clone.repeat.x, clone.repeat.y]).toEqual([1, 1]);
+    expect([clone.offset.x, clone.offset.y]).toEqual([0, 0]);
+    expect([loaded.repeat.x, loaded.offset.x]).toEqual([0.5, 0.25]);
+  });
+
   it.each(["./Device.tsx", "./DeviceMockup.tsx"])("%s never writes flipY itself", (file) => {
     expect(read(file)).not.toMatch(/\.flipY\s*=/);
   });
