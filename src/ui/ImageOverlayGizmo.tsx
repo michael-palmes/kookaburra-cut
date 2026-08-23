@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { computeFormat } from "../engine/format";
+import { resolveCutoutRender } from "../engine/frameFormat";
 import type { StageRect } from "../engine/gizmoRegistry";
 import { useGizmoSectionOpen } from "../engine/gizmoSections";
 import { useImageEditStore } from "../engine/imageEditStore";
@@ -16,7 +17,8 @@ import type {
   SceneImageOverlayPlacement,
   SceneMediaKind,
 } from "../engine/sceneDocSchema";
-import { resolveSceneDocMedia, sceneMediaForHost } from "../engine/sceneMedia";
+import { resolveSceneDocMedia, sceneMediaFamily, sceneMediaForHost } from "../engine/sceneMedia";
+import { cutoutStageRect, frameWorldCutout } from "../engine/stageViewport";
 import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
 import {
@@ -150,6 +152,23 @@ export function OverlayImageGizmo({
   const versionSignal = useAssetVersionStore((state) =>
     images.map((image) => state.versions[assetVersionKey(project.id, image.src)] ?? 0).join("|"),
   );
+  // Two spaces in one layer: a still draws on the frame layer against the whole frame, while a clip is world content and lands inside an overlay's cutout, laid out against the cutout's own format.
+  const frameSpec = project.sceneFrames[sceneIndex];
+  const cutout = useMemo(
+    () => frameWorldCutout(frameSpec, formatSpec.width / formatSpec.height),
+    [frameSpec, formatSpec],
+  );
+  const worldFormat = useMemo(
+    () => (cutout && frameSpec ? resolveCutoutRender(formatSpec, frameSpec).format : format),
+    [cutout, frameSpec, formatSpec, format],
+  );
+  const spaceOf = useCallback(
+    (entry: SceneDocMediaSpec, rect: StageRect) =>
+      sceneMediaFamily(entry) === null
+        ? { rect, aspect: format.aspect }
+        : { rect: cutoutStageRect(rect, cutout), aspect: worldFormat.aspect },
+    [cutout, format.aspect, worldFormat.aspect],
+  );
 
   const sourceRequests = useMemo(() => {
     const versions = versionSignal.split("|").map(Number);
@@ -236,8 +255,15 @@ export function OverlayImageGizmo({
             frame: (rect: StageRect) => {
               const placement =
                 livePlacement?.imageId === image.id ? livePlacement.placement : image.overlay;
-              const [cx, cy] = centrePx(placement, rect);
-              const box = overlayMediaGizmoBox(image.kind, placement, aspect, format.aspect, rect);
+              const space = spaceOf(image, rect);
+              const [cx, cy] = centrePx(placement, space.rect);
+              const box = overlayMediaGizmoBox(
+                image.kind,
+                placement,
+                aspect,
+                space.aspect,
+                space.rect,
+              );
               return {
                 cx,
                 cy,
@@ -250,20 +276,24 @@ export function OverlayImageGizmo({
           },
         ];
       }),
-    [format.aspect, images, livePlacement, sourceAspects, sourceRequests],
+    [images, livePlacement, sourceAspects, sourceRequests, spaceOf],
   );
 
+  // Guides follow the space the layer's items live in: a scene staging any world-hosted clip inside a cutout snaps to the cutout, since the frame's own centre and safe edges sit under the panel.
+  const worldHosted = images.some((image) => sceneMediaFamily(image) !== null);
   const frameGuides = useCallback(
     (rect: StageRect) => {
-      const scale = rect.width / format.frame.width;
-      return frameGuideLines(rect, {
-        left: format.safe.left * scale,
-        right: format.safe.right * scale,
-        top: format.safe.top * scale,
-        bottom: format.safe.bottom * scale,
+      const guideRect = worldHosted ? cutoutStageRect(rect, cutout) : rect;
+      const guideFormat = worldHosted ? worldFormat : format;
+      const scale = guideRect.width / guideFormat.frame.width;
+      return frameGuideLines(guideRect, {
+        left: guideFormat.safe.left * scale,
+        right: guideFormat.safe.right * scale,
+        top: guideFormat.safe.top * scale,
+        bottom: guideFormat.safe.bottom * scale,
       });
     },
-    [format],
+    [cutout, format, worldFormat, worldHosted],
   );
 
   const run = useRef<StartedGesture | null>(null);
@@ -283,12 +313,13 @@ export function OverlayImageGizmo({
       pending.current = null;
     }
     const base = started.image.overlay;
+    const rect = spaceOf(started.image, gesture.rect).rect;
     let placement: SceneImageOverlayPlacement;
     if (gesture.kind === "move") {
-      const centre = centrePx(base, gesture.rect);
+      const centre = centrePx(base, rect);
       placement = {
         ...base,
-        position: positionAt([centre[0] + gesture.dxPx, centre[1] + gesture.dyPx], gesture.rect),
+        position: positionAt([centre[0] + gesture.dxPx, centre[1] + gesture.dyPx], rect),
       };
     } else if (gesture.kind === "resize") {
       const resized = overlayImageGizmoCommit(
@@ -306,7 +337,7 @@ export function OverlayImageGizmo({
             gesture.fixedPx[0] + (ratio * gesture.diagPx[0]) / 2,
             gesture.fixedPx[1] + (ratio * gesture.diagPx[1]) / 2,
           ],
-          gesture.rect,
+          rect,
         ),
         size,
       };

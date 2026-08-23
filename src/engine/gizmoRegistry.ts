@@ -1,6 +1,7 @@
 import { type Camera, type Object3D, Raycaster, Vector2 } from "three";
 import { canvasHandle } from "./exportBridge";
 import type { GizmoMode } from "./gizmoMode";
+import { stageCutout, worldViewportRect } from "./stageViewport";
 
 /** Live handles onto each mounted gizmo's pickable geometry, published by `<SceneGizmo>` (the sceneHostRegistry idiom: a module Map, plain register/read functions, no store). DOM overlays read it to decide whether a pointer belongs to a gizmo handle or to them; the export path never imports it. */
 
@@ -93,6 +94,12 @@ export function stageCanvasRect(): StageRect | null {
   if (!el) return null;
   const r = el.getBoundingClientRect();
   return { left: r.left, top: r.top, width: r.width, height: r.height };
+}
+
+/** The rect the scene's world projects onto: the canvas box, narrowed to the frame's cutout when the scene at the playhead renders through one (`stageViewport.ts`). Every hit test and world projection reads this rather than the canvas box, so a handle answers where the compositor drew it. */
+export function stageWorldRect(): StageRect | null {
+  const rect = stageCanvasRect();
+  return rect ? worldViewportRect(rect, stageCutout()) : null;
 }
 
 const raycaster = new Raycaster();

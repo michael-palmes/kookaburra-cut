@@ -4,7 +4,7 @@ import {
   gizmoHandleAt,
   gizmoPickerHandles,
   hasGizmoPickers,
-  stageCanvasRect,
+  stageWorldRect,
   subscribeGizmoPickers,
 } from "../../engine/gizmoRegistry";
 import { cameraOverrideHeld, pointerNdc, routeLayerPointer, routePointer } from "./gizmoRouting";
@@ -40,7 +40,7 @@ export function useGizmoYield(
     }
     const hitAt = (clientX: number, clientY: number) => {
       if (gizmoPickerHandles().length === 0) return null;
-      const rect = stageCanvasRect();
+      const rect = stageWorldRect();
       if (!rect) return null;
       const ndc = pointerNdc(clientX, clientY, rect);
       return ndc ? gizmoHandleAt(ndc.x, ndc.y) : null;
@@ -104,7 +104,7 @@ export function useGizmoYield(
 /** The hit test the layer yield hangs off: a same-domain 3D handle under these client coordinates. */
 function sceneHandleAt(clientX: number, clientY: number, domain: GizmoDomain): boolean {
   if (!hasGizmoPickers(domain)) return false;
-  const rect = stageCanvasRect();
+  const rect = stageWorldRect();
   if (!rect) return false;
   const ndc = pointerNdc(clientX, clientY, rect);
   return ndc !== null && gizmoHandleAt(ndc.x, ndc.y, domain) !== null;

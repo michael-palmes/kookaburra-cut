@@ -174,30 +174,51 @@ or preview capture.
 
 `gizmoHandleAt(ndc)` raycasts only the active mode's picker group (three's
 raycaster ignores `visible`, so the idle modes would hit too), against the live
-preview camera and the canvas box, never an overlay's box, so the NDC it uses is
-the NDC r3f's own event raycaster would use.
+preview camera and the stage viewport, never a DOM overlay's box, so the NDC it
+uses is the NDC r3f's own event raycaster would use.
+
+**The stage viewport** (`src/engine/stageViewport.ts`) is that qualifier. An
+overlay renders the scene into a cutout-sized target and keys it into the
+cutout's rect, so in a framed scene the canvas box is NOT the rect a world
+projection lands on: `worldViewportRect` narrows it to the cutout, and
+`cutoutStageRect` gives the drawn rect itself for frame-relative placements.
+The camera keeps the FRAME's aspect between compositor passes while the cutout
+pass renders at the cutout's, and a perspective x divides by the aspect, so the
+projection rect is the cutout's height by the frame's aspect, centred on the
+cutout: everything then lands the pixels the slide pass drew. One published
+cutout (`setStageCutout`, from the editor shell, for the scene at the playhead)
+feeds every canvas-side surface: `stageWorldRect()` for the picker raycasts and
+the yield hooks, an r3f `compute` override for outlines and click-to-select
+(`StagePointer`), and a `getBoundingClientRect` proxy on the element
+`TransformControls` maps its own pointers through (`stageViewportElement`). All
+four are identity when no cutout is live, so an unframed scene sees the numbers
+it always saw. A transparent panel and `shape: "none"` render full-bleed, so
+neither publishes a cutout.
 
 Three coordinate spaces are in play:
 
 - **The 3D family needs none.** `TransformControls` owns its own projection and
   hit testing.
-- **World-space 2D items project through the LIVE camera.** Scene text and hero
-  charts take the node's `matrixWorld` and project four corners plus the node
-  origin (which is the rotate and resize pivot), so a box tracks a rig pose, a
-  camera keyframe and a transition. Drags invert by ray-plane intersection at the
-  item's own z, which is exact under any pose. `frameFromQuad` fits the best
-  rotated rectangle: exact whenever the projection is affine (every default
-  framing), a mild approximation under a rolled or heavily tilted rig.
+- **World-space 2D items project through the LIVE camera**, onto the stage
+  viewport. Scene text and hero charts take the node's `matrixWorld` and project
+  four corners plus the node origin (which is the rotate and resize pivot), so a
+  box tracks a rig pose, a camera keyframe and a transition. Drags invert by
+  ray-plane intersection at the item's own z, which is exact under any pose.
+  `frameFromQuad` fits the best rotated rectangle: exact whenever the projection
+  is affine (every default framing), a mild approximation under a rolled or
+  heavily tilted rig.
 - **Panel-space items use a fixed linear map.** The compositor draws the overlay
   panel from the BASE pose, so decorations map their `-1..1` position straight
   onto the stage rect, and panel headlines map world units against
   `format.frame` (`panelToStagePx`). No camera is involved. A panel group is left
   hidden between compositor passes, so the drawn check for panel text stops its
-  ancestor walk at the panel.
-- **Cutout-hosted text is excluded.** It renders into a cutout-sized target at a
-  different `camera.aspect` and is then keyed into the cutout's pixel rect, so the
-  stage camera is not the projection that put it on screen. The Text drill still
-  edits it numerically.
+  ancestor walk at the panel. Overlay media splits between the two: a still is
+  panel space, while a clip is world content (its drop shadow belongs against the
+  staged content), so it maps onto the cutout rect against the cutout's own
+  format, and the Media layer's guides follow whichever space it stages.
+- **Cutout-hosted text is excluded**, by the scope decision above rather than by
+  the maths: the stage viewport now covers the projection its exclusion was
+  originally written against. The Text drill still edits it numerically.
 
 ## What a drag writes
 
@@ -300,6 +321,7 @@ in the tree.
 | Palette, size, restyle | `src/engine/gizmoTokens.ts` (+ `--gizmo-*` in `src/styles.css`) |
 | 3D control seam | `src/engine/SceneGizmo.tsx` |
 | Picker registry, stage camera and rect, capture hide | `src/engine/gizmoRegistry.ts` |
+| Stage viewport (the cutout maths, the r3f compute) | `src/engine/stageViewport.ts`, `StagePointer.tsx` |
 | Outlines and click-to-select | `src/engine/SceneOutline.tsx`, `gizmoOutline.ts`, `gizmoVisibility.ts` |
 | Section map | `src/engine/gizmoSections.ts` |
 | 2D target registry | `src/engine/gizmoTargetRegistry.ts` |
@@ -322,3 +344,13 @@ in the tree.
 - An Overlay-hosted clip renders in world space (its drop shadow belongs
   against the staged content), so its 2D box is exact under the default camera
   and drifts under a moved one.
+- The stage viewport carries the projection, not the clip: a pointer over the
+  panel still maps to a world ray (past the viewport's own edges for the r3f
+  compute, which bounds-checks nothing, and inside the margin it adds beyond the
+  cutout for the rect readers). So an item drawn outside the cutout, and
+  therefore keyed out of the picture, stays pickable over the panel. Closing it
+  would mean carrying the drawn rect through every call site purely as a bounds
+  check.
+- The camera path overlay projects with its own recompute
+  (`engine/cameraProject.ts`) against the whole frame, so a free-flight ghost
+  path still draws full-frame in a framed scene.

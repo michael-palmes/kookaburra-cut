@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
 import { useChartEditStore } from "../engine/chartEditStore";
 import { computeFormat } from "../engine/format";
+import { resolveCutoutRender } from "../engine/frameFormat";
 import { type StageRect, stageCamera } from "../engine/gizmoRegistry";
 import {
   type Gizmo2DTarget,
@@ -12,6 +13,7 @@ import { nodeDrawn } from "../engine/gizmoVisibility";
 import type { LoadedProject } from "../engine/project";
 import { resolveChart } from "../engine/sceneChart";
 import type { SceneDoc } from "../engine/sceneDocSchema";
+import { cutoutStageRect, frameWorldCutout, worldViewportRect } from "../engine/stageViewport";
 import { useEditorStore } from "../store/editorStore";
 import { chartOffsetWrite, chartScaleWrite } from "./gizmo/chartGizmoWrite";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
@@ -49,6 +51,16 @@ export function ChartHeroGizmo({
   const { preview, commit } = useGizmoDocWrite(project, sceneIndex, onDocChanged);
   const doc = project.sceneDocs[sceneIndex] ?? null;
   const chart = useMemo(() => resolveChart(doc ?? undefined), [doc]);
+  // A hero chart is world space, so an overlay's cutout is where it lands and the cutout's own format is what it laid out against.
+  const frameSpec = project.sceneFrames[sceneIndex];
+  const cutout = useMemo(
+    () => frameWorldCutout(frameSpec, formatSpec.width / formatSpec.height),
+    [frameSpec, formatSpec],
+  );
+  const worldFormat = useMemo(
+    () => (cutout && frameSpec ? resolveCutoutRender(formatSpec, frameSpec).format : format),
+    [cutout, frameSpec, formatSpec, format],
+  );
 
   const target = useMemo<Gizmo2DTarget | null>(
     () =>
@@ -60,19 +72,23 @@ export function ChartHeroGizmo({
     [targets, sceneIndex, chart],
   );
 
-  const geometryOf = useCallback((entry: Gizmo2DTarget, rect: StageRect) => {
-    const node = entry.node();
-    const local = entry.localRect();
-    if (!node || !local || !nodeDrawn(node)) return null;
-    const camera = stageCamera();
-    if (!camera) return null;
-    let worldZ = 0;
-    const { quad, pivot } = worldQuadOf(node, local, (w) => {
-      worldZ = w.z;
-      return projectWorldPoint(camera, rect, w);
-    });
-    return { frame: frameFromQuad(quad, pivot), worldZ };
-  }, []);
+  const geometryOf = useCallback(
+    (entry: Gizmo2DTarget, rect: StageRect) => {
+      const node = entry.node();
+      const local = entry.localRect();
+      if (!node || !local || !nodeDrawn(node)) return null;
+      const camera = stageCamera();
+      if (!camera) return null;
+      const viewport = worldViewportRect(rect, cutout);
+      let worldZ = 0;
+      const { quad, pivot } = worldQuadOf(node, local, (w) => {
+        worldZ = w.z;
+        return projectWorldPoint(camera, viewport, w);
+      });
+      return { frame: frameFromQuad(quad, pivot), worldZ };
+    },
+    [cutout],
+  );
 
   const items = useMemo<Gizmo2DItem[]>(
     () =>
@@ -91,15 +107,16 @@ export function ChartHeroGizmo({
 
   const frameGuides = useCallback(
     (rect: StageRect) => {
-      const scale = rect.width / format.frame.width;
-      return frameGuideLines(rect, {
-        left: format.safe.left * scale,
-        right: format.safe.right * scale,
-        top: format.safe.top * scale,
-        bottom: format.safe.bottom * scale,
+      const drawn = cutoutStageRect(rect, cutout);
+      const scale = drawn.width / worldFormat.frame.width;
+      return frameGuideLines(drawn, {
+        left: worldFormat.safe.left * scale,
+        right: worldFormat.safe.right * scale,
+        top: worldFormat.safe.top * scale,
+        bottom: worldFormat.safe.bottom * scale,
       });
     },
-    [format],
+    [cutout, worldFormat],
   );
 
   const run = useRef<Started | null>(null);
@@ -126,10 +143,11 @@ export function ChartHeroGizmo({
     if (g.kind === "move") {
       const camera = stageCamera();
       if (!camera) return null;
-      const from = unprojectToZPlane(camera, g.rect, started.pivot, started.worldZ);
+      const viewport = worldViewportRect(g.rect, cutout);
+      const from = unprojectToZPlane(camera, viewport, started.pivot, started.worldZ);
       const to = unprojectToZPlane(
         camera,
-        g.rect,
+        viewport,
         [started.pivot[0] + g.dxPx, started.pivot[1] + g.dyPx],
         started.worldZ,
       );

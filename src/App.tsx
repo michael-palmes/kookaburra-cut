@@ -99,6 +99,7 @@ import { TrustDeniedError } from "./engine/projectTrust";
 import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
+import { StagePointer } from "./engine/StagePointer";
 import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
@@ -114,6 +115,7 @@ import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
+import { frameWorldCutout } from "./engine/stageViewport";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
@@ -1463,6 +1465,12 @@ export default function App() {
   const camSceneIndex = useClockStore((s) =>
     project ? activeSceneIndex(project.slots, s.currentMs) : 0,
   );
+  // Where the active scene's world lands on screen: an overlay draws it into the cutout, so every gizmo surface projects and hit-tests against that rect, not the frame's.
+  const sceneFrame = project?.sceneFrames[camSceneIndex];
+  const sceneCutout = useMemo(
+    () => frameWorldCutout(sceneFrame, format.width / format.height),
+    [sceneFrame, format.width, format.height],
+  );
   // Which keyed track animates the active scene decides the lane/pill/overlay family mounted.
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
   // A comparison scene stacks the divider lane above the camera (or stack) lane; both stay visible.
@@ -2083,6 +2091,7 @@ export default function App() {
                   <color attach="background" args={[theme.colors.background]} />
                   <PreviewClock />
                   <ExportBridge />
+                  <StagePointer cutout={sceneCutout} />
                   <RenderSettingsApplier />
                   {project && (
                     <CompositorDriver

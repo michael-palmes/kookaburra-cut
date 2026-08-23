@@ -48,7 +48,7 @@ export function cameraOverrideHeld(m: ModifierState): boolean {
   return m.metaKey || m.ctrlKey || m.altKey;
 }
 
-/** Client pixels to normalised device coordinates against the canvas box; null outside the box or for a degenerate rect (never NaN). */
+/** Client pixels to normalised device coordinates against the rect the world projects onto (the canvas box, or a framed scene's cutout viewport); null outside the rect or for a degenerate one (never NaN). */
 export function pointerNdc(
   clientX: number,
   clientY: number,
