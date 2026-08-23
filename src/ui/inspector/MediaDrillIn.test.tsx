@@ -228,7 +228,6 @@ describe("MediaDrillIn", () => {
     ]);
     expect(captures.segments[2]?.options.map((option) => option.label)).toEqual([
       "None",
-      "Sharp",
       "Subtle",
       "macOS",
       "Rounded",

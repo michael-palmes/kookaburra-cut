@@ -272,7 +272,7 @@ function motionOptions(kind: SceneMediaKind): SegmentedOption<SceneMediaMotionPr
 }
 
 /** No chrome at all, the four radius presets, and (never offered, only reflected) a hand-set radius. */
-type CornerPreset = "none" | "sharp" | "subtle" | "macos" | "rounded";
+type CornerPreset = "none" | "subtle" | "macos" | "rounded";
 type CornerChoice = CornerPreset | "custom";
 
 /** Corner-preset glyphs: one magnified top-left corner drawn at the preset's real rounding; "none" is the chrome-free plane. */
@@ -293,7 +293,7 @@ function MediaCornerIcon({ id }: { id: CornerPreset }) {
       </svg>
     );
   }
-  const r = { sharp: 0, subtle: 1.5, macos: 3.5, rounded: 7 }[id];
+  const r = { subtle: 1.5, macos: 3.5, rounded: 7 }[id];
   return (
     <svg
       width="14"
@@ -304,18 +304,13 @@ function MediaCornerIcon({ id }: { id: CornerPreset }) {
       strokeWidth="1.5"
       aria-hidden="true"
     >
-      {r === 0 ? (
-        <path d="M16.5 4.5H4.5V16.5" />
-      ) : (
-        <path d={`M16.5 4.5H${4.5 + r}A${r} ${r} 0 0 0 4.5 ${4.5 + r}V16.5`} />
-      )}
+      <path d={`M16.5 4.5H${4.5 + r}A${r} ${r} 0 0 0 4.5 ${4.5 + r}V16.5`} />
     </svg>
   );
 }
 
 const CORNER_LABELS: Record<CornerPreset, { label: string; title: string }> = {
   none: { label: "None", title: "A bare plane, no window chrome" },
-  sharp: { label: "Sharp", title: "Square corners" },
   subtle: { label: "Subtle", title: "A whisper of rounding" },
   macos: { label: "macOS", title: "The macOS window look" },
   rounded: { label: "Rounded", title: "Boldly rounded corners" },
@@ -349,7 +344,9 @@ function mediaFileName(src: string): string {
 
 function cornerChoice(entry: SceneDocMediaSpec): CornerChoice {
   if (!entry.window) return "none";
-  return typeof entry.window.radius === "string" ? entry.window.radius : "custom";
+  // "sharp" stays valid in the schema but has no segment; it reads as custom (radius 0 on the slider).
+  if (typeof entry.window.radius !== "string" || entry.window.radius === "sharp") return "custom";
+  return entry.window.radius;
 }
 
 function mutateDocMedia(next: SceneDoc, mediaId: string, mutate: MediaMutation) {
