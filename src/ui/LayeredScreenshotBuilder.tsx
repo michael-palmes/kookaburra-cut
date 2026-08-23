@@ -144,12 +144,6 @@ export function LayeredScreenshotBuilder({
     side: LayeredScreenshotAttachSide;
   } | null>(null);
   const [changingMedia, setChangingMedia] = useState(false);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  useEffect(() => {
-    if (!confirmRemove) return;
-    const timeout = window.setTimeout(() => setConfirmRemove(false), 3000);
-    return () => window.clearTimeout(timeout);
-  }, [confirmRemove]);
   useEscapeClose(
     () => {
       if (adding) setAdding(null);
@@ -300,6 +294,7 @@ export function LayeredScreenshotBuilder({
           {mediaError && <p className="modal-error">{mediaError}</p>}
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={projectPath}
               kindToggle
@@ -343,6 +338,7 @@ export function LayeredScreenshotBuilder({
           {mediaError && <p className="modal-error">{mediaError}</p>}
           <div className="inspector-media-host">
             <MediaBrowser
+              inspectorPreview
               slug={slug}
               projectPath={projectPath}
               kindToggle
@@ -370,25 +366,10 @@ export function LayeredScreenshotBuilder({
       <DrillBack
         label={backLabel}
         title="Screenshot stack"
-        onClick={() => {
-          setConfirmRemove(false);
-          onBack();
-        }}
+        onClick={onBack}
         actions={
           doc?.layeredScreenshot ? (
-            <DrillHeaderAction
-              kind="remove"
-              label={confirmRemove ? "Confirm remove screenshot stack" : "Remove screenshot stack"}
-              armed={confirmRemove}
-              onClick={() => {
-                if (!confirmRemove) {
-                  setConfirmRemove(true);
-                  return;
-                }
-                setConfirmRemove(false);
-                onRemove();
-              }}
-            />
+            <DrillHeaderAction kind="remove" label="Remove screenshot stack" onClick={onRemove} />
           ) : undefined
         }
       />

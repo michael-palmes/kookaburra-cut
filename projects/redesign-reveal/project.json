@@ -1,0 +1,42 @@
+{
+  "id": "redesign-reveal",
+  "name": "Redesign Reveal",
+  "version": 2,
+  "themeId": "kookaburra-loft",
+  "formats": ["16:9", "9:16", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-statement.tsx",
+      "durationMs": 2400,
+      "transition": { "type": "wipe", "durationMs": 420, "direction": [1, 0] }
+    },
+    {
+      "file": "scenes/02-old-vs-new.tsx",
+      "durationMs": 4400,
+      "transition": { "type": "luma", "durationMs": 480, "shape": "iris", "softness": 0.1 }
+    },
+    {
+      "file": "scenes/03-new-home.tsx",
+      "durationMs": 3800
+    },
+    {
+      "file": "scenes/04-new-nav.tsx",
+      "durationMs": 4200,
+      "transition": { "type": "warp", "durationMs": 400, "intensity": 0.2 }
+    },
+    {
+      "file": "scenes/05-screens-arc.tsx",
+      "durationMs": 4000,
+      "transition": { "type": "crossfade", "durationMs": 450 }
+    },
+    {
+      "file": "scenes/06-design-note.tsx",
+      "durationMs": 3400,
+      "transition": { "type": "dip", "durationMs": 520 }
+    },
+    {
+      "file": "scenes/07-cta.tsx",
+      "durationMs": 3000
+    }
+  ]
+}

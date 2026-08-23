@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "name": "The old way",
+  "themeId": "kookaburra-default",
+  "text": {
+    "title": "The old way"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 80,
+    "stagger": "word"
+  },
+  "background": {
+    "type": "color",
+    "color": "#12171d"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/home-old-sample.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [0, -0.3, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "soft"
+    }
+  ]
+}

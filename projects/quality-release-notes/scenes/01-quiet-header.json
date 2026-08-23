@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "Quiet header",
+  "text": {
+    "title": "v2.4.1",
+    "subtitle": "Stability release"
+  },
+  "headerIcon": "assets/app-icon.png",
+  "textStyle": {
+    "subtitleFont": "JetBrains Mono"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "background": {
+    "type": "gradient",
+    "parallax": 0.03,
+    "spec": {
+      "type": "linear",
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#ECEAE4", 0],
+        ["#E8E7E3", 0.25],
+        ["#E3E3E1", 0.5],
+        ["#DEDFE0", 0.75],
+        ["#DADCE0", 1]
+      ]
+    }
+  }
+}

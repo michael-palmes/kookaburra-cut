@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "name": "Design note",
+  "text": {
+    "title": "Same app,\nless in the way",
+    "subtitle": "Less clutter.\nMore of your day."
+  },
+  "textLayout": { "align": "center" },
+  "textStyle": { "titleSize": 0.62, "subtitleSize": 1.15 },
+  "textAnimation": {
+    "in": "fade-scale",
+    "out": "fade",
+    "staggerMs": 160,
+    "startScale": 0.94,
+    "delivery": "by-paragraph"
+  },
+  "backdrop": { "type": "none" },
+  "background": {
+    "type": "shader",
+    "shader": "smoke-ring",
+    "colors": ["#f8f4ea", "#dcc9a0"],
+    "speed": 0.3,
+    "params": {
+      "thickness": 0.85,
+      "radius": 0.38,
+      "innerShape": 0.4,
+      "noiseScale": 3.8
+    },
+    "preset": "p5"
+  }
+}

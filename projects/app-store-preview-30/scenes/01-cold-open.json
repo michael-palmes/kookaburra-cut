@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Cold open",
+  "duration": { "mode": "manual" },
+  "background": {
+    "type": "video",
+    "src": "assets/kooka-feed-loop-sample.mp4",
+    "loop": false
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Flip check",
+  "devices": [
+    {
+      "id": "d1",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": {
+        "src": "assets/shot-c-sample.jpg",
+        "kind": "image"
+      },
+      "placement": {
+        "position": [-1.6, 0, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      }
+    }
+  ],
+  "images": [
+    {
+      "id": "img1",
+      "src": "assets/shot-c-sample.jpg",
+      "host": "stage",
+      "stage": {
+        "position": [2, 0, 0],
+        "size": 1.2,
+        "rotationDeg": [0, 0, 0]
+      }
+    }
+  ]
+}

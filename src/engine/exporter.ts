@@ -802,7 +802,7 @@ async function captureFrameRgbaHeld(
   }
 }
 
-/** Renders one deterministic frame at tMs through the export path and writes it natively as a PNG (autorun `_autorun/<name>.png` by default, the bridge pair for capture requests). */
+/** Renders one deterministic frame at tMs through the export path and writes it natively as a PNG (autorun `<run result dir>/<name>.png` by default, from `KOOKABURRA_RESULT_DIR` or the legacy `_autorun`; the bridge pair for capture requests). */
 export async function captureScreenshot(
   opts: ExportOptions,
   tMs: number,

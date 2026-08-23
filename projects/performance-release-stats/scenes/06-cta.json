@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "Update now",
+  "text": {
+    "title": "Kestrel",
+    "subtitle": "Update now",
+    "source": "Measured on iPhone 15, n=200 runs"
+  },
+  "textStyle": {
+    "sourceFont": "JetBrains Mono",
+    "subtitleSize": 0.8
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "none"
+  }
+}

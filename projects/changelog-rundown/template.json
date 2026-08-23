@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Changelog Rundown",
+  "tagline": "A dated rundown of the whole release, regenerated each sprint by editing text.",
+  "category": "app-updates",
+  "tags": ["changelog", "release notes", "version", "bullets", "sprint", "overlay"],
+  "personas": ["pm", "developer"],
+  "level": "standard",
+  "tier": "safe",
+  "uses": ["overlay", "video-window", "text-motion", "background"],
+  "highlights": [
+    "Added, changed and fixed as three overlay slides",
+    "A floating window for the headline feature",
+    "Version and date set in mono"
+  ],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      { "scene": 0, "atMs": 1900 },
+      { "scene": 1, "atMs": 2600 },
+      { "scene": 2, "atMs": 1600 },
+      { "scene": 4, "atMs": 2800 }
+    ]
+  },
+  "order": 3,
+  "status": "stable"
+}

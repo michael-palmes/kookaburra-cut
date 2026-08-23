@@ -254,6 +254,7 @@ export function ScenesDrillIn({
               {timing?.index === scene.index ? (
                 <input
                   className="modal-input scene-manager-edit scene-manager-edit-duration"
+                  data-space-plays=""
                   value={timing.text}
                   // biome-ignore lint/a11y/noAutofocus: entered from the context menu, so it IS the focus target
                   autoFocus

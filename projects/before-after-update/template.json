@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Before / After Update",
+  "tagline": "The old way, the wipe, the new way, the number.",
+  "category": "app-updates",
+  "tags": ["before after", "comparison", "wipe", "redesign", "vertical", "short"],
+  "personas": ["marketer"],
+  "level": "standard",
+  "tier": "bold",
+  "uses": ["device", "compare", "text-motion", "background"],
+  "highlights": [
+    "One masked wipe carries the whole story",
+    "The before stays flat, the after takes your theme",
+    "Fourteen seconds, authored 9:16 first"
+  ],
+  "preview": {
+    "poster": 1,
+    "frames": [
+      { "scene": 0, "atMs": 1600 },
+      { "scene": 1, "atMs": 1600 },
+      { "scene": 2, "atMs": 2200 },
+      { "scene": 3, "atMs": 2000 }
+    ]
+  },
+  "order": 12,
+  "status": "stable"
+}

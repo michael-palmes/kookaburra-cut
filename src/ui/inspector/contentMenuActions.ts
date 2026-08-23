@@ -1,3 +1,4 @@
+import { isCompareChipGroupKey } from "../../engine/compareChipText";
 import type { ImageReconciliationOrigin } from "../../engine/imageReconciliationStore";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocObjectSpec } from "../../engine/sceneDocSchema";
@@ -62,6 +63,8 @@ export function contentMenuActions(row: SceneOverviewRowModel): ContentMenuActio
   if (!CONTENT_TYPES.has(row.type as SceneOverviewContentType)) return [];
   const actions: ContentMenuAction[] = ["edit"];
   const kind = row.selectionTarget?.kind;
+  // Chip rows are chrome: the comparison's own toggle adds and removes them.
+  if (kind === "text" && isCompareChipGroupKey(row.selectionTarget?.id ?? "")) return actions;
   if (
     kind === "text" ||
     kind === "device" ||

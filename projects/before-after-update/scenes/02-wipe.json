@@ -1,0 +1,174 @@
+{
+  "animatedTrack": "compare",
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "color": "#12171d",
+    "type": "color"
+  },
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "pose": {
+          "azimuthDeg": 0,
+          "distance": 5,
+          "elevationDeg": 0,
+          "target": [0, 0, 0]
+        },
+        "tMs": 3750
+      },
+      {
+        "id": "k2",
+        "pose": {
+          "azimuthDeg": 0,
+          "distance": 5,
+          "elevationDeg": 0,
+          "target": [0, 3.9517851094450487, 0]
+        },
+        "tMs": 4200
+      }
+    ],
+    "segments": [
+      {
+        "ease": "inOutQuad",
+        "from": "k1",
+        "to": "k2"
+      }
+    ]
+  },
+  "compare": {
+    "b": {
+      "background": {
+        "colors": ["#17121e", "#4e3465", "#7f48a7"],
+        "params": {
+          "density": 66,
+          "dotSize": 0.14,
+          "driftAngle": 120,
+          "pulse": 0.4,
+          "waveWidth": 0.9
+        },
+        "preset": "p7",
+        "shader": "dot-grid",
+        "speed": 0.7,
+        "type": "shader"
+      },
+      "media": {
+        "d1": {
+          "kind": "image",
+          "src": "assets/home-new-sample.jpg"
+        }
+      },
+      "themeId": "kookaburra-neon"
+    },
+    "chrome": {
+      "chips": true,
+      "grip": false,
+      "line": {
+        "colour": "text",
+        "softness": 0,
+        "width": 4
+      }
+    },
+    "mask": {
+      "angleDeg": 90,
+      "softness": 0.02,
+      "type": "linear"
+    },
+    "track": {
+      "keys": [
+        {
+          "id": "k1",
+          "pose": {
+            "value": 1
+          },
+          "tMs": 500
+        },
+        {
+          "id": "k2",
+          "pose": {
+            "value": 0.54
+          },
+          "tMs": 1500
+        },
+        {
+          "id": "k3",
+          "pose": {
+            "value": 0.5
+          },
+          "tMs": 2400
+        },
+        {
+          "id": "k4",
+          "pose": {
+            "value": 0
+          },
+          "tMs": 3317
+        }
+      ],
+      "segments": [
+        {
+          "ease": "inOutCubic",
+          "from": "k1",
+          "to": "k2"
+        },
+        {
+          "ease": "inOutSine",
+          "from": "k2",
+          "to": "k3"
+        },
+        {
+          "ease": "inOutQuad",
+          "from": "k3",
+          "to": "k4"
+        }
+      ]
+    },
+    "value": 1
+  },
+  "devices": [
+    {
+      "colour": "silver",
+      "id": "d1",
+      "media": {
+        "kind": "image",
+        "src": "assets/home-old-sample.jpg"
+      },
+      "model": "iphone-17-pro",
+      "motion": {
+        "preset": "none"
+      },
+      "placement": {
+        "position": [0, -0.3, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "shadow": "soft"
+    }
+  ],
+  "duration": {
+    "mode": "manual"
+  },
+  "lighting": {
+    "ambient": 0.4,
+    "sun": {
+      "azimuthDeg": 35,
+      "elevationDeg": 40,
+      "intensity": 1.8
+    }
+  },
+  "name": "The wipe",
+  "text": {
+    "afterLabel": "After",
+    "beforeLabel": "Before"
+  },
+  "textAnimation": {
+    "delivery": "all-at-once",
+    "in": "fade",
+    "out": "fade",
+    "staggerMs": 0
+  },
+  "themeId": "kookaburra-default",
+  "version": 1
+}

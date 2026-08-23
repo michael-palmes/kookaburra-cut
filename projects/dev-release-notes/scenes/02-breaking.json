@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "name": "Breaking",
+  "text": {
+    "title": "Breaking changes",
+    "subtitle": "Read this before you upgrade",
+    "bullets": "createClient needs a region\nCallbacks return a Result"
+  },
+  "textStyle": {
+    "bulletsFont": "JetBrains Mono"
+  },
+  "textAnimation": {
+    "in": "fade",
+    "out": "none",
+    "staggerMs": 160,
+    "delivery": "by-paragraph"
+  },
+  "frame": {
+    "cutout": {
+      "shape": "none"
+    },
+    "chip": {
+      "label": "Breaking",
+      "icon": "triangle-alert",
+      "colour": "#f5a524"
+    },
+    "background": "#0f141b",
+    "textAlign": "center"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "dot-grid",
+    "colors": ["#0f141b", "#2e405b", "#416198"],
+    "speed": 0.25,
+    "parallax": 0,
+    "params": {
+      "density": 50,
+      "dotSize": 0.19,
+      "pulse": 0.45,
+      "waveWidth": 0.5,
+      "driftAngle": 70
+    },
+    "preset": "p6"
+  }
+}

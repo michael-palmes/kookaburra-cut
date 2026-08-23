@@ -426,14 +426,7 @@ export function ChartDrillIn({
   const [tab, setTab] = useState<ChartTab>("graph");
   const [axisTab, setAxisTab] = useState<"value" | "category">("value");
   const [hoverCard, setHoverCard] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const dragBaseline = useRef<SceneDoc | null>(null);
-  useEffect(() => {
-    if (!confirmRemove) return;
-    const t = window.setTimeout(() => setConfirmRemove(false), 3000);
-    return () => window.clearTimeout(t);
-  }, [confirmRemove]);
-
   const chart = resolveChart(doc);
   if (!chart || !doc.chart) return null;
 
@@ -1536,21 +1529,12 @@ export function ChartDrillIn({
       <DrillBack
         label={backLabel}
         title="Chart"
-        onClick={() => {
-          setConfirmRemove(false);
-          onBack();
-        }}
+        onClick={onBack}
         actions={
           <DrillHeaderAction
             kind="remove"
-            label={confirmRemove ? "Confirm remove chart" : "Remove chart"}
-            armed={confirmRemove}
+            label="Remove chart"
             onClick={() => {
-              if (!confirmRemove) {
-                setConfirmRemove(true);
-                return;
-              }
-              setConfirmRemove(false);
               closeChartDataModal();
               void patchDoc(
                 (next) => {
@@ -1631,6 +1615,19 @@ export function ChartPlacementDrillIn({
     if (baseline) void commitFromBaseline(baseline, writePlacement(mutate));
     else void patchDoc(writePlacement(mutate), { history: "chart placement" });
   };
+  // A gesture that ends where it started commits nothing: put the baseline's placement back and release it, so the next commit can never build on a stale snapshot.
+  const abortDrag = (committed: boolean) => {
+    if (committed) return;
+    const baseline = dragBaseline.current;
+    dragBaseline.current = null;
+    if (!baseline) return;
+    void patchDoc(
+      (next) => {
+        if (next.chart) next.chart.placement = structuredClone(baseline.chart?.placement);
+      },
+      { history: false },
+    );
+  };
   const setAxis = (
     field: "position" | "rotationDeg",
     axis: number,
@@ -1681,6 +1678,7 @@ export function ChartPlacementDrillIn({
                 decimals={2}
                 onInput={(n) => setAxis("position", axis, n, false)}
                 onCommit={(n) => setAxis("position", axis, n, true)}
+                onDragEnd={abortDrag}
               />
             ))}
           </div>
@@ -1693,6 +1691,7 @@ export function ChartPlacementDrillIn({
                 decimals={1}
                 onInput={(n) => setAxis("rotationDeg", axis, n, false)}
                 onCommit={(n) => setAxis("rotationDeg", axis, n, true)}
+                onDragEnd={abortDrag}
               />
             ))}
           </div>
@@ -1712,6 +1711,7 @@ export function ChartPlacementDrillIn({
                   p.scale = Math.max(0.05, n);
                 })
               }
+              onDragEnd={abortDrag}
             />
           </div>
         </DrillGroup>

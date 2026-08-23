@@ -1,0 +1,53 @@
+{
+  "id": "whats-new-social-cut",
+  "name": "What's New (social cut)",
+  "version": 2,
+  "themeId": "kookaburra-midnight",
+  "formats": ["9:16", "16:9", "1:1", "4:5"],
+  "scenes": [
+    {
+      "file": "scenes/01-version-hook.tsx",
+      "durationMs": 1800,
+      "transition": {
+        "type": "whip",
+        "durationMs": 320
+      }
+    },
+    {
+      "file": "scenes/02-feature-one.tsx",
+      "durationMs": 3200,
+      "transition": {
+        "type": "slice",
+        "durationMs": 260
+      }
+    },
+    {
+      "file": "scenes/03-feature-two.tsx",
+      "durationMs": 3200,
+      "transition": {
+        "type": "slice",
+        "durationMs": 260
+      }
+    },
+    {
+      "file": "scenes/04-feature-three.tsx",
+      "durationMs": 3200,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/05-recap-panel.tsx",
+      "durationMs": 2400,
+      "transition": {
+        "type": "dip",
+        "durationMs": 500
+      }
+    },
+    {
+      "file": "scenes/06-update-cta.tsx",
+      "durationMs": 2200
+    }
+  ]
+}

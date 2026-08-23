@@ -9,7 +9,6 @@ import {
 } from "../../toolkit/device/catalog";
 import { effectiveDeviceShadowMode } from "../../toolkit/device/Device";
 import {
-  armDeviceRemoveConfirmation,
   changeFirstClassDeviceModel,
   DeviceDrillIn,
   type DeviceDrillInProps,
@@ -458,6 +457,136 @@ describe("DeviceDrillIn", () => {
   });
 });
 
+function comparisonDoc(): SceneDoc {
+  const next = deviceDoc();
+  next.compare = { b: {} };
+  return next;
+}
+
+describe("DeviceDrillIn comparison sides", () => {
+  it("shows no side selector on a scene without a comparison", () => {
+    renderToStaticMarkup(<DeviceDrillIn {...props(deviceDoc())} />);
+
+    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+      "Move",
+      "Rotate",
+      "Scale",
+    ]);
+  });
+
+  it("leads with the side selector and keeps the plain editor on Before", () => {
+    const html = renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(comparisonDoc())}
+        comparison={{ side: "a", onSideChange: () => undefined }}
+      />,
+    );
+
+    expect(captures.segments[0]?.options.map((option) => option.label)).toEqual([
+      "Before",
+      "After",
+    ]);
+    expect(html).toContain("Change device");
+    expect(html).toContain("Arranges all 3 devices");
+    expect(html).toContain("Push-in settle");
+    expect(html).not.toContain("Match the before side");
+    expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Left-right",
+      "Up-down",
+      "Depth",
+    ]);
+  });
+
+  it("narrows After to finish, screen and shadow", () => {
+    const html = renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(comparisonDoc())}
+        comparison={{ side: "b", onSideChange: () => undefined }}
+      />,
+    );
+
+    expect(html).toContain('aria-label="After device finish"');
+    expect(html).toContain('<legend class="visually-hidden">After device shadow</legend>');
+    expect(html).toContain("Same as before");
+    expect(html).not.toContain("Change device");
+    expect(html).not.toContain("Arranges all 3 devices");
+    expect(html).not.toContain("Push-in settle");
+    expect(html).not.toContain("Reset position");
+    expect(html).not.toContain("Match the before side");
+    expect(captures.sliders).toEqual([]);
+    expect(captures.options.map((option) => option.label)).toEqual([
+      "Soft contact",
+      "Long & smooth",
+      "Sun sweep",
+      "None",
+    ]);
+  });
+
+  it("writes After finish and shadow through compare.b, never through Before", async () => {
+    const doc = comparisonDoc();
+    let working = structuredClone(doc);
+    const histories: Array<string | false | undefined> = [];
+    const patchDoc: DevicePatchDoc = async (patch, options) => {
+      const next = structuredClone(working);
+      patch(next);
+      working = next;
+      histories.push(options?.history);
+    };
+
+    renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(doc)}
+        patchDoc={patchDoc}
+        comparison={{ side: "b", onSideChange: () => undefined }}
+      />,
+    );
+    captures.colours[0]?.onCommit("#ABCDEF");
+    captures.options.find((option) => option.label === "Sun sweep")?.onSelect();
+    await Promise.resolve();
+
+    expect(histories).toEqual(["after device finish", "after device shadow"]);
+    expect(working.compare?.b?.deviceAppearance?.d2).toEqual({
+      colour: "custom:#abcdef",
+      shadow: "sun",
+    });
+    expect(working.devices?.[1].colour).toBe(doc.devices?.[1].colour);
+    expect(working.devices?.[1].shadow).toBe("soft");
+  });
+
+  it("offers Match the before side once After owns an override", () => {
+    const doc = comparisonDoc();
+    if (doc.compare) doc.compare.b = { deviceAppearance: { d2: { shadow: "none" } } };
+
+    const html = renderToStaticMarkup(
+      <DeviceDrillIn {...props(doc)} comparison={{ side: "b", onSideChange: () => undefined }} />,
+    );
+
+    expect(html).toContain("Match the before side");
+    expect(captures.options.find((option) => option.label === "None")?.selected).toBe(true);
+    expect(doc.devices?.[1].shadow).toBe("soft");
+  });
+
+  it("names the After screen media and marks an inherited one", () => {
+    const doc = comparisonDoc();
+    const inherited = renderToStaticMarkup(
+      <DeviceDrillIn {...props(doc)} comparison={{ side: "b", onSideChange: () => undefined }} />,
+    );
+    expect(inherited).toContain("demo.mov");
+    expect(inherited).toContain("Same as before");
+
+    if (doc.compare) doc.compare.b = { media: { d2: { src: "assets/after.mp4", kind: "video" } } };
+    const overridden = renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(doc)}
+        screenMediaDetail={undefined}
+        comparison={{ side: "b", onSideChange: () => undefined }}
+      />,
+    );
+    expect(overridden).toContain("after.mp4");
+    expect(overridden).not.toContain("Same as before");
+  });
+});
+
 describe("device editor actions", () => {
   it("applies model compatibility through one live document write", async () => {
     let doc = deviceDoc();
@@ -524,17 +653,5 @@ describe("device editor actions", () => {
       nextDeviceId: null,
     });
     expect(selections).toEqual([]);
-  });
-
-  it("disarms the two-step remove confirmation", () => {
-    vi.useFakeTimers();
-    const disarm = vi.fn();
-    const cancel = armDeviceRemoveConfirmation(disarm);
-    vi.advanceTimersByTime(2_999);
-    expect(disarm).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(disarm).toHaveBeenCalledOnce();
-    cancel();
-    vi.useRealTimers();
   });
 });

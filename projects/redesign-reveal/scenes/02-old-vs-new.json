@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "name": "Old vs new",
+  "themeId": "kookaburra-default",
+  "text": {
+    "beforeLabel": "2.3",
+    "afterLabel": "2.4"
+  },
+  "backdrop": { "type": "none" },
+  "background": { "type": "gradient", "gradient": "brand", "parallax": 0.03 },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "silver",
+      "media": { "src": "assets/home-old-sample.jpg", "kind": "image" },
+      "placement": { "position": [0, -0.1, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
+      "motion": { "preset": "none" },
+      "shadow": "soft"
+    }
+  ],
+  "compare": {
+    "b": {
+      "themeId": "kookaburra-loft",
+      "background": {
+        "type": "gradient",
+        "spec": {
+          "type": "linear",
+          "angleDeg": 180,
+          "space": "oklch",
+          "stops": [
+            ["#EDE0CF", 0],
+            ["#EAD9C5", 0.25],
+            ["#E7D3BD", 0.5],
+            ["#E5CEB8", 0.75],
+            ["#E3C9B4", 1]
+          ]
+        },
+        "parallax": 0.03
+      },
+      "media": {
+        "hero": { "src": "assets/home-new-sample.jpg", "kind": "image" }
+      }
+    },
+    "mask": { "type": "linear", "angleDeg": 70, "softness": 0.02 },
+    "value": 0.9,
+    "track": {
+      "keys": [
+        { "id": "k1", "tMs": 1000, "pose": { "value": 0.9 } },
+        { "id": "k2", "tMs": 3550, "pose": { "value": 0.1 } }
+      ],
+      "segments": [{ "from": "k1", "to": "k2", "ease": "inOutQuad" }]
+    },
+    "chrome": {
+      "line": { "width": 2, "colour": "muted", "softness": 2 },
+      "grip": false,
+      "chips": true,
+      "tint": { "a": "background", "amount": 0.15 }
+    }
+  },
+  "animatedTrack": "compare"
+}

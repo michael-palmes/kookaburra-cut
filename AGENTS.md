@@ -25,6 +25,8 @@ pnpm format             # biome format --write .
 
 # Terminal-triggered (AFK) Verify ×2 / export: auto-runs in a fresh `pnpm tauri dev`,
 # writes ~/Kookaburra Cut/_autorun/last-run.json, exits 0=ok / 1=fail / 2=setup·timeout.
+# Runs queue behind other agents' runs and pick their own dev port, so they sit beside an
+# interactive `pnpm tauri dev` (port 1420 stays yours) instead of fighting it.
 # Bundled gate projects take NO prefix (showcase-tour); workspace fixtures take ws:.
 pnpm kookaburra:run --action verify --project ws:launch-2026 --aspect all
 pnpm kookaburra:run --action export --project ws:device-video-spike --aspect 16:9 --codec libx264
@@ -44,6 +46,10 @@ pnpm kookaburra:run --action screenshot --project ws:test-4 --scene 2
 # Required per template batch; with --app it proves the packaged resource layout.
 pnpm kookaburra:run --action create --project blank
 
+# Template card art: create each template in the throwaway root, capture its manifest's
+# four preview frames (16:9, 640px JPEG), promote into src/assets/template-previews/.
+pnpm kookaburra:run --action template-previews          # --project <id,...> selects
+
 # Release. Needs KOOKABURRA_SIGNING_IDENTITY + KOOKABURRA_NOTARY_PROFILE, the pinned
 # static sidecar (pnpm setup:ffmpeg:release), and a GUI session (Finder styles the DMG).
 pnpm package:signed    # build + Developer ID sign + notarise + staple: app and DMG
@@ -60,6 +66,15 @@ Theme/scene DATA variations don't need their own verifies; only changed CODE
 PATHS do. Full matrices (all projects × all aspects) are reserved for engine-wide
 constants, deliberate rebases and phase-closing gates. Full tier policy and the
 current baselines: `docs/determinism.md` ("Gate tiers", "Current baselines").
+
+**Multi-worktree runs:** every `kookaburra:run` takes a FIFO ticket in
+`~/Kookaburra Cut/_autorun/queue` and waits its turn, so parallel agents
+serialise instead of colliding (status lines name the run in front; `--no-wait`
+fails fast instead, `KOOKABURRA_QUEUE_TIMEOUT` seconds overrides the 30 min
+wait). Each run owns `_autorun/runs/<run-id>/`: its own last-run.json, dev.log,
+screenshots and preview batches, with the result copied back to the legacy
+`_autorun/last-run.json`. Autoruns launch in the background (no Dock icon, no
+focus steal, window parked bottom-right); `--foreground` opts out.
 
 Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-tauri/Cargo.toml` to typecheck without bundling).
 
@@ -117,6 +132,7 @@ Project skills are authored only in `.agents/skills`. Keep `.claude/skills` as t
 - **Keep `AGENTS.md` and `CLAUDE.md` byte-identical.** Update both in the same change and verify with `cmp -s AGENTS.md CLAUDE.md`.
 - **All text you write** (docs, comments, commit messages, PR descriptions, UI copy) is Australian English, short and concise, with no em dashes: use commas, colons, parentheses or full stops.
 - **IMPORTANT: comments are a last resort.** Keep them to a minimum, one line max, and only where they add context the code cannot show; remove any that do not.
+- **Icons by default in the UI**: EVERY toggle and option control in the app chrome (toggle rows, action rows, segmented options, preset/option chips, side selectors) carries a leading line icon; text-only is a justified exception, not a default (`docs/design.md` section 10).
 - PR descriptions ALWAYS follow the `kookaburra-pr-descriptions` skill: one fixed shape (summary, What changed, a Verification line when gated), under ~120 words, nothing that lives outside the repo.
 
 ## Current state
@@ -157,9 +173,11 @@ intuition before the probe settled it).
 - **Probe:** `pnpm kookaburra:run --action perf --project ws:<slug>` plays every
   scene under elimination passes (baseline / dpr-1 / no-shadows /
   no-transmission / frozen-media / half-media / no-devices / no-dof) and writes per-pass
-  fps and frame-time stats to `~/Kookaburra Cut/_autorun/last-run.json`. Needs
-  the app window visible (occluded WKWebView suspends rAF) and no other
-  `pnpm tauri dev` holding port 1420. New suspect: add a pass, don't theorise.
+  fps and frame-time stats to the run's `last-run.json`. It always runs
+  foreground on its own dev port, so the window is visible (an occluded
+  WKWebView suspends rAF), and it warns when another dev app is listening on
+  1420, since a busy machine skews the fps. New suspect: add a pass, don't
+  theorise.
 - **Method:** one lever per change, re-run the probe, keep only what the data
   keeps. Clip prefetching was reverted this way: decode work is main-thread, so
   reading ahead made heavy scenes worse. Any clip or render-path change then

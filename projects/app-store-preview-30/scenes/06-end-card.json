@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "End card",
+  "text": {
+    "title": "Kooka",
+    "subtitle": "Get it free"
+  },
+  "background": { "type": "none" },
+  "backdrop": { "type": "none" }
+}

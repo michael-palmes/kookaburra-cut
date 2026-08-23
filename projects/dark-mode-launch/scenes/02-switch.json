@@ -1,0 +1,111 @@
+{
+  "animatedTrack": "compare",
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "parallax": 0.03,
+    "spec": {
+      "angleDeg": 180,
+      "space": "oklch",
+      "stops": [
+        ["#ECEAE4", 0],
+        ["#E8E7E3", 0.25],
+        ["#E3E3E1", 0.5],
+        ["#DEDFE0", 0.75],
+        ["#DADCE0", 1]
+      ],
+      "type": "linear"
+    },
+    "type": "gradient"
+  },
+  "compare": {
+    "b": {
+      "background": {
+        "parallax": 0.03,
+        "spec": {
+          "angleDeg": 180,
+          "space": "oklch",
+          "stops": [["#000000", 0], ["#071021", 1]],
+          "type": "linear"
+        },
+        "type": "gradient"
+      },
+      "media": {
+        "d1": {
+          "kind": "image",
+          "src": "assets/home-dark-sample.jpg"
+        }
+      },
+      "themeId": "kookaburra-abyss"
+    },
+    "chrome": {
+      "chips": true,
+      "line": {
+        "colour": "accent",
+        "softness": 0.35,
+        "width": 3
+      }
+    },
+    "mask": {
+      "angleDeg": 180,
+      "softness": 0.01,
+      "type": "linear"
+    },
+    "track": {
+      "keys": [
+        {
+          "id": "k1",
+          "pose": {
+            "value": 1
+          },
+          "tMs": 500
+        },
+        {
+          "id": "k2",
+          "pose": {
+            "value": 0
+          },
+          "tMs": 2300
+        }
+      ],
+      "segments": [
+        {
+          "ease": "inOutCubic",
+          "from": "k1",
+          "to": "k2"
+        }
+      ]
+    },
+    "value": 1
+  },
+  "devices": [
+    {
+      "colour": "silver",
+      "id": "d1",
+      "media": {
+        "kind": "image",
+        "src": "assets/home-light-sample.jpg"
+      },
+      "model": "iphone-17-pro",
+      "motion": {
+        "preset": "none"
+      },
+      "placement": {
+        "position": [0, -0.3, 0],
+        "rotationDeg": [0, 0, 0],
+        "scale": 1
+      },
+      "shadow": "soft"
+    }
+  ],
+  "name": "The switch",
+  "text": {
+    "afterLabel": "Dark",
+    "beforeLabel": "Light",
+    "subtitle": "",
+    "title": ""
+  },
+  "themeId": "kookaburra-studio-white",
+  "version": 1
+}

@@ -385,13 +385,18 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
   if (doc) {
     const textValue = textAlignmentValue(doc, frame);
     if (input.textGroups !== undefined) {
-      for (const [index, group] of input.textGroups.entries()) {
-        const preview = managedTextGroupLabel(group);
+      let numbered = 0;
+      for (const group of input.textGroups) {
+        // Chrome groups (the comparison chips) carry a fixed name and never take a Text number.
+        const chromeLabel = group.label;
+        if (chromeLabel === undefined) numbered += 1;
         groupedRows.text.push({
           id: `text:${group.key}`,
           type: "text",
-          label: `Text ${index + 1}: ${preview}`,
-          value: groupTextAlignmentValue(group, textValue),
+          label: chromeLabel ?? `Text ${numbered}: ${managedTextGroupLabel(group)}`,
+          value: chromeLabel
+            ? group.items[0]?.text?.trim() || "Hidden"
+            : groupTextAlignmentValue(group, textValue),
           selectionTarget: { kind: "text", id: group.key },
           openRoute: "text",
         });

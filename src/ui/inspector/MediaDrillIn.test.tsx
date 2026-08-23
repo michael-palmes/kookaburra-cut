@@ -2,7 +2,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SceneDoc, SceneDocMediaSpec, SceneMediaHost } from "../../engine/sceneDocSchema";
 import {
-  armMediaRemoveConfirmation,
   duplicateFirstClassMedia,
   MediaDrillIn,
   type MediaDrillInProps,
@@ -516,22 +515,6 @@ describe("MediaDrillIn", () => {
 });
 
 describe("media inspector structural actions", () => {
-  it("self-disarms remove confirmation after three seconds", () => {
-    vi.useFakeTimers();
-    const onDisarm = vi.fn();
-    const cancel = armMediaRemoveConfirmation(onDisarm);
-
-    try {
-      vi.advanceTimersByTime(2_999);
-      expect(onDisarm).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(1);
-      expect(onDisarm).toHaveBeenCalledOnce();
-    } finally {
-      cancel();
-      vi.useRealTimers();
-    }
-  });
-
   it("duplicates once at execution time, retains the dormant placement and selects the copy", async () => {
     let working = mediaDoc();
     const histories: Array<string | false | undefined> = [];

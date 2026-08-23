@@ -66,6 +66,23 @@ describe("inspector redesign styles", () => {
     expect(styles).toMatch(/\.inspector-drill-actions \.btn svg\s*\{[^}]*flex: none;/s);
   });
 
+  it("seats the glyph beside the label on the comparison motion chips", () => {
+    expect(styles).toMatch(
+      /\.compare-preset-chip\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s,
+    );
+  });
+
+  it("gives the content section's add control an accent-filled pill", () => {
+    expect(styles).toMatch(
+      /\.inspector-scene-overview-add\s*\{[^}]*height: var\(--control-h-sm\);[^}]*margin-left: auto;[^}]*color: var\(--text-on-accent\);[^}]*background: var\(--accent\);[^}]*border-radius: var\(--radius-full\);/s,
+    );
+    expect(styles).toMatch(/\.inspector-scene-overview-add svg\s*\{[^}]*width: 14px;/s);
+    expect(styles).toMatch(
+      /\.inspector-scene-overview-group-add,\s*\.inspector-scene-overview-entity-open\s*\{[^}]*background: transparent;/s,
+    );
+    expect(styles).not.toContain(".inspector-scene-overview-add,");
+  });
+
   it("removes native fieldset chrome and overflow from Lighting controls", () => {
     expect(styles).toMatch(
       /\[data-lighting-screen\] fieldset\.option-grid,\s*\[data-lighting-screen\] \.lighting-sun-controls\s*\{[^}]*min-width: 0;[^}]*max-width: 100%;[^}]*margin: 0;[^}]*border: 0;/s,

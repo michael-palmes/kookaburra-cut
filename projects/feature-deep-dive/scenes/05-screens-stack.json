@@ -1,0 +1,125 @@
+{
+  "animatedTrack": "layeredScreenshot",
+  "background": {
+    "backing": {
+      "spec": {
+        "angleDeg": 180,
+        "space": "oklch",
+        "stops": [
+          ["#041A26", 0],
+          ["#051E2B", 0.25],
+          ["#05222F", 0.5],
+          ["#062733", 0.75],
+          ["#062733", 1]
+        ],
+        "type": "linear"
+      },
+      "type": "gradient"
+    },
+    "colors": ["#496489", "#72612f"],
+    "look": "dust-drift",
+    "params": {
+      "count": 900,
+      "drift": 1,
+      "innerRadius": 10,
+      "opacity": 0.95,
+      "outerRadius": 26,
+      "pointSize": 0.09,
+      "twinkle": 0.6
+    },
+    "preset": "p6",
+    "speed": 1,
+    "type": "scene3d"
+  },
+  "layeredScreenshot": {
+    "animation": {
+      "keys": [
+        {
+          "id": "k1",
+          "pose": {
+            "azimuthDeg": 0,
+            "elevationDeg": 0,
+            "pan": [0, 0],
+            "spread": 0.15,
+            "zoom": 0.67
+          },
+          "tMs": 200
+        },
+        {
+          "id": "k2",
+          "pose": {
+            "azimuthDeg": -26,
+            "elevationDeg": 12,
+            "pan": [-0.22, 0.1],
+            "spread": 1,
+            "zoom": 0.6
+          },
+          "tMs": 1800
+        }
+      ],
+      "segments": [
+        {
+          "ease": "inOutCubic",
+          "from": "k1",
+          "to": "k2"
+        }
+      ]
+    },
+    "layers": [
+      {
+        "id": "l1",
+        "items": [
+          {
+            "attach": null,
+            "id": "home",
+            "kind": "screen",
+            "media": "image",
+            "src": "assets/shot-a-sample.jpg"
+          }
+        ],
+        "name": "Home",
+        "visible": true,
+        "z": 0
+      },
+      {
+        "id": "l2",
+        "items": [
+          {
+            "attach": null,
+            "id": "detail",
+            "kind": "screen",
+            "media": "image",
+            "src": "assets/shot-b-sample.jpg"
+          }
+        ],
+        "name": "Detail",
+        "visible": true,
+        "z": 1
+      },
+      {
+        "id": "l3",
+        "items": [
+          {
+            "attach": null,
+            "id": "settings",
+            "kind": "screen",
+            "media": "image",
+            "src": "assets/shot-c-sample.jpg"
+          }
+        ],
+        "name": "Settings",
+        "visible": true,
+        "z": 2
+      }
+    ],
+    "pose": {
+      "azimuthDeg": 0,
+      "elevationDeg": 0,
+      "pan": [0, 0],
+      "spread": 0.15,
+      "zoom": 0.67
+    }
+  },
+  "name": "Every screen it touches",
+  "version": 1
+}

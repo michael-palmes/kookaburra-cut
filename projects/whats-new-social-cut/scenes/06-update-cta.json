@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "Update now",
+  "text": {
+    "title": "Update now",
+    "subtitle": "App Store"
+  },
+  "textStyle": {
+    "titleFont": "JetBrains Mono",
+    "subtitleSize": 0.85
+  }
+}

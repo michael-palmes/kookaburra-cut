@@ -9,6 +9,9 @@ export const TEMPLATE_MANIFEST_VERSION = 1;
 /** Committed stills per template, in hover order. */
 export const TEMPLATE_PREVIEW_COUNT = 4;
 
+/** Capture width of a committed still (16:9, so 640x360; the theme-preview size). */
+export const TEMPLATE_PREVIEW_WIDTH = 640;
+
 /** Pinned first in every view, outside the category rail, and the picker's default selection. */
 export const BLANK_TEMPLATE_ID = "blank";
 

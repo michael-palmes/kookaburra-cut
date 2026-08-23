@@ -51,7 +51,7 @@ import { resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import { ContextMenu, type ContextMenuState } from "../ui/ContextMenu";
 import { MediaBrowser } from "../ui/MediaBrowser";
 import { mediaCardMenu } from "../ui/mediaCardMenu";
-import { hasPendingTextEdit } from "../ui/textEditFocus";
+import { hasPendingTextEdit, spaceMeansPlayback } from "../ui/textEditFocus";
 import { useEscapeClose } from "../ui/useEscapeClose";
 import {
   bindEditorHistory,
@@ -1045,17 +1045,19 @@ export function EditorApp() {
     [doc, handleInsertClipAt, handleAddClip, commit],
   );
 
-  // Space plays/pauses; S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
+  // Space plays/pauses (committing the value first when it comes from the tap-size slider or the hold field, where a literal space means nothing); S/F split/freeze at the playhead; Delete/Backspace removes the selected clip; Escape deselects. Lives below canSplit/canFreeze so the dependency array can read them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) return;
+      const formControl = !!t && ["INPUT", "SELECT", "TEXTAREA"].includes(t.tagName);
+      if (formControl && !(e.key === " " && spaceMeansPlayback(t))) return;
       // The media panel has its own keyboard semantics, and an open fullscreen preview owns the transport keys (its VideoPlayer handles them).
       if (t?.closest(".editor-media-panel")) return;
       if (document.querySelector(".media-preview")) return;
       const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
       if (e.key === " ") {
         e.preventDefault();
+        if (formControl) t?.blur(); // Enter semantics: the field's own onBlur commits before playback starts
         togglePlay();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();

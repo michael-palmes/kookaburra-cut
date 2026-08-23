@@ -6,6 +6,7 @@ import type { FrameSpec } from "../../toolkit/frame/types";
 import {
   applyManagedTextStructuralAction,
   describeManagedTextMotion,
+  type ManagedTextStructuralAction,
   managedFrameIconValue,
   managedTextAlignment,
   managedTextGroupAlignment,
@@ -1450,6 +1451,164 @@ describe("managed text editor model", () => {
       ...baseline,
       durationMs: 900,
       ease: "outExpo",
+    });
+  });
+
+  describe("comparison chip rows", () => {
+    const chipsOn: SceneDoc = {
+      version: 1,
+      text: { title: "Owned" },
+      compare: { chrome: { chips: true } },
+    };
+
+    it("writes chip copy to the sidecar under both ownerships", () => {
+      expect(setManagedTextCopy(chipsOn, "beforeLabel", "Pre-launch")?.text).toEqual({
+        title: "Owned",
+        beforeLabel: "Pre-launch",
+      });
+
+      const managed: SceneDoc = {
+        ...chipsOn,
+        managedText: { items: [{ key: "title", type: "title", text: "Owned" }] },
+      };
+      const next = setManagedTextCopy(managed, "beforeLabel", "Pre-launch");
+      expect(next?.text?.beforeLabel).toBe("Pre-launch");
+      expect(next?.managedText?.items.map(({ key }) => key)).toEqual(["title"]);
+    });
+
+    it("writes chip colour to the usual style key", () => {
+      expect(setManagedTextColour(chipsOn, "afterLabel", "#ff8800")?.textStyle).toEqual({
+        afterLabelColor: "#ff8800",
+      });
+    });
+
+    it("keeps chips out of a takeover, its item count and its written groups", async () => {
+      const commit = vi.fn();
+      const confirmTakeover = vi.fn().mockResolvedValue(true);
+      await performManagedTextStructuralAction({
+        doc: chipsOn,
+        action: { type: "add-group" },
+        confirmTakeover,
+        commit,
+      });
+
+      expect(confirmTakeover).toHaveBeenCalledWith({
+        action: { type: "add-group" },
+        itemCount: 1,
+      });
+      const result = commit.mock.calls[0]?.[0] as { doc: SceneDoc };
+      expect(result.doc.managedText?.items.map(({ key }) => key)).toEqual(["title", "title-2"]);
+      expect(result.doc.managedText?.groups?.map((group) => group.key)).toEqual(["text", "text-2"]);
+    });
+
+    describe("a block item hand-authored under a chip key", () => {
+      const authored: SceneDoc = {
+        version: 1,
+        compare: { chrome: { chips: true } },
+        managedText: {
+          items: [
+            { key: "title", type: "title", text: "Owned" },
+            { key: "beforeLabel", type: "subtitle", text: "Authored by hand" },
+          ],
+        },
+        textStyle: { beforeLabelColor: "#ff8800" },
+        textAnimationOverrides: {
+          beforeLabel: { in: "fade-up", out: "none", staggerMs: 40 },
+        },
+      };
+      const keysAfter = (action: ManagedTextStructuralAction) =>
+        applyManagedTextStructuralAction(authored, action)?.doc.managedText?.items.map(
+          ({ key }) => key,
+        );
+
+      it("survives adding, reordering and removing its siblings", () => {
+        expect(keysAfter({ type: "add-item", itemType: "subtitle" })).toEqual([
+          "title",
+          "beforeLabel",
+          "subtitle",
+        ]);
+        expect(keysAfter({ type: "move-item", itemKey: "beforeLabel", toIndex: 0 })).toEqual([
+          "beforeLabel",
+          "title",
+        ]);
+        expect(keysAfter({ type: "add-group" })).toEqual(["title", "beforeLabel", "title-2"]);
+        expect(keysAfter({ type: "remove-item", itemKey: "title" })).toEqual(["beforeLabel"]);
+      });
+
+      it("keeps its side tables through a sibling removal, and copies them on duplicate", () => {
+        const removed = applyManagedTextStructuralAction(authored, {
+          type: "remove-item",
+          itemKey: "title",
+        })?.doc;
+        expect(removed?.textStyle).toEqual({ beforeLabelColor: "#ff8800" });
+        expect(removed?.textAnimationOverrides?.beforeLabel).toEqual({
+          in: "fade-up",
+          out: "none",
+          staggerMs: 40,
+        });
+
+        const duplicated = applyManagedTextStructuralAction(authored, {
+          type: "duplicate-item",
+          itemKey: "beforeLabel",
+        })?.doc;
+        expect(duplicated?.managedText?.items.map(({ key }) => key)).toEqual([
+          "title",
+          "beforeLabel",
+          "beforeLabel-2",
+        ]);
+        expect(duplicated?.textStyle?.["beforeLabel-2Color"]).toBe("#ff8800");
+        expect(duplicated?.textAnimationOverrides?.["beforeLabel-2"]).toEqual({
+          in: "fade-up",
+          out: "none",
+          staggerMs: 40,
+        });
+      });
+
+      it("joins the content group a structural action writes", () => {
+        const result = applyManagedTextStructuralAction(authored, {
+          type: "add-group",
+        })?.doc;
+
+        expect(result?.managedText?.groups).toEqual([
+          { key: "text", itemKeys: ["title", "beforeLabel"] },
+          { key: "text-2", itemKeys: ["title-2"] },
+        ]);
+      });
+
+      it("counts towards a takeover, while the appended chip row does not", async () => {
+        const commit = vi.fn();
+        const confirmTakeover = vi.fn().mockResolvedValue(true);
+        await performManagedTextStructuralAction({
+          doc: { version: 1, compare: { chrome: { chips: true } }, text: { title: "Owned" } },
+          registrations: [{ key: "beforeLabel", text: "Authored by hand" }],
+          action: { type: "add-item" },
+          confirmTakeover,
+          commit,
+        });
+
+        expect(confirmTakeover).toHaveBeenCalledWith({
+          action: { type: "add-item" },
+          itemCount: 2,
+        });
+        const result = commit.mock.calls[0]?.[0] as { doc: SceneDoc };
+        expect(result.doc.managedText?.items.map(({ key }) => key)).toEqual([
+          "beforeLabel",
+          "title",
+          "title-2",
+        ]);
+      });
+    });
+
+    it("refuses to remove or reorder a chip row", () => {
+      expect(
+        applyManagedTextStructuralAction(chipsOn, { type: "remove-item", itemKey: "beforeLabel" }),
+      ).toBeNull();
+      expect(
+        applyManagedTextStructuralAction(chipsOn, {
+          type: "remove-group",
+          groupKey: "compare-chip:beforeLabel",
+        }),
+      ).toBeNull();
     });
   });
 });

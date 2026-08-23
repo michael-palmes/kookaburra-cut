@@ -4,8 +4,8 @@ One scene rendered twice and composited under an animatable mask: side A
 ("before") is the scene itself, side B ("after") is the same scene with the
 `compare.b` overrides applied. Each side carries its own theme, background,
 staging, lighting, screen media, device colour and device shadow; only finished
-pixels mix (the cross-theme transition rule). The divider is data, sampled on
-the CPU, never time-derived in GLSL.
+pixels mix (the cross-theme transition rule). The divider, its position and its
+angle both, is data sampled on the CPU, never time-derived in GLSL.
 
 ## The sidecar block
 
@@ -26,19 +26,21 @@ itself; deleting the block leaves a valid plain scene):
   },
   "mask": {
     "type": "linear",          // linear | circle | radial | blend
-    "angleDeg": 90,            // linear: the LINE's angle (90 = vertical)
+    "angleDeg": 90,            // linear: the LINE's STATIC angle, 90 = vertical
     "center": [0.5, 0.5],      // circle/radial: uv centre
-    "softness": 0              // feathered edge half-width; 0 = hard
+    "softness": 0              // feathered edge half-width; 0 = hard, not blend
   },
   "value": 0.5,                // static divider when the track has no keys
   "track": {                   // the divider's keyed track (the camera model)
-    "keys": [{ "id": "k1", "tMs": 0, "pose": { "value": 1 } }],
+    // pose.angleDeg is optional and overrides mask.angleDeg from that key on
+    "keys": [{ "id": "k1", "tMs": 0, "pose": { "value": 1, "angleDeg": 60 } }],
     "segments": [{ "from": "k1", "to": "k2", "ease": "inOutCubic" }]
   },
   "chrome": {
     "line": { "width": 4, "colour": "accent", "softness": 0 },
-    "grip": true,              // linear masks only
-    "chips": true,             // labels from text.beforeLabel / text.afterLabel
+    // linear masks only; `true` is the legacy chevrons handle at size 1
+    "grip": { "size": 1, "style": "chevrons" },
+    "chips": true,             // real text content: text.beforeLabel / text.afterLabel
     "tint": { "b": "accent", "amount": 0.08 }
   }
 }
@@ -51,22 +53,53 @@ Rules:
   `shadow`. Model, placement, motion and lid remain shared with side A.
 - Chrome colours are THEME TOKEN names (`background | text | accent |
   muted`), resolved against the scene's theme at plan build; sizes are
-  1080-tall reference pixels so they hold across aspects.
+  1080-tall reference pixels so they hold across aspects. `line.colour`
+  also takes a `#rrggbb` hex, which resolves to itself (the picker writes
+  hex; old token docs keep resolving exactly as before). Three-digit hex
+  is rejected at parse, since `hexToSrgb` reads six.
+- **Grip styles:** `chrome.grip.style` is `chevrons` (the default ring and
+  chevrons), `dot` (a filled circle), `bar` (a rounded pill riding the
+  line) or `arrows` (two outward arrowheads, no ring), with `size` a
+  multiplier on the reference radius. `grip: true` still means chevrons at
+  size 1. The catalogue is `COMPARE_GRIP_CATALOG`
+  (`engine/compareCatalog.ts`) and the shader dispatch ids are
+  `COMPARE_GRIP_ID`; style 0 keeps the pre-style expressions character for
+  character, so legacy grips export byte-identically.
 - **Value semantics:** the divider's position along the mask's field with
   side A on the origin side. On the default vertical divider, value 0.3
   puts the line 30% in from the left with the before on its left. Circle
   and radial grow the AFTER window with value. `blend` reads value as the
   after's opacity. Revealing the after over time travels 1 to 0 on linear
   masks; a mirrored story is reciprocal keys or the angle plus 180.
+- **Angle semantics:** `mask.angleDeg` is the STATIC line angle. A key may
+  carry its own `pose.angleDeg`, which overrides it from that key on and
+  tweens with the value, so a linear divider can rotate as it reveals. Keys
+  without one hold the static angle, which is what keeps angle-free docs
+  exporting byte-identically. Angle interpolates numerically, with no
+  shortest-path wrap: 350 to 10 travels backwards through 180. The drill's
+  Angle field only starts writing per-key angles once the track has one (see
+  the first-write tilt below).
 - The track rides the shared KeyedTrack model: eased interpolation inside a
   segment, the latest key HOLDS outside (the camera semantics), the static
-  `value` with no keys. The divider lane shows in the timeline dock on
+  `value` and angle with no keys. Position and angle come off ONE walk
+  (`compareSampleAt`), under the one ease, so they can never resolve from
+  different segments. The divider lane shows in the timeline dock on
   every comparison scene, STACKED above the camera (or stack) lane: each
   lane is labelled, the divider's diamonds and segments carry their own
-  colour, and each has its own Add-animation button. `animatedTrack:
-  "compare"` is accepted but vestigial (the block's presence decides).
-- Sampling and derivation live in `engine/sceneCompare.ts`; the mask
-  catalogue in `engine/compareCatalog.ts`; presets in
+  colour, and each has its own Add-animation button. A seeded key copies
+  the applied pose, carrying an angle only on tracks that already animate
+  one. `animatedTrack: "compare"` is accepted but vestigial (the block's
+  presence decides).
+- `softness` feathers the mask edge, so `blend` has nothing to feather: it
+  cross-fades whole frames, and both the shader and `compareCoverageAt`
+  ignore softness there (the catalogue's `hasSoftness` is false, and the
+  drill hides the row).
+- Sampling and derivation live in `engine/sceneCompare.ts`
+  (`compareSampleAt` returns the value and angle pair, `compareValueAt` is
+  the value-only convenience); the mask catalogue in
+  `engine/compareCatalog.ts`, whose per-mask `needsAngle`, `needsCenter`,
+  `hasSoftness`, `hasLine` and `hasGrip` flags gate the drill's rows (the
+  same file holds the grip-style catalogue); presets in
   `engine/comparePresets.ts`.
 
 ## How it renders
@@ -80,10 +113,23 @@ Rules:
 - The compositor's compare branch reuses the transition machinery's A/B
   target pools: side A renders to target A, side B to target B (same camera
   pose, per-side root-scene state and lighting), then the compare material
-  masks them. Chrome (line, grip, tints) is procedural SDF in the same
-  pass; chips are troika text mounted INSIDE each side's subtree, so the
-  mask clips a chip with its own half and its opacity fades by
-  `compareCoverageAt` (the exact shader field maths).
+  masks them, its sweep uniform taking the frame's sampled angle. Chrome
+  (line, grip, tints) is procedural SDF in the same pass; chips are troika
+  text mounted INSIDE each side's subtree, so the mask clips a chip with
+  its own half and its opacity fades by `compareCoverageAt` on the same
+  sampled value and angle (the exact shader field maths).
+- **Chips are text content.** With `chrome.chips` on, `beforeLabel` and
+  `afterLabel` join the Content list as their own rows ("Before label",
+  "After label") and open the standard text drill, which writes copy to
+  `text` and typography to the usual `textStyle.<key>Color/Font/Size/
+  OffsetX/OffsetY/LineHeight/RotationDeg` keys. `engine/compareChipText.ts`
+  owns the contract (keys, defaults, row labels, style resolution) and
+  `CompareChips` applies it by the managed-text renderer's rules, so an
+  unstyled chip draws its coded defaults byte for byte. The chips are
+  HOST CHROME: they never enter `managedText.items`, so the safe-area
+  stack cannot render them and no structural action can move or delete
+  them; clearing a chip's copy hides it. The drill's chips toggle stays
+  the show/hide.
 - SDR composites in the display domain via `sampleDisplay`; the HDR (fx)
   variant tone-maps both samples, composites in display space and inverts
   back through the exact ACES pair.
@@ -117,13 +163,49 @@ The `comparison` scene kind scaffolds the two-device pair (labels
 yaws, scale 0.85; the template compresses x and scale in portrait). For a
 masked split on any scene: add the block above, or use the inspector's Add
 comparison (Scene tab), which seeds a visible default (line + chips). The
-Device, Theme, Background and Lighting inspectors each show a Before/After
-selector. The scene overview exposes Change and Edit video actions for both
-sides through a compact Before/After picker, while Device exposes those actions
-for its selected side. The Device selector also routes colour and shadow, with
-After inheriting Before until it is explicitly changed. After values write
-through `compare.b`; choosing Match before clears that override. Comparison
-video actions target device screens only.
+Device, Theme, Background and Lighting each show a Before/After selector at
+the top (the split-screen glyph, Before filling the left half), and all four
+share ONE side per scene, reset when the playhead moves to another scene.
+Device owns the screen media: Change and Edit video follow the selected side,
+and the After side narrows to finish, screen and shadow, because model,
+arrangement, position, motion and lid are shared. After values write through
+`compare.b` and inherit Before until they are explicitly changed; Match the
+before side clears the override. Editing an inherited After video creates that
+override rather than re-pointing Before. Comparison video actions target
+device screens only. The routing rules are pure functions in
+`ui/inspector/compareSideRouting.ts`.
+
+The Comparison drill runs the mask row and its parameters, then Motion
+presets, Divider line and Labels. It carries no side controls of its own,
+pointing at those four inspectors instead. Every mask option, motion chip,
+chrome toggle and grip style wears a leading line icon
+(`ui/inspector/compareIcons.tsx`: one 16px grid at 1.5px stroke in
+`currentColor`, the glyph maps pinned complete against the mask, preset and
+grip catalogues). Rows the mask cannot use never render: Edge softness hides
+on Ghost (`blend`), the line width and colour rows hide without a line, the
+grip-style picker shows only with a grip, and the whole Divider line group
+hides when the mask has neither line nor grip. Divider colour uses the app's
+colour picker (the text inspector's control) and writes `#rrggbb`; Reset puts
+the `accent` token back so the divider follows the theme.
+
+The Divider slider is always shown, and the Angle field (linear masks) beside
+it. With no keys they write the static `compare.value` and `mask.angleDeg`.
+With keys the Divider slider edits the key NEAREST the playhead (the earlier
+key takes a tie), live while dragging and one history entry on release. Angle
+starts wider: on a keyed track whose keys carry NO angle yet, the FIRST angle
+write tilts the whole comparison, setting `pose.angleDeg` on every key and
+`mask.angleDeg` with them, so one angle stays one angle instead of the edit
+turning into a rotation. Once any key carries an angle, later writes land on
+the nearest key's `pose.angleDeg` alone and the rotation is deliberate; keys
+still without one keep holding the static angle. The nearest-key maths is
+`ui/inspector/comparisonTarget.ts`. Key times, eases and everything richer
+belong to the timeline lane, which is the animation surface.
+
+Motion presets lead with Manual, which clears the keys (`compare.track`
+undefined, one history entry) and brings the static Divider slider back; the
+comparison and its lane stay, which is what separates Manual from Remove
+comparison. Manual is disabled with no keys; the other four chips write their
+keys as before.
 
 ## Gate fixture
 

@@ -17,8 +17,12 @@ import {
   effectiveDeviceShadowMode,
 } from "../../toolkit/device/Device";
 import type { V3 } from "../../toolkit/types";
+import { ComparisonSideIcon } from "../ComparisonSideIcon";
 import { ColourPicker } from "../colour/ColourPicker";
 import { OptionCard } from "../OptionCard";
+import { CompareSideSelector } from "./CompareSideSelector";
+import { activeCompareSide, type CompareSide, deviceSideRouting } from "./compareSideRouting";
+import { setCompareDeviceAppearance } from "./comparisonTarget";
 import {
   changeSceneDeviceModel,
   compatibleDeviceColour,
@@ -49,6 +53,12 @@ export type DevicePatchDocResult = (
   opts?: { history?: string | false },
 ) => Promise<boolean>;
 
+/** The Before/After routing this drill runs when the scene has a comparison: the shared side plus the setter that moves every comparison-aware inspector with it. */
+export interface DeviceComparisonProps {
+  side: CompareSide;
+  onSideChange: (side: CompareSide) => void;
+}
+
 export interface DeviceDrillInProps {
   doc: SceneDoc;
   deviceId: string;
@@ -56,6 +66,7 @@ export interface DeviceDrillInProps {
   screenMediaPreviewUrl?: string;
   screenMediaAspectRatio?: number;
   screenMediaDetail?: string;
+  comparison?: DeviceComparisonProps;
   settingsDisabled?: boolean;
   duplicateDisabled?: boolean;
   removeDisabled?: boolean;
@@ -86,7 +97,6 @@ export interface DeviceModelDrillInProps {
 type DeviceMutation = (doc: SceneDoc, device: SceneDocDeviceSpec) => void;
 type DeviceAxis = 0 | 1 | 2;
 
-const REMOVE_CONFIRMATION_MS = 3_000;
 const ZERO: V3 = [0, 0, 0];
 
 const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
@@ -139,11 +149,6 @@ export function deviceNavigationFocusTarget(
   }
   if (deviceIndex < deviceCount - 1) return "next";
   return deviceIndex > 0 ? "previous" : null;
-}
-
-export function armDeviceRemoveConfirmation(onDisarm: () => void): () => void {
-  const timeout = setTimeout(onDisarm, REMOVE_CONFIRMATION_MS);
-  return () => clearTimeout(timeout);
 }
 
 export async function changeFirstClassDeviceModel(
@@ -470,6 +475,7 @@ export function DeviceDrillIn({
   screenMediaPreviewUrl,
   screenMediaAspectRatio,
   screenMediaDetail,
+  comparison,
   settingsDisabled = false,
   duplicateDisabled = false,
   removeDisabled = false,
@@ -492,7 +498,6 @@ export function DeviceDrillIn({
   const previousDeviceButtonRef = useRef<HTMLButtonElement>(null);
   const nextDeviceButtonRef = useRef<HTMLButtonElement>(null);
   const pendingNavigationFocus = useRef<"previous" | "next" | null>(null);
-  const [removeConfirmDeviceId, setRemoveConfirmDeviceId] = useState<string | null>(null);
   const gizmoMode = useDeviceEditStore((state) => state.gizmoMode);
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
@@ -522,11 +527,6 @@ export function DeviceDrillIn({
     target?.focus({ preventScroll: true });
     pendingNavigationFocus.current = null;
   }, [device, deviceIndex, devices.length]);
-
-  useEffect(() => {
-    if (removeConfirmDeviceId == null) return;
-    return armDeviceRemoveConfirmation(() => setRemoveConfirmDeviceId(null));
-  }, [removeConfirmDeviceId]);
 
   if (!device) {
     return (
@@ -569,11 +569,6 @@ export function DeviceDrillIn({
 
   const remove = () => {
     if (removeDisabled) return;
-    if (removeConfirmDeviceId !== device.id) {
-      setRemoveConfirmDeviceId(device.id);
-      return;
-    }
-    setRemoveConfirmDeviceId(null);
     if (onRemove) {
       onRemove(device.id);
       return;
@@ -593,9 +588,51 @@ export function DeviceDrillIn({
     onSelectDevice(candidate.id);
   };
 
+  // The After side edits the narrow `compare.b` surface: finish, shadow and screen media. Model, arrangement, position, motion and lid stay shared, so they only render for Before.
+  const side = comparison ? activeCompareSide(doc, comparison.side) : "a";
+  const after = side === "b";
+  const routing = deviceSideRouting(doc, device.id, side);
+  const setAppearance = (
+    field: "colour" | "shadow",
+    value: string | DeviceShadowMode | undefined,
+  ) => {
+    if (settingsDisabled) return;
+    void patchDoc((next) => setCompareDeviceAppearance(next, device.id, field, value), {
+      history: `after device ${field === "colour" ? "finish" : "shadow"}`,
+    });
+  };
+  const setFinish = (value: string) => {
+    if (after) {
+      setAppearance("colour", value);
+      return;
+    }
+    patchDevice((_next, candidate) => {
+      candidate.colour = value;
+    }, "device finish");
+  };
+  const setShadow = (value: DeviceShadowMode) => {
+    if (after) {
+      setAppearance("shadow", value);
+      return;
+    }
+    patchDevice((_next, candidate) => {
+      candidate.shadow = value;
+    }, "device shadow");
+  };
+  const matchBefore = () => {
+    if (settingsDisabled) return;
+    void patchDoc(
+      (next) => {
+        setCompareDeviceAppearance(next, device.id, "colour", undefined);
+        setCompareDeviceAppearance(next, device.id, "shadow", undefined);
+      },
+      { history: "match the before side" },
+    );
+  };
+
   const modelId: DeviceId = resolveAvailableDeviceId(device.model);
   const model = DEVICE_CATALOG[modelId];
-  const colour = compatibleDeviceColour(modelId, device.colour);
+  const colour = compatibleDeviceColour(modelId, routing.colour);
   const customFinish = customColourHex(colour);
   const finishName = customFinish
     ? "Custom"
@@ -603,14 +640,18 @@ export function DeviceDrillIn({
       model.colours.find((finish) => finish.id === model.defaultColour)?.name ??
       "Default");
   const previewSrc = model.previews[colour] ?? model.previews[model.defaultColour];
-  const mediaName = device.media ? fileName(device.media.src) : "No screen media";
-  const mediaDetail =
+  const mediaName = routing.media ? fileName(routing.media.src) : "No screen media";
+  const mediaDetail = [
+    routing.inheritsMedia && routing.media ? "Same as before" : undefined,
     screenMediaDetail ??
-    (device.media
-      ? device.media.kind === "video"
-        ? "Video"
-        : "Image"
-      : "Choose an image or video");
+      (routing.media
+        ? routing.media.kind === "video"
+          ? "Video"
+          : "Image"
+        : "Choose an image or video"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const layout = doc.deviceLayout;
   const delta = layout?.devices?.[device.id];
   const position = layout ? (delta?.offset ?? ZERO) : (device.placement?.position ?? ZERO);
@@ -634,11 +675,8 @@ export function DeviceDrillIn({
             />
             <DrillHeaderAction
               kind="remove"
-              label={
-                removeConfirmDeviceId === device.id ? "Confirm remove device" : "Remove device"
-              }
+              label="Remove device"
               disabled={removeDisabled}
-              armed={removeConfirmDeviceId === device.id}
               onClick={remove}
             />
           </>
@@ -678,13 +716,17 @@ export function DeviceDrillIn({
       </div>
 
       <div className="inspector-drill-body inspector-section-body device-editor-body">
+        {comparison && <CompareSideSelector value={side} onChange={comparison.onSideChange} />}
         {notice != null && <div className="inspector-stub-note device-editor-notice">{notice}</div>}
         <section className="device-editor-preview-card" aria-label="Device preview and finish">
           <div className="device-editor-preview">
             <img src={previewSrc} alt={`${model.name}, ${finishName}`} draggable={false} />
             <span className="device-editor-finish-name">{finishName}</span>
           </div>
-          <fieldset className="device-editor-finishes" aria-label="Device finish">
+          <fieldset
+            className="device-editor-finishes"
+            aria-label={after ? "After device finish" : "Device finish"}
+          >
             <span className="device-editor-finishes-label">Finish</span>
             {model.colours.map((finish) => (
               <button
@@ -696,11 +738,7 @@ export function DeviceDrillIn({
                 aria-pressed={colour === finish.id}
                 title={finish.name}
                 disabled={settingsDisabled}
-                onClick={() =>
-                  patchDevice((_next, candidate) => {
-                    candidate.colour = finish.id;
-                  }, "device finish")
-                }
+                onClick={() => setFinish(finish.id)}
               />
             ))}
             <span className={`device-editor-custom-finish${customFinish ? " selected" : ""}`}>
@@ -709,24 +747,34 @@ export function DeviceDrillIn({
                 label="Custom finish"
                 pressed={customFinish !== undefined}
                 disabled={settingsDisabled}
-                onCommit={(hex) =>
-                  patchDevice((_next, candidate) => {
-                    candidate.colour = CUSTOM_COLOUR_PREFIX + hex.toLowerCase();
-                  }, "device finish")
-                }
+                onCommit={(hex) => setFinish(CUSTOM_COLOUR_PREFIX + hex.toLowerCase())}
               />
             </span>
           </fieldset>
-          <button
-            type="button"
-            className="device-editor-change-device"
-            disabled={settingsDisabled}
-            onClick={() => onChangeDevice(device.id)}
-          >
-            <DeviceGlyph />
-            <span>Change device</span>
-            <ChevronIcon />
-          </button>
+          {after ? (
+            routing.overridesAppearance && (
+              <button
+                type="button"
+                className="device-editor-change-device"
+                disabled={settingsDisabled}
+                onClick={matchBefore}
+              >
+                <ComparisonSideIcon side="before" size={16} />
+                <span>Match the before side</span>
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              className="device-editor-change-device"
+              disabled={settingsDisabled}
+              onClick={() => onChangeDevice(device.id)}
+            >
+              <DeviceGlyph />
+              <span>Change device</span>
+              <ChevronIcon />
+            </button>
+          )}
         </section>
 
         <MediaSourceGroup
@@ -736,247 +784,251 @@ export function DeviceDrillIn({
           name={mediaName}
           detail={mediaDetail}
           disabled={settingsDisabled}
-          editDisabled={!device.media}
+          editDisabled={!routing.editVideoTarget}
           onChange={() => onChangeScreenMedia(device.id)}
           onEdit={onEditScreenMedia ? () => onEditScreenMedia(device.id) : undefined}
         />
 
-        <DrillGroup label="Arrangement">
-          <button
-            type="button"
-            className="device-editor-arrangement-row"
-            disabled={settingsDisabled}
-            onClick={() => onOpenArrangement(device.id)}
-          >
-            <ArrangementIcon />
-            <span className="device-editor-arrangement-copy">
-              <span>{arrangementLabel}</span>
-              <span>
-                {devices.length === 1
-                  ? "Positions this device"
-                  : `Arranges all ${devices.length} devices`}
+        {!after && (
+          <DrillGroup label="Arrangement">
+            <button
+              type="button"
+              className="device-editor-arrangement-row"
+              disabled={settingsDisabled}
+              onClick={() => onOpenArrangement(device.id)}
+            >
+              <ArrangementIcon />
+              <span className="device-editor-arrangement-copy">
+                <span>{arrangementLabel}</span>
+                <span>
+                  {devices.length === 1
+                    ? "Positions this device"
+                    : `Arranges all ${devices.length} devices`}
+                </span>
               </span>
-            </span>
-            <ChevronIcon />
-          </button>
-        </DrillGroup>
+              <ChevronIcon />
+            </button>
+          </DrillGroup>
+        )}
 
         <fieldset className="device-editor-settings" disabled={settingsDisabled}>
           <legend className="visually-hidden">Device settings</legend>
-          <DrillGroup label="Position">
-            <SegmentedRow
-              ariaLabel="Device transform"
-              options={GIZMO_OPTIONS}
-              value={gizmoMode}
-              onChange={(mode) => useDeviceEditStore.getState().setGizmoMode(mode)}
-              className="device-editor-transform-modes"
-            />
-            <span className="drill-group-hint">
-              Drag the gizmo in the preview, or set values here.
-            </span>
-            <div className="device-editor-transform-controls">
-              {gizmoMode === "translate" &&
-                (["Left-right", "Up-down", "Depth"] as const).map((label, axis) => (
-                  <InspectorSliderRow
-                    key={label}
-                    icon={
-                      <DeviceControlIcon type={axis === 0 ? "x" : axis === 1 ? "y" : "depth"} />
-                    }
-                    label={label}
-                    value={position[axis]}
-                    min={axis === 0 ? -3 : axis === 1 ? -1.5 : -2}
-                    max={axis === 0 ? 3 : axis === 1 ? 1.5 : 2}
-                    step={0.01}
-                    onInput={(value) =>
-                      patchDevice(
-                        (next, candidate) =>
-                          setPositionAxis(next, candidate, axis as DeviceAxis, value),
-                        "device position",
-                        true,
-                      )
-                    }
-                    onCommit={(value) =>
-                      patchDevice(
-                        (next, candidate) =>
-                          setPositionAxis(next, candidate, axis as DeviceAxis, value),
-                        "device position",
-                      )
-                    }
-                  />
-                ))}
-              {gizmoMode === "rotate" && (
-                <>
-                  <fieldset className="device-editor-pose-grid">
-                    <legend className="visually-hidden">Visual pose</legend>
-                    {DEVICE_POSES.map((pose) => {
-                      const selected = sameVector(rotation, pose.rotationDeg);
-                      return (
-                        <button
-                          key={pose.id}
-                          type="button"
-                          className={`device-editor-pose-choice${selected ? " selected" : ""}`}
-                          aria-pressed={selected}
-                          onClick={() =>
-                            void patchDoc(
-                              (next) => setDeviceRotationPose(next, device.id, pose.rotationDeg),
-                              { history: "device pose" },
-                            )
-                          }
-                        >
-                          <DevicePoseIcon pose={pose.id} />
-                          <span>{pose.label}</span>
-                        </button>
-                      );
-                    })}
-                  </fieldset>
-                  {(["Tilt", "Turn", "Roll"] as const).map((label, axis) => (
+          {!after && (
+            <DrillGroup label="Position">
+              <SegmentedRow
+                ariaLabel="Device transform"
+                options={GIZMO_OPTIONS}
+                value={gizmoMode}
+                onChange={(mode) => useDeviceEditStore.getState().setGizmoMode(mode)}
+                className="device-editor-transform-modes"
+              />
+              <span className="drill-group-hint">
+                Drag the gizmo in the preview, or set values here.
+              </span>
+              <div className="device-editor-transform-controls">
+                {gizmoMode === "translate" &&
+                  (["Left-right", "Up-down", "Depth"] as const).map((label, axis) => (
                     <InspectorSliderRow
                       key={label}
                       icon={
-                        <DeviceControlIcon
-                          type={axis === 0 ? "tilt" : axis === 1 ? "turn" : "roll"}
-                        />
+                        <DeviceControlIcon type={axis === 0 ? "x" : axis === 1 ? "y" : "depth"} />
                       }
                       label={label}
-                      value={rotation[axis]}
-                      min={-180}
-                      max={180}
-                      step={1}
+                      value={position[axis]}
+                      min={axis === 0 ? -3 : axis === 1 ? -1.5 : -2}
+                      max={axis === 0 ? 3 : axis === 1 ? 1.5 : 2}
+                      step={0.01}
                       onInput={(value) =>
                         patchDevice(
                           (next, candidate) =>
-                            setRotationAxis(next, candidate, axis as DeviceAxis, value),
-                          "device rotation",
+                            setPositionAxis(next, candidate, axis as DeviceAxis, value),
+                          "device position",
                           true,
                         )
                       }
                       onCommit={(value) =>
                         patchDevice(
                           (next, candidate) =>
-                            setRotationAxis(next, candidate, axis as DeviceAxis, value),
-                          "device rotation",
+                            setPositionAxis(next, candidate, axis as DeviceAxis, value),
+                          "device position",
                         )
                       }
                     />
                   ))}
-                </>
-              )}
-              {gizmoMode === "scale" && (
+                {gizmoMode === "rotate" && (
+                  <>
+                    <fieldset className="device-editor-pose-grid">
+                      <legend className="visually-hidden">Visual pose</legend>
+                      {DEVICE_POSES.map((pose) => {
+                        const selected = sameVector(rotation, pose.rotationDeg);
+                        return (
+                          <button
+                            key={pose.id}
+                            type="button"
+                            className={`device-editor-pose-choice${selected ? " selected" : ""}`}
+                            aria-pressed={selected}
+                            onClick={() =>
+                              void patchDoc(
+                                (next) => setDeviceRotationPose(next, device.id, pose.rotationDeg),
+                                { history: "device pose" },
+                              )
+                            }
+                          >
+                            <DevicePoseIcon pose={pose.id} />
+                            <span>{pose.label}</span>
+                          </button>
+                        );
+                      })}
+                    </fieldset>
+                    {(["Tilt", "Turn", "Roll"] as const).map((label, axis) => (
+                      <InspectorSliderRow
+                        key={label}
+                        icon={
+                          <DeviceControlIcon
+                            type={axis === 0 ? "tilt" : axis === 1 ? "turn" : "roll"}
+                          />
+                        }
+                        label={label}
+                        value={rotation[axis]}
+                        min={-180}
+                        max={180}
+                        step={1}
+                        onInput={(value) =>
+                          patchDevice(
+                            (next, candidate) =>
+                              setRotationAxis(next, candidate, axis as DeviceAxis, value),
+                            "device rotation",
+                            true,
+                          )
+                        }
+                        onCommit={(value) =>
+                          patchDevice(
+                            (next, candidate) =>
+                              setRotationAxis(next, candidate, axis as DeviceAxis, value),
+                            "device rotation",
+                          )
+                        }
+                      />
+                    ))}
+                  </>
+                )}
+                {gizmoMode === "scale" && (
+                  <InspectorSliderRow
+                    icon={<DeviceControlIcon type="size" />}
+                    label="Size"
+                    value={scale}
+                    min={0.25}
+                    max={2}
+                    step={0.01}
+                    onInput={(value) =>
+                      patchDevice(
+                        (next, candidate) => setScale(next, candidate, value),
+                        "device size",
+                        true,
+                      )
+                    }
+                    onCommit={(value) =>
+                      patchDevice(
+                        (next, candidate) => setScale(next, candidate, value),
+                        "device size",
+                      )
+                    }
+                  />
+                )}
+              </div>
+              <ToggleRow
+                label="Rest on floor"
+                description="Sits the device on the staged floor. No effect without one."
+                checked={device.placement?.ground ?? false}
+                onChange={(checked) =>
+                  patchDevice((_next, candidate) => {
+                    candidate.placement = { ...candidate.placement };
+                    if (checked) candidate.placement.ground = true;
+                    else delete candidate.placement.ground;
+                  }, "device floor placement")
+                }
+              />
+              <button
+                type="button"
+                className="btn device-editor-reset-position"
+                onClick={() =>
+                  patchDevice(
+                    (next, candidate) => resetTransform(next, candidate),
+                    "reset device position",
+                  )
+                }
+              >
+                Reset position
+              </button>
+              {model.lid && (
                 <InspectorSliderRow
-                  icon={<DeviceControlIcon type="size" />}
-                  label="Size"
-                  value={scale}
-                  min={0.25}
-                  max={2}
-                  step={0.01}
+                  icon={<DeviceControlIcon type="lid" />}
+                  label="Lid angle"
+                  value={device.lidDeg ?? model.lid.defaultDeg}
+                  min={0}
+                  max={model.lid.openDeg}
+                  step={1}
                   onInput={(value) =>
                     patchDevice(
-                      (next, candidate) => setScale(next, candidate, value),
-                      "device size",
+                      (_next, candidate) => {
+                        candidate.lidDeg = value;
+                      },
+                      "device lid angle",
                       true,
                     )
                   }
                   onCommit={(value) =>
-                    patchDevice(
-                      (next, candidate) => setScale(next, candidate, value),
-                      "device size",
-                    )
+                    patchDevice((_next, candidate) => {
+                      candidate.lidDeg = value;
+                    }, "device lid angle")
                   }
                 />
               )}
-            </div>
-            <ToggleRow
-              label="Rest on floor"
-              description="Sits the device on the staged floor. No effect without one."
-              checked={device.placement?.ground ?? false}
-              onChange={(checked) =>
-                patchDevice((_next, candidate) => {
-                  candidate.placement = { ...candidate.placement };
-                  if (checked) candidate.placement.ground = true;
-                  else delete candidate.placement.ground;
-                }, "device floor placement")
-              }
-            />
-            <button
-              type="button"
-              className="btn device-editor-reset-position"
-              onClick={() =>
-                patchDevice(
-                  (next, candidate) => resetTransform(next, candidate),
-                  "reset device position",
-                )
-              }
-            >
-              Reset position
-            </button>
-            {model.lid && (
-              <InspectorSliderRow
-                icon={<DeviceControlIcon type="lid" />}
-                label="Lid angle"
-                value={device.lidDeg ?? model.lid.defaultDeg}
-                min={0}
-                max={model.lid.openDeg}
-                step={1}
-                onInput={(value) =>
-                  patchDevice(
-                    (_next, candidate) => {
-                      candidate.lidDeg = value;
-                    },
-                    "device lid angle",
-                    true,
-                  )
-                }
-                onCommit={(value) =>
-                  patchDevice((_next, candidate) => {
-                    candidate.lidDeg = value;
-                  }, "device lid angle")
-                }
-              />
-            )}
-          </DrillGroup>
+            </DrillGroup>
+          )}
 
-          <DrillGroup label="Motion">
-            <fieldset className="device-editor-motion-list">
-              <legend className="visually-hidden">Motion</legend>
-              {DEVICE_MOTIONS.map((motion) => {
-                const selected = (device.motion?.preset ?? "none") === motion.id;
-                return (
-                  <button
-                    type="button"
-                    key={motion.id}
-                    aria-pressed={selected}
-                    className={`device-editor-motion-choice${selected ? " selected" : ""}`}
-                    onClick={() =>
-                      patchDevice((_next, candidate) => {
-                        candidate.motion = { ...candidate.motion, preset: motion.id };
-                      }, "device motion")
-                    }
-                  >
-                    <DeviceMotionIcon preset={motion.id} />
-                    <span>{motion.label}</span>
-                  </button>
-                );
-              })}
-            </fieldset>
-            <span className="drill-group-hint">
-              Moves the device itself. For a cinematic move, animate the Camera instead.
-            </span>
-          </DrillGroup>
+          {!after && (
+            <DrillGroup label="Motion">
+              <fieldset className="device-editor-motion-list">
+                <legend className="visually-hidden">Motion</legend>
+                {DEVICE_MOTIONS.map((motion) => {
+                  const selected = (device.motion?.preset ?? "none") === motion.id;
+                  return (
+                    <button
+                      type="button"
+                      key={motion.id}
+                      aria-pressed={selected}
+                      className={`device-editor-motion-choice${selected ? " selected" : ""}`}
+                      onClick={() =>
+                        patchDevice((_next, candidate) => {
+                          candidate.motion = { ...candidate.motion, preset: motion.id };
+                        }, "device motion")
+                      }
+                    >
+                      <DeviceMotionIcon preset={motion.id} />
+                      <span>{motion.label}</span>
+                    </button>
+                  );
+                })}
+              </fieldset>
+              <span className="drill-group-hint">
+                Moves the device itself. For a cinematic move, animate the Camera instead.
+              </span>
+            </DrillGroup>
+          )}
 
           <DrillGroup label="Shadow">
             <fieldset className="option-grid device-editor-shadow-grid">
-              <legend className="visually-hidden">Device shadow</legend>
+              <legend className="visually-hidden">
+                {after ? "After device shadow" : "Device shadow"}
+              </legend>
               {DEVICE_SHADOWS.map((shadow) => (
                 <OptionCard
                   key={shadow.id}
                   label={shadow.label}
                   image={optionPreviewStill(`shadow-${shadow.id}`)}
-                  selected={effectiveDeviceShadowMode(device.shadow) === shadow.id}
-                  onSelect={() =>
-                    patchDevice((_next, candidate) => {
-                      candidate.shadow = shadow.id;
-                    }, "device shadow")
-                  }
+                  selected={effectiveDeviceShadowMode(routing.shadow) === shadow.id}
+                  onSelect={() => setShadow(shadow.id)}
                 />
               ))}
             </fieldset>

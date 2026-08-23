@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Tease",
+  "text": {
+    "title": "Something for Pro",
+    "subtitle": ""
+  },
+  "headerIcon": "assets/pro-badge-sample.png",
+  "textAnimation": {
+    "in": "scatter-scale",
+    "out": "fade",
+    "staggerMs": 30,
+    "stagger": "char",
+    "startScale": 0.86
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "mesh-gradient",
+    "preset": "p6",
+    "speed": 0.9
+  }
+}

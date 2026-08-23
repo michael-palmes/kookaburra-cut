@@ -1098,7 +1098,11 @@ The Export button opens the modal (`ui/ExportModal.tsx`; all maths in unit-pinne
   via the Rust `hash_file` command. All aspects identical ⇒ deterministic.
 - **Terminal-driven:** `pnpm kookaburra:run --action verify --project <id>
   --aspect all` runs the same gate headlessly and writes
-  `~/Kookaburra Cut/_autorun/last-run.json`.
+  `~/Kookaburra Cut/_autorun/runs/<run-id>/last-run.json`, the primary result;
+  the legacy `~/Kookaburra Cut/_autorun/last-run.json` is still written as a
+  copy. Runs queue behind each other (FIFO) instead of demanding the machine to
+  themselves, dev runs pick their own port, and the launch is backgrounded: no
+  Dock icon, no focus steal.
 - **On failure, the report localizes the divergence:** per-frame 8×8 tile hashes
   give the exact divergent frame ranges and where in the frame they differ; the
   bound clip-frame index per exported frame separates a stale texture bind from a
@@ -1140,15 +1144,15 @@ facts (2026-08-07) define its contract:
   barriers (`engine/macrotask.ts`); visible windows keep the proven setTimeout
   path. Neither yield primitive affects pixels, only wall time.
 
-The autorun surface (env-gated, cold-boot, single-instance) is unchanged;
-neither surface may regress the other.
+The autorun surface (env-gated, cold-boot, one run at a time via the FIFO run
+queue) is unchanged; neither surface may regress the other.
 
 ### Gate tiers: how much to run
 
-Verify runs are expensive (minutes per project-aspect, one app instance at a
-time). **Default to the smallest gate that covers the changed CODE PATHS:
-theme/scene DATA variations (colours, light params, text) do not add code paths
-and do not need their own verifies.**
+Verify runs are expensive (minutes per project-aspect, and the run queue
+serialises them across every worktree). **Default to the smallest gate that
+covers the changed CODE PATHS: theme/scene DATA variations (colours, light
+params, text) do not add code paths and do not need their own verifies.**
 
 - **Tier 0: statics (every change, free):** `pnpm vitest run` · `pnpm build` ·
   `pnpm lint`. Pure math (eases, presets, schemas, edit math) belongs in unit
@@ -1221,6 +1225,7 @@ rolling-gate project (`showcase-tour`):
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — | — | — |
+| `image-flip-spike` (image-orientation gate, eyeball it) | `ca4419d4…` | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
 | `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — | — | — |

@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
+import { type ReactNode, type Ref, useEffect, useRef } from "react";
 import { useImageEditStore } from "../../engine/imageEditStore";
 import type {
   SceneDoc,
@@ -144,13 +144,6 @@ const GIZMO_OPTIONS: SegmentedOption<"translate" | "rotate" | "scale">[] = [
   { value: "rotate", label: "Rotate", icon: <GizmoModeIcon mode="rotate" /> },
   { value: "scale", label: "Scale", icon: <GizmoModeIcon mode="scale" /> },
 ];
-
-const REMOVE_CONFIRMATION_MS = 3_000;
-
-export function armMediaRemoveConfirmation(onDisarm: () => void): () => void {
-  const timeout = setTimeout(onDisarm, REMOVE_CONFIRMATION_MS);
-  return () => clearTimeout(timeout);
-}
 
 function MediaControlIcon({ type }: { type: "x" | "y" | "depth" | "size" | "roll" }) {
   const glyph = {
@@ -408,7 +401,6 @@ export function MediaDrillIn({
 }: MediaDrillInProps) {
   const dragBaseline = useRef<SceneDoc | null>(null);
   const pendingGesture = useRef<(() => void) | null>(null);
-  const [removeConfirmMediaId, setRemoveConfirmMediaId] = useState<string | null>(null);
   const gizmoMode = useImageEditStore((state) => state.gizmoMode);
   const media = resolveSceneDocMedia(doc);
   const mediaIndex = media.findIndex((candidate) => candidate.id === mediaId);
@@ -423,11 +415,6 @@ export function MediaDrillIn({
     },
     [],
   );
-
-  useEffect(() => {
-    if (removeConfirmMediaId == null) return;
-    return armMediaRemoveConfirmation(() => setRemoveConfirmMediaId(null));
-  }, [removeConfirmMediaId]);
 
   if (!entry) {
     return (
@@ -511,11 +498,6 @@ export function MediaDrillIn({
   };
   const remove = () => {
     if (removeDisabled) return;
-    if (removeConfirmMediaId !== entry.id) {
-      setRemoveConfirmMediaId(entry.id);
-      return;
-    }
-    setRemoveConfirmMediaId(null);
     if (onRemove) {
       onRemove();
       return;
@@ -552,9 +534,8 @@ export function MediaDrillIn({
             />
             <DrillHeaderAction
               kind="remove"
-              label={removeConfirmMediaId === entry.id ? "Confirm remove media" : "Remove media"}
+              label="Remove media"
               disabled={removeDisabled}
-              armed={removeConfirmMediaId === entry.id}
               onClick={remove}
             />
           </>

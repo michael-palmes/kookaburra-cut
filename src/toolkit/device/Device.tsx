@@ -23,7 +23,6 @@ import {
   type Object3D,
   RGBAFormat,
   ShaderMaterial,
-  SRGBColorSpace,
   Vector2,
   Vector3,
 } from "three";
@@ -58,6 +57,7 @@ import { DeviceGizmo } from "./DeviceGizmo";
 import { type DevicePose, deviceGizmoMovedY } from "./gizmoCommit";
 import { resolveDeviceLayout } from "./layout";
 import { HIDDEN_NODES } from "./models";
+import { useScreenImageTexture } from "./screenTexture";
 import { deviceFittedHeight, resolveDeviceWorldAnchor } from "./worldAnchor";
 
 /** Media shown on the device screen. Videos ride the deterministic clip-frame pipeline. */
@@ -300,13 +300,10 @@ function ScreenImageLoaded(props: {
   screenAspect: number;
 }) {
   const { url, material, screens, screenAspect } = props;
-  const tex = useTexture(url);
+  const loaded = useTexture(url);
+  const tex = useScreenImageTexture(loaded);
 
   useLayoutEffect(() => {
-    // Match the loader's colour space and the glTF flipY convention (DeviceMockup precedent).
-    tex.colorSpace = SRGBColorSpace;
-    tex.flipY = false;
-    tex.needsUpdate = true;
     material.map = tex;
     material.color.set(0xffffff);
     material.needsUpdate = true;

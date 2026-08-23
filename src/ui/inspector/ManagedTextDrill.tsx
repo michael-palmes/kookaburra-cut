@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import {
   deriveManagedTextModel,
+  isChromeManagedTextGroup,
   resolveManagedTextGroups,
   type VirtualManagedTextOptions,
   type VirtualManagedTextRegistration,
@@ -237,7 +238,8 @@ function TextAlignmentIcon({ align }: { align: SceneTextAlign }) {
   );
 }
 
-function TextControlIcon({
+/** The text drill's control glyphs; `colour` is shared with the comparison drill's divider colour row, which wears the same layout. */
+export function TextControlIcon({
   type,
 }: {
   type: "gap" | "indent" | "motion" | "spacing" | "font" | "colour";
@@ -451,11 +453,14 @@ export function ManagedTextDrill({
 }: ManagedTextDrillProps) {
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
-  const groups = resolveManagedTextGroups(model.items, doc.managedText?.groups);
+  const groups = resolveManagedTextGroups(model.items, doc.managedText?.groups, model.chromeKeys);
   const selectedGroup = selectedManagedTextGroup(groups, selectedItemKey, requestedGroupKey);
   const groupItems = selectedGroup?.items ?? [];
   const isSingleItemGroup = groupItems.length === 1;
   const selected = groupItems.find((item) => item.key === selectedItemKey) ?? groupItems[0] ?? null;
+  // Host chrome (the comparison chips) owns copy and style only: it has no group, no type and no reveal of its own.
+  const chromeGroup = selectedGroup ? isChromeManagedTextGroup(selectedGroup) : false;
+  const chromeItem = selected ? model.chromeKeys.includes(selected.key) : false;
   const resolvedVirtualOptions = optionsFor(doc);
   const legacyIcon = resolvedVirtualOptions.icon ?? doc.headerIcon;
   const legacyIconKey = legacyIcon ? (resolvedVirtualOptions.iconKey ?? "icon") : null;
@@ -475,7 +480,6 @@ export function ManagedTextDrill({
   const [itemDragVisual, setItemDragVisual] = useState<PointerReorderDrag | null>(null);
   const [pointDragVisual, setPointDragVisual] = useState<PointerReorderDrag | null>(null);
   const [menu, setMenu] = useState<ManagedTextMenu | null>(null);
-  const [removeGroupArmedKey, setRemoveGroupArmedKey] = useState<string | null>(null);
   const iconWriteRef = useRef<symbol | null>(null);
   const [iconWriteBusy, setIconWriteBusy] = useState(false);
   const mountedRef = useRef(true);
@@ -495,11 +499,6 @@ export function ManagedTextDrill({
       mountedRef.current = false;
     };
   }, []);
-  useEffect(() => {
-    if (!removeGroupArmedKey) return;
-    const timeout = window.setTimeout(() => setRemoveGroupArmedKey(null), 3000);
-    return () => window.clearTimeout(timeout);
-  }, [removeGroupArmedKey]);
   useEffect(() => {
     if (!pendingPointFocus) return;
     const frame = window.requestAnimationFrame(() => {
@@ -1021,7 +1020,7 @@ export function ManagedTextDrill({
         title="Text"
         onClick={onBack}
         actions={
-          selectedGroup ? (
+          selectedGroup && !chromeGroup ? (
             <>
               <DrillHeaderAction
                 kind="duplicate"
@@ -1033,22 +1032,11 @@ export function ManagedTextDrill({
               />
               <DrillHeaderAction
                 kind="remove"
-                label={
-                  removeGroupArmedKey === selectedGroup.key
-                    ? "Confirm remove text group"
-                    : "Remove text group"
-                }
+                label="Remove text group"
                 disabled={disabled}
-                armed={removeGroupArmedKey === selectedGroup.key}
-                onClick={() => {
-                  const removeGroupArmed = removeGroupArmedKey === selectedGroup.key;
-                  if (!removeGroupArmed) {
-                    setRemoveGroupArmedKey(selectedGroup.key);
-                    return;
-                  }
-                  setRemoveGroupArmedKey(null);
-                  void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
-                }}
+                onClick={() =>
+                  void runStructural({ type: "remove-group", groupKey: selectedGroup.key })
+                }
               />
             </>
           ) : undefined
@@ -1060,7 +1048,7 @@ export function ManagedTextDrill({
             {notice}
           </p>
         )}
-        {isSingleItemGroup ? (
+        {chromeGroup ? null : isSingleItemGroup ? (
           <section className="text-inspector-single-controls" aria-label="Text controls">
             <div className="text-inspector-section-heading">
               <span className="drill-group-label">Alignment</span>
@@ -1235,16 +1223,18 @@ export function ManagedTextDrill({
               className="text-inspector-element-editor"
               aria-label={`${itemLabel(selected.type)} element`}
             >
-              <SegmentedRow
-                className="text-inspector-type-segments"
-                ariaLabel="Element type"
-                options={TYPE_OPTIONS}
-                value={selected.type}
-                disabled={disabled}
-                onChange={(itemType) =>
-                  void runStructural({ type: "change-type", itemKey: selected.key, itemType })
-                }
-              />
+              {!chromeItem && (
+                <SegmentedRow
+                  className="text-inspector-type-segments"
+                  ariaLabel="Element type"
+                  options={TYPE_OPTIONS}
+                  value={selected.type}
+                  disabled={disabled}
+                  onChange={(itemType) =>
+                    void runStructural({ type: "change-type", itemKey: selected.key, itemType })
+                  }
+                />
+              )}
               <div className="text-inspector-element-fields">
                 {(selected.type === "title" || selected.type === "subtitle") && (
                   <CopyField
@@ -1663,7 +1653,7 @@ export function ManagedTextDrill({
               </DrillGroup>
             )}
 
-            {!selectedIconNeedsTakeover && (
+            {!selectedIconNeedsTakeover && !chromeItem && (
               <DrillGroup label="Motion">
                 <ActionRow
                   icon={<TextControlIcon type="motion" />}

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "name": "Frame rate",
+  "text": {
+    "title": "Median frame rate"
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 0,
+    "delivery": "all-at-once"
+  },
+  "background": {
+    "type": "shader",
+    "shader": "graph-grid",
+    "colors": ["#eef5f6", "#e8f2f2", "#e1efef", "#ecf3f3"],
+    "speed": 0.25,
+    "params": {
+      "density": 12,
+      "lineWeight": 0.4,
+      "highlightWidth": 0.35,
+      "fillDensity": 0.18,
+      "cadence": 0.25
+    },
+    "preset": "p1"
+  },
+  "backdrop": {
+    "type": "none"
+  },
+  "chart": {
+    "type": "area",
+    "dimension": "2d",
+    "mount": "hero",
+    "data": {
+      "categories": ["2.1", "2.2", "2.3", "2.4"],
+      "series": [
+        {
+          "id": "s1",
+          "name": "Median fps",
+          "values": [46, 51, 54, 59]
+        }
+      ]
+    },
+    "style": {
+      "preset": "boardroom",
+      "scale": 0.94
+    },
+    "axis": {
+      "value": {
+        "name": "Median frames per second, last four releases",
+        "min": 0,
+        "max": 60,
+        "steps": 3,
+        "format": {
+          "decimals": 0
+        },
+        "gridlines": {
+          "visible": true,
+          "style": "hair"
+        }
+      },
+      "category": {
+        "name": "Release"
+      }
+    },
+    "labels": {
+      "legend": {
+        "visible": false
+      },
+      "values": {
+        "visible": true,
+        "location": "above",
+        "countUp": true,
+        "format": {
+          "decimals": 0
+        }
+      }
+    },
+    "animation": {
+      "preset": "draw",
+      "delivery": "series",
+      "staggerMs": 120,
+      "durationMs": 900,
+      "from": "start"
+    }
+  },
+  "animatedTrack": "chart"
+}

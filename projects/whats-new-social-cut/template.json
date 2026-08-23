@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "What's New (social cut)",
+  "tagline": "Name the version, show three shipped things, end on the update CTA.",
+  "category": "app-updates",
+  "tags": ["release", "changelog", "social", "vertical", "feature cards", "version"],
+  "personas": ["marketer", "pm"],
+  "level": "standard",
+  "tier": "bold",
+  "uses": ["device", "overlay", "text-motion", "background"],
+  "highlights": [
+    "Three feature cards, one screen recording each",
+    "Authored 9:16 first, exports all four aspects",
+    "Reads with the sound off"
+  ],
+  "preview": {
+    "poster": 0,
+    "frames": [
+      { "scene": 0, "atMs": 1400 },
+      { "scene": 1, "atMs": 2600 },
+      { "scene": 4, "atMs": 1800 },
+      { "scene": 5, "atMs": 1700 }
+    ]
+  },
+  "order": 1,
+  "status": "stable"
+}

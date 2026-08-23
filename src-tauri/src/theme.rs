@@ -1,11 +1,11 @@
-//! Workspace themes: `<workspaceRoot>/themes/<slug>/theme.json`, user-created theme documents referenced by `ws:<slug>` ids (the workspace-project namespace pattern); the frontend owns parsing/validation (`src/theme/schema.ts`, one schema implementation), these commands only move text, plus the write path (`write_theme`, the theme wizard) and the theme-preview stores: the autorun batch renders bundled previews to `~/Kookaburra Cut/_autorun/theme-previews/` (the wrapper script copies them into the repo), and user-theme previews cache app-globally under `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON (the media-cache pattern); listing failures degrade to "no themes"/"no previews", never errors (the workspace.rs philosophy).
+//! Workspace themes: `<workspaceRoot>/themes/<slug>/theme.json`, user-created theme documents referenced by `ws:<slug>` ids (the workspace-project namespace pattern); the frontend owns parsing/validation (`src/theme/schema.ts`, one schema implementation), these commands only move text, plus the write path (`write_theme`, the theme wizard) and the theme-preview stores: the autorun batch renders bundled previews to `<run result dir>/theme-previews/` (the wrapper script copies them into the repo), and user-theme previews cache app-globally under `$APPDATA/cache/theme-previews/<key>/` keyed by a content hash of the theme JSON (the media-cache pattern, staged then renamed so a second instance never sees a part-set); listing failures degrade to "no themes"/"no previews", never errors (the workspace.rs philosophy).
 
 use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 
-use crate::workspace::{require_root, validate_slug, SettingsState, WORKSPACE_DIR_NAME};
+use crate::workspace::{require_root, validate_slug, SettingsState};
 
 /// Newest theme-document version this build can rewrite (mirrors `THEME_DOC_VERSION` in `src/theme/schema.ts`).
 const THEME_DOC_VERSION: u64 = 2;
@@ -121,18 +121,12 @@ fn preview_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
         .join("theme-previews"))
 }
 
-/// Where the bundled-preview autorun batch lands (`<workspace>/_autorun/theme-previews`); the `kookaburra:run` wrapper copies these into `src/assets/theme-previews/` for commit.
-fn preview_autorun_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(WORKSPACE_DIR_NAME)
-        .join("_autorun")
-        .join("theme-previews"))
+/// Where a bundled-preview autorun batch lands (`<run result dir>/<dir>`); the `kookaburra:run` wrapper copies these into `src/assets/` for commit.
+fn preview_autorun_root(app: &AppHandle, dir: &str) -> Result<PathBuf, String> {
+    Ok(crate::autorun_result_dir(app)?.join(dir))
 }
 
-/// Persist one theme-preview JPEG; bytes arrive as the raw invoke body (the `write_snapshot` pattern), headers route it: `x-kookaburra-kind` = `autorun` (the bundled batch) or `cache` (a user theme, key = content hash), `x-kookaburra-key` names the theme folder, `x-kookaburra-index` is the 1-based scene index.
+/// Persist one preview JPEG; bytes arrive as the raw invoke body (the `write_snapshot` pattern), headers route it: `x-kookaburra-kind` = `autorun` (the bundled theme batch), `template` (the template card-art batch) or `cache` (a user theme, key = content hash), `x-kookaburra-key` names the folder, `x-kookaburra-index` is the 1-based scene index.
 #[tauri::command]
 pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Result<(), String> {
     let header = |name: &str| -> Result<String, String> {
@@ -163,16 +157,28 @@ pub fn write_theme_preview(app: AppHandle, request: tauri::ipc::Request) -> Resu
         return Err("theme preview too large".into());
     }
     let base = match kind.as_str() {
-        "autorun" => preview_autorun_root(&app)?,
+        "autorun" => preview_autorun_root(&app, "theme-previews")?,
+        "template" => preview_autorun_root(&app, "template-previews")?,
         "cache" => preview_cache_root(&app)?,
         other => return Err(format!("unknown preview kind {other:?}")),
     };
     let dir = base.join(&key);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join(format!("{index}.jpg")), bytes).map_err(|e| e.to_string())
+    if kind != "cache" {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return std::fs::write(dir.join(format!("{index}.jpg")), bytes).map_err(|e| e.to_string());
+    }
+    // The app-global cache is shared with any second instance, so a key dir appears only once whole: frames accumulate in a staging sibling that is renamed into place on the last of the set.
+    let staging = crate::staging_sibling(&dir)?;
+    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    std::fs::write(staging.join(format!("{index}.jpg")), bytes).map_err(|e| e.to_string())?;
+    let whole = (1..=PREVIEWS_PER_THEME).all(|i| staging.join(format!("{i}.jpg")).is_file());
+    if whole {
+        crate::commit_staged_dir(&staging, &dir)?;
+    }
+    Ok(())
 }
 
-/// Persist one option-preview frame (the picker preview generator); bytes arrive as the raw invoke body, `x-kookaburra-set` names the option set (e.g. `textanim-fade-scale`), `x-kookaburra-index` is the 1-based frame number (stills = 1; clips = the whole zero-padded sequence the wrapper encodes). Frames land at `<workspace>/_autorun/option-previews/<set>/NNN.jpg`; the `kookaburra:run` wrapper promotes them into `src/assets/option-previews/` for commit.
+/// Persist one option-preview frame (the picker preview generator); bytes arrive as the raw invoke body, `x-kookaburra-set` names the option set (e.g. `textanim-fade-scale`), `x-kookaburra-index` is the 1-based frame number (stills = 1; clips = the whole zero-padded sequence the wrapper encodes). Frames land at `<run result dir>/option-previews/<set>/NNN.jpg`; the `kookaburra:run` wrapper promotes them into `src/assets/option-previews/` for commit.
 #[tauri::command]
 pub fn write_option_preview(app: AppHandle, request: tauri::ipc::Request) -> Result<(), String> {
     let header = |name: &str| -> Result<String, String> {
@@ -201,12 +207,7 @@ pub fn write_option_preview(app: AppHandle, request: tauri::ipc::Request) -> Res
     if bytes.len() > 2 * 1024 * 1024 {
         return Err("option preview too large".into());
     }
-    let dir = app
-        .path()
-        .home_dir()
-        .map_err(|e| e.to_string())?
-        .join(WORKSPACE_DIR_NAME)
-        .join("_autorun")
+    let dir = crate::autorun_result_dir(&app)?
         .join("option-previews")
         .join(&set);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

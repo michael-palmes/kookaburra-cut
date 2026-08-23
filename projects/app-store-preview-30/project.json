@@ -1,0 +1,53 @@
+{
+  "id": "app-store-preview-30",
+  "name": "App Store Preview 30",
+  "version": 2,
+  "themeId": "kookaburra-studio-white",
+  "formats": ["9:16"],
+  "scenes": [
+    {
+      "file": "scenes/01-cold-open.tsx",
+      "durationMs": 3200,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/02-claim-over-capture.tsx",
+      "durationMs": 4400,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/03-flow-one.tsx",
+      "durationMs": 3400,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/04-flow-two.tsx",
+      "durationMs": 3400,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/05-flow-three.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 400
+      }
+    },
+    {
+      "file": "scenes/06-end-card.tsx",
+      "durationMs": 3600
+    }
+  ]
+}

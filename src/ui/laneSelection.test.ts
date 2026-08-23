@@ -3,10 +3,12 @@ import { useCameraEditStore } from "../engine/cameraEditStore";
 import { useChartTrackEditStore } from "../engine/chartTrackEditStore";
 import { useCompareEditStore } from "../engine/compareEditStore";
 import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
+import { useLightingEditStore } from "../engine/lightingEditStore";
 import {
   animationLaneMasterOpen,
   clearOtherLaneSelections,
   clearSecondaryLaneSelections,
+  laneSelectionActive,
 } from "./laneSelection";
 
 const selectAll = () => {
@@ -54,6 +56,30 @@ describe("clearOtherLaneSelections", () => {
     clearOtherLaneSelections("camera");
     expect(useCompareEditStore.getState().selectedSegment).toBeNull();
     expect(useLayeredScreenshotEditStore.getState().selectedSegment).toBeNull();
+  });
+});
+
+describe("laneSelectionActive", () => {
+  beforeEach(() => {
+    clearOtherLaneSelections("camera");
+    useCameraEditStore.getState().select(null, null);
+  });
+
+  it("reports nothing live once every lane is cleared", () => {
+    expect(laneSelectionActive()).toBe(false);
+  });
+
+  it("reports a live keyframe selection in any lane", () => {
+    selectAll();
+    expect(laneSelectionActive()).toBe(true);
+    clearOtherLaneSelections("lighting");
+    useLightingEditStore.getState().select("k5", null);
+    expect(laneSelectionActive()).toBe(true);
+  });
+
+  it("reports a segment selection, which carries no key id", () => {
+    useCompareEditStore.getState().select(null, 2);
+    expect(laneSelectionActive()).toBe(true);
   });
 });
 

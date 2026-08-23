@@ -1,0 +1,37 @@
+{
+  "backdrop": {
+    "type": "none"
+  },
+  "background": {
+    "src": "assets/shot-a-sample.jpg",
+    "type": "image"
+  },
+  "frame": {
+    "chip": {
+      "colour": "#2fb170",
+      "icon": "circle-check",
+      "label": "Added"
+    },
+    "cutout": {
+      "inset": 0.06,
+      "radius": 0.1,
+      "shape": "rounded-rect",
+      "side": "end",
+      "size": 0.33
+    },
+    "textAlign": "left"
+  },
+  "name": "Added",
+  "text": {
+    "bullets": "Offline mode\nWeekly summary email\nHome screen widget",
+    "subtitle": "",
+    "title": "What's new"
+  },
+  "textAnimation": {
+    "delivery": "by-paragraph",
+    "in": "fade-up",
+    "out": "none",
+    "staggerMs": 160
+  },
+  "version": 1
+}

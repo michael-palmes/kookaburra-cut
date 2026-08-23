@@ -559,11 +559,13 @@ pub fn unused_media(
     let rels = workspace::project_media_rels(&root, &slug)?;
     let project = root.join(&slug);
     let texts = project_texts(&project);
+    let backfilled: std::collections::HashSet<String> =
+        workspace::backfilled_sample_names(&app).into_iter().collect();
     Ok(unreferenced_rels(&texts, &rels)
         .into_iter()
         .filter(|rel| {
             !rel.strip_prefix("assets/")
-                .is_some_and(workspace::is_backfilled_sample)
+                .is_some_and(|name| backfilled.contains(name))
         })
         .map(|rel| UnusedAsset {
             bytes: std::fs::metadata(project.join(rel))
@@ -800,11 +802,12 @@ pub(crate) async fn ensure_media_cache(
                 mtime_ms,
                 sha: sha.clone(),
             };
-            std::fs::write(
+            crate::write_atomic(
                 &stamp_path,
-                serde_json::to_string(&stamp).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())?;
+                serde_json::to_string(&stamp)
+                    .map_err(|e| e.to_string())?
+                    .as_bytes(),
+            )?;
             sha
         }
     };
@@ -823,9 +826,13 @@ pub(crate) async fn ensure_media_cache(
         }
     }
 
-    // (Re)generate from scratch, clear partial remnants first.
-    let _ = std::fs::remove_dir_all(&cache);
-    std::fs::create_dir_all(&cache).map_err(|e| e.to_string())?;
+    // A `.done` entry that got here is stale (a POSTER_VERSION bump, or a missing poster): ours must replace it rather than defer to it at commit time.
+    let regenerating_stale = done.exists();
+
+    // (Re)generate from scratch into a staging sibling, renamed onto `cache` once complete, so a second app instance never reads a half-built entry.
+    let staging = crate::staging_sibling(&cache)?;
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
     let abs_str = abs.to_string_lossy().into_owned();
 
     // Probe (shared with the video editor, see `probe_media`).
@@ -840,7 +847,7 @@ pub(crate) async fn ensure_media_cache(
     let hardware = video && workspace::hardware_video_enabled(app);
 
     // Poster: 25% in for videos (skips black lead-ins), the image itself otherwise.
-    let poster = cache.join(poster_name(if video { "video" } else { "image" }));
+    let poster = staging.join(poster_name(if video { "video" } else { "image" }));
     let mut poster_args: Vec<String> = vec!["-y".into(), "-loglevel".into(), "error".into()];
     if hardware {
         poster_args.extend(["-hwaccel".into(), "videotoolbox".into()]);
@@ -878,10 +885,13 @@ pub(crate) async fn ensure_media_cache(
             format!("fps={rate:.6},scale={SCRUB_WIDTH}:-2"),
             "-frames:v".into(),
             SCRUB_FRAMES.to_string(),
-            cache.join("scrub_%02d.jpg").to_string_lossy().into_owned(),
+            staging
+                .join("scrub_%02d.jpg")
+                .to_string_lossy()
+                .into_owned(),
         ]);
         run_sidecar(app, "ffmpeg", scrub_args, SidecarPriority::Background).await?;
-        scrub_count = std::fs::read_dir(&cache)
+        scrub_count = std::fs::read_dir(&staging)
             .map_err(|e| e.to_string())?
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with("scrub_"))
@@ -902,11 +912,15 @@ pub(crate) async fn ensure_media_cache(
         poster_version: POSTER_VERSION,
     };
     std::fs::write(
-        &meta_path,
+        staging.join("meta.json"),
         serde_json::to_string_pretty(&cached).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    std::fs::write(&done, []).map_err(|e| e.to_string())?;
+    std::fs::write(staging.join(".done"), []).map_err(|e| e.to_string())?;
+    if regenerating_stale {
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+    crate::commit_staged_dir(&staging, &cache)?;
 
     Ok(hydrate(cached, &cache, rel, &sha))
 }

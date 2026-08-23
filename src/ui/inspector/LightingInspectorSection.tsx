@@ -32,6 +32,7 @@ import type {
 import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";
 import { ColourPicker } from "../colour/ColourPicker";
 import { OptionCard } from "../OptionCard";
+import { commitFocusedInspectorEdit } from "../textEditFocus";
 import { LightingDirectionDial } from "./LightingDirectionDial";
 import { LightingIcon } from "./LightingIcon";
 import {
@@ -113,6 +114,8 @@ export interface LightingInspectorSectionProps {
   animationScope?: LightingAnimationScope;
   onAnimationScopeChange?: (scope: LightingAnimationScope) => void;
   onSeek?: (globalMs: number) => void;
+  /** The comparison's Before/After selector and any side-level action, rendered under the back bar; the caller decides which screens carry them. */
+  sideControls?: ReactNode;
 }
 
 function environmentLabel(source: string): string {
@@ -241,6 +244,7 @@ export function LightingInspectorSection({
   animationScope,
   onAnimationScopeChange,
   onSeek,
+  sideControls,
 }: LightingInspectorSectionProps) {
   const resolved = resolveLighting(theme.lighting, projectLighting, doc.lighting);
   const dragBaseline = useRef<SceneDoc | null>(null);
@@ -351,6 +355,7 @@ export function LightingInspectorSection({
     onScreenChange("animation");
   };
   const seek = (localMs: number) => {
+    commitFocusedInspectorEdit();
     const globalMs = slot.startMs + localMs;
     if (onSeek) onSeek(globalMs);
     else useClockStore.getState().setCurrentMs(globalMs);
@@ -359,6 +364,7 @@ export function LightingInspectorSection({
   const shell = (title: string, content: ReactNode) => (
     <div className="inspector-drill" data-lighting-screen={screen}>
       <DrillBack label={backLabel} title={title} onClick={onBack} />
+      {sideControls}
       <div className="inspector-drill-body inspector-section-body">{content}</div>
     </div>
   );

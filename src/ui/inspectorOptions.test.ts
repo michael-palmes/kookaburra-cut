@@ -309,6 +309,51 @@ describe("deriveSceneOverview", () => {
     ]);
   });
 
+  it("names the comparison chip rows and keeps them out of the Text numbering", () => {
+    const doc = docWith({
+      compare: { chrome: { chips: true } },
+      text: { beforeLabel: "Pre-launch" },
+    });
+    const model = overview(doc, {
+      textGroups: [
+        {
+          key: "text",
+          itemKeys: ["title"],
+          items: [{ key: "title", type: "title", text: "First group" }],
+          implicit: false,
+        },
+        {
+          key: "compare-chip:beforeLabel",
+          itemKeys: ["beforeLabel"],
+          items: [{ key: "beforeLabel", type: "subtitle", text: "Pre-launch" }],
+          implicit: false,
+          chrome: true,
+          label: "Before label",
+        },
+        {
+          key: "compare-chip:afterLabel",
+          itemKeys: ["afterLabel"],
+          items: [{ key: "afterLabel", type: "subtitle", text: "  " }],
+          implicit: false,
+          chrome: true,
+          label: "After label",
+        },
+      ],
+    });
+
+    expect(model.groups[0]?.rows).toEqual([
+      expect.objectContaining({ id: "text:text", label: "Text 1: First group" }),
+      expect.objectContaining({
+        id: "text:compare-chip:beforeLabel",
+        label: "Before label",
+        value: "Pre-launch",
+        selectionTarget: { kind: "text", id: "compare-chip:beforeLabel" },
+        openRoute: "text",
+      }),
+      expect.objectContaining({ label: "After label", value: "Hidden" }),
+    ]);
+  });
+
   it("pins heavy scenes to the specified group, standalone and setting order", () => {
     const devices = Array.from({ length: 6 }, (_, index) => ({
       id: `d${index + 1}`,

@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { listEdits } from "../engine/edit";
 import {
@@ -25,7 +25,7 @@ import { UnusedMediaSheet } from "./UnusedMediaSheet";
 import { useEscapeClose } from "./useEscapeClose";
 import { VideoPlayer } from "./VideoPlayer";
 
-/** The reusable project-media browser: a card grid of the open project's `assets/`, poster thumbnails, hover-scrub across ~10 pre-extracted frames, Edited chips, multi-file import and a fullscreen preview. Thumbnails generate lazily in the background, one file at a time, so a folder of long recordings never blocks the grid. The host owns the shell (main-window modal vs inspector drill-in vs editor side panel) and supplies the per-card ⋯/right-click menu via `cardMenu`, the only part that differs (2026-07-12: the old per-card button row overflowed). */
+/** The reusable project-media browser: a card grid of the open project's `assets/`, poster thumbnails, hover-scrub across ~10 pre-extracted frames, Edited chips, multi-file import and a preview overlay (window-wide, or scoped to the drill under `inspectorPreview`). Thumbnails generate lazily in the background, one file at a time, so a folder of long recordings never blocks the grid. The host owns the shell (main-window modal vs inspector drill-in vs editor side panel) and supplies the per-card ⋯/right-click menu via `cardMenu`, the only part that differs (2026-07-12: the old per-card button row overflowed). */
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v", "webm"];
@@ -56,6 +56,18 @@ export function mediaPreviewTabTarget(
   const activeIndex = activeElement ? focusables.indexOf(activeElement) : -1;
   if (backwards) return activeIndex <= 0 ? (focusables.at(-1) ?? null) : null;
   return activeIndex < 0 || activeIndex === focusables.length - 1 ? focusables[0] : null;
+}
+
+/** Prev/next through the grid as the user sees it, wrapping at both ends; a refresh that drops the previewed file (index -1) restarts from the top. */
+export function mediaPreviewStep(
+  list: readonly string[],
+  current: string,
+  delta: number,
+): string | null {
+  if (list.length === 0) return null;
+  const index = list.indexOf(current);
+  const from = index < 0 ? 0 : index;
+  return list[(from + delta + list.length) % list.length] ?? null;
 }
 
 function mediaPreviewFocusables(dialog: HTMLElement): HTMLElement[] {
@@ -287,6 +299,8 @@ export interface MediaBrowserProps {
   refreshKey?: number;
   /** Tighter grid for narrow hosts (the editor's side panel). */
   compact?: boolean;
+  /** Scope the preview to the inspector panel and add prev/next stepping through the grid. Inspector hosts only: the media library modal and the editor side panel keep the window-wide preview. */
+  inspectorPreview?: boolean;
   /** Media cards become HTML5-draggable once probed (`MEDIA_DRAG_TYPE` carries the rel path). Editor-window only: the main window's native drag-drop interception eats these. */
   draggableMedia?: boolean;
   /** Small muted hint in the toolbar row (e.g. the drag affordance). */
@@ -498,11 +512,122 @@ export function MediaCard({
   );
 }
 
+function StepChevron({ back }: { back?: boolean }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={back ? "M12 5l-5 5 5 5" : "M8 5l5 5-5 5"} />
+    </svg>
+  );
+}
+
+/** The preview layer itself: window-wide by default, scoped to the inspector drill (with prev/next chevrons) under `panel`. */
+export function MediaPreviewOverlay({
+  name,
+  src,
+  kind,
+  fps,
+  panel,
+  canStep,
+  onStep,
+  onClose,
+  closeRef,
+}: {
+  name: string;
+  /** Already through `fsUrl`: the host owns path resolution. */
+  src: string;
+  kind: "image" | "video";
+  fps?: number;
+  panel?: boolean;
+  canStep: boolean;
+  onStep: (delta: -1 | 1) => void;
+  onClose: () => void;
+  closeRef: RefObject<HTMLButtonElement | null>;
+}) {
+  return (
+    <div
+      className={`media-preview${panel ? " panel" : ""}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Preview ${name}`}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab") return;
+        const target = mediaPreviewTabTarget(
+          mediaPreviewFocusables(event.currentTarget),
+          document.activeElement instanceof HTMLElement ? document.activeElement : null,
+          event.shiftKey,
+        );
+        if (!target) return;
+        event.preventDefault();
+        target.focus({ preventScroll: true });
+      }}
+    >
+      {/* Click-anywhere-to-close, as a real button so keyboards get it too. */}
+      <button
+        type="button"
+        className="media-preview-backdrop"
+        aria-label="Close preview"
+        tabIndex={-1}
+        onClick={onClose}
+      />
+      {kind === "image" ? (
+        <img src={src} alt={name} />
+      ) : (
+        // Preview-only playback (never the export path); custom minimal controls.
+        <VideoPlayer src={src} fps={fps} autoPlay />
+      )}
+      {panel && (
+        <>
+          <button
+            type="button"
+            className="media-preview-step prev"
+            aria-label="Previous file"
+            title="Previous (←)"
+            disabled={!canStep}
+            onClick={() => onStep(-1)}
+          >
+            <StepChevron back />
+          </button>
+          <button
+            type="button"
+            className="media-preview-step next"
+            aria-label="Next file"
+            title="Next (→)"
+            disabled={!canStep}
+            onClick={() => onStep(1)}
+          >
+            <StepChevron />
+          </button>
+        </>
+      )}
+      <button
+        ref={closeRef}
+        type="button"
+        className="toast-close media-preview-close"
+        aria-label="Close preview"
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export function MediaBrowser({
   slug,
   projectPath,
   refreshKey = 0,
   compact,
+  inspectorPreview,
   draggableMedia,
   hint,
   kinds,
@@ -688,6 +813,7 @@ export function MediaBrowser({
     [rels, editNameOf],
   );
 
+  const previewOpen = preview !== null;
   const previewMeta = preview
     ? ((sourceTab === "global" ? globalMetas[preview] : metas[preview]) ?? null)
     : null;
@@ -696,11 +822,25 @@ export function MediaBrowser({
       ? (globalShots?.find((s) => s.name === preview)?.absPath ?? null)
       : `${projectPath}/${preview}`
     : null;
+  // Metadata streams in one file at a time, so a freshly listed image has none yet: fall back to the extension rather than handing a PNG to the video player.
+  const previewKind = preview ? (previewMeta?.kind ?? kindOfRel(preview)) : "image";
 
-  // The fullscreen preview is a layer of its own: the shared Escape stack closes it first, then a host modal on the next press.
-  useEscapeClose(() => setPreview(null), preview !== null);
+  // The grid as the user sees it (current filter, Rust's newest-first sort), for prev/next; a ref so the key handler never re-registers mid-preview.
+  const previewListRef = useRef<string[]>([]);
+  previewListRef.current =
+    sourceTab === "global" ? (visibleGlobal ?? []).map((shot) => shot.name) : (visibleRels ?? []);
+
+  const stepPreview = useCallback((delta: -1 | 1) => {
+    setPreview((current) =>
+      current === null ? null : mediaPreviewStep(previewListRef.current, current, delta),
+    );
+  }, []);
+
+  // The preview is a layer of its own: the shared Escape stack closes it first, then a host modal on the next press.
+  useEscapeClose(() => setPreview(null), previewOpen);
+  // Keyed on open/closed, not on the file: stepping must not bounce focus back to the opener.
   useEffect(() => {
-    if (!preview) return;
+    if (!previewOpen) return;
     previewReturnFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = window.requestAnimationFrame(() =>
@@ -712,7 +852,24 @@ export function MediaBrowser({
       previewReturnFocusRef.current = null;
       if (target?.isConnected) target.focus({ preventScroll: true });
     };
-  }, [preview]);
+  }, [previewOpen]);
+
+  // Arrows step files while the scoped preview is open. Capture on window, so neither App's transport keys nor VideoPlayer's frame step (both bubble-phase window listeners) ever see them.
+  useEffect(() => {
+    if (!inspectorPreview || !previewOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      // The overlay covers the panel, not the window: a field elsewhere keeps its arrows.
+      if (target && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stepPreview(event.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [inspectorPreview, previewOpen, stepPreview]);
 
   const sourceRow = globalToggle ? (
     <SegmentedRow
@@ -922,47 +1079,17 @@ export function MediaBrowser({
         )}
 
       {preview && previewSrc && (
-        <div
-          className="media-preview"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Preview ${preview}`}
-          onKeyDown={(event) => {
-            if (event.key !== "Tab") return;
-            const target = mediaPreviewTabTarget(
-              mediaPreviewFocusables(event.currentTarget),
-              document.activeElement instanceof HTMLElement ? document.activeElement : null,
-              event.shiftKey,
-            );
-            if (!target) return;
-            event.preventDefault();
-            target.focus({ preventScroll: true });
-          }}
-        >
-          {/* Click-anywhere-to-close, as a real button so keyboards get it too. */}
-          <button
-            type="button"
-            className="media-preview-backdrop"
-            aria-label="Close preview"
-            tabIndex={-1}
-            onClick={() => setPreview(null)}
-          />
-          {previewMeta?.kind === "image" ? (
-            <img src={fsUrl(previewSrc)} alt={preview} />
-          ) : (
-            // Preview-only playback (never the export path); custom minimal controls.
-            <VideoPlayer src={fsUrl(previewSrc)} fps={previewMeta?.fps} autoPlay />
-          )}
-          <button
-            ref={previewCloseRef}
-            type="button"
-            className="toast-close media-preview-close"
-            aria-label="Close preview"
-            onClick={() => setPreview(null)}
-          >
-            ×
-          </button>
-        </div>
+        <MediaPreviewOverlay
+          name={preview}
+          src={fsUrl(previewSrc)}
+          kind={previewKind}
+          fps={previewMeta?.fps}
+          panel={inspectorPreview}
+          canStep={previewListRef.current.length > 1}
+          onStep={stepPreview}
+          onClose={() => setPreview(null)}
+          closeRef={previewCloseRef}
+        />
       )}
     </div>
   );

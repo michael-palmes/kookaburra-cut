@@ -1,0 +1,54 @@
+{
+  "id": "onboarding-refresh",
+  "name": "Onboarding Refresh",
+  "version": 2,
+  "themeId": "kookaburra-paper",
+  "formats": ["9:16", "1:1", "4:5", "16:9"],
+  "scenes": [
+    {
+      "file": "scenes/01-fewer-steps.tsx",
+      "durationMs": 2400,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/02-step-stack.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "slide",
+        "durationMs": 380,
+        "direction": [1, 0]
+      }
+    },
+    {
+      "file": "scenes/03-step-zoom.tsx",
+      "durationMs": 3600,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/04-live-flow.tsx",
+      "durationMs": 4000,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/05-activation-stat.tsx",
+      "durationMs": 3400,
+      "transition": {
+        "type": "crossfade",
+        "durationMs": 450
+      }
+    },
+    {
+      "file": "scenes/06-cta.tsx",
+      "durationMs": 3000
+    }
+  ]
+}
