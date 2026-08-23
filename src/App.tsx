@@ -172,7 +172,11 @@ import {
   TitlebarIdentity,
   TitlebarProjects,
 } from "./ui/Titlebar";
-import { hasPendingTextEdit } from "./ui/textEditFocus";
+import {
+  commitFocusedInspectorEdit,
+  hasPendingTextEdit,
+  spaceMeansPlayback,
+} from "./ui/textEditFocus";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import {
   commitSceneDuration,
@@ -1758,23 +1762,28 @@ export default function App() {
     if (!playing) playUntilRef.current = null;
   }, [playing]);
 
-  // Spacebar toggles play/pause; arrows step one frame (shift = 10) on the export frame grid. Skipped while a form control is focused (xterm's hidden textarea included), or a modal or media preview is open (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
+  // Spacebar toggles play/pause, committing the value first when it comes from a slider, number or hex field (a literal space means nothing there); arrows step one frame (shift = 10) on the export frame grid. Text fields, selects and xterm's hidden textarea keep their keys, and an open modal or media preview stands the whole handler down (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      const formControl = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
       if (document.querySelector(".modal-overlay")) return;
       if (document.querySelector(".media-preview")) return;
       if (e.code === "Space" && !e.repeat) {
+        if (formControl && !spaceMeansPlayback(target)) return;
         if (target === playBtnRef.current) return;
+        if (exporting || isExporting()) return;
         e.preventDefault();
+        if (formControl) target?.blur(); // Enter semantics: the field's own onBlur commits before playback starts
         togglePlay();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        if (formControl) return;
         if (!project || exporting || isExporting()) return;
         const cam = useCameraEditStore.getState();
         if (cam.open && cam.selectedKeyId) return; // the camera strip owns arrows now
         e.preventDefault();
+        commitFocusedInspectorEdit();
         setPlaying(false);
         replayReturnMsRef.current = null; // manual frame-step owns the playhead
         const clock = useClockStore.getState();
@@ -2417,6 +2426,7 @@ export default function App() {
             onScrub={(ms) => {
               // Module-flag guard: `disabled` only covers UI-button exports, not autorun.
               if (!isExporting()) {
+                commitFocusedInspectorEdit(); // against the scene still on screen, before the clock re-renders it
                 replayReturnMsRef.current = null; // a scrub owns the playhead
                 setCurrentMs(ms);
               }

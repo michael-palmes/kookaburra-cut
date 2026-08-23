@@ -1077,6 +1077,7 @@ function DurationRow({
       <input
         ref={inputRef}
         className="modal-input inspector-num inspector-seconds inspector-num-drag"
+        data-space-plays=""
         value={text}
         aria-label="Scene length in minutes and seconds"
         onPointerDown={onPointerDown}

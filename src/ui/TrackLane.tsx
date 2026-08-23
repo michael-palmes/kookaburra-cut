@@ -35,6 +35,7 @@ import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { ToggleRow } from "./inspector/rows";
 import { seekSceneLocal } from "./laneSeek";
 import { ResizeAnimationModal } from "./ResizeAnimationModal";
+import { commitFocusedInspectorEdit } from "./textEditFocus";
 
 /** The generic keyed-track timeline lane, extracted verbatim from the camera AnimationLane so the layered-screenshot lane can reuse it: hard walls and gaps stay the model (the opposite of the video editor's magnetic reflow); the 4% minimum segment length is visual only (decision 16). Animations are CONNECTED: one diamond per key, so a shared junction is ONE handle, keys attached to no segment draw nothing, and the pixel-derived `minLenMs` (24px, 10px in the Detailed view) rather than MIN_KEY_GAP_MS is what drags and the connected engine ops clamp against. Track-specific state (edit store, doc funnel, tool keys, copy) arrives through props from a thin wrapper. */
 
@@ -226,6 +227,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
 
   /** Every lane seek clamps inside this scene's attribution window, so dragging the lane can never retarget the chrome to a neighbouring scene. */
   function seekLocal(tMs: number) {
+    commitFocusedInspectorEdit();
     seekSceneLocal(slotStartMs, tMs, { windowStartMs, windowEndMs, lastScene });
   }
 
@@ -688,6 +690,7 @@ export function TrackLane<P, T extends KeyedTrack<P>>({
           {durEdit !== null ? (
             <input
               className="anim-duration-input"
+              data-space-plays=""
               value={durEdit}
               // biome-ignore lint/a11y/noAutofocus: entered by double-clicking the readout, so it IS the focus target
               autoFocus
