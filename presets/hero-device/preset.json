@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Hero device",
+  "tagline": "A handset playing your capture while the camera pushes in on it.",
+  "category": "devices",
+  "tags": ["device", "phone", "hero", "camera", "orbit"],
+  "order": 10,
+  "status": "stable",
+  "preview": { "scene": 0, "atMs": 2400 }
+}

@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "name": "Hero device",
+  "text": {
+    "title": "Start typing",
+    "subtitle": ""
+  },
+  "textAnimation": {
+    "in": "fade-up",
+    "out": "fade",
+    "staggerMs": 90,
+    "stagger": "word"
+  },
+  "devices": [
+    {
+      "id": "hero",
+      "model": "iphone-17-pro",
+      "colour": "deep-blue",
+      "media": {
+        "src": "assets/kooka-feed-loop-sample.mp4",
+        "kind": "video",
+        "startMs": 0
+      },
+      "placement": {
+        "position": [0, -0.25, 0],
+        "rotationDeg": [0, -8, 0],
+        "scale": 1
+      },
+      "motion": {
+        "preset": "none"
+      },
+      "shadow": "long"
+    }
+  ],
+  "camera": {
+    "keys": [
+      {
+        "id": "k1",
+        "tMs": 0,
+        "pose": {
+          "target": [0, -0.1, 0],
+          "azimuthDeg": -14,
+          "elevationDeg": 8,
+          "distance": 6.2,
+          "dof": {
+            "mode": "depth",
+            "blur": 0.25,
+            "range": 1.4,
+            "focus": "auto"
+          }
+        }
+      },
+      {
+        "id": "k2",
+        "tMs": 4200,
+        "pose": {
+          "target": [0, -0.1, 0],
+          "azimuthDeg": 2,
+          "elevationDeg": 3,
+          "distance": 5.2
+        }
+      }
+    ],
+    "segments": [
+      {
+        "from": "k1",
+        "to": "k2",
+        "ease": "inOutCubic"
+      }
+    ]
+  }
+}

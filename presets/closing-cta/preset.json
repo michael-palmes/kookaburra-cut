@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Closing CTA",
+  "tagline": "The end card: app mark, name and the line you want people to act on.",
+  "category": "closers",
+  "tags": ["cta", "end card", "outro", "brand", "lockup"],
+  "order": 10,
+  "status": "stable",
+  "preview": { "scene": 0, "atMs": 1800 }
+}

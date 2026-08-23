@@ -53,3 +53,50 @@ Author with the `kookaburra-scene-authoring` skill.
 Card art is one committed JPEG per preset in `src/assets/preset-previews/`,
 rendered by the preset-previews autorun. A preset with no still degrades to the
 swatch card rather than failing the build.
+
+```bash
+pnpm kookaburra:run --action preset-previews                    # every bundled preset
+pnpm kookaburra:run --action preset-previews --project hero-device,closing-cta
+```
+
+Each run captures the ONE frame `preview` names, promotes it to
+`src/assets/preset-previews/<slug>.jpg` and records the preset in the staleness
+ledger below.
+
+## The bundled starter set
+
+| Slug | Category | What it is |
+| ---- | -------- | ---------- |
+| `title-opener` | openers | Headline over one supporting line |
+| `feature-compare` | features | One handset under a wiping before/after divider |
+| `stat-counter` | stats-charts | A big number counting to the result |
+| `chart-reveal` | stats-charts | A titled column chart rising in |
+| `hero-device` | devices | A handset playing a capture under a camera push |
+| `closing-cta` | closers | App mark, name and the call to action |
+
+All six carry `themeId: kookaburra-studio-white` and target every aspect. They
+pin nothing theme-specific: colours come from tokens, animated backgrounds run
+on `themeColors: true` (the live Theme preset) or name a theme gradient, and no
+scene sidecar pins a `themeId` or a font family. That is what lets a preset
+restyle the moment it lands in someone else's project.
+
+## Preview staleness
+
+`scripts/preset-preview-stale.mjs` keeps a content hash per bundled item in a
+ledger committed beside the art: `src/assets/preset-previews/ledger.json` for
+presets, `src/assets/template-previews/ledger.json` for templates. The
+promotion step of each previews autorun writes the entries; in a DEV build the
+library grid compares the ledger against the tree and badges any card whose art
+is older than the item.
+
+The hash covers the manifest (`preset.json` / `template.json`), `project.json`
+and every scene sidecar. It deliberately does **not** cover the scene TSX: code
+can change the pixels without touching any JSON, so a TSX-only edit goes
+unbadged and still needs a manual re-render. An item with no committed art is
+never badged either, since its card already degrades to the swatch.
+
+```bash
+node scripts/preset-preview-stale.mjs list preset        # stale slugs, comma separated
+node scripts/preset-preview-stale.mjs list template
+node scripts/preset-preview-stale.mjs backfill template  # one-off seed for existing art
+```

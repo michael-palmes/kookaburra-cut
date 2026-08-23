@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Chart reveal",
+  "tagline": "A titled column chart rising in, values counting up on the bars.",
+  "category": "stats-charts",
+  "tags": ["chart", "column", "bar", "data", "metrics"],
+  "order": 20,
+  "status": "stable",
+  "preview": { "scene": 0, "atMs": 2800 }
+}
