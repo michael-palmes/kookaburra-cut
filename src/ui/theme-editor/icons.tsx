@@ -34,7 +34,28 @@ export type ThemeEditorIconName =
   | "warning"
   | "save"
   | "revert"
-  | "specimen";
+  | "specimen"
+  | "background"
+  | "image"
+  | "shader"
+  | "cube"
+  | "device"
+  | "play"
+  | "pause"
+  | "aspect-landscape"
+  | "aspect-portrait"
+  | "aspect-square"
+  | "sun"
+  | "ambient"
+  | "environment"
+  | "shadow"
+  | "position"
+  | "spot"
+  | "panel"
+  | "bloom"
+  | "vignette"
+  | "lut"
+  | "grain";
 
 const paths: Record<ThemeEditorIconName, ReactNode> = {
   identity: (
@@ -214,6 +235,111 @@ const paths: Record<ThemeEditorIconName, ReactNode> = {
     <>
       <rect x="3.5" y="4" width="13" height="12" rx="2" />
       <path d="M6.5 8h4M6.5 11h7M6.5 13.5h5" />
+    </>
+  ),
+  background: (
+    <>
+      <rect x="3" y="4.5" width="14" height="11" rx="2" />
+      <path d="M3 12l3.5-3 3 2.5 3-3.5L17 12" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3.5" y="4.5" width="13" height="11" rx="2" />
+      <circle cx="7.6" cy="8.4" r="1.3" />
+      <path d="M3.5 13l3.6-3 3.2 2.6 2.6-2.2 3.6 3" />
+    </>
+  ),
+  shader: (
+    <>
+      <rect x="3.5" y="4.5" width="13" height="11" rx="2" />
+      <path d="M3.5 11.5c2.6 0 3-4 6.5-4s3.9 4 6.5 4" />
+    </>
+  ),
+  cube: (
+    <>
+      <path d="M10 3.2l6 3.2v7.2l-6 3.2-6-3.2V6.4z" />
+      <path d="M4 6.4l6 3.2 6-3.2M10 9.6v7.2" opacity="0.7" />
+    </>
+  ),
+  device: (
+    <>
+      <rect x="6" y="2.8" width="8" height="14.4" rx="2" />
+      <path d="M8.8 4.8h2.4" />
+    </>
+  ),
+  play: <path d="M7 4.6l8 5.4-8 5.4z" />,
+  pause: <path d="M7.5 4.5v11M12.5 4.5v11" />,
+  "aspect-landscape": <rect x="2.5" y="5.5" width="15" height="9" rx="1.6" />,
+  "aspect-portrait": <rect x="5.5" y="2.5" width="9" height="15" rx="1.6" />,
+  "aspect-square": <rect x="4" y="4" width="12" height="12" rx="1.6" />,
+  sun: (
+    <>
+      <circle cx="10" cy="10" r="3.4" />
+      <path d="M10 2.6v2.2M10 15.2v2.2M2.6 10h2.2M15.2 10h2.2M4.8 4.8l1.6 1.6M13.6 13.6l1.6 1.6M15.2 4.8l-1.6 1.6M6.4 13.6l-1.6 1.6" />
+    </>
+  ),
+  ambient: (
+    <>
+      <circle cx="10" cy="10" r="6.2" opacity="0.5" />
+      <circle cx="10" cy="10" r="2.6" />
+    </>
+  ),
+  environment: (
+    <>
+      <circle cx="10" cy="10" r="6.4" />
+      <path d="M3.6 10h12.8M10 3.6c1.9 2 2.9 4.1 2.9 6.4s-1 4.4-2.9 6.4c-1.9-2-2.9-4.1-2.9-6.4S8.1 5.6 10 3.6z" />
+    </>
+  ),
+  shadow: (
+    <>
+      <circle cx="8.6" cy="8.2" r="4" />
+      <ellipse cx="11.6" cy="14.6" rx="5" ry="1.8" opacity="0.6" />
+    </>
+  ),
+  position: (
+    <>
+      <path d="M10 3v14M3 10h14" opacity="0.5" />
+      <circle cx="10" cy="10" r="2.6" />
+    </>
+  ),
+  spot: (
+    <>
+      <path d="M8 3.2h4l4 12.6H4z" />
+      <path d="M7.2 6.2h5.6" opacity="0.6" />
+    </>
+  ),
+  panel: (
+    <>
+      <rect x="3.2" y="5.5" width="13.6" height="7" rx="1.4" />
+      <path d="M6.4 15.5h7.2" opacity="0.6" />
+    </>
+  ),
+  bloom: (
+    <>
+      <circle cx="10" cy="10" r="2.6" />
+      <path
+        d="M10 2.8v2M10 15.2v2M2.8 10h2M15.2 10h2M5.2 5.2l1.4 1.4M13.4 13.4l1.4 1.4M14.8 5.2l-1.4 1.4M6.6 13.4l-1.4 1.4"
+        opacity="0.6"
+      />
+    </>
+  ),
+  vignette: (
+    <>
+      <rect x="3" y="4.5" width="14" height="11" rx="2" />
+      <ellipse cx="10" cy="10" rx="4.4" ry="3.2" opacity="0.6" />
+    </>
+  ),
+  lut: (
+    <>
+      <rect x="3.5" y="4.5" width="13" height="11" rx="2" />
+      <path d="M3.5 10h13M10 4.5v11" opacity="0.6" />
+    </>
+  ),
+  grain: (
+    <>
+      <rect x="3.5" y="4.5" width="13" height="11" rx="2" />
+      <path d="M6.5 8h.1M9 11h.1M12.5 7.5h.1M13.5 12h.1M7.5 13h.1M11 9h.1" />
     </>
   ),
 };

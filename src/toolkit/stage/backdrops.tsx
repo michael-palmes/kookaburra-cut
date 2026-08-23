@@ -300,6 +300,11 @@ export function bundledBackdropUrl(name: string): string | null {
   );
 }
 
+/** The `kookaburra:<name>` sources a THEME may reference, sorted; the theme editor offers exactly these, since a theme is workspace-shared and cannot reach a project's assets. */
+export const BUNDLED_BACKDROP_NAMES: readonly string[] = Object.keys(bundledBackdropGlob)
+  .map((path) => path.slice(path.lastIndexOf("/") + 1, path.lastIndexOf(".")))
+  .sort();
+
 /** Loaded bundled-backdrop textures, keyed by URL; read SYNCHRONOUSLY at render. */
 const bundledTextures = new Map<string, Texture>();
 let bundledLoad: Promise<void> | null = null;

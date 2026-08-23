@@ -8,12 +8,14 @@ import { defaultTheme } from "../../theme/registry";
 import type { Theme } from "../../theme/tokens";
 import { useNativeTextUndo } from "../useNativeTextUndo";
 import { ColoursSection } from "./ColoursSection";
+import { EffectsSection } from "./EffectsSection";
 import { GradientsSection } from "./GradientsSection";
 import { IdentitySection } from "./IdentitySection";
 import { ThemeEditorIcon, type ThemeEditorIconName } from "./icons";
+import { LightingSection } from "./LightingSection";
 import { MotionSection } from "./MotionSection";
-import { PlaceholderSection } from "./PlaceholderSection";
 import { SpecimenPanel } from "./SpecimenPanel";
+import { StageSection } from "./StageSection";
 import { TypographySection } from "./TypographySection";
 import {
   isDirty as draftIsDirty,
@@ -275,39 +277,9 @@ export function ThemeEditorApp() {
             {section === "motion" && (
               <MotionSection key={themeId ?? ""} doc={doc} onPatch={setDoc} theme={theme} />
             )}
-            {section === "stage" && (
-              <PlaceholderSection
-                title="Stage"
-                icon="stage"
-                hint="The theme's default backdrop and camera-locked background."
-                doc={doc}
-                blocks={[
-                  { key: "backdrop", label: "Backdrop" },
-                  { key: "background", label: "Background" },
-                ]}
-              />
-            )}
-            {section === "lighting" && (
-              <PlaceholderSection
-                title="Lighting"
-                icon="lighting"
-                hint="The theme layer of the three-layer lighting stack, plus the HDRI environment."
-                doc={doc}
-                blocks={[
-                  { key: "lighting", label: "Lighting" },
-                  { key: "environment", label: "Environment" },
-                ]}
-              />
-            )}
-            {section === "effects" && (
-              <PlaceholderSection
-                title="Effects"
-                icon="effects"
-                hint="Bloom, vignette, colour grade and grain."
-                doc={doc}
-                blocks={[{ key: "effects", label: "Effects" }]}
-              />
-            )}
+            {section === "stage" && <StageSection doc={doc} onPatch={setDoc} theme={theme} />}
+            {section === "lighting" && <LightingSection doc={doc} onPatch={setDoc} theme={theme} />}
+            {section === "effects" && <EffectsSection doc={doc} onPatch={setDoc} />}
           </main>
 
           <SpecimenPanel theme={theme} />

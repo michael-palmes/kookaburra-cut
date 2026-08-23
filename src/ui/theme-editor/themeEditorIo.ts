@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { devWriteBuiltinTheme, readBuiltinTheme } from "../../engine/library";
-import { themeScope } from "./themeDraft";
+import { BUILTIN_THEME_CATALOGUE } from "../../theme/catalogue";
+import { isRecord, type ThemeDoc, themeScope } from "./themeDraft";
 
 /** The theme editor's IO seam: read the RAW document text for either scope, write it back, and tell the other windows a theme changed. Kept out of the components so the window's React tree never invokes directly. */
 
@@ -23,6 +24,21 @@ export function readThemeDocText(themeId: string): Promise<string> {
   return scope.kind === "workspace"
     ? invoke<string>("read_theme", { slug: scope.slug })
     : readBuiltinTheme(scope.id);
+}
+
+/** The RAW source document behind any theme id, the thing a duplicate copies. Workspace themes read through the native command; bundled ones come off the compiled-in catalogue (detached by a JSON round trip), because `read_builtin_theme` refuses outside a checkout while duplicating a built-in must work in every build. */
+export async function readThemeSourceDoc(themeId: string): Promise<ThemeDoc> {
+  const scope = themeScope(themeId);
+  if (scope.kind === "workspace") {
+    const parsed: unknown = JSON.parse(await invoke<string>("read_theme", { slug: scope.slug }));
+    if (!isRecord(parsed)) throw new Error(`theme "${themeId}" isn't a JSON object`);
+    return parsed;
+  }
+  const entry = BUILTIN_THEME_CATALOGUE.find(({ id }) => id === scope.id);
+  if (!entry) throw new Error(`unknown built-in theme "${themeId}"`);
+  const doc: unknown = JSON.parse(JSON.stringify(entry.doc));
+  if (!isRecord(doc)) throw new Error(`built-in theme "${themeId}" isn't a JSON object`);
+  return doc;
 }
 
 export function writeThemeDocText(themeId: string, text: string): Promise<void> {

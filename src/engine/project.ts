@@ -797,10 +797,10 @@ function parseProjectTypography(
   return out.headline || out.body || out.chart ? out : null;
 }
 
-/** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `preview-lab-theme` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`), and nothing is written to disk. */
+/** `options.themeId` overrides the manifest's project theme for this LOAD ONLY (the theme-preview pipeline renders `preview-lab-theme` once per theme this way); it replaces the project-level theme (and so every scene without its own sidecar `themeId`). `options.theme` is the same override taking an ALREADY-PARSED theme, for a document that has no id to resolve yet (the theme editor's live specimen renders the unsaved draft through it); it outranks `themeId`. Neither writes anything to disk. */
 export async function loadProject(
   id: string,
-  options?: { themeId?: string },
+  options?: { themeId?: string; theme?: Theme },
 ): Promise<LoadedProject> {
   await ensureProjectsRoot();
   const manifest = await loadManifest(id);
@@ -863,7 +863,9 @@ export async function loadProject(
   const typographyOverride = parseProjectTypography(manifest.typography, `${id}/project.json`);
   const applyTypography = (t: Theme): Theme =>
     typographyOverride ? { ...t, typography: { ...t.typography, ...typographyOverride } } : t;
-  const theme = applyTypography(await resolveTheme(options?.themeId ?? manifest.themeId));
+  const theme = applyTypography(
+    options?.theme ?? (await resolveTheme(options?.themeId ?? manifest.themeId)),
+  );
 
   // Per-scene theme resolution: a sidecar `themeId` swaps the WHOLE theme for that scene; unknown ids fall back to the project's theme, scenes without an override share the project theme object.
   const sceneThemes = await Promise.all(

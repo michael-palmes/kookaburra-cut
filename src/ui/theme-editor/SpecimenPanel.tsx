@@ -1,13 +1,13 @@
 import { gradientCss } from "../../theme/gradientPresets";
 import type { Theme } from "../../theme/tokens";
 import { ThemeEditorIcon } from "./icons";
+import { SpecimenCanvas } from "./SpecimenCanvas";
 
-/** The live specimen, plain DOM for this wave: the four colour tokens, the chart palette, the two faces at three ramp steps, and the gradients, all painted from the DRAFT rather than from disk. The r3f specimen canvas (the preview-lab scenes under the draft theme) replaces the body of this panel next wave; the export path never touches either. */
+/** The specimen column: the live canvas on top (real scenes under the draft theme), then the flat facts a rendered frame cannot spell out, the token hexes and the gradient library. */
 export function SpecimenPanel({ theme }: { theme: Theme }) {
-  const { colors, typography, motion } = theme;
+  const { colors, motion } = theme;
   const chartColours = theme.chartColors ?? [colors.accent];
   const gradients = Object.entries(theme.gradients ?? {});
-  const step = (power: number) => `${Math.round(16 * typography.scale ** power)}px`;
 
   return (
     <aside className="theme-editor-specimen" aria-label="Theme specimen">
@@ -16,47 +16,7 @@ export function SpecimenPanel({ theme }: { theme: Theme }) {
         <span>Specimen</span>
       </header>
 
-      <div className="theme-editor-specimen-canvas" style={{ background: colors.background }}>
-        <p
-          style={{
-            color: colors.text,
-            fontFamily: `"${typography.headline.family}", var(--font-ui)`,
-            fontWeight: typography.headline.weight,
-            fontSize: step(2),
-            lineHeight: 1.1,
-          }}
-        >
-          The quick brown fox
-        </p>
-        <p
-          style={{
-            color: colors.text,
-            fontFamily: `"${typography.headline.family}", var(--font-ui)`,
-            fontWeight: typography.headline.weight,
-            fontSize: step(1),
-            lineHeight: 1.15,
-          }}
-        >
-          Jumps over the lazy dog
-        </p>
-        <p
-          style={{
-            color: colors.muted,
-            fontFamily: `"${typography.body.family}", var(--font-ui)`,
-            fontWeight: typography.body.weight,
-            fontSize: step(0),
-            lineHeight: 1.45,
-          }}
-        >
-          Body copy at the base step, in the muted token. Numerals 0123456789.
-        </p>
-        <span
-          className="theme-editor-specimen-pill"
-          style={{ background: colors.accent, color: colors.background }}
-        >
-          Accent
-        </span>
-      </div>
+      <SpecimenCanvas theme={theme} />
 
       <section className="theme-editor-specimen-group">
         <h3>Tokens</h3>

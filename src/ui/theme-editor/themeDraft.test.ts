@@ -3,21 +3,42 @@ import { parseThemeCatalogueMetadata } from "../../theme/catalogue";
 import {
   addTag,
   canonicalJson,
+  DEFAULT_SUN,
+  defaultGradientStops,
+  defaultLight,
+  duplicateThemeDoc,
+  EFFECT_DEFAULTS,
+  environmentPath,
   FALLBACK_USE_LABEL,
+  firstGradientName,
   getIn,
   isDirty,
+  nextLightId,
   parseThemeDraft,
+  readBackdropKind,
+  readBackgroundKind,
+  readEffect,
+  readEnvironment,
+  readFills,
   readGradients,
   readIdentity,
+  readLights,
+  readSun,
   removeTag,
   serialiseThemeDoc,
   setIn,
+  sunPath,
   type ThemeDoc,
   themeScope,
   uniqueGradientName,
   writeChartColours,
+  writeEffect,
+  writeEnvironment,
+  writeFills,
   writeGradients,
   writeIdentity,
+  writeLights,
+  writeSun,
 } from "./themeDraft";
 
 const base = (): ThemeDoc => ({
@@ -224,5 +245,133 @@ describe("parseThemeDraft", () => {
     const before = console.warn;
     parseThemeDraft(setIn(base(), ["card"], { radius: 9 }), "demo");
     expect(console.warn).toBe(before);
+  });
+});
+
+describe("stage blocks", () => {
+  it("reads an absent and an explicit-none block as the same off state", () => {
+    expect(readBackdropKind(base())).toBe("off");
+    expect(readBackdropKind(setIn(base(), ["backdrop"], { type: "none" }))).toBe("off");
+    expect(readBackdropKind(setIn(base(), ["backdrop"], { type: "floor", color: "#fff" }))).toBe(
+      "floor",
+    );
+    expect(
+      readBackgroundKind(setIn(base(), ["background"], { type: "shader", shader: "warp" })),
+    ).toBe("shader");
+    expect(readBackgroundKind(setIn(base(), ["background"], { type: "video", src: "a.mp4" }))).toBe(
+      "off",
+    );
+  });
+
+  it("names the first gradient a backdrop can reference", () => {
+    expect(firstGradientName(base())).toBeNull();
+    const withGradients = writeGradients(base(), [
+      { name: "backdrop", type: "linear", angleDeg: 0, stops: defaultGradientStops() },
+    ]);
+    expect(firstGradientName(withGradients)).toBe("backdrop");
+  });
+});
+
+describe("lighting blocks", () => {
+  const v8 = () =>
+    setIn(base(), ["lighting"], {
+      key: { azimuthDeg: 20, elevationDeg: 40, intensity: 3, color: "#fff5e8" },
+      ambient: 0.4,
+      fills: [{ azimuthDeg: -50, elevationDeg: 10, intensity: 0.8, color: "#cfe4ff" }],
+    });
+
+  it("writes the key light back to the spelling the file already uses", () => {
+    expect(sunPath(v8())).toEqual(["lighting", "key"]);
+    expect(sunPath(base())).toEqual(["lighting", "sun"]);
+    const patched = writeSun(v8(), { ...DEFAULT_SUN, intensity: 5 });
+    expect(getIn(patched, ["lighting", "key", "intensity"])).toBe(5);
+    expect(getIn(patched, ["lighting", "sun"])).toBeUndefined();
+  });
+
+  it("keeps engine defaults out of the file and round-trips the rest", () => {
+    const sun = readSun(v8());
+    expect(sun).toMatchObject({
+      azimuthDeg: 20,
+      castShadow: true,
+      enabled: true,
+      angularDeg: null,
+    });
+    const written = getIn(writeSun(v8(), { ...DEFAULT_SUN, castShadow: false }), [
+      "lighting",
+      "key",
+    ]);
+    expect(written).toMatchObject({ castShadow: false });
+    expect(Object.keys(written as object)).not.toContain("angularDeg");
+  });
+
+  it("edits whichever environment block is the live one", () => {
+    expect(environmentPath(base())).toEqual(["environment"]);
+    const v9 = setIn(base(), ["lighting", "environment"], { source: "kookaburra:dawn" });
+    expect(environmentPath(v9)).toEqual(["lighting", "environment"]);
+    expect(readEnvironment(v9)).toEqual({
+      source: "kookaburra:dawn",
+      intensity: 1,
+      rotationDeg: 0,
+    });
+    expect(
+      getIn(writeEnvironment(v9, { source: "" }), ["lighting", "environment"]),
+    ).toBeUndefined();
+  });
+
+  it("round-trips fills and emits only the fields a light's own type accepts", () => {
+    expect(readFills(v8())).toHaveLength(1);
+    expect(getIn(writeFills(v8(), []), ["lighting", "fills"])).toBeUndefined();
+
+    const area = { ...defaultLight("light-1"), type: "area" as const, castShadow: true };
+    const spot = {
+      ...defaultLight("light-2"),
+      type: "spot" as const,
+      placementMode: "point" as const,
+    };
+    const written = getIn(writeLights(base(), [area, spot]), ["lighting", "lights"]) as Record<
+      string,
+      unknown
+    >[];
+    expect(written[0]).toMatchObject({ type: "area", width: 2, height: 2 });
+    expect(written[0].castShadow).toBeUndefined();
+    expect(written[1]).toMatchObject({
+      type: "spot",
+      angleDeg: 45,
+      placement: { mode: "point", position: [0, 2, 4] },
+    });
+    expect(readLights(writeLights(base(), [area, spot]))).toHaveLength(2);
+    expect(nextLightId([{ id: "light-1" }, { id: "light-3" }])).toBe("light-2");
+  });
+});
+
+describe("effects blocks", () => {
+  it("writes an effect whole and deletes it rather than zeroing it", () => {
+    expect(readEffect(base(), "bloom")).toBeNull();
+    const on = writeEffect(base(), "bloom", { ...EFFECT_DEFAULTS.bloom, intensity: 1.4 });
+    expect(readEffect(on, "bloom")).toEqual({
+      intensity: 1.4,
+      luminanceThreshold: 0.6,
+      luminanceSmoothing: 0.2,
+    });
+    expect(getIn(writeEffect(on, "bloom", null), ["effects"])).toBeUndefined();
+  });
+});
+
+describe("duplicateThemeDoc", () => {
+  it("copies the document, restamps it and keeps the catalogue block", () => {
+    const source = setIn(base(), ["catalogue", "hidden"], true);
+    const copy = duplicateThemeDoc(source, "my-copy", "My copy");
+    expect(copy.id).toBe("my-copy");
+    expect(copy.name).toBe("My copy");
+    expect(copy.catalogue).toEqual({
+      category: "essentials",
+      useLabel: "A demo",
+      tags: ["demo"],
+      stage: "none",
+      order: 10,
+    });
+    expect(parseThemeCatalogueMetadata(copy.catalogue, "copy")?.hidden).toBe(false);
+    // The source is untouched: the browser hands over the globbed document itself.
+    expect(getIn(source, ["catalogue", "hidden"])).toBe(true);
   });
 });
