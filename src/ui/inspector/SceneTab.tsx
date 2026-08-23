@@ -8848,6 +8848,7 @@ export function SceneTab({
           <SceneOverviewSectionHeader
             label="Content"
             addLabel={contentPickerOpen ? "Close content picker" : "Add content"}
+            addText="Add"
             expanded={contentPickerOpen}
             controls="scene-content-picker"
             addButtonRef={contentPickerButtonRef}
