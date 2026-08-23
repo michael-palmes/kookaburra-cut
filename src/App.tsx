@@ -133,7 +133,7 @@ import { useAssetVersionStore } from "./store/assetVersionStore";
 import { useEditorStore } from "./store/editorStore";
 import { useTrustStore } from "./store/trustStore";
 import { useUiStore } from "./store/uiStore";
-import { resolveTheme, WORKSPACE_THEME_PREFIX } from "./theme/registry";
+import { WORKSPACE_THEME_PREFIX } from "./theme/registry";
 import { AnimationLane } from "./ui/AnimationLane";
 import { CameraPathOverlay } from "./ui/CameraPathOverlay";
 import { CameraPill } from "./ui/CameraPill";
@@ -173,7 +173,8 @@ import {
   TitlebarProjects,
 } from "./ui/Titlebar";
 import { hasPendingTextEdit } from "./ui/textEditFocus";
-import { onThemeSaved } from "./ui/theme-editor/themeEditorIo";
+import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
+import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import {
   commitSceneDuration,
@@ -1338,13 +1339,13 @@ export default function App() {
     [project, armPollBaseline],
   );
 
-  // Duplicate a theme into `~/Kookaburra Cut/themes/<slug>/theme.json`, then render its previews by borrowing the canvas (preview-lab-theme under the new theme) and restore the project.
+  // Duplicate a theme into `~/Kookaburra Cut/themes/<slug>/theme.json`, then render its previews by borrowing the canvas (preview-lab-theme under the new theme) and restore the project. The copy is of the SOURCE DOCUMENT, never the resolved theme: `catalogue` (collection, use label, tags) and any block a newer build wrote survive it.
   const handleDuplicateTheme = useCallback(
     async (name: string, baseThemeId: string) => {
       const slug = slugifyName(name);
       if (!slug) throw new Error("Give the theme a name.");
-      const base = await resolveTheme(baseThemeId);
-      const json = JSON.stringify({ version: 2, ...base, id: slug, name: name.trim() }, null, 2);
+      const source = await readThemeSourceDoc(baseThemeId);
+      const json = `${JSON.stringify(duplicateThemeDoc(source, slug, name.trim()), null, 2)}\n`;
       await invoke("write_theme", { slug, text: json });
       const wsId = `${WORKSPACE_THEME_PREFIX}${slug}`;
       const current = project;

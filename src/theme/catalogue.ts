@@ -31,6 +31,8 @@ export interface ThemeCatalogueEntry {
   filename: string;
   theme: Theme;
   catalogue: ThemeCatalogueMetadata;
+  /** The RAW document the glob imported, kept beside the parsed theme so a duplicate can copy the file rather than the resolved `Theme` (which drops `catalogue` and anything a newer build wrote). */
+  doc: unknown;
 }
 
 export interface ThemeCatalogueFilters {
@@ -138,6 +140,31 @@ export function sortThemeCatalogue(entries: readonly ThemeCatalogueEntry[]): The
     .map(({ entry }) => entry);
 }
 
+/** `catalogue.order` read on its own, leniently: the reorder commands write that one field into whatever block is there, and a catalogue the full parser rejects (a hand-written theme with no useLabel, say) must still keep the sort key the user just dragged into place. */
+export function readCatalogueOrder(raw: unknown): number | undefined {
+  if (!isRecord(raw)) return undefined;
+  const order = raw.order;
+  return typeof order === "number" && Number.isSafeInteger(order) && order >= 0 ? order : undefined;
+}
+
+/** The workspace half of a theme listing sorts on the same key the bundled catalogue does: `catalogue.order` first (lower first, no block last), then name, then id. Workspace themes have no collection to sort within, so this is the whole comparator. */
+export function sortWorkspaceThemes<T extends { id: string; name: string; order?: number }>(
+  entries: readonly T[],
+): T[] {
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const order =
+        (a.entry.order ?? Number.MAX_SAFE_INTEGER) - (b.entry.order ?? Number.MAX_SAFE_INTEGER);
+      if (order !== 0) return order;
+      const name = compareText(a.entry.name, b.entry.name);
+      if (name !== 0) return name;
+      const id = compareText(a.entry.id, b.entry.id);
+      return id !== 0 ? id : a.index - b.index;
+    })
+    .map(({ entry }) => entry);
+}
+
 export function filterThemeCatalogue(
   entries: readonly ThemeCatalogueEntry[],
   filters: ThemeCatalogueFilters = {},
@@ -207,7 +234,7 @@ export function discoverBuiltinThemeCatalogue(
     const rawCatalogue = isRecord(doc) ? doc.catalogue : undefined;
     const catalogue = parseThemeCatalogueMetadata(rawCatalogue, source);
     if (!catalogue) throw new Error(`Bundled theme ${source} has invalid catalogue metadata`);
-    entries.push({ id: theme.id, filename, theme, catalogue });
+    entries.push({ id: theme.id, filename, theme, catalogue, doc });
   }
   return sortThemeCatalogue(entries);
 }

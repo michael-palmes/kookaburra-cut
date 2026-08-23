@@ -4,6 +4,7 @@ import { slugifyName } from "../engine/workspace";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";
+import { NamePromptModal } from "./NamePromptModal";
 import {
   builtinThemeChoices,
   listThemeChoices,
@@ -14,7 +15,10 @@ import {
 import { canEditTheme, onThemeSaved, openThemeEditor } from "./theme-editor/themeEditorIo";
 import { useEscapeClose } from "./useEscapeClose";
 
-/** Main-window theme mode: browse the theme library, apply one to the project, or duplicate any theme into a workspace theme (the starting point for user themes, locked decision 11: token-level tweaks duplicate the theme, deep edits go through Claude on the JSON); modal shell per the MediaLibrary pattern. */
+/** Main-window theme mode: browse the theme library, apply one to the project, start a new theme, or duplicate any theme into a workspace theme (the starting point for user themes, locked decision 11); modal shell per the MediaLibrary pattern. */
+
+/** What "New theme" copies: the neutral light starter, so a fresh theme opens on something legible rather than on the default's staging. */
+const NEW_THEME_BASE_ID = "kookaburra-studio-white";
 export function ThemeMode({
   currentThemeId,
   initialView,
@@ -46,7 +50,8 @@ export function ThemeMode({
   const [fontSlot, setFontSlot] = useState<"headline" | "body">("headline");
   const [fontDraft, setFontDraft] = useState<{ headline: FontRef; body: FontRef } | null>(null);
   const [busy, setBusy] = useState(false);
-  useEscapeClose(onClose, !busy);
+  const [naming, setNaming] = useState(false);
+  useEscapeClose(onClose, !busy && !naming);
   const [error, setError] = useState<string | null>(null);
   // Two-step workspace-theme delete, parity with export presets.
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -127,8 +132,28 @@ export function ThemeMode({
       });
   };
 
+  // New theme: a copy of the neutral starter straight into the workspace, then the editor opens on it.
+  const createTheme = async (name: string) => {
+    const id = await onDuplicate(name, NEW_THEME_BASE_ID);
+    setSelected(id);
+    setNaming(false);
+    refresh();
+    await openThemeEditor(id);
+  };
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Project theme">
+      {naming && (
+        <NamePromptModal
+          title="New theme"
+          label="Theme name"
+          initial=""
+          submitLabel="Create and edit"
+          hint="Starts from Studio White, saved into your workspace and opened in the theme editor."
+          onCancel={() => setNaming(false)}
+          onSubmit={createTheme}
+        />
+      )}
       <div className="modal wizard-wide wizard-theme-wide">
         <h2>
           {view === "browse" && "Project theme"}
@@ -141,11 +166,25 @@ export function ThemeMode({
               Hover a card to preview its four scenes. Applying re-themes every scene that doesn't
               set its own theme.
             </p>
-            <ThemeBrowser choices={choices} value={selected} onChange={setSelected} />
+            <ThemeBrowser
+              choices={choices}
+              value={selected}
+              onChange={setSelected}
+              onReordered={refresh}
+            />
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button type="button" className="btn" onClick={onClose} disabled={busy}>
                 Close
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setNaming(true)}
+                disabled={busy}
+                title="Start a theme of your own from Studio White and open it in the editor"
+              >
+                New theme…
               </button>
               <button
                 type="button"
