@@ -1,13 +1,40 @@
 import type { WorkspaceProjectInfo } from "../engine/workspace";
+import type { LibraryKind, LibrarySource } from "./libraryDetails";
+import type { LibraryRailIconId } from "./libraryIcons";
 
 export const ALL_PROJECTS = "all";
 export const UNGROUPED_PROJECTS = "ungrouped";
 const GROUP_PREFIX = "group:";
 
+/** The welcome rail's library rows: the user's own catalogues, then the bundled ones a dev checkout may edit. */
+export const LIBRARY_TEMPLATES = "library:templates";
+export const LIBRARY_PRESETS = "library:presets";
+export const LIBRARY_APP_TEMPLATES = "library:app-templates";
+export const LIBRARY_APP_PRESETS = "library:app-presets";
+
 export interface ProjectGroupRow {
   id: string;
   label: string;
   count: number;
+  iconId: LibraryRailIconId;
+}
+
+/** Which catalogue a library row shows. */
+export interface LibrarySection {
+  kind: LibraryKind;
+  source: LibrarySource;
+}
+
+const LIBRARY_SECTIONS: Record<string, LibrarySection> = {
+  [LIBRARY_TEMPLATES]: { kind: "template", source: "user" },
+  [LIBRARY_PRESETS]: { kind: "preset", source: "user" },
+  [LIBRARY_APP_TEMPLATES]: { kind: "template", source: "bundled" },
+  [LIBRARY_APP_PRESETS]: { kind: "preset", source: "bundled" },
+};
+
+/** null for the project rows, which show the project grid instead. */
+export function librarySection(rowId: string): LibrarySection | null {
+  return LIBRARY_SECTIONS[rowId] ?? null;
 }
 
 type ProjectLibraryItem = Pick<WorkspaceProjectInfo, "group" | "name" | "slug">;
@@ -22,14 +49,89 @@ export function projectGroupRows(projects: ProjectLibraryItem[]): ProjectGroupRo
   }
 
   return [
-    { id: ALL_PROJECTS, label: "All", count: projects.length },
-    { id: UNGROUPED_PROJECTS, label: "Ungrouped", count: ungrouped },
+    { id: ALL_PROJECTS, label: "All", count: projects.length, iconId: "all" },
+    { id: UNGROUPED_PROJECTS, label: "Ungrouped", count: ungrouped, iconId: "ungrouped" },
     ...Array.from(counts, ([label, count]) => ({
       id: `${GROUP_PREFIX}${label}`,
       label,
       count,
+      iconId: "group" as const,
     })).sort((a, b) => a.label.localeCompare(b.label)),
   ];
+}
+
+/** Live counts behind the library rows. */
+export interface LibraryCounts {
+  templates: number;
+  presets: number;
+  appTemplates: number;
+  appPresets: number;
+}
+
+export function libraryRows(counts: LibraryCounts, showApp: boolean): ProjectGroupRow[] {
+  const rows: ProjectGroupRow[] = [
+    { id: LIBRARY_TEMPLATES, label: "Templates", count: counts.templates, iconId: "templates" },
+    { id: LIBRARY_PRESETS, label: "Presets", count: counts.presets, iconId: "presets" },
+  ];
+  if (showApp) {
+    rows.push(
+      {
+        id: LIBRARY_APP_TEMPLATES,
+        label: "App templates",
+        count: counts.appTemplates,
+        iconId: "app-templates",
+      },
+      {
+        id: LIBRARY_APP_PRESETS,
+        label: "App presets",
+        count: counts.appPresets,
+        iconId: "app-presets",
+      },
+    );
+  }
+  return rows;
+}
+
+export interface WelcomeRailSection {
+  id: "projects" | "library";
+  label: string;
+  rows: ProjectGroupRow[];
+}
+
+/** The whole rail: the project groups, then the catalogues. One list so the roving keyboard focus crosses both headings without knowing they exist. */
+export function welcomeRailSections(
+  projects: ProjectLibraryItem[],
+  counts: LibraryCounts,
+  showApp: boolean,
+): WelcomeRailSection[] {
+  return [
+    { id: "projects", label: "Projects", rows: projectGroupRows(projects) },
+    { id: "library", label: "Library", rows: libraryRows(counts, showApp) },
+  ];
+}
+
+export function welcomeRailRows(sections: WelcomeRailSection[]): ProjectGroupRow[] {
+  return sections.flatMap((section) => section.rows);
+}
+
+/** Roving arrow-key movement over the flattened rail; null for a key the rail does not own. */
+export function nextWelcomeRailRow(
+  rows: ProjectGroupRow[],
+  currentId: string,
+  key: string,
+): { id: string; index: number } | null {
+  if (rows.length === 0) return null;
+  const current = Math.max(
+    0,
+    rows.findIndex((row) => row.id === currentId),
+  );
+  let next = current;
+  if (key === "ArrowDown" || key === "ArrowRight") next = Math.min(rows.length - 1, current + 1);
+  else if (key === "ArrowUp" || key === "ArrowLeft") next = Math.max(0, current - 1);
+  else if (key === "Home") next = 0;
+  else if (key === "End") next = rows.length - 1;
+  else return null;
+  return { id: rows[next].id, index: next };
 }
 
 export function filterProjectLibrary<T extends ProjectLibraryItem>(

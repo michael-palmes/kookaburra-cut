@@ -2,9 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_PROJECTS,
   filterProjectLibrary,
+  LIBRARY_APP_PRESETS,
+  LIBRARY_APP_TEMPLATES,
+  LIBRARY_PRESETS,
+  LIBRARY_TEMPLATES,
+  librarySection,
+  nextWelcomeRailRow,
   projectGroupRows,
   selectedProjectGroup,
   UNGROUPED_PROJECTS,
+  welcomeRailRows,
+  welcomeRailSections,
 } from "./projectLibrary";
 
 const projects = [
@@ -14,14 +22,75 @@ const projects = [
   { name: "Scratch project", slug: "scratch-project", group: null },
 ];
 
+const counts = { templates: 2, presets: 1, appTemplates: 15, appPresets: 0 };
+
 describe("projectGroupRows", () => {
   it("lists the fixed rows followed by sorted manual groups with live counts", () => {
     expect(projectGroupRows(projects)).toEqual([
-      { id: ALL_PROJECTS, label: "All", count: 4 },
-      { id: UNGROUPED_PROJECTS, label: "Ungrouped", count: 1 },
-      { id: "group:Client work", label: "Client work", count: 2 },
-      { id: "group:Marketing", label: "Marketing", count: 1 },
+      { id: ALL_PROJECTS, label: "All", count: 4, iconId: "all" },
+      { id: UNGROUPED_PROJECTS, label: "Ungrouped", count: 1, iconId: "ungrouped" },
+      { id: "group:Client work", label: "Client work", count: 2, iconId: "group" },
+      { id: "group:Marketing", label: "Marketing", count: 1, iconId: "group" },
     ]);
+  });
+});
+
+describe("welcomeRailSections", () => {
+  it("keeps the app catalogues out of a release build", () => {
+    const rows = welcomeRailRows(welcomeRailSections(projects, counts, false)).map((row) => row.id);
+    expect(rows).toEqual([
+      ALL_PROJECTS,
+      UNGROUPED_PROJECTS,
+      "group:Client work",
+      "group:Marketing",
+      LIBRARY_TEMPLATES,
+      LIBRARY_PRESETS,
+    ]);
+  });
+
+  it("adds them for a dev checkout, with their counts", () => {
+    const sections = welcomeRailSections(projects, counts, true);
+    expect(sections.map((section) => section.label)).toEqual(["Projects", "Library"]);
+    expect(sections[1].rows.map((row) => [row.id, row.count])).toEqual([
+      [LIBRARY_TEMPLATES, 2],
+      [LIBRARY_PRESETS, 1],
+      [LIBRARY_APP_TEMPLATES, 15],
+      [LIBRARY_APP_PRESETS, 0],
+    ]);
+  });
+});
+
+describe("librarySection", () => {
+  it("names the catalogue behind a library row and nothing else", () => {
+    expect(librarySection(LIBRARY_TEMPLATES)).toEqual({ kind: "template", source: "user" });
+    expect(librarySection(LIBRARY_APP_PRESETS)).toEqual({ kind: "preset", source: "bundled" });
+    expect(librarySection(ALL_PROJECTS)).toBeNull();
+    expect(librarySection("group:Client work")).toBeNull();
+  });
+});
+
+describe("nextWelcomeRailRow", () => {
+  const rows = welcomeRailRows(welcomeRailSections(projects, counts, true));
+
+  it("rolls across the section boundary", () => {
+    expect(nextWelcomeRailRow(rows, "group:Marketing", "ArrowDown")?.id).toBe(LIBRARY_TEMPLATES);
+    expect(nextWelcomeRailRow(rows, LIBRARY_TEMPLATES, "ArrowUp")?.id).toBe("group:Marketing");
+  });
+
+  it("clamps at both ends and answers Home/End", () => {
+    expect(nextWelcomeRailRow(rows, ALL_PROJECTS, "ArrowUp")?.id).toBe(ALL_PROJECTS);
+    expect(nextWelcomeRailRow(rows, LIBRARY_APP_PRESETS, "ArrowDown")?.id).toBe(
+      LIBRARY_APP_PRESETS,
+    );
+    expect(nextWelcomeRailRow(rows, LIBRARY_PRESETS, "Home")).toEqual({
+      id: ALL_PROJECTS,
+      index: 0,
+    });
+    expect(nextWelcomeRailRow(rows, ALL_PROJECTS, "End")?.id).toBe(LIBRARY_APP_PRESETS);
+  });
+
+  it("ignores keys the rail does not own", () => {
+    expect(nextWelcomeRailRow(rows, ALL_PROJECTS, "Enter")).toBeNull();
   });
 });
 

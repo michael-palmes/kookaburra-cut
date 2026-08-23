@@ -1,7 +1,10 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { convertProjectToTemplate } from "../engine/library";
+import { listAllPresets, refreshUserPresets, subscribePresets } from "../engine/presets";
 import { listProjectIds } from "../engine/project";
+import { listAllTemplates, refreshUserTemplates, subscribeTemplates } from "../engine/templates";
 import {
   deleteProject,
   duplicateProject,
@@ -11,13 +14,26 @@ import {
   snapshotUrl,
   type WorkspaceProjectInfo,
 } from "../engine/workspace";
+import { ContextMenu, type ContextMenuState } from "./ContextMenu";
+import { ItemDetailsModal } from "./ItemDetailsModal";
+import { LibraryGrid } from "./LibraryGrid";
+import type { ItemDetailsTarget } from "./libraryDetails";
+import { LibraryRailIcon } from "./libraryIcons";
+import { projectCardMenuItems } from "./libraryMenus";
 import { NamePromptModal } from "./NamePromptModal";
 import {
   ALL_PROJECTS,
   filterProjectLibrary,
-  projectGroupRows,
+  LIBRARY_APP_PRESETS,
+  LIBRARY_APP_TEMPLATES,
+  LIBRARY_PRESETS,
+  LIBRARY_TEMPLATES,
+  librarySection,
+  nextWelcomeRailRow,
   selectedProjectGroup,
   UNGROUPED_PROJECTS,
+  welcomeRailRows,
+  welcomeRailSections,
 } from "./projectLibrary";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -153,54 +169,55 @@ function ProjectCard({
   project,
   groups,
   onOpen,
+  onConvert,
   onChanged,
+  onError,
 }: {
   project: WorkspaceProjectInfo;
   /** Every existing group name, for the move-to-group chips. */
   groups: string[];
   onOpen: () => void;
+  /** Snapshot this project into the user's templates, then name it in the details modal. */
+  onConvert: () => void;
   /** A management action landed (rename/duplicate/delete); the host re-scans. */
   onChanged: () => void;
+  onError: (message: string | null) => void;
 }) {
   const url = snapshotUrl(project);
   const meta = [formatDuration(project.durationMs), formatLastOpened(project.lastOpenedMs)]
     .filter(Boolean)
     .join(" · ");
   // The ⋯ management menu: a sibling of the card button, never inside it (nested buttons; the WKWebView img-in-button trap).
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [prompt, setPrompt] = useState<"rename" | "duplicate" | "group" | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!confirmDelete) return;
-    const timer = window.setTimeout(() => setConfirmDelete(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [confirmDelete]);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-        setError(null);
-      }
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [menuOpen]);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  const items = () =>
+    projectCardMenuItems({
+      onRename: () => setPrompt("rename"),
+      onDuplicate: () => setPrompt("duplicate"),
+      onGroup: () => setPrompt("group"),
+      onConvert,
+      onDelete: () => {
+        onError(null);
+        deleteProject(project.slug)
+          .then(onChanged)
+          .catch((e) => onError(String(e)));
+      },
+    });
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: right-click alias for the ⋯ menu button — keyboard users have the button itself
     <div
       className="project-card-wrap"
-      ref={menuRef}
       onContextMenu={(e) => {
-        // Right-click = the ⋯ menu.
         e.preventDefault();
-        setMenuOpen(true);
-        setConfirmDelete(false);
-        setError(null);
+        setMenu({
+          x: e.clientX,
+          y: e.clientY,
+          ariaLabel: `${project.name} actions`,
+          items: items(),
+        });
       }}
     >
       <button type="button" className="project-card" onClick={onOpen} title={project.name}>
@@ -213,76 +230,26 @@ function ProjectCard({
         </span>
       </button>
       <button
+        ref={menuButtonRef}
         type="button"
         className="project-card-menu-btn"
         aria-label={`Manage ${project.name}`}
         aria-haspopup="menu"
-        aria-expanded={menuOpen}
+        aria-expanded={menu !== null}
         onClick={() => {
-          setMenuOpen((v) => !v);
-          setConfirmDelete(false);
-          setError(null);
+          const rect = menuButtonRef.current?.getBoundingClientRect();
+          setMenu({
+            x: rect?.left ?? 0,
+            y: rect?.bottom ?? 0,
+            ariaLabel: `${project.name} actions`,
+            returnFocus: menuButtonRef.current,
+            items: items(),
+          });
         }}
       >
         ⋯
       </button>
-      {menuOpen && (
-        <div className="rail-menu project-card-menu" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("rename");
-            }}
-          >
-            Rename…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("duplicate");
-            }}
-          >
-            Duplicate…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("group");
-            }}
-          >
-            Move to group…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={`rail-menu-item${confirmDelete ? " danger" : ""}`}
-            onClick={() => {
-              if (!confirmDelete) {
-                setConfirmDelete(true);
-                return;
-              }
-              setConfirmDelete(false);
-              setMenuOpen(false);
-              deleteProject(project.slug)
-                .then(onChanged)
-                .catch((e) => setError(String(e)));
-            }}
-            title="Moves the project folder to the Trash"
-          >
-            {confirmDelete ? "Really delete?" : "Delete…"}
-          </button>
-          {error && <p className="modal-error project-card-menu-error">{error}</p>}
-        </div>
-      )}
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {prompt === "rename" && (
         <NamePromptModal
           title="Rename project"
@@ -329,7 +296,22 @@ function ProjectCard({
   );
 }
 
-/** The welcome screen: the user's projects as snapshot cards (grouped projects under their own section headings), a New Project affordance, and, behind an ⌥-click on the version label, the bundled dev/gate projects; sorted most-recently-opened first. */
+/** The copy under the wordmark, per rail section. */
+const SECTION_BLURBS: Record<string, string> = {
+  [LIBRARY_TEMPLATES]: "Templates you have saved from your own projects.",
+  [LIBRARY_PRESETS]: "Scenes you have saved to drop into any project.",
+  [LIBRARY_APP_TEMPLATES]: "The templates that ship with Kookaburra Cut.",
+  [LIBRARY_APP_PRESETS]: "The scene presets that ship with Kookaburra Cut.",
+};
+
+const SEARCH_LABELS: Record<string, string> = {
+  [LIBRARY_TEMPLATES]: "templates",
+  [LIBRARY_PRESETS]: "presets",
+  [LIBRARY_APP_TEMPLATES]: "app templates",
+  [LIBRARY_APP_PRESETS]: "app presets",
+};
+
+/** The welcome screen: a rail of project groups above the library catalogues, and the matching grid beside it. Projects are snapshot cards sorted most-recently-opened first; the library rows show the user's saved templates and presets, plus, in a dev checkout, the bundled catalogues and the remaining bundled projects. */
 export function Welcome({
   onOpenProject,
   onNewProject,
@@ -337,19 +319,28 @@ export function Welcome({
   focusSearchNonce,
 }: {
   onOpenProject: (projectId: string) => void;
-  onNewProject: (group?: string) => void;
+  onNewProject: (options?: { group?: string | null; templateId?: string }) => void;
   /** Bump to re-scan the workspace (e.g. after a create). */
   refreshKey: number;
   /** Bump to focus and select the search field (⌘F). */
   focusSearchNonce: number;
 }) {
   const [projects, setProjects] = useState<WorkspaceProjectInfo[] | null>(null);
-  const [showDevProjects, setShowDevProjects] = useState(false);
   const [query, setQuery] = useState("");
-  const [activeGroupId, setActiveGroupId] = useState(ALL_PROJECTS);
+  const [activeRowId, setActiveRowId] = useState(ALL_PROJECTS);
   const [scrolled, setScrolled] = useState(false);
+  const [details, setDetails] = useState<{
+    target: ItemDetailsTarget;
+    title: string;
+    hint?: string;
+    submitLabel: string;
+    onSaved: () => void;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const groupRailRef = useRef<HTMLFieldSetElement>(null);
+  const railRef = useRef<HTMLFieldSetElement>(null);
+  const templates = useSyncExternalStore(subscribeTemplates, listAllTemplates);
+  const presets = useSyncExternalStore(subscribePresets, listAllPresets);
   useEffect(() => {
     if (focusSearchNonce === 0) return;
     searchRef.current?.focus();
@@ -387,6 +378,8 @@ export function Welcome({
           setProjects([]);
         }
       });
+    void refreshUserTemplates();
+    void refreshUserPresets();
     return () => {
       cancelled = true;
     };
@@ -394,46 +387,97 @@ export function Welcome({
 
   const empty = projects !== null && projects.length === 0 && !loadError;
   const trimmedQuery = query.trim().toLowerCase();
-  const groupRows = useMemo(() => projectGroupRows(projects ?? []), [projects]);
-  const visibleProjects = useMemo(
-    () => filterProjectLibrary(projects ?? [], activeGroupId, query),
-    [projects, activeGroupId, query],
+  const counts = useMemo(
+    () => ({
+      templates: templates.filter((entry) => entry.source === "user").length,
+      presets: presets.filter((entry) => entry.source === "user").length,
+      appTemplates: templates.filter((entry) => entry.source !== "user").length,
+      appPresets: presets.filter((entry) => entry.source !== "user").length,
+    }),
+    [templates, presets],
   );
-  const groups = groupRows.slice(2).map((row) => row.label);
-  const inheritedGroup = selectedProjectGroup(activeGroupId);
+  const sections = useMemo(
+    () => welcomeRailSections(projects ?? [], counts, import.meta.env.DEV),
+    [projects, counts],
+  );
+  const railRows = useMemo(() => welcomeRailRows(sections), [sections]);
+  const section = librarySection(activeRowId);
+  const visibleProjects = useMemo(
+    () => filterProjectLibrary(projects ?? [], activeRowId, query),
+    [projects, activeRowId, query],
+  );
+  const groups = sections[0].rows.slice(2).map((row) => row.label);
+  const inheritedGroup = selectedProjectGroup(activeRowId);
 
   useEffect(() => {
-    if (!groupRows.some((row) => row.id === activeGroupId)) setActiveGroupId(ALL_PROJECTS);
-  }, [activeGroupId, groupRows]);
+    if (!railRows.some((row) => row.id === activeRowId)) setActiveRowId(ALL_PROJECTS);
+  }, [activeRowId, railRows]);
 
-  const onGroupRailKeyDown = (e: React.KeyboardEvent) => {
-    const current = Math.max(
-      0,
-      groupRows.findIndex((row) => row.id === activeGroupId),
-    );
-    let next = current;
-    if (e.key === "ArrowDown" || e.key === "ArrowRight") {
-      next = Math.min(groupRows.length - 1, current + 1);
-    } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
-      next = Math.max(0, current - 1);
-    } else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = groupRows.length - 1;
-    else return;
-    e.preventDefault();
-    setActiveGroupId(groupRows[next].id);
-    groupRailRef.current?.querySelectorAll<HTMLElement>(".project-library-rail-row")[next]?.focus();
+  /** Crossing between the projects and the library drops the search, which scopes to one of them. */
+  const selectRow = (id: string) => {
+    if ((librarySection(id) === null) !== (section === null)) setQuery("");
+    setActiveRowId(id);
   };
+
+  const onRailKeyDown = (e: React.KeyboardEvent) => {
+    const next = nextWelcomeRailRow(railRows, activeRowId, e.key);
+    if (!next) return;
+    e.preventDefault();
+    selectRow(next.id);
+    railRef.current
+      ?.querySelectorAll<HTMLElement>(".project-library-rail-row")
+      [next.index]?.focus();
+  };
+
+  /** Snapshot a project into the user's templates, then open the details modal on the copy. */
+  const convertProject = (project: WorkspaceProjectInfo) => {
+    setError(null);
+    convertProjectToTemplate(project.slug)
+      .then(async (info) => {
+        await refreshUserTemplates();
+        const entry = listAllTemplates().find((t) => t.id === `ws:${info.slug}`);
+        if (!entry) return;
+        setDetails({
+          target: { kind: "template", source: "user", slug: info.slug, manifest: entry.manifest },
+          title: "New template",
+          hint: "The project itself is untouched; this is a snapshot of it.",
+          submitLabel: "Save template",
+          onSaved: () => setActiveRowId(LIBRARY_TEMPLATES),
+        });
+      })
+      .catch((e) => setError(String(e)));
+  };
+
+  const editDetails = (target: ItemDetailsTarget) =>
+    setDetails({
+      target,
+      title: target.kind === "template" ? "Template details" : "Preset details",
+      submitLabel: "Save",
+      onSaved: () => {},
+    });
+
+  const searchNoun = SEARCH_LABELS[activeRowId] ?? "projects";
+  const showSearch = section !== null || (projects !== null && projects.length > 0);
+
+  // Bundled projects that are not templates stay reachable from App templates.
+  const devProjects = useMemo(() => {
+    if (activeRowId !== LIBRARY_APP_TEMPLATES) return [];
+    const templateIds = new Set(templates.map((entry) => entry.id));
+    return listProjectIds().filter(
+      (id) => !templateIds.has(id) && (!trimmedQuery || id.includes(trimmedQuery)),
+    );
+  }, [activeRowId, templates, trimmedQuery]);
 
   return (
     <div className="welcome" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
-      {projects !== null && projects.length > 0 && (
+      {showSearch && (
         <div className={`welcome-search${scrolled ? " scrolled" : ""}`}>
           <input
             ref={searchRef}
             className="modal-input welcome-search-input"
             type="search"
-            placeholder="Search projects…"
-            aria-label="Search projects"
+            placeholder={`Search ${searchNoun}…`}
+            aria-label={`Search ${searchNoun}`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -453,9 +497,10 @@ export function Welcome({
         </h1>
         {projects !== null && (
           <p>
-            {empty
-              ? "Turn your latest features into polished product films, entirely on this Mac."
-              : "Your video projects."}
+            {SECTION_BLURBS[activeRowId] ??
+              (empty
+                ? "Turn your latest features into polished product films, entirely on this Mac."
+                : "Your video projects.")}
           </p>
         )}
       </header>
@@ -478,92 +523,142 @@ export function Welcome({
       {projects !== null && !loadError && (
         <div className="project-library">
           <fieldset
-            ref={groupRailRef}
+            ref={railRef}
             className="project-library-rail"
-            aria-label="Project groups"
-            onKeyDown={onGroupRailKeyDown}
+            aria-label="Projects and library"
+            onKeyDown={onRailKeyDown}
           >
-            {groupRows.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                className={`project-library-rail-row${activeGroupId === row.id ? " selected" : ""}`}
-                aria-pressed={activeGroupId === row.id}
-                tabIndex={activeGroupId === row.id ? 0 : -1}
-                onClick={() => setActiveGroupId(row.id)}
-              >
-                <span className="project-library-rail-label">{row.label}</span>
-                <span className="project-library-rail-count">{row.count}</span>
-              </button>
+            {sections.map((railSection) => (
+              <Fragment key={railSection.id}>
+                <p className="project-library-rail-heading">{railSection.label}</p>
+                {railSection.rows.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className={`project-library-rail-row${activeRowId === row.id ? " selected" : ""}${row.id === UNGROUPED_PROJECTS ? " spaced" : ""}`}
+                    aria-pressed={activeRowId === row.id}
+                    tabIndex={activeRowId === row.id ? 0 : -1}
+                    onClick={() => selectRow(row.id)}
+                  >
+                    <LibraryRailIcon id={row.iconId} />
+                    <span className="project-library-rail-label">{row.label}</span>
+                    <span className="project-library-rail-count">{row.count}</span>
+                  </button>
+                ))}
+              </Fragment>
             ))}
           </fieldset>
 
           <main className="project-library-results">
-            {trimmedQuery && visibleProjects.length === 0 && (
-              <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
+            {error && (
+              <p className="modal-error" role="alert">
+                {error}
+              </p>
             )}
-            {!trimmedQuery &&
-              activeGroupId === UNGROUPED_PROJECTS &&
-              visibleProjects.length === 0 && (
-                <p className="welcome-no-matches">No ungrouped projects.</p>
-              )}
-            <div className="project-grid">
-              {visibleProjects.map((p) => (
-                <ProjectCard
-                  key={p.slug}
-                  project={p}
-                  groups={groups}
-                  onOpen={() => onOpenProject(`ws:${p.slug}`)}
-                  onChanged={() => setRetryNonce((n) => n + 1)}
-                />
-              ))}
-              <button
-                type="button"
-                className="project-card new-project"
-                onClick={() => onNewProject(inheritedGroup)}
-              >
-                <span className="new-project-plus" aria-hidden="true">
-                  +
-                </span>
-                <span>New project</span>
-              </button>
-              <button
-                type="button"
-                className="project-card new-project"
-                onClick={() => void invoke("open_pack_import", { path: null })}
-              >
-                <span className="new-project-plus" aria-hidden="true">
-                  ↓
-                </span>
-                <span>Import a pack</span>
-              </button>
-            </div>
-
-            {showDevProjects && (
+            {section ? (
+              <LibraryGrid
+                kind={section.kind}
+                source={section.source}
+                query={query}
+                onOpen={onOpenProject}
+                onNewProjectFrom={(templateId) => onNewProject({ templateId })}
+                onEditDetails={editDetails}
+                onError={setError}
+                extra={
+                  devProjects.length > 0 ? (
+                    <section className="library-category">
+                      <h2 className="library-category-heading">
+                        <LibraryRailIcon id="group" />
+                        <span>Dev projects</span>
+                        <span className="library-category-count">{devProjects.length}</span>
+                      </h2>
+                      <div className="project-grid">
+                        {devProjects.map((id) => (
+                          <button
+                            type="button"
+                            key={id}
+                            className="project-card"
+                            onClick={() => onOpenProject(id)}
+                          >
+                            <span className="project-card-thumb">
+                              <PlaceholderArt />
+                            </span>
+                            <span className="project-card-body">
+                              <span className="project-card-name">{id}</span>
+                              <span className="project-card-meta">bundled</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null
+                }
+              />
+            ) : (
               <>
-                <h2 className="welcome-section">Built-in projects (dev)</h2>
+                {trimmedQuery && visibleProjects.length === 0 && (
+                  <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
+                )}
+                {!trimmedQuery &&
+                  activeRowId === UNGROUPED_PROJECTS &&
+                  visibleProjects.length === 0 && (
+                    <p className="welcome-no-matches">No ungrouped projects.</p>
+                  )}
                 <div className="project-grid">
-                  {listProjectIds().map((id) => (
-                    <button
-                      type="button"
-                      key={id}
-                      className="project-card"
-                      onClick={() => onOpenProject(id)}
-                    >
-                      <span className="project-card-thumb">
-                        <PlaceholderArt />
-                      </span>
-                      <span className="project-card-body">
-                        <span className="project-card-name">{id}</span>
-                        <span className="project-card-meta">bundled</span>
-                      </span>
-                    </button>
+                  {visibleProjects.map((p) => (
+                    <ProjectCard
+                      key={p.slug}
+                      project={p}
+                      groups={groups}
+                      onOpen={() => onOpenProject(`ws:${p.slug}`)}
+                      onConvert={() => convertProject(p)}
+                      onChanged={() => setRetryNonce((n) => n + 1)}
+                      onError={setError}
+                    />
                   ))}
+                  <button
+                    type="button"
+                    className="project-card new-project"
+                    onClick={() => onNewProject({ group: inheritedGroup })}
+                  >
+                    <span className="new-project-plus" aria-hidden="true">
+                      +
+                    </span>
+                    <span>New project</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="project-card new-project"
+                    onClick={() => void invoke("open_pack_import", { path: null })}
+                  >
+                    <span className="new-project-plus" aria-hidden="true">
+                      ↓
+                    </span>
+                    <span>Import a pack</span>
+                  </button>
                 </div>
               </>
             )}
           </main>
         </div>
+      )}
+
+      {details && (
+        <ItemDetailsModal
+          target={details.target}
+          title={details.title}
+          hint={details.hint}
+          submitLabel={details.submitLabel}
+          onSaved={async () => {
+            const saved = details;
+            setDetails(null);
+            await (saved.target.kind === "template"
+              ? refreshUserTemplates()
+              : refreshUserPresets());
+            saved.onSaved();
+          }}
+          onCancel={() => setDetails(null)}
+        />
       )}
 
       <footer className="welcome-footer">
@@ -574,17 +669,9 @@ export function Welcome({
           "iPhone" is a trademark of Apple Inc. Kookaburra Cut is not affiliated with or endorsed by
           Apple.
         </p>
-        <button
-          type="button"
-          className="version-label"
-          title="Kookaburra Cut"
-          onClick={(e) => {
-            // ⌥-click reveals the bundled gate projects, a dev affordance, not a feature.
-            if (e.altKey) setShowDevProjects((v) => !v);
-          }}
-        >
+        <p className="version-label" title="Kookaburra Cut">
           Kookaburra Cut {appVersion}
-        </button>
+        </p>
       </footer>
     </div>
   );
