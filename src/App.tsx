@@ -173,6 +173,7 @@ import {
   TitlebarProjects,
 } from "./ui/Titlebar";
 import { hasPendingTextEdit } from "./ui/textEditFocus";
+import { onThemeSaved } from "./ui/theme-editor/themeEditorIo";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
 import {
   commitSceneDuration,
@@ -289,6 +290,8 @@ export default function App() {
   const [showNewProject, setShowNewProject] = useState(false);
   /** Group preselected in the create dialog (a group heading's "+" on the welcome screen). */
   const [newProjectGroup, setNewProjectGroup] = useState<string | null>(null);
+  /** Template preselected in the create dialog (the library's "New project from this…"). */
+  const [newProjectTemplate, setNewProjectTemplate] = useState<string | null>(null);
   const isAutoRun = useMemo(() => {
     try {
       return getAutoRunConfig() !== null;
@@ -713,6 +716,15 @@ export default function App() {
     const id = loadedProjectRef.current?.id;
     if (id && isWorkspaceProjectId(id)) armPollBaseline(workspaceSlug(id));
   }, [armPollBaseline]);
+
+  // A preset insert landed a new scene file: reload and put the selection on it.
+  const handleSceneInserted = useCallback(
+    (file: string) => {
+      focusSceneFileRef.current = file;
+      handleTimingChanged();
+    },
+    [handleTimingChanged],
+  );
 
   // Scene management outside the wizard: rename is an in-memory sidecar `name` patch (no reload); delete is a trash-recoverable removal plus a full reload (a scene-set change, the wizard's path).
   const handleRenameScene = useCallback(
@@ -1294,6 +1306,7 @@ export default function App() {
       await invoke("set_project_theme", { slug: project.slug, themeId });
       await refreshProjects();
       setShowNewProject(false);
+      setNewProjectTemplate(null);
       openProject(`${WORKSPACE_PROJECT_PREFIX}${project.slug}`);
     },
     [refreshProjects, openProject],
@@ -1358,6 +1371,15 @@ export default function App() {
       });
     },
     [project, applyLoadedProject],
+  );
+
+  // Theme editor window saves land here with no modal open; bundled saves in dev ride the builtin glob's HMR instead.
+  useEffect(
+    () =>
+      onThemeSaved(({ themeId, json }) => {
+        if (themeId.startsWith(WORKSPACE_THEME_PREFIX)) void handleThemeEdited(themeId, json);
+      }),
+    [handleThemeEdited],
   );
 
   const handleChooseWorkspace = useCallback(async () => {
@@ -2000,8 +2022,9 @@ export default function App() {
       {view === "welcome" && (
         <Welcome
           onOpenProject={openProject}
-          onNewProject={(group) => {
-            setNewProjectGroup(group ?? null);
+          onNewProject={(options) => {
+            setNewProjectGroup(options?.group ?? null);
+            setNewProjectTemplate(options?.templateId ?? null);
             setShowNewProject(true);
           }}
           refreshKey={welcomeRefresh}
@@ -2327,6 +2350,7 @@ export default function App() {
               }
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
+              onSceneInserted={handleSceneInserted}
               onApplyTheme={handleApplyTheme}
               onDeleteScene={(i) => void handleDeleteScenes([i])}
               onReorderScenes={handleReorderScenes}
@@ -2404,6 +2428,7 @@ export default function App() {
             project={project}
             playing={playing}
             exporting={exporting}
+            onSceneInserted={handleSceneInserted}
             currentMs={currentMs}
             durationMs={durationMs}
             readout={error ?? timeReadout}
@@ -2466,8 +2491,12 @@ export default function App() {
       {showNewProject && (
         <NewProjectDialog
           initialGroup={newProjectGroup}
+          initialTemplateId={newProjectTemplate}
           onCreate={handleCreateProject}
-          onCancel={() => setShowNewProject(false)}
+          onCancel={() => {
+            setShowNewProject(false);
+            setNewProjectTemplate(null);
+          }}
         />
       )}
       {showMedia && project && isWorkspaceProjectId(project.id) && (

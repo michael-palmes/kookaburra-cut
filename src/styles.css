@@ -2714,7 +2714,8 @@ button.beat-status {
   cursor: pointer;
 }
 
-.project-library-rail-row:nth-child(2) {
+/* Ungrouped closes the fixed pair; the manual groups start below the gap. */
+.project-library-rail-row.spaced {
   margin-bottom: var(--space-3);
 }
 
@@ -2768,7 +2769,7 @@ button.beat-status {
     min-width: 8rem;
   }
 
-  .project-library-rail-row:nth-child(2) {
+  .project-library-rail-row.spaced {
     margin: 0 var(--space-3) 0 0;
   }
 }
@@ -2951,8 +2952,8 @@ button.beat-status {
   background: var(--surface-hover);
 }
 
-/* Project-card management (v12 · M2 B4): hover-revealed ⋯ beside each card, with the
-   rail-menu dropdown re-used for the actions. */
+/* Project-card management (v12 · M2 B4): hover-revealed ⋯ beside each card, opening
+   the shared context menu (the same one right-click raises). */
 .project-card-wrap {
   position: relative;
 }
@@ -2977,21 +2978,6 @@ button.beat-status {
 .project-card-menu-btn[aria-expanded="true"] {
   opacity: 1;
 }
-/* Variant CONTAINS the base class (the .modal.media-modal specificity lesson): the
-   rail-menu's own top/left anchors are for the rail and must lose here. */
-.rail-menu.project-card-menu {
-  position: absolute;
-  top: 34px;
-  right: 6px;
-  left: auto;
-  bottom: auto;
-  z-index: 10;
-}
-.project-card-menu-error {
-  margin: var(--space-1) var(--space-2);
-  max-width: 16rem;
-}
-
 .new-project-plus {
   font-size: var(--text-xl);
   line-height: 1;
@@ -10446,4 +10432,737 @@ textarea.text-inspector-copy-input {
 [data-lighting-screen] .option-grid .theme-card {
   gap: var(--space-1);
   padding: var(--space-2);
+}
+
+/* Theme editor ─────────────────────────────────────────────────────────────
+   The seventh window (label `theme-editor`): section nav, form, specimen. Its own
+   block at the end of the sheet because the window loads the same stylesheet as the
+   studio and shares its controls (.btn, .chip, .modal-input) rather than restyling them. */
+
+.theme-editor-window {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface-window);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.theme-editor-titlebar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex: 0 0 auto;
+  height: 58px;
+  padding: 0 var(--space-6) var(--space-4) 92px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.theme-editor-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 590;
+}
+
+.theme-editor-title > span:first-of-type {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.theme-editor-scope {
+  flex: none;
+  padding: 1px var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* Unsaved-changes pip; the titlebar is hidden-title, so this is the only "modified" mark. */
+.theme-editor-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--accent);
+  border-radius: var(--radius-full);
+}
+
+.theme-editor-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.theme-editor-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4) var(--space-6);
+  color: var(--danger);
+  font-size: var(--text-xs);
+  background: rgba(229, 101, 75, 0.08);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.theme-editor-body {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 300px;
+  flex: 1;
+  min-height: 0;
+}
+
+.theme-editor-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-5) var(--space-4);
+  overflow-y: auto;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.theme-editor-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--control-h-lg);
+  padding: 0 var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.theme-editor-nav-item:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.theme-editor-nav-item.active {
+  color: var(--text-primary);
+  background: var(--accent-subtle);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+
+.theme-editor-nav-note {
+  margin: var(--space-5) var(--space-4) 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-xs);
+}
+
+.theme-editor-form {
+  padding: var(--space-6) var(--space-7);
+  overflow-y: auto;
+}
+
+.theme-editor-section-head {
+  margin-bottom: var(--space-6);
+}
+
+.theme-editor-section-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 590;
+}
+
+.theme-editor-section-head p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.theme-editor-field + .theme-editor-field {
+  margin-top: var(--space-6);
+}
+
+.theme-editor-field-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.theme-editor-field-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.theme-editor-field-hint {
+  margin: var(--space-2) 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+}
+
+.theme-editor-field .modal-input {
+  max-width: 320px;
+}
+
+.theme-editor-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* A fieldset so the group carries a real name (its visually-hidden legend), stripped of the element's own chrome. */
+.theme-editor-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.theme-editor-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+}
+
+.theme-editor-select select {
+  width: auto;
+  min-width: 160px;
+}
+
+.theme-editor-number {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+}
+
+.theme-editor-number input {
+  width: 92px;
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-editor-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.theme-editor-tag-input {
+  width: 140px;
+}
+
+.theme-editor-colour {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.theme-editor-colour code,
+.theme-editor-swatch-row code {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+}
+
+.theme-editor-swatch-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.theme-editor-swatch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.theme-editor-swatch-index {
+  width: 16px;
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-editor-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.theme-editor-icon-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.theme-editor-icon-button.danger:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.theme-editor-icon-button:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.theme-editor-empty {
+  margin: 0 0 var(--space-5);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.theme-editor-gradient {
+  display: flex;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.theme-editor-gradient-preview {
+  flex: none;
+  width: 56px;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.theme-editor-gradient-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.theme-editor-field + .theme-editor-gradient,
+.theme-editor-gradient + .theme-editor-gradient,
+.theme-editor-gradient + .btn {
+  margin-top: var(--space-6);
+}
+
+.theme-editor-font-picker {
+  margin-top: var(--space-5);
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.theme-editor-text-motion {
+  width: 100%;
+}
+
+.theme-editor-warnings {
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  color: var(--warning);
+  font-size: var(--text-xs);
+  background: rgba(217, 140, 43, 0.08);
+  border: 1px solid rgba(217, 140, 43, 0.28);
+  border-radius: var(--radius-md);
+}
+
+.theme-editor-warnings > span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-weight: 590;
+}
+
+.theme-editor-warnings ul {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-6);
+  color: var(--text-secondary);
+  line-height: var(--lh-xs);
+}
+
+.theme-editor-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  color: var(--text-tertiary);
+  background: var(--surface-panel);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.theme-editor-placeholder p {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.theme-editor-block-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.theme-editor-block-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.theme-editor-block-list span {
+  color: var(--text-secondary);
+}
+
+.theme-editor-block-list code {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* Specimen: plain DOM this wave; the r3f canvas replaces the body of the panel next. */
+.theme-editor-specimen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  overflow-y: auto;
+  background: var(--surface-panel);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.theme-editor-specimen-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 590;
+}
+
+.theme-editor-specimen-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.theme-editor-specimen-canvas p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.theme-editor-specimen-pill {
+  padding: 2px var(--space-4);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  border-radius: var(--radius-full);
+}
+
+.theme-editor-specimen-group h3 {
+  margin: 0 0 var(--space-3);
+  color: var(--text-tertiary);
+  font-size: var(--text-2xs);
+  font-weight: 590;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.theme-editor-specimen-swatches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.theme-editor-specimen-swatch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-2xs);
+}
+
+.theme-editor-specimen-swatch i {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.theme-editor-specimen-swatch b {
+  flex: 1;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.theme-editor-specimen-swatch code {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.theme-editor-specimen-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  height: 60px;
+}
+
+.theme-editor-specimen-bars span {
+  flex: 1;
+  min-width: 6px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+}
+
+.theme-editor-specimen-gradients {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.theme-editor-specimen-gradient {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-2xs);
+}
+
+.theme-editor-specimen-gradient i {
+  width: 44px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+
+.theme-editor-specimen-gradient b {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.theme-editor-specimen-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.theme-editor-specimen-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: var(--text-2xs);
+}
+
+.theme-editor-specimen-facts dt {
+  color: var(--text-tertiary);
+}
+
+.theme-editor-specimen-facts dd {
+  margin: 0;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* ── Welcome library ───────────────────────────────────────────────────────
+   The welcome rail's second section (Templates, Presets and, in a dev
+   checkout, the app catalogues) plus the card grids it swaps in. Cards reuse
+   the wizard's .template-card box, so both surfaces stay one family. */
+
+.project-library-rail-heading {
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-3);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+  font-weight: 590;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* The Library heading opens a new block; Projects already sits under the wordmark. */
+.project-library-rail-heading + .project-library-rail-row {
+  margin-bottom: 0;
+}
+
+.project-library-rail-heading:not(:first-child) {
+  margin-top: var(--space-4);
+}
+
+.welcome-footer .version-label {
+  margin: 0;
+}
+
+.library-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+.library-category {
+  min-width: 0;
+}
+
+.library-category-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  font-weight: 590;
+  color: var(--text-secondary);
+}
+
+.library-category-count {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  align-content: start;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+/* Drag-reorder: the lifted card fades, the drop lands as an accent rule on the
+   edge the card would take. */
+.library-grid .template-card {
+  position: relative;
+  touch-action: none;
+}
+
+.library-grid .template-card.dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.library-grid .template-card.drop-before::before,
+.library-grid .template-card.drop-after::after {
+  content: "";
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.library-grid .template-card.drop-before::before {
+  left: calc(-1 * var(--space-3));
+}
+
+.library-grid .template-card.drop-after::after {
+  right: calc(-1 * var(--space-3));
+}
+
+/* One still, no hover cycle, so the preset card leans on its chips instead. */
+.preset-card .template-card-chips {
+  margin-top: auto;
+}
+
+/* Details modal: name, tagline, category chips and free tags, plus the
+   authoring facets a dev checkout may edit on bundled items. */
+.item-details {
+  inline-size: min(560px, 92vw);
+  gap: var(--space-4);
+}
+
+.item-details-categories {
+  margin: 0;
+}
+
+.item-details-categories .group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.item-details-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+}
+
+.item-details-tags .template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+}
+
+.item-details-tag-remove {
+  padding: 0;
+  font: inherit;
+  line-height: 1;
+  color: var(--text-tertiary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.item-details-tag-remove:hover {
+  color: var(--text-primary);
+}
+
+.item-details-tag-input {
+  flex: 1;
+  min-inline-size: 7rem;
+  height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  background: none;
+  border: 0;
+}
+
+.item-details-facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+
+@media (max-width: 760px) {
+  .project-library-rail-heading {
+    align-self: center;
+    flex: none;
+    margin: 0 var(--space-2) 0 0;
+  }
+
+  .project-library-rail-heading:not(:first-child) {
+    margin-top: 0;
+  }
 }
