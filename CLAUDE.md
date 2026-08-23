@@ -89,6 +89,7 @@ Rust: the native shell is in `src-tauri/` (`cargo check --manifest-path src-taur
 - `src/theme/`: theme schema, bundled themes, fonts.
 - `src/store/`: zustand editor/preview state. The export path deliberately does NOT read it.
 - `projects/<project>/`: the file-based project format: `project.json` + `scenes/*.tsx` (+ per-scene sidecar `scenes/<stem>.json`) + `assets/`.
+- `presets/<preset>/`: bundled scene presets: a single-scene project folder plus `preset.json`; user presets mirror the shape at `~/Kookaburra Cut/presets/`.
 - `src-tauri/`: Rust shell, `tauri.conf.json`, `capabilities/`, `bin/` (sidecars).
 
 **Licensed assets:** the device model glbs live at `src/assets/models/licensed/`
@@ -149,7 +150,9 @@ fixed/video backgrounds, a text-motion pack, one
 soundtrack per project, platform export presets, the studio workspace
 (`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
 Claude Code terminal), a packaged signed/notarised `.app`, the night-studio
-chrome (⌘K palette, right inspector, camera lane, playback bar), and `.kbpack`
+chrome (⌘K palette, right inspector, camera lane, playback bar), the
+template and scene-preset library with the theme editor window (dev builds
+edit the bundled sets in place), and `.kbpack`
 packs: one signed file carrying projects, templates, scene presets, themes,
 fonts, 3D objects, gradients, export presets and screenshots between machines
 (`docs/packs.md`).
