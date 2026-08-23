@@ -248,7 +248,7 @@ pub fn import_audio(
     slug: String,
     source_path: String,
 ) -> Result<String, String> {
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let src = std::path::PathBuf::from(&source_path);
     let ext = extension_of(&src);
     if !workspace::AUDIO_EXTENSIONS.contains(&ext.as_str()) {
@@ -282,7 +282,7 @@ pub async fn import_app_icon(
     slug: String,
     source_path: String,
 ) -> Result<String, String> {
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let src = std::path::PathBuf::from(&source_path);
     let ext = extension_of(&src);
     // gif rides along since the media grid lists it as an image; ffmpeg takes frame one.
@@ -528,7 +528,7 @@ pub fn delete_media(
     rel: String,
 ) -> Result<(), String> {
     validate_asset_rel(&rel)?;
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let path = project.join(&rel);
     if !path.is_file() {
         return Err(format!("no asset at {rel}"));
@@ -607,7 +607,7 @@ pub fn rename_media(
     if !old_ext.eq_ignore_ascii_case(new_ext) {
         return Err(format!("keep the .{old_ext} extension"));
     }
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let from = project.join(&rel);
     if !from.is_file() {
         return Err(format!("no asset at {rel}"));
@@ -658,7 +658,7 @@ pub fn import_media(
     slug: String,
     paths: Vec<String>,
 ) -> Result<Vec<String>, String> {
-    let assets = workspace::project_dir(&app, &state, &slug)?.join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
 
     let mut imported = Vec::new();
@@ -711,7 +711,7 @@ pub fn import_media_bytes(
     let Some((base, ext)) = media_stem_and_ext(Path::new(&name)) else {
         return Ok(None);
     };
-    let assets = workspace::project_dir(&app, &state, &slug)?.join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let candidate = free_asset_name(&assets, &base, &ext);
     std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
@@ -743,7 +743,7 @@ pub fn import_chart_data(
     if base.is_empty() {
         base = "data".into();
     }
-    let assets = workspace::project_dir(&app, &state, &slug)?.join("assets");
+    let assets = workspace::project_dir_mut(&app, &state, &slug)?.join("assets");
     std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
     let candidate = free_asset_name(&assets, &base, &ext);
     std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;

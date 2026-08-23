@@ -153,7 +153,7 @@ pub fn write_scene_doc(
             "this scene doc uses version {version} — it needs a newer Kookaburra Cut"
         ));
     }
-    let path = scene_doc_path(&workspace::project_dir(&app, &state, &slug)?, &file)?;
+    let path = scene_doc_path(&workspace::project_dir_mut(&app, &state, &slug)?, &file)?;
     atomic_write_json(&path, &doc)
 }
 
@@ -190,7 +190,7 @@ pub fn update_project_scene(
     index: usize,
     duration_ms: u64,
 ) -> Result<(), String> {
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -220,7 +220,7 @@ pub fn update_project_scene_transition(
             return Err("transition must be an object with a string `type`".into());
         }
     }
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -287,7 +287,7 @@ pub fn apply_project_transition_to_all(
     slug: String,
     transition: Option<Value>,
 ) -> Result<(), String> {
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -319,7 +319,7 @@ pub fn write_project_manifest_snapshot(
     if !manifest.get("scenes").map(Value::is_array).unwrap_or(false) {
         return Err("manifest needs a scenes array".into());
     }
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     atomic_write_json(&path, &manifest)
 }
 
@@ -331,7 +331,7 @@ pub fn remove_project_scene(
     slug: String,
     index: usize,
 ) -> Result<(), String> {
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
@@ -374,7 +374,7 @@ pub fn move_project_scene(
     from: usize,
     to: usize,
 ) -> Result<(), String> {
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -610,7 +610,7 @@ pub fn duplicate_scene(
     index: usize,
     position: Option<usize>,
 ) -> Result<ScaffoldResult, String> {
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&manifest_path)
         .map_err(|e| format!("reading project.json: {e}"))?;
@@ -922,7 +922,7 @@ pub fn copy_scene_to_project(
         return Err("pick a different project to copy into".into());
     }
     let project = workspace::project_dir(&app, &state, &slug)?;
-    let dest = workspace::project_dir(&app, &state, &dest_slug)?;
+    let dest = workspace::project_dir_mut(&app, &state, &dest_slug)?;
     let dest_manifest_path = dest.join(MANIFEST_FILENAME);
     if !dest_manifest_path.is_file() {
         return Err(format!("no project named {dest_slug} in the workspace"));
@@ -1029,7 +1029,7 @@ pub fn set_project_theme(
     slug: String,
     theme_id: String,
 ) -> Result<(), String> {
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1055,7 +1055,7 @@ pub fn set_project_audio(
             return Err("audio must be an object with a string `file`".into());
         }
     }
-    let path = workspace::project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = workspace::project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1378,7 +1378,7 @@ pub fn ensure_unique_scene_ids(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<SceneIdHeal, String> {
-    Ok(heal_scene_ids(&workspace::project_dir(
+    Ok(heal_scene_ids(&workspace::project_dir_mut(
         &app, &state, &slug,
     )?))
 }
@@ -1672,7 +1672,7 @@ pub async fn scaffold_scene(
     slug: String,
     mut options: ScaffoldOptions,
 ) -> Result<ScaffoldResult, String> {
-    let project = workspace::project_dir(&app, &state, &slug)?;
+    let project = workspace::project_dir_mut(&app, &state, &slug)?;
     let manifest_path = project.join(MANIFEST_FILENAME);
     if !manifest_path.is_file() {
         return Err(format!("project \"{slug}\" has no project.json"));

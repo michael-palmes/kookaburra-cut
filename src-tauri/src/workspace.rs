@@ -474,7 +474,7 @@ pub(crate) enum ProjectScope {
     BundledPreset,
 }
 
-/// Split a project id into its scope and slug. The slug is validated, so every caller's join can only land one level under a fixed root; the bundled scopes resolve in DEBUG builds alone, since a release app must never write into a checkout it happens to sit beside.
+/// Split a project id into its scope and slug. The slug is validated, so every caller's join can only land one level under a fixed root. Bundled scopes resolve in every build (release reads them from the app's resources, so presets can be inserted anywhere); writing to them is what `project_dir_mut` confines to a dev checkout.
 pub(crate) fn parse_project_id(id: &str) -> Result<(ProjectScope, &str), String> {
     let Some((scope, slug)) = id.split_once(':') else {
         validate_slug(id)?;
@@ -484,16 +484,21 @@ pub(crate) fn parse_project_id(id: &str) -> Result<(ProjectScope, &str), String>
     match scope {
         "ws-template" => Ok((ProjectScope::UserTemplate, slug)),
         "ws-preset" => Ok((ProjectScope::UserPreset, slug)),
-        "template" if cfg!(debug_assertions) => Ok((ProjectScope::BundledTemplate, slug)),
-        "preset" if cfg!(debug_assertions) => Ok((ProjectScope::BundledPreset, slug)),
-        "template" | "preset" => Err(format!(
-            "\"{id}\" is a bundled item: duplicate it to your library before editing"
-        )),
+        "template" => Ok((ProjectScope::BundledTemplate, slug)),
+        "preset" => Ok((ProjectScope::BundledPreset, slug)),
         _ => Err(format!("unknown project id: {id:?}")),
     }
 }
 
-/// The folder a project id names, ready to read or write.
+/// Whether this build may write to a scope: workspace trees always, the bundled trees only from a dev checkout.
+pub(crate) fn scope_writable(scope: ProjectScope) -> bool {
+    match scope {
+        ProjectScope::BundledTemplate | ProjectScope::BundledPreset => cfg!(debug_assertions),
+        _ => true,
+    }
+}
+
+/// The folder a project id names, for reading.
 pub fn project_dir(
     app: &AppHandle,
     state: &State<'_, SettingsState>,
@@ -507,6 +512,21 @@ pub fn project_dir(
         ProjectScope::BundledTemplate => templates_root(app).join(slug),
         ProjectScope::BundledPreset => presets_root(app).join(slug),
     })
+}
+
+/// The folder a project id names, for writing: refuses the bundled trees outside a dev checkout.
+pub fn project_dir_mut(
+    app: &AppHandle,
+    state: &State<'_, SettingsState>,
+    id: &str,
+) -> Result<PathBuf, String> {
+    let (scope, _) = parse_project_id(id)?;
+    if !scope_writable(scope) {
+        return Err(format!(
+            "\"{id}\" is a bundled item: duplicate it to your library before editing"
+        ));
+    }
+    project_dir(app, state, id)
 }
 
 /// Where a `create_project` template id points: `ws:<slug>` is one of the user's own templates, anything else is a bundled one. The slug is validated first, so the join stays one level under whichever root it picked.
@@ -950,7 +970,7 @@ pub fn rename_project(
     if display_name.is_empty() {
         return Err("the project needs a name".into());
     }
-    let path = project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1005,7 +1025,7 @@ pub fn set_project_typography(
         .filter(|v| !v.is_empty());
     let body = body.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
     let chart = chart.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
-    let path = project_dir(&app, &state, &slug)?.join(MANIFEST_FILENAME);
+    let path = project_dir_mut(&app, &state, &slug)?.join(MANIFEST_FILENAME);
     let text = std::fs::read_to_string(&path).map_err(|e| format!("reading project.json: {e}"))?;
     let mut manifest: serde_json::Value =
         serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
@@ -1357,7 +1377,7 @@ pub fn write_emoji_raster(
     if bytes.len() > 512 * 1024 {
         return Err("raster too large".into());
     }
-    let dir = project_dir(&app, &state, &slug)?
+    let dir = project_dir_mut(&app, &state, &slug)?
         .join("assets")
         .join(".emoji-cache");
     let file = dir.join(format!("{key}.png"));
@@ -2104,18 +2124,30 @@ mod tests {
             parse_project_id("ws-preset:stat-hero").unwrap(),
             (ProjectScope::UserPreset, "stat-hero")
         );
-        // Bundled scopes open in dev only; a release build refuses them outright.
-        let bundled = parse_project_id("template:blank");
-        if cfg!(debug_assertions) {
-            assert_eq!(bundled.unwrap(), (ProjectScope::BundledTemplate, "blank"));
-            assert_eq!(
-                parse_project_id("preset:stat-hero").unwrap(),
-                (ProjectScope::BundledPreset, "stat-hero")
-            );
-        } else {
-            assert!(bundled.is_err());
-            assert!(parse_project_id("preset:stat-hero").is_err());
+        // Bundled scopes resolve in every build; only WRITING them is dev-gated.
+        assert_eq!(
+            parse_project_id("template:blank").unwrap(),
+            (ProjectScope::BundledTemplate, "blank")
+        );
+        assert_eq!(
+            parse_project_id("preset:stat-hero").unwrap(),
+            (ProjectScope::BundledPreset, "stat-hero")
+        );
+        for scope in [
+            ProjectScope::Workspace,
+            ProjectScope::UserTemplate,
+            ProjectScope::UserPreset,
+        ] {
+            assert!(scope_writable(scope));
         }
+        assert_eq!(
+            scope_writable(ProjectScope::BundledTemplate),
+            cfg!(debug_assertions)
+        );
+        assert_eq!(
+            scope_writable(ProjectScope::BundledPreset),
+            cfg!(debug_assertions)
+        );
         // Every escape shape is refused, scoped or bare.
         for id in [
             "ws-template:../themes",
