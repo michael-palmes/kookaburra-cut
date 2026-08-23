@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { pushHistory } from "../engine/history";
 import { useLayeredScreenshotEditStore } from "../engine/layeredScreenshotEditStore";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type {
   LayeredScreenshotPose,
@@ -26,7 +26,7 @@ export function useLayeredScreenshotDoc(
   sceneIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   // The in-flight (or just-committed, pre-reload) block; cleared when the reload lands.

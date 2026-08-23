@@ -30,7 +30,7 @@ const DRAG_THRESHOLD_PX = 3;
 export function BeatLane({
   project,
   durationMs,
-  isWorkspace,
+  editable,
   onSeek,
   onUpdateMarkers,
   onAddCameraKey,
@@ -38,8 +38,8 @@ export function BeatLane({
 }: {
   project: LoadedProject;
   durationMs: number;
-  /** Bundled projects show the lane read-only (their manifests are not writable). */
-  isWorkspace: boolean;
+  /** Read-only projects show the lane read-only (their manifests are not writable). */
+  editable: boolean;
   /** Seek the playhead (the host's scrub guard applies). */
   onSeek: (ms: number) => void;
   /** Write (or null to clear) the manifest's `audio.markers` overlay. */
@@ -150,7 +150,7 @@ export function BeatLane({
   };
 
   const openMenu = (e: ReactMouseEvent) => {
-    if (!isWorkspace) return;
+    if (!editable) return;
     e.preventDefault();
     e.stopPropagation();
     const diamond = (e.target as HTMLElement).closest<HTMLElement>(".beat-diamond");
@@ -189,7 +189,7 @@ export function BeatLane({
       className="beat-lane"
       data-status={status}
       onDoubleClick={(e) => {
-        if (!isWorkspace) return;
+        if (!editable) return;
         if ((e.target as HTMLElement).closest(".beat-diamond, .beat-status")) return;
         const tMs = laneMsAt(e.clientX);
         if (tMs !== null) addMarker(snapToGrid(tMs));
@@ -223,7 +223,7 @@ export function BeatLane({
               const d = dragRef.current;
               if (!d || d.fromMs !== m.tMs) return;
               if (!d.moved) {
-                if (!isWorkspace || Math.abs(e.clientX - d.startX) < DRAG_THRESHOLD_PX) return;
+                if (!editable || Math.abs(e.clientX - d.startX) < DRAG_THRESHOLD_PX) return;
                 d.moved = true;
               }
               const raw = laneMsAt(e.clientX);

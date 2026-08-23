@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useClockStore } from "../engine/clock";
 import { FPS } from "../engine/format";
 import { type HistoryChange, pushHistory } from "../engine/history";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { readProjectManifestSnapshot } from "../engine/projectEdit";
 import type { RigDoc } from "../engine/sceneCameraEdit";
 import {
@@ -169,7 +169,7 @@ export function useSceneDocPatch(
   floorY?: DeviceFloorY,
 ) {
   const [error, setError] = useState<string | null>(null);
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const scene = project.slots[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
@@ -382,7 +382,7 @@ async function commitSceneDurationNow(
   onDocChanged: DocChangedHandler,
   onTimingChanged: () => void,
 ): Promise<SceneDoc | undefined> {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   // Pre-write snapshot: the shrink maths read the old slots before any write lands.

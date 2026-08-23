@@ -5,11 +5,12 @@ import { awaitSceneHostsCommitted, captureFrameRgba, captureScreenshot } from ".
 import { type AspectName, FORMATS, type FormatSpec, FPS } from "../engine/format";
 import {
   bumpWorkspaceReloadToken,
-  isWorkspaceProjectId,
+  isEditableProjectId,
   type LoadedProject,
   loadProject,
+  nativeProjectSlug,
+  projectIdForNativeSlug,
   sceneFileStem,
-  workspaceSlug,
 } from "../engine/project";
 import { awaitProjectCommitted } from "../engine/themePreviews";
 
@@ -62,8 +63,8 @@ export function startBridgeService(
 
   /** Load (or reload) `targetId` at `format` unless the mounted tree is already exactly that. */
   const ensureLoaded = async (targetId: string, format: FormatSpec): Promise<LoadedProject> => {
-    const fingerprint = isWorkspaceProjectId(targetId)
-      ? await invoke<string>("project_fingerprint", { slug: workspaceSlug(targetId) }).catch(
+    const fingerprint = isEditableProjectId(targetId)
+      ? await invoke<string>("project_fingerprint", { slug: nativeProjectSlug(targetId) }).catch(
           () => null,
         )
       : null;
@@ -158,7 +159,7 @@ export function startBridgeService(
     if (!take) return false;
     try {
       const format = contextFormat(context);
-      const project = await ensureLoaded(`ws:${take.slug}`, format);
+      const project = await ensureLoaded(projectIdForNativeSlug(take.slug), format);
       const index = project.sceneFiles.findIndex((f) => sceneFileStem(f) === take.stem);
       const slot = project.slots[index];
       if (!slot) return true;

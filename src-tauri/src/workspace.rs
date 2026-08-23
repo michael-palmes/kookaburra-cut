@@ -1548,9 +1548,7 @@ pub fn provision_project(
     state: State<'_, SettingsState>,
     slug: String,
 ) -> Result<bool, String> {
-    let root = require_root(&app, &state)?;
-    validate_slug(&slug)?;
-    let dir = root.join(&slug);
+    let dir = project_dir_mut(&app, &state, &slug)?;
     if !dir.join(MANIFEST_FILENAME).is_file() {
         return Err(format!("\"{slug}\" is not a project folder"));
     }

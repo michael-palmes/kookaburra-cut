@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { isWorkspaceProjectId, type LoadedProject, sceneFileStem, workspaceSlug } from "./project";
+import {
+  isEditableProjectId,
+  type LoadedProject,
+  nativeProjectSlug,
+  sceneFileStem,
+} from "./project";
 
 /** Scene-picker thumbnails: one centre-frame PNG per scene, rendered by the hidden render window's fast tier (render/bridgeService.ts) and cached natively under the workspace state dir (`.kookaburra/scene-thumbs/<slug>/<stem>.png`). Each thumb carries its own source stamp (that scene's module plus sidecar), so adding or editing ONE scene recaptures ONE thumb; capture never borrows the editor's clock (the pre-window pipeline scrubbed the timeline under the user). Grids paint the cached set immediately and refresh on `kookaburra://thumbs-updated` as fresh thumbs land. */
 
@@ -14,10 +19,10 @@ interface SceneThumbsListing {
 export async function listCachedSceneThumbs(
   project: LoadedProject,
 ): Promise<Record<string, string>> {
-  if (!isWorkspaceProjectId(project.id)) return {};
+  if (!isEditableProjectId(project.id)) return {};
   try {
     const listing = await invoke<SceneThumbsListing>("list_scene_thumbs", {
-      slug: workspaceSlug(project.id),
+      slug: nativeProjectSlug(project.id),
     });
     return listing.thumbs;
   } catch {
@@ -25,13 +30,13 @@ export async function listCachedSceneThumbs(
   }
 }
 
-/** Cached thumb paths by scene file stem, submitting the missing/stale ones to the render window's queue (latest submission wins). Resolves immediately with what the cache holds; fresh thumbs announce themselves via `kookaburra://thumbs-updated`. An aborted `signal` cancels this submission's queue (the requesting dialog closed). Non-workspace projects get `{}` (pickers only exist for workspace projects). */
+/** Cached thumb paths by scene file stem, submitting the missing/stale ones to the render window's queue (latest submission wins). Resolves immediately with what the cache holds; fresh thumbs announce themselves via `kookaburra://thumbs-updated`. An aborted `signal` cancels this submission's queue (the requesting dialog closed). Read-only projects get `{}` (the pickers only exist where scenes can be edited). */
 export async function ensureSceneThumbs(
   project: LoadedProject,
   opts?: { signal?: AbortSignal },
 ): Promise<Record<string, string>> {
-  if (!isWorkspaceProjectId(project.id)) return {};
-  const slug = workspaceSlug(project.id);
+  if (!isEditableProjectId(project.id)) return {};
+  const slug = nativeProjectSlug(project.id);
   const stems = project.sceneFiles.map(sceneFileStem);
   try {
     const listing = await invoke<SceneThumbsListing>("list_scene_thumbs", { slug });

@@ -12,7 +12,7 @@ vi.mock("./exporter", () => ({ awaitTextSync: vi.fn(async () => {}) }));
 vi.mock("./gizmoRegistry", () => ({ hideGizmoHandles: vi.fn(() => () => {}) }));
 vi.mock("./project", () => ({
   isWorkspaceProjectId: (id: string) => id.startsWith("ws:"),
-  workspaceSlug: (id: string) => id.slice(3),
+  nativeProjectSlug: (id: string) => (id.startsWith("ws:") ? id.slice(3) : id),
 }));
 
 beforeEach(() => {

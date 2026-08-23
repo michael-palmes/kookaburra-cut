@@ -16,7 +16,7 @@ import { textIconInspectorRoute } from "./inspectorTitles";
 describe("projectRows (the Project-tab pin)", () => {
   it("workspace projects get the full set, in order", () => {
     const rows = projectRows({
-      isWorkspace: true,
+      editable: true,
       themeName: "Editorial",
       typographyLabel: "Theme fonts",
       aspect: "16:9",
@@ -47,7 +47,7 @@ describe("projectRows (the Project-tab pin)", () => {
 
   it("a soundtrack name replaces the Music 'None' value", () => {
     const rows = projectRows({
-      isWorkspace: true,
+      editable: true,
       themeName: "Pacific",
       typographyLabel: "Inter",
       aspect: "9:16",
@@ -62,7 +62,7 @@ describe("projectRows (the Project-tab pin)", () => {
 
   it("bundled projects keep Aspect ratio, Playback options + a READ-ONLY Theme (decision 12)", () => {
     const rows = projectRows({
-      isWorkspace: false,
+      editable: false,
       themeName: "Default",
       typographyLabel: "Theme fonts",
       aspect: "1:1",

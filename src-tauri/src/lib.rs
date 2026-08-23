@@ -214,8 +214,8 @@ fn start_export(
         }
     }
 
-    // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used.
-    workspace::validate_slug(&options.project_id)?;
+    // F-002: project_id and aspect build the output dir (bundled branch) and filename, so reject anything path-shaped BEFORE either is used. A scoped library id folds its colon to a dash (`project_cache_key`, at least as strict as `validate_slug`); every unscoped id passes through unchanged, so existing outputs and baselines keep their exact names.
+    let project_key = workspace::project_cache_key(&options.project_id)?;
     workspace::validate_slug(&options.aspect)?;
 
     // Workspace projects render into their own exports/ folder (self-contained projects); bundled/gate projects keep the legacy ~/Kookaburra Cut/<project>/ path so baseline tooling and hashes stay put (moved out of ~/Documents since macOS TCC guards Documents and kept breaking headless gates); both paths are built HERE, the frontend never supplies a path. "downloads" (app-triggered exports honouring the setting) routes only the FINAL file to ~/Downloads; terminal autoruns never send it.
@@ -228,18 +228,13 @@ fn start_export(
         app.path().download_dir().map_err(|e| e.to_string())?
     } else {
         match &options.project_slug {
-            Some(slug) => {
-                workspace::validate_slug(slug)?;
-                workspace::require_root(&app, &settings)?
-                    .join(slug)
-                    .join("exports")
-            }
+            Some(slug) => workspace::project_dir(&app, &settings, slug)?.join("exports"),
             None => app
                 .path()
                 .home_dir()
                 .map_err(|e| e.to_string())?
                 .join(workspace::WORKSPACE_DIR_NAME)
-                .join(&options.project_id),
+                .join(&project_key),
         }
     };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -255,7 +250,7 @@ fn start_export(
         Some(spec) => spec.codec.container_ext(),
         None => options.codec.container_ext(),
     };
-    let base = format!("{}-{}{}", options.project_id, options.aspect, suffix);
+    let base = format!("{}-{}{}", project_key, options.aspect, suffix);
     let mut output = dir.join(format!("{base}.{ext}"));
     // Downloads is shared space: never overwrite, suffix Finder-style. The canonical paths keep overwrite semantics (baselines re-record in place).
     if to_downloads {

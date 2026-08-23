@@ -4,7 +4,7 @@ import { canvasCommittedClockMs, canvasHandle, setCapturingPreview } from "./exp
 import { awaitTextSync } from "./exporter";
 import { isExporting } from "./exportState";
 import { hideGizmoHandles } from "./gizmoRegistry";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "./project";
+import { isWorkspaceProjectId, type LoadedProject, nativeProjectSlug } from "./project";
 
 /** Preview-frame capture off the live canvas, used by welcome snapshots and scene thumbs. UI niceties, not part of the export path: nothing here runs during an export/autorun, every failure is silent (cards keep their placeholders), and the determinism contract is untouched (the preview clock is borrowed and restored). */
 
@@ -117,7 +117,7 @@ export async function captureCurrentFrame(width: number): Promise<Uint8Array | n
 /** Welcome-card snapshot: one representative frame to `.kookaburra/snapshots/<slug>.png`; returns whether a snapshot was written. */
 export async function captureSnapshot(project: LoadedProject): Promise<boolean> {
   if (!isWorkspaceProjectId(project.id)) return false;
-  const slug = workspaceSlug(project.id);
+  const slug = nativeProjectSlug(project.id);
   const written = await withBorrowedClock(async () => {
     const bytes = await captureFrameAt(
       Math.round(project.totalMs * SNAPSHOT_POINT),

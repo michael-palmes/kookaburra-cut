@@ -15,7 +15,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
     view: "editor",
     projectId: "ws:my-project",
     projectLoaded: true,
-    isWorkspace: true,
+    editable: true,
     hasAudio: true,
     hasChart: false,
     exporting: false,
@@ -95,7 +95,7 @@ describe("buildCommands (the vocabulary pin)", () => {
     expect(with_["scene.editChartData"]).toBe(true);
     // Both are workspace-only edits (bundled projects have no native write path).
     const bundled = Object.fromEntries(
-      buildCommands(ctx({ isWorkspace: false })).map((c) => [c.id, c.enabled] as const),
+      buildCommands(ctx({ editable: false })).map((c) => [c.id, c.enabled] as const),
     );
     expect(bundled["scene.addChart"]).toBe(false);
   });
@@ -121,7 +121,7 @@ describe("buildCommands (the vocabulary pin)", () => {
 
   it("gates workspace-only commands off for bundled projects", () => {
     const byId = Object.fromEntries(
-      buildCommands(ctx({ isWorkspace: false, hasAudio: false })).map((c) => [c.id, c.enabled]),
+      buildCommands(ctx({ editable: false, hasAudio: false })).map((c) => [c.id, c.enabled]),
     );
     expect(byId["project.media"]).toBe(false);
     expect(byId["project.theme"]).toBe(false);

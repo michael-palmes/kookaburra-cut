@@ -1,7 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { SRGBColorSpace, type Texture, TextureLoader } from "three";
 import { fsUrl } from "../../engine/media";
-import { isWorkspaceProjectId, resolveAssetPath, workspaceSlug } from "../../engine/project";
+import {
+  isWorkspaceBackedProjectId,
+  nativeProjectSlug,
+  resolveAssetPath,
+} from "../../engine/project";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 import { type EmojiCluster, prepareEmojiText } from "./emojiText";
 
@@ -140,12 +144,12 @@ async function resolveKey(key: string, cluster: string): Promise<void> {
     warnOnce(key, `[emoji] the system font cannot draw "${cluster}" (${key}); it will not render`);
     return;
   }
-  if (projectId && isWorkspaceProjectId(projectId)) {
+  if (projectId && isWorkspaceBackedProjectId(projectId)) {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     try {
       await invoke("write_emoji_raster", bytes, {
         headers: {
-          "x-kookaburra-slug": workspaceSlug(projectId),
+          "x-kookaburra-slug": nativeProjectSlug(projectId),
           "x-kookaburra-key": `${key}@${EMOJI_RASTER_SIZE}`,
         },
       });

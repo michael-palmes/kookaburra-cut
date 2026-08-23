@@ -78,16 +78,17 @@ import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
   type AudioMarkersSpec,
   bumpWorkspaceReloadToken,
+  isEditableProjectId,
   isWorkspaceProjectId,
   type LoadedProject,
   listAllProjects,
   loadProject,
+  nativeProjectSlug,
   type ProjectListing,
+  projectFolderPath,
   resolveAssetPath,
   sceneFileStem,
   WORKSPACE_PROJECT_PREFIX,
-  workspaceProjectPath,
-  workspaceSlug,
 } from "./engine/project";
 import {
   duplicateProjectScene,
@@ -323,7 +324,7 @@ export default function App() {
   // Coarse export-preamble phase (0..3) while an export is preparing, else null (drives the preparing-export overlay so a cold start isn't a silent 0%).
   const [exportPrepStep, setExportPrepStep] = useState<number | null>(null);
 
-  // Opens automatically when a workspace project loads (the panel itself is the "edit in Claude Code" prompt; the session only starts on explicit click), and via the titlebar button or native menu item.
+  // Opens automatically when an editable project loads (the panel itself is the "edit in Claude Code" prompt; the session only starts on explicit click), and via the titlebar button or native menu item.
   const [railOpen, setRailOpen] = useState(false);
 
   // Titlebar-opened modal; refresh bumps re-scan it (e.g. after a drag-drop import while open).
@@ -339,9 +340,9 @@ export default function App() {
   // Insert a media path: paste into a live Claude session if one exists, else copy to clipboard and open the rail.
   const handleInsertMedia = useCallback((rel: string) => {
     const currentId = useEditorStore.getState().projectId;
-    if (!isWorkspaceProjectId(currentId)) return;
+    if (!isEditableProjectId(currentId)) return;
     setShowMedia(false);
-    const live = getLiveSession(workspaceSlug(currentId));
+    const live = getLiveSession(nativeProjectSlug(currentId));
     if (live) {
       live.session.paste(rel);
       live.term.focus();
@@ -364,13 +365,13 @@ export default function App() {
   // "Edit in Claude Code" on a theme card: paste a starter prompt into the live session, the media Insert pattern, never auto-submitted.
   const handleEditThemeInClaude = useCallback((choice: { id: string; name: string }) => {
     const currentId = useEditorStore.getState().projectId;
-    if (!isWorkspaceProjectId(currentId)) return;
+    if (!isEditableProjectId(currentId)) return;
     const slug = choice.id.startsWith(WORKSPACE_THEME_PREFIX)
       ? choice.id.slice(WORKSPACE_THEME_PREFIX.length)
       : null;
     if (!slug) return;
     const prompt = `Edit my Kookaburra Cut theme "${choice.name}" — its JSON lives at "~/Kookaburra Cut/themes/${slug}/theme.json". I'd like to: `;
-    const live = getLiveSession(workspaceSlug(currentId));
+    const live = getLiveSession(nativeProjectSlug(currentId));
     if (live) {
       live.session.paste(prompt);
       live.term.focus();
@@ -393,7 +394,7 @@ export default function App() {
     }
   }, []);
 
-  // Drag-drop import (design.md §8.9): files dropped anywhere on the window land in the open workspace project's assets/.
+  // Drag-drop import (design.md §8.9): files dropped anywhere on the window land in the open editable project's assets/.
   // Not gated on the editor view, because a dropped pack must work from the welcome screen too, which is where a new
   // starter most likely is when someone sends them one.
   useEffect(() => {
@@ -410,8 +411,8 @@ export default function App() {
       }
       const paths = dropped.filter((p) => !p.toLowerCase().endsWith(".kbpack"));
       const currentId = useEditorStore.getState().projectId;
-      if (!isWorkspaceProjectId(currentId) || paths.length === 0) return;
-      importMedia(workspaceSlug(currentId), paths)
+      if (!isEditableProjectId(currentId) || paths.length === 0) return;
+      importMedia(nativeProjectSlug(currentId), paths)
         .then((imported) => {
           // importMedia's media-changed broadcast handles the picker refreshes.
           if (imported.length === 0) return;
@@ -430,11 +431,11 @@ export default function App() {
   useEffect(() => {
     if (isAutoRun) return;
     const unlisten = listen("kookaburra://edit-in-claude", () => {
-      // ⌘E only means something with a workspace project open; say so elsewhere instead of silently doing nothing.
-      if (view === "editor" && isWorkspaceProjectId(useEditorStore.getState().projectId)) {
+      // ⌘E only means something with an editable project open; say so elsewhere instead of silently doing nothing.
+      if (view === "editor" && isEditableProjectId(useEditorStore.getState().projectId)) {
         setRailOpen(true);
       } else {
-        setToast({ kind: "error", message: "Open a workspace project to edit with Claude Code." });
+        setToast({ kind: "error", message: "Open an editable project to edit with Claude Code." });
       }
     });
     return () => {
@@ -569,7 +570,7 @@ export default function App() {
         };
       });
       const id = loadedProjectRef.current?.id;
-      if (id && isWorkspaceProjectId(id)) armPollBaseline(workspaceSlug(id));
+      if (id && isEditableProjectId(id)) armPollBaseline(nativeProjectSlug(id));
     },
     [armPollBaseline],
   );
@@ -578,12 +579,12 @@ export default function App() {
   /** Make a project image the app icon: the media drill-in picks a rel, the native side converts it over assets/app-icon.png. */
   async function handleSetAppIcon(pickedRel: string) {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     if (pickedRel === "assets/app-icon.png") {
       setToast({ kind: "success", message: "That image is already the app icon" });
       return;
     }
-    const slug = workspaceSlug(current.id);
+    const slug = nativeProjectSlug(current.id);
     try {
       const source = resolveAssetPath(current.id, pickedRel);
       const rel = await invoke<string>("import_app_icon", { slug, sourcePath: source });
@@ -598,8 +599,8 @@ export default function App() {
 
   async function handleSetSoundtrack() {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
-    const slug = workspaceSlug(current.id);
+    if (!current || !isEditableProjectId(current.id)) return;
+    const slug = nativeProjectSlug(current.id);
     const picked = await openFolderPicker({
       multiple: false,
       directory: false,
@@ -631,9 +632,9 @@ export default function App() {
 
   async function handleSetRenderSettings(settings: RenderSettings) {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     try {
-      const slug = workspaceSlug(current.id);
+      const slug = nativeProjectSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
       // ACES at 1.0 is the byte-identical default: stored as ABSENCE so untouched projects never carry the block.
@@ -664,9 +665,9 @@ export default function App() {
     chart: string | null,
   ) {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     try {
-      const slug = workspaceSlug(current.id);
+      const slug = nativeProjectSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       await setProjectTypography(slug, headline, body, chart);
       pushHistory({
@@ -689,9 +690,9 @@ export default function App() {
 
   async function handleRemoveSoundtrack() {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     try {
-      const slug = workspaceSlug(current.id);
+      const slug = nativeProjectSlug(current.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       await invoke("set_project_audio", { slug, audio: null });
       pushHistory({
@@ -715,7 +716,7 @@ export default function App() {
   const handleTimingChanged = useCallback(() => {
     setLoadNonce((n) => n + 1);
     const id = loadedProjectRef.current?.id;
-    if (id && isWorkspaceProjectId(id)) armPollBaseline(workspaceSlug(id));
+    if (id && isEditableProjectId(id)) armPollBaseline(nativeProjectSlug(id));
   }, [armPollBaseline]);
 
   // A preset insert landed a new scene file: reload and put the selection on it.
@@ -731,8 +732,8 @@ export default function App() {
   const handleRenameScene = useCallback(
     async (sceneIndex: number, name: string) => {
       const current = loadedProjectRef.current;
-      if (!current || !isWorkspaceProjectId(current.id)) return;
-      const slug = workspaceSlug(current.id);
+      if (!current || !isEditableProjectId(current.id)) return;
+      const slug = nativeProjectSlug(current.id);
       const doc = current.sceneDocs[sceneIndex];
       const file = current.sceneFiles[sceneIndex];
       if (!doc || !file) return;
@@ -768,7 +769,7 @@ export default function App() {
 
   const handleDeleteScenes = useCallback(async (indices: number[]) => {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     const plan = planDeletes(indices, current.slots.length);
     if (plan.length === 0) {
       setToast({ kind: "error", message: "A project needs at least one scene." });
@@ -777,7 +778,7 @@ export default function App() {
     try {
       // Descending (planDeletes), so each removal only shifts indices past the one already gone; no history entry, the wizard's delete semantics: recoverable from the Trash, not ⌘Z (a manifest revert can't restore trashed files).
       for (const index of plan) {
-        await removeProjectScene(workspaceSlug(current.id), index);
+        await removeProjectScene(nativeProjectSlug(current.id), index);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -788,10 +789,14 @@ export default function App() {
 
   const handleDuplicateScene = useCallback(async (sceneIndex: number, position?: number) => {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     try {
       // No history entry (delete's semantics: a manifest revert can't un-create files); a new TSX needs the full module reload.
-      const result = await duplicateProjectScene(workspaceSlug(current.id), sceneIndex, position);
+      const result = await duplicateProjectScene(
+        nativeProjectSlug(current.id),
+        sceneIndex,
+        position,
+      );
       focusSceneFileRef.current = result.file;
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -803,10 +808,10 @@ export default function App() {
   // The scene manager's batch ops: sequential manifest edits, one reload at the end.
   const handleReorderScenes = useCallback(async (desired: number[]) => {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     try {
       for (const { from, to } of planMoves(desired)) {
-        await moveProjectScene(workspaceSlug(current.id), from, to);
+        await moveProjectScene(nativeProjectSlug(current.id), from, to);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -817,11 +822,11 @@ export default function App() {
 
   const handleDuplicateScenes = useCallback(async (indices: number[]) => {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     try {
       // One block after the last selected scene, in the sources' order (planDuplicates walks the cursor as the array grows).
       for (const { from, at } of planDuplicates(indices)) {
-        await duplicateProjectScene(workspaceSlug(current.id), from, at);
+        await duplicateProjectScene(nativeProjectSlug(current.id), from, at);
       }
       bumpWorkspaceReloadToken();
       setLoadNonce((n) => n + 1);
@@ -833,7 +838,7 @@ export default function App() {
   const handleSceneDuration = useCallback(
     async (sceneIndex: number, ms: number) => {
       const current = loadedProjectRef.current;
-      if (!current || !isWorkspaceProjectId(current.id)) return;
+      if (!current || !isEditableProjectId(current.id)) return;
       try {
         await commitSceneDuration(current, sceneIndex, ms, handleDocChanged, handleTimingChanged);
       } catch (e) {
@@ -846,8 +851,8 @@ export default function App() {
   // Beat-marker overlay writes: manifest snapshot + in-memory patch (no reload; a drag commit must not flash the preview). Undo replays through the manifest history path, which reloads.
   const handleUpdateAudioMarkers = useCallback(async (markers: AudioMarkersSpec | null) => {
     const current = loadedProjectRef.current;
-    if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
-    const slug = workspaceSlug(current.id);
+    if (!current?.audio || !isEditableProjectId(current.id)) return;
+    const slug = nativeProjectSlug(current.id);
     try {
       const manifestBefore = await readProjectManifestSnapshot(slug);
       const manifest = JSON.parse(manifestBefore);
@@ -879,8 +884,8 @@ export default function App() {
   const writeSceneCameraDoc = useCallback(
     async (sceneIndex: number, nextCamera: CameraDoc, label: string) => {
       const current = loadedProjectRef.current;
-      if (!current || !isWorkspaceProjectId(current.id)) return;
-      const slug = workspaceSlug(current.id);
+      if (!current || !isEditableProjectId(current.id)) return;
+      const slug = nativeProjectSlug(current.id);
       const file = current.sceneFiles[sceneIndex];
       if (!file) return;
       const doc = current.sceneDocs[sceneIndex];
@@ -913,7 +918,7 @@ export default function App() {
   const handleAddCameraKeyAtBeat = useCallback(
     async (tMs: number) => {
       const current = loadedProjectRef.current;
-      if (!current || !isWorkspaceProjectId(current.id)) return;
+      if (!current || !isEditableProjectId(current.id)) return;
       const sceneIndex =
         tMs >= current.totalMs ? current.slots.length - 1 : activeSceneIndex(current.slots, tMs);
       const doc = current.sceneDocs[sceneIndex];
@@ -937,7 +942,7 @@ export default function App() {
   const handleSyncCameraToBeats = useCallback(
     async (tMs: number) => {
       const current = loadedProjectRef.current;
-      if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
+      if (!current?.audio || !isEditableProjectId(current.id)) return;
       const sceneIndex =
         tMs >= current.totalMs ? current.slots.length - 1 : activeSceneIndex(current.slots, tMs);
       const doc = current.sceneDocs[sceneIndex];
@@ -979,8 +984,8 @@ export default function App() {
     async (sceneIndex: number) => {
       const current = loadedProjectRef.current;
       const clip = useUiStore.getState().backgroundClipboard;
-      if (!current || !isWorkspaceProjectId(current.id) || !clip) return;
-      const slug = workspaceSlug(current.id);
+      if (!current || !isEditableProjectId(current.id) || !clip) return;
+      const slug = nativeProjectSlug(current.id);
       const file = current.sceneFiles[sceneIndex];
       if (!file) return;
       try {
@@ -1007,7 +1012,7 @@ export default function App() {
   /** Palette Add chart: seed the starter block on the playhead's scene when it has none (the inspector's add entry seeds the same one), then land on the chart drill. */
   const handleAddChart = useCallback(async () => {
     const current = loadedProjectRef.current;
-    if (!current || !isWorkspaceProjectId(current.id)) return;
+    if (!current || !isEditableProjectId(current.id)) return;
     const sceneIndex = activeSceneIndex(current.slots, useClockStore.getState().currentMs);
     const existing = current.sceneDocs[sceneIndex];
     const file = current.sceneFiles[sceneIndex];
@@ -1022,7 +1027,7 @@ export default function App() {
       return;
     }
     if (!file) return;
-    const slug = workspaceSlug(current.id);
+    const slug = nativeProjectSlug(current.id);
     try {
       const before = existing ? structuredClone(existing) : null;
       const next: SceneDoc = existing ? structuredClone(existing) : { version: 1 };
@@ -1119,7 +1124,7 @@ export default function App() {
         rendered?.slug === pending.slug &&
         rendered?.name === pending.editName &&
         isWorkspaceProjectId(project.id) &&
-        workspaceSlug(project.id) === pending.slug
+        nativeProjectSlug(project.id) === pending.slug
       ) {
         pendingRepointRef.current = null;
         const doc = project.sceneDocs[pending.index];
@@ -1316,8 +1321,8 @@ export default function App() {
   // Apply writes project.json.themeId then does a nonce-only reload (stale-while-revalidate; the poll re-arms so the UI write can't double-reload).
   const handleApplyTheme = useCallback(
     async (themeId: string) => {
-      if (!project || !isWorkspaceProjectId(project.id)) return;
-      const slug = workspaceSlug(project.id);
+      if (!project || !isEditableProjectId(project.id)) return;
+      const slug = nativeProjectSlug(project.id);
       const manifestBefore = await readProjectManifestSnapshot(slug);
       await invoke("set_project_theme", { slug, themeId });
       pushHistory({
@@ -1416,7 +1421,7 @@ export default function App() {
         applyLoadedProject(loaded);
         // The scene-id heal rewrote TSX on disk: adopt those bytes as the poll's baseline so it doesn't fire a redundant reload.
         if (loaded.healedSceneIds?.length && isWorkspaceProjectId(loaded.id)) {
-          armPollBaseline(workspaceSlug(loaded.id));
+          armPollBaseline(nativeProjectSlug(loaded.id));
         }
         if (!isSwitch || isAutoRun) {
           // SWR reload (same project): nothing remounted, the stage never blanked.
@@ -1455,10 +1460,10 @@ export default function App() {
     };
   }, [projectId, loadNonce, view, applyLoadedProject, isAutoRun, backToProjects, armPollBaseline]);
 
-  // Auto-open the Claude rail for workspace projects; close it where it can't work.
+  // Auto-open the Claude rail for editable projects; close it where it can't work.
   useEffect(() => {
     if (!project || isAutoRun) return;
-    setRailOpen(isWorkspaceProjectId(project.id));
+    setRailOpen(isEditableProjectId(project.id));
   }, [project, isAutoRun]);
 
   // Camera-edit hygiene: a committed drag draft holds the new pose through the async reload, released once the reloaded project lands; the editor's whole state is per-project, so a project switch resets it.
@@ -1529,8 +1534,8 @@ export default function App() {
 
   // Live-reload when project sources change on disk (writes happen outside Vite's watch scope): poll a fingerprint every ~1s, debounce one tick so multi-file edits land as one reload, then re-run the load path; kept independent of `project` so it keeps polling through transient load errors.
   useEffect(() => {
-    if (view !== "editor" || !isWorkspaceProjectId(projectId) || exporting || isAutoRun) return;
-    const slug = workspaceSlug(projectId);
+    if (view !== "editor" || !isEditableProjectId(projectId) || exporting || isAutoRun) return;
+    const slug = nativeProjectSlug(projectId);
     fpBaselineRef.current = null;
     let pending: string | null = null;
     let cancelled = false;
@@ -1818,8 +1823,16 @@ export default function App() {
       slot: "device" | "compareDevice" | "background" | "videoWindow" = "device",
       deviceId?: string,
     ) => {
-      if (!project || !isWorkspaceProjectId(project.id)) return;
-      const slug = workspaceSlug(project.id);
+      if (!project) return;
+      // The video editor is workspace-project only: its documents live in `<workspace>/<slug>/edits/`.
+      if (!isWorkspaceProjectId(project.id)) {
+        setToast({
+          kind: "error",
+          message: "Editing video needs a project; create one from this item first.",
+        });
+        return;
+      }
+      const slug = nativeProjectSlug(project.id);
       try {
         // A rendered output reopens its own edit (and re-renders over the same file) instead of chaining a new -edited derivative.
         const m = /^assets\/(.+)-edited\.mp4$/.exec(mediaRel);
@@ -1956,11 +1969,12 @@ export default function App() {
 
   const editorView = view === "editor";
 
-  // The identity line under the project name: the project folder with the home prefix tilde'd, or a plain marker for bundled dev projects.
+  // The identity line under the project name: the project folder with the home prefix tilde'd, or a plain marker for read-only bundled projects.
+  const projectFolder = project ? projectFolderPath(project.id) : null;
   const projectDisplayPath = !editorView
     ? null
-    : project && isWorkspaceProjectId(project.id)
-      ? (workspaceProjectPath(workspaceSlug(project.id))?.replace(/^\/Users\/[^/]+/, "~") ?? null)
+    : project && isEditableProjectId(project.id)
+      ? (projectFolder?.replace(/^\/Users\/[^/]+/, "~") ?? null)
       : "Built-in project";
 
   return (
@@ -2036,7 +2050,7 @@ export default function App() {
       {editorView && (
         <div className="editor-body">
           {/* The rail hides during export (task 24): the live-session registry keeps the PTY and buffer alive through the unmount, so it restores intact when the export ends. */}
-          {railOpen && !exporting && project && isWorkspaceProjectId(project.id) && (
+          {railOpen && !exporting && project && isEditableProjectId(project.id) && (
             <aside className="terminal-rail">
               <div className="rail-header">
                 <span className="rail-title">Claude Code</span>
@@ -2051,8 +2065,8 @@ export default function App() {
               </div>
               <TerminalPanel
                 key={project.id}
-                slug={workspaceSlug(project.id)}
-                cwd={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+                slug={nativeProjectSlug(project.id)}
+                cwd={projectFolder ?? ""}
                 projectName={project.name}
                 scenes={project.slots.map((s, i) => ({
                   index: i,
@@ -2133,7 +2147,7 @@ export default function App() {
                 </Canvas>
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
-                  isWorkspaceProjectId(project.id) &&
+                  isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
                   (lsActive
@@ -2160,7 +2174,7 @@ export default function App() {
                       ))}
                 {/* The 2D gizmo layers: DOM above the canvas and above the tool surface, so handles never reach the camera overlay and empty-area drags fall through to it. One inspector family is open at a time, so at most one mounts. */}
                 {project &&
-                  isWorkspaceProjectId(project.id) &&
+                  isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
                   decorationEditOpen && (
@@ -2172,14 +2186,14 @@ export default function App() {
                     />
                   )}
                 {project &&
-                  isWorkspaceProjectId(project.id) &&
+                  isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
                   imageSectionOpen && (
                     <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
                   )}
                 {project &&
-                  isWorkspaceProjectId(project.id) &&
+                  isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
                   textSectionOpen && (
@@ -2190,7 +2204,7 @@ export default function App() {
                     />
                   )}
                 {project &&
-                  isWorkspaceProjectId(project.id) &&
+                  isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
                   chartSectionOpen && (
@@ -2220,9 +2234,9 @@ export default function App() {
                 />
               )}
 
-              {/* The camera pill: bottom-left of the stage, z-7, above the tool overlay and below toasts; workspace projects only. */}
+              {/* The camera pill: bottom-left of the stage, z-7, above the tool overlay and below toasts; editable projects only. */}
               {project &&
-                isWorkspaceProjectId(project.id) &&
+                isEditableProjectId(project.id) &&
                 projectReady &&
                 !exporting &&
                 !isAutoRun &&
@@ -2376,7 +2390,7 @@ export default function App() {
           connectorActive={animationLaneOpen || lightingLaneOpen}
           activeIndex={camSceneIndex}
           lane={
-            project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
+            project && isEditableProjectId(project.id) && !exporting && !isAutoRun ? (
               <div className={stackedLanes ? "anim-lane-stack" : undefined}>
                 {comparePresent && (
                   <CompareAnimationLane
@@ -2435,7 +2449,7 @@ export default function App() {
             readout={error ?? timeReadout}
             hasAudio={!!project?.audio}
             audioMuted={audioMuted}
-            isWorkspace={!!project && isWorkspaceProjectId(project.id)}
+            editable={!!project && isEditableProjectId(project.id)}
             playRef={playBtnRef}
             onTogglePlay={togglePlay}
             onToggleMute={() => useUiStore.getState().setAudioMuted(!audioMuted)}
@@ -2500,16 +2514,16 @@ export default function App() {
           }}
         />
       )}
-      {showMedia && project && isWorkspaceProjectId(project.id) && (
+      {showMedia && project && isEditableProjectId(project.id) && (
         <MediaLibrary
-          slug={workspaceSlug(project.id)}
-          projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
+          slug={nativeProjectSlug(project.id)}
+          projectPath={projectFolder ?? ""}
           refreshKey={mediaRefresh}
           onInsert={handleInsertMedia}
           onClose={() => setShowMedia(false)}
         />
       )}
-      {themeMode && project && isWorkspaceProjectId(project.id) && (
+      {themeMode && project && isEditableProjectId(project.id) && (
         <ThemeMode
           currentThemeId={project.theme.id}
           initialView={themeMode.view}
@@ -2531,7 +2545,7 @@ export default function App() {
             view,
             projectId,
             projectLoaded: !!project,
-            isWorkspace: !!project && isWorkspaceProjectId(project.id),
+            editable: !!project && isEditableProjectId(project.id),
             hasAudio: !!project?.audio,
             hasChart: chartPresent,
             exporting,

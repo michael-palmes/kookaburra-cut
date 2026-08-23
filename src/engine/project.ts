@@ -380,15 +380,23 @@ export function isWorkspaceBackedProjectId(id: string): boolean {
   return scope === "workspace" || scope === "ws-template" || scope === "ws-preset";
 }
 
-/** The `slug` argument the native commands take for a workspace-backed id. Library items keep their scope prefix, so the native side resolves `ws-preset:hero` under the workspace presets root; this is the ONE seam between the two id schemes. */
+/** The `slug` argument the native commands take for a project id: only a workspace project drops its prefix, every scoped library id passes VERBATIM (the native `parse_project_id` resolves the scope itself). This is the ONE seam between the two id schemes; never slice a prefix by hand. */
 export function nativeProjectSlug(id: string): string {
   const { scope, slug } = parseProjectId(id);
   return scope === "workspace" ? slug : id;
 }
 
-/** Whether this build may write to the project behind an id: workspace projects and workspace library items always, the bundled trees only from a dev checkout (a packaged app reads them out of its own resources). */
+/** The inverse seam: the id a native slug names, for the paths that only carry a slug (the render window's thumb jobs). */
+export function projectIdForNativeSlug(slug: string): string {
+  return slug.includes(":") ? slug : `${WORKSPACE_PROJECT_PREFIX}${slug}`;
+}
+
+/** Whether this build may write to the project behind an id: workspace projects and workspace library items always, the bundled library trees only from a dev checkout (a packaged app reads those out of its own resources). Bare bundled and fixture ids are never editable: the native side reads a bare slug as a WORKSPACE project, so writing on one would land in the wrong tree. */
 export function isEditableProjectId(id: string): boolean {
-  return isWorkspaceBackedProjectId(id) || import.meta.env.DEV;
+  const { scope } = parseProjectId(id);
+  if (scope === "bundled") return false;
+  if (scope === "template" || scope === "preset") return import.meta.env.DEV;
+  return true;
 }
 
 /** One entry in the combined project picker. */
@@ -415,11 +423,6 @@ export function isWorkspaceProjectId(id: string): boolean {
 /** Absolute folder of a cached workspace project (valid once its project has loaded). */
 export function workspaceProjectPath(slug: string): string | null {
   return workspaceProjects.get(slug)?.path ?? null;
-}
-
-/** The project slug of a workspace project id (`"ws:my-video"` → `"my-video"`). */
-export function workspaceSlug(id: string): string {
-  return id.slice(WORKSPACE_PROJECT_PREFIX.length);
 }
 
 /** Bumped when project sources change on disk (App's fingerprint poll): keys the compiled-module cache, so a bump re-reads + recompiles every scene module while unchanged loads reuse theirs (UI writes never bump it). */
@@ -515,6 +518,24 @@ async function ensureProjectsRoot(): Promise<void> {
   const resources = await resourceDir();
   projectsRoot ??= await join(resources, "projects");
   presetsRoot ??= await join(resources, "presets");
+}
+
+/** The absolute folder behind a project id, for the surfaces that need a real path (the Claude terminal's cwd, the media browsers' preview URLs, the titlebar identity). Null until the id's tree has resolved: workspace projects need `loadProject`, workspace library items their catalogue hydration, and the bundled trees `ensureProjectsRoot`. */
+export function projectFolderPath(id: string): string | null {
+  const { scope, slug } = parseProjectId(id);
+  switch (scope) {
+    case "workspace":
+      return workspaceProjectPath(slug);
+    case "ws-template":
+    case "ws-preset":
+      return workspaceLibraryPath(id);
+    case "template":
+      return projectsRoot ? `${projectsRoot}/${slug}` : null;
+    case "preset":
+      return presetsRoot ? `${presetsRoot}/${slug}` : null;
+    default:
+      return null;
+  }
 }
 
 /** Reject a project-relative path that could escape the project folder: no absolute paths, no ".." segments, never empty. Mirrors the intent of Rust's `media::resolve_asset` (frontend defence in depth; the native side stays the hard boundary). Returns the path with a leading "./" stripped. */
@@ -650,7 +671,7 @@ async function refreshWorkspaceEnvironments(projectId: string): Promise<void> {
   if (!isWorkspaceProjectId(projectId)) return;
   try {
     const rels = await invoke<string[]>("list_project_environments", {
-      slug: workspaceSlug(projectId),
+      slug: nativeProjectSlug(projectId),
     });
     workspaceEnvironments.set(projectId, new Set(rels.map((rel) => rel.replace(/^\.?\//, ""))));
   } catch {
@@ -740,7 +761,7 @@ async function importProjectModule<T>(
   what: string,
 ): Promise<T> {
   if (isWorkspaceProjectId(projectId)) {
-    const project = requireWorkspaceProject(workspaceSlug(projectId));
+    const project = requireWorkspaceProject(nativeProjectSlug(projectId));
     return importCompiledWorkspaceModule<T>(project.slug, file.replace(/^\.?\//, ""));
   }
   if (isWorkspaceBackedProjectId(projectId)) {
@@ -843,7 +864,7 @@ export async function loadProject(
   // F-001 trust gate: no workspace scene code compiles until the user consents; bundled projects never gate. Reading the manifest above is inert (JSON only).
   let healedSceneIds: string[] | undefined;
   if (isWorkspaceProjectId(id)) {
-    const slug = workspaceSlug(id);
+    const slug = nativeProjectSlug(id);
     await ensureProjectTrusted(slug, manifest.name || slug);
     // Trust first: declining must mean zero writes. The bump evicts pre-heal modules from `wsCompiledModules` so the imports below compile the rewritten bytes.
     const heal = await ensureUniqueSceneIds(slug);

@@ -5,7 +5,7 @@ import {
   type LightingTrackDoc,
   useLightingEditStore,
 } from "../engine/lightingEditStore";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { sampleLightingPose } from "../engine/sceneLighting";
@@ -47,7 +47,7 @@ export function useLightingTrackDoc(
   target: LightingTarget,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   const draftIdentity = `${project.id}\u0000${sceneIndex}\u0000${target}`;

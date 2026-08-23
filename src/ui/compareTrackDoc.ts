@@ -5,7 +5,7 @@ import {
   useCompareEditStore,
 } from "../engine/compareEditStore";
 import { pushHistory } from "../engine/history";
-import { isWorkspaceProjectId, type LoadedProject, workspaceSlug } from "../engine/project";
+import { isEditableProjectId, type LoadedProject, nativeProjectSlug } from "../engine/project";
 import { compareSampleAt, compareSpecOf } from "../engine/sceneCompare";
 import { writeSceneDoc } from "../engine/sceneDoc";
 import type { SceneDoc } from "../engine/sceneDocSchema";
@@ -16,7 +16,7 @@ export function useCompareTrackDoc(
   sceneIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = isWorkspaceProjectId(project.id) ? workspaceSlug(project.id) : null;
+  const slug = isEditableProjectId(project.id) ? nativeProjectSlug(project.id) : null;
   const doc = project.sceneDocs[sceneIndex];
   const sceneFile = project.sceneFiles[sceneIndex];
   const [localDraft, setLocalDraft] = useState<CompareTrackDoc | null>(null);

@@ -160,9 +160,7 @@ pub fn copy_to_global_screenshots(
     slug: String,
     rel: String,
 ) -> Result<String, String> {
-    let root = workspace::require_root(&app, &state)?;
-    workspace::validate_slug(&slug)?;
-    let source = media::resolve_asset(&root, &slug, &rel)?;
+    let source = media::resolve_asset_in(&workspace::project_dir(&app, &state, &slug)?, &rel)?;
     if !source.is_file() {
         return Err(format!("asset not found: {rel}"));
     }

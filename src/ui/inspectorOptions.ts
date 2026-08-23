@@ -27,9 +27,9 @@ export interface ProjectRowModel {
   chevron: boolean;
 }
 
-/** The Project tab. Workspace projects get the full set; bundled dev projects keep only what applies without native writes: Aspect ratio (app state) and a read-only Theme value (decision 12). */
+/** The Project tab. Editable projects get the full set; read-only ones keep only what applies without native writes: Aspect ratio (app state) and a read-only Theme value (decision 12). */
 export function projectRows(input: {
-  isWorkspace: boolean;
+  editable: boolean;
   themeName: string;
   /** "Theme fonts" when no override; else the override summary. */
   typographyLabel: string;
@@ -39,7 +39,7 @@ export function projectRows(input: {
   renderLabel: string;
   scenesCount: number;
 }): ProjectRowModel[] {
-  if (!input.isWorkspace) {
+  if (!input.editable) {
     return [
       { id: "theme", label: "Theme", value: input.themeName, chevron: false },
       { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },

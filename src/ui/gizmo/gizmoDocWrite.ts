@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { type HistoryChange, pushHistory } from "../../engine/history";
-import { type LoadedProject, workspaceSlug } from "../../engine/project";
+import { type LoadedProject, nativeProjectSlug } from "../../engine/project";
 import { writeSceneDoc } from "../../engine/sceneDoc";
 import type { SceneDoc } from "../../engine/sceneDocSchema";
 
@@ -10,7 +10,7 @@ export function useGizmoDocWrite(
   sceneIndex: number,
   onDocChanged: (sceneIndex: number, doc: SceneDoc) => void,
 ) {
-  const slug = workspaceSlug(project.id);
+  const slug = nativeProjectSlug(project.id);
   const sceneFile = project.sceneFiles[sceneIndex];
 
   const build = useCallback((base: SceneDoc | null, mutate: (next: SceneDoc) => void): SceneDoc => {

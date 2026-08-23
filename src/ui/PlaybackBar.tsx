@@ -11,8 +11,8 @@ import { isExporting } from "../engine/exportState";
 import {
   type AudioMarkersSpec,
   type LoadedProject,
+  nativeProjectSlug,
   sceneFileStem,
-  workspaceSlug,
 } from "../engine/project";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "../engine/sceneThumbs";
 import { activeSceneIndex } from "../engine/sceneTimeline";
@@ -39,7 +39,7 @@ export function PlaybackBar({
   readout,
   hasAudio,
   audioMuted,
-  isWorkspace,
+  editable,
   playRef,
   onTogglePlay,
   onToggleMute,
@@ -64,7 +64,7 @@ export function PlaybackBar({
   readout: string;
   hasAudio: boolean;
   audioMuted: boolean;
-  isWorkspace: boolean;
+  editable: boolean;
   /** Host's play-button ref; its Space-key guard keys off it. */
   playRef: RefObject<HTMLButtonElement | null>;
   onTogglePlay: () => void;
@@ -113,7 +113,7 @@ export function PlaybackBar({
   };
 
   const openSceneMenu = (e: ReactMouseEvent, index: number) => {
-    if (!project || !isWorkspace || exporting || isExporting()) return;
+    if (!project || !editable || exporting || isExporting()) return;
     e.preventDefault();
     // Menus build once per open, so a plain snapshot read is enough.
     setMenu({
@@ -150,7 +150,7 @@ export function PlaybackBar({
 
   // Double-click renames in place (same guards as the context menu's Rename).
   const startRename = (index: number) => {
-    if (!project || !isWorkspace || exporting || isExporting()) return;
+    if (!project || !editable || exporting || isExporting()) return;
     if (!project.sceneDocs[index]) return;
     setRenaming({ index, text: sceneName(index) });
   };
@@ -318,7 +318,7 @@ export function PlaybackBar({
           <BeatLane
             project={project}
             durationMs={durationMs}
-            isWorkspace={isWorkspace}
+            editable={editable}
             onSeek={onScrub}
             onUpdateMarkers={onUpdateAudioMarkers}
             onAddCameraKey={onAddCameraKeyAtBeat}
@@ -403,7 +403,7 @@ export function PlaybackBar({
         <span className="pb-readout" onPointerDown={holdPointer}>
           {readout}
         </span>
-        {isWorkspace && (
+        {editable && (
           <button
             type="button"
             className="pb-new-scene"
@@ -419,7 +419,7 @@ export function PlaybackBar({
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
       {copying !== null && project && (
         <CopySceneModal
-          slug={workspaceSlug(project.id)}
+          slug={nativeProjectSlug(project.id)}
           indices={[copying]}
           sceneLabel={`“${sceneName(copying)}”`}
           onDone={() => setCopying(null)}
@@ -428,7 +428,7 @@ export function PlaybackBar({
       )}
       {insertingPreset !== null && project && (
         <PresetGalleryModal
-          slug={workspaceSlug(project.id)}
+          slug={nativeProjectSlug(project.id)}
           sceneCount={project.slots.length}
           position={insertingPreset}
           onDone={(inserted) => {
@@ -440,7 +440,7 @@ export function PlaybackBar({
       )}
       {savingPreset !== null && project && (
         <SavePresetModal
-          projectSlug={workspaceSlug(project.id)}
+          projectSlug={nativeProjectSlug(project.id)}
           sceneStem={sceneFileStem(project.sceneFiles[savingPreset])}
           sceneName={sceneName(savingPreset)}
           onClose={() => setSavingPreset(null)}
