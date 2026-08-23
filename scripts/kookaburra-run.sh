@@ -119,6 +119,18 @@ fi
 if [[ -n "$PROJECT" && "$ACTION" != "preset-previews" ]]; then
   IFS=',' read -ra PROJECT_LIST <<<"$PROJECT"
   for P in "${PROJECT_LIST[@]}"; do
+    # Library ids resolve their scoped tree here; workspace-side scopes resolve in the app.
+    case "$P" in
+      template:*) P="${P#template:}" ;;
+      preset:*)
+        if [[ ! -f "$ROOT/presets/${P#preset:}/preset.json" ]]; then
+          echo "kookaburra:run: preset '${P#preset:}' not found at presets/${P#preset:}/preset.json" >&2
+          exit 2
+        fi
+        continue
+        ;;
+      ws-template:* | ws-preset:*) continue ;;
+    esac
     if [[ -n "$P" && "$P" != ws:* && ! -f "$ROOT/projects/$P/project.json" && ! -f "$ROOT/fixtures/$P/project.json" ]]; then
       echo "kookaburra:run: project '$P' not found at projects/$P/project.json or fixtures/$P/project.json" >&2
       echo "            available: $( (ls -1 "$ROOT/projects"; ls -1 "$ROOT/fixtures") 2>/dev/null | tr '\n' ' ')" >&2

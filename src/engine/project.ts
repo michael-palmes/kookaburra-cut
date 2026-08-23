@@ -262,6 +262,10 @@ const assetUrlGlob: Record<string, string> = {
       "/presets/*/assets/**/*.[jJ][pP][gG]",
       "/presets/*/assets/**/*.[jJ][pP][eE][gG]",
       "/presets/*/assets/**/*.[wW][eE][bB][pP]",
+      "/projects/_samples/*.[pP][nN][gG]",
+      "/projects/_samples/*.[jJ][pP][gG]",
+      "/projects/_samples/*.[jJ][pP][eE][gG]",
+      "/projects/_samples/*.[wW][eE][bB][pP]",
     ],
     {
       query: "?url",
@@ -526,6 +530,28 @@ export function assertProjectRelative(rel: string): string {
   return clean;
 }
 
+// Existence oracle for the bundled library trees, keys only (lazy globs are never imported, so
+// nothing lands in dist): what a template or preset folder actually ships, and the shared pool.
+const bundledAssetKeys = new Set(
+  Object.keys({
+    ...import.meta.glob("/projects/*/assets/**", { query: "?url" }),
+    ...import.meta.glob("/presets/*/assets/**", { query: "?url" }),
+  }),
+);
+const samplePoolKeys = new Set(
+  Object.keys(import.meta.glob("/projects/_samples/*", { query: "?url" })),
+);
+
+/** Bundled templates ship no `assets/` folder: their scenes reference the shared pool by name and `create_project` seeds the copies. Opening one in place resolves the same way, by name, against `projects/_samples/`; only the bundled library scopes fall back, so a genuinely missing asset elsewhere still throws. */
+function samplePoolName(scope: ProjectScope, key: string, clean: string): string | null {
+  if (scope !== "template" && scope !== "preset") return null;
+  if (bundledAssetKeys.has(key)) return null;
+  if (!clean.startsWith("assets/")) return null;
+  const base = clean.slice("assets/".length);
+  if (base.includes("/")) return null;
+  return samplePoolKeys.has(`/projects/_samples/${base}`) ? base : null;
+}
+
 /** Resolve a project-relative asset path (e.g. `"assets/clip.mp4"`) to an absolute filesystem path so the native side can read it (ffmpeg pre-extraction, hashing). Valid only after a project has loaded (which resolves the packaged-app root; see `ensureProjectsRoot`). Rejects paths that could escape the project folder (see `assertProjectRelative`). */
 export function resolveAssetPath(projectId: string, relPath: string): string {
   const clean = assertProjectRelative(relPath);
@@ -541,6 +567,13 @@ export function resolveAssetPath(projectId: string, relPath: string): string {
   if (!root) {
     throw new Error("Projects root not resolved yet — load a project before resolving assets.");
   }
+  const pooled = samplePoolName(scope, `${bundledProjectDir(projectId)}/${clean}`, clean);
+  if (pooled) {
+    if (!projectsRoot) {
+      throw new Error("Projects root not resolved yet — load a project before resolving assets.");
+    }
+    return `${projectsRoot}/_samples/${pooled}`;
+  }
   return `${root}/${slug}/${clean}`;
 }
 
@@ -554,7 +587,9 @@ function projectAssetKey(projectId: string, relPath: string): string {
   if (scope === "ws-template" || scope === "ws-preset") {
     return fsUrl(`${requireWorkspaceLibraryPath(projectId)}/${clean}`);
   }
-  return `${bundledProjectDir(projectId)}/${clean}`;
+  const key = `${bundledProjectDir(projectId)}/${clean}`;
+  const pooled = samplePoolName(scope, key, clean);
+  return pooled ? `/projects/_samples/${pooled}` : key;
 }
 
 /** Resolve every `lut.url` in an effect config from project-relative (how project.json/themes author it) to its project glob key (how engine/effects.ts loads and caches it). Pure; returns fresh objects, never mutates (the theme's EffectsConfig is a shared module value). */
