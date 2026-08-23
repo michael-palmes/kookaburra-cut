@@ -1,7 +1,7 @@
 //! The only thing in the app that writes an import into the workspace.
 //!
-//! Three rules hold it together. Fonts, gradients, objects, themes, presets and screenshots land before projects, so a
-//! project arrives into a workspace that already has what it references. A replace moves the incumbent into a dated
+//! Three rules hold it together. Everything a project can reference lands before projects do (`ItemKind::APPLY_ORDER`),
+//! so a project arrives into a workspace that already has what it names. A replace moves the incumbent into a dated
 //! backup first and never deletes inline. A failure part way through stops and reports, because rolling back a
 //! half-applied import is more dangerous than leaving it named and inspectable.
 
@@ -11,7 +11,7 @@ use super::error::PackError;
 use super::fonts::{apply_font_merge, FontApplySummary};
 use super::hash::sha256_bytes;
 use super::limits::{BACKUP_DIR, PAYLOAD_PREFIX};
-use super::model::{ItemKind, PackFont, PackManifest, Resolution};
+use super::model::{ItemKind, PackFont, PackManifest, PackProject, Resolution};
 use super::read::StagedPack;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -61,18 +61,13 @@ struct Work {
     target_slug: String,
 }
 
-/// Slugs a keep-both moved aside, so references inside this import follow them.
+/// Slugs a keep-both moved aside, so references inside this import follow them. Only the referenced kinds are here:
+/// nothing in the workspace addresses a project, template or preset by slug, but each still re-stamps its own `id`.
 #[derive(Default)]
 struct Renames {
     themes: HashMap<String, String>,
     objects: HashMap<String, String>,
     gradients: HashMap<String, String>,
-}
-
-impl Renames {
-    fn is_empty(&self) -> bool {
-        self.themes.is_empty() && self.objects.is_empty() && self.gradients.is_empty()
-    }
 }
 
 /// Apply an import. `resolutions` is keyed `"<kind>:<slug>"`; an item with no entry was never selected and is not
@@ -124,9 +119,10 @@ pub fn apply_import(
 
     // Every rewrite happens in staging, before anything moves, and only ever inside this import.
     let renames = renames_from(&work);
-    if !renames.is_empty() {
+    if work.iter().any(|item| item.target_slug != item.slug) {
         rewrite_references(&staging, &work, &renames)?;
     }
+    stamp_pack_source(&staging, &work)?;
     outcome
         .notes
         .extend(theme_fallback_notes(root, &manifest, &work));
@@ -236,6 +232,18 @@ fn flatten(manifest: &PackManifest) -> Vec<(ItemKind, String, String)> {
                     .iter()
                     .map(|s| (kind, s.base.slug.clone(), s.base.name.clone())),
             ),
+            ItemKind::Template => out.extend(
+                contents
+                    .templates
+                    .iter()
+                    .map(|t| (kind, t.base.slug.clone(), t.base.name.clone())),
+            ),
+            ItemKind::Preset => out.extend(
+                contents
+                    .presets
+                    .iter()
+                    .map(|p| (kind, p.base.slug.clone(), p.base.name.clone())),
+            ),
             ItemKind::Project => out.extend(
                 contents
                     .projects
@@ -250,6 +258,8 @@ fn flatten(manifest: &PackManifest) -> Vec<(ItemKind, String, String)> {
 fn label(kind: ItemKind) -> &'static str {
     match kind {
         ItemKind::Project => "project",
+        ItemKind::Template => "template",
+        ItemKind::Preset => "scene preset",
         ItemKind::Theme => "theme",
         ItemKind::Font => "font",
         ItemKind::Object => "3D object",
@@ -283,13 +293,21 @@ fn staged_source(staging: &Path, kind: ItemKind, slug: &str) -> PathBuf {
     }
 }
 
-/// Point the projects in this import at the slugs a keep-both moved them to. Projects outside the import are never read.
+/// Every kind that carries a `project.json` and scene sidecars, so one rewrite serves all three.
+fn is_project_shaped(kind: ItemKind) -> bool {
+    matches!(
+        kind,
+        ItemKind::Project | ItemKind::Template | ItemKind::Preset
+    )
+}
+
+/// Point the folders in this import at the slugs a keep-both moved them to. Anything outside the import is never read.
 fn rewrite_references(staging: &Path, work: &[Work], renames: &Renames) -> Result<(), PackError> {
     for project in work
         .iter()
-        .filter(|w| w.kind == ItemKind::Project && w.resolution != Resolution::Skip)
+        .filter(|w| is_project_shaped(w.kind) && w.resolution != Resolution::Skip)
     {
-        let dir = staged_source(staging, ItemKind::Project, &project.slug);
+        let dir = staged_source(staging, project.kind, &project.slug);
         let own_slug = (project.target_slug != project.slug).then(|| project.target_slug.clone());
         rewrite_doc(&dir.join("project.json"), renames, own_slug.as_deref())?;
 
@@ -370,8 +388,40 @@ fn rewrite_value(value: &mut Value, key: Option<&str>, renames: &Renames) -> boo
     }
 }
 
+/// Where the library reads an item's provenance from, so an imported one never claims to be the user's own.
+fn stamp_pack_source(staging: &Path, work: &[Work]) -> Result<(), PackError> {
+    for item in work.iter().filter(|w| {
+        matches!(w.kind, ItemKind::Template | ItemKind::Preset) && w.resolution != Resolution::Skip
+    }) {
+        let Some(marker) = item.kind.marker_file() else {
+            continue;
+        };
+        let path = staged_source(staging, item.kind, &item.slug).join(marker);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(mut doc) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        let Some(map) = doc.as_object_mut() else {
+            continue;
+        };
+        map.insert("source".into(), Value::String("pack".into()));
+        let pretty =
+            serde_json::to_string_pretty(&doc).map_err(|e| PackError::Io(e.to_string()))?;
+        std::fs::write(&path, pretty + "\n")?;
+    }
+    Ok(())
+}
+
 /// A skipped theme is a real behavioural difference: the incoming project binds to the recipient's theme instead.
 fn theme_fallback_notes(root: &Path, manifest: &PackManifest, work: &[Work]) -> Vec<String> {
+    let contents = &manifest.contents;
+    let carriers: [(ItemKind, &Vec<PackProject>); 3] = [
+        (ItemKind::Project, &contents.projects),
+        (ItemKind::Template, &contents.templates),
+        (ItemKind::Preset, &contents.presets),
+    ];
     let mut notes = Vec::new();
     for theme in work
         .iter()
@@ -385,20 +435,22 @@ fn theme_fallback_notes(root: &Path, manifest: &PackManifest, work: &[Work]) -> 
         }
         let mine = local_name(ItemKind::Theme, &target.path, &theme.slug);
         let reference = format!("ws:{}", theme.slug);
-        for project in &manifest.contents.projects {
-            if project.theme_id != reference {
-                continue;
-            }
-            let imported = work.iter().any(|w| {
-                w.kind == ItemKind::Project
-                    && w.slug == project.base.slug
-                    && w.resolution != Resolution::Skip
-            });
-            if imported {
-                notes.push(format!(
-                    "{} will use your existing {mine} theme.",
-                    project.base.name
-                ));
+        for (kind, list) in &carriers {
+            for project in *list {
+                if project.theme_id != reference {
+                    continue;
+                }
+                let imported = work.iter().any(|w| {
+                    w.kind == *kind
+                        && w.slug == project.base.slug
+                        && w.resolution != Resolution::Skip
+                });
+                if imported {
+                    notes.push(format!(
+                        "{} will use your existing {mine} theme.",
+                        project.base.name
+                    ));
+                }
             }
         }
     }

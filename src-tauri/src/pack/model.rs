@@ -3,9 +3,13 @@
 use serde::{Deserialize, Serialize};
 
 pub const PACK_FORMAT: &str = "kookaburra-pack";
-pub const PACK_FORMAT_VERSION: u32 = 1;
+/// v2 added `contents.templates` and `contents.presets`. A v1 reader would parse a v2 manifest and silently drop both,
+/// so the bump exists to make it refuse the pack whole (`read::inspect`); v1 packs still read here, the new lists
+/// defaulting to empty.
+pub const PACK_FORMAT_VERSION: u32 = 2;
 /// Oldest app that can read a v1 pack, stamped into every pack we write. Must never exceed the shipping version, or the
-/// app refuses its own packs (the round-trip gate caught exactly that).
+/// app refuses its own packs (the round-trip gate caught exactly that), so it rises only with a release; the
+/// `formatVersion` gate is what turns a newer pack away in the meantime.
 pub const PACK_MIN_APP_VERSION: &str = "0.6.0";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +73,10 @@ pub struct PackContents {
     #[serde(default)]
     pub projects: Vec<PackProject>,
     #[serde(default)]
+    pub templates: Vec<PackTemplate>,
+    #[serde(default)]
+    pub presets: Vec<PackPreset>,
+    #[serde(default)]
     pub themes: Vec<PackTheme>,
     #[serde(default)]
     pub fonts: Vec<PackFont>,
@@ -123,6 +131,11 @@ pub struct PackProject {
     /// Always true. Kept explicit so the trust screen reads off the manifest, not an assumption.
     pub has_scene_code: bool,
 }
+
+/// A template is a project folder plus `template.json`, and a preset a single-scene one plus `preset.json`, so both
+/// record exactly what a project records.
+pub type PackTemplate = PackProject;
+pub type PackPreset = PackProject;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,7 +238,7 @@ pub struct PackScreenshot {
     pub height: Option<u32>,
 }
 
-/// The eight stores a pack can carry, in apply order: projects reference everything else, so they land last.
+/// The nine stores a pack can carry, in apply order: projects reference everything else, so they land last.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ItemKind {
@@ -233,17 +246,22 @@ pub enum ItemKind {
     Gradient,
     Object,
     Theme,
+    Preset,
+    Template,
     ExportPreset,
     Screenshot,
     Project,
 }
 
 impl ItemKind {
-    pub const APPLY_ORDER: [ItemKind; 7] = [
+    /// Presets and templates land after themes, because their `project.json` may name a theme a keep-both just renamed.
+    pub const APPLY_ORDER: [ItemKind; 9] = [
         ItemKind::Font,
         ItemKind::Gradient,
         ItemKind::Object,
         ItemKind::Theme,
+        ItemKind::Preset,
+        ItemKind::Template,
         ItemKind::ExportPreset,
         ItemKind::Screenshot,
         ItemKind::Project,
@@ -257,6 +275,8 @@ impl ItemKind {
             Self::Font => "fonts",
             Self::Object => "objects",
             Self::Gradient => "gradients",
+            Self::Template => crate::library::TEMPLATES_DIR_NAME,
+            Self::Preset => crate::library::PRESETS_DIR_NAME,
             Self::ExportPreset => "export-presets",
             Self::Screenshot => "screenshots",
         }
@@ -270,8 +290,22 @@ impl ItemKind {
             Self::Font => Some("fonts"),
             Self::Object => Some("objects"),
             Self::Gradient => Some("gradients"),
+            Self::Template => Some(crate::library::TEMPLATES_DIR_NAME),
+            Self::Preset => Some(crate::library::PRESETS_DIR_NAME),
             Self::ExportPreset => Some("export-presets"),
             Self::Screenshot => Some("screenshots"),
+        }
+    }
+
+    /// The file whose presence marks a real item of this kind rather than a stray folder.
+    pub fn marker_file(self) -> Option<&'static str> {
+        match self {
+            Self::Project => Some("project.json"),
+            Self::Theme => Some("theme.json"),
+            Self::Object => Some("object.json"),
+            Self::Template => Some(crate::library::TEMPLATE_MANIFEST),
+            Self::Preset => Some(crate::library::PRESET_MANIFEST),
+            Self::Font | Self::Gradient | Self::ExportPreset | Self::Screenshot => None,
         }
     }
 }

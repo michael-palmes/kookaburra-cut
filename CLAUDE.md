@@ -150,8 +150,9 @@ soundtrack per project, platform export presets, the studio workspace
 (`~/Kookaburra Cut`: welcome screen, media library, video editor, embedded
 Claude Code terminal), a packaged signed/notarised `.app`, the night-studio
 chrome (⌘K palette, right inspector, camera lane, playback bar), and `.kbpack`
-packs: one signed file carrying projects, themes, fonts, 3D objects, gradients,
-export presets and screenshots between machines (`docs/packs.md`).
+packs: one signed file carrying projects, templates, scene presets, themes,
+fonts, 3D objects, gradients, export presets and screenshots between machines
+(`docs/packs.md`).
 
 Operational anchors for any change:
 

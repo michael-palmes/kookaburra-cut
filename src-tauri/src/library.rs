@@ -16,8 +16,10 @@ pub const TEMPLATES_DIR_NAME: &str = "templates";
 /// The user-preset folder inside the workspace root; reserved for the same reason.
 pub const PRESETS_DIR_NAME: &str = "presets";
 
-const TEMPLATE_MANIFEST: &str = "template.json";
-const PRESET_MANIFEST: &str = "preset.json";
+/// The file that marks a folder as a template; packs use it the way they use `theme.json`.
+pub const TEMPLATE_MANIFEST: &str = "template.json";
+/// The file that marks a folder as a scene preset.
+pub const PRESET_MANIFEST: &str = "preset.json";
 
 /// Card art beside an item's manifest, in the order the listing looks for it (converted templates carry the project snapshot, which is a PNG).
 const POSTER_NAMES: [&str; 2] = ["poster.jpg", "poster.png"];

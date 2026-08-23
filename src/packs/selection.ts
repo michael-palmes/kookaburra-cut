@@ -48,6 +48,8 @@ export function toPlanSelection(state: SelectionState): PackSelection {
   const selection: PackSelection = {
     ...EMPTY_SELECTION,
     projects: [],
+    templates: [],
+    presets: [],
     themes: [],
     fonts: [],
     objects: [],

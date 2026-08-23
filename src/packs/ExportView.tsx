@@ -36,7 +36,7 @@ import {
   type SelectableItem,
 } from "./types";
 
-/** The rail is the seven stores plus a details pane; only the stores are real item kinds. */
+/** The rail is the nine stores plus a details pane; only the stores are real item kinds. */
 type Tab = ItemKind | "details";
 
 type Phase =
