@@ -48,9 +48,10 @@ describe("App transport keydown", () => {
     expect(spaceBranch).toContain("if (exporting || isExporting()) return;");
   });
 
-  it("keeps arrows in the focused control and commits on a frame step", () => {
+  // Arrows are deliberately NOT a defocus source: they keep moving the caret inside a focused field.
+  it("keeps arrows in the focused control instead of frame stepping", () => {
     expect(arrowBranch).toContain("if (formControl) return;");
-    expect(arrowBranch).toContain("commitFocusedInspectorEdit();");
+    expect(arrowBranch).not.toContain("commitFocusedInspectorEdit();");
   });
 
   it("commits a focused inspector edit on a bar scrub, never during an export", () => {
