@@ -12,9 +12,11 @@ import {
 import {
   DELIVERY_DEFAULT_MS,
   type DeliveryChoice,
+  formatDelaySeconds,
   TEXT_PRESET_CATALOG,
 } from "../textAnimationOptions";
 import type { ManagedTextWrite } from "./ManagedTextDrill";
+import { TextScopeIcon } from "./ManagedTextDrill";
 import {
   rebaseTextMotionSpec,
   setTextMotionSpec,
@@ -50,8 +52,8 @@ export interface TextMotionDrillProps {
 }
 
 const SCOPE_OPTIONS: SegmentedOption<TextMotionScopeChoice>[] = [
-  { value: "all", label: "All lines" },
-  { value: "item", label: "This line" },
+  { value: "all", label: "All lines", icon: <TextScopeIcon scope="all" /> },
+  { value: "item", label: "This line", icon: <TextScopeIcon scope="item" /> },
 ];
 
 const DIRECTION_OPTIONS: SegmentedOption<TextDirection>[] = [
@@ -67,7 +69,11 @@ const TEXT_DELIVERY_OPTIONS: readonly { id: DeliveryChoice; label: string }[] = 
   { id: "by-paragraph", label: "By line" },
 ];
 
-function MotionControlIcon({ type }: { type: "stagger" | "duration" | "distance" | "scale" }) {
+function MotionControlIcon({
+  type,
+}: {
+  type: "stagger" | "duration" | "distance" | "scale" | "delay";
+}) {
   const glyph =
     type === "stagger" ? (
       <path d="M3 4h3v3H3zM7 6.5h3v3H7zM11 9h3v3h-3z" />
@@ -75,6 +81,11 @@ function MotionControlIcon({ type }: { type: "stagger" | "duration" | "distance"
       <>
         <circle cx="8" cy="8.5" r="5" />
         <path d="M8 5.5v3l2 1.5M6 2h4" />
+      </>
+    ) : type === "delay" ? (
+      <>
+        <path d="M2.5 3.5v9" />
+        <path d="M5.5 8H13M10.5 5.5 13 8l-2.5 2.5" />
       </>
     ) : type === "distance" ? (
       <>
@@ -409,47 +420,26 @@ export function TextMotionDrill({
           </section>
         </DrillGroup>
 
-        {current && current.in !== STATIC_TEXT_PRESET && (
-          <>
-            <DrillGroup label="Delivery">
-              <section className="text-motion-delivery-grid" aria-label="Delivery">
-                {deliveryChoices.map((choice) => (
-                  <button
-                    key={choice.id}
-                    type="button"
-                    className={`chip${delivery === choice.id ? " selected" : ""}`}
-                    aria-pressed={delivery === choice.id}
-                    disabled={disabled}
-                    onClick={() =>
-                      writeSpec(
-                        motionSpecForDelivery(current, choice.id),
-                        "change text motion delivery",
-                      )
-                    }
-                  >
-                    {choice.label}
-                  </button>
-                ))}
-              </section>
-              {delivery !== "default" && delivery !== "all-at-once" && (
+        {current &&
+          current.in !== STATIC_TEXT_PRESET &&
+          (meta?.hasScaleParams || meta?.hasDirection || twistScale) && (
+            <DrillGroup label="Preset controls">
+              {(meta?.hasScaleParams || twistScale) && (
                 <InspectorSliderRow
-                  icon={<MotionControlIcon type="stagger" />}
-                  label="Stagger"
-                  min={0}
-                  max={2_000}
-                  step={5}
+                  icon={<MotionControlIcon type="scale" />}
+                  label="Start size"
+                  min={0.5}
+                  max={1.5}
+                  step={0.05}
                   {...slider(
-                    "stagger",
-                    current.staggerMs,
-                    (spec, staggerMs) => ({ ...spec, staggerMs }),
-                    "text motion stagger",
+                    "start-scale",
+                    current.startScale ?? (twistScale ? TWIST_START_SCALE : DEFAULT_START_SCALE),
+                    (spec, startScale) => ({ ...spec, startScale }),
+                    "text motion start scale",
                   )}
                 />
               )}
-            </DrillGroup>
-
-            <DrillGroup label="Timing and travel">
-              {!twistScale && (
+              {twistScale && (
                 <InspectorSliderRow
                   icon={<MotionControlIcon type="duration" />}
                   label="Duration"
@@ -457,109 +447,145 @@ export function TextMotionDrill({
                   max={4_000}
                   step={50}
                   {...slider(
-                    "duration",
+                    "twist-duration",
                     current.durationMs ?? 600,
                     (spec, durationMs) => ({ ...spec, durationMs }),
                     "text motion duration",
                   )}
                 />
               )}
+              {meta?.hasDirection && (
+                <SegmentedRow
+                  className="text-motion-direction-segments"
+                  ariaLabel="Text motion direction"
+                  options={DIRECTION_OPTIONS}
+                  value={current.direction ?? "from-left"}
+                  onChange={(direction) =>
+                    writeSpec({ ...current, direction }, "change text motion direction")
+                  }
+                />
+              )}
+              {(meta?.hasScaleParams || twistScale) && (
+                <ToggleRow
+                  label="Shine"
+                  description="Sweep a soft highlight across the text as it lands."
+                  checked={current.shine ?? false}
+                  disabled={disabled}
+                  onChange={(shine) => writeSpec({ ...current, shine }, "change text motion shine")}
+                />
+              )}
+            </DrillGroup>
+          )}
+      </div>
+
+      {current && current.in !== STATIC_TEXT_PRESET && (
+        <div className="text-motion-footer">
+          <DrillGroup label="Delivery">
+            <section className="text-motion-delivery-grid" aria-label="Delivery">
+              {deliveryChoices.map((choice) => (
+                <button
+                  key={choice.id}
+                  type="button"
+                  className={`chip${delivery === choice.id ? " selected" : ""}`}
+                  aria-pressed={delivery === choice.id}
+                  disabled={disabled}
+                  onClick={() =>
+                    writeSpec(
+                      motionSpecForDelivery(current, choice.id),
+                      "change text motion delivery",
+                    )
+                  }
+                >
+                  {choice.label}
+                </button>
+              ))}
+            </section>
+            {delivery !== "default" && delivery !== "all-at-once" && (
               <InspectorSliderRow
-                icon={<MotionControlIcon type="distance" />}
-                label="Distance"
+                icon={<MotionControlIcon type="stagger" />}
+                label="Stagger"
                 min={0}
-                max={4}
-                step={0.05}
+                max={2_000}
+                step={5}
                 {...slider(
-                  "distance",
-                  current.distance ?? 1,
-                  (spec, distance) => ({ ...spec, distance }),
-                  "text motion distance",
+                  "stagger",
+                  current.staggerMs,
+                  (spec, staggerMs) => ({ ...spec, staggerMs }),
+                  "text motion stagger",
                 )}
               />
-              <label className="popover-row text-motion-easing-row">
-                <span className="popover-inline">Easing</span>
-                <select
-                  className="modal-input"
-                  aria-label="Text motion easing"
-                  value={current.ease ?? ""}
-                  disabled={disabled}
-                  onChange={(event) => {
-                    const next = structuredClone(current);
-                    if (event.target.value) next.ease = event.target.value;
-                    else delete next.ease;
-                    writeSpec(next, "change text motion easing");
-                  }}
-                >
-                  <option value="">Theme</option>
-                  {EASE_NAMES.map((ease) => (
-                    <option key={ease} value={ease}>
-                      {ease}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </DrillGroup>
-
-            {(meta?.hasScaleParams || meta?.hasDirection || twistScale) && (
-              <DrillGroup label="Preset controls">
-                {(meta?.hasScaleParams || twistScale) && (
-                  <InspectorSliderRow
-                    icon={<MotionControlIcon type="scale" />}
-                    label="Start size"
-                    min={0.5}
-                    max={1.5}
-                    step={0.05}
-                    {...slider(
-                      "start-scale",
-                      current.startScale ?? (twistScale ? TWIST_START_SCALE : DEFAULT_START_SCALE),
-                      (spec, startScale) => ({ ...spec, startScale }),
-                      "text motion start scale",
-                    )}
-                  />
-                )}
-                {twistScale && (
-                  <InspectorSliderRow
-                    icon={<MotionControlIcon type="duration" />}
-                    label="Duration"
-                    min={100}
-                    max={4_000}
-                    step={50}
-                    {...slider(
-                      "twist-duration",
-                      current.durationMs ?? 600,
-                      (spec, durationMs) => ({ ...spec, durationMs }),
-                      "text motion duration",
-                    )}
-                  />
-                )}
-                {meta?.hasDirection && (
-                  <SegmentedRow
-                    className="text-motion-direction-segments"
-                    ariaLabel="Text motion direction"
-                    options={DIRECTION_OPTIONS}
-                    value={current.direction ?? "from-left"}
-                    onChange={(direction) =>
-                      writeSpec({ ...current, direction }, "change text motion direction")
-                    }
-                  />
-                )}
-                {(meta?.hasScaleParams || twistScale) && (
-                  <ToggleRow
-                    label="Shine"
-                    description="Sweep a soft highlight across the text as it lands."
-                    checked={current.shine ?? false}
-                    disabled={disabled}
-                    onChange={(shine) =>
-                      writeSpec({ ...current, shine }, "change text motion shine")
-                    }
-                  />
-                )}
-              </DrillGroup>
             )}
-          </>
-        )}
-      </div>
+          </DrillGroup>
+
+          <DrillGroup label="Timing and travel">
+            {!twistScale && (
+              <InspectorSliderRow
+                icon={<MotionControlIcon type="duration" />}
+                label="Duration"
+                min={100}
+                max={4_000}
+                step={50}
+                {...slider(
+                  "duration",
+                  current.durationMs ?? 600,
+                  (spec, durationMs) => ({ ...spec, durationMs }),
+                  "text motion duration",
+                )}
+              />
+            )}
+            <InspectorSliderRow
+              icon={<MotionControlIcon type="distance" />}
+              label="Distance"
+              min={0}
+              max={4}
+              step={0.05}
+              {...slider(
+                "distance",
+                current.distance ?? 1,
+                (spec, distance) => ({ ...spec, distance }),
+                "text motion distance",
+              )}
+            />
+            <InspectorSliderRow
+              icon={<MotionControlIcon type="delay" />}
+              label="Delay start"
+              min={0}
+              max={3}
+              step={0.05}
+              overflowMax
+              formatValue={(seconds) => formatDelaySeconds(seconds * 1000)}
+              {...slider(
+                "delay",
+                (current.delayMs ?? 0) / 1000,
+                (spec, seconds) => ({ ...spec, delayMs: Math.round(seconds * 1000) }),
+                "text motion delay",
+              )}
+            />
+            <label className="popover-row text-motion-easing-row">
+              <span className="popover-inline">Easing</span>
+              <select
+                className="modal-input"
+                aria-label="Text motion easing"
+                value={current.ease ?? ""}
+                disabled={disabled}
+                onChange={(event) => {
+                  const next = structuredClone(current);
+                  if (event.target.value) next.ease = event.target.value;
+                  else delete next.ease;
+                  writeSpec(next, "change text motion easing");
+                }}
+              >
+                <option value="">Theme</option>
+                {EASE_NAMES.map((ease) => (
+                  <option key={ease} value={ease}>
+                    {ease}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </DrillGroup>
+        </div>
+      )}
     </div>
   );
 }
