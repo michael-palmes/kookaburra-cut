@@ -334,6 +334,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
           from={700}
           to={1300}
           anchorFrac={chipAnchor}
+          textKey="chip"
         />
       )}
       {chart && slot && <MountedChart chart={chart} panel={slot.rect} />}
