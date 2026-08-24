@@ -4,6 +4,69 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-08-24
+
+### Added
+
+- A redesigned Scene inspector: a full-height, content-first surface with
+  stacked navigation, first-click selection on the canvas, and first-class
+  editing for images, devices, lighting, comparisons and objects. Ordered copy,
+  styles, icons and motion live in managed Text groups, and frame chrome is
+  separated from scene content.
+- Twenty-four new themes across professional, expressive, digital-asset and
+  finance categories, browsable by category with search, Recent and My themes,
+  keyboard navigation and lazy previews. Four bundled fonts and two static
+  backdrops come with them.
+- Twelve app-update templates, backed by a sample art pack so every device
+  screen shows believable UI, plus rendered card art in the picker that cycles
+  on hover.
+- Phone and Phone Landscape aspects, with the iPhone 17 Pro panel at its native
+  1206x2622.
+- Still images in the video editor as two second freeze clips, and one scene
+  media family with authored Stage, Overlay and Window hosts, drag gizmos,
+  window chrome on any host and several videos in a scene.
+- A scene manager that deletes a whole selection, a Delete unused sheet that
+  clears unreferenced assets, a colour picker with a foldable spectrum,
+  ninety-six presets, a native eyedropper and the project's own colours, and
+  scene lengths in minutes and seconds.
+- A keyed divider angle for comparison scenes: keys are authored in the
+  timeline lane, then refined by a slider and an angle field that edit the key
+  nearest the playhead. Grip styles, a hex divider colour and tints come with
+  them, and Before/After selectors move inside Device, Theme, Background and
+  Lighting.
+- Devices are offered by what the build carries, and the After side gains its
+  own staging, finish, shadow and Edit video.
+
+### Changed
+
+- The comparison divider rides through transitions instead of standing down, so
+  a comparison stays whole as one scene blends into the next.
+- Space commits and plays from numeric, hex and slider fields, header trash
+  icons lose their confirm step, and Delete removes the selected content.
+- The media picker preview opens inside the inspector, with chevrons and arrow
+  keys stepping the grid, and the Content header takes an accent-filled Add
+  button distinct from the per-type add icons.
+- Copy to project is an inspector drill with snapshot cards, and duplicate
+  names warn as you type.
+- Terminal autoruns queue on FIFO tickets, take their own dev port and launch
+  without stealing focus, so they sit beside an interactive session instead of
+  fighting it.
+
+### Fixed
+
+- Adding or reordering scenes no longer strands a device over a title scene.
+  Scene document edits address the written file rather than an index captured
+  before the write, and duplicating mints fresh ids.
+- A file used both as a device screen and as an image backdrop is no longer
+  flipped upside down by mount order.
+- Gizmos track a framed scene's cutout viewport, and a transparent panel with a
+  shaped cutout composes through it.
+- The media browser toolbar wraps rather than clipping a control, and its bulk
+  sweep collapses into an overflow menu where the bar is narrow.
+- Chart lines and areas trim at the value axis bounds, scene rows stand down
+  while their rename field is live, and the compare pane letterboxes beside the
+  preview instead of covering the controls.
+
 ## [0.12.0] - 2026-08-07
 
 ### Added
