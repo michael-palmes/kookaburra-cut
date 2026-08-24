@@ -333,6 +333,7 @@ function ColourPopover({
         <div className="colour-popover-hex-row">
           <input
             className="modal-input colour-popover-hex-input"
+            data-space-plays=""
             value={hexText}
             aria-label={`${label} hex value`}
             spellCheck={false}

@@ -32,6 +32,7 @@ import type {
 import { LIGHTING_PRESETS } from "../../toolkit/lighting/presets";
 import { ColourPicker } from "../colour/ColourPicker";
 import { OptionCard } from "../OptionCard";
+import { commitFocusedInspectorEdit } from "../textEditFocus";
 import { LightingDirectionDial } from "./LightingDirectionDial";
 import { LightingIcon } from "./LightingIcon";
 import {
@@ -354,6 +355,7 @@ export function LightingInspectorSection({
     onScreenChange("animation");
   };
   const seek = (localMs: number) => {
+    commitFocusedInspectorEdit();
     const globalMs = slot.startMs + localMs;
     if (onSeek) onSeek(globalMs);
     else useClockStore.getState().setCurrentMs(globalMs);

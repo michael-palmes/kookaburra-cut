@@ -1,11 +1,12 @@
 import { type Camera, type Object3D, Raycaster, Vector2 } from "three";
 import { canvasHandle } from "./exportBridge";
 import type { GizmoMode } from "./gizmoMode";
+import { stageCutout, worldViewportRect } from "./stageViewport";
 
 /** Live handles onto each mounted gizmo's pickable geometry, published by `<SceneGizmo>` (the sceneHostRegistry idiom: a module Map, plain register/read functions, no store). DOM overlays read it to decide whether a pointer belongs to a gizmo handle or to them; the export path never imports it. */
 
 /** Which inspector section owns a gizmo. */
-export type GizmoDomain = "objects" | "chart" | "devices" | "images" | "text" | "decorations";
+export type GizmoDomain = "objects" | "chart" | "devices" | "media" | "text" | "decorations";
 
 /** The canvas box in client pixels, as a plain object so the routing maths stays node-testable. */
 export interface StageRect {
@@ -49,6 +50,15 @@ export function gizmoPickerHandles(): GizmoPickerHandle[] {
   return [...handles.values()];
 }
 
+/** Whether any gizmo is mounted, optionally in one domain: the cheap early-out for a hover test that runs on every pointer move. */
+export function hasGizmoPickers(domain?: GizmoDomain): boolean {
+  if (domain === undefined) return handles.size > 0;
+  for (const handle of handles.values()) {
+    if (handle.domain === domain) return true;
+  }
+  return false;
+}
+
 /** Fires whenever the pickable set changes. Readers cache their hover truth off pointer moves, and a gizmo mounts or unmounts with the pointer parked, so they must re-test on this. */
 export function subscribeGizmoPickers(listener: () => void): () => void {
   listeners.add(listener);
@@ -86,16 +96,27 @@ export function stageCanvasRect(): StageRect | null {
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
+/** The rect the scene's world projects onto: the canvas box, narrowed to the frame's cutout when the scene at the playhead renders through one (`stageViewport.ts`). Every hit test and world projection reads this rather than the canvas box, so a handle answers where the compositor drew it. */
+export function stageWorldRect(): StageRect | null {
+  const rect = stageCanvasRect();
+  return rect ? worldViewportRect(rect, stageCutout()) : null;
+}
+
 const raycaster = new Raycaster();
 const pointer = new Vector2();
 
-/** The registered handle whose picker geometry sits under these NDC coordinates, else null. */
-export function gizmoHandleAt(ndcX: number, ndcY: number): GizmoPickerHandle | null {
+/** The registered handle whose picker geometry sits under these NDC coordinates, else null. `domain` narrows the search to one family, which is how a 2D layer asks whether the pointer belongs to a 3D gizmo of its OWN section. */
+export function gizmoHandleAt(
+  ndcX: number,
+  ndcY: number,
+  domain?: GizmoDomain,
+): GizmoPickerHandle | null {
   if (handles.size === 0) return null;
   const camera = stageCamera();
   if (!camera) return null;
   raycaster.setFromCamera(pointer.set(ndcX, ndcY), camera);
   for (const handle of handles.values()) {
+    if (domain !== undefined && handle.domain !== domain) continue;
     const targets = handle.pickers();
     if (targets.length === 0) continue;
     if (raycaster.intersectObjects(targets, true).length > 0) return handle;

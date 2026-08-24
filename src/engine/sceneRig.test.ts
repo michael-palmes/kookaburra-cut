@@ -12,6 +12,7 @@ import {
   mixRigPose,
   normalizeSceneRig,
   RIG_FOV_MAX,
+  resolveAimTarget,
   type SceneRigTrack,
   sampleSceneRig,
   slerpUnit,
@@ -346,6 +347,49 @@ describe("normalizeSceneRig", () => {
       ).keys[0].pose.aim.at;
     expect(rig(VIDEO_WINDOW_AIM_ID)).toEqual([0, 0, 0]);
     expect(rig(LAYERED_SCREENSHOT_AIM_ID)).toEqual([0.5, -0.25, 0]);
+  });
+
+  it("resolves a media aim at the entry's own anchor, the legacy window id excepted", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      media: [
+        {
+          id: "img1",
+          kind: "image",
+          src: "assets/hero.png",
+          host: "stage",
+          stage: { position: [1, 2, -3], size: 1, rotationDeg: [0, 0, 0] },
+          overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
+        },
+        {
+          id: "vid1",
+          kind: "video",
+          src: "assets/clip.mp4",
+          host: "overlay",
+          stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
+          overlay: {
+            position: [0.5, -0.25],
+            size: 0.72,
+            rotationDeg: 0,
+            shape: "none",
+            layer: "below",
+          },
+          window: { radius: "macos" },
+        },
+      ],
+    };
+    const format = computeFormat(FORMATS["16:9"]);
+
+    expect(resolveAimTarget("img1", doc)).toEqual([1, 2, -3]);
+    // Frame fractions have no world place until the format is known, so the baked point stands.
+    expect(resolveAimTarget("vid1", doc)).toBeUndefined();
+    expect(resolveAimTarget("vid1", doc, format)).toEqual([
+      (0.5 * format.frame.width) / 2,
+      (-0.25 * format.frame.height) / 2,
+      0,
+    ]);
+    expect(resolveAimTarget(VIDEO_WINDOW_AIM_ID, doc, format)).toEqual([0, 0, 0]);
+    expect(resolveAimTarget("gone", doc, format)).toBeNull();
   });
 
   it("a missing binding warns once and keeps the baked point (never a broken shot)", () => {

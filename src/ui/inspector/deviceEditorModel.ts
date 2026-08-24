@@ -5,6 +5,7 @@ import type {
   SceneDocDeviceLayout,
   SceneDocDeviceSpec,
 } from "../../engine/sceneDocSchema";
+import { followsSceneMedia } from "../../engine/sceneMedia";
 import { bakeRigBinding } from "../../engine/sceneRigConvert";
 import {
   customColourHex,
@@ -146,11 +147,7 @@ export function replaceDeviceMedia(
     doc.duration = { mode: "follow-media", sourceDeviceId: device.id };
     return true;
   }
-  if (
-    !replacedDrivingVideo ||
-    duration?.mode !== "follow-media" ||
-    duration.source === "videoWindow"
-  ) {
+  if (!replacedDrivingVideo || duration?.mode !== "follow-media" || followsSceneMedia(duration)) {
     return true;
   }
   const pinned = doc.devices?.find((candidate) => candidate.id === duration.sourceDeviceId);
@@ -163,7 +160,7 @@ export function replaceDeviceMedia(
 
 function preserveDurationAfterRemovingDevice(doc: SceneDoc, deviceId: string): void {
   const duration = doc.duration;
-  if (duration?.mode !== "follow-media" || duration.source === "videoWindow") return;
+  if (duration?.mode !== "follow-media" || followsSceneMedia(duration)) return;
   const pinned = doc.devices?.find((device) => device.id === duration.sourceDeviceId);
   if (pinned ? pinned.id === deviceId : deviceHasFollowVideo(doc, deviceId)) {
     doc.duration = { mode: "manual" };

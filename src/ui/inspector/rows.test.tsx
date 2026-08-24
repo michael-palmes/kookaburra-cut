@@ -36,12 +36,7 @@ describe("DrillBack", () => {
               label="Duplicate device"
               onClick={() => undefined}
             />
-            <DrillHeaderAction
-              kind="remove"
-              label="Confirm remove device"
-              armed
-              onClick={() => undefined}
-            />
+            <DrillHeaderAction kind="remove" label="Remove device" onClick={() => undefined} />
           </>
         }
       />,
@@ -49,8 +44,8 @@ describe("DrillBack", () => {
 
     expect(html).toContain('class="inspector-drill-header-actions"');
     expect(html).toContain('aria-label="Duplicate device"');
-    expect(html).toContain('class="inspector-drill-header-action danger armed"');
-    expect(html).toContain('aria-label="Confirm remove device"');
+    expect(html).toContain('class="inspector-drill-header-action danger"');
+    expect(html).toContain('aria-label="Remove device"');
     expect(html.match(/<button/g)).toHaveLength(3);
   });
 });

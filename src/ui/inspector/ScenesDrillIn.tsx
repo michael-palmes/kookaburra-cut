@@ -59,7 +59,7 @@ export function ScenesDrillIn({
   onPasteBackground: (index: number) => void;
   /** Trash-recoverable removal of the whole selection (the host reloads once; the last scene is refused before any call). */
   onDelete: (indices: number[]) => void;
-  /** Open the copy-to-project picker for the given selection (the host mounts CopySceneModal). */
+  /** Open the copy-to-project drill for the given selection (the host routes the request). */
   onCopyToProject: (indices: number[]) => void;
   /** Open the preset gallery, inserting at this manifest index (the host mounts PresetGalleryModal). */
   onInsertPreset: (position: number) => void;
@@ -262,6 +262,7 @@ export function ScenesDrillIn({
               {timing?.index === scene.index ? (
                 <input
                   className="modal-input scene-manager-edit scene-manager-edit-duration"
+                  data-space-plays=""
                   value={timing.text}
                   // biome-ignore lint/a11y/noAutofocus: entered from the context menu, so it IS the focus target
                   autoFocus

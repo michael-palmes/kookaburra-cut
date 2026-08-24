@@ -4,6 +4,7 @@ import {
   gizmoLayerClass,
   pointerNdc,
   type RouteInput,
+  routeLayerPointer,
   routePointer,
 } from "./gizmoRouting";
 import type { ModifierState } from "./modifierKeys";
@@ -61,6 +62,20 @@ describe("routePointer", () => {
   });
 });
 
+describe("routeLayerPointer", () => {
+  it("hands the pointer to a same-domain 3D handle under it, so the layer above the canvas stands down", () => {
+    expect(routeLayerPointer({ overSceneHandle: true, layerDragging: false })).toBe("scene-gizmo");
+  });
+
+  it("keeps every other pixel on the layer, so a box away from the handles still selects", () => {
+    expect(routeLayerPointer({ overSceneHandle: false, layerDragging: false })).toBe("layer");
+  });
+
+  it("never changes owner mid-drag: a handle sliding under a live 2D drag cannot steal it", () => {
+    expect(routeLayerPointer({ overSceneHandle: true, layerDragging: true })).toBe("layer");
+  });
+});
+
 describe("cameraOverrideHeld", () => {
   it("is true for each of meta, ctrl and alt alone", () => {
     expect(cameraOverrideHeld(mods({ metaKey: true }))).toBe(true);
@@ -102,6 +117,14 @@ describe("gizmoLayerClass", () => {
     expect(gizmoLayerClass(false, "text-gizmo-layer")).toBe("gizmo-layer text-gizmo-layer");
     expect(gizmoLayerClass(true, "text-gizmo-layer")).toBe(
       "gizmo-layer camera-override text-gizmo-layer",
+    );
+  });
+
+  it("adds the 3D-gizmo stand-down on its own and alongside the override", () => {
+    expect(gizmoLayerClass(false, undefined, true)).toBe("gizmo-layer scene-gizmo-yield");
+    expect(gizmoLayerClass(false, "dragging-rotate", false)).toBe("gizmo-layer dragging-rotate");
+    expect(gizmoLayerClass(true, "dragging-rotate", true)).toBe(
+      "gizmo-layer camera-override scene-gizmo-yield dragging-rotate",
     );
   });
 });

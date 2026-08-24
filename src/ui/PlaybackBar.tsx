@@ -19,7 +19,6 @@ import { activeSceneIndex } from "../engine/sceneTimeline";
 import { useUiStore } from "../store/uiStore";
 import { BeatLane } from "./BeatLane";
 import { ContextMenu, type ContextMenuState } from "./ContextMenu";
-import { CopySceneModal } from "./CopySceneModal";
 import { formatSceneLengthMs, parseSceneLengthMs } from "./durationText";
 import { PresetGalleryModal } from "./PresetGalleryModal";
 import { SavePresetModal } from "./SavePresetModal";
@@ -95,7 +94,6 @@ export function PlaybackBar({
   const scrubbing = useRef(false);
   const beatLaneHidden = useUiStore((s) => s.beatLaneHidden);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const [copying, setCopying] = useState<number | null>(null);
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null);
   const [timing, setTiming] = useState<{ index: number; text: string } | null>(null);
   const [duplicating, setDuplicating] = useState<number | null>(null);
@@ -136,7 +134,7 @@ export function PlaybackBar({
         },
         onPasteBackground: () => onPasteBackground(index),
         onDelete: () => onDeleteScene(index),
-        onCopyToProject: () => setCopying(index),
+        onCopyToProject: () => useUiStore.getState().requestSceneCopy([index]),
         onInsertPreset: () => setInsertingPreset(index + 1),
         onSaveAsPreset: () => setSavingPreset(index),
         onManage: () => {
@@ -369,6 +367,7 @@ export function PlaybackBar({
               <input
                 key={span.index}
                 className="modal-input pb-label-input pb-label-duration"
+                data-space-plays=""
                 style={{ flexGrow: span.weight }}
                 value={timing.text}
                 // biome-ignore lint/a11y/noAutofocus: entered from the context menu — it IS the focus target
@@ -417,15 +416,6 @@ export function PlaybackBar({
         )}
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
-      {copying !== null && project && (
-        <CopySceneModal
-          slug={nativeProjectSlug(project.id)}
-          indices={[copying]}
-          sceneLabel={`“${sceneName(copying)}”`}
-          onDone={() => setCopying(null)}
-          onCancel={() => setCopying(null)}
-        />
-      )}
       {insertingPreset !== null && project && (
         <PresetGalleryModal
           slug={nativeProjectSlug(project.id)}

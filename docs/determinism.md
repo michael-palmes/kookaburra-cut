@@ -596,14 +596,16 @@ stack pose, animates that scene. The invariants:
 
 ## Video window
 
-A scene's sidecar may declare a `videoWindow` block: a macOS screen recording as a
-floating rounded window with an analytic drop shadow, floating over whatever the
-scene stages behind it (theme backdrop, fixed background, or nothing). The
-invariants:
+A scene's sidecar may declare a video `media` entry hosted on `window`: a macOS
+screen recording as a floating rounded window with an analytic drop shadow,
+floating over whatever the scene stages behind it (theme backdrop, fixed
+background, or nothing). Sidecars written before the two media families merged
+carry the older `videoWindow` block and read forward into the same entry at parse
+(2026-08-22 below), on the `window` host (2026-08-23 below). The invariants:
 
-- **The null path is the old path, exactly.** The host-side `VideoWindowFallback`
-  renders nothing when the sidecar has no block (and stands down entirely when the
-  scene's TSX consumes it via `useSceneVideoWindow`), so every existing project
+- **The null path is the old path, exactly.** The host-side `SceneMediaFallback`
+  renders nothing when the sidecar declares no media (and stands its window family
+  down when the scene's TSX mounts `<VideoWindow/>`), so every existing project
   mounts zero new nodes and renders byte-identically (`ws:launch-2026` stays EQUAL).
 - **Genuine world-space layers, not an overlay.** The shadow and window are meshes
   at distinct depths inside one group; the per-scene camera track moves through
@@ -1053,11 +1055,15 @@ extra 0.0 = the byte-frozen legacy string). Projected true peak > −1.5 dBTP wa
 and proceeds, never a limiter (a limiter is content-dependent DSP; a gain is a
 constant).
 
-**4:5, 5:4, 3:2 and 2:3 are first-class but feature-scoped**: `FORMATS["4:5"]` =
-2160×2700, `FORMATS["5:4"]` = 2700×2160, `FORMATS["3:2"]` = 3240×2160,
-`FORMATS["2:3"]` = 2160×3240 (2160 short edge, the house convention);
-`STANDING_ASPECTS` pins Verify's "all" and the full matrices to the standing
-three (16:9 / 9:16 / 1:1).
+**4:5, 5:4, 3:2, 2:3 and the phone pair are first-class but feature-scoped**:
+`FORMATS["4:5"]` = 2160×2700, `FORMATS["5:4"]` = 2700×2160, `FORMATS["3:2"]` =
+3240×2160, `FORMATS["2:3"]` = 2160×3240 (2160 short edge, the house convention),
+`FORMATS.phone` = 1206×2622 and `FORMATS["phone-landscape"]` = 2622×1206 (the
+iPhone 17 Pro panel at native size, exactly 437:201, deliberately under the 2160
+convention). The phone pair's ids are slugs, not ratios, because the export path
+runs `name.replace(":", "x")` through the Rust slug check; `aspectLabel()` owns
+the display names ("Phone", "Phone Landscape"). `STANDING_ASPECTS` pins Verify's
+"all" and the full matrices to the standing three (16:9 / 9:16 / 1:1).
 
 ### The export modal & user presets
 
@@ -1212,22 +1218,112 @@ workspace copy of the reel dropped from the bundled set on 2026-07-13, scene
 durations re-frozen 2026-07-25, see the splice note below) and the bundled
 rolling-gate project (`showcase-tour`):
 
-| Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — |
-| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — |
-| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — |
-| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — |
-| `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — |
-| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — |
-| `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — |
-| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — |
-| `ws:overlay-spike` (overlay gate, machine-local) | `0ceda71d…` | — | — | — | — | — | — |
+| Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 | phone | phone-landscape |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
+| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — | — | — |
+| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — | — | — |
+| `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — | — | — |
+| `image-flip-spike` (image-orientation gate, eyeball it) | `ca4419d4…` | — | — | — | — | — | — | — | — |
+| `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
+| `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — | — | — |
+| `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
+| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | `e5bc2b79…` | — | — | — | — | — | — | — | — |
+
+> **2026-08-23 (media hosting is authored: the `window` host):** where a media
+> entry renders now follows its HOST alone, never its kind or its chrome.
+> `SceneMediaHost` gained `window` (video-only; a still asking for it degrades to
+> `overlay` at parse), which is the floating world-space clip the video window
+> always was, reading the OVERLAY placement numbers exactly as
+> `resolveWindowMediaTransform` already did, so no placement block was added. The
+> legacy `videoWindow` promotion now lands on `host: "window"`: the same entry,
+> the same family, the same maths, so `ws:video-window-spike` and
+> `ws:overlay-spike` must stay byte-identical (`sceneMediaFromVideoWindow` is the
+> only line that changed, and `sceneMediaFamily`/`sceneMediaUsesWindowPath` both
+> answer as before for it). A hand-authored clip with no `host` still parses to
+> `window`, which is what an unhosted clip has always rendered as. The ONE
+> combination whose pixels move is media-native `kind: "video"` + `host:
+> "overlay"`, which used to take the world-space window path and now draws on the
+> overlay's frame layer beside the overlay stills (the still's sizing rule, `size`
+> IS the width, with the window chrome as optional plane decoration). That was the
+> owner's bug: an Edit render re-points a still to a clip, and the kind flip
+> silently moved a placed frame-layer image into the scene's world. NO bundled
+> project, template or repo fixture carries that combination (`grep -rn '"kind":
+> "video"' projects fixtures src-tauri/templates` finds device screens only, and
+> the one repo fixture with a clip window carries the legacy `videoWindow`
+> block), so the standing baselines cannot move on data grounds; gate legs are
+> pending the batch's gate run.
+
+> **2026-08-23 (transparent panel + shaped cutout: a DELIBERATE render
+> change):** an overlay whose panel is transparent and whose cutout carries a
+> shape now composes exactly as an opaque panel does: the world renders into
+> the cutout-sized target and the slide pass keys it through the cutout, with
+> the region outside taking the scene's own backdrop instead of the panel
+> surface. It used to skip the slide pass and render the scene full-bleed,
+> while `SceneHost` had always narrowed `useFormat()` on the SHAPE, so those
+> scenes were laid out for a window they never got (the owner ruling of
+> 2026-08-23; `docs/decisions.md`, "Overlay cutout vs panel fill"). One rule
+> now serves all three seams, `framesThroughCutout` in `frameFormat.ts`.
+> Everything else is byte-null by construction: opaque, gradient and image
+> panels take the same branch they always did, `shape: "none"` still fills
+> flat (and still stands the whole slide pass down when the panel is
+> transparent, the full-bleed-chrome idiom), and an unframed scene never
+> reaches this code. NO bundled project, template or repo fixture pairs a
+> transparent panel with a shape (`grep -rn '"transparent"' projects
+> src-tauri/templates` is empty), so the standing baselines cannot move on
+> data grounds; gate legs and any re-records are pending the batch's gate run.
+
+> **2026-08-22 (scene media: images and the video window merged):** a scene's
+> stills and its floating screen recording became ONE sidecar family, `media[]`,
+> each entry carrying a `kind` ("image" or "video"), a source, both host
+> placements and the optional `window` chrome block the video window
+> contributed. Nothing renders differently by construction: a sidecar written
+> before the merge keeps its own `images`/`videoWindow` blocks and reads FORWARD
+> into the same array at parse (attached non-enumerably, so an untouched
+> document writes back byte-identically), and the first media edit promotes it
+> to `media` in the same entry. A plain-image scene and a scene with no media at
+> all are null paths: the fallback mounts nothing, and the entries a legacy doc
+> promotes to sample through the same placement and motion maths as before
+> (`windowOverlayPlaneWidth` reproduces the old contain fit at every aspect,
+> `sampleSceneMediaMotion` dispatches to each kind's original sampler). The rig
+> aim and the follow-media duration now bind by media id; the legacy
+> `"videoWindow"` spelling stays valid on both and keeps resolving to the entry
+> serving as the window, whose aim point stays exactly `[0, 0, 0]` so recorded
+> fixtures do not move. Verified post-merge: the migration is byte-null on
+> every gated fixture. `ws:video-window-spike` Verify ×2 returned its ORIGINAL
+> baseline (`6dfe68a6…` twice), so it was not re-recorded. `ws:overlay-spike`
+> came back EQUAL at `e5bc2b79…`, off its 2026-08-07 recording; the same verify
+> on pristine main (99566e9e) produced the identical `e5bc2b79…`, so the drift
+> predates this batch (main-side, unbisected, the 2026-08 drift pattern) and
+> the table records the new hash with the batch branch proven byte-identical
+> to main. `pnpm gate` stayed EQUAL on baseline (`28beda34…`).
+
+> **2026-08-22 (Phone and Phone Landscape aspects):** `phone` (1206×2622) and
+> `phone-landscape` (2622×1206) joined the first-class, feature-scoped set: the
+> iPhone 17 Pro panel at its native size, exactly 437:201. They are the first
+> aspects under the 2160 short edge, the owner's explicit call, so a phone cut
+> matches the panel it plays on instead of being scaled to the house
+> convention. Their ids are slugs, not ratios, because the export path runs
+> `name.replace(":", "x")` through `validate_slug` (alphanumerics, dashes and
+> underscores only); `aspectLabel()` maps them to "Phone" and "Phone Landscape"
+> in every surface that shows an aspect, and `AspectIcon` now proportions its
+> rect from `FORMATS` rather than parsing "W:H" out of the name. No existing
+> format's dimensions move, so the batch's standard gate carries the
+> null-for-legacy proof; `STANDING_ASPECTS` is unchanged (Verify's "all" is
+> still the standing three) and neither aspect has a baseline until a project
+> ships in one, the 2:3 precedent. Eyeballed at record time: both orientations
+> render at the exact panel dimensions; landscape frames cleanly, but portrait
+> clips `showcase-tour` headlines on both edges (scenes were authored down to
+> 9:16's 0.5625 width, phone is 0.46), the 5:4 pattern of scene-authoring
+> overflow rather than aspect plumbing. That overflow is WHY no phone baseline
+> was recorded; check scene text widths per project before shipping a phone
+> export.
 
 > **2026-08-19 (theme library, inspector redesign):** two moves that landed on
 > main without a re-record, bisected leg by leg. #134 (theme library) appends

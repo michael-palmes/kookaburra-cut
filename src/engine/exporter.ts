@@ -67,6 +67,7 @@ import {
   buildLightingTracks,
   resolveFrameLighting,
 } from "./sceneLighting";
+import { resolveSceneDocMedia } from "./sceneMedia";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { snapshotSceneStageFloors } from "./stageRegistry";
@@ -335,6 +336,12 @@ async function exportPreamble(
           registerClip(resolveAssetPath(opts.projectId, item.src));
         }
       }
+    }
+  }
+  // Every video media entry, on both comparison sides: a scene can now carry several, and a fallback-mounted one is only in the tree after the last barrier, so the extract barrier below must already know about it.
+  for (const doc of [...(opts.sceneDocs ?? []), ...(opts.compareBDocs ?? [])]) {
+    for (const entry of resolveSceneDocMedia(doc)) {
+      if (entry.kind === "video") registerClip(resolveAssetPath(opts.projectId, entry.src));
     }
   }
   // Pre-extracts every VideoClip's frame sequence before frame 0, mirroring font preload so no frame races an async decode; extraction is cached, so this is a no-op after the first.

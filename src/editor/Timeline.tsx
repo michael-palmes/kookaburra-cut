@@ -485,13 +485,15 @@ export function Timeline({
               const speed = effectiveSpeed(clip.speed);
               const name = (source?.rel ?? clip.sourceId).replace(/^assets\//, "");
               const frozen = clip.holdMs !== undefined;
+              // A still is a freeze by construction: same single handle, but its own poster instead of the snowflake.
+              const still = source?.kind === "image";
               return (
                 // biome-ignore lint/a11y/useSemanticElements: a real <button> won't paint img children in WKWebView
                 <div
                   key={stable.id}
                   role="button"
                   tabIndex={0}
-                  className={`timeline-clip${clip.id === selectedId ? " selected" : ""}${block.dragging ? " dragging" : ""}${frozen ? " frozen" : ""}`}
+                  className={`timeline-clip${clip.id === selectedId ? " selected" : ""}${block.dragging ? " dragging" : ""}${frozen ? " frozen" : ""}${still ? " still" : ""}`}
                   style={{ left: PAD_L + block.x, width: Math.max(4, block.w) }}
                   onPointerDown={(e) => {
                     e.stopPropagation();
@@ -516,6 +518,15 @@ export function Timeline({
                     }
                   }}
                 >
+                  {still && meta?.posterPath && (
+                    <img
+                      className="timeline-still"
+                      src={fsUrl(meta.posterPath)}
+                      alt=""
+                      draggable={false}
+                      aria-hidden
+                    />
+                  )}
                   {meta && !frozen && meta.scrubPaths.length > 0 && source && (
                     <div
                       className="timeline-film"
@@ -531,14 +542,14 @@ export function Timeline({
                     </div>
                   )}
                   <span className="timeline-clip-label">
-                    {frozen ? `❄ ${name}` : name}
+                    {frozen && !still ? `❄ ${name}` : name}
                     {!frozen && speed !== 1 ? ` · ${Number(speed.toFixed(2))}×` : ""}
                   </span>
                   {frozen ? (
                     // A freeze has no in-point: one right-edge handle retimes the hold.
                     <div
                       className="timeline-handle right"
-                      title="Drag to retime the freeze"
+                      title={still ? "Drag to retime the image" : "Drag to retime the freeze"}
                       onPointerDown={(e) => onTrimPointerDown(e, clip.id, "hold")}
                       onPointerMove={onTrimPointerMove}
                       onPointerUp={onTrimPointerUp}

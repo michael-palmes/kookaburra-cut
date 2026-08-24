@@ -101,11 +101,13 @@ import { TrustDeniedError } from "./engine/projectTrust";
 import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
+import { StagePointer } from "./engine/StagePointer";
 import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import {
   applyEditRepoint,
+  type EditRepointSlot,
   resyncFollowMediaDuration,
   syncFollowMediaDurations,
   writeSceneDoc,
@@ -115,6 +117,7 @@ import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
+import { frameWorldCutout } from "./engine/stageViewport";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
@@ -173,7 +176,11 @@ import {
   TitlebarIdentity,
   TitlebarProjects,
 } from "./ui/Titlebar";
-import { hasPendingTextEdit } from "./ui/textEditFocus";
+import {
+  commitFocusedInspectorEdit,
+  hasPendingTextEdit,
+  spaceMeansPlayback,
+} from "./ui/textEditFocus";
 import { duplicateThemeDoc } from "./ui/theme-editor/themeDraft";
 import { onThemeSaved, readThemeSourceDoc } from "./ui/theme-editor/themeEditorIo";
 import { UpdateAvailableDialog, UpdateConsentDialog } from "./ui/updateDialogs";
@@ -519,13 +526,13 @@ export default function App() {
     };
   }, []);
 
-  // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar, the Background video picker or the video window recording picker), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device and video window slots).
+  // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar, the Background video picker or a media entry's Edit row), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device and media slots).
   const pendingRepointRef = useRef<{
     slug: string;
     index: number;
     editName: string;
-    slot: "device" | "compareDevice" | "background" | "videoWindow";
-    deviceId?: string;
+    slot: EditRepointSlot;
+    targetId?: string;
   } | null>(null);
 
   // The fingerprint poll's baseline lives in a ref so UI-initiated writes can re-arm it (flicker fix): otherwise an app-made sidecar/project.json write would trigger a redundant reload ~2s later.
@@ -1130,7 +1137,7 @@ export default function App() {
         const doc = project.sceneDocs[pending.index];
         const sceneFile = project.sceneFiles[pending.index];
         const rel = `assets/${pending.editName}-edited.mp4`;
-        const next = doc ? applyEditRepoint(doc, pending.slot, rel, pending.deviceId) : null;
+        const next = doc ? applyEditRepoint(doc, pending.slot, rel, pending.targetId) : null;
         if (doc && next && sceneFile) {
           try {
             await writeSceneDoc(pending.slug, sceneFile, next);
@@ -1149,11 +1156,7 @@ export default function App() {
                 },
               ],
             });
-            if (
-              pending.slot === "device" ||
-              pending.slot === "compareDevice" ||
-              pending.slot === "videoWindow"
-            ) {
+            if (pending.slot !== "background") {
               const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
@@ -1486,7 +1489,7 @@ export default function App() {
   const cameraEditOpen = useCameraEditStore((s) => s.open);
   // The 2D gizmo layers arm with their inspector section, through the one drill-family map.
   const decorationEditOpen = useGizmoSectionOpen("decorations");
-  const imageSectionOpen = useGizmoSectionOpen("images");
+  const mediaSectionOpen = useGizmoSectionOpen("media");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -1495,6 +1498,12 @@ export default function App() {
   const pendingTrust = useTrustStore((s) => s.pending);
   const camSceneIndex = useClockStore((s) =>
     project ? activeSceneIndex(project.slots, s.currentMs) : 0,
+  );
+  // Where the active scene's world lands on screen: an overlay draws it into the cutout, so every gizmo surface projects and hit-tests against that rect, not the frame's.
+  const sceneFrame = project?.sceneFrames[camSceneIndex];
+  const sceneCutout = useMemo(
+    () => frameWorldCutout(sceneFrame, format.width / format.height),
+    [sceneFrame, format.width, format.height],
   );
   // Which keyed track animates the active scene decides the lane/pill/overlay family mounted.
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
@@ -1786,18 +1795,23 @@ export default function App() {
     if (!playing) playUntilRef.current = null;
   }, [playing]);
 
-  // Spacebar toggles play/pause; arrows step one frame (shift = 10) on the export frame grid. Skipped while a form control is focused (xterm's hidden textarea included) or a modal is open. Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
+  // Spacebar toggles play/pause, committing the value first when it comes from a slider, number or hex field (a literal space means nothing there); arrows step one frame (shift = 10) on the export frame grid. Text fields, selects and xterm's hidden textarea keep their keys, and arrows always stay in a focused control so a frame step can never interrupt an edit; an open modal or media preview stands the whole handler down (the preview owns the transport keys, as it does in the editor window). Keyframe arbitration: while the camera editor has a selected diamond, arrows nudge that key instead and the playhead step stands down.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      const formControl = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA";
       if (document.querySelector(".modal-overlay")) return;
+      if (document.querySelector(".media-preview")) return;
       if (e.code === "Space" && !e.repeat) {
+        if (formControl && !spaceMeansPlayback(target)) return;
         if (target === playBtnRef.current) return;
+        if (exporting || isExporting()) return;
         e.preventDefault();
+        if (formControl) target?.blur(); // Enter semantics: the field's own onBlur commits before playback starts
         togglePlay();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        if (formControl) return;
         if (!project || exporting || isExporting()) return;
         const cam = useCameraEditStore.getState();
         if (cam.open && cam.selectedKeyId) return; // the camera strip owns arrows now
@@ -1820,8 +1834,8 @@ export default function App() {
     async (
       sceneIndex: number,
       mediaRel: string,
-      slot: "device" | "compareDevice" | "background" | "videoWindow" = "device",
-      deviceId?: string,
+      slot: EditRepointSlot = "device",
+      targetId?: string,
     ) => {
       if (!project) return;
       // The video editor is workspace-project only: its documents live in `<workspace>/<slug>/edits/`.
@@ -1840,7 +1854,7 @@ export default function App() {
         const editName = editedOf
           ? await openEditNamed(slug, editedOf, sceneIndex)
           : await openEdit(slug, mediaRel, sceneIndex);
-        pendingRepointRef.current = { slug, index: sceneIndex, editName, slot, deviceId };
+        pendingRepointRef.current = { slug, index: sceneIndex, editName, slot, targetId };
       } catch (e) {
         console.warn("[edit-video] open failed:", e);
         setToast({ kind: "error", message: `Couldn't open the video editor: ${String(e)}` });
@@ -2126,6 +2140,7 @@ export default function App() {
                   <color attach="background" args={[theme.colors.background]} />
                   <PreviewClock />
                   <ExportBridge />
+                  <StagePointer cutout={sceneCutout} />
                   <RenderSettingsApplier />
                   {project && (
                     <CompositorDriver
@@ -2189,7 +2204,7 @@ export default function App() {
                   isEditableProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
-                  imageSectionOpen && (
+                  mediaSectionOpen && (
                     <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
                   )}
                 {project &&
@@ -2360,8 +2375,8 @@ export default function App() {
               onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
-              onOpenEditVideo={(i, rel, slot, deviceId) =>
-                void handleOpenEditVideo(i, rel, slot, deviceId)
+              onOpenEditVideo={(i, rel, slot, targetId) =>
+                void handleOpenEditVideo(i, rel, slot, targetId)
               }
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
@@ -2378,6 +2393,12 @@ export default function App() {
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
               onSetTypography={(headline, body, chart) =>
                 void handleSetTypography(headline, body, chart)
+              }
+              onScenesCopied={(destName, count) =>
+                setToast({
+                  kind: "success",
+                  message: `Copied ${count} scene${count === 1 ? "" : "s"} to ${destName}`,
+                })
               }
             />
           )}
@@ -2456,6 +2477,7 @@ export default function App() {
             onScrub={(ms) => {
               // Module-flag guard: `disabled` only covers UI-button exports, not autorun.
               if (!isExporting()) {
+                commitFocusedInspectorEdit(); // against the scene still on screen, before the clock re-renders it
                 replayReturnMsRef.current = null; // a scrub owns the playhead
                 setCurrentMs(ms);
               }

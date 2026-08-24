@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FORMATS } from "./format";
 import type { ProjectManifest } from "./project";
 import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
+import { resolveSceneDocMedia } from "./sceneMedia";
 import {
   BLANK_TEMPLATE_ID,
   findTemplate,
@@ -145,7 +146,13 @@ function derivedUses(entry: TemplateFolder, docs: SceneDoc[]): Set<string> {
     present.add("camera-rig");
   }
   if (some((doc) => doc.layeredScreenshot != null)) present.add("layered-screenshot");
-  if (some((doc) => doc.videoWindow != null)) present.add("video-window");
+  if (
+    some((doc) =>
+      resolveSceneDocMedia(doc).some((entry) => entry.kind === "video" && entry.window != null),
+    )
+  ) {
+    present.add("video-window");
+  }
   if (some((doc) => doc.compare != null)) present.add("compare");
   if (some((doc) => (doc.objects?.length ?? 0) > 0)) present.add("objects");
   if (some((doc) => doc.textAnimation != null)) present.add("text-motion");

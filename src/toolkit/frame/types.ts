@@ -76,7 +76,7 @@ export interface FrameDecorationSpec {
   stackOrder?: number;
 }
 
-/** The panel fill, beyond the flat colour a plain string still means: a baked gradient, a cover-fit project image, or nothing at all (`transparent` paints no panel, so the scene fills the frame behind the overlay's content). Mirrors the stage's `ThemeBackground` vocabulary for the types it shares. */
+/** The panel fill, beyond the flat colour a plain string still means: a baked gradient, a cover-fit project image, or nothing at all (`transparent` paints no surface: with `shape: "none"` the scene fills the frame behind the overlay's content, and behind a shaped cutout the panel region takes the scene's backdrop colour). Mirrors the stage's `ThemeBackground` vocabulary for the types it shares. */
 export type FramePanelBackground =
   | { type: "transparent" }
   /** Theme token id, or a hex override (the string form, spelled out). */

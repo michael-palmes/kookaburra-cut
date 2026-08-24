@@ -182,7 +182,8 @@ function animationDisabled(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
-function modalOwnsKeyboard(): boolean {
+/** True while a layer above the inspector owns the keyboard: a modal, a colour popover, a context menu or the media preview. */
+export function modalOwnsKeyboard(): boolean {
   return (
     document.querySelector(
       '[role="dialog"][aria-modal="true"], .modal-overlay, .colour-popover, .context-menu, .media-preview',

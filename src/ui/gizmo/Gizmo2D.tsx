@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { StageRect } from "../../engine/gizmoRegistry";
+import type { GizmoDomain, StageRect } from "../../engine/gizmoRegistry";
 import {
   aabbHalfExtents,
   type Gizmo2DFrame,
@@ -14,6 +14,7 @@ import {
 } from "./gizmo2dMath";
 import { cameraOverrideHeld, GIZMO_HIT_CLASS, gizmoLayerClass } from "./gizmoRouting";
 import { useModifierKeys } from "./modifierKeys";
+import { useSceneGizmoYield } from "./useGizmoYield";
 
 export type { Gizmo2DFrame, Pt } from "./gizmo2dMath";
 
@@ -50,6 +51,8 @@ export type Gizmo2DGesture =
 
 export interface Gizmo2DProps {
   items: readonly Gizmo2DItem[];
+  /** The inspector family this layer edits, so it can stand down for a 3D gizmo mounted in the SAME section (media stages both hosts at once). */
+  domain: GizmoDomain;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   /** Where a corner resize keeps the geometry fixed: the item's own pivot (text, charts) or the opposite corner (decorations). */
@@ -117,6 +120,7 @@ function sameGeometry(a: Geometry | null, b: Geometry): boolean {
 
 export function Gizmo2D({
   items,
+  domain,
   selectedId,
   onSelect,
   resizeAbout,
@@ -134,10 +138,21 @@ export function Gizmo2D({
     y: null,
   });
   const [dragKind, setDragKind] = useState<Drag["kind"] | null>(null);
+  // A 3D gizmo in this same section outranks the boxes: the layer is above the canvas, so it has to stand down for the press to reach the handles at all.
+  const sceneGizmo = useSceneGizmoYield(domain, dragKind !== null);
 
   // Live props for the rAF loop and the window drag listeners, which mount once.
-  const latest = useRef({ items, frameGuides, onGesture, onGestureEnd, onSelect, resizeAbout });
-  latest.current = { items, frameGuides, onGesture, onGestureEnd, onSelect, resizeAbout };
+  const bag = {
+    items,
+    frameGuides,
+    onGesture,
+    onGestureEnd,
+    onSelect,
+    resizeAbout,
+    sceneGizmoAt: sceneGizmo.atPointer,
+  };
+  const latest = useRef(bag);
+  latest.current = bag;
   const geomRef = useRef<Geometry | null>(null);
   const drag = useRef<Drag | null>(null);
   const lastGesture = useRef<Gizmo2DGesture | null>(null);
@@ -188,6 +203,8 @@ export function Gizmo2D({
       if (target?.closest?.(`.${GIZMO_HIT_CLASS}`)) return;
       // Only a press that reaches the stage itself deselects; chrome drawn above the layer (a context menu, the camera pills) leaves the selection alone.
       if (!target?.closest?.("canvas, .camera-tool-overlay, .ls-tool-overlay")) return;
+      // A press on a 3D handle of this same section belongs to that gizmo: deselecting would unmount it mid-drag.
+      if (latest.current.sceneGizmoAt(e.clientX, e.clientY)) return;
       latest.current.onSelect(null);
     };
     window.addEventListener("pointerdown", onDown, true);
@@ -295,6 +312,8 @@ export function Gizmo2D({
 
   function onPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
+    // The second line of defence behind the stand-down: a press the hover test had not caught up with is dropped, never hijacked into a 2D selection.
+    if (latest.current.sceneGizmoAt(e.clientX, e.clientY)) return;
     const el = e.currentTarget as HTMLElement;
     const id = el.dataset.gizmoId;
     const geometry = geomRef.current;
@@ -337,7 +356,11 @@ export function Gizmo2D({
   return (
     <div
       ref={layerRef}
-      className={gizmoLayerClass(standDown, dragKind === "rotate" ? "dragging-rotate" : undefined)}
+      className={gizmoLayerClass(
+        standDown,
+        dragKind === "rotate" ? "dragging-rotate" : undefined,
+        sceneGizmo.yielded,
+      )}
     >
       {rect &&
         items.map((item) => {

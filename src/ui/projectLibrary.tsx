@@ -39,6 +39,8 @@ export function librarySection(rowId: string): LibrarySection | null {
 
 type ProjectLibraryItem = Pick<WorkspaceProjectInfo, "group" | "name" | "slug">;
 
+type ProjectRecencyItem = Pick<WorkspaceProjectInfo, "name" | "lastOpenedMs">;
+
 export function projectGroupRows(projects: ProjectLibraryItem[]): ProjectGroupRow[] {
   const counts = new Map<string, number>();
   let ungrouped = 0;
@@ -156,4 +158,49 @@ export function filterProjectLibrary<T extends ProjectLibraryItem>(
 
 export function selectedProjectGroup(groupId: string): string | undefined {
   return groupId.startsWith(GROUP_PREFIX) ? groupId.slice(GROUP_PREFIX.length) : undefined;
+}
+
+/** Most-recently-opened first, ties (and never-opened projects) by name. Returns a new array; the welcome screen and the copy-to-project drill share this one order. */
+export function sortProjectsByRecency<T extends ProjectRecencyItem>(projects: T[]): T[] {
+  return [...projects].sort(
+    (a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0) || a.name.localeCompare(b.name),
+  );
+}
+
+/** The card's relative "Opened …" line; null when the project has never been opened. */
+export function formatLastOpened(ms: number | null): string | null {
+  if (!ms) return null;
+  const elapsed = Date.now() - ms;
+  const minutes = Math.round(elapsed / 60_000);
+  if (minutes < 1) return "Opened just now";
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  if (minutes < 60) return `Opened ${rtf.format(-minutes, "minute")}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Opened ${rtf.format(-hours, "hour")}`;
+  return `Opened ${rtf.format(-Math.round(hours / 24), "day")}`;
+}
+
+/** Restrained line-art placeholder for cards with no snapshot yet (no emoji, §3.12). */
+export function PlaceholderArt() {
+  return (
+    <svg width="72" height="44" viewBox="0 0 72 44" aria-hidden="true">
+      <rect
+        x="1.5"
+        y="1.5"
+        width="69"
+        height="41"
+        rx="4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M30 15.5v13l11.5-6.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

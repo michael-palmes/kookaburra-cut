@@ -45,3 +45,32 @@ export function isTypingIn(el: Element | null): boolean {
 export function hasPendingTextEdit(): boolean {
   return isTypingIn(document.activeElement);
 }
+
+interface SpaceTargetLike {
+  tagName: string;
+  type?: string;
+  inputMode?: string;
+  dataset?: { spacePlays?: string };
+}
+
+const INSPECTOR_EDIT_SELECTOR =
+  'textarea, [contenteditable="true"], input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"])';
+
+/** True for controls where a literal space means nothing, so Space belongs to the transport: sliders, number fields, the numeric input modes, and the m:ss and hex fields that opt in with `data-space-plays`. */
+export function spaceMeansPlayback(el: SpaceTargetLike | null): boolean {
+  if (el?.tagName !== "INPUT") return false;
+  const type = (el.type ?? "text").toLowerCase();
+  if (type === "range" || type === "number") return true;
+  if (type !== "text") return false;
+  if (el.dataset?.spacePlays !== undefined) return true;
+  const mode = el.inputMode?.toLowerCase();
+  return mode === "decimal" || mode === "numeric";
+}
+
+/** Blur a focused inspector edit so its pending value commits through its own `onBlur`; a no-op anywhere else. */
+export function commitFocusedInspectorEdit(): void {
+  if (typeof document === "undefined") return;
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return;
+  if (active.closest(".inspector") && active.matches(INSPECTOR_EDIT_SELECTOR)) active.blur();
+}

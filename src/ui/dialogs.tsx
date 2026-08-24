@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import {
   BLANK_TEMPLATE_ID,
   listAllTemplates,
@@ -432,10 +433,12 @@ export function NewProjectDialog({
   const [themes, setThemes] = useState<ThemeChoice[]>(builtinThemeChoices);
   const [group, setGroup] = useState(initialGroup ?? "");
   const [groups, setGroups] = useState<string[]>([]);
+  const [takenSlugs, setTakenSlugs] = useState<string[]>([]);
   const [templateQuery, setTemplateQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const slug = slugifyName(name);
+  const collides = nameCollision(name, takenSlugs).collides;
   // Escape clears an active template search first, then closes.
   useEscapeClose(() => {
     if (step === "details" && templateQuery) {
@@ -457,6 +460,7 @@ export function NewProjectDialog({
           new Set(list.map((p) => p.group).filter((g): g is string => Boolean(g))),
         ).sort((a, b) => a.localeCompare(b));
         setGroups(names);
+        setTakenSlugs(list.map((p) => p.slug));
       })
       .catch(() => {});
     return () => {
@@ -468,6 +472,7 @@ export function NewProjectDialog({
       setError("Give the project a name.");
       return;
     }
+    if (collides) return;
     setError(null);
     setStep("theme");
   };
@@ -513,6 +518,11 @@ export function NewProjectDialog({
               <p className="modal-hint">
                 {slug ? `Saved as ${slug}` : "Pick a template, then name your project."}
               </p>
+              {collides && (
+                <p className="modal-warn">
+                  {nameCollisionWarning("project", slug)} Pick another name.
+                </p>
+              )}
               <div className="wizard-group-row">
                 <svg
                   className="template-rail-icon"
@@ -555,7 +565,12 @@ export function NewProjectDialog({
               <button type="button" className="btn" onClick={onCancel} disabled={busy}>
                 Cancel
               </button>
-              <button type="button" className="btn primary" onClick={next} disabled={busy}>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={next}
+                disabled={busy || collides}
+              >
                 Next
               </button>
             </div>

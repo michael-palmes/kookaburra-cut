@@ -75,16 +75,20 @@ export function ReferencePane({
                   : undefined,
             }}
           >
-            <video
-              src={fsUrl(`${basePath}/${source.rel}`)}
-              muted
-              playsInline
-              preload="auto"
-              ref={(el) => {
-                if (el) videos.current.set(source.id, el);
-                else videos.current.delete(source.id);
-              }}
-            />
+            {source.kind === "image" ? (
+              <img className="editor-still" src={fsUrl(`${basePath}/${source.rel}`)} alt="" />
+            ) : (
+              <video
+                src={fsUrl(`${basePath}/${source.rel}`)}
+                muted
+                playsInline
+                preload="auto"
+                ref={(el) => {
+                  if (el) videos.current.set(source.id, el);
+                  else videos.current.delete(source.id);
+                }}
+              />
+            )}
           </div>
         </div>
       ))}

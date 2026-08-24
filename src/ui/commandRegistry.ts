@@ -1,5 +1,5 @@
 import type { AspectName } from "../engine/format";
-import { FORMATS } from "../engine/format";
+import { aspectLabel, FORMATS } from "../engine/format";
 import type { ProjectListing } from "../engine/project";
 import { WORKSPACE_PROJECT_PREFIX } from "../engine/project";
 
@@ -184,7 +184,7 @@ export function buildCommands(ctx: CommandContext): Command[] {
     },
     ...(Object.keys(FORMATS) as AspectName[]).map<Command>((name) => ({
       id: `view.aspect:${name}`,
-      title: `Aspect ratio: ${name}`,
+      title: `Aspect ratio: ${aspectLabel(name)}`,
       group: "View",
       keywords: ["format", "orientation", "portrait", "landscape", "square", "ratio"],
       hint: name === ctx.aspect ? "current" : undefined,

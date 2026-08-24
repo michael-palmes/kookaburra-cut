@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { MediaMeta } from "../engine/media";
 import { RECORDING_INSETS } from "../engine/sceneVideoWindow";
 
-/** Editor-side heuristic for the video window's pick flow: does this clip look like a raw macOS window recording (pure-black capture margins in exactly the known widths)? Runs on the cached 640px poster, only ever decides the initial state of the doc's `recording` flag, and fails to `false` so a pick can never block on it. */
+/** Editor-side heuristic for the media pick flow: does this source look like a raw macOS window capture (pure-black capture margins in exactly the known widths)? Runs on the cached poster (a clip's first frame, a still's own thumbnail), only ever decides the initial state of an entry's window `recording` flag, and fails to `false` so a pick can never block on it. */
 
 /** JPEG noise on the pure-black margins stays comfortably below this. */
 const BLACK_MAX = 14;
@@ -102,9 +102,9 @@ export function detectWindowRecordingPixels(
   return marginsBlack(data, posterW, posterH, measured);
 }
 
-/** Load the poster and run the pixel core; any failure (no poster, decode error) is a quiet `false`. The bytes come through the Rust `read_media_thumb` command and decode via a same-origin blob, because an asset-protocol image taints the canvas and `getImageData` throws. */
+/** Load the poster and run the pixel core; any failure (no poster, decode error) is a quiet `false`. Both media kinds cache a poster, so a screenshot of a window crops like a recording of one. The bytes come through the Rust `read_media_thumb` command and decode via a same-origin blob, because an asset-protocol image taints the canvas and `getImageData` throws. */
 export async function detectWindowRecording(meta: MediaMeta | null): Promise<boolean> {
-  if (meta?.kind !== "video" || !meta.posterPath) return false;
+  if (!meta?.posterPath) return false;
   try {
     const buffer = await invoke<ArrayBuffer>("read_media_thumb", { path: meta.posterPath });
     const bitmap = await createImageBitmap(new Blob([buffer]));

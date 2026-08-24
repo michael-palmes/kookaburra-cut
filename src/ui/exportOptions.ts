@@ -37,7 +37,17 @@ export function railPresets(bundled: ExportPresetDoc[]): ExportPresetDoc[] {
 /** Decision 18's mux margin. */
 export const MUX_MARGIN = 1.05;
 
-export const ALL_ASPECTS: AspectName[] = ["16:9", "9:16", "1:1", "4:5", "5:4", "3:2", "2:3"];
+export const ALL_ASPECTS: AspectName[] = [
+  "16:9",
+  "9:16",
+  "1:1",
+  "4:5",
+  "5:4",
+  "3:2",
+  "2:3",
+  "phone",
+  "phone-landscape",
+];
 
 /** Aspects a preset may export (absent allowedAspects = unrestricted). */
 export function presetAspects(doc: ExportPresetDoc): AspectName[] {

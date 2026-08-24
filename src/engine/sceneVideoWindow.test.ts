@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SceneDocVideoWindow } from "./sceneDocSchema";
 import {
   normalizeVideoWindow,
+  normalizeWindowChrome,
   RECORDING_INSETS,
   RECORDING_RADIUS_PX,
   recordingCrop,
@@ -201,5 +202,38 @@ describe("sampleVideoWindowMotion — pure, clock-driven", () => {
     const a = sampleVideoWindowMotion({ preset: "drift" }, 4321);
     const b = sampleVideoWindowMotion({ preset: "drift" }, 4321);
     expect(a).toEqual(b);
+  });
+});
+
+describe("normalizeWindowChrome", () => {
+  it("resolves a media entry's window block exactly like the legacy block's chrome", () => {
+    const block = {
+      radius: "rounded",
+      recording: true,
+      border: { enabled: false, color: "#112233", width: 0.01, opacity: 0.5 },
+      shadow: { opacity: 0.4, blur: 0.2, offset: [0.1, -0.2] as [number, number] },
+    } as const;
+    const legacy = normalizeVideoWindow(minimal(block), "s");
+    const chrome = normalizeWindowChrome(block);
+    expect(chrome).toEqual({
+      radiusFraction: legacy?.radiusFraction,
+      recording: legacy?.recording,
+      radiusTracksRecording: legacy?.radiusTracksRecording,
+      border: legacy?.border,
+      shadow: legacy?.shadow,
+    });
+  });
+
+  it("fills the legacy defaults for a bare block, and keeps the macOS radius tracking", () => {
+    const chrome = normalizeWindowChrome({ radius: "macos" });
+    expect(chrome.recording).toBe(false);
+    expect(chrome.radiusTracksRecording).toBe(true);
+    expect(chrome.border).toEqual({
+      enabled: true,
+      color: "#ffffff",
+      width: 0.0035,
+      opacity: 0.12,
+    });
+    expect(chrome.shadow).toEqual({ opacity: 0.32, blur: 0.14, offset: [0, -0.05] });
   });
 });

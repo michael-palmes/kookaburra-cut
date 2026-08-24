@@ -32,6 +32,14 @@ import type { FrameOverrideSpec } from "../toolkit/frame/types";
 import type { SceneDocDof } from "./dof";
 import { parseFrameOverride } from "./frameSchema";
 import { normalizeLighting } from "./sceneLighting";
+import {
+  DEFAULT_SCENE_IMAGE_OVERLAY,
+  DEFAULT_SCENE_IMAGE_STAGE,
+  DEFAULT_SCENE_MEDIA_VIDEO_OVERLAY,
+  DEFAULT_SCENE_MEDIA_VIDEO_STAGE,
+  DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
+  sceneMediaFromLegacy,
+} from "./sceneMedia";
 
 export type { SceneDocDof } from "./dof";
 
@@ -82,17 +90,21 @@ export const SCENE_IMAGE_MOTION_PRESETS = [
 ] as const;
 export type SceneImageMotionPreset = (typeof SCENE_IMAGE_MOTION_PRESETS)[number];
 
-/** One shared preset follows the image when its active host changes. */
-export interface SceneImageMotionSpec {
-  preset: SceneImageMotionPreset;
+/** The tuning shared by every motion preset, whichever content family carries it. */
+export interface SceneMotionFields {
   /** `turntable`: rotation rate in degrees per second. */
   degPerSec?: number;
-  /** `float`: Stage world units before the Overlay host adaptation. */
+  /** `float` / `drift`: Stage world units (degrees for `drift`) before the Overlay host adaptation. */
   amplitude?: number;
-  /** `float`: cycles per second. */
+  /** `float` / `drift`: cycles per second. */
   hz?: number;
   /** `tilt-reveal` / `push-in`: intro length in ms. */
   durationMs?: number;
+}
+
+/** One shared preset follows the image when its active host changes. */
+export interface SceneImageMotionSpec extends SceneMotionFields {
+  preset: SceneImageMotionPreset;
 }
 
 export interface SceneImageStagePlacement {
@@ -128,20 +140,6 @@ export interface SceneDocImageSpec {
   /** Absent is off. */
   castShadow?: boolean;
 }
-
-export const DEFAULT_SCENE_IMAGE_STAGE: SceneImageStagePlacement = {
-  position: [0, 0, 0],
-  size: 1,
-  rotationDeg: [0, 0, 0],
-};
-
-export const DEFAULT_SCENE_IMAGE_OVERLAY: SceneImageOverlayPlacement = {
-  position: [0, 0],
-  size: 0.25,
-  rotationDeg: 0,
-  shape: "none",
-  layer: "above",
-};
 
 /** Multi-device layout presets, resolved to per-aspect placements in `toolkit/device/layout.ts`. */
 export const DEVICE_LAYOUT_PRESETS = [
@@ -179,7 +177,13 @@ export interface SceneDocObjectSpec {
 
 export type SceneDocDuration =
   | { mode: "manual" }
-  | { mode: "follow-media"; sourceDeviceId?: string; source?: "device" | "videoWindow" };
+  | {
+      mode: "follow-media";
+      sourceDeviceId?: string;
+      /** `media` follows the entry `sourceMediaId` names; `videoWindow` is the legacy spelling for whichever entry serves as the window. */
+      source?: "device" | "videoWindow" | "media";
+      sourceMediaId?: string;
+    };
 
 export const MANAGED_TEXT_ITEM_TYPES = ["title", "subtitle", "bullets", "icon"] as const;
 export type SceneManagedTextItemType = (typeof MANAGED_TEXT_ITEM_TYPES)[number];
@@ -432,6 +436,61 @@ export interface SceneDocVideoWindow {
   offset?: [number, number];
 }
 
+export type SceneMediaKind = "image" | "video";
+
+/** Media adds a third host to the image family's two: `window` floats an entry in the scene's own world space (the video window's home), placed by the OVERLAY numbers so no third placement block is needed. Video-only for now, so a still asking for it degrades to `overlay` at parse. */
+export type SceneMediaHost = SceneImageHost | "window";
+
+/** The union of both legacy preset lists: `turntable` stays the stage-host image look, `drift` comes from the window family; a sampler decides what a preset means for its kind. */
+export const SCENE_MEDIA_MOTION_PRESETS = [
+  "none",
+  "turntable",
+  "float",
+  "tilt-reveal",
+  "push-in",
+  "drift",
+] as const;
+export type SceneMediaMotionPreset = (typeof SCENE_MEDIA_MOTION_PRESETS)[number];
+
+export interface SceneMediaMotionSpec extends SceneMotionFields {
+  preset: SceneMediaMotionPreset;
+}
+
+/** Optional window chrome, available to both kinds: rounded corners, the macOS window-recording crop, an edge stroke and an analytic drop shadow. Absent renders the plain plane. Defaults and clamps live in `sceneVideoWindow.ts`. */
+export interface SceneMediaWindow {
+  radius: VideoWindowRadius;
+  recording?: boolean;
+  border?: VideoWindowBorder;
+  shadow?: VideoWindowShadow;
+}
+
+/** Playback fields for a `video` entry; `aspect` (width/height, recorded at pick time) sizes the entry before the clip's intrinsics arrive. */
+export interface SceneMediaVideoSpec {
+  startMs?: number;
+  loop?: boolean;
+  aspect?: number;
+}
+
+/** One media entry: the image family's id, source, host and twin placements, plus the kind and the two optional blocks the video window contributed. */
+export interface SceneDocMediaSpec {
+  id: string;
+  kind: SceneMediaKind;
+  /** Project-relative source under `assets/`. */
+  src: string;
+  host: SceneMediaHost;
+  /** Both placements remain authored when the active host changes. */
+  stage: SceneImageStagePlacement;
+  overlay: SceneImageOverlayPlacement;
+  /** Shared by both hosts; absent preserves the static legacy path. */
+  motion?: SceneMediaMotionSpec;
+  /** Absent is off. */
+  castShadow?: boolean;
+  /** Absent is a bare plane, no corners, crop, border or shadow. */
+  window?: SceneMediaWindow;
+  /** `video` kind only. */
+  video?: SceneMediaVideoSpec;
+}
+
 export interface SceneDoc {
   version: number;
   /** Human name shown by pickers (scenes have no display name otherwise). */
@@ -448,7 +507,9 @@ export interface SceneDoc {
   /** Inspector-owned ordered text. Absence preserves the authored renderer; present-empty intentionally renders no scene text. */
   managedText?: SceneManagedTextBlock;
   devices?: SceneDocDeviceSpec[];
-  /** Ordered, scene-owned still images that retain independent Stage and Overlay placements. */
+  /** The one media family (stills and videos). Authored here; a document written before the merge reads its `images` + `videoWindow` forward into this array at parse (see the note above `bridgeSceneMedia`). */
+  media?: SceneDocMediaSpec[];
+  /** LEGACY, read-only: pre-merge still images. Kept so an untouched old sidecar writes back unchanged; every reader goes through `resolveSceneDocMedia`, and the first media edit promotes the document to `media`. */
   images?: SceneDocImageSpec[];
   /** The live multi-device layout block; see `SceneDocDeviceLayout`. */
   deviceLayout?: SceneDocDeviceLayout;
@@ -485,7 +546,7 @@ export interface SceneDoc {
   frame?: FrameOverrideSpec;
   /** The layered-screenshot composition (one per scene; layers carry the multiplicity). Deep graph validation lives in `sceneLayeredScreenshot.ts`. */
   layeredScreenshot?: SceneDocLayeredScreenshot;
-  /** The video-window composition (one per scene): a macOS screen recording as a floating window over a backing stage. Deep validation lives in `sceneVideoWindow.ts`. */
+  /** LEGACY, read-only: the pre-merge video-window composition (one per scene), now a video `media` entry with a `window` block. Deep validation lives in `sceneVideoWindow.ts`. */
   videoWindow?: SceneDocVideoWindow;
   /** The before/after comparison block: side B's overrides plus the shared mask and divider track; side A is this doc itself. Deep normalisation lives in `sceneCompare.ts`. */
   compare?: SceneDocCompare;
@@ -674,85 +735,92 @@ const finiteNum = (v: unknown): v is number => typeof v === "number" && Number.i
 
 const SCENE_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp"]);
 
-export function isSceneImageSource(value: unknown): value is string {
+/** A project-relative path under `assets/` that cannot escape the project folder. */
+function isProjectAssetPath(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const parts = value.split("/");
   if (parts[0] !== "assets" || parts.length < 2) return false;
-  if (parts.some((part) => part.length === 0 || part === "." || part === "..")) return false;
-  const extension = parts.at(-1)?.split(".").at(-1)?.toLowerCase();
+  return !parts.some((part) => part.length === 0 || part === "." || part === "..");
+}
+
+export function isSceneImageSource(value: unknown): value is string {
+  if (!isProjectAssetPath(value)) return false;
+  const extension = value.split("/").at(-1)?.split(".").at(-1)?.toLowerCase();
   return extension !== undefined && SCENE_IMAGE_EXTENSIONS.has(extension);
 }
 
-function parseSceneImageStage(raw: unknown): SceneImageStagePlacement {
+function parseSceneImageStage(
+  raw: unknown,
+  defaults: SceneImageStagePlacement,
+): SceneImageStagePlacement {
   if (!isRecord(raw)) {
     return {
-      position: [...DEFAULT_SCENE_IMAGE_STAGE.position],
-      size: DEFAULT_SCENE_IMAGE_STAGE.size,
-      rotationDeg: [...DEFAULT_SCENE_IMAGE_STAGE.rotationDeg],
+      position: [...defaults.position],
+      size: defaults.size,
+      rotationDeg: [...defaults.rotationDeg],
     };
   }
   return {
-    position: finiteV3(raw.position) ? [...raw.position] : [...DEFAULT_SCENE_IMAGE_STAGE.position],
-    size: finiteNum(raw.size) && raw.size > 0 ? raw.size : DEFAULT_SCENE_IMAGE_STAGE.size,
+    position: finiteV3(raw.position) ? [...raw.position] : [...defaults.position],
+    size: finiteNum(raw.size) && raw.size > 0 ? raw.size : defaults.size,
     rotationDeg: finiteV3(raw.rotationDeg)
       ? (raw.rotationDeg.map(normaliseDeg) as [number, number, number])
-      : [...DEFAULT_SCENE_IMAGE_STAGE.rotationDeg],
+      : [...defaults.rotationDeg],
   };
 }
 
 function parseSceneImageOverlay(
   raw: unknown,
   source: string,
-  index: number,
+  label: string,
+  defaults: SceneImageOverlayPlacement,
 ): SceneImageOverlayPlacement {
   if (!isRecord(raw)) {
     return {
-      position: [...DEFAULT_SCENE_IMAGE_OVERLAY.position],
-      size: DEFAULT_SCENE_IMAGE_OVERLAY.size,
-      rotationDeg: DEFAULT_SCENE_IMAGE_OVERLAY.rotationDeg,
-      shape: DEFAULT_SCENE_IMAGE_OVERLAY.shape,
-      layer: DEFAULT_SCENE_IMAGE_OVERLAY.layer,
+      position: [...defaults.position],
+      size: defaults.size,
+      rotationDeg: defaults.rotationDeg,
+      shape: defaults.shape,
+      layer: defaults.layer,
     };
   }
   const overlay: SceneImageOverlayPlacement = {
-    position: finiteV2(raw.position)
-      ? [...raw.position]
-      : [...DEFAULT_SCENE_IMAGE_OVERLAY.position],
-    size: finiteNum(raw.size) && raw.size > 0 ? raw.size : DEFAULT_SCENE_IMAGE_OVERLAY.size,
-    rotationDeg: finiteNum(raw.rotationDeg)
-      ? normaliseDeg(raw.rotationDeg)
-      : DEFAULT_SCENE_IMAGE_OVERLAY.rotationDeg,
+    position: finiteV2(raw.position) ? [...raw.position] : [...defaults.position],
+    size: finiteNum(raw.size) && raw.size > 0 ? raw.size : defaults.size,
+    rotationDeg: finiteNum(raw.rotationDeg) ? normaliseDeg(raw.rotationDeg) : defaults.rotationDeg,
     shape: raw.shape === "circle" ? "circle" : "none",
     layer: raw.layer === "below" ? "below" : "above",
   };
   if (finiteNum(raw.stackOrder)) overlay.stackOrder = raw.stackOrder;
   else if (raw.stackOrder !== undefined) {
     console.warn(
-      `[sceneDoc] ${source}: images[${index}].overlay.stackOrder isn't a finite number, dropped`,
+      `[sceneDoc] ${source}: ${label}.overlay.stackOrder isn't a finite number, dropped`,
     );
   }
   return overlay;
 }
 
-function parseSceneImageMotion(
+/** Shared by both content families; `presets` narrows which are legal and its first entry is the fallback. */
+function parseSceneMotion<T extends SceneMediaMotionPreset>(
   raw: unknown,
   source: string,
-  index: number,
-): SceneImageMotionSpec | undefined {
+  label: string,
+  presets: readonly T[],
+): (SceneMotionFields & { preset: T }) | undefined {
   if (raw === undefined) return undefined;
   if (!isRecord(raw)) {
-    console.warn(`[sceneDoc] ${source}: images[${index}].motion isn't an object, dropped`);
+    console.warn(`[sceneDoc] ${source}: ${label}.motion isn't an object, dropped`);
     return undefined;
   }
 
-  let preset: SceneImageMotionPreset = "none";
-  if (SCENE_IMAGE_MOTION_PRESETS.includes(raw.preset as SceneImageMotionPreset)) {
-    preset = raw.preset as SceneImageMotionPreset;
+  let preset = presets[0];
+  if (presets.includes(raw.preset as T)) {
+    preset = raw.preset as T;
   } else {
-    console.warn(`[sceneDoc] ${source}: images[${index}].motion.preset isn't known, using none`);
+    console.warn(`[sceneDoc] ${source}: ${label}.motion.preset isn't known, using none`);
   }
 
-  const motion: SceneImageMotionSpec = { preset };
+  const motion: SceneMotionFields & { preset: T } = { preset };
   const fields = ["degPerSec", "amplitude", "hz", "durationMs"] as const;
   for (const field of fields) {
     const value = raw[field];
@@ -762,9 +830,7 @@ function parseSceneImageMotion(
       (field === "degPerSec" || (field === "durationMs" ? value > 0 : value >= 0));
     if (valid) motion[field] = value;
     else
-      console.warn(
-        `[sceneDoc] ${source}: images[${index}].motion.${field} isn't a valid number, dropped`,
-      );
+      console.warn(`[sceneDoc] ${source}: ${label}.motion.${field} isn't a valid number, dropped`);
   }
   return motion;
 }
@@ -777,8 +843,9 @@ function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | u
   const images: SceneDocImageSpec[] = [];
   const seen = new Set<string>();
   for (const [index, entry] of raw.entries()) {
+    const label = `images[${index}]`;
     if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length === 0) {
-      console.warn(`[sceneDoc] ${source}: images[${index}] needs a non-empty string id, dropped`);
+      console.warn(`[sceneDoc] ${source}: ${label} needs a non-empty string id, dropped`);
       continue;
     }
     if (seen.has(entry.id)) {
@@ -786,9 +853,7 @@ function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | u
       continue;
     }
     if (!isSceneImageSource(entry.src)) {
-      console.warn(
-        `[sceneDoc] ${source}: images[${index}].src isn't a supported project image, dropped`,
-      );
+      console.warn(`[sceneDoc] ${source}: ${label}.src isn't a supported project image, dropped`);
       continue;
     }
     seen.add(entry.id);
@@ -796,15 +861,137 @@ function parseSceneImages(raw: unknown, source: string): SceneDocImageSpec[] | u
       id: entry.id,
       src: entry.src,
       host: entry.host === "overlay" ? "overlay" : "stage",
-      stage: parseSceneImageStage(entry.stage),
-      overlay: parseSceneImageOverlay(entry.overlay, source, index),
+      stage: parseSceneImageStage(entry.stage, DEFAULT_SCENE_IMAGE_STAGE),
+      overlay: parseSceneImageOverlay(entry.overlay, source, label, DEFAULT_SCENE_IMAGE_OVERLAY),
     };
-    const motion = parseSceneImageMotion(entry.motion, source, index);
+    const motion = parseSceneMotion(entry.motion, source, label, SCENE_IMAGE_MOTION_PRESETS);
     if (motion) image.motion = motion;
     if (typeof entry.castShadow === "boolean") image.castShadow = entry.castShadow;
     images.push(image);
   }
   return images;
+}
+
+const VIDEO_WINDOW_RADIUS_PRESETS: readonly string[] = ["sharp", "subtle", "macos", "rounded"];
+
+function parseSceneMediaRadius(raw: unknown, source: string, label: string): VideoWindowRadius {
+  if (typeof raw === "string" && VIDEO_WINDOW_RADIUS_PRESETS.includes(raw)) {
+    return raw as VideoWindowRadius;
+  }
+  if (isRecord(raw) && finiteNum(raw.custom)) return { custom: raw.custom };
+  if (raw !== undefined) {
+    console.warn(`[sceneDoc] ${source}: ${label}.window.radius isn't known, using macos`);
+  }
+  return DEFAULT_SCENE_MEDIA_WINDOW_RADIUS;
+}
+
+/** Border and shadow pass through as authored (the legacy videoWindow contract): `sceneVideoWindow.ts` owns their defaults and clamps, so a partial block still resolves. */
+function parseSceneMediaWindow(
+  raw: unknown,
+  source: string,
+  label: string,
+): SceneMediaWindow | undefined {
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: ${label}.window isn't an object, dropped`);
+    return undefined;
+  }
+  const window: SceneMediaWindow = { radius: parseSceneMediaRadius(raw.radius, source, label) };
+  if (typeof raw.recording === "boolean") window.recording = raw.recording;
+  if (isRecord(raw.border)) window.border = raw.border as unknown as VideoWindowBorder;
+  if (isRecord(raw.shadow)) window.shadow = raw.shadow as unknown as VideoWindowShadow;
+  return window;
+}
+
+function parseSceneMediaVideo(raw: unknown, source: string, label: string): SceneMediaVideoSpec {
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) {
+    console.warn(`[sceneDoc] ${source}: ${label}.video isn't an object, dropped`);
+    return {};
+  }
+  const video: SceneMediaVideoSpec = {};
+  if (finiteNum(raw.startMs)) video.startMs = raw.startMs;
+  if (typeof raw.loop === "boolean") video.loop = raw.loop;
+  if (finiteNum(raw.aspect) && raw.aspect > 0) video.aspect = raw.aspect;
+  return video;
+}
+
+/** Stills keep the image family's extension gate; videos take any project asset, since the window family never gated the container. */
+function sceneMediaSource(raw: unknown, kind: SceneMediaKind): string | null {
+  if (kind === "video") return isProjectAssetPath(raw) ? raw : null;
+  return isSceneImageSource(raw) ? raw : null;
+}
+
+/** Videos default to the window host (where the video-window family lived, and what an unhosted clip has always rendered as), stills to the stage. `window` is video-only, so a still asking for it lands on the frame layer instead. */
+function parseSceneMediaHost(
+  raw: unknown,
+  kind: SceneMediaKind,
+  source: string,
+  label: string,
+): SceneMediaHost {
+  if (kind === "video") {
+    if (raw === "stage") return "stage";
+    return raw === "overlay" ? "overlay" : "window";
+  }
+  if (raw === "window") {
+    console.warn(`[sceneDoc] ${source}: ${label}.host "window" is video-only, using overlay`);
+    return "overlay";
+  }
+  return raw === "overlay" ? "overlay" : "stage";
+}
+
+/** Sibling of `parseSceneImages`, same degrade-don't-crash contract: an entry without a usable source drops alone, everything else defaults. */
+function parseSceneMedia(raw: unknown, source: string): SceneDocMediaSpec[] | undefined {
+  if (!Array.isArray(raw)) {
+    console.warn(`[sceneDoc] ${source}: media isn't an array, dropped`);
+    return undefined;
+  }
+  const media: SceneDocMediaSpec[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of raw.entries()) {
+    const label = `media[${index}]`;
+    if (!isRecord(entry) || typeof entry.id !== "string" || entry.id.length === 0) {
+      console.warn(`[sceneDoc] ${source}: ${label} needs a non-empty string id, dropped`);
+      continue;
+    }
+    if (seen.has(entry.id)) {
+      console.warn(`[sceneDoc] ${source}: duplicate media id "${entry.id}", later entry dropped`);
+      continue;
+    }
+    const kind: SceneMediaKind = entry.kind === "video" ? "video" : "image";
+    const video = kind === "video";
+    const src = sceneMediaSource(entry.src, kind);
+    if (src === null) {
+      console.warn(`[sceneDoc] ${source}: ${label}.src isn't a supported project ${kind}, dropped`);
+      continue;
+    }
+    seen.add(entry.id);
+    const item: SceneDocMediaSpec = {
+      id: entry.id,
+      kind,
+      src,
+      host: parseSceneMediaHost(entry.host, kind, source, label),
+      stage: parseSceneImageStage(
+        entry.stage,
+        video ? DEFAULT_SCENE_MEDIA_VIDEO_STAGE : DEFAULT_SCENE_IMAGE_STAGE,
+      ),
+      overlay: parseSceneImageOverlay(
+        entry.overlay,
+        source,
+        label,
+        video ? DEFAULT_SCENE_MEDIA_VIDEO_OVERLAY : DEFAULT_SCENE_IMAGE_OVERLAY,
+      ),
+    };
+    const motion = parseSceneMotion(entry.motion, source, label, SCENE_MEDIA_MOTION_PRESETS);
+    if (motion) item.motion = motion;
+    if (typeof entry.castShadow === "boolean") item.castShadow = entry.castShadow;
+    if (entry.window !== undefined) {
+      const window = parseSceneMediaWindow(entry.window, source, label);
+      if (window) item.window = window;
+    }
+    if (video) item.video = parseSceneMediaVideo(entry.video, source, label);
+    media.push(item);
+  }
+  return media;
 }
 
 const THEME_COLOUR_TOKENS = ["background", "text", "accent", "muted"];
@@ -1613,6 +1800,28 @@ function parseManagedText(raw: unknown, source: string): SceneManagedTextBlock |
   };
 }
 
+/*
+ * The media read-forward: sidecars written before the two families merged keep their own
+ * `images`/`videoWindow` blocks and gain the `media` array every reader speaks. It is attached
+ * NON-ENUMERABLY, so `JSON.stringify` sees only what was authored and an untouched legacy
+ * document still writes back byte-identically; the first media edit promotes it (`setSceneDocMedia`).
+ * A clone loses the derived array, so consumers read `resolveSceneDocMedia(doc)` in
+ * `sceneMedia.ts`, never `doc.media`.
+ */
+function bridgeSceneMedia(doc: SceneDoc, authoredMedia: SceneDocMediaSpec[] | undefined): void {
+  if (authoredMedia) {
+    doc.media = authoredMedia;
+    return;
+  }
+  if (doc.images === undefined && doc.videoWindow === undefined) return;
+  Object.defineProperty(doc, "media", {
+    value: sceneMediaFromLegacy(doc.images, doc.videoWindow),
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+}
+
 /** Validates a raw sidecar value, returning `undefined` (with a console warning) rather than throwing, since a bad document must degrade to "no doc" and never tear down the canvas tree (the bootTrap lesson); unknown extra fields pass through untouched, structurally wrong required fields drop the entry or the whole doc. */
 export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
@@ -1719,7 +1928,8 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     }
     out.devices = devices;
   }
-  if (doc.images !== undefined) {
+  const authoredMedia = doc.media === undefined ? undefined : parseSceneMedia(doc.media, source);
+  if (authoredMedia === undefined && doc.images !== undefined) {
     const images = parseSceneImages(doc.images, source);
     if (images) out.images = images;
   }
@@ -1813,7 +2023,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       console.warn(`[sceneDoc] ${source}: layeredScreenshot is malformed, dropped`);
     }
   }
-  if (doc.videoWindow !== undefined) {
+  if (authoredMedia === undefined && doc.videoWindow !== undefined) {
     if (validVideoWindow(doc.videoWindow)) {
       out.videoWindow = doc.videoWindow;
     } else {
@@ -1841,6 +2051,7 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
       `[sceneDoc] ${source}: animatedTrack isn't camera|layeredScreenshot|compare|chart|lighting, dropped`,
     );
   }
+  bridgeSceneMedia(out, authoredMedia);
   return out;
 }
 

@@ -480,7 +480,6 @@ export function ManagedTextDrill({
   const [itemDragVisual, setItemDragVisual] = useState<PointerReorderDrag | null>(null);
   const [pointDragVisual, setPointDragVisual] = useState<PointerReorderDrag | null>(null);
   const [menu, setMenu] = useState<ManagedTextMenu | null>(null);
-  const [removeGroupArmedKey, setRemoveGroupArmedKey] = useState<string | null>(null);
   const iconWriteRef = useRef<symbol | null>(null);
   const [iconWriteBusy, setIconWriteBusy] = useState(false);
   const mountedRef = useRef(true);
@@ -500,11 +499,6 @@ export function ManagedTextDrill({
       mountedRef.current = false;
     };
   }, []);
-  useEffect(() => {
-    if (!removeGroupArmedKey) return;
-    const timeout = window.setTimeout(() => setRemoveGroupArmedKey(null), 3000);
-    return () => window.clearTimeout(timeout);
-  }, [removeGroupArmedKey]);
   useEffect(() => {
     if (!pendingPointFocus) return;
     const frame = window.requestAnimationFrame(() => {
@@ -1038,22 +1032,11 @@ export function ManagedTextDrill({
               />
               <DrillHeaderAction
                 kind="remove"
-                label={
-                  removeGroupArmedKey === selectedGroup.key
-                    ? "Confirm remove text group"
-                    : "Remove text group"
-                }
+                label="Remove text group"
                 disabled={disabled}
-                armed={removeGroupArmedKey === selectedGroup.key}
-                onClick={() => {
-                  const removeGroupArmed = removeGroupArmedKey === selectedGroup.key;
-                  if (!removeGroupArmed) {
-                    setRemoveGroupArmedKey(selectedGroup.key);
-                    return;
-                  }
-                  setRemoveGroupArmedKey(null);
-                  void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
-                }}
+                onClick={() =>
+                  void runStructural({ type: "remove-group", groupKey: selectedGroup.key })
+                }
               />
             </>
           ) : undefined

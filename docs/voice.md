@@ -199,6 +199,7 @@ app today; Library = approved, awaiting its surface.)*
 **Destructive confirms** *(plain, specific, calm)*
 - "Delete scene "{name}"? This can't be undone." · "Delete" · "Cancel"
 - (The house pattern stands: two-step arming, hints never shift layout.)
+- (Exception: content header trash icons delete on one click, since undo covers them.)
 
 **About** *(wired: the Welcome footer carries the line; the aside rides its tooltip)*
 - "Built after dark in South Australia. Runs entirely on your Mac."

@@ -426,14 +426,7 @@ export function ChartDrillIn({
   const [tab, setTab] = useState<ChartTab>("graph");
   const [axisTab, setAxisTab] = useState<"value" | "category">("value");
   const [hoverCard, setHoverCard] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const dragBaseline = useRef<SceneDoc | null>(null);
-  useEffect(() => {
-    if (!confirmRemove) return;
-    const t = window.setTimeout(() => setConfirmRemove(false), 3000);
-    return () => window.clearTimeout(t);
-  }, [confirmRemove]);
-
   const chart = resolveChart(doc);
   if (!chart || !doc.chart) return null;
 
@@ -1536,21 +1529,12 @@ export function ChartDrillIn({
       <DrillBack
         label={backLabel}
         title="Chart"
-        onClick={() => {
-          setConfirmRemove(false);
-          onBack();
-        }}
+        onClick={onBack}
         actions={
           <DrillHeaderAction
             kind="remove"
-            label={confirmRemove ? "Confirm remove chart" : "Remove chart"}
-            armed={confirmRemove}
+            label="Remove chart"
             onClick={() => {
-              if (!confirmRemove) {
-                setConfirmRemove(true);
-                return;
-              }
-              setConfirmRemove(false);
               closeChartDataModal();
               void patchDoc(
                 (next) => {

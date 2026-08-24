@@ -73,6 +73,7 @@ export function SceneOverviewSectionHeader({
   label,
   onAdd,
   addLabel,
+  addText,
   addDisabled = false,
   addTitle,
   expanded,
@@ -82,6 +83,7 @@ export function SceneOverviewSectionHeader({
   label: string;
   onAdd?: () => void;
   addLabel?: string;
+  addText?: string;
   addDisabled?: boolean;
   addTitle?: string;
   expanded?: boolean;
@@ -105,6 +107,7 @@ export function SceneOverviewSectionHeader({
           onClick={onAdd}
         >
           <PlusIcon />
+          {addText}
         </button>
       )}
     </div>

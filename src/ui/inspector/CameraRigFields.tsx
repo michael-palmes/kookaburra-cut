@@ -4,6 +4,7 @@ import { frameContentPose, stagedContentBounds } from "../../engine/rigFraming";
 import type { RigDoc } from "../../engine/sceneCameraEdit";
 import { setKeyPose } from "../../engine/sceneCameraEdit";
 import type { SceneDoc, SceneDocRigAim, SceneDocRigPose } from "../../engine/sceneDocSchema";
+import { resolveSceneDocMedia } from "../../engine/sceneMedia";
 import {
   LAYERED_SCREENSHOT_AIM_ID,
   RIG_FOV_MAX,
@@ -11,6 +12,7 @@ import {
   VIDEO_WINDOW_AIM_ID,
 } from "../../engine/sceneRig";
 import { bakeRigBinding, brokenRigBindings } from "../../engine/sceneRigConvert";
+import { assetBasename } from "../inspectorOptions";
 import { DofFields } from "./DofFields";
 import { NumberField, SegmentedRow } from "./rows";
 
@@ -22,11 +24,17 @@ const AIM_OPTIONS = [
   { value: "object" as const, label: "Object", title: "Aim at something staged in the scene" },
 ];
 
-/** Everything in the scene a rig key can bind its aim to. */
+/** Everything in the scene a rig key can bind its aim to: devices, every video media entry (a still is not what a camera chases), and the screenshot stack. */
 function bindables(doc: SceneDoc | undefined): { id: string; label: string }[] {
   const options: { id: string; label: string }[] = [];
   for (const device of doc?.devices ?? []) options.push({ id: device.id, label: device.model });
-  if (doc?.videoWindow) options.push({ id: VIDEO_WINDOW_AIM_ID, label: "Video window" });
+  for (const entry of resolveSceneDocMedia(doc)) {
+    if (entry.kind !== "video") continue;
+    options.push({
+      id: entry.id,
+      label: entry.id === VIDEO_WINDOW_AIM_ID ? "Video window" : assetBasename(entry.src),
+    });
+  }
   if (doc?.layeredScreenshot) {
     options.push({ id: LAYERED_SCREENSHOT_AIM_ID, label: "Screenshot stack" });
   }

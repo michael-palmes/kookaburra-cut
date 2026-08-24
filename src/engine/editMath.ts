@@ -124,6 +124,22 @@ export function trimClipOut(
 /** Minimum freeze length: one comfortable beat, and safely clear of zero. */
 export const MIN_HOLD_MS = 100;
 
+/** Default hold for a new freeze, and the length a still image lands on the timeline at (mirrored by Rust's `DEFAULT_IMAGE_HOLD_MS`). */
+export const DEFAULT_HOLD_MS = 2000;
+
+/** A still image as a clip: no source span, one frame held for `holdMs`; the freeze construction, minus the split (an image has nothing to cut). */
+export function imageClip(clips: EditClip[], sourceId: string, holdMs: number): EditClip {
+  return {
+    id: nextClipId(clips),
+    sourceId,
+    inMs: 0,
+    outMs: 0,
+    speed: 1,
+    holdMs: Math.max(MIN_HOLD_MS, Math.round(holdMs)),
+    startMs: 0,
+  };
+}
+
 /** Insert a freeze of the frame under t: splits the containing clip there (or slips in at its edge when a half would fall under the source floor) and holds that frame for `holdMs`. Null when t misses every clip or lands on an existing freeze. */
 export function freezeAt(clips: EditClip[], tMs: number, holdMs: number): EditClip[] | null {
   const i = clipIndexAt(clips, tMs);

@@ -19,10 +19,15 @@ export interface StageImageGizmoPose {
   size: number;
 }
 
+/** Size ranges a drag writes within: the image family's inspector ranges, widened for windowed media so a window's own default (a whole-frame fraction on Overlay, `DEFAULT_SCENE_MEDIA_VIDEO_STAGE_SIZE` on Stage) is not silently shrunk by the first drag. */
+export const STAGE_MEDIA_SIZE_RANGE = { image: [0.05, 5], window: [0.05, 12] } as const;
+export const OVERLAY_MEDIA_SIZE_RANGE = { image: [0.03, 0.6], window: [0.03, 1] } as const;
+
 export function stageImageGizmoCommit(
   sceneIndex: number,
   imageId: string,
   pose: StageImageGizmoPose,
+  sizeRange: readonly [number, number] = STAGE_MEDIA_SIZE_RANGE.image,
 ): ImageEditCommit {
   const placement: SceneImageStagePlacement = {
     position: [
@@ -30,7 +35,7 @@ export function stageImageGizmoCommit(
       round(clamp(pose.position[1], -3, 3), 2),
       round(clamp(pose.position[2], -4, 4), 2),
     ],
-    size: round(clamp(pose.size, 0.05, 5), 2),
+    size: round(clamp(pose.size, sizeRange[0], sizeRange[1]), 2),
     rotationDeg: [
       round(normaliseDeg(pose.rotationDeg[0]), 1),
       round(normaliseDeg(pose.rotationDeg[1]), 1),
@@ -44,6 +49,7 @@ export function overlayImageGizmoCommit(
   sceneIndex: number,
   imageId: string,
   placement: SceneImageOverlayPlacement,
+  sizeRange: readonly [number, number] = OVERLAY_MEDIA_SIZE_RANGE.image,
 ): ImageEditCommit {
   return {
     sceneIndex,
@@ -55,7 +61,7 @@ export function overlayImageGizmoCommit(
         round(clamp(placement.position[0], -1, 1), 2),
         round(clamp(placement.position[1], -1, 1), 2),
       ],
-      size: round(clamp(placement.size, 0.03, 0.6), 2),
+      size: round(clamp(placement.size, sizeRange[0], sizeRange[1]), 2),
       rotationDeg: round(normaliseDeg(placement.rotationDeg), 1),
     },
   };

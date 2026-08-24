@@ -24,6 +24,17 @@ export function clearOtherLaneSelections(lane: LaneKind) {
   if (lane !== "lighting") useLightingEditStore.getState().select(null, null);
 }
 
+/** True while any lane holds a keyframe or segment selection, so a window-level Delete belongs to the lane, not to the inspector's content. */
+export function laneSelectionActive(): boolean {
+  return [
+    useCameraEditStore.getState(),
+    useCompareEditStore.getState(),
+    useLayeredScreenshotEditStore.getState(),
+    useChartTrackEditStore.getState(),
+    useLightingEditStore.getState(),
+  ].some((lane) => lane.selectedKeyId !== null || lane.selectedSegment !== null);
+}
+
 export function clearSecondaryLaneSelections() {
   useCompareEditStore.getState().select(null, null);
   useChartTrackEditStore.getState().select(null, null);

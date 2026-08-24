@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import { slugifyName } from "../engine/workspace";
+import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import { WORKSPACE_THEME_PREFIX } from "../theme/registry";
 import type { FontRef } from "../theme/tokens";
 import { FontPicker } from "./FontPicker";
@@ -62,8 +62,26 @@ export function ThemeMode({
   }, [confirmDelete]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm on selection change
   useEffect(() => setConfirmDelete(false), [selected]);
+  // Same two-step for a duplicate that would overwrite a workspace theme.
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  useEffect(() => {
+    if (!confirmReplace) return;
+    const timer = window.setTimeout(() => setConfirmReplace(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [confirmReplace]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm as the name is retyped
+  useEffect(() => setConfirmReplace(false), [dupName]);
 
   const selectedIsWs = selected.startsWith(WORKSPACE_THEME_PREFIX);
+  const dup = nameCollision(
+    dupName,
+    choices
+      .filter((c) => c.source === "workspace")
+      .map((c) => c.id.slice(WORKSPACE_THEME_PREFIX.length)),
+  );
+  let duplicateLabel = "Create theme";
+  if (busy) duplicateLabel = "Creating…";
+  else if (dup.collides) duplicateLabel = confirmReplace ? "Really replace?" : "Replace theme…";
 
   // Entering the fonts pane seeds the draft from the theme document on disk; body may be authored as a bare family string (schema v2 allows it), normalise to a FontRef.
   const openFonts = () =>
@@ -319,10 +337,13 @@ export function ThemeMode({
               onChange={(e) => setDupName(e.target.value)}
             />
             <p className="modal-hint">
-              {slugifyName(dupName)
-                ? `Saved as themes/${slugifyName(dupName)}`
-                : "Name the new theme."}
+              {dup.slug ? `Saved as themes/${dup.slug}` : "Name the new theme."}
             </p>
+            {dup.collides && (
+              <p className="modal-warn">
+                {nameCollisionWarning("theme", dup.slug)} Saving replaces it.
+              </p>
+            )}
             {error && <p className="modal-error">{error}</p>}
             <div className="modal-actions">
               <button
@@ -335,19 +356,24 @@ export function ThemeMode({
               </button>
               <button
                 type="button"
-                className="btn primary"
-                disabled={busy || !slugifyName(dupName)}
-                onClick={() =>
+                className={`btn ${dup.collides && confirmReplace ? "danger" : "primary"}`}
+                disabled={busy || !dup.slug}
+                onClick={() => {
+                  if (dup.collides && !confirmReplace) {
+                    setConfirmReplace(true);
+                    return;
+                  }
+                  setConfirmReplace(false);
                   run(async () => {
                     const id = await onDuplicate(dupName, selected);
                     setSelected(id);
                     setView("browse");
                     setDupName("");
                     refresh();
-                  })
-                }
+                  });
+                }}
               >
-                {busy ? "Creating…" : "Create theme"}
+                {duplicateLabel}
               </button>
             </div>
           </>

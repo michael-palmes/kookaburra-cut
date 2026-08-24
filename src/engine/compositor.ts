@@ -45,6 +45,7 @@ import {
 import { getLoadedEnvironment } from "./environments";
 import { isExporting } from "./exportState";
 import { FPS, MSAA_SAMPLES } from "./format";
+import { framesThroughCutout } from "./frameFormat";
 import { comparisonFramePanel, getFramePanels } from "./framePanelRegistry";
 import { applyFrameLighting } from "./lightingAnimation";
 import { applyRelativeLights } from "./lightingState";
@@ -452,7 +453,7 @@ function ensureSceneTarget(st: CompositorState, w: number, h: number): WebGLRend
   return st.sceneTarget;
 }
 
-/** The panel's sampled fill for this frame: the baked gradient (stretched over the frame, the `FixedGradient` precedent) or the project image (cover-cropped like `FixedImage`, so one asset serves every aspect). Null means the flat colour path, which also covers a preview frame whose image is still loading. */
+/** The panel's sampled fill for this frame: the baked gradient (stretched over the frame, the `FixedGradient` precedent) or the project image (cover-cropped like `FixedImage`, so one asset serves every aspect). Null means the flat colour path, which also covers a preview frame whose image is still loading and a transparent panel behind a shaped cutout (its `panelColor` is the scene's backdrop, see overlayPlan.ts). */
 function panelFill(
   overlay: ResolvedOverlay,
   aspect: number,
@@ -506,9 +507,9 @@ function setSlideUniforms(
   u.softness.value = 1 / bufferH;
 }
 
-/** True when the frame needs the cutout-sized scene target: a shaped cutout with a painted panel. A transparent panel renders the scene full-bleed instead, and `shape: "none"` fills flat. */
+/** True when the frame needs the cutout-sized scene target: any shaped cutout, whatever fills the panel. One rule with `SceneHost`'s format narrowing, so layout and render agree (docs/decisions.md, 2026-08-23); only `shape: "none"` has no window, and it fills flat or stands the whole slide pass down. */
 function usesSceneTarget(overlay: ResolvedOverlay): boolean {
-  return overlay.panel.kind !== "transparent" && overlay.frame.cutout.shape !== "none";
+  return framesThroughCutout(overlay.frame);
 }
 
 /** Render one framed scene: the scene into the cutout target at the cutout aspect (FixedBackdrop tracks cam.aspect live, so it's set and restored around this render, symmetric within the call like every other state the compositor touches), then the slide pass keying it through the cutout into `dest`. */
@@ -522,8 +523,9 @@ function renderFramedScene(
   bufferH: number,
   dest: WebGLRenderTarget | null,
 ): void {
-  // Transparent panel: nothing to fill, so the scene takes the whole frame exactly as an unframed one does (the legacy render, both destinations) and only the panel's content draws over it.
-  if (overlay.panel.kind === "transparent") {
+  // Transparent panel with no cutout: no window and no fill, so the scene takes the whole frame exactly as an unframed one does (the legacy render, both destinations) and only the panel's content draws over it. A SHAPED cutout takes the framed path below whatever the panel carries; transparency stops the surface being painted, it never moves the world.
+  const framed = framesThroughCutout(overlay.frame);
+  if (overlay.panel.kind === "transparent" && !framed) {
     gl.setRenderTarget(dest);
     gl.render(scene, camera);
     return;
@@ -533,7 +535,7 @@ function renderFramedScene(
   const layout = frameLayout(aspect, overlay.frame.cutout);
 
   // Shape "none": panel only. No scene pass, no cutout target; the slide shader fills flat.
-  if (overlay.frame.cutout.shape === "none") {
+  if (!framed) {
     setSlideUniforms(
       st,
       overlay,

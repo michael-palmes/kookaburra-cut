@@ -31,7 +31,8 @@
 #                  everything); preset-previews → every bundled preset slug (comma list);
 #                  verify/export accept a
 #                  comma list and run every project in ONE app boot, e.g. the gate pair)
-#         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|all (default: all; perf and screenshot default to 16:9)
+#         --aspect 16:9|9:16|1:1|4:5|5:4|3:2|2:3|phone|phone-landscape|all
+#                  (default: all = the standing three; perf and screenshot default to 16:9)
 #         --scene  <index|stem>    (screenshot: which scene; defaults to its midpoint)
 #         --at     <seconds>       (screenshot: seconds into the scene, or the project without --scene;
 #                  render-spike: sample duration, default 300)

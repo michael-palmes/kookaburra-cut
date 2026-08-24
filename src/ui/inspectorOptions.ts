@@ -1,10 +1,22 @@
-import type { AspectName } from "../engine/format";
+import { type AspectName, aspectLabel } from "../engine/format";
 import { frameTextAlign } from "../engine/framePanelLayout";
 import type { ResolvedManagedTextGroup } from "../engine/managedText";
-import type { SceneDoc, SceneDocChart, SceneManagedTextItem } from "../engine/sceneDocSchema";
+import type {
+  SceneDoc,
+  SceneDocChart,
+  SceneDocMediaSpec,
+  SceneManagedTextItem,
+} from "../engine/sceneDocSchema";
+import { resolveSceneDocMedia } from "../engine/sceneMedia";
 import type { ChartType } from "../toolkit/chart/types";
 import { DEVICE_CATALOG, isDeviceId, resolveAvailableDeviceSpec } from "../toolkit/device/catalog";
 import type { FrameSpec } from "../toolkit/frame/types";
+import {
+  LEGACY_MEDIA_DRILL_ROUTE,
+  legacyMediaRowId,
+  MEDIA_DRILL_ROUTE,
+  mediaRowId,
+} from "./inspector/mediaEditorModel";
 import { textIconInspectorScreenForRoute } from "./inspectorTitles";
 
 /** Pure row/section models for the right-hand inspector: what the panel shows, per tab and per capability, is enumerated here as data and structure-pinned in unit tests. The Scene-tab capability gating mirrors the deleted EditBar's rules verbatim. InspectorPanel renders these models and never invents rows of its own. */
@@ -43,7 +55,7 @@ export function projectRows(input: {
     return [
       { id: "theme", label: "Theme", value: input.themeName, chevron: false },
       { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
-      { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
+      { id: "aspect", label: "Aspect ratio", value: aspectLabel(input.aspect), chevron: true },
     ];
   }
   return [
@@ -59,7 +71,7 @@ export function projectRows(input: {
     { id: "appIcon", label: "App icon", chevron: true },
     { id: "playback", label: "Playback options", value: input.playbackLabel, chevron: true },
     { id: "render", label: "Render", value: input.renderLabel, chevron: true },
-    { id: "aspect", label: "Aspect ratio", value: input.aspect, chevron: true },
+    { id: "aspect", label: "Aspect ratio", value: aspectLabel(input.aspect), chevron: true },
     { id: "music", label: "Music", value: input.soundtrackName ?? "None", chevron: true },
   ];
 }
@@ -101,7 +113,7 @@ export function objectRowLabel(objectId: string): string {
   return words ? words[0].toUpperCase() + words.slice(1) : "Object";
 }
 
-export type SceneOverviewGroupId = "text" | "devices" | "images" | "videos" | "objects";
+export type SceneOverviewGroupId = "text" | "devices" | "media" | "objects";
 
 export type SceneOverviewContentType =
   | "text"
@@ -125,9 +137,8 @@ export type SceneOverviewSettingType =
 export type SceneOverviewSelectionTarget =
   | { kind: "text"; id: string }
   | { kind: "device"; id: string }
-  | { kind: "image"; id: string }
+  | { kind: "media"; id: string }
   | { kind: "legacyImage"; id: string }
-  | { kind: "videoWindow" }
   | { kind: "object"; id: string }
   | { kind: "chart" }
   | { kind: "screenshotStack" }
@@ -193,8 +204,7 @@ export interface SceneOverviewModel {
 const OVERVIEW_GROUP_LABELS: Record<SceneOverviewGroupId, string> = {
   text: "Text",
   devices: "Devices",
-  images: "Images",
-  videos: "Videos",
+  media: "Media",
   objects: "Objects",
 };
 
@@ -207,7 +217,7 @@ const DEVICE_LAYOUT_LABELS: Record<NonNullable<SceneDoc["deviceLayout"]>["preset
   "depth-pair": "Depth",
 };
 
-function assetBasename(src: string): string {
+export function assetBasename(src: string): string {
   return src.split("/").pop() || src;
 }
 
@@ -276,6 +286,12 @@ function deviceOverviewThumbnail(
   return spec.previews[device.colour ?? spec.defaultColour] ?? spec.previews[spec.defaultColour];
 }
 
+/** Where a media entry sits: its authored host, Window being the floating world-space clip and Overlay the frame layer. */
+function mediaPlacementValue(entry: SceneDocMediaSpec): string {
+  if (entry.host === "stage") return "Stage";
+  return entry.host === "window" ? "Window" : "Overlay";
+}
+
 function placementValue(placement: NonNullable<SceneDoc["objects"]>[number]["placement"]): string {
   if (placement?.ground) return "Floor";
   const x = placement?.position?.[0] ?? 0;
@@ -335,7 +351,7 @@ function addOptions(doc: SceneDoc | undefined): SceneOverviewAddOptionModel[] {
     { id: "device", label: "Device", singleton: false, present: false },
     { id: "text", label: "Text", singleton: false, present: false },
     { id: "image", label: "Image", singleton: false, present: false },
-    { id: "video", label: "Video", singleton: true, present: !!doc?.videoWindow },
+    { id: "video", label: "Video", singleton: false, present: false },
     { id: "object", label: "Object", singleton: false, present: false },
     { id: "chart", label: "Chart", singleton: true, present: !!doc?.chart },
     {
@@ -362,8 +378,7 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
   const groupedRows: Record<SceneOverviewGroupId, SceneOverviewRowModel[]> = {
     text: [],
     devices: [],
-    images: [],
-    videos: [],
+    media: [],
     objects: [],
   };
 
@@ -453,18 +468,6 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
       });
     }
 
-    if (doc.videoWindow) {
-      groupedRows.videos.push({
-        id: "video:window",
-        type: "video",
-        label: assetBasename(doc.videoWindow.media.src),
-        value: "Window",
-        mediaHint: { kind: "video", src: doc.videoWindow.media.src },
-        selectionTarget: { kind: "videoWindow" },
-        openRoute: "videoWindow.edit",
-      });
-    }
-
     for (const object of doc.objects ?? []) {
       groupedRows.objects.push({
         id: `object:${object.id}`,
@@ -477,30 +480,30 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
     }
   }
 
-  for (const image of doc?.images ?? []) {
-    groupedRows.images.push({
-      id: `image:${image.id}`,
-      type: "image",
-      label: assetBasename(image.src),
-      value: image.host === "stage" ? "Stage" : "Overlay",
-      thumbnail: image.src,
-      mediaHint: { kind: "image", src: image.src },
-      selectionTarget: { kind: "image", id: image.id },
-      openRoute: "image.edit",
+  for (const entry of resolveSceneDocMedia(doc)) {
+    groupedRows.media.push({
+      id: mediaRowId(entry.id),
+      type: entry.kind,
+      label: assetBasename(entry.src),
+      value: `${entry.kind === "video" ? "Video" : "Image"} · ${mediaPlacementValue(entry)}`,
+      thumbnail: entry.kind === "image" ? entry.src : undefined,
+      mediaHint: { kind: entry.kind, src: entry.src },
+      selectionTarget: { kind: "media", id: entry.id },
+      openRoute: MEDIA_DRILL_ROUTE,
     });
   }
 
   for (const decoration of frame?.decorations ?? []) {
     if (!decoration.src) continue;
-    groupedRows.images.push({
-      id: `image:legacy:${decoration.id}`,
+    groupedRows.media.push({
+      id: legacyMediaRowId(decoration.id),
       type: "image",
       label: assetBasename(decoration.src),
       value: `${Math.round(decoration.size * 100)}%`,
       thumbnail: decoration.src,
       mediaHint: { kind: "image", src: decoration.src },
       selectionTarget: { kind: "legacyImage", id: decoration.id },
-      openRoute: "legacyImage.edit",
+      openRoute: LEGACY_MEDIA_DRILL_ROUTE,
       readOnly: true,
     });
   }
@@ -511,8 +514,7 @@ export function deriveSceneOverview(input: SceneOverviewInput): SceneOverviewMod
   }> = [
     { id: "text", addType: "text" },
     { id: "devices", addType: "device" },
-    { id: "images", addType: "image" },
-    { id: "videos", addType: "video" },
+    { id: "media", addType: "image" },
     { id: "objects", addType: "object" },
   ];
   const groups = groupOrder.flatMap(({ id, addType }) =>
@@ -626,7 +628,7 @@ export interface SceneSectionModel {
   rows: SceneRowModel[];
 }
 
-/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit video additionally `media.kind === "video"`); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
+/** The Scene tab's sections for one scene, mirroring the deleted EditBar's capability gating verbatim: text rows need a non-empty `doc.text`; device rows act on the SELECTED device (`selectedDeviceId`, falling back to `doc.devices[0]`; Edit additionally needs screen media, of either kind); style rows need a doc; the Overlay section offers Add overlay until the deck declares a frame (`deckFrame`) or the sidecar carries its own cutout, its rows depending on whether this scene resolves to a visible frame (`frame`); Transition needs a second scene; Camera and Duration are always present. */
 export function sceneSections(input: {
   doc: SceneDoc | undefined;
   slotsCount: number;
@@ -665,8 +667,8 @@ export function sceneSections(input: {
   // and video window are their own top-level entries now, not device rows.
   if (device) {
     const rows: SceneRowModel[] = [{ id: "device.media", label: "Change video", chevron: true }];
-    if (device.media?.kind === "video") {
-      rows.push({ id: "device.editVideo", label: "Edit video", chevron: true });
+    if (device.media) {
+      rows.push({ id: "device.editVideo", label: "Edit", chevron: true });
     }
     rows.push(
       { id: "device.change", label: "Change device", chevron: true },

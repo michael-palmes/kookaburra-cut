@@ -231,6 +231,7 @@ export function TextGizmo({
   return (
     <Gizmo2D
       items={items}
+      domain="text"
       selectedId={selected?.sceneIndex === sceneIndex ? selected.key : null}
       onSelect={(key) => select(key ? { sceneIndex, key } : null)}
       resizeAbout="pivot"

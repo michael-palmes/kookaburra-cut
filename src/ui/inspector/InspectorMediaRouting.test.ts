@@ -19,6 +19,16 @@ const sceneTabSource = readSource("./SceneTab.tsx");
 const layeredScreenshotSource = readSource("../LayeredScreenshotBuilder.tsx");
 const objectPickerSource = readSource("../ObjectPicker.tsx");
 
+/** Every file that mounts a MediaBrowser inside the inspector: the panel's own screens plus the Screenshot Stack builder. */
+function mediaBrowserSources(): string[] {
+  const inspectorSources = testFs
+    .readdirSync(new URL(".", import.meta.url))
+    .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
+    .map((file) => readSource(`./${file}`))
+    .filter((source) => source.includes("<MediaBrowser"));
+  return [...inspectorSources, layeredScreenshotSource];
+}
+
 function sourceSection(source: string, start: string, end: string): string {
   const startIndex = source.indexOf(start);
   const endIndex = source.indexOf(end, startIndex + start.length);
@@ -38,20 +48,22 @@ describe("inspector media routing", () => {
 
     expect(sceneTabSource).not.toContain('setModal("media")');
     expect(sceneTabSource).not.toContain("mediaModal");
-    expect(sceneTabSource.match(/openMediaPicker\(\{/g)).toHaveLength(7);
+    expect(sceneTabSource.match(/openMediaPicker\(\{/g)).toHaveLength(8);
     expect(picker).toContain('className="inspector-drill"');
     expect(picker).toContain('className="inspector-media-host"');
-    expect(picker).toContain(
-      'title={mediaTarget.kind === "device" ? "Screen media" : "Choose image"}',
-    );
+    expect(picker).toContain('mediaTarget.kind === "device"');
+    expect(picker).toContain('? "Screen media"');
+    expect(picker).toContain('mediaPickerKind === "video"');
+    expect(picker).toContain('? "Choose video"');
+    expect(picker).toContain(': "Choose image"');
     expect(picker).toContain("onPick={pickSceneMedia}");
     expect(picker).not.toContain("modal-overlay");
   });
 
-  it("adds a newly selected image with the automatic host and opens its inspector", () => {
+  it("adds a newly picked media entry with the automatic host and opens its inspector", () => {
     const addition = sourceSection(
       sceneTabSource,
-      "  const addPickedImage = (src: string) => {",
+      "  const addPickedMedia = (src: string, kind: SceneMediaKind, meta: MediaMeta | null) => {",
       "\n\n  const pickSceneMedia = (rel: string, meta: MediaMeta | null) => {",
     );
     const selection = sourceSection(
@@ -60,10 +72,12 @@ describe("inspector media routing", () => {
       '\n  if (drillIn === "media.picker") {',
     );
 
-    expect(addition).toContain("defaultSceneImageHost(sceneFrame !== undefined)");
-    expect(addition).toContain("createSceneImage(id, src, host)");
-    expect(addition).toContain('jumpDrill(["image.edit"])');
-    expect(selection).toMatch(/else \{\s*addPickedImage\(rel\);\s*\}/);
+    expect(addition).toContain("defaultSceneMediaHost(kind, sceneFrame !== undefined)");
+    expect(addition).toContain("createSceneMedia(id, src, kind, host)");
+    expect(addition).toContain("detectWindowRecording(meta)");
+    expect(addition).toContain("jumpDrill([MEDIA_DRILL_ROUTE])");
+    expect(selection).toMatch(/else \{\s*addPickedMedia\(rel, kind, meta\);\s*\}/);
+    expect(selection).toContain("detectWindowRecording(meta)");
     expect(sceneTabSource).not.toContain('"image.host"');
     expect(sceneTabSource).not.toContain("ImageHostPicker");
   });
@@ -84,20 +98,21 @@ describe("inspector media routing", () => {
   });
 
   it("keeps every inspector media browser inside the inspector media host", () => {
-    const inspectorSources = testFs
-      .readdirSync(new URL(".", import.meta.url))
-      .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
-      .map((file) => readSource(`./${file}`))
-      .filter((source) => source.includes("<MediaBrowser"));
-    const sources = [...inspectorSources, layeredScreenshotSource];
-
-    for (const source of sources) {
+    for (const source of mediaBrowserSources()) {
       const browsers = source.match(/<MediaBrowser\b/g) ?? [];
       const inspectorHosts = source.match(/className="inspector-media-host"/g) ?? [];
       expect(browsers.length).toBeGreaterThan(0);
       expect(inspectorHosts).toHaveLength(browsers.length);
       expect(source).not.toContain("wizard-media-host");
       expect(source).not.toContain("media-modal-wide");
+    }
+  });
+
+  it("opts every inspector media browser into the panel-scoped preview", () => {
+    for (const source of mediaBrowserSources()) {
+      const browsers = source.match(/<MediaBrowser\b/g) ?? [];
+      const scoped = source.match(/\binspectorPreview\b/g) ?? [];
+      expect(scoped).toHaveLength(browsers.length);
     }
   });
 
