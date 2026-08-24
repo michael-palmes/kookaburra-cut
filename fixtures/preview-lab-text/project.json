@@ -40,6 +40,122 @@
     {
       "file": "scenes/tm-scatter-scale.tsx",
       "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-tracking.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-slam.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-dolly.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-chromatic.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-line-stretch.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-highlight-wipe.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-rise-mask.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-word-cycle.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-ribbon.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-stand-up.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-spring-pop.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-spotlight.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-underline-draw.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-orbit.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-weight-build.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-develop.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-flip-cascade.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-converge.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-glint-wipe.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tm-vapor.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-gradient.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-outline.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-neon.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-offset-print.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-highlight-block.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-frosted.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-arc.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-glass-3d.tsx",
+      "durationMs": 1600
+    },
+    {
+      "file": "scenes/tl-chrome-3d.tsx",
+      "durationMs": 1600
     }
   ]
 }

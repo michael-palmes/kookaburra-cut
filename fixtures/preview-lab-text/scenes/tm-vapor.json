@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — vapor",
+  "text": {
+    "headline": "BREATHE"
+  },
+  "textAnimation": { "in": "vapor", "out": "none", "staggerMs": 0 }
+}

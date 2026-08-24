@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — highlight-wipe",
+  "text": {
+    "headline": "The new standard"
+  },
+  "textAnimation": { "in": "highlight-wipe", "out": "none", "staggerMs": 0 }
+}

@@ -3,6 +3,7 @@ import { CHART_ANIMATION_PRESET_IDS, chartAnimationEndMs } from "../toolkit/char
 import { CHART_STYLE_PRESET_IDS } from "../toolkit/chart/stylePresets";
 import { SCENE3D_BACKGROUND_PRESETS } from "../toolkit/stage/scene3d/presets";
 import { SHADER_BACKGROUND_PRESETS } from "../toolkit/stage/shaders/presets";
+import { TEXT_LOOK_NAMES } from "../toolkit/text/looks";
 import { TEXT_PRESET_NAMES } from "../toolkit/text/presets";
 import { optionPreviewJobs } from "./optionPreviews";
 import { resolveChart } from "./sceneChart";
@@ -12,6 +13,12 @@ import { largestSceneText } from "./sceneTextRegistry";
 // The committed bgp-* fixtures, loaded through the same glob machinery the app uses for bundled docs.
 const bgpFixtures = import.meta.glob<{ background?: Record<string, unknown> }>(
   "../../fixtures/preview-lab-bg-*/scenes/bgp-*.json",
+  { eager: true, import: "default" },
+);
+
+// The committed text-look fixtures: each card must apply exactly the preset its click writes.
+const tlFixtures = import.meta.glob<{ textLook?: { preset?: string } }>(
+  "../../fixtures/preview-lab-text/scenes/tl-*.json",
   { eager: true, import: "default" },
 );
 
@@ -86,6 +93,14 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
       { stem: "tm-fade", set: "textanim-fade", kind: "clip" },
       { stem: "tm-none", set: "textanim-none", kind: "still" },
       { stem: "tm-scatter-scale", set: "textanim-scatter-scale", kind: "clip" },
+    ]);
+  });
+
+  it("maps tl-<preset> stems to textlook-<preset> clip sets", () => {
+    const jobs = optionPreviewJobs(["tl-gradient", "tl-chrome-3d"]);
+    expect(jobs).toEqual([
+      { stem: "tl-gradient", set: "textlook-gradient", kind: "clip" },
+      { stem: "tl-chrome-3d", set: "textlook-chrome-3d", kind: "clip" },
     ]);
   });
 
@@ -282,6 +297,22 @@ describe("optionPreviewJobs (the set-naming contract)", () => {
     const labStems = TEXT_PRESET_NAMES.map((p) => `tm-${p}`);
     const sets = optionPreviewJobs(labStems).map((j) => j.set);
     expect(sets).toEqual(TEXT_PRESET_NAMES.map((p) => `textanim-${p}`));
+  });
+
+  it("preview-lab covers EVERY text look — the style picker's cards stay complete", () => {
+    // Same contract as the presets: every look except "none" (no look = the line-glyph card) owns a tl- fixture and its textlook- set, and each fixture applies exactly the preset its card's click writes.
+    const looks = TEXT_LOOK_NAMES.filter((l) => l !== "none");
+    const sets = optionPreviewJobs(looks.map((l) => `tl-${l}`)).map((j) => j.set);
+    expect(sets).toEqual(looks.map((l) => `textlook-${l}`));
+    const manifest = labManifests["../../fixtures/preview-lab-text/project.json"];
+    for (const look of looks) {
+      const doc = tlFixtures[`../../fixtures/preview-lab-text/scenes/tl-${look}.json`];
+      expect(doc?.textLook?.preset, `tl-${look}`).toBe(look);
+      expect(
+        manifest?.scenes?.some((s) => s.file === `scenes/tl-${look}.tsx`),
+        `tl-${look} registered in project.json`,
+      ).toBe(true);
+    }
   });
 
   it("preview-lab's bgp-* fixtures match SHADER_BACKGROUND_PRESETS exactly (no drift)", () => {

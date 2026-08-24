@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Text look — highlight-block",
+  "text": {
+    "headline": "The bold choice"
+  },
+  "textAnimation": { "in": "fade", "out": "none", "staggerMs": 0 },
+  "textLook": { "preset": "highlight-block" }
+}
