@@ -23,8 +23,9 @@ import type {
   SceneManagedTextMarker,
   SceneTextAlign,
 } from "../../engine/sceneDocSchema";
-import type { TextAnimationSpec } from "../../theme/tokens";
+import type { TextAnimationSpec, TextLookSpec } from "../../theme/tokens";
 import type { FrameSpec } from "../../toolkit/frame/types";
+import { TEXT_LOOK_CATALOG } from "../textLookOptions";
 
 export type ManagedTextStructuralAction =
   | { type: "take-over"; itemKey?: string }
@@ -346,6 +347,13 @@ function copyItemSideTables(doc: SceneDoc, sourceKey: string, targetKey: string)
       [targetKey]: structuredClone(motion),
     };
   }
+  const look = doc.textLookOverrides?.[sourceKey];
+  if (look) {
+    doc.textLookOverrides = {
+      ...doc.textLookOverrides,
+      [targetKey]: structuredClone(look),
+    };
+  }
 }
 
 function removeItemSideTables(doc: SceneDoc, itemKey: string): void {
@@ -361,6 +369,12 @@ function removeItemSideTables(doc: SceneDoc, itemKey: string): void {
     if (Object.keys(overrides).length > 0) doc.textAnimationOverrides = overrides;
     else delete doc.textAnimationOverrides;
   }
+  if (doc.textLookOverrides?.[itemKey]) {
+    const overrides = { ...doc.textLookOverrides };
+    delete overrides[itemKey];
+    if (Object.keys(overrides).length > 0) doc.textLookOverrides = overrides;
+    else delete doc.textLookOverrides;
+  }
 }
 
 function availableItemKeys(doc: SceneDoc, items: readonly SceneManagedTextItem[]): Set<string> {
@@ -368,6 +382,7 @@ function availableItemKeys(doc: SceneDoc, items: readonly SceneManagedTextItem[]
     ...items.map((item) => item.key),
     ...Object.keys(doc.text ?? {}),
     ...Object.keys(doc.textAnimationOverrides ?? {}),
+    ...Object.keys(doc.textLookOverrides ?? {}),
   ]);
 }
 
@@ -922,6 +937,61 @@ export function describeManagedTextMotion(spec: TextAnimationSpec | undefined): 
   if (!spec) return "Theme";
   if (spec.in === "static") return "None";
   const label = spec.in
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  return label || "Theme";
+}
+
+/** The text-look mirror of the motion scope: `all` reads the scene spec, `item` the per-key exception. */
+export function textLookSpec(doc: SceneDoc, scope: TextMotionScope): TextLookSpec | undefined {
+  return scope.kind === "all" ? doc.textLook : doc.textLookOverrides?.[scope.itemKey];
+}
+
+export function setTextLookSpec(
+  doc: SceneDoc,
+  scope: TextMotionScope,
+  spec: TextLookSpec | undefined,
+): SceneDoc {
+  const next = structuredClone(doc);
+  if (scope.kind === "all") {
+    if (spec) next.textLook = structuredClone(spec);
+    else delete next.textLook;
+    return next;
+  }
+  const overrides = { ...next.textLookOverrides };
+  if (spec) overrides[scope.itemKey] = structuredClone(spec);
+  else delete overrides[scope.itemKey];
+  if (Object.keys(overrides).length > 0) next.textLookOverrides = overrides;
+  else delete next.textLookOverrides;
+  return next;
+}
+
+/** Applies only fields changed by one look action, preserving newer queued edits to sibling fields. */
+export function rebaseTextLookSpec(
+  current: TextLookSpec | undefined,
+  baseline: TextLookSpec | undefined,
+  next: TextLookSpec | undefined,
+): TextLookSpec | undefined {
+  if (!next) return undefined;
+  if (!baseline || !current) return structuredClone(next);
+  const rebased = structuredClone(current) as TextLookSpec & Record<string, unknown>;
+  const before = baseline as TextLookSpec & Record<string, unknown>;
+  const after = next as TextLookSpec & Record<string, unknown>;
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (Object.is(before[key], after[key])) continue;
+    if (key in after) rebased[key] = after[key];
+    else delete rebased[key];
+  }
+  return rebased;
+}
+
+export function describeManagedTextLook(spec: TextLookSpec | undefined): string {
+  if (!spec) return "Theme";
+  if (spec.preset === "none") return "None";
+  const meta = TEXT_LOOK_CATALOG.find((entry) => entry.preset === spec.preset);
+  if (meta) return meta.label;
+  const label = spec.preset
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");

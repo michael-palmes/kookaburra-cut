@@ -78,6 +78,7 @@ import {
 import { ensureFontRefsPinned } from "../../engine/systemFonts";
 import { useTextEditStore } from "../../engine/textEditStore";
 import {
+  codedTextLookNames,
   codedTextMotionNames,
   nonSceneTextKeys,
   textKeyColorDefaults,
@@ -217,6 +218,7 @@ import {
   TextIconImagePickerDrill,
   textIconPickerMountKey,
 } from "./TextIconPickerDrill";
+import { TextLookDrill } from "./TextLookDrill";
 import { TextMotionDrill } from "./TextMotionDrill";
 import { loadTextIconRecents, storeTextIconRecent } from "./textIconRecents";
 
@@ -5966,6 +5968,7 @@ export function SceneTab({
           useTextEditStore.getState().select(itemKey ? { sceneIndex, key: itemKey } : null);
         }}
         onOpenMotion={(itemKey) => openDrill(`text.motion:${itemKey}`)}
+        onOpenLook={(itemKey) => openDrill(`text.look:${itemKey}`)}
         onEditFont={(itemKey) => openDrill(`text.font:${itemKey}`)}
         theme={sceneTheme ?? project.theme}
         colourDefaults={textColourDefaults}
@@ -6027,6 +6030,39 @@ export function SceneTab({
         itemLabel={label}
         resolvedItemMotion={managedTextModel?.textAnimationOverrides?.[item.key]}
         codedMotionNames={codedTextMotionNames(sceneIndex)}
+        backLabel={backLabel}
+        onBack={closeDrill}
+        writeDoc={writeManagedText}
+      />
+    );
+  }
+  if (drillIn?.startsWith("text.look:") && doc) {
+    const key = drillIn.slice("text.look:".length);
+    const item = managedTextModel?.items.find((candidate) => candidate.key === key);
+    if (!item) {
+      return (
+        <div className="inspector-drill">
+          <DrillBack label={backLabel} title="Text style" onClick={closeDrill} />
+          <p className="inspector-stub-note">This text line is no longer in the scene.</p>
+        </div>
+      );
+    }
+    const label =
+      item.type === "bullets"
+        ? "Bullets"
+        : item.type === "icon"
+          ? "Icon"
+          : item.text?.trim() || (item.type === "title" ? "Title" : "Subtitle");
+    return (
+      <TextLookDrill
+        key={`${project.id}\u0000${project.sceneFiles[sceneIndex] ?? sceneIndex}\u0000${item.key}\u0000look`}
+        doc={doc}
+        itemKey={item.key}
+        itemType={item.type}
+        itemLabel={label}
+        resolvedItemLook={managedTextModel?.textLookOverrides?.[item.key]}
+        codedLookNames={codedTextLookNames(sceneIndex)}
+        theme={sceneTheme ?? project.theme}
         backLabel={backLabel}
         onBack={closeDrill}
         writeDoc={writeManagedText}
