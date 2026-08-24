@@ -5,6 +5,11 @@ import type { FrameSpec } from "../toolkit/frame/types";
 import type { FormatInfo } from "../toolkit/types";
 import { computeFormat, type FormatSpec } from "./format";
 
+/** Whether the scene's world renders through a cutout instead of filling the frame. THE rule, read by `SceneHost`'s `useFormat()` narrowing, the compositor's scene target and the gizmo seam's `frameWorldCutout`, so layout and render cannot disagree: the SHAPE decides and the panel fill never does, a transparent panel included (docs/decisions.md, 2026-08-23). */
+export function framesThroughCutout(frame: FrameSpec | undefined): boolean {
+  return !!frame && frame.cutout.shape !== "none";
+}
+
 export interface CutoutRender {
   /** What the scene's `useFormat()` returns: the cutout treated as its own frame. */
   format: FormatInfo;

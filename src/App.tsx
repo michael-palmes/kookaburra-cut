@@ -100,11 +100,13 @@ import { TrustDeniedError } from "./engine/projectTrust";
 import { RenderSettingsApplier } from "./engine/RenderSettingsApplier";
 import type { RenderSettings } from "./engine/renderSettings";
 import { revealApp } from "./engine/reveal";
+import { StagePointer } from "./engine/StagePointer";
 import { StageScenes } from "./engine/StageScenes";
 import type { CameraDoc } from "./engine/sceneCameraEdit";
 import { deriveCompareBDoc } from "./engine/sceneCompare";
 import {
   applyEditRepoint,
+  type EditRepointSlot,
   resyncFollowMediaDuration,
   syncFollowMediaDurations,
   writeSceneDoc,
@@ -114,6 +116,7 @@ import { planDeletes, planDuplicates, planMoves } from "./engine/sceneOrder";
 import { ensureSceneThumbs, listCachedSceneThumbs } from "./engine/sceneThumbs";
 import { activeSceneIndex } from "./engine/sceneTimeline";
 import { captureSnapshot } from "./engine/snapshots";
+import { frameWorldCutout } from "./engine/stageViewport";
 import { getLiveSession } from "./engine/terminal";
 import { ensureUserThemePreviews } from "./engine/themePreviews";
 import { useUpdateCheck } from "./engine/updates";
@@ -518,13 +521,13 @@ export default function App() {
     };
   }, []);
 
-  // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar, the Background video picker or the video window recording picker), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device and video window slots).
+  // Edit-video auto re-point (locked decision 11): armed only when a scene surface (the device edit bar, the Background video picker or a media entry's Edit row), not the library, opens the editor; when the edit renders (`kookaburra://media-changed`) the scene re-points to `assets/<name>-edited.mp4` and duration-follow re-syncs (device and media slots).
   const pendingRepointRef = useRef<{
     slug: string;
     index: number;
     editName: string;
-    slot: "device" | "compareDevice" | "background" | "videoWindow";
-    deviceId?: string;
+    slot: EditRepointSlot;
+    targetId?: string;
   } | null>(null);
 
   // The fingerprint poll's baseline lives in a ref so UI-initiated writes can re-arm it (flicker fix): otherwise an app-made sidecar/project.json write would trigger a redundant reload ~2s later.
@@ -1116,7 +1119,7 @@ export default function App() {
         const doc = project.sceneDocs[pending.index];
         const sceneFile = project.sceneFiles[pending.index];
         const rel = `assets/${pending.editName}-edited.mp4`;
-        const next = doc ? applyEditRepoint(doc, pending.slot, rel, pending.deviceId) : null;
+        const next = doc ? applyEditRepoint(doc, pending.slot, rel, pending.targetId) : null;
         if (doc && next && sceneFile) {
           try {
             await writeSceneDoc(pending.slug, sceneFile, next);
@@ -1135,11 +1138,7 @@ export default function App() {
                 },
               ],
             });
-            if (
-              pending.slot === "device" ||
-              pending.slot === "compareDevice" ||
-              pending.slot === "videoWindow"
-            ) {
+            if (pending.slot !== "background") {
               const { wrote } = await resyncFollowMediaDuration(
                 pending.slug,
                 pending.index,
@@ -1462,7 +1461,7 @@ export default function App() {
   const cameraEditOpen = useCameraEditStore((s) => s.open);
   // The 2D gizmo layers arm with their inspector section, through the one drill-family map.
   const decorationEditOpen = useGizmoSectionOpen("decorations");
-  const imageSectionOpen = useGizmoSectionOpen("images");
+  const mediaSectionOpen = useGizmoSectionOpen("media");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
@@ -1471,6 +1470,12 @@ export default function App() {
   const pendingTrust = useTrustStore((s) => s.pending);
   const camSceneIndex = useClockStore((s) =>
     project ? activeSceneIndex(project.slots, s.currentMs) : 0,
+  );
+  // Where the active scene's world lands on screen: an overlay draws it into the cutout, so every gizmo surface projects and hit-tests against that rect, not the frame's.
+  const sceneFrame = project?.sceneFrames[camSceneIndex];
+  const sceneCutout = useMemo(
+    () => frameWorldCutout(sceneFrame, format.width / format.height),
+    [sceneFrame, format.width, format.height],
   );
   // Which keyed track animates the active scene decides the lane/pill/overlay family mounted.
   const lsActive = project?.sceneDocs[camSceneIndex]?.animatedTrack === "layeredScreenshot";
@@ -1801,8 +1806,8 @@ export default function App() {
     async (
       sceneIndex: number,
       mediaRel: string,
-      slot: "device" | "compareDevice" | "background" | "videoWindow" = "device",
-      deviceId?: string,
+      slot: EditRepointSlot = "device",
+      targetId?: string,
     ) => {
       if (!project || !isWorkspaceProjectId(project.id)) return;
       const slug = workspaceSlug(project.id);
@@ -1813,7 +1818,7 @@ export default function App() {
         const editName = editedOf
           ? await openEditNamed(slug, editedOf, sceneIndex)
           : await openEdit(slug, mediaRel, sceneIndex);
-        pendingRepointRef.current = { slug, index: sceneIndex, editName, slot, deviceId };
+        pendingRepointRef.current = { slug, index: sceneIndex, editName, slot, targetId };
       } catch (e) {
         console.warn("[edit-video] open failed:", e);
         setToast({ kind: "error", message: `Couldn't open the video editor: ${String(e)}` });
@@ -2097,6 +2102,7 @@ export default function App() {
                   <color attach="background" args={[theme.colors.background]} />
                   <PreviewClock />
                   <ExportBridge />
+                  <StagePointer cutout={sceneCutout} />
                   <RenderSettingsApplier />
                   {project && (
                     <CompositorDriver
@@ -2160,7 +2166,7 @@ export default function App() {
                   isWorkspaceProjectId(project.id) &&
                   !exporting &&
                   !isAutoRun &&
-                  imageSectionOpen && (
+                  mediaSectionOpen && (
                     <OverlayImageGizmo project={project} sceneIndex={camSceneIndex} />
                   )}
                 {project &&
@@ -2331,8 +2337,8 @@ export default function App() {
               onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
-              onOpenEditVideo={(i, rel, slot, deviceId) =>
-                void handleOpenEditVideo(i, rel, slot, deviceId)
+              onOpenEditVideo={(i, rel, slot, targetId) =>
+                void handleOpenEditVideo(i, rel, slot, targetId)
               }
               onDocChanged={handleDocChanged}
               onTimingChanged={handleTimingChanged}
@@ -2348,6 +2354,12 @@ export default function App() {
               onSetRenderSettings={(settings) => void handleSetRenderSettings(settings)}
               onSetTypography={(headline, body, chart) =>
                 void handleSetTypography(headline, body, chart)
+              }
+              onScenesCopied={(destName, count) =>
+                setToast({
+                  kind: "success",
+                  message: `Copied ${count} scene${count === 1 ? "" : "s"} to ${destName}`,
+                })
               }
             />
           )}

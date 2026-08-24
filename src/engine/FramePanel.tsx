@@ -4,7 +4,7 @@ import { useTheme } from "../theme";
 import type { Theme } from "../theme/tokens";
 import { MountedChart } from "../toolkit/chart/Chart";
 import type { FrameSpec } from "../toolkit/frame/types";
-import { OverlaySceneImages } from "../toolkit/media/SceneImage";
+import { OverlaySceneMedia } from "../toolkit/media/SceneMedia";
 import { AnimatedHeadline } from "../toolkit/text/AnimatedHeadline";
 import { ManagedTextStack } from "../toolkit/text/ManagedTextStack";
 import type { V3 } from "../toolkit/types";
@@ -57,6 +57,7 @@ import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneContext, SceneDocContext, SceneThemeContext } from "./sceneContext";
 import { useSceneDoc } from "./sceneDoc";
 import type { SceneDoc } from "./sceneDocSchema";
+import { resolveSceneDocMedia, sceneMediaInFrame } from "./sceneMedia";
 
 /** Nudges the whole editorial column (title/subtitle/bullets/chip, not the decorations) left, as a fraction of the column width. */
 const CONTENT_LEFT_SHIFT = 0.06;
@@ -84,7 +85,10 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
   const format = useFormat();
   const theme = useTheme();
   const decorations = frame.decorations ?? [];
-  const overlayImages = (doc?.images ?? []).filter((image) => image.host === "overlay");
+  const overlayMedia = useMemo(
+    () => sceneMediaInFrame(resolveSceneDocMedia(doc ?? undefined)),
+    [doc],
+  );
   const hosted = !!frame.chart && frame.chart.enabled !== false;
   const chart = useMemo(() => (hosted ? panelChart(doc) : null), [hosted, doc]);
   // The measured fixpoint: the cache fills async (pre-warmed by the export preamble); each landing bumps the store, re-solving until nothing is pending.
@@ -139,7 +143,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
     !icon &&
     !chip &&
     decorations.length === 0 &&
-    overlayImages.length === 0 &&
+    overlayMedia.length === 0 &&
     !chart
   ) {
     return null;
@@ -333,7 +337,7 @@ function PanelContent({ frame }: { frame: FrameSpec }) {
         />
       )}
       {chart && slot && <MountedChart chart={chart} panel={slot.rect} />}
-      <OverlaySceneImages orderStart={nextFrameStackOrder(decorations)} />
+      <OverlaySceneMedia orderStart={nextFrameStackOrder(decorations)} />
       {decorations.map((decoration, i) => (
         <FrameDecoration
           key={decoration.id}
@@ -366,7 +370,10 @@ export function FramePanel({
 }) {
   const key = useId();
   const groupRef = useRef<Group>(null);
-  const hasSceneImages = doc?.images?.some((image) => image.host === "overlay") ?? false;
+  const hasSceneImages = useMemo(
+    () => sceneMediaInFrame(resolveSceneDocMedia(doc)).length > 0,
+    [doc],
+  );
 
   useEffect(() => {
     const group = groupRef.current;

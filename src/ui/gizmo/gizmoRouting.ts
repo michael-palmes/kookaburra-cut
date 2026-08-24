@@ -27,12 +27,28 @@ export function routePointer(input: RouteInput): PointerOwner {
   return input.overHandle ? "gizmo" : "camera";
 }
 
+/** Who owns a pointer where a 2D gizmo layer overlaps a live 3D gizmo of the SAME domain (media stages both hosts in one open section): the layer's boxes are DOM above the canvas, so unless they stand down the handles below can never be pressed. */
+export type LayerPointerOwner = "layer" | "scene-gizmo";
+
+export interface LayerRouteInput {
+  /** A registered 3D handle in the layer's own domain is under the pointer. */
+  overSceneHandle: boolean;
+  /** A 2D gesture is in flight. */
+  layerDragging: boolean;
+}
+
+export function routeLayerPointer(input: LayerRouteInput): LayerPointerOwner {
+  // As with `routePointer`, a drag in flight never changes owner: a 3D handle sliding under a live 2D drag must not steal it.
+  if (input.layerDragging) return "layer";
+  return input.overSceneHandle ? "scene-gizmo" : "layer";
+}
+
 /** Shift is deliberately excluded: it is the 2D gizmo's rotate snap. */
 export function cameraOverrideHeld(m: ModifierState): boolean {
   return m.metaKey || m.ctrlKey || m.altKey;
 }
 
-/** Client pixels to normalised device coordinates against the canvas box; null outside the box or for a degenerate rect (never NaN). */
+/** Client pixels to normalised device coordinates against the rect the world projects onto (the canvas box, or a framed scene's cutout viewport); null outside the rect or for a degenerate one (never NaN). */
 export function pointerNdc(
   clientX: number,
   clientY: number,
@@ -48,7 +64,13 @@ export function pointerNdc(
 /** The only class that turns pointer events back on inside a gizmo layer. */
 export const GIZMO_HIT_CLASS = "gizmo-hit";
 
-/** The 2D layer contract: the container never claims the pointer, only its `.gizmo-hit` children do, and a held override stands them all down so the drag falls through to the tool surface below. */
-export function gizmoLayerClass(overrideHeld: boolean, extra?: string): string {
-  return `gizmo-layer${overrideHeld ? " camera-override" : ""}${extra ? ` ${extra}` : ""}`;
+/** The 2D layer contract: the container never claims the pointer, only its `.gizmo-hit` children do, and either stand-down drops them all so the press falls through: `camera-override` to the tool surface below, `scene-gizmo-yield` to a 3D handle on the canvas. */
+export function gizmoLayerClass(
+  overrideHeld: boolean,
+  extra?: string,
+  sceneGizmoYield?: boolean,
+): string {
+  return `gizmo-layer${overrideHeld ? " camera-override" : ""}${
+    sceneGizmoYield ? " scene-gizmo-yield" : ""
+  }${extra ? ` ${extra}` : ""}`;
 }

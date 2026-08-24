@@ -6,7 +6,8 @@ import type { GizmoDomain } from "./gizmoRegistry";
 /** Drill-id prefixes to domains; a family match is `id === prefix` or `id.startsWith(prefix + ".")`. */
 const PREFIXES: ReadonlyArray<readonly [string, GizmoDomain]> = [
   ["device", "devices"],
-  ["image", "images"],
+  ["image", "media"],
+  ["media", "media"],
   ["legacyImage", "decorations"],
   ["objects", "objects"],
   ["chart", "chart"],

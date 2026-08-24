@@ -20,14 +20,21 @@ import {
 import { readProjectManifestSnapshot, writeProjectManifestSnapshot } from "./projectEdit";
 import { type ResolvedChart, resolveChart } from "./sceneChart";
 import { SceneDocContext, useSceneContext } from "./sceneContext";
-import { parseSceneDoc, type SceneDoc } from "./sceneDocSchema";
+import { parseSceneDoc, type SceneDoc, type SceneDocMediaSpec } from "./sceneDocSchema";
 import {
   type NormalizedLayeredScreenshot,
   normalizeLayeredScreenshot,
 } from "./sceneLayeredScreenshot";
-import { type NormalizedVideoWindow, normalizeVideoWindow } from "./sceneVideoWindow";
+import {
+  editSceneDocMedia,
+  sceneMediaFamily as familyOfMedia,
+  pinnedFollowMediaEntry,
+  resolveSceneDocMedia,
+  type SceneMediaFamily,
+  videoWindowMediaEntry,
+} from "./sceneMedia";
+import { useSceneMediaRegistry } from "./sceneMediaRegistry";
 import { useTextKeyRegistry } from "./textKeyRegistry";
-import { useVideoWindowRegistry } from "./videoWindowRegistry";
 
 /** Scene-document IO and hooks: docs load beside their scene modules in `loadProject` into `LoadedProject.sceneDocs` and reach components via `SceneHost`'s `SceneDocContext`, but the engine (camera sampling, duration sync) reads `LoadedProject.sceneDocs` directly so export never touches React context or the editor store; schema and validation live in `sceneDocSchema.ts`. */
 
@@ -139,23 +146,22 @@ export function useSceneLayeredScreenshot(): NormalizedLayeredScreenshot | null 
   );
 }
 
-/** The scene document's videoWindow block, deep-validated, or null when absent; registers the scene as a consumer so `VideoWindowFallback` stands down (the useSceneLayeredScreenshot pattern). */
-export function useSceneVideoWindow(): NormalizedVideoWindow | null {
+/** The scene document's media entries for one fallback family; registers the scene as that family's consumer so `SceneMediaFallback` stands down for it (the useSceneLayeredScreenshot pattern). */
+export function useSceneMedia(family: SceneMediaFamily): SceneDocMediaSpec[] {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
   useLayoutEffect(() => {
     if (sceneIndex === undefined) return;
-    useVideoWindowRegistry.getState().register(sceneIndex);
-    return () => useVideoWindowRegistry.getState().unregister(sceneIndex);
-  }, [sceneIndex]);
-  const block = doc?.videoWindow;
+    useSceneMediaRegistry.getState().register(sceneIndex, family);
+    return () => useSceneMediaRegistry.getState().unregister(sceneIndex, family);
+  }, [sceneIndex, family]);
   return useMemo(
-    () => normalizeVideoWindow(block, `scene ${sceneIndex ?? "?"}`),
-    [block, sceneIndex],
+    () => resolveSceneDocMedia(doc ?? undefined).filter((e) => familyOfMedia(e) === family),
+    [doc, family],
   );
 }
 
-/** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneVideoWindow pattern). */
+/** The scene document's chart block, fully resolved (defaults baked, data track sorted), or null when absent; registers the scene as a consumer so a host-mounted `ChartFallback` stands down (the useSceneMedia pattern). */
 export function useSceneChart(): ResolvedChart | null {
   const doc = useSceneDoc();
   const sceneIndex = useSceneContext()?.index;
@@ -259,12 +265,15 @@ export async function applyBackgroundToAllScenes(
   return { applied, failed };
 }
 
-/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `deviceId` targets that device alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
+/** Which surface an edit render re-points. `media` carries the entry id in `targetId`, the device slots a device id. */
+export type EditRepointSlot = "device" | "compareDevice" | "background" | "videoWindow" | "media";
+
+/** Applies an edit-render re-point to a scene doc: the slot's media src becomes `rel` (the freshly rendered `assets/<name>-edited.mp4`), and a device or media slot's kind becomes "video" (an edited still renders out as a clip). Pure clone-and-patch so App can write, patch in memory and record undo atomically; returns null when the slot has nothing to re-point. A `targetId` names the device or media entry alone (a stale id re-points nothing, never a neighbour); without one the first device keeps the legacy behaviour. */
 export function applyEditRepoint(
   doc: SceneDoc,
-  slot: "device" | "compareDevice" | "background" | "videoWindow",
+  slot: EditRepointSlot,
   rel: string,
-  deviceId?: string,
+  targetId?: string,
 ): SceneDoc | null {
   const next = structuredClone(doc);
   if (slot === "background") {
@@ -272,15 +281,22 @@ export function applyEditRepoint(
     next.background = { ...next.background, src: rel };
     return next;
   }
-  if (slot === "videoWindow") {
-    if (!next.videoWindow) return null;
-    next.videoWindow = {
-      ...next.videoWindow,
-      media: { ...next.videoWindow.media, src: rel },
-    };
+  if (slot === "media" || slot === "videoWindow") {
+    const entries = resolveSceneDocMedia(next);
+    const entry = targetId
+      ? entries.find((candidate) => candidate.id === targetId)
+      : videoWindowMediaEntry(entries);
+    if (!entry) return null;
+    entry.src = rel;
+    // The render is always an mp4, so a re-pointed still becomes a clip and starts from its head.
+    entry.kind = "video";
+    const video = { ...entry.video };
+    delete video.startMs;
+    entry.video = video;
+    editSceneDocMedia(next, () => entries);
     return next;
   }
-  const device = deviceId ? next.devices?.find((d) => d.id === deviceId) : next.devices?.[0];
+  const device = targetId ? next.devices?.find((d) => d.id === targetId) : next.devices?.[0];
   if (!device) return null;
   if (slot === "compareDevice") {
     if (!next.compare) return null;
@@ -290,13 +306,13 @@ export function applyEditRepoint(
       ...next.compare.b,
       media: {
         ...next.compare.b?.media,
-        [device.id]: { ...media, src: rel },
+        [device.id]: { ...media, src: rel, kind: "video" },
       },
     };
     return next;
   }
   if (!device.media) return null;
-  device.media = { ...device.media, src: rel };
+  device.media = { ...device.media, src: rel, kind: "video" };
   return next;
 }
 
@@ -306,12 +322,14 @@ interface MediaMetaLike {
   durationMs: number;
 }
 
-/** The video sources a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). An explicit `source: "videoWindow"` or a matching `sourceDeviceId` pins one device; a comparison's `compare.b.media` videos count beside each device's own (both sides render, so neither recording may cut short); unpinned (or stale-pinned) docs return every qualifying video; device-less docs keep the videoWindow-then-background chain. */
+/** The video sources a follow-media scene's duration derives from (pure so tests can pin it; the resync probes them all and follows the LONGEST). A media pin (`source: "media"` with a `sourceMediaId`, or the legacy `"videoWindow"` naming whichever entry serves as the window) follows that entry alone; a matching `sourceDeviceId` pins one device; a comparison's `compare.b.media` videos count beside each device's own (both sides render, so neither recording may cut short); unpinned (or stale-pinned) docs return every qualifying video; device-less docs keep the media-then-background chain. */
 export function followMediaSources(doc: SceneDoc | undefined): string[] {
   const duration = doc?.duration;
   if (duration?.mode !== "follow-media") return [];
-  if (duration.source === "videoWindow") {
-    return doc?.videoWindow?.media?.src ? [doc.videoWindow.media.src] : [];
+  const media = resolveSceneDocMedia(doc);
+  if (duration.source === "media" || duration.source === "videoWindow") {
+    const entry = pinnedFollowMediaEntry(duration, media);
+    return entry?.kind === "video" ? [entry.src] : [];
   }
   const devices = doc?.devices ?? [];
   const pinned = devices.find((d) => d.id === duration.sourceDeviceId);
@@ -321,7 +339,8 @@ export function followMediaSources(doc: SceneDoc | undefined): string[] {
     return after?.kind === "video" ? [...own, after.src] : own;
   });
   if (deviceVideos.length > 0) return deviceVideos;
-  if (doc?.videoWindow?.media?.src) return [doc.videoWindow.media.src];
+  const mediaVideos = media.filter((entry) => entry.kind === "video").map((entry) => entry.src);
+  if (mediaVideos.length > 0) return mediaVideos;
   if (doc?.background?.type === "video") return [doc.background.src];
   return [];
 }

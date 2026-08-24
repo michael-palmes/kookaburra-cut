@@ -11,7 +11,7 @@ type ColourToken = (typeof COLOUR_TOKENS)[number];
 /** How far the default panel lifts from the theme background toward the text colour, in DISPLAY (sRGB) space: a neutral surface (dark grey on dark themes, light grey on light) so an overlay reads as a distinct panel without the author picking a colour. Blended in sRGB, not linear, so the lift is perceptually even and symmetric between modes. */
 const PANEL_SURFACE_LIFT = 0.08;
 
-/** How the slide pass fills the panel. `colour` is the flat fill `panelColor` carries (every legacy frame, and the unset default); `gradient`/`image` sample a texture the compositor resolves through `overlayPanelTexture.ts`; `transparent` paints no panel at all, so the scene renders full-bleed behind the overlay's content. */
+/** How the slide pass fills the panel. `colour` is the flat fill `panelColor` carries (every legacy frame, and the unset default); `gradient`/`image` sample a texture the compositor resolves through `overlayPanelTexture.ts`; `transparent` paints no surface of its own, so with `shape: "none"` the scene renders full-bleed behind the overlay's content, and behind a shaped cutout the panel region takes the backdrop `panelColor` proxies. */
 export type ResolvedPanelFill =
   | { kind: "colour" }
   | { kind: "transparent" }
@@ -24,7 +24,7 @@ const TRANSPARENT_FILL: ResolvedPanelFill = { kind: "transparent" };
 
 export interface ResolvedOverlay {
   frame: FrameSpec;
-  /** Panel fill in linear RGB, ready for the shader uniform; also what a gradient/image panel falls back to before its texture lands. */
+  /** Panel fill in linear RGB, ready for the shader uniform; also what a gradient/image panel falls back to before its texture lands, and what a transparent panel fills the region outside a shaped cutout with. */
   panelColor: [number, number, number];
   panel: ResolvedPanelFill;
 }
@@ -82,12 +82,16 @@ function defaultPanelColour(
   return [_c.r, _c.g, _c.b];
 }
 
-/** A theme token id or hex to linear RGB; `undefined` (no override) takes the neutral surface default, and so do the sampled fills (their texture is the panel; this is only what shows before it lands). Inputs are schema-validated upstream (`parseFrameSpec` keeps only a token or a hex), so `Color.set` always resolves. */
+/** A theme token id or hex to linear RGB; `undefined` (no override) takes the neutral surface default, and so do the sampled fills (their texture is the panel; this is only what shows before it lands). A transparent panel takes the backdrop PROXY with no lift: behind a shaped cutout the slide pass still has to fill everything outside the window, and the honest fill is the backdrop the panel is declining to cover (docs/decisions.md, 2026-08-23); a `shape: "none"` frame never paints it. Inputs are schema-validated upstream (`parseFrameSpec` keeps only a token or a hex), so `Color.set` always resolves. */
 function resolvePanelColour(
   background: FrameSpec["background"],
   theme: Theme,
   sceneBackground: ThemeBackground | undefined,
 ): [number, number, number] {
+  if (typeof background === "object" && background.type === "transparent") {
+    _c.set(backgroundProxyColour(sceneBackground, theme));
+    return [_c.r, _c.g, _c.b];
+  }
   const colour =
     typeof background === "object"
       ? background.type === "color"

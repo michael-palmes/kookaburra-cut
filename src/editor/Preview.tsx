@@ -11,7 +11,7 @@ import {
 } from "./tapAnimation";
 import { TAP_COLORS, TAP_STYLES } from "./tapStyles.generated";
 
-/** The preview controller: one muted <video> per source, driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. Freeze clips have no decode clock, so they advance on rAF frame time with the source parked on the pinned frame. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
+/** The preview controller: one muted <video> per video source (a still image source draws an <img> in the same letterboxed box), driven by the playhead. While paused, scrubbing seeks the active source to the mapped time; while playing, the active video's clock is master, each frame maps `currentTime` back to timeline time (no wall clock, no drift) and advances across clip boundaries. Freeze clips have no decode clock, so they advance on rAF frame time with the source parked on the pinned frame. A contiguous same-source boundary (a split) plays straight through without a seek. Preview-only playback, never the export path (renders re-cut from the sources). */
 
 const SEEK_EPSILON_MS = 30; // don't spam sub-frame seeks on playhead scrubs
 const TRIM_SEEK_EPSILON_MS = 4; // trim scrubbing is frame-exact, seek on any real change
@@ -289,16 +289,21 @@ export function Preview({
                   : undefined,
             }}
           >
-            <video
-              src={fsUrl(`${basePath}/${source.rel}`)}
-              muted
-              playsInline
-              preload="auto"
-              ref={(el) => {
-                if (el) videos.current.set(source.id, el);
-                else videos.current.delete(source.id);
-              }}
-            />
+            {source.kind === "image" ? (
+              // A still has no decode clock, so it never joins the video map: the transport loop's freeze branch just advances past it.
+              <img className="editor-still" src={fsUrl(`${basePath}/${source.rel}`)} alt="" />
+            ) : (
+              <video
+                src={fsUrl(`${basePath}/${source.rel}`)}
+                muted
+                playsInline
+                preload="auto"
+                ref={(el) => {
+                  if (el) videos.current.set(source.id, el);
+                  else videos.current.delete(source.id);
+                }}
+              />
+            )}
             {source.id === activeSourceId && (
               <>
                 {armedTap && canPlaceTap && (

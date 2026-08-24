@@ -1,6 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import { listProjectIds } from "../engine/project";
 import {
   deleteProject,
@@ -15,8 +16,11 @@ import { NamePromptModal } from "./NamePromptModal";
 import {
   ALL_PROJECTS,
   filterProjectLibrary,
+  formatLastOpened,
+  PlaceholderArt,
   projectGroupRows,
   selectedProjectGroup,
+  sortProjectsByRecency,
   UNGROUPED_PROJECTS,
 } from "./projectLibrary";
 import { useEscapeClose } from "./useEscapeClose";
@@ -26,43 +30,6 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-function formatLastOpened(ms: number | null): string | null {
-  if (!ms) return null;
-  const elapsed = Date.now() - ms;
-  const minutes = Math.round(elapsed / 60_000);
-  if (minutes < 1) return "Opened just now";
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  if (minutes < 60) return `Opened ${rtf.format(-minutes, "minute")}`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Opened ${rtf.format(-hours, "hour")}`;
-  return `Opened ${rtf.format(-Math.round(hours / 24), "day")}`;
-}
-
-/** Restrained line-art placeholder for cards with no snapshot yet (no emoji, §3.12). */
-function PlaceholderArt() {
-  return (
-    <svg width="72" height="44" viewBox="0 0 72 44" aria-hidden="true">
-      <rect
-        x="1.5"
-        y="1.5"
-        width="69"
-        height="41"
-        rx="4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M30 15.5v13l11.5-6.5z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 /** Pick or type a group for one project; the NamePromptModal shape plus existing-group chips and a remove action. */
@@ -152,12 +119,15 @@ function GroupPromptModal({
 function ProjectCard({
   project,
   groups,
+  slugs,
   onOpen,
   onChanged,
 }: {
   project: WorkspaceProjectInfo;
   /** Every existing group name, for the move-to-group chips. */
   groups: string[];
+  /** Every existing project slug, so rename/duplicate warn on a clash as you type. */
+  slugs: readonly string[];
   onOpen: () => void;
   /** A management action landed (rename/duplicate/delete); the host re-scans. */
   onChanged: () => void;
@@ -290,6 +260,10 @@ function ProjectCard({
           initial={project.name}
           submitLabel="Rename"
           hint="Changes the display name — the folder keeps its slug."
+          validate={(value) => {
+            const { slug, collides } = nameCollision(value, slugs, { selfSlug: project.slug });
+            return collides ? `${nameCollisionWarning("project", slug)} Pick another name.` : null;
+          }}
           onSubmit={async (name) => {
             await renameProject(project.slug, name);
             setPrompt(null);
@@ -305,6 +279,10 @@ function ProjectCard({
           initial={`${project.name} copy`}
           submitLabel="Duplicate"
           hint="Copies everything except exports and caches."
+          validate={(value) => {
+            const { slug, collides } = nameCollision(value, slugs);
+            return collides ? `${nameCollisionWarning("project", slug)} Pick another name.` : null;
+          }}
           onSubmit={async (name) => {
             await duplicateProject(project.slug, name);
             setPrompt(null);
@@ -374,11 +352,8 @@ export function Welcome({
     listProjects()
       .then((list) => {
         if (cancelled) return;
-        list.sort(
-          (a, b) => (b.lastOpenedMs ?? 0) - (a.lastOpenedMs ?? 0) || a.name.localeCompare(b.name),
-        );
         setLoadError(null);
-        setProjects(list);
+        setProjects(sortProjectsByRecency(list));
       })
       .catch((e) => {
         console.warn("[workspace] listing projects failed:", e);
@@ -400,6 +375,7 @@ export function Welcome({
     [projects, activeGroupId, query],
   );
   const groups = groupRows.slice(2).map((row) => row.label);
+  const slugs = useMemo(() => (projects ?? []).map((p) => p.slug), [projects]);
   const inheritedGroup = selectedProjectGroup(activeGroupId);
 
   useEffect(() => {
@@ -513,6 +489,7 @@ export function Welcome({
                   key={p.slug}
                   project={p}
                   groups={groups}
+                  slugs={slugs}
                   onOpen={() => onOpenProject(`ws:${p.slug}`)}
                   onChanged={() => setRetryNonce((n) => n + 1)}
                 />

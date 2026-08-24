@@ -4,9 +4,11 @@ import {
   addTap,
   clipIndexAt,
   clipTimelineMs,
+  DEFAULT_HOLD_MS,
   edgeTargetsMs,
   freezeAt,
   freezeAtEnd,
+  imageClip,
   insertClipAt,
   MIN_CLIP_SOURCE_MS,
   MIN_HOLD_MS,
@@ -282,6 +284,43 @@ describe("freeze frames", () => {
       const nearEnd = insertClipAt(laid, 2800, incoming("c3"));
       expect(nearEnd.map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
     });
+  });
+});
+
+describe("image clips", () => {
+  it("a still lands as a zero-span hold on the next free id", () => {
+    const laid = relayout([clip("c1", 0, 1000)]);
+    const still = imageClip(laid, "s2", DEFAULT_HOLD_MS);
+    expect(still).toEqual({
+      id: "c2",
+      sourceId: "s2",
+      inMs: 0,
+      outMs: 0,
+      speed: 1,
+      holdMs: DEFAULT_HOLD_MS,
+      startMs: 0,
+    });
+    expect(clipTimelineMs(still)).toBe(DEFAULT_HOLD_MS);
+    expect(imageClip([], "s1", 10).holdMs).toBe(MIN_HOLD_MS);
+  });
+
+  it("splices into the timeline like any other clip and lays out on its hold", () => {
+    const laid = relayout([clip("c1", 0, 1000)]);
+    const next = insertClipAt(laid, 400, imageClip(laid, "s2", DEFAULT_HOLD_MS));
+    expect(next.map((c) => c.sourceId)).toEqual(["s1", "s2", "s1"]);
+    expect(next.map((c) => c.startMs)).toEqual([0, 400, 2400]);
+    expect(timelineDurationMs(next)).toBe(3000);
+  });
+
+  it("trims by its hold alone: no span to split, trim or retime", () => {
+    const laid = relayout([imageClip([], "s2", DEFAULT_HOLD_MS)]);
+    expect(setClipHold(laid, "c1", 800)[0].holdMs).toBe(800);
+    expect(setClipHold(laid, "c1", 10)[0].holdMs).toBe(MIN_HOLD_MS);
+    expect(splitAt(laid, 1000, "c9")).toBeNull();
+    expect(trimClipIn(laid, "c1", 100)[0].inMs).toBe(0);
+    expect(trimClipOut(laid, "c1", 900, 5000)[0].outMs).toBe(0);
+    expect(setClipSpeed(laid, "c1", 2)[0].speed).toBe(1);
+    expect(outputToSource(laid, 500)).toBeNull();
   });
 });
 

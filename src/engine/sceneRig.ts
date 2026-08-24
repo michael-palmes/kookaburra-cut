@@ -23,11 +23,12 @@ import type {
   SceneDocRigPose,
   SceneDocRigSegment,
 } from "./sceneDocSchema";
+import { resolveSceneDocMedia, videoWindowMediaEntry } from "./sceneMedia";
 
 type V3 = [number, number, number];
 type RV3 = readonly [number, number, number];
 
-/** Object-aim ids for the two singleton bindables (devices bind by their own id). */
+/** Object-aim ids devices and media entries do not cover: the screenshot stack, and the legacy spelling for whichever media entry serves as the video window (a promoted one carries that id anyway). */
 export const VIDEO_WINDOW_AIM_ID = "videoWindow";
 export const LAYERED_SCREENSHOT_AIM_ID = "layeredScreenshot";
 
@@ -236,7 +237,7 @@ function validRigPose(raw: unknown): raw is SceneDocRigPose {
   );
 }
 
-/** Where a bound object sits in the scene: a device by its own id, else the two singletons. `undefined` means the object exists but its arranged aspect or mounted floor is not known yet, so callers preserve its baked point; `null` means the id is genuinely missing. */
+/** Where a bound object sits in the scene: a device or media entry by its own id, else the two singletons. `undefined` means the object exists but its arranged aspect, mounted floor or frame is not known yet, so callers preserve its baked point; `null` means the id is genuinely missing. */
 export function resolveAimTarget(
   id: string,
   doc: SceneDoc | undefined,
@@ -254,7 +255,19 @@ export function resolveAimTarget(
     }
     return resolveDeviceWorldAnchor(device, placement, floorY);
   }
-  if (id === VIDEO_WINDOW_AIM_ID && doc.videoWindow) return [0, 0, 0];
+  const media = resolveSceneDocMedia(doc);
+  // The window's legacy spelling stays pinned to the origin whatever its placement says: every recorded fixture baked that point, and moving it would re-time shots the merge was meant to leave untouched.
+  if (id === VIDEO_WINDOW_AIM_ID && videoWindowMediaEntry(media)) return [0, 0, 0];
+  const entry = media.find((candidate) => candidate.id === id);
+  if (entry) {
+    if (entry.host === "stage") return [...entry.stage.position];
+    if (!format) return undefined;
+    return [
+      (entry.overlay.position[0] * format.frame.width) / 2,
+      (entry.overlay.position[1] * format.frame.height) / 2,
+      0,
+    ];
+  }
   if (id === LAYERED_SCREENSHOT_AIM_ID && doc.layeredScreenshot) {
     const pan = doc.layeredScreenshot.pose.pan;
     return [pan[0], pan[1], 0];

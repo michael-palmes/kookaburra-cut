@@ -3,7 +3,8 @@ description: Render a Kookaburra Cut project to video via the deterministic expo
 argument-hint: <project> <format-or-preset> <aspect>
 ---
 
-Export the Kookaburra Cut project `$1` as `$2` at aspect `$3` (`16:9` | `9:16` | `1:1` | `4:5` | `all`).
+Export the Kookaburra Cut project `$1` as `$2` at aspect `$3` (`16:9` | `9:16` | `1:1` |
+`4:5` | `5:4` | `3:2` | `2:3` | `phone` | `phone-landscape` | `all`).
 
 `$2` picks the lane:
 
@@ -29,7 +30,7 @@ Steps:
    ```
 
    `--preset` without `--aspect` uses the preset's favoured aspect. `--aspect all` =
-   the standing three (16:9 · 9:16 · 1:1); 4:5 must be explicit.
+   the standing three (16:9 · 9:16 · 1:1); every other aspect must be explicit.
 3. Outputs land at `~/Kookaburra Cut/<project>/` (bundled/gate projects) or
    `~/Kookaburra Cut/<slug>/exports/` (workspace projects). Preset/custom exports suffix the
    filename (`<project>-<aspect>-<preset-id>.<ext>`); the legacy lanes keep

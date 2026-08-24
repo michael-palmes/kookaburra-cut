@@ -1886,6 +1886,12 @@ button.beat-status {
   font-variant-numeric: tabular-nums;
 }
 
+/* Live duplicate-name warning under a name input: louder than a hint, not a failure yet. */
+.modal-warn {
+  color: var(--warning);
+  font-size: var(--text-sm);
+}
+
 /* Opt-out checkbox row inside a modal (the Free-camera warning's "Don't show this again"). */
 .modal-check {
   display: flex;
@@ -2909,17 +2915,6 @@ button.beat-status {
   padding: var(--space-2);
 }
 
-/* Copy-scene destination list: rail-menu rows in a scrollable modal column. */
-.copy-scene-projects {
-  display: flex;
-  flex-direction: column;
-  max-height: 40vh;
-  margin-bottom: var(--space-3);
-  overflow-y: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
-}
-
 .group-chip {
   padding: 0.2rem 0.6rem;
   font: inherit;
@@ -3217,8 +3212,9 @@ button.beat-status {
   container-type: size;
 }
 
-/* Scoped to the box, not a pane, so the preview and the compare pane letterbox identically. */
-.editor-video-box video {
+/* Scoped to the box, not a pane, so the preview and the compare pane letterbox identically. A still image source uses the same box, so its framing matches the render's scale+pad. */
+.editor-video-box video,
+.editor-video-box .editor-still {
   display: block;
   width: 100%;
   height: 100%;
@@ -3527,6 +3523,20 @@ button.beat-status {
   background:
     repeating-linear-gradient(-45deg, transparent 0 8px, rgb(255 255 255 / 4%) 8px 16px),
     var(--surface-recessed);
+}
+
+/* A still image clip is a freeze too, but its own poster says so: no stripes under it. */
+.timeline-clip.frozen.still {
+  background: var(--surface-recessed);
+}
+
+.timeline-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
 }
 
 /* Fixed width so the ▶/⏸ glyph swap doesn't reflow the toolbar. */
@@ -5479,8 +5489,10 @@ button.beat-status {
 .gizmo-hit {
   pointer-events: auto;
 }
-/* Camera override held: handles stand down so the drag reaches the tool surface. */
-.gizmo-layer.camera-override .gizmo-hit {
+/* Camera override held: handles stand down so the drag reaches the tool surface. A 3D gizmo handle
+   of this same section under the pointer does the same, so the press reaches the canvas below. */
+.gizmo-layer.camera-override .gizmo-hit,
+.gizmo-layer.scene-gizmo-yield .gizmo-hit {
   pointer-events: none;
 }
 
@@ -7735,6 +7747,8 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   gap: var(--space-5);
   min-height: 0;
   padding: 12px 16px;
+  /* A vertical rail: overflow-y alone computes overflow-x to auto, which turns any 1px overshoot into a scrollbar. */
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -7811,6 +7825,98 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
 /* Footer buttons that lead with a glyph (the Scenes drill-in): the icon never shrinks with the label. */
 .inspector-drill-actions .btn svg {
   flex: none;
+}
+
+/* Copy-to-project destinations: the welcome screen's project cards at panel width,
+   two across, most recently opened first. The thumb repeats the fixed 16:9 cell +
+   absolute-inset contain img the welcome cards proved safe in WKWebView. */
+.project-copy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.project-copy-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.project-copy-card:hover:not(:disabled),
+.project-copy-card:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-elevated);
+}
+
+/* A copy in flight holds its own card at full strength and dims the rest. */
+.project-copy-card:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.project-copy-card.busy {
+  opacity: 1;
+  border-color: var(--accent-border);
+}
+
+.project-copy-thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  background: var(--surface-recessed);
+}
+
+.project-copy-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+
+.project-copy-thumb svg {
+  width: 60%;
+  height: auto;
+}
+
+.project-copy-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.project-copy-name {
+  font-size: var(--text-sm);
+  font-weight: 590;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-copy-meta {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The staging block (Style section): the EditBar popover's rows, stacked. */
@@ -9615,39 +9721,44 @@ textarea.text-inspector-copy-input {
   display: block;
 }
 
-.image-drill-identity {
+.media-drill-identity {
   min-height: 52px;
   padding: 9px 12px;
 }
 
-.image-drill-identity .inspector-scene-preview {
+/* The slider rows (116px label + native range + 52px value) need the device editor's slimmer inline padding. */
+.media-drill-body {
+  padding-inline: 12px;
+}
+
+.media-drill-identity .inspector-scene-preview {
   width: 56px;
   height: 32px;
   aspect-ratio: auto;
 }
 
-.image-drill-identity .inspector-scene-preview img {
+.media-drill-identity .inspector-scene-preview img {
   object-fit: contain;
 }
 
-.image-drill-identity .inspector-scene-id {
+.media-drill-identity .inspector-scene-id {
   flex: 1;
 }
 
-.image-drill-identity > .wizard-presets {
+.media-drill-identity > .wizard-presets {
   flex: none;
   flex-wrap: nowrap;
   gap: var(--space-1);
 }
 
-.image-drill-identity > .wizard-presets .chip {
+.media-drill-identity > .wizard-presets .chip {
   width: 22px;
   min-width: 22px;
   height: 22px;
   padding: 0;
 }
 
-.image-settings-fieldset {
+.media-settings-fieldset {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -9657,7 +9768,7 @@ textarea.text-inspector-copy-input {
   border: 0;
 }
 
-.image-settings-fieldset > .visually-hidden + .drill-group {
+.media-settings-fieldset > .visually-hidden + .drill-group {
   margin-top: var(--space-4);
 }
 

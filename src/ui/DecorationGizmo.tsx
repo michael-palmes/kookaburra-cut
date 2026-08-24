@@ -353,6 +353,7 @@ export function DecorationGizmo({
     <>
       <Gizmo2D
         items={items}
+        domain="decorations"
         selectedId={selectedId}
         onSelect={select}
         resizeAbout="opposite-corner"

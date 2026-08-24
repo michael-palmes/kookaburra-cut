@@ -3,6 +3,7 @@
 import { ease } from "./ease";
 import type {
   SceneDocVideoWindow,
+  SceneMediaWindow,
   VideoWindowBorder,
   VideoWindowMotion,
   VideoWindowMotionPreset,
@@ -49,7 +50,7 @@ export function recordingCrop(
 
 const DEFAULT_RADIUS = RADIUS_PRESETS.macos;
 /** Window occupies this fraction of the frame's shorter axis by default, leaving a wallpaper margin. */
-const DEFAULT_SCALE = 0.72;
+export const DEFAULT_VIDEO_WINDOW_SCALE = 0.72;
 const DEFAULT_SHADOW = { opacity: 0.32, blur: 0.14, offset: [0, -0.05] as [number, number] };
 /** Matches the old fixed hairline rim, so a window with no `border` field renders byte-identically. */
 const DEFAULT_BORDER: VideoWindowBorder = {
@@ -66,9 +67,8 @@ export interface NormalizedVideoWindowShadow {
   offset: [number, number];
 }
 
-/** A validated, defaults-filled videoWindow ready to render. */
-export interface NormalizedVideoWindow {
-  media: { src: string; startMs: number; loop: boolean; aspect: number | null };
+/** A validated, defaults-filled window chrome block: what both the legacy `videoWindow` and a media entry's optional `window` resolve to. */
+export interface NormalizedWindowChrome {
   radiusFraction: number;
   /** Raw window recording: crop the capture margins once the clip's intrinsics arrive. */
   recording: boolean;
@@ -76,6 +76,11 @@ export interface NormalizedVideoWindow {
   radiusTracksRecording: boolean;
   border: VideoWindowBorder;
   shadow: NormalizedVideoWindowShadow;
+}
+
+/** A validated, defaults-filled videoWindow ready to render. */
+export interface NormalizedVideoWindow extends NormalizedWindowChrome {
+  media: { src: string; startMs: number; loop: boolean; aspect: number | null };
   motion: VideoWindowMotion;
   scale: number;
   /** Placement as fractions of the frame (x right, y up). */
@@ -140,6 +145,22 @@ function normalizeOffset(raw: unknown): [number, number] {
   return [clamp(o[0], -1, 1), clamp(o[1], -1, 1)];
 }
 
+/** Validate + fill the chrome fields shared by the legacy block and a media entry's `window`. */
+export function normalizeWindowChrome(
+  raw: SceneMediaWindow | Pick<SceneDocVideoWindow, "radius" | "recording" | "border" | "shadow">,
+): NormalizedWindowChrome {
+  // An early branch-only build wrote `radius: "recording"`; it degrades to the boolean + macOS look.
+  const legacyRecordingRadius = (raw.radius as unknown) === "recording";
+  const radius = legacyRecordingRadius ? "macos" : raw.radius;
+  return {
+    radiusFraction: resolveVideoWindowRadius(radius),
+    recording: raw.recording === true || legacyRecordingRadius,
+    radiusTracksRecording: radius === "macos" || radius === undefined,
+    border: normalizeBorder(raw.border),
+    shadow: normalizeShadow(raw.shadow),
+  };
+}
+
 /** Validate + normalize a sidecar videoWindow value. Null when absent or missing a media source; a present block otherwise always normalizes with defaults filled. */
 export function normalizeVideoWindow(
   raw: SceneDocVideoWindow | undefined,
@@ -151,10 +172,8 @@ export function normalizeVideoWindow(
     console.warn(`[videoWindow] ${source}: missing media.src, no window`);
     return null;
   }
-  // An early branch-only build wrote `radius: "recording"`; it degrades to the boolean + macOS look.
-  const legacyRecordingRadius = (raw.radius as unknown) === "recording";
-  const radius = legacyRecordingRadius ? "macos" : raw.radius;
   return {
+    ...normalizeWindowChrome(raw),
     media: {
       src,
       startMs: Number.isFinite(raw.media.startMs) ? (raw.media.startMs as number) : 0,
@@ -164,13 +183,10 @@ export function normalizeVideoWindow(
           ? (raw.media.aspect as number)
           : null,
     },
-    radiusFraction: resolveVideoWindowRadius(radius),
-    recording: raw.recording === true || legacyRecordingRadius,
-    radiusTracksRecording: radius === "macos" || radius === undefined,
-    border: normalizeBorder(raw.border),
-    shadow: normalizeShadow(raw.shadow),
     motion: normalizeMotion(raw.motion),
-    scale: Number.isFinite(raw.scale) ? clamp(raw.scale as number, 0.1, 1) : DEFAULT_SCALE,
+    scale: Number.isFinite(raw.scale)
+      ? clamp(raw.scale as number, 0.1, 1)
+      : DEFAULT_VIDEO_WINDOW_SCALE,
     offset: normalizeOffset(raw.offset),
   };
 }

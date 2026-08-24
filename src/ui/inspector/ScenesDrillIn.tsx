@@ -57,7 +57,7 @@ export function ScenesDrillIn({
   onPasteBackground: (index: number) => void;
   /** Trash-recoverable removal of the whole selection (the host reloads once; the last scene is refused before any call). */
   onDelete: (indices: number[]) => void;
-  /** Open the copy-to-project picker for the given selection (the host mounts CopySceneModal). */
+  /** Open the copy-to-project drill for the given selection (the host routes the request). */
   onCopyToProject: (indices: number[]) => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());

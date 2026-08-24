@@ -63,8 +63,9 @@ therefore read a zustand store, which works on both sides of the Canvas boundary
 
 ## Multi-format
 
-One project renders to 16:9 / 9:16 / 1:1 (plus the 4:5 / 5:4 social pair and
-the 3:2 / 2:3 photographic pair) via `useFormat()`. Scenes lay out against a normalised space + `safe` insets and
+One project renders to 16:9 / 9:16 / 1:1 (plus the 4:5 / 5:4 social pair, the
+3:2 / 2:3 photographic pair and the Phone / Phone Landscape device pair, the
+iPhone 17 Pro panel at its native 1206×2622) via `useFormat()`. Scenes lay out against a normalised space + `safe` insets and
 branch on `aspect`, rather than per-format files. Each aspect is a separate
 export pass. For the rare scene that genuinely needs a different composition per
 aspect, an optional `variants` map keyed by aspect is the escape hatch.

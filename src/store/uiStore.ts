@@ -94,6 +94,10 @@ interface UiState {
   railWizardRequest: "new-scene" | "edit-scene" | null;
   /** Bumped by the stage's slowdown badge; the inspector opens the Playback options popover. */
   playbackOptionsNonce: number;
+  /** Manifest indices the Copy-to-project drill acts on; both entry points (the timeline menu and the scene manager) stash them here. */
+  sceneCopyIndices: number[];
+  /** Bumped alongside them, so the inspector can land on the Project tab first (its reset-on-switch effect would wipe an eager jump). */
+  sceneCopyNonce: number;
   /** null = nothing copied yet (Paste disabled). */
   backgroundClipboard: BackgroundClipboard | null;
   setPaletteOpen: (open: boolean) => void;
@@ -117,6 +121,8 @@ interface UiState {
   replaceInspectorDrill: (id: string) => void;
   requestRailWizard: (wizard: "new-scene" | "edit-scene" | null) => void;
   requestPlaybackOptions: () => void;
+  /** Open the Copy-to-project drill on this selection. */
+  requestSceneCopy: (indices: number[]) => void;
   setBackgroundClipboard: (clip: BackgroundClipboard | null) => void;
 }
 
@@ -132,6 +138,8 @@ export const useUiStore = create<UiState>((set) => ({
   inspectorNavigation: { sequence: 0, kind: "reset" },
   railWizardRequest: null,
   playbackOptionsNonce: 0,
+  sceneCopyIndices: [],
+  sceneCopyNonce: 0,
   backgroundClipboard: null,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
   togglePalette: () => set((s) => ({ paletteOpen: !s.paletteOpen })),
@@ -253,5 +261,7 @@ export const useUiStore = create<UiState>((set) => ({
     }),
   requestRailWizard: (railWizardRequest) => set({ railWizardRequest }),
   requestPlaybackOptions: () => set((s) => ({ playbackOptionsNonce: s.playbackOptionsNonce + 1 })),
+  requestSceneCopy: (sceneCopyIndices) =>
+    set((s) => ({ sceneCopyIndices, sceneCopyNonce: s.sceneCopyNonce + 1 })),
   setBackgroundClipboard: (backgroundClipboard) => set({ backgroundClipboard }),
 }));

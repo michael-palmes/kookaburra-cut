@@ -35,8 +35,8 @@ baked look point, which is what every fallback lands on:
   straight segment it is the segment's chord; a held key outside any segment
   has no path; and a near-zero derivative or chord (a pair of keys that don't
   move) has none either. Each of those falls back to the baked `at`.
-- **Object**: follow something staged — a device by its id, the video window, or
-  the screenshot stack. The binding resolves at LOAD; the editor rebakes `at`
+- **Object**: follow something staged (a device or a video media entry by its
+  id, or the screenshot stack). The binding resolves at LOAD; the editor rebakes `at`
   whenever the bound object moves, in the same write and undo as the move. A
   binding whose object is gone keeps its last known point and shows a
   broken-link row with a "Bake to point" button, so a deleted device never
@@ -142,7 +142,7 @@ pose at the playhead as a single key, chained off the previous key with the
 default ease (pose-and-snapshot: fly, then keep what you see). **Frame content**
 refits the current key so everything the scene stages sits inside the frame,
 keeping the view direction. Bounds come from the scene DOC (device placements,
-the video window, the screenshot stack, else the content plane), so the fit
+video media, the screenshot stack, else the content plane), so the fit
 resolves identically everywhere; content a scene's TSX places by hand is not
 counted. The same button lives in the Camera drill-in.
 

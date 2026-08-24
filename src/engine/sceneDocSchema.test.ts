@@ -6,7 +6,23 @@ import themeSpikeGradientDoc from "./__fixtures__/theme-spike/03-gradient.json";
 import themeSpikeImageDoc from "./__fixtures__/theme-spike/04-image.json";
 import themeSpikeAbyssDoc from "./__fixtures__/theme-spike/05-abyss.json";
 import { COMPARE_GRIP_CATALOG } from "./compareCatalog";
-import { collectSceneDocFontRefs, parseSceneDoc, SCENE_DOC_VERSION } from "./sceneDocSchema";
+import {
+  collectSceneDocFontRefs,
+  isSceneImageSource,
+  parseSceneDoc,
+  SCENE_DOC_VERSION,
+} from "./sceneDocSchema";
+
+describe("isSceneImageSource", () => {
+  it("accepts supported project image paths and rejects unsafe paths and GIFs", () => {
+    expect(isSceneImageSource("assets/brand/hero.PNG")).toBe(true);
+    expect(isSceneImageSource("assets/Kākāpō @2 (final).WebP")).toBe(true);
+    expect(isSceneImageSource("assets/photo.jpeg")).toBe(true);
+    expect(isSceneImageSource("assets/../outside.png")).toBe(false);
+    expect(isSceneImageSource("assets/animated.gif")).toBe(false);
+    expect(isSceneImageSource("/tmp/hero.png")).toBe(false);
+  });
+});
 
 // parseSceneDoc must degrade (warn + ignore), never throw; a bad sidecar cannot tear down the canvas tree.
 describe("parseSceneDoc", () => {
@@ -834,6 +850,200 @@ describe("parseSceneDoc", () => {
     ]);
     expect(parseSceneDoc({ version: 1, images: "nope" }, "test")?.images).toBeUndefined();
     vi.restoreAllMocks();
+  });
+
+  it("derives the media view from the legacy blocks without changing what serialises", () => {
+    const raw = {
+      version: 1,
+      images: [{ id: "img1", src: "assets/hero.png", host: "overlay" }],
+      videoWindow: { media: { src: "assets/clip.mp4" }, radius: "subtle", scale: 0.5 },
+    };
+    const doc = parseSceneDoc(raw, "test");
+
+    expect(doc?.media?.map((entry) => [entry.kind, entry.id])).toEqual([
+      ["image", "img1"],
+      ["video", "videoWindow"],
+    ]);
+    expect(doc?.media?.[1]?.window).toEqual({ radius: "subtle" });
+    expect(doc?.media?.[1]?.overlay.size).toBe(0.5);
+    // Derived views never persist: a write-back must not mirror the other family.
+    expect(Object.keys(doc ?? {})).not.toContain("media");
+    expect(JSON.parse(JSON.stringify(doc))).toEqual({
+      version: 1,
+      images: [
+        {
+          id: "img1",
+          src: "assets/hero.png",
+          host: "overlay",
+          stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+          overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
+        },
+      ],
+      videoWindow: raw.videoWindow,
+    });
+  });
+
+  it("leaves a doc with no media, images or videoWindow untouched", () => {
+    const doc = parseSceneDoc({ version: 1, name: "Plain" }, "test");
+    expect(doc).toEqual({ version: 1, name: "Plain" });
+    expect(doc?.media).toBeUndefined();
+    expect(doc?.images).toBeUndefined();
+    expect(doc?.videoWindow).toBeUndefined();
+  });
+
+  it("takes an authored media array as the source of truth, the legacy blocks beside it dropping", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        images: [{ id: "ignored", src: "assets/ignored.png" }],
+        videoWindow: { media: { src: "assets/ignored.mp4" } },
+        media: [
+          {
+            id: "img1",
+            kind: "image",
+            src: "assets/hero.png",
+            host: "stage",
+            stage: { position: [1, 0, 0], size: 2, rotationDeg: [0, 90, 0] },
+            motion: { preset: "turntable", degPerSec: 30 },
+            castShadow: true,
+          },
+          {
+            id: "videoWindow",
+            kind: "video",
+            src: "assets/clip.mp4",
+            overlay: { position: [0.4, 0], size: 0.6 },
+            window: { radius: { custom: 0.1 }, recording: true },
+            video: { startMs: 500, loop: true, aspect: 2 },
+            motion: { preset: "drift", hz: 0.2 },
+          },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.media).toHaveLength(2);
+    expect(doc?.media?.[0]).toEqual({
+      id: "img1",
+      kind: "image",
+      src: "assets/hero.png",
+      host: "stage",
+      stage: { position: [1, 0, 0], size: 2, rotationDeg: [0, 90, 0] },
+      overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
+      motion: { preset: "turntable", degPerSec: 30 },
+      castShadow: true,
+    });
+    expect(doc?.media?.[1]?.window).toEqual({ radius: { custom: 0.1 }, recording: true });
+    expect(doc?.media?.[1]?.video).toEqual({ startMs: 500, loop: true, aspect: 2 });
+    expect(doc?.images).toBeUndefined();
+    expect(doc?.videoWindow).toBeUndefined();
+    expect(JSON.parse(JSON.stringify(doc))).toEqual({ version: 1, media: doc?.media });
+  });
+
+  it("defaults a bare media entry per kind", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        media: [
+          { id: "img1", src: "assets/logo.png" },
+          { id: "vid1", kind: "video", src: "assets/clip.mp4" },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.media?.[0]).toEqual({
+      id: "img1",
+      kind: "image",
+      src: "assets/logo.png",
+      host: "stage",
+      stage: { position: [0, 0, 0], size: 1, rotationDeg: [0, 0, 0] },
+      overlay: { position: [0, 0], size: 0.25, rotationDeg: 0, shape: "none", layer: "above" },
+    });
+    expect(doc?.media?.[1]).toEqual({
+      id: "vid1",
+      kind: "video",
+      src: "assets/clip.mp4",
+      host: "window",
+      stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
+      overlay: { position: [0, 0], size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
+      video: {},
+    });
+    expect(doc?.media?.[1]?.window).toBeUndefined();
+  });
+
+  it("parses all three media hosts, degrading a window-hosted still to the frame layer", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        media: [
+          { id: "vid1", kind: "video", src: "assets/a.mp4", host: "window" },
+          { id: "vid2", kind: "video", src: "assets/b.mp4", host: "overlay" },
+          { id: "vid3", kind: "video", src: "assets/c.mp4", host: "stage" },
+          { id: "vid4", kind: "video", src: "assets/d.mp4", host: "nowhere" },
+          { id: "img1", src: "assets/a.png", host: "window" },
+          { id: "img2", src: "assets/b.png", host: "overlay" },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.media?.map((entry) => entry.host)).toEqual([
+      "window",
+      "overlay",
+      "stage",
+      "window",
+      "overlay",
+      "overlay",
+    ]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('media[4].host "window"'));
+    vi.restoreAllMocks();
+  });
+
+  it("degrades malformed media entries, keeping the rest", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        media: [
+          { id: "keep", kind: "video", src: "assets/clip.mp4", motion: { preset: "drift" } },
+          { id: "keep", src: "assets/duplicate.png" },
+          { kind: "image", src: "assets/no-id.png" },
+          { id: "escape", kind: "video", src: "assets/../outside.mp4" },
+          { id: "still", src: "assets/clip.mp4" },
+          {
+            id: "junk",
+            kind: "video",
+            src: "assets/junk.mp4",
+            window: { radius: "wobble" },
+            video: "nope",
+            motion: { preset: "spin" },
+          },
+        ],
+      },
+      "test",
+    );
+
+    expect(doc?.media?.map((entry) => entry.id)).toEqual(["keep", "junk"]);
+    expect(doc?.media?.[0]?.motion).toEqual({ preset: "drift" });
+    expect(doc?.media?.[1]?.window).toEqual({ radius: "macos" });
+    expect(doc?.media?.[1]?.video).toEqual({});
+    expect(doc?.media?.[1]?.motion).toEqual({ preset: "none" });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("duplicate media id"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("media[4].src"));
+    warn.mockRestore();
+  });
+
+  it("falls back to the legacy blocks when media isn't an array", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const doc = parseSceneDoc(
+      { version: 1, media: "nope", images: [{ id: "img1", src: "assets/a.png" }] },
+      "test",
+    );
+    expect(doc?.images?.map((image) => image.id)).toEqual(["img1"]);
+    expect(doc?.media?.map((entry) => entry.id)).toEqual(["img1"]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("media isn't an array"));
+    warn.mockRestore();
   });
 
   it("round-trips a full chart block, dropping only the null series colour", () => {

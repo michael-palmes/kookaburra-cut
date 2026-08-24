@@ -31,6 +31,7 @@ import {
   resetDeviceLayoutDelta,
   setDeviceRotationPose,
 } from "./deviceEditorModel";
+import { MediaSourceGroup } from "./MediaSourceGroup";
 import {
   DrillBack,
   DrillGroup,
@@ -276,19 +277,6 @@ function fileName(src: string): string {
   return src.split("/").filter(Boolean).at(-1) ?? src;
 }
 
-export function deviceMediaThumbnailSize(
-  aspectRatio?: number,
-): { width: number; height: number } | undefined {
-  if (typeof aspectRatio !== "number" || !Number.isFinite(aspectRatio) || aspectRatio <= 0) {
-    return undefined;
-  }
-  const bound = 58;
-  const round = (value: number) => Math.round(value * 100) / 100;
-  return aspectRatio >= 1
-    ? { width: bound, height: round(bound / aspectRatio) }
-    : { width: round(bound * aspectRatio), height: bound };
-}
-
 function NavigationIcon({ direction }: { direction: "previous" | "next" }) {
   return (
     <svg
@@ -378,28 +366,7 @@ function DeviceControlIcon({
   );
 }
 
-function DeviceActionIcon({ type }: { type: "device" | "media" | "edit" }) {
-  const glyph = {
-    device: (
-      <>
-        <rect x="6" y="2.5" width="8" height="15" rx="2" />
-        <path d="M8.5 4.5h3" />
-      </>
-    ),
-    media: (
-      <>
-        <rect x="3" y="4" width="14" height="12" rx="2" />
-        <circle cx="8" cy="9" r="1.3" />
-        <path d="m4 14 4-3 4 3 3-2" />
-      </>
-    ),
-    edit: (
-      <>
-        <path d="M4 15.5 5 12l7.8-7.8 3 3L8 15z" />
-        <path d="m11.6 5.4 3 3" />
-      </>
-    ),
-  }[type];
+function DeviceGlyph() {
   return (
     <svg
       width="16"
@@ -412,7 +379,8 @@ function DeviceActionIcon({ type }: { type: "device" | "media" | "edit" }) {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {glyph}
+      <rect x="6" y="2.5" width="8" height="15" rx="2" />
+      <path d="M8.5 4.5h3" />
     </svg>
   );
 }
@@ -684,9 +652,6 @@ export function DeviceDrillIn({
   ]
     .filter(Boolean)
     .join(" · ");
-  const mediaThumbnailSize = screenMediaPreviewUrl
-    ? deviceMediaThumbnailSize(screenMediaAspectRatio)
-    : undefined;
   const layout = doc.deviceLayout;
   const delta = layout?.devices?.[device.id];
   const position = layout ? (delta?.offset ?? ZERO) : (device.placement?.position ?? ZERO);
@@ -805,50 +770,24 @@ export function DeviceDrillIn({
               disabled={settingsDisabled}
               onClick={() => onChangeDevice(device.id)}
             >
-              <DeviceActionIcon type="device" />
+              <DeviceGlyph />
               <span>Change device</span>
               <ChevronIcon />
             </button>
           )}
         </section>
 
-        <DrillGroup label="Screen">
-          <div className="device-editor-media-summary">
-            <div className="device-editor-media-thumb" style={mediaThumbnailSize}>
-              {screenMediaPreviewUrl ? (
-                <img src={screenMediaPreviewUrl} alt="" draggable={false} />
-              ) : (
-                <DeviceActionIcon type="media" />
-              )}
-            </div>
-            <div className="device-editor-media-copy">
-              <span className="device-editor-media-name" title={mediaName}>
-                {mediaName}
-              </span>
-              <span className="device-editor-media-detail">{mediaDetail}</span>
-            </div>
-          </div>
-          <div className="device-editor-media-actions">
-            <button
-              type="button"
-              className="btn"
-              disabled={settingsDisabled}
-              onClick={() => onChangeScreenMedia(device.id)}
-            >
-              <DeviceActionIcon type="media" />
-              Change
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={settingsDisabled || !routing.editVideoTarget || !onEditScreenMedia}
-              onClick={() => onEditScreenMedia?.(device.id)}
-            >
-              <DeviceActionIcon type="edit" />
-              Edit
-            </button>
-          </div>
-        </DrillGroup>
+        <MediaSourceGroup
+          label="Screen"
+          previewUrl={screenMediaPreviewUrl}
+          aspectRatio={screenMediaAspectRatio}
+          name={mediaName}
+          detail={mediaDetail}
+          disabled={settingsDisabled}
+          editDisabled={!routing.editVideoTarget}
+          onChange={() => onChangeScreenMedia(device.id)}
+          onEdit={onEditScreenMedia ? () => onEditScreenMedia(device.id) : undefined}
+        />
 
         {!after && (
           <DrillGroup label="Arrangement">

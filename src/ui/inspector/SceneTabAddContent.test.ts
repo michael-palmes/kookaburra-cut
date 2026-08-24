@@ -82,9 +82,11 @@ describe("SceneTab Add Content inspector routing", () => {
     expect(section).toMatch(/case "device":[\s\S]*?addDevice\(\);[\s\S]*?break;/);
     expect(section).toMatch(/case "text":[\s\S]*?addManagedTextOverviewItem\(\);[\s\S]*?break;/);
     expect(section).toMatch(
-      /case "image":[\s\S]*?openMediaPicker\(\{ kind: "image" \}\);[\s\S]*?break;/,
+      /case "image":[\s\S]*?openMediaPicker\(\{ kind: "media", mediaKind: "image" \}\);[\s\S]*?break;/,
     );
-    expect(section).toMatch(/case "video":[\s\S]*?openDrill\("videoWindow\.edit"\);[\s\S]*?break;/);
+    expect(section).toMatch(
+      /case "video":[\s\S]*?openMediaPicker\(\{ kind: "media", mediaKind: "video" \}\);[\s\S]*?break;/,
+    );
     expect(section).toMatch(/case "object":[\s\S]*?openObjectPicker\(\);[\s\S]*?break;/);
     expect(section).toMatch(/case "chart":[\s\S]*?addChart\(\);[\s\S]*?break;/);
     expect(section).toMatch(
@@ -117,13 +119,13 @@ describe("SceneTab Add Content inspector routing", () => {
     });
     expectSuccessfulInspectorOpen({
       section: sourceSection(
-        "  const addPickedImage = (src: string) => {",
+        "  const addPickedMedia = (src: string, kind: SceneMediaKind, meta: MediaMeta | null) => {",
         "  const pickSceneMedia = (rel: string, meta: MediaMeta | null) => {",
       ),
       completion: "patchDocResult(",
       selection:
         "useImageEditStore.getState().select({ sceneIndex: expectedSceneIndex, imageId: id });",
-      route: 'jumpDrill(["image.edit"]);',
+      route: "jumpDrill([MEDIA_DRILL_ROUTE]);",
     });
     expectSuccessfulInspectorOpen({
       section: sourceSection(

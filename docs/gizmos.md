@@ -21,7 +21,7 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Guides | Yellow alignment lines, 2D only | Frame centre, safe edges and other items are meaningful in screen space, not in the world. |
 | Text rotation | A new `textStyle.<key>RotationDeg` | Move and size already had sidecar fields; tilt did not. |
 | Undo | Exactly one history entry per drag | A drag is one act, however many frames it ticks through. |
-| Out of scope | Lights and fixtures (helpers stay read only), panel charts (layout driven), cutout-hosted text, layered screenshot and video window (their own overlays) | Nothing here has free placement to drag, or it already has a bespoke surface. |
+| Out of scope | Lights and fixtures (helpers stay read only), panel charts (layout driven), cutout-hosted text, layered screenshot (its own overlay) | Nothing here has free placement to drag, or it already has a bespoke surface. |
 
 ## The two families
 
@@ -29,11 +29,12 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | --- | --- | --- | --- | --- |
 | Staged object | 3D | `ObjectPrimitive` → `SceneGizmo` | move / rotate / scale | `objects[].placement` |
 | Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | `deviceLayout` delta, else `devices[].placement` |
-| Stage image | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `images[].stage` |
+| Stage media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
+| Stage clip with chrome | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
 | Staged chart | 3D | `Chart.tsx` (`StagedChart`) → `SceneGizmo` | move / rotate / scale | `chart.placement` |
 | Scene text, per key | 2D | `TextGizmo` → `Gizmo2D` | move / size / rotate | `textStyle.<key>OffsetX,OffsetY,Size,RotationDeg` |
 | Hero chart | 2D | `ChartHeroGizmo` → `Gizmo2D` | move / scale | `chart.style.offset`, `chart.style.scale` |
-| Overlay image | 2D | `OverlayImageGizmo` → `Gizmo2D` | move / resize / rotate | `images[].overlay` |
+| Overlay-placed media (Overlay and Window hosts) | 2D | `OverlayImageGizmo` → `Gizmo2D` | move / resize / rotate | `media[].overlay` |
 | Panel decoration | 2D | `DecorationGizmo` → `Gizmo2D` | move / resize / rotate | `frame.decorations[].position,size,rotationDeg` |
 
 `SceneGizmo` (`src/engine/SceneGizmo.tsx`) is the only place drei's
@@ -68,10 +69,13 @@ troika's first typeset landing.
 ## Section-scoped visibility
 
 `gizmoSections.ts` maps inspector drill ids to gizmo domains by prefix
-(`device` → devices, `image` → images, `objects`, `chart`, `text`,
+(`device` → devices, `image`/`media` → media, `objects`, `chart`, `text`,
 `frame.decorations`), reading the whole drill stack top down so a drill carrying
 another family's id (Shadow lives under Device as `style.shadow`) still reads as
-the section the user drilled through. `useGizmoSectionOpen(domain)` is a boolean
+the section the user drilled through. The media domain covers both kinds and all
+three hosts, since a still and a floating clip are one entry shape
+(`resolveSceneDocMedia`): opening Media outlines every image and video the scene
+stages. `useGizmoSectionOpen(domain)` is a boolean
 selector, so moving between drills inside one family re-renders nothing.
 
 While a section is open:
@@ -99,7 +103,7 @@ the same scene index, so a write from there would land on the A doc.
 
 ## Pointer routing
 
-The whole batch hangs off one pure function, `routePointer`
+Camera versus gizmo hangs off one pure function, `routePointer`
 (`src/ui/gizmo/gizmoRouting.ts`):
 
 | Condition (first match wins) | Owner |
@@ -137,6 +141,19 @@ whole (`pointer-events: auto`) for the length of a rotate drag: a captured point
 does not carry its cursor, so the layer has to be hit-testable for the rotate
 cursor to hold.
 
+**Both families in one domain.** Media is the first section to stage both hosts
+at once, so a Stage-hosted image's `TransformControls` can sit under an
+Overlay-hosted image's 2D box, and being DOM the box would swallow every press.
+`routeLayerPointer` gives that pointer to a 3D handle of the layer's OWN domain
+(`gizmoHandleAt` filtered by domain, so no other family is affected) unless a 2D
+drag is already in flight, and `useSceneGizmoYield` then puts
+`.scene-gizmo-yield` on the layer, which stands the hit elements down exactly as
+a held override does, so the press reaches the canvas. Such a press also skips
+the layer's deselect, since clearing the selection would unmount the gizmo being
+pressed. A hover the world moved out from under cannot misroute either: the
+box's own pointer-down re-tests the handles synchronously and drops the press
+rather than taking it.
+
 Inside a 2D drag, ⌃ suppresses snapping and hides the guides, and Shift snaps a
 rotation to 15°.
 
@@ -157,30 +174,52 @@ or preview capture.
 
 `gizmoHandleAt(ndc)` raycasts only the active mode's picker group (three's
 raycaster ignores `visible`, so the idle modes would hit too), against the live
-preview camera and the canvas box, never an overlay's box, so the NDC it uses is
-the NDC r3f's own event raycaster would use.
+preview camera and the stage viewport, never a DOM overlay's box, so the NDC it
+uses is the NDC r3f's own event raycaster would use.
+
+**The stage viewport** (`src/engine/stageViewport.ts`) is that qualifier. An
+overlay renders the scene into a cutout-sized target and keys it into the
+cutout's rect, so in a framed scene the canvas box is NOT the rect a world
+projection lands on: `worldViewportRect` narrows it to the cutout, and
+`cutoutStageRect` gives the drawn rect itself for frame-relative placements.
+The camera keeps the FRAME's aspect between compositor passes while the cutout
+pass renders at the cutout's, and a perspective x divides by the aspect, so the
+projection rect is the cutout's height by the frame's aspect, centred on the
+cutout: everything then lands the pixels the slide pass drew. One published
+cutout (`setStageCutout`, from the editor shell, for the scene at the playhead)
+feeds every canvas-side surface: `stageWorldRect()` for the picker raycasts and
+the yield hooks, an r3f `compute` override for outlines and click-to-select
+(`StagePointer`), and a `getBoundingClientRect` proxy on the element
+`TransformControls` maps its own pointers through (`stageViewportElement`). All
+four are identity when no cutout is live, so an unframed scene sees the numbers
+it always saw. A transparent panel and `shape: "none"` render full-bleed, so
+neither publishes a cutout.
 
 Three coordinate spaces are in play:
 
 - **The 3D family needs none.** `TransformControls` owns its own projection and
   hit testing.
-- **World-space 2D items project through the LIVE camera.** Scene text and hero
-  charts take the node's `matrixWorld` and project four corners plus the node
-  origin (which is the rotate and resize pivot), so a box tracks a rig pose, a
-  camera keyframe and a transition. Drags invert by ray-plane intersection at the
-  item's own z, which is exact under any pose. `frameFromQuad` fits the best
-  rotated rectangle: exact whenever the projection is affine (every default
-  framing), a mild approximation under a rolled or heavily tilted rig.
+- **World-space 2D items project through the LIVE camera**, onto the stage
+  viewport. Scene text and hero charts take the node's `matrixWorld` and project
+  four corners plus the node origin (which is the rotate and resize pivot), so a
+  box tracks a rig pose, a camera keyframe and a transition. Drags invert by
+  ray-plane intersection at the item's own z, which is exact under any pose.
+  `frameFromQuad` fits the best rotated rectangle: exact whenever the projection
+  is affine (every default framing), a mild approximation under a rolled or
+  heavily tilted rig.
 - **Panel-space items use a fixed linear map.** The compositor draws the overlay
   panel from the BASE pose, so decorations map their `-1..1` position straight
   onto the stage rect, and panel headlines map world units against
   `format.frame` (`panelToStagePx`). No camera is involved. A panel group is left
   hidden between compositor passes, so the drawn check for panel text stops its
-  ancestor walk at the panel.
-- **Cutout-hosted text is excluded.** It renders into a cutout-sized target at a
-  different `camera.aspect` and is then keyed into the cutout's pixel rect, so the
-  stage camera is not the projection that put it on screen. The Text drill still
-  edits it numerically.
+  ancestor walk at the panel. Overlay-placed media splits between the two by
+  HOST, not by kind: an Overlay-hosted entry (either kind) is panel space, while
+  a Window-hosted one is world content, so it maps onto the cutout rect against
+  the cutout's own format, and the Media layer's guides follow whichever space it
+  stages.
+- **Cutout-hosted text is excluded**, by the scope decision above rather than by
+  the maths: the stage viewport now covers the projection its exclusion was
+  originally written against. The Text drill still edits it numerically.
 
 ## What a drag writes
 
@@ -191,8 +230,8 @@ precision as the inspector's own controls.
 | --- | --- | --- |
 | Object / staged chart | `placement.position,rotationDeg,scale` | The group is read back at pointer-up, so the doc lands exactly what is on screen; scale is uniformised to the furthest-moved axis |
 | Device | `deviceLayout` delta `offset,rotationDeg,scale` when a layout block is live, else `placement` | `committed = authored + (dragged - rendered)`, scale multiplying; 3dp positions, 1dp degrees, 3dp scale, minimum scale 0.01 |
-| Stage image | `images[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges |
-| Overlay image | `images[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges |
+| Stage media | `media[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for clips, `STAGE_MEDIA_SIZE_RANGE`) |
+| Overlay-placed media | `media[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for the Window host, `OVERLAY_MEDIA_SIZE_RANGE`) |
 | Text | `<key>OffsetX/OffsetY`, `<key>Size`, `<key>RotationDeg` | 2dp world units, whole percent (0.01..10 multiplier), 1dp degrees; a neutral value deletes the key so the scene's own layout resurfaces |
 | Hero chart | `chart.style.offset`, `chart.style.scale` | 2dp, clamped to the resolver's own ±20 and 0.2..3, so a drag can never write a value the resolver would silently clamp back |
 | Decoration | `position`, `size`, `rotationDeg` | Size clamped 0.02..1.5 of the frame width |
@@ -212,10 +251,10 @@ box's screen angle, so a tilt the scene itself authored stays out of the sidecar
   canvas. `SceneTab` subscribes, clears the pending commit (even for another
   scene, so an unclaimed drag is dropped rather than landing late) and writes
   once.
-- Overlay images use the same Image-store route as Stage images. Live ticks stay
-  in `previewPlacement`, and pointer-up posts one `pendingCommit`, so changing
-  host never changes the image's history contract.
-- Image motion is neutralised on all mounted editor sides while the Image domain
+- Overlay-placed media uses the same Image-store route as Stage media. Live ticks
+  stay in `previewPlacement`, and pointer-up posts one `pendingCommit`, so
+  changing host never changes the entry's history contract.
+- Media motion is neutralised on all mounted editor sides while the Media domain
   owns the Stage, keeping comparison renders, outlines, hit areas and handles on
   the authored placement. Leaving the domain restores sampled motion immediately.
 - Device motion is neutralised on all mounted editor sides while the Device
@@ -247,7 +286,7 @@ Five independent guards keep gizmos out of exported pixels:
    project, with the matching section open, and never while exporting or in an
    autorun.
 2. **Export state is held before `exportPreamble` clears the selections**
-   (objects, charts, devices, images), so synchronous inspector repair cannot
+   (objects, charts, devices, media), so synchronous inspector repair cannot
    reselect one before frame zero. The lifecycle transition restores inspector
    selection after completion and releases safely on preload failure.
 3. **Layer discipline.** Outline brackets ride `HELPER_LAYER`, which the exporter
@@ -283,13 +322,15 @@ in the tree.
 | Palette, size, restyle | `src/engine/gizmoTokens.ts` (+ `--gizmo-*` in `src/styles.css`) |
 | 3D control seam | `src/engine/SceneGizmo.tsx` |
 | Picker registry, stage camera and rect, capture hide | `src/engine/gizmoRegistry.ts` |
+| Stage viewport (the cutout maths, the r3f compute) | `src/engine/stageViewport.ts`, `StagePointer.tsx` |
 | Outlines and click-to-select | `src/engine/SceneOutline.tsx`, `gizmoOutline.ts`, `gizmoVisibility.ts` |
 | Section map | `src/engine/gizmoSections.ts` |
 | 2D target registry | `src/engine/gizmoTargetRegistry.ts` |
 | 2D layer, geometry, projection | `src/ui/gizmo/Gizmo2D.tsx`, `gizmo2dMath.ts`, `gizmo2dProject.ts` |
 | Routing, modifiers, camera yield | `src/ui/gizmo/gizmoRouting.ts`, `modifierKeys.ts`, `useGizmoYield.ts` |
 | Write helpers | `src/ui/gizmo/gizmoDocWrite.ts`, `textGizmoWrite.ts`, `chartGizmoWrite.ts`, `src/toolkit/device/gizmoCommit.ts` |
-| Image writes | `src/toolkit/media/imageGizmoCommit.ts`, `src/engine/imageEditStore.ts` |
+| Media entries | `src/engine/sceneMedia.ts` (`resolveSceneDocMedia`, `editSceneDocMedia`), `src/toolkit/media/SceneMedia.tsx` |
+| Media writes | `src/toolkit/media/imageGizmoCommit.ts`, `src/engine/imageEditStore.ts` |
 | Hosts | `src/ui/TextGizmo.tsx`, `src/ui/ChartHeroGizmo.tsx`, `src/ui/DecorationGizmo.tsx`, `src/ui/ImageOverlayGizmo.tsx`, `src/toolkit/device/DeviceGizmo.tsx`, `src/toolkit/media/StageImageGizmo.tsx`, `src/toolkit/objects/ObjectPrimitive.tsx`, `src/toolkit/chart/Chart.tsx` |
 
 ## Open edges
@@ -299,5 +340,22 @@ in the tree.
 - If playback slides the world under a parked pointer, the first gesture from
   that pixel can be dropped (never misrouted). Closing it would need a per-frame
   raycast during playback, which is not worth the cost.
-- Layered screenshot and video window keep their own overlays; folding them onto
-  `Gizmo2D` is a later job.
+- Layered screenshot keeps its own overlay; folding it onto `Gizmo2D` is a later
+  job.
+- A Window-hosted clip renders in world space (the floating window the video
+  window always was), so its 2D box is exact under the default camera and drifts
+  under a moved one.
+- A clip's 2D box takes the aspect its doc recorded at pick time, then the native
+  probe, then 16:9, while the render prefers the clip's own intrinsics and, under
+  `window.recording`, the crop's aspect. The two disagree only when a doc records
+  an aspect its source no longer has, or on a cropped recording.
+- The stage viewport carries the projection, not the clip: a pointer over the
+  panel still maps to a world ray (past the viewport's own edges for the r3f
+  compute, which bounds-checks nothing, and inside the margin it adds beyond the
+  cutout for the rect readers). So an item drawn outside the cutout, and
+  therefore keyed out of the picture, stays pickable over the panel. Closing it
+  would mean carrying the drawn rect through every call site purely as a bounds
+  check.
+- The camera path overlay projects with its own recompute
+  (`engine/cameraProject.ts`) against the whole frame, so a free-flight ghost
+  path still draws full-frame in a framed scene.

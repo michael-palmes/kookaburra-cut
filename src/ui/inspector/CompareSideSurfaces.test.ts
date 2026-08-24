@@ -61,7 +61,7 @@ describe("comparison side surfaces (source pin)", () => {
     const drill = section(
       sceneTab,
       'if (drillIn === "compare.edit"',
-      'if (drillIn === "legacyImage.edit"',
+      "if (drillIn === LEGACY_MEDIA_DRILL_ROUTE",
     );
 
     expect(drill).toContain(

@@ -4,7 +4,17 @@ import { useEditorStore } from "../store/editorStore";
 import type { FormatInfo } from "../toolkit/types";
 import { FormatContext } from "./sceneContext";
 
-export type AspectName = "16:9" | "9:16" | "1:1" | "4:5" | "5:4" | "3:2" | "2:3";
+/** Ids are slug-safe (the export path runs `name.replace(":", "x")` through the Rust slug check), so the device-panel pair reads as a slug, not a ratio; `aspectLabel()` owns what the UI shows. */
+export type AspectName =
+  | "16:9"
+  | "9:16"
+  | "1:1"
+  | "4:5"
+  | "5:4"
+  | "3:2"
+  | "2:3"
+  | "phone"
+  | "phone-landscape";
 
 /** Canonical export/preview frame rate: export steps the clock at `tMs = frame * 1000 / FPS` and embedded `VideoClip`s pre-extract to a matching CFR sequence, so one frame index maps 1:1 to one source frame. Changing it re-baselines determinism, re-run Verify ×2. */
 export const FPS = 60;
@@ -44,9 +54,22 @@ export const FORMATS: Record<AspectName, FormatSpec> = {
   // Photographic pair (2026-07), 2160 short edge like everything above; feature-scoped baselines.
   "3:2": { name: "3:2", width: 3240, height: 2160 },
   "2:3": { name: "2:3", width: 2160, height: 3240 },
+  // Device pair (2026-08): the iPhone 17 Pro panel at its native 1206x2622 (exactly 437:201), deliberately below the 2160 short edge; feature-scoped baselines.
+  phone: { name: "phone", width: 1206, height: 2622 },
+  "phone-landscape": { name: "phone-landscape", width: 2622, height: 1206 },
 };
 
-/** The standing determinism matrix: Verify's "all" and phase-close gates stay these three; 4:5 / 3:2 / 2:3 baselines are feature-scoped (launch + tour anchors). */
+const ASPECT_LABELS: Partial<Record<AspectName, string>> = {
+  phone: "Phone",
+  "phone-landscape": "Phone Landscape",
+};
+
+/** What every aspect surface shows: the pretty name for the device pair, the ratio itself for the ratio-style names. */
+export function aspectLabel(name: AspectName): string {
+  return ASPECT_LABELS[name] ?? name;
+}
+
+/** The standing determinism matrix: Verify's "all" and phase-close gates stay these three; 4:5 / 3:2 / 2:3 and the phone pair are feature-scoped (launch + tour anchors). */
 export const STANDING_ASPECTS: AspectName[] = ["16:9", "9:16", "1:1"];
 
 /** Safe-area inset as a fraction of the smaller (world) dimension. */

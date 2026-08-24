@@ -5,8 +5,11 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 export interface EditSource {
   id: string;
   rel: string;
+  /** A still image joins the timeline as freeze clips; absent = "video" (documents written before images were editable). */
+  kind?: "video" | "image";
   width: number;
   height: number;
+  /** Images probe as 0 fps / 0 ms: they have no span, only the hold their clips carry. */
   fps: number;
   durationMs: number;
 }
@@ -18,7 +21,7 @@ export interface EditClip {
   outMs: number;
   speed: number;
   startMs: number;
-  /** Freeze frame: hold the source frame at `inMs` (== `outMs`) for this long on the timeline. */
+  /** Freeze frame: hold the source frame at `inMs` (== `outMs`) for this long on the timeline. Every clip of an image source carries one. */
   holdMs?: number;
 }
 

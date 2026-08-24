@@ -2,7 +2,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type AspectName, FPS } from "../engine/format";
+import { type AspectName, aspectLabel, FPS } from "../engine/format";
+import { nameCollision, nameCollisionWarning } from "../engine/nameCollision";
 import type { LoadedProject } from "../engine/project";
 import {
   deleteExportPreset,
@@ -172,6 +173,8 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
     () => groupPresets(railPresets(BUNDLED_EXPORT_PRESETS), userRows, search, aspectFilter),
     [userRows, search, aspectFilter],
   );
+
+  const userSlugs = useMemo(() => userRows.map((r) => r.id.slice(3)), [userRows]);
 
   const selectedRow: PresetRow | null = useMemo(() => {
     if (selectedId === KOOKABURRA_STANDARD_ID || selectedId === CUSTOM_ID) return null;
@@ -394,7 +397,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
             onClick={() => setAspect(a)}
           >
             <AspectIcon name={a} />
-            {a}
+            {aspectLabel(a)}
           </button>
         ))}
       </fieldset>
@@ -526,6 +529,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                 saveAs={saveAs}
                 setSaveAs={setSaveAs}
                 onSave={savePreset}
+                userSlugs={userSlugs}
                 hasAudio={!!project.audio}
                 loudnessWarning={loudnessWarning}
               />
@@ -565,7 +569,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                   aria-pressed={aspectFilter === a}
                   onClick={() => setAspectFilter(aspectFilter === a ? null : a)}
                 >
-                  {a}
+                  {aspectLabel(a)}
                 </button>
               ))}
             </fieldset>
@@ -632,6 +636,8 @@ interface CustomPanelProps {
   saveAs: { name: string; description: string } | null;
   setSaveAs: (s: { name: string; description: string } | null) => void;
   onSave: () => void;
+  /** Every saved user-preset slug, so Save-as warns before it overwrites one. */
+  userSlugs: readonly string[];
   hasAudio: boolean;
   loudnessWarning: string | null;
 }
@@ -643,6 +649,7 @@ function CustomPanel({
   saveAs,
   setSaveAs,
   onSave,
+  userSlugs,
   hasAudio,
   loudnessWarning,
 }: CustomPanelProps) {
@@ -654,6 +661,18 @@ function CustomPanel({
   };
   const videotoolbox = isVideotoolbox(draft.codec);
   const prores = isProRes(draft.codec);
+  const save = nameCollision(saveAs?.name ?? "", userSlugs, { slugify: slugifyPresetName });
+  // Two-step replace, the house pattern the delete button already uses.
+  const [confirmReplace, setConfirmReplace] = useState(false);
+  useEffect(() => {
+    if (!confirmReplace) return;
+    const timer = window.setTimeout(() => setConfirmReplace(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [confirmReplace]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deliberate disarm as the name is retyped
+  useEffect(() => setConfirmReplace(false), [saveAs?.name]);
+  let saveLabel = "Save preset";
+  if (save.collides) saveLabel = confirmReplace ? "Really replace?" : "Replace preset…";
 
   return (
     <>
@@ -966,12 +985,28 @@ function CustomPanel({
             value={saveAs.description}
             onChange={(e) => setSaveAs({ ...saveAs, description: e.target.value })}
           />
+          {save.collides && (
+            <p className="export-desc export-warn">
+              {nameCollisionWarning("preset", save.slug)} Saving replaces it.
+            </p>
+          )}
           <div className="export-actions">
             <button type="button" className="btn" onClick={() => setSaveAs(null)}>
               Cancel
             </button>
-            <button type="button" className="btn" onClick={onSave}>
-              Save preset
+            <button
+              type="button"
+              className={`btn${save.collides && confirmReplace ? " export-danger" : ""}`}
+              onClick={() => {
+                if (save.collides && !confirmReplace) {
+                  setConfirmReplace(true);
+                  return;
+                }
+                setConfirmReplace(false);
+                onSave();
+              }}
+            >
+              {saveLabel}
             </button>
           </div>
         </div>

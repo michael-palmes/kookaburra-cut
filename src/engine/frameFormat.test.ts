@@ -1,8 +1,38 @@
 import { describe, expect, it } from "vitest";
+import type { FrameSpec } from "../toolkit/frame/types";
 import { FORMATS } from "./format";
-import { resolveCutoutRender } from "./frameFormat";
+import { framesThroughCutout, resolveCutoutRender } from "./frameFormat";
+import { frameWorldCutout } from "./stageViewport";
 
 const rounded = { cutout: { shape: "rounded-rect" } } as const;
+
+describe("framesThroughCutout", () => {
+  it("follows the shape and nothing else, so every panel fill composes the same world", () => {
+    const fills: FrameSpec["background"][] = [
+      undefined,
+      "accent",
+      { type: "color", color: "#ffffff" },
+      { type: "gradient", gradient: "backdrop" },
+      { type: "image", src: "assets/panel.png" },
+      { type: "transparent" },
+    ];
+    for (const background of fills) {
+      expect(framesThroughCutout({ cutout: rounded.cutout, background })).toBe(true);
+      expect(framesThroughCutout({ cutout: { shape: "none" }, background })).toBe(false);
+    }
+  });
+
+  it("is false with no frame at all", () => {
+    expect(framesThroughCutout(undefined)).toBe(false);
+  });
+
+  it("agrees with the gizmo seam's cutout on every fill", () => {
+    for (const background of [undefined, { type: "transparent" } as const]) {
+      const frame: FrameSpec = { cutout: rounded.cutout, background };
+      expect(frameWorldCutout(frame, 16 / 9) !== null).toBe(framesThroughCutout(frame));
+    }
+  });
+});
 
 describe("resolveCutoutRender", () => {
   it("gives the scene the cutout's aspect, not the frame's", () => {
@@ -33,7 +63,17 @@ describe("resolveCutoutRender", () => {
   });
 
   it("keeps the cutout strictly inside the output frame", () => {
-    for (const name of ["16:9", "9:16", "1:1", "4:5", "5:4", "3:2", "2:3"] as const) {
+    for (const name of [
+      "16:9",
+      "9:16",
+      "1:1",
+      "4:5",
+      "5:4",
+      "3:2",
+      "2:3",
+      "phone",
+      "phone-landscape",
+    ] as const) {
       const { pixelRect } = resolveCutoutRender(FORMATS[name], rounded);
       expect(pixelRect.x).toBeGreaterThanOrEqual(0);
       expect(pixelRect.y).toBeGreaterThanOrEqual(0);

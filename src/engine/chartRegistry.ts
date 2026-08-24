@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-/** Which mounted scenes consume the sidecar chart block via `useSceneChart` (the videoWindowRegistry pattern): a host-mounted `ChartFallback` draws the chart itself only when the scene's TSX doesn't. Count-based, registered from a layout effect so the fallback's render gate settles before any frame paints. */
+/** Which mounted scenes consume the sidecar chart block via `useSceneChart` (the sceneMediaRegistry pattern): a host-mounted `ChartFallback` draws the chart itself only when the scene's TSX doesn't. Count-based, registered from a layout effect so the fallback's render gate settles before any frame paints. */
 interface ChartRegistryState {
   consumers: Record<number, number>;
   register: (index: number) => void;

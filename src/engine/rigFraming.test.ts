@@ -5,7 +5,7 @@ import {
   frameContentPose,
   stagedContentBounds,
 } from "./rigFraming";
-import type { SceneDocRigPose } from "./sceneDocSchema";
+import type { SceneDocMediaSpec, SceneDocRigPose } from "./sceneDocSchema";
 
 const box = (w: number, h: number, d = 0): ContentBounds => ({
   min: [-w / 2, -h / 2, -d / 2],
@@ -53,9 +53,21 @@ describe("frameContentDistance", () => {
 describe("stagedContentBounds", () => {
   const frame = { width: 10, height: 5 };
 
-  it("follows a video window's placement offset, resolved from frame fractions", () => {
-    const centred = stagedContentBounds({ videoWindow: {} }, frame);
-    const moved = stagedContentBounds({ videoWindow: { offset: [0.25, -0.2] } }, frame);
+  const windowed = (position: [number, number]): SceneDocMediaSpec[] => [
+    {
+      id: "vid1",
+      kind: "video",
+      src: "assets/clip.mp4",
+      host: "overlay",
+      stage: { position: [0, 0, 0], size: 5.3, rotationDeg: [0, 0, 0] },
+      overlay: { position, size: 0.72, rotationDeg: 0, shape: "none", layer: "below" },
+      window: { radius: "macos" },
+    },
+  ];
+
+  it("follows a video's placement, resolved from frame fractions on the Overlay host", () => {
+    const centred = stagedContentBounds({ media: windowed([0, 0]) }, frame);
+    const moved = stagedContentBounds({ media: windowed([0.5, -0.4]) }, frame);
     expect((moved.min[0] + moved.max[0]) / 2 - (centred.min[0] + centred.max[0]) / 2).toBeCloseTo(
       2.5,
     );
@@ -64,10 +76,43 @@ describe("stagedContentBounds", () => {
     );
   });
 
-  it("treats a malformed offset as centred", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: exercising the degrade path
-    const bad = stagedContentBounds({ videoWindow: { offset: [Number.NaN, 0] as any } }, frame);
-    expect(bad).toEqual(stagedContentBounds({ videoWindow: {} }, frame));
+  it("reads a legacy videoWindow through the derived media view", () => {
+    const legacy = stagedContentBounds(
+      {
+        videoWindow: {
+          media: { src: "assets/clip.mp4" },
+          radius: "macos",
+          offset: [0.25, -0.2],
+        },
+      },
+      frame,
+    );
+    expect(legacy).toEqual(stagedContentBounds({ media: windowed([0.5, -0.4]) }, frame));
+  });
+
+  it("ignores stills, which a reframe never chased", () => {
+    const still = stagedContentBounds(
+      {
+        media: [
+          {
+            id: "img1",
+            kind: "image",
+            src: "assets/hero.png",
+            host: "stage",
+            stage: { position: [4, 4, 0], size: 1, rotationDeg: [0, 0, 0] },
+            overlay: {
+              position: [0, 0],
+              size: 0.25,
+              rotationDeg: 0,
+              shape: "none",
+              layer: "above",
+            },
+          },
+        ],
+      },
+      frame,
+    );
+    expect(still).toEqual(stagedContentBounds(undefined, frame));
   });
 });
 

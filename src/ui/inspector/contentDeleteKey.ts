@@ -8,7 +8,7 @@ export type ContentDeleteRoute = "drill" | "overview" | null;
 /** Drill families whose header carries a trash AND whose gizmo does not bind Delete itself; the compare, video window and stack drills have no gizmo to select from. */
 const DELETABLE_DRILL_DOMAINS = new Set<GizmoDomain>([
   "devices",
-  "images",
+  "media",
   "objects",
   "chart",
   "text",
