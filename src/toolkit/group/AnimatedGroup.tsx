@@ -12,6 +12,7 @@ import {
   type TextDirection,
   type TextPresetName,
   textAnimationEndMs,
+  textAnimationWindowToMs,
   textPresetHasMotion,
 } from "../text/presets";
 import type { EaseName, V3 } from "../types";
@@ -81,6 +82,8 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
     props.textKey,
     props.ignoreSceneMotion === true,
   );
+  // The window `to` carries the in duration; the effective end (delay included) is what present timing holds for.
+  const windowTo = anim ? textAnimationWindowToMs(from, to, anim) : to;
   const effectiveTo = anim ? textAnimationEndMs(from, to, anim) : to;
   const hasOut = anim !== null && textPresetHasMotion(anim.outPreset) && outAt !== undefined;
   const animated = anim !== null && (textPresetHasMotion(anim.preset) || hasOut);
@@ -99,7 +102,7 @@ export function AnimatedGroup(props: AnimatedGroupProps) {
   }
 
   const em = props.em ?? DEFAULT_GROUP_EM;
-  const timing: TextAnimTiming = { anim, from, to: effectiveTo, outAt };
+  const timing: TextAnimTiming = { anim, from, to: windowTo, outAt };
   const sample = sampleTextUnit(timing, 0, localMs);
 
   // Capability is mount-stable since the resolved animation cannot change without a scene remount.

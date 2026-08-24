@@ -257,6 +257,10 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
     staggerMs: isNum(v.staggerMs) ? v.staggerMs : 0,
   };
   if (v.stagger === "char" || v.stagger === "word") spec.stagger = v.stagger;
+  if (isNum(v.delayMs)) spec.delayMs = v.delayMs;
+  else if (v.delayMs !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textAnimation.delayMs", dropped`);
+  }
   if (isNum(v.startScale)) spec.startScale = v.startScale;
   else if (v.startScale !== undefined) {
     console.warn(`[theme] ${source}: invalid "textAnimation.startScale" — dropped`);

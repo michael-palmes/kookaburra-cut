@@ -312,6 +312,8 @@ export interface TextAnimationSpec {
   staggerMs: number;
   /** Stagger granularity when staggerMs > 0 (default "word"). */
   stagger?: "char" | "word";
+  /** Hold before the in starts, ms (clamped to ≥ 0 at resolve; the out never shifts). */
+  delayMs?: number;
   /** fade-scale: starting scale, landing at 1 (clamped 0.05-4 at resolve; default 0.8). */
   startScale?: number;
   /** fade-scale: sweep the soft white shine band once during the scale-in. */

@@ -15,6 +15,27 @@ export const TEXT_PRESET_NAMES = [
   "twist-scale",
   // Per-character 3D scatter entrance (Michael's reference round).
   "scatter-scale",
+  // The wave-2 creative pack (motion-pack v2 per-unit fields).
+  "tracking",
+  "slam",
+  "dolly",
+  "chromatic",
+  "line-stretch",
+  "highlight-wipe",
+  "rise-mask",
+  "word-cycle",
+  "ribbon",
+  "stand-up",
+  "spring-pop",
+  "spotlight",
+  "underline-draw",
+  "orbit",
+  "weight-build",
+  "develop",
+  "flip-cascade",
+  "converge",
+  "glint-wipe",
+  "vapor",
 ] as const;
 /** Inspector “None”: fully static, distinct from legacy `none`'s plain linear reveal. */
 export const STATIC_TEXT_PRESET = "static" as const;
@@ -26,6 +47,60 @@ export function isTextPresetName(name: string): name is TextPresetName {
 
 export function textPresetHasMotion(name: TextPresetName): boolean {
   return name !== "none" && name !== STATIC_TEXT_PRESET;
+}
+
+/** The wave-2 pack, in TEXT_PRESET_NAMES order: every one samples v2 per-unit fields, per-unit hashing/slotting, companion quads or the accent shine tint, none of which the legacy block path carries. */
+const SHADER_PATH_PRESETS: ReadonlySet<TextPresetName> = new Set([
+  "tracking",
+  "slam",
+  "dolly",
+  "chromatic",
+  "line-stretch",
+  "highlight-wipe",
+  "rise-mask",
+  "word-cycle",
+  "ribbon",
+  "stand-up",
+  "spring-pop",
+  "spotlight",
+  "underline-draw",
+  "orbit",
+  "weight-build",
+  "develop",
+  "flip-cascade",
+  "converge",
+  "glint-wipe",
+  "vapor",
+]);
+
+/** Whether the renderer must force the stagger shader path even at granularity null (mounting one whole-block unit); legacy presets stay on their original paths verbatim. */
+export function presetNeedsShaderPath(name: TextPresetName): boolean {
+  return SHADER_PATH_PRESETS.has(name);
+}
+
+/** Wave-2 forced default granularities (the scatter-scale precedent): applied only when nothing else chose, so no legacy input resolves differently. */
+const FORCED_CHAR_PRESETS: ReadonlySet<TextPresetName> = new Set([
+  "tracking",
+  "orbit",
+  "develop",
+  "flip-cascade",
+  "converge",
+  "vapor",
+]);
+const FORCED_WORD_PRESETS: ReadonlySet<TextPresetName> = new Set([
+  "dolly",
+  "highlight-wipe",
+  "rise-mask",
+  "word-cycle",
+  "ribbon",
+  "stand-up",
+  "spring-pop",
+  "spotlight",
+]);
+function forcedGranularity(name: TextPresetName): StaggerGranularity | null {
+  if (FORCED_CHAR_PRESETS.has(name)) return "char";
+  if (FORCED_WORD_PRESETS.has(name)) return "word";
+  return null;
 }
 
 /** Stagger granularities: words split on whitespace, chars are non-whitespace characters; paragraph granularities (spelled through `delivery`, never the public `stagger` prop) split on `\n` / blank lines and walk Y-key unit boundaries. */
@@ -76,6 +151,123 @@ export const SCATTER_FADE_P = 0.25;
 /** Per-unit duration multiplier range (different speeds per character). */
 export const SCATTER_RATE_MIN = 0.7;
 
+// ── Wave-2 contract constants (golden-pinned; unitHash01 salts: 0-2 scatter, 3 dolly depth, 4 develop order, 5 vapor phase, 6 vapor rate) ──────────────────────
+/** tracking: fraction of each glyph's centre offset converged at entry. */
+export const TRACK_TIGHTEN = 0.8;
+/** tracking: per-glyph SDF soften at entry, em. */
+export const TRACK_SOFT_EM = 0.18;
+/** tracking: extra outward drift fraction on the out. */
+export const TRACK_SPREAD = 0.35;
+/** slam: entry scale, dropping to 1. */
+export const SLAM_START_SCALE = 2.8;
+/** slam: soft-focus depth at entry, em. */
+export const SLAM_SOFT_EM = 0.3;
+/** slam: fraction of the in spent fading in. */
+export const SLAM_FADE_P = 0.4;
+/** slam: landing compression depth (a closed-form sin bump, back to 1 at rest). */
+export const SLAM_OVERSHOOT = 0.025;
+/** slam: progress where the landing bump begins. */
+export const SLAM_BUMP_START = 0.7;
+/** slam: out scale-up target. */
+export const SLAM_OUT_SCALE = 1.4;
+/** dolly: entry depth behind the layout plane, em. */
+export const DOLLY_EM = 3;
+/** dolly: hashed per-word extra depth, em. */
+export const DOLLY_JITTER_EM = 0.8;
+/** dolly: soft-focus depth at entry, em. */
+export const DOLLY_SOFT_EM = 0.2;
+/** dolly: out travel past the camera, em. */
+export const DOLLY_NEAR_EM = 2.5;
+/** chromatic: entry R/B split, em. */
+export const CHROMA_EM = 0.12;
+/** line-stretch: the closed line's vertical and horizontal scales. */
+export const LINE_SCALE_Y0 = 0.04;
+export const LINE_SCALE_X0 = 0.65;
+/** line-stretch: fraction of the in spent fading in. */
+export const LINE_FADE_P = 0.5;
+/** line-stretch: out progress where the collapsed line starts fading. */
+export const LINE_OUT_FADE_P = 0.5;
+/** rise-mask: rise distance, em. */
+export const RISE_MASK_EM = 0.9;
+/** rise-mask: fraction of the in spent fading in. */
+export const RISE_MASK_FADE_P = 2 / 3;
+/** rise-mask: out exit distance as a fraction of the entry rise. */
+export const RISE_MASK_EXIT = 0.8;
+/** rise-mask: out progress where the trailing fade starts. */
+export const RISE_MASK_OUT_FADE_P = 0.5;
+/** word-cycle: the pop scale each word enters from. */
+export const WORD_CYCLE_POP_SCALE = 0.94;
+/** word-cycle: fraction of a slot spent popping in (and out again). */
+export const WORD_CYCLE_POP_P = 0.25;
+/** ribbon: entry turn about Y, radians. */
+export const RIBBON_RAD = (75 * Math.PI) / 180;
+/** ribbon: toward-camera bow at mid-turn, em. */
+export const RIBBON_BOW_EM = 0.4;
+/** stand-up: entry tip from lying flat, radians. */
+export const STAND_RAD = (88 * Math.PI) / 180;
+/** stand-up: fraction of the in spent fading in. */
+export const STAND_FADE_P = 0.35;
+/** stand-up: tiny settle drop, em. */
+export const STAND_SETTLE_EM = 0.06;
+/** spring-pop: entry scale for the damped spring. */
+export const SPRING_START_SCALE = 0.6;
+/** spring-pop: damping (first overshoot lands ≈ 1.059). */
+export const SPRING_DAMP = 4.8;
+/** spring-pop: angular rate over p; 2.5π parks cos at 0 so rest is exactly 1. */
+export const SPRING_FREQ = 2.5 * Math.PI;
+/** spring-pop: fraction of the in spent fading in. */
+export const SPRING_FADE_P = 0.3;
+/** spring-pop: out anticipation bump height and window. */
+export const SPRING_OUT_BUMP = 0.05;
+export const SPRING_OUT_BUMP_P = 0.35;
+/** spotlight: resting alpha for words outside the emphasis walk. */
+export const SPOT_DIM = 0.35;
+/** spotlight: scale lift at the walk's peak. */
+export const SPOT_SCALE = 0.04;
+/** underline-draw: fraction of the in the rule draws over. */
+export const UNDERLINE_DRAW_P = 0.4;
+/** underline-draw: in progress where the text ramp starts. */
+export const UNDERLINE_TEXT_START_P = 0.3;
+/** underline-draw: text entry rise, em. */
+export const UNDERLINE_RISE_EM = 0.25;
+/** underline-draw: fraction of the out the rule re-draws over. */
+export const UNDERLINE_OUT_REDRAW_P = 0.4;
+/** underline-draw: out progress where the rule's wipe-off begins. */
+export const UNDERLINE_OUT_WIPE_P = 0.7;
+/** underline-draw: fraction of the out the text sink-fade spans. */
+export const UNDERLINE_OUT_TEXT_P = 0.7;
+/** orbit: arc sweep about the block centre, radians (sign follows direction). */
+export const ORBIT_SWEEP_RAD = (140 * Math.PI) / 180;
+/** orbit: fraction of the in spent fading in. */
+export const ORBIT_FADE_P = 0.25;
+/** weight-build: the hairline start's SDF weight deficit, em. */
+export const WEIGHT_EM = 0.045;
+/** weight-build: fraction of the in spent fading in. */
+export const WEIGHT_FADE_P = 0.3;
+/** develop: entry SDF soften, em (reveal order hashes over the stagger budget). */
+export const DEVELOP_SOFT_EM = 0.35;
+/** flip-cascade: entry flip from face-down, radians. */
+export const FLIP_RAD = Math.PI / 2;
+/** flip-cascade: fraction of the in spent fading in. */
+export const FLIP_FADE_P = 0.2;
+/** flip-cascade: mid-flip dip, em. */
+export const FLIP_DIP_EM = 0.08;
+/** converge: entry offset toward the near screen edge, em. */
+export const CONVERGE_EM = 8;
+/** converge: peak streak stretch added to scaleX mid-travel. */
+export const CONVERGE_STREAK = 1.4;
+/** converge: fraction of the in spent fading in. */
+export const CONVERGE_FADE_P = 0.2;
+/** glint-wipe: the accent leading edge, tighter and brighter than the soft shine (the material writer keys these off the preset name). */
+export const GLINT_HALF_W = 0.06;
+export const GLINT_INTENSITY = 0.85;
+/** vapor: rise, wobble amplitude and soften, em. */
+export const VAPOR_RISE_EM = 1.2;
+export const VAPOR_WOBBLE_EM = 0.15;
+export const VAPOR_SOFT_EM = 0.5;
+/** vapor: per-char duration multiplier floor (slight hashed rate jitter). */
+export const VAPOR_RATE_MIN = 0.85;
+
 /** Deterministic per-unit randomness: a pure integer avalanche hash → [0, 1), never Math.random (same unit, same salt, same value forever, the seeded `engine/rng`/PCG-glitch precedent). Golden-pinned. */
 export function unitHash01(index: number, salt: number): number {
   let h = (Math.imul(index + 1, 0x9e3779b9) ^ Math.imul(salt + 1, 0x85ebca6b)) >>> 0;
@@ -102,7 +294,7 @@ export interface TextPresetParams {
   twistStartScale?: number;
   /** fade-scale and twist-scale: sweep the soft white shine band once, during the scale-in only. */
   shine: boolean;
-  /** twist-scale: +1 = from-left, −1 = from-right. */
+  /** twist-scale and orbit (the sweep sign): +1 = from-left, −1 = from-right. */
   twistDir: 1 | -1;
 }
 
@@ -115,6 +307,8 @@ export interface ResolvedTextAnimation {
   staggerMs: number;
   /** null = whole-block (no stagger). */
   granularity: StaggerGranularity | null;
+  /** Hold before the in starts, ms; present only when > 0 (0 and absent are identical). The out never shifts. */
+  delayMs?: number;
   /** Absent keeps the primitive's authored `from` → `to` window. */
   durationMs?: number;
   /** Absent keeps the selected preset's tuned travel distance. */
@@ -128,6 +322,7 @@ export interface ResolveTextAnimationProps {
   ease?: string;
   stagger?: StaggerGranularity;
   staggerMs?: number;
+  delayMs?: number;
   startScale?: number;
   shine?: boolean;
   direction?: string;
@@ -151,6 +346,16 @@ function clampStartScale(v: number): number {
   if (clamped !== v && !warnedScales.has(v)) {
     warnedScales.add(v);
     console.warn(`[text] startScale ${v} out of range — clamped to ${clamped}`);
+  }
+  return clamped;
+}
+
+const warnedDelays = new Set<number>();
+function clampDelayMs(v: number): number {
+  const clamped = Number.isFinite(v) ? Math.max(0, v) : 0;
+  if (clamped !== v && !warnedDelays.has(v)) {
+    warnedDelays.add(v);
+    console.warn(`[text] delayMs ${v} out of range, clamped to ${clamped}`);
   }
   return clamped;
 }
@@ -182,6 +387,7 @@ export function resolveTextAnimation(
     props.ease !== undefined ||
     props.stagger !== undefined ||
     props.staggerMs !== undefined ||
+    props.delayMs !== undefined ||
     props.startScale !== undefined ||
     props.shine !== undefined ||
     props.direction !== undefined ||
@@ -205,19 +411,26 @@ export function resolveTextAnimation(
   } else if (specDelivery !== undefined) granularity = specDelivery;
   // scatter-scale is inherently per-character; when nothing else chose, default to char (a new preset name, so no legacy input can reach this branch differently).
   else if (preset === "scatter-scale") granularity = "char";
-  else granularity = staggerMs > 0 && preset !== "none" && preset !== "static" ? "word" : null;
+  // Wave-2 forced defaults; the out is consulted too (vapor is designed as an out), still unreachable by legacy inputs.
+  else if (forcedGranularity(preset) ?? forcedGranularity(outPreset)) {
+    granularity = forcedGranularity(preset) ?? forcedGranularity(outPreset);
+  } else granularity = staggerMs > 0 && preset !== "none" && preset !== "static" ? "word" : null;
   // A granularity request without any delay configured gets the granularity's default, unless the scene explicitly passed staggerMs={0}, which wins.
   if (granularity && staggerMs === 0 && props.staggerMs === undefined) {
     staggerMs = DEFAULT_STAGGER_MS[granularity];
   }
   const rawStart = props.startScale ?? spec?.startScale;
   const direction = props.direction ?? spec?.direction;
+  const rawDelay = props.delayMs ?? spec?.delayMs;
+  const delayMs = rawDelay === undefined ? undefined : clampDelayMs(rawDelay);
   return {
     preset,
     outPreset,
     ease: props.ease ?? spec?.ease ?? theme.motion.easings.standard,
     staggerMs,
     granularity: preset === "none" || preset === "static" ? null : granularity,
+    // 0 resolves to absent, so a written-then-zeroed delay stays byte-identical to never-set.
+    ...(delayMs !== undefined && delayMs > 0 ? { delayMs } : {}),
     ...(spec?.durationMs !== undefined ? { durationMs: spec.durationMs } : {}),
     ...(spec?.distance !== undefined ? { distance: spec.distance } : {}),
     params: {
@@ -250,13 +463,23 @@ export function resolveTextAnimationWithDoc(
   return resolveTextAnimation(force ? {} : props, theme, spec);
 }
 
-/** The effective end of a preset's in window. Absent duration returns the authored value exactly. */
-export function textAnimationEndMs(
+/** The in window's duration reference (what `TextAnimTiming.to` carries): the authored end unless durationMs overrides it. A resolved delayMs is NOT included, `sampleTextUnit` shifts the start itself. */
+export function textAnimationWindowToMs(
   from: number,
   authoredTo: number,
   anim: ResolvedTextAnimation,
 ): number {
   return anim.durationMs === undefined ? authoredTo : from + anim.durationMs;
+}
+
+/** The effective end of a preset's in: the window end shifted by any resolved delayMs (the in genuinely lands that much later). Absent duration and delay return the authored value exactly. */
+export function textAnimationEndMs(
+  from: number,
+  authoredTo: number,
+  anim: ResolvedTextAnimation,
+): number {
+  const end = textAnimationWindowToMs(from, authoredTo, anim);
+  return anim.delayMs === undefined ? end : end + anim.delayMs;
 }
 
 /** Whether a primitive's props configure its own animation, exactly the resolver's props-only "configured" test (what the coded-motion registry reports). */
@@ -267,6 +490,7 @@ export function hasOwnAnimationProps(props: ResolveTextAnimationProps): boolean 
     props.ease !== undefined ||
     props.stagger !== undefined ||
     props.staggerMs !== undefined ||
+    props.delayMs !== undefined ||
     props.startScale !== undefined ||
     props.shine !== undefined ||
     props.direction !== undefined ||
@@ -277,7 +501,7 @@ export function hasOwnAnimationProps(props: ResolveTextAnimationProps): boolean 
 /** Float32-safe "past every glyph" sentinel for the last unit's decision edge. */
 export const EDGE_SENTINEL = 1e30;
 
-/** The animation window: `from`→`to` plays the in preset; `outAt` (optional) starts the out. */
+/** The animation window: `from`→`to` plays the in preset (a resolved delayMs holds the pre-entry state that long after `from`, then the in plays over the same `to − from` duration); `outAt` (optional) starts the out and never shifts. */
 export interface TextAnimTiming {
   anim: ResolvedTextAnimation;
   from: number;
@@ -302,29 +526,57 @@ export interface TextUnitSample {
   rotZRad: number;
   /** scatter-scale: z offset toward the camera, in em (0 elsewhere). */
   dzEm: number;
+  // ── Motion-pack v2 per-unit fields, all NEUTRAL defaults so legacy presets ship verbatim ──
+  /** Rotation about the unit's X axis, radians (positive tips the top away from camera). */
+  rotXRad: number;
+  /** Anisotropic scale multipliers, composed with `scale`. */
+  scaleX: number;
+  scaleY: number;
+  /** Hard-clip the unit to its FINAL layout bounds while it moves (rise-mask's baseline mask). */
+  clipFinal: boolean;
+  /** 0 = base fill, 1 = accent colour (spotlight's walking emphasis). */
+  colorMix: number;
+  /** SDF weight offset in em (+ bolder, − thinner; weight-build's fake variable font). */
+  weightEm: number;
+  /** Per-unit SDF edge soften in em (develop/vapor; distinct from the block outlineBlur halo). */
+  softEm: number;
+  /** Chromatic split offset in em (drives the tinted R/B echo layers; 0 = off). */
+  chromaEm: number;
+  /** Accent highlight block coverage over the unit, [left, right] 0..1 ([0, 0] = no block). */
+  highlight: readonly [number, number];
 }
 
-/** Optional per-unit geometry for sampling: lets scatter-scale spread its random delays over the real unit count and derive the element-tilt drift from the unit's centre (em, relative to the ELEMENT centre); absent = one whole-block unit. */
+/** Optional per-unit geometry for sampling: `count` spreads scatter/develop's hashed delays over the real unit count and slots word-cycle/spotlight's walks; `unitCenterEm` (em, relative to the ELEMENT centre) seeds the scatter tilt drift and tracking/orbit/converge/word-cycle's centre-relative moves; absent = one whole-block unit. */
 export interface ScatterSampleContext {
   count: number;
   unitCenterEm?: readonly [number, number];
 }
 
 const FULL_SWEEP: readonly [number, number] = [0, 1];
+const HIGHLIGHT_OFF: readonly [number, number] = [0, 0];
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/** Sample unit `unitIndex` at local scene time `localMs`: unit i's window is the block's window shifted by `i × staggerMs` (each unit keeps the full in duration, so the last unit finishes `(units−1) × staggerMs` after `to`); scatter-scale replaces the ordered delay with a hashed one spread over the same budget and jitters each unit's duration, pure functions of the unit index, so preview and export agree. */
+/** highlight-wipe at progress `t`: the accent block grows over the word (phase 1), then its left edge chases right, revealing text where it has passed (phase 2). */
+function highlightWipeAt(t: number): { l: number; r: number; reveal: number } {
+  if (t >= 1) return { l: 0, r: 0, reveal: 1 };
+  if (t < 0.5) return { l: 0, r: 2 * t, reveal: 0 };
+  return { l: 2 * t - 1, r: 1, reveal: 2 * t - 1 };
+}
+
+/** Sample unit `unitIndex` at local scene time `localMs`: unit i's window is the block's window shifted by `i × staggerMs` (each unit keeps the full in duration, so the last unit finishes `(units−1) × staggerMs` after `to`); a resolved delayMs shifts every in window (composing additively with the stagger) while the out stays on `outAt`; scatter-scale replaces the ordered delay with a hashed one spread over the same budget and jitters each unit's duration (develop hashes only the delay, vapor only the duration), pure functions of the unit index, so preview and export agree. */
 export function sampleTextUnit(
   timing: TextAnimTiming,
   unitIndex: number,
   localMs: number,
   ctx?: ScatterSampleContext,
 ): TextUnitSample {
-  const { anim, from, to, outAt } = timing;
-  const durationMs = Math.max(1, to - from);
+  const { anim, to, outAt } = timing;
+  const durationMs = Math.max(1, to - timing.from);
+  // delayMs holds the pre-entry state: the in start shifts, the out (outAt) never does.
+  const from = anim.delayMs === undefined ? timing.from : timing.from + anim.delayMs;
   const scattering = anim.preset === "scatter-scale" || anim.outPreset === "scatter-scale";
   let delay = unitIndex * anim.staggerMs;
   let unitDurationMs = durationMs;
@@ -333,6 +585,11 @@ export function sampleTextUnit(
     delay = unitHash01(unitIndex, 0) * spread;
     unitDurationMs =
       durationMs * (SCATTER_RATE_MIN + (1 - SCATTER_RATE_MIN) * unitHash01(unitIndex, 1));
+  } else if (anim.preset === "develop" || anim.outPreset === "develop") {
+    delay = unitHash01(unitIndex, 4) * Math.max(0, (ctx?.count ?? 1) - 1) * anim.staggerMs;
+  } else if (anim.preset === "vapor" || anim.outPreset === "vapor") {
+    unitDurationMs =
+      durationMs * (VAPOR_RATE_MIN + (1 - VAPOR_RATE_MIN) * unitHash01(unitIndex, 6));
   }
   const p = ease(anim.ease, clamp01((localMs - from - delay) / unitDurationMs));
   const q =
@@ -349,6 +606,18 @@ export function sampleTextUnit(
   let shineU = -1;
   let rotZRad = 0;
   let dzEm = 0;
+  let rotXRad = 0;
+  let scaleX = 1;
+  let scaleY = 1;
+  let clipFinal = false;
+  let colorMix = 0;
+  let weightEm = 0;
+  let softEm = 0;
+  let chromaEm = 0;
+  let highlightL = 0;
+  let highlightR = 0;
+  // word-cycle centres the active word once, whichever of the in/out claimed it.
+  let cycleCentered = false;
 
   switch (anim.preset) {
     case "none":
@@ -409,6 +678,152 @@ export function sampleTextUnit(
       }
       break;
     }
+    case "tracking": {
+      const settle = 1 - p;
+      alpha = p;
+      softEm = TRACK_SOFT_EM * settle;
+      if (ctx?.unitCenterEm) dxEm -= ctx.unitCenterEm[0] * TRACK_TIGHTEN * settle;
+      break;
+    }
+    case "slam": {
+      const settle = 1 - p;
+      alpha = clamp01(p / SLAM_FADE_P);
+      softEm = SLAM_SOFT_EM * settle;
+      const land = Math.sin(Math.PI * clamp01((p - SLAM_BUMP_START) / (1 - SLAM_BUMP_START)));
+      scale = 1 + (SLAM_START_SCALE - 1) * settle - SLAM_OVERSHOOT * land;
+      break;
+    }
+    case "dolly": {
+      const settle = 1 - p;
+      alpha = p;
+      softEm = DOLLY_SOFT_EM * settle;
+      dzEm = -(DOLLY_EM + DOLLY_JITTER_EM * unitHash01(unitIndex, 3)) * settle;
+      break;
+    }
+    case "chromatic":
+      alpha = p;
+      chromaEm = CHROMA_EM * (1 - p);
+      break;
+    case "line-stretch": {
+      const settle = 1 - p;
+      alpha = clamp01(p / LINE_FADE_P);
+      scaleY = 1 - (1 - LINE_SCALE_Y0) * settle;
+      scaleX = 1 - (1 - LINE_SCALE_X0) * settle;
+      shineU = p;
+      break;
+    }
+    case "highlight-wipe": {
+      const w = highlightWipeAt(p);
+      highlightL = w.l;
+      highlightR = w.r;
+      sweepR = w.reveal;
+      break;
+    }
+    case "rise-mask":
+      alpha = clamp01(p / RISE_MASK_FADE_P);
+      dyEm = -RISE_MASK_EM * (1 - p);
+      clipFinal = p < 1;
+      break;
+    case "word-cycle": {
+      const count = Math.max(1, ctx?.count ?? 1);
+      const bp = clamp01((localMs - from) / durationMs);
+      const slot = Math.min(count - 1, Math.floor(bp * count));
+      if (slot !== unitIndex) {
+        alpha = 0;
+        break;
+      }
+      const sp = clamp01(bp * count - unitIndex);
+      const enter = ease(anim.ease, clamp01(sp / WORD_CYCLE_POP_P));
+      const exit =
+        unitIndex === count - 1
+          ? 0
+          : ease(anim.ease, clamp01((sp - (1 - WORD_CYCLE_POP_P)) / WORD_CYCLE_POP_P));
+      alpha = enter * (1 - exit);
+      scale =
+        (1 - (1 - WORD_CYCLE_POP_SCALE) * (1 - enter)) * (1 - (1 - WORD_CYCLE_POP_SCALE) * exit);
+      cycleCentered = true;
+      break;
+    }
+    case "ribbon": {
+      const settle = 1 - p;
+      alpha = p;
+      rotYRad = RIBBON_RAD * settle;
+      dzEm = RIBBON_BOW_EM * Math.sin(Math.PI * p);
+      break;
+    }
+    case "stand-up": {
+      const settle = 1 - p;
+      alpha = clamp01(p / STAND_FADE_P);
+      rotXRad = -STAND_RAD * settle;
+      dyEm = -STAND_SETTLE_EM * settle;
+      break;
+    }
+    case "spring-pop":
+      alpha = clamp01(p / SPRING_FADE_P);
+      scale = 1 + (SPRING_START_SCALE - 1) * Math.exp(-SPRING_DAMP * p) * Math.cos(SPRING_FREQ * p);
+      break;
+    case "spotlight": {
+      const count = Math.max(1, ctx?.count ?? 1);
+      const t = clamp01((localMs - from) / durationMs) * count - unitIndex;
+      const w = clamp01(1 - Math.abs(2 * t - 1));
+      const emphasis = w * w * (3 - 2 * w);
+      alpha = SPOT_DIM + (1 - SPOT_DIM) * (t >= 0.5 ? 1 : emphasis);
+      colorMix = emphasis;
+      scale = 1 + SPOT_SCALE * emphasis;
+      break;
+    }
+    case "underline-draw": {
+      const u = clamp01((p - UNDERLINE_TEXT_START_P) / (1 - UNDERLINE_TEXT_START_P));
+      alpha = u;
+      dyEm = -UNDERLINE_RISE_EM * (1 - u);
+      break;
+    }
+    case "orbit": {
+      const theta = anim.params.twistDir * ORBIT_SWEEP_RAD * (1 - p);
+      alpha = clamp01(p / ORBIT_FADE_P);
+      rotZRad = theta;
+      if (ctx?.unitCenterEm) {
+        const cos = Math.cos(theta);
+        const sin = Math.sin(theta);
+        const [cx, cy] = ctx.unitCenterEm;
+        dxEm += cx * (cos - 1) - cy * sin;
+        dyEm += cx * sin + cy * (cos - 1);
+      }
+      break;
+    }
+    case "weight-build":
+      alpha = clamp01(p / WEIGHT_FADE_P);
+      weightEm = -WEIGHT_EM * (1 - p);
+      break;
+    case "develop":
+      alpha = p;
+      softEm = DEVELOP_SOFT_EM * (1 - p);
+      break;
+    case "flip-cascade":
+      alpha = clamp01(p / FLIP_FADE_P);
+      rotXRad = FLIP_RAD * (1 - p);
+      dyEm -= FLIP_DIP_EM * Math.sin(Math.PI * p);
+      break;
+    case "converge": {
+      const settle = 1 - p;
+      alpha = clamp01(p / CONVERGE_FADE_P);
+      scaleX = 1 + CONVERGE_STREAK * settle * (1 - settle) * 4;
+      if (ctx?.unitCenterEm) dxEm += Math.sign(ctx.unitCenterEm[0]) * CONVERGE_EM * settle;
+      break;
+    }
+    case "glint-wipe":
+      sweepR = p;
+      shineU = p;
+      break;
+    case "vapor": {
+      const settle = 1 - p;
+      const phase = unitHash01(unitIndex, 5) * 2 * Math.PI;
+      alpha = p;
+      dyEm += VAPOR_RISE_EM * settle;
+      dxEm += Math.sin(settle * 2 * Math.PI + phase) * VAPOR_WOBBLE_EM * settle;
+      softEm = VAPOR_SOFT_EM * settle;
+      break;
+    }
   }
 
   if (q > 0) {
@@ -467,12 +882,161 @@ export function sampleTextUnit(
         }
         break;
       }
+      case "tracking": {
+        alpha *= 1 - q;
+        softEm += TRACK_SOFT_EM * q;
+        if (ctx?.unitCenterEm) dxEm += ctx.unitCenterEm[0] * TRACK_SPREAD * q;
+        break;
+      }
+      case "slam":
+        alpha *= 1 - q;
+        softEm += SLAM_SOFT_EM * q;
+        scale *= 1 + (SLAM_OUT_SCALE - 1) * q;
+        break;
+      case "dolly":
+        alpha *= 1 - q;
+        softEm += DOLLY_SOFT_EM * q;
+        dzEm += DOLLY_NEAR_EM * q;
+        break;
+      case "chromatic":
+        alpha *= 1 - q;
+        chromaEm += CHROMA_EM * q;
+        break;
+      case "line-stretch":
+        scaleY *= 1 - (1 - LINE_SCALE_Y0) * q;
+        scaleX *= 1 - (1 - LINE_SCALE_X0) * q;
+        alpha *= 1 - clamp01((q - LINE_OUT_FADE_P) / (1 - LINE_OUT_FADE_P));
+        break;
+      // The block returns, collects the word, then sweeps off: the in replayed at 1 − q.
+      case "highlight-wipe": {
+        const w = highlightWipeAt(1 - q);
+        highlightL = w.l;
+        highlightR = w.r;
+        sweepR = Math.min(sweepR, w.reveal);
+        break;
+      }
+      case "rise-mask":
+        dyEm += RISE_MASK_EM * RISE_MASK_EXIT * q;
+        clipFinal = true;
+        alpha *= 1 - clamp01((q - RISE_MASK_OUT_FADE_P) / (1 - RISE_MASK_OUT_FADE_P));
+        break;
+      // The in's slot walk rewound; alpha is assigned (the in already zeroed passed words).
+      case "word-cycle": {
+        const count = Math.max(1, ctx?.count ?? 1);
+        const t = 1 - clamp01((localMs - (outAt ?? 0)) / durationMs);
+        const slot = Math.min(count - 1, Math.floor(t * count));
+        if (slot !== unitIndex) {
+          alpha = 0;
+          break;
+        }
+        const sp = clamp01(t * count - unitIndex);
+        const enter = ease(anim.ease, clamp01(sp / WORD_CYCLE_POP_P));
+        const exit =
+          unitIndex === count - 1
+            ? 0
+            : ease(anim.ease, clamp01((sp - (1 - WORD_CYCLE_POP_P)) / WORD_CYCLE_POP_P));
+        alpha = enter * (1 - exit);
+        scale *=
+          (1 - (1 - WORD_CYCLE_POP_SCALE) * (1 - enter)) * (1 - (1 - WORD_CYCLE_POP_SCALE) * exit);
+        cycleCentered = true;
+        break;
+      }
+      case "ribbon":
+        alpha *= 1 - q;
+        rotYRad -= RIBBON_RAD * q;
+        dzEm += RIBBON_BOW_EM * Math.sin(Math.PI * q);
+        break;
+      case "stand-up":
+        alpha *= 1 - q;
+        rotXRad += STAND_RAD * q;
+        break;
+      case "spring-pop": {
+        alpha *= 1 - q;
+        const bump = SPRING_OUT_BUMP * Math.sin(Math.PI * clamp01(q / SPRING_OUT_BUMP_P));
+        scale *= (1 + bump) * (1 + (SPRING_START_SCALE - 1) * q);
+        break;
+      }
+      case "spotlight":
+        alpha *= 1 - q;
+        break;
+      case "underline-draw": {
+        const v = clamp01(q / UNDERLINE_OUT_TEXT_P);
+        alpha *= 1 - v;
+        dyEm -= UNDERLINE_RISE_EM * v;
+        break;
+      }
+      case "orbit": {
+        const theta = -anim.params.twistDir * ORBIT_SWEEP_RAD * q;
+        alpha *= 1 - q;
+        rotZRad += theta;
+        if (ctx?.unitCenterEm) {
+          const cos = Math.cos(theta);
+          const sin = Math.sin(theta);
+          const [cx, cy] = ctx.unitCenterEm;
+          dxEm += cx * (cos - 1) - cy * sin;
+          dyEm += cx * sin + cy * (cos - 1);
+        }
+        break;
+      }
+      case "weight-build":
+        alpha *= 1 - q;
+        weightEm -= WEIGHT_EM * q;
+        break;
+      case "develop":
+        alpha *= 1 - q;
+        softEm += DEVELOP_SOFT_EM * q;
+        break;
+      case "flip-cascade":
+        alpha *= 1 - q;
+        rotXRad -= FLIP_RAD * q;
+        dyEm -= FLIP_DIP_EM * Math.sin(Math.PI * q);
+        break;
+      case "converge":
+        alpha *= 1 - q;
+        scaleX *= 1 + CONVERGE_STREAK * q * (1 - q) * 4;
+        if (ctx?.unitCenterEm) dxEm += Math.sign(ctx.unitCenterEm[0]) * CONVERGE_EM * q;
+        break;
+      case "glint-wipe":
+        sweepL = q;
+        shineU = q;
+        break;
+      case "vapor": {
+        const phase = unitHash01(unitIndex, 5) * 2 * Math.PI;
+        alpha *= 1 - q;
+        dyEm += VAPOR_RISE_EM * q;
+        dxEm += Math.sin(q * 2 * Math.PI + phase) * VAPOR_WOBBLE_EM * q;
+        softEm += VAPOR_SOFT_EM * q;
+        break;
+      }
     }
   }
+  if (cycleCentered && ctx?.unitCenterEm) dxEm -= ctx.unitCenterEm[0];
 
   const sweep: readonly [number, number] =
     sweepL === 0 && sweepR === 1 ? FULL_SWEEP : [sweepL, Math.max(sweepL, sweepR)];
-  return { alpha, dxEm, dyEm, scale, blurEm, sweep, rotYRad, shineU, rotZRad, dzEm };
+  const highlight: readonly [number, number] =
+    highlightL === 0 && highlightR === 0 ? HIGHLIGHT_OFF : [highlightL, highlightR];
+  return {
+    alpha,
+    dxEm,
+    dyEm,
+    scale,
+    blurEm,
+    sweep,
+    rotYRad,
+    shineU,
+    rotZRad,
+    dzEm,
+    rotXRad,
+    scaleX,
+    scaleY,
+    clipFinal,
+    colorMix,
+    weightEm,
+    softEm,
+    chromaEm,
+    highlight,
+  };
 }
 
 /** The shine band's position along `SHINE_AXIS` for an element with layout `bounds` ([minX, minY, maxX, maxY]) at eased progress `shineU`. Pure math (golden-pinned): project the four corners on the axis, the band centre sweeps from its trailing edge just touching the low corner (u=0) to its leading edge fully exited (u=1). Returns null when the shine is off or unmeasurable. */
@@ -493,6 +1057,30 @@ export function shineBand(
   if (halfW <= 0) return null;
   const centerS = sMin - halfW + (sMax - sMin + 2 * halfW) * shineU;
   return { centerS, invHalfWidthS: 1 / halfW };
+}
+
+/** The underline-draw rule's 0..1 draw progress at `localMs` (block-level, no unit delay; the renderer draws the quad): the in draws over the first UNDERLINE_DRAW_P of the eased window; an underline-draw out re-draws the rule, holds, then wipes it off from UNDERLINE_OUT_WIPE_P; any other out wipes it with the fade. 0 when neither side is underline-draw. */
+export function underlineProgress(timing: TextAnimTiming, localMs: number): number {
+  const { anim, to, outAt } = timing;
+  const inActive = anim.preset === "underline-draw";
+  const outActive = anim.outPreset === "underline-draw";
+  if (!inActive && !outActive) return 0;
+  const durationMs = Math.max(1, to - timing.from);
+  // The same delay shift as sampleTextUnit: the rule draws late with the text, the out never shifts.
+  const from = anim.delayMs === undefined ? timing.from : timing.from + anim.delayMs;
+  const q = outAt === undefined ? 0 : ease(anim.ease, clamp01((localMs - outAt) / durationMs));
+  if (q > 0) {
+    if (!outActive) {
+      const p = ease(anim.ease, clamp01((localMs - from) / durationMs));
+      return clamp01(p / UNDERLINE_DRAW_P) * (1 - q);
+    }
+    if (q < UNDERLINE_OUT_REDRAW_P) return q / UNDERLINE_OUT_REDRAW_P;
+    if (q < UNDERLINE_OUT_WIPE_P) return 1;
+    return clamp01((1 - q) / (1 - UNDERLINE_OUT_WIPE_P));
+  }
+  if (!inActive) return 0;
+  const p = ease(anim.ease, clamp01((localMs - from) / durationMs));
+  return clamp01(p / UNDERLINE_DRAW_P);
 }
 
 /** Stagger units measured from a completed troika typeset: `startX`/`endX` are each unit's layout-space X extent, kept for ALL granularities (mask-reveal's per-unit sweep stays X-based; each paragraph wipes left→right). `edgeKey[i]` is the decision boundary a glyph's centre is compared against in the vertex shader, in KEY space: layout X for char/word, −Y for the paragraph granularities, midway between unit i's end and unit i+1's start, +∞ for the last; char/word edge values are bit-for-bit the legacy `edgeX`. All arrays are `count` long, `count ≤ MAX_STAGGER_UNITS`. */
