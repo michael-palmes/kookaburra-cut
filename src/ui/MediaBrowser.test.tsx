@@ -35,6 +35,46 @@ describe("MediaBrowser accessibility", () => {
     expect(html).toContain('role="radiogroup" aria-label="Media type"');
   });
 
+  it("collapses the cleanup action into a named ⋯ menu for narrow hosts", () => {
+    const html = renderToStaticMarkup(
+      <MediaBrowser
+        slug="demo"
+        projectPath="/tmp/demo"
+        globalToggle
+        kindToggle
+        hideAdd
+        cleanupUnused="menu"
+      />,
+    );
+
+    expect(html).toContain('aria-label="Media actions"');
+    expect(html).toContain('aria-haspopup="menu"');
+    // The label moves into the menu, which is what frees the Video/Images toggle its width.
+    expect(html).not.toContain("Delete unused…");
+    expect(html).not.toContain("media-browser-cleanup");
+  });
+
+  it("keeps the wide hosts' cleanup action a plain labelled button", () => {
+    const html = renderToStaticMarkup(
+      <MediaBrowser
+        slug="demo"
+        projectPath="/tmp/demo"
+        globalToggle
+        kindToggle
+        hideAdd
+        cleanupUnused
+      />,
+    );
+
+    expect(html).toContain("media-browser-cleanup");
+    expect(html).toContain("Delete unused…");
+    expect(html).not.toContain('aria-label="Media actions"');
+  });
+
+  it("stops the ⋯ overflow taking the media type toggle's width back", () => {
+    expect(styles).toMatch(/\.media-browser-more\s*\{[^}]*flex:\s*none/);
+  });
+
   it("announces operational errors", () => {
     const html = renderToStaticMarkup(<MediaBrowserError message="Import failed" />);
 

@@ -435,7 +435,7 @@ export function InspectorPanel({
                   projectPath={workspaceProjectPath(workspaceSlug(project.id)) ?? ""}
                   kindToggle
                   globalToggle
-                  cleanupUnused
+                  cleanupUnused="menu"
                   refreshKey={mediaRefreshKey + mediaRefresh}
                   cardMenu={mediaCardMenu({
                     slug: workspaceSlug(project.id),

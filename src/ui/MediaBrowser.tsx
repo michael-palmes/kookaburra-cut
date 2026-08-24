@@ -21,6 +21,7 @@ import {
 import { ContextMenu, type ContextMenuItem, type ContextMenuState } from "./ContextMenu";
 import { SegmentedRow, ToggleFieldset } from "./inspector/rows";
 import { modalHost } from "./modalHost";
+import { SceneMenuIcon } from "./sceneMenu";
 import { UnusedMediaSheet } from "./UnusedMediaSheet";
 import { useEscapeClose } from "./useEscapeClose";
 import { VideoPlayer } from "./VideoPlayer";
@@ -29,6 +30,8 @@ import { VideoPlayer } from "./VideoPlayer";
 
 const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "gif"];
 const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v", "webm"];
+/** Names the toolbar ⋯ menu and tells its button whether the open menu is its own (cards share the one ContextMenu). */
+const MEDIA_ACTIONS_MENU = "Media actions";
 const MEDIA_PICKER_EXTENSIONS = [...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS];
 const MEDIA_PREVIEW_FOCUSABLE = [
   "a[href]",
@@ -291,6 +294,16 @@ function LibraryIcon() {
   );
 }
 
+function MoreIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <circle cx="8" cy="3.5" r="1" />
+      <circle cx="8" cy="8" r="1" />
+      <circle cx="8" cy="12.5" r="1" />
+    </svg>
+  );
+}
+
 export interface MediaBrowserProps {
   slug: string;
   /** Absolute project folder, full-res previews load from it via the asset protocol. */
@@ -315,8 +328,8 @@ export interface MediaBrowserProps {
   kindDefault?: "video" | "image";
   /** Hide the built-in Add button: the host renders `<AddMediaButton>` in its own title row and bumps `refreshKey` on import. */
   hideAdd?: boolean;
-  /** Show the "Delete unused…" action beside Add media (management surfaces only: the media library modal and the Project tab's media drill-in). A picker's job is choosing a file, so a bulk sweep never appears in one. */
-  cleanupUnused?: boolean;
+  /** Show the "Delete unused…" action beside Add media (management surfaces only: the media library modal and the Project tab's media drill-in). A picker's job is choosing a file, so a bulk sweep never appears in one. "menu" collapses it into a ⋯ overflow for narrow hosts: the toggles column is the only part of the bar that can shrink, so in the inspector drill the text button squeezed the Video/Images toggle until "Images" clipped away. */
+  cleanupUnused?: boolean | "menu";
   /** Per-card ⋯/right-click menu items; omit for none (the editor panel drags instead). The browser hosts one ContextMenu, the house two-step confirm rides `confirmLabel` (see ui/mediaCardMenu.tsx for the shared Edit/Insert/Delete set). */
   cardMenu?: (rel: string, meta: MediaMeta | null, ctx: MediaActionContext) => ContextMenuItem[];
   /** Highlight this rel as the current selection (e.g. the scene's background video). */
@@ -922,7 +935,36 @@ export function MediaBrowser({
   );
   // Library files live in ~/Kookaburra Cut/screenshots and have their own per-card Delete.
   const cleanupButton =
-    cleanupUnused && sourceTab === "project" ? (
+    !cleanupUnused || sourceTab !== "project" ? null : cleanupUnused === "menu" ? (
+      <button
+        type="button"
+        className="media-browser-more"
+        aria-label={MEDIA_ACTIONS_MENU}
+        title={MEDIA_ACTIONS_MENU}
+        aria-haspopup="menu"
+        aria-expanded={menu?.ariaLabel === MEDIA_ACTIONS_MENU}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu({
+            x: r.left,
+            y: r.bottom + 4,
+            ariaLabel: MEDIA_ACTIONS_MENU,
+            returnFocus: e.currentTarget,
+            // The sheet owns the selection and the confirm, so the item itself stays a plain open.
+            items: [
+              {
+                id: "delete-unused",
+                label: "Delete unused…",
+                icon: <SceneMenuIcon id="delete" />,
+                onSelect: () => setUnusedOpen(true),
+              },
+            ],
+          });
+        }}
+      >
+        <MoreIcon />
+      </button>
+    ) : (
       <button
         type="button"
         className="btn media-browser-cleanup"
@@ -930,7 +972,7 @@ export function MediaBrowser({
       >
         Delete unused…
       </button>
-    ) : null;
+    );
 
   const body = (
     <>

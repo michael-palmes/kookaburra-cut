@@ -660,6 +660,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  /* A floor, not a layout: the toggles column is the only shrinkable child, so wrapping the actions drops them to their own line instead of chopping the Video/Images toggle against the drill's overflow-x. */
+  flex-wrap: wrap;
 }
 /* The source + kind toggle rows stack on the left; the Add button keeps the right edge. */
 .media-browser-toggles {
@@ -718,6 +720,27 @@ body {
 .media-browser-cleanup {
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* Narrow hosts collapse the cleanup action into a ⋯ overflow; `flex: none` keeps it out of the width the Video/Images toggle needs. */
+.media-browser-more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  height: var(--hit-min);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.media-browser-more:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
 }
 
 .unused-list {
