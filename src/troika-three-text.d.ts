@@ -48,8 +48,15 @@ declare module "troika-three-utils" {
       uniforms?: Record<string, { value: any }>;
       vertexDefs?: string;
       vertexTransform?: string;
+      /** Injected inline at the end of the wrapping main, after the base chain has run. */
+      vertexMainOutro?: string;
       fragmentDefs?: string;
       fragmentColorTransform?: string;
+      /** Full-source rewrite hook, applied before injection (part of the program cache key). */
+      customRewriter?: (shaders: { vertexShader: string; fragmentShader: string }) => {
+        vertexShader: string;
+        fragmentShader: string;
+      };
     },
   ): Material & {
     isTroikaTextMaterial?: boolean;
