@@ -575,6 +575,88 @@ describe("parseSceneDoc", () => {
     expect(bad).toBeDefined();
   });
 
+  it("parses textAnimation.delayMs through the sidecar and per-key overrides", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        textAnimation: { in: "fade", out: "none", staggerMs: 0, delayMs: 250 },
+        textAnimationOverrides: {
+          hero: { in: "slide", out: "none", staggerMs: 0, delayMs: 400.5 },
+        },
+      },
+      "test",
+    );
+    expect(doc?.textAnimation?.delayMs).toBe(250);
+    expect(doc?.textAnimationOverrides?.hero?.delayMs).toBe(400.5);
+    // An invalid delayMs drops the field alone, never the spec.
+    const bad = parseSceneDoc(
+      { version: 1, textAnimation: { in: "fade", out: "none", delayMs: "soon" } },
+      "test",
+    );
+    expect(bad?.textAnimation).toEqual({ in: "fade", out: "none", staggerMs: 0 });
+  });
+
+  it("parses the textLook sidecar trio (the textAnimation pattern)", () => {
+    const doc = parseSceneDoc(
+      {
+        version: 1,
+        textLook: { preset: "gradient", colorA: "#ff0055", colorB: "#220011", angleDeg: 45 },
+        textLookForce: true,
+        textLookOverrides: {
+          "title-1": { preset: "outline", strokeEm: 0.05, hollow: true },
+          "bad-1": { colorA: "#fff" },
+        },
+      },
+      "test",
+    );
+    expect(doc?.textLook).toEqual({
+      preset: "gradient",
+      colorA: "#ff0055",
+      colorB: "#220011",
+      angleDeg: 45,
+    });
+    expect(doc?.textLookForce).toBe(true);
+    // Overrides parse per-entry: the preset-less entry drops alone.
+    expect(doc?.textLookOverrides).toEqual({
+      "title-1": { preset: "outline", strokeEm: 0.05, hollow: true },
+    });
+  });
+
+  it("degrades malformed textLook fields without touching the doc", () => {
+    // A spec with no preset drops the field, never the doc.
+    const bad = parseSceneDoc({ version: 1, textLook: { colorA: "#fff" } }, "test");
+    expect(bad?.textLook).toBeUndefined();
+    expect(bad).toBeDefined();
+    // Wrong-typed params drop per-field, the rest of the spec survives; unknown fields are ignored.
+    const mixed = parseSceneDoc(
+      {
+        version: 1,
+        textLook: { preset: "neon", intensity: "high", curveDeg: 30, sparkle: true },
+      },
+      "test",
+    );
+    expect(mixed?.textLook).toEqual({ preset: "neon", curveDeg: 30 });
+    // Out-of-range numbers pass through parse verbatim; clamping happens at resolve.
+    const wide = parseSceneDoc({ version: 1, textLook: { preset: "neon", intensity: 5 } }, "test");
+    expect(wide?.textLook).toEqual({ preset: "neon", intensity: 5 });
+    // A non-true force and a non-object overrides map both drop.
+    const off = parseSceneDoc(
+      { version: 1, textLookForce: "yes", textLookOverrides: ["nope"] },
+      "test",
+    );
+    expect(off?.textLookForce).toBeUndefined();
+    expect(off?.textLookOverrides).toBeUndefined();
+  });
+
+  it("leaves legacy docs without textLook fields untouched (null-for-legacy)", () => {
+    const doc = parseSceneDoc({ version: 1, name: "Legacy" }, "test");
+    expect(doc).toBeDefined();
+    expect(doc?.textLook).toBeUndefined();
+    expect(doc?.textLookForce).toBeUndefined();
+    expect(doc?.textLookOverrides).toBeUndefined();
+    expect(doc && "textLook" in doc).toBe(false);
+  });
+
   it("parses the fixed-background override and degrades invalid ones (v11)", () => {
     const doc = parseSceneDoc(
       { version: 1, background: { type: "image", src: "kookaburra:loft-studio", parallax: 0.05 } },

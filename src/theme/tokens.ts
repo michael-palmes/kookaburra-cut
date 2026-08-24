@@ -330,6 +330,28 @@ export interface TextAnimationSpec {
   ease?: string;
 }
 
+/** Named text style presets (the "text look" catalogue), overridable per primitive and per scene via the sidecar's `textLook` (whole-spec, the textAnimation pattern). Params are per-look optionals, clamped and defaulted at resolve (toolkit/text/looks.ts). */
+export interface TextLookSpec {
+  /** "none" or a TEXT_LOOK_NAMES entry; unknown names coerce at resolve, never at parse. */
+  preset: string;
+  /** Primary look colour, hex. Absent falls back to the theme accent at render. */
+  colorA?: string;
+  /** Gradient stop B, hex. Absent renders a darkened colorA. */
+  colorB?: string;
+  /** Gradient axis in degrees (default 90, vertical). */
+  angleDeg?: number;
+  /** Outline stroke width in em (default 0.035). */
+  strokeEm?: number;
+  /** Outline: hide the fill, stroke only (default true). */
+  hollow?: boolean;
+  /** Neon glow / glass strength scalar 0..1 (default 0.6). */
+  intensity?: number;
+  /** Offset-print under-layer displacement in em (default 0.06). */
+  offsetEm?: number;
+  /** Arc: total bend in degrees, positive arcs upward (default 60). */
+  curveDeg?: number;
+}
+
 /** Card surfaces (layered-screenshot screens): corner radius as a fraction of the card's short edge, clamped 0..0.5 at parse. Absent themes take the toolkit's tuned constant. */
 export interface ThemeCard {
   radius: number;
@@ -371,6 +393,7 @@ export interface Theme {
     easings: { standard: string; emphasized: string };
   };
   textAnimation?: TextAnimationSpec;
+  textLook?: TextLookSpec;
   card?: ThemeCard;
   /** v9 shape in memory (the v8 `key` alias normalises to `sun` on read); theme JSON files stay v8. */
   lighting?: LightingSpec;
