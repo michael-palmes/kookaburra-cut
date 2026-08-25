@@ -142,12 +142,30 @@ describe("shadowSweepDirection", () => {
     expect(Math.hypot(...sweep)).toBeCloseTo(1, 12);
   });
 
-  it("keeps the sun sweep pointing down-right on the plane behind", () => {
+  it("keeps the sun sweep pointing down-right on the plane behind, at any yaw", () => {
     const mode = DEVICE_SHADOW_MODES.sun;
-    const plane = shadowPlane(mode, -1.3, 1);
-    const sweep = shadowSweepDirection(plane, shadowLightDirection(mode));
-    expect(sweep[0]).toBeCloseTo(Math.SQRT1_2, 6);
-    expect(sweep[1]).toBeCloseTo(-Math.SQRT1_2, 6);
+    for (const yaw of [0, 45, 78]) {
+      const pose = { ...REST, rotation: [0, (yaw * Math.PI) / 180, 0] as [number, number, number] };
+      const slabs = deviceShadowSlabs(PHONE, pose);
+      const plane = shadowPlane(mode, -1.3, 1, pose, slabs);
+      const sweep = shadowSweepDirection(plane, shadowLightDirection(mode, plane));
+      // Plane-frame light: the sweep holds its signature 45-degree down-right whatever the device does.
+      expect(sweep[0]).toBeCloseTo(Math.SQRT1_2, 6);
+      expect(sweep[1]).toBeCloseTo(-Math.SQRT1_2, 6);
+    }
+  });
+
+  it("hugs the behind plane to the device's backmost point", () => {
+    const mode = DEVICE_SHADOW_MODES.sun;
+    const slabs = deviceShadowSlabs(PHONE, REST);
+    const plane = shadowPlane(mode, -1.3, 1, REST, slabs);
+    // Just behind the back face: half thickness plus the clearance, not a distant backdrop.
+    expect(plane.origin[2]).toBeCloseTo(-(0.184 / 2) - 0.05, 6);
+    expect(plane.normal[2]).toBeCloseTo(1, 12);
+    // A yawed device turns its plane with it, so the plane never slices the body.
+    const yawed = { ...REST, rotation: [0, Math.PI / 3, 0] as [number, number, number] };
+    const yawedPlane = shadowPlane(mode, -1.3, 1, yawed, deviceShadowSlabs(PHONE, yawed));
+    expect(yawedPlane.normal[0]).toBeCloseTo(Math.sin(Math.PI / 3), 6);
   });
 });
 
@@ -345,10 +363,10 @@ describe("the mode catalogue", () => {
     const mode = DEVICE_SHADOW_MODES.drop;
     expect(mode.receiver).toBe("behind");
     expect(mode.sweepLength).toBe(0);
-    const light = shadowLightDirection(mode);
-    const plane = shadowPlane(mode, -1.3, 1);
-    // The silhouette slides opposite the light: light up-left means the cast lands down-right.
     const slabs = deviceShadowSlabs(PHONE, REST);
+    const plane = shadowPlane(mode, -1.3, 1, REST, slabs);
+    const light = shadowLightDirection(mode, plane);
+    // The silhouette slides opposite the light: light up-left means the cast lands down-right.
     const quad = shadowQuad(slabs, plane, light, mode, 1);
     expect(quad?.centre[0]).toBeGreaterThan(0);
     expect(quad?.centre[1]).toBeLessThan(0);

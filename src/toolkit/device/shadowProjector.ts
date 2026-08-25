@@ -10,8 +10,8 @@ import type { DeviceSpec } from "./catalog";
 
 const DEG2RAD = Math.PI / 180;
 
-/** How far behind the device the "behind" receiver plane sits, before the placement scale. */
-export const SHADOW_PLANE_BACK = 0.45;
+/** Clearance between the device's backmost point and the "behind" receiver plane, before the placement scale: kept tight so the sweep's root hugs the outline through a perspective camera (a distant plane parallaxes the shadow away from the device, the pre-rework fault). */
+export const SHADOW_PLANE_CLEARANCE = 0.05;
 /** Slack added around the computed quad so a blurred edge is never clipped by the mesh. */
 export const SHADOW_QUAD_MARGIN = 0.12;
 /** Ambient (unswept) contact term: capped so a wildly scaled device cannot wash the floor. */
@@ -49,7 +49,7 @@ export const DEVICE_SHADOW_CHOICES: Array<{ id: DeviceShadowMode; label: string 
 export interface ShadowModeSpec {
   /** Where the shadow lands: the stage floor under the device, or a plane behind it. */
   receiver: "floor" | "behind";
-  /** Key light, in degrees: azimuth 0 sits at +Z (behind the camera), positive turns toward +X; elevation 90 is straight overhead. */
+  /** Key light, in degrees. Floor modes are world-frame: azimuth 0 sits at +Z (behind the camera), positive turns toward +X; elevation 90 is straight overhead. Behind-plane modes are PLANE-frame (the plane turns with the device): azimuth measured in-plane from +x toward +y, elevation off the plane toward its normal, so the sweep keeps its signature angle at any device yaw. */
   azimuthDeg: number;
   elevationDeg: number;
   /** Penumbra half-width where the device meets the receiver, in world units before the placement scale. */
@@ -109,8 +109,9 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
   },
   sun: {
     receiver: "behind",
-    azimuthDeg: -45,
-    elevationDeg: 35.264389682754654,
+    // Plane-frame: light from the upper left at 45, so the sweep runs down-right.
+    azimuthDeg: 135,
+    elevationDeg: 35,
     blurNear: 0.05,
     softness: 0.02,
     opacity: 0.38,
@@ -153,8 +154,9 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
   },
   drop: {
     receiver: "behind",
-    azimuthDeg: -25,
-    elevationDeg: 28,
+    // Plane-frame: a shallow light off the upper left, the card's small down-right offset.
+    azimuthDeg: 130,
+    elevationDeg: 24,
     blurNear: 0.1,
     softness: 0.04,
     opacity: 0.32,
@@ -358,8 +360,20 @@ export function lightDirection(azimuthDeg: number, elevationDeg: number): V3 {
   return [ce * Math.sin(az), Math.sin(el), ce * Math.cos(az)];
 }
 
-/** Unit vector from the origin toward the key light. */
-export function shadowLightDirection(mode: ShadowModeSpec): V3 {
+/** Unit vector toward the key light, in the device group's frame. Floor modes read the world-frame convention; behind-plane modes compose their plane-frame azimuth/elevation over the plane's basis, so the light (and the sweep it drives) turns with the device. */
+export function shadowLightDirection(mode: ShadowModeSpec, plane?: ShadowPlane): V3 {
+  if (mode.receiver === "behind" && plane) {
+    const az = mode.azimuthDeg * DEG2RAD;
+    const el = mode.elevationDeg * DEG2RAD;
+    const t1 = Math.cos(el) * Math.cos(az);
+    const t2 = Math.cos(el) * Math.sin(az);
+    const n = Math.sin(el);
+    return [
+      plane.e1[0] * t1 + plane.e2[0] * t2 + plane.normal[0] * n,
+      plane.e1[1] * t1 + plane.e2[1] * t2 + plane.normal[1] * n,
+      plane.e1[2] * t1 + plane.e2[2] * t2 + plane.normal[2] * n,
+    ];
+  }
   return lightDirection(mode.azimuthDeg, mode.elevationDeg);
 }
 
@@ -371,16 +385,54 @@ export interface ShadowPlane {
   normal: V3;
 }
 
-export function shadowPlane(mode: ShadowModeSpec, groundY: number, scale: number): ShadowPlane {
+/** The receiver plane. Floor: the world-frame ground under the device. Behind: a backdrop that TURNS WITH the device (its rotated xy plane) and sits just behind its backmost slab corner, so the sweep's root hugs the outline through a perspective camera and the plane never slices a yawed body. */
+export function shadowPlane(
+  mode: ShadowModeSpec,
+  groundY: number,
+  scale: number,
+  pose?: ShadowPose,
+  slabs?: ShadowSlab[],
+): ShadowPlane {
   if (mode.receiver === "floor") {
     // The mesh's own frame: a plane turned to face up, so its +y maps to world -z.
     return { origin: [0, groundY, 0], e1: [1, 0, 0], e2: [0, 0, -1], normal: [0, 1, 0] };
   }
+  const basis = basisFromEuler(pose?.rotation ?? [0, 0, 0]);
+  const e1 = basis[0];
+  const e2 = basis[1];
+  const normal = basis[2];
+  // Just behind the backmost slab corner, whatever the lid or float is doing.
+  let backmost = 0;
+  for (const slab of slabs ?? []) {
+    const halfN = slab.thickness / 2;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const corner: V3 = [
+            slab.center[0] +
+              slab.u[0] * slab.half[0] * sx +
+              slab.v[0] * slab.half[1] * sy +
+              slab.n[0] * halfN * sz,
+            slab.center[1] +
+              slab.u[1] * slab.half[0] * sx +
+              slab.v[1] * slab.half[1] * sy +
+              slab.n[1] * halfN * sz,
+            slab.center[2] +
+              slab.u[2] * slab.half[0] * sx +
+              slab.v[2] * slab.half[1] * sy +
+              slab.n[2] * halfN * sz,
+          ];
+          backmost = Math.min(backmost, dot(corner, normal));
+        }
+      }
+    }
+  }
+  const depth = backmost - SHADOW_PLANE_CLEARANCE * scale;
   return {
-    origin: [0, 0, -SHADOW_PLANE_BACK * scale],
-    e1: [1, 0, 0],
-    e2: [0, 1, 0],
-    normal: [0, 0, 1],
+    origin: [normal[0] * depth, normal[1] * depth, normal[2] * depth],
+    e1,
+    e2,
+    normal,
   };
 }
 

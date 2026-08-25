@@ -156,8 +156,8 @@ export function DeviceShadow({
   const modeSpec = DEVICE_SHADOW_MODES[mode];
   const scale = pose.scale * pose.introScale;
   const slabs = deviceShadowSlabs(spec, pose);
-  const plane = shadowPlane(modeSpec, groundY, pose.scale);
-  const light = shadowLightDirection(modeSpec);
+  const plane = shadowPlane(modeSpec, groundY, pose.scale, pose, slabs);
+  const light = shadowLightDirection(modeSpec, plane);
   const quad = shadowQuad(slabs, plane, light, modeSpec, scale);
   if (!quad) return null;
   refreshUniforms(uniforms, slabs, plane, light, modeSpec, quad, scale);
@@ -170,7 +170,8 @@ export function DeviceShadow({
   return (
     <mesh
       position={centre}
-      rotation={modeSpec.receiver === "floor" ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}
+      // The floor quad faces up; the behind quad shares the device's own rotation, the frame its plane basis was built in.
+      rotation={modeSpec.receiver === "floor" ? [-Math.PI / 2, 0, 0] : pose.rotation}
       scale={[quad.size[0], quad.size[1], 1]}
     >
       <planeGeometry args={[1, 1]} />
