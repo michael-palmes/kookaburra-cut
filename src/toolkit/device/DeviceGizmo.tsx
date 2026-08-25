@@ -3,6 +3,8 @@ import type { Group } from "three";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
 import { SceneGizmo } from "../../engine/SceneGizmo";
 import { SceneDocContext } from "../../engine/sceneContext";
+import { nearestDeviceKey, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
+import { useTimeline } from "../../engine/timeline";
 import type { V3 } from "../types";
 import { type DevicePose, deviceGizmoCommit } from "./gizmoCommit";
 
@@ -34,6 +36,7 @@ export function DeviceGizmo({
 }) {
   const proxyRef = useRef<Group>(null);
   const doc = useContext(SceneDocContext);
+  const { localMs } = useTimeline();
   const mode = useDeviceEditStore((s) => s.gizmoMode);
   const dragging = useRef(false);
   const synced = useRef<string | null>(null);
@@ -93,6 +96,8 @@ export function DeviceGizmo({
     const dragged = readProxy();
     if (!dragged) return;
     const authored = doc?.devices?.find((d) => d.id === deviceId)?.placement ?? {};
+    // A keyframed scene shapes the key nearest the playhead: dragging IS how the animation is authored.
+    const keyed = nearestDeviceKey(resolveDeviceTrack(doc ?? undefined), localMs);
     const commitId = useDeviceEditStore.getState().requestCommit(
       deviceGizmoCommit({
         deviceId,
@@ -103,6 +108,7 @@ export function DeviceGizmo({
         authored,
         // A live block is the branch the sliders take, delta entry or not.
         delta: doc?.deviceLayout ? (doc.deviceLayout.devices?.[deviceId] ?? {}) : undefined,
+        keyed: keyed ? { keyId: keyed.id, pose: keyed.pose[deviceId] ?? {} } : undefined,
       }),
     );
     onCommitRequested(commitId);

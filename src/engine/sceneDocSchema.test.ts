@@ -783,6 +783,54 @@ describe("parseSceneDoc", () => {
     vi.restoreAllMocks();
   });
 
+  it("round-trips a deviceTrack block and degrades its bad entries alone", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const block = {
+      keys: [
+        { id: "k1", tMs: 0, pose: { d1: { offset: [0, 0, 0] } } },
+        {
+          id: "k2",
+          tMs: 800,
+          pose: {
+            d1: { offset: [1, 0.5, 0], rotationDeg: [0, 20, 0], scale: 1.4 },
+            d2: { lidDeg: 30 },
+          },
+        },
+      ],
+      segments: [{ from: "k1", to: "k2", ease: "outCubic" }],
+    };
+    expect(parseSceneDoc({ version: 1, deviceTrack: block }, "test")?.deviceTrack).toEqual(block);
+
+    const degraded = parseSceneDoc(
+      {
+        version: 1,
+        deviceTrack: {
+          keys: [
+            { id: "k1", tMs: "soon", pose: {} },
+            {
+              id: "k2",
+              tMs: 100,
+              pose: { d1: { offset: [1, 2], scale: "big", lidDeg: 12 }, d2: 7 },
+            },
+          ],
+          segments: [{ from: "k2", ease: "linear" }],
+        },
+      },
+      "test",
+    );
+    expect(degraded?.deviceTrack).toEqual({
+      keys: [{ id: "k2", tMs: 100, pose: { d1: { lidDeg: 12 } } }],
+      segments: [],
+    });
+
+    // An empty or malformed track drops whole, so absence stays legible.
+    expect(
+      parseSceneDoc({ version: 1, deviceTrack: { keys: [] } }, "test")?.deviceTrack,
+    ).toBeUndefined();
+    expect(parseSceneDoc({ version: 1, deviceTrack: 7 }, "test")?.deviceTrack).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
   it("parses ordered scene images with both host placements retained", () => {
     const doc = parseSceneDoc(
       {

@@ -56,6 +56,18 @@ export interface DeviceFitSpec {
   target?: number;
 }
 
+/** The device's cast-shadow silhouette, in the fitted local frame `layoutWidth` and `fittedHeight` describe (recentred, placement scale 1). A handset is one upright rounded rect of exactly those extents; a laptop adds a flat base and a hinged lid, so an open lid casts its own shadow. Measured once per model like `fittedHeight` and never read from the runtime bbox, so a build without the licensed glbs casts the same shadow as one with them. Maths and the projector: `shadowProjector.ts`. */
+export interface DeviceShadowSpec {
+  /** Body thickness: front to back for an upright handset, top to bottom for a laptop base. */
+  thickness: number;
+  /** Silhouette corner radius. */
+  radius: number;
+  /** Laptop only: the base slab's depth (hinge to front edge) and its centre. */
+  base?: { depth: number; y: number; z: number };
+  /** Laptop only: the lid slab, hinged at (0, hingeY, hingeZ) and opening by the device's lid angle. */
+  lid?: { length: number; thickness: number; hingeY: number; hingeZ: number };
+}
+
 export interface DeviceSpec {
   /** Stable id scenes reference, e.g. `"iphone-15-pro"`. */
   id: DeviceId;
@@ -76,6 +88,8 @@ export interface DeviceSpec {
   layoutWidth: number;
   /** Fitted world-space body height at placement scale 1: the renderer and camera bindings share this instead of depending on whichever glb is installed. */
   fittedHeight: number;
+  /** Cast-shadow silhouette; see `DeviceShadowSpec`. */
+  shadow: DeviceShadowSpec;
   /** Hinge for lid-angle control: the glb node (three.js-sanitised name) whose local X rotation opens the lid, the authored open angle, and the default pose when the doc sets none. */
   lid?: { node: string; openDeg: number; defaultDeg: number };
 }
@@ -137,6 +151,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     // 71.9 x 149.6 mm body, height-fitted to 2.6.
     layoutWidth: 1.25,
     fittedHeight: 2.6,
+    // 8.75 mm body (the camera plateau is a bump on the outline, not part of it) and an 11.8 mm corner, at the same fit.
+    shadow: { thickness: 0.152, radius: 0.205 },
     colours: [
       // Silver is the authored (no-override) finish; the other two are the exported glbs' baseColorFactors per colour .blend, extracted 2026-07-15 via scripts/dump-glb-materials.mjs, linear to sRGB hex. "aluminum satin" also covers "aluminum rough" (identical in Silver, deduped at optimise).
       { id: "silver", name: "Silver", overrides: {}, swatch: "#bfbebb" },
@@ -214,6 +230,13 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     layoutWidth: 3.4,
     // Measured from the authored-open licensed model after the same hidden-node removal as Device.
     fittedHeight: 2.3047930262049396,
+    // Measured from the same model: a 2.309-deep base slab lying on the floor, and a 2.424 lid hinged at its back edge.
+    shadow: {
+      thickness: 0.162,
+      radius: 0.076,
+      base: { depth: 2.309, y: -1.071, z: 0.458 },
+      lid: { length: 2.424, thickness: 0.051, hingeY: -1.113, hingeZ: -0.697 },
+    },
     // DISPLAY.001 in the glb ("DISPLAY001" after three.js name sanitising), authored open at 110 degrees.
     lid: { node: "DISPLAY001", openDeg: 110, defaultDeg: 90 },
   },
@@ -227,6 +250,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     // 70.6 x 146.6 mm body, height-fitted to 2.6.
     layoutWidth: 1.25,
     fittedHeight: 2.6,
+    // 8.25 mm body (the camera plateau is a bump on the outline, not part of it) and an 11.5 mm corner, at the same fit.
+    shadow: { thickness: 0.184, radius: 0.204 },
     colours: [
       // Natural titanium is the authored (no-override) finish; the other three are the vendor .blends' baseColorFactors, extracted 2026-07-05 via headless Blender inspect, linear to sRGB hex (max round-trip error 0.0022 linear).
       titaniumColour("natural-titanium", "Natural Titanium", null),
@@ -270,6 +295,8 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     // Slimmer Pixel-style body, height-fitted to 2.6.
     layoutWidth: 1.22,
     fittedHeight: 2.6,
+    // The generated body's 8.5 mm frame and its 9 mm corner, height-fitted to 2.6.
+    shadow: { thickness: 0.144, radius: 0.152 },
     colours: [
       androidColour("graphite", "Graphite", "#4a4a4d", "#3a3a3c"),
       androidColour("black", "Black", "#2c2c2e", "#202022"),

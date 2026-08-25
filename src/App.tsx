@@ -39,6 +39,7 @@ import {
 } from "./engine/clips";
 import { useClockStore } from "./engine/clock";
 import { useCompareEditStore } from "./engine/compareEditStore";
+import { useDeviceTrackEditStore } from "./engine/deviceTrackEditStore";
 import { listEdits, openEdit, openEditNamed } from "./engine/edit";
 import { useEffectsStore } from "./engine/effectsStore";
 import { canvasHandle, ExportBridge } from "./engine/exportBridge";
@@ -149,6 +150,7 @@ import { CompareAnimationLane } from "./ui/CompareAnimationLane";
 import { openChartDataModal } from "./ui/chartDataModalStore";
 import { setProjectPaletteSource } from "./ui/colour/projectPalette";
 import { DecorationGizmo } from "./ui/DecorationGizmo";
+import { DeviceAnimationLane } from "./ui/DeviceAnimationLane";
 import { NewProjectDialog, SetupFailedDialog, TrustGateModal } from "./ui/dialogs";
 import { ExportModal, type ExportSelection } from "./ui/ExportModal";
 import { OverlayImageGizmo } from "./ui/ImageOverlayGizmo";
@@ -1484,7 +1486,11 @@ export default function App() {
   // A charted scene stacks the data lane the same way, so its keys are reachable without a drill.
   const chartPresent = !!project?.sceneDocs[camSceneIndex]?.chart;
   const lightingLaneOpen = useLightingEditStore((state) => state.open);
-  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen;
+  // The opt-in device lane: the inspector's Keyframes toggle reveals it, and a scene that already carries a track always shows it.
+  const deviceLaneOpen =
+    useDeviceTrackEditStore((state) => state.open) ||
+    !!project?.sceneDocs[camSceneIndex]?.deviceTrack;
+  const stackedLanes = comparePresent || chartPresent || lightingLaneOpen || deviceLaneOpen;
   const animationLaneOpen = animationLaneMasterOpen(lsActive, cameraEditOpen, lsLaneOpen);
   useEffect(() => {
     if (!animationLaneOpen) clearSecondaryLaneSelections();
@@ -2369,7 +2375,7 @@ export default function App() {
       {/* The timeline dock: a full-width row of the app grid (the rail and inspector end above it); Animate scene controls the lane stack and its lane-to-cell connector. */}
       {editorView && (
         <TimelineDock
-          connectorActive={animationLaneOpen || lightingLaneOpen}
+          connectorActive={animationLaneOpen || lightingLaneOpen || deviceLaneOpen}
           activeIndex={camSceneIndex}
           lane={
             project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun ? (
@@ -2385,6 +2391,15 @@ export default function App() {
                 )}
                 {chartPresent && (
                   <ChartAnimationLane
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    open={animationLaneOpen}
+                    onDocChanged={handleDocChanged}
+                    onSceneDuration={(i, ms) => void handleSceneDuration(i, ms)}
+                  />
+                )}
+                {deviceLaneOpen && (
+                  <DeviceAnimationLane
                     project={project}
                     sceneIndex={camSceneIndex}
                     open={animationLaneOpen}

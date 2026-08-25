@@ -218,11 +218,19 @@ describe("DeviceDrillIn", () => {
     ]);
     expect(captures.toggles).toEqual([
       expect.objectContaining({ label: "Rest on floor", checked: true }),
+      expect.objectContaining({ label: "Keyframes", checked: false }),
     ]);
     expect(captures.options.map((option) => option.label)).toEqual([
       "Soft contact",
       "Long & smooth",
       "Sun sweep",
+      "Twin studio",
+      "Overhead",
+      "Card drop",
+      "Backlight",
+      "Feather",
+      "Window light",
+      "Wet floor",
       "None",
     ]);
     expect(captures.options[0]?.selected).toBe(true);
@@ -518,6 +526,13 @@ describe("DeviceDrillIn comparison sides", () => {
       "Soft contact",
       "Long & smooth",
       "Sun sweep",
+      "Twin studio",
+      "Overhead",
+      "Card drop",
+      "Backlight",
+      "Feather",
+      "Window light",
+      "Wet floor",
       "None",
     ]);
   });

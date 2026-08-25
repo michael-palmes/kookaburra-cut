@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { DevicePlacement } from "../toolkit/device/Device";
 import type { GizmoMode } from "./gizmoMode";
-import type { SceneDocDeviceLayoutDelta } from "./sceneDocSchema";
+import type { SceneDocDeviceLayoutDelta, SceneDocDevicePose } from "./sceneDocSchema";
 
 export type DeviceEditCommitPayload =
   | {
@@ -16,6 +16,15 @@ export type DeviceEditCommitPayload =
       deviceId: string;
       kind: "delta";
       delta: SceneDocDeviceLayoutDelta;
+      clearGround?: true;
+    }
+  | {
+      sceneIndex: number;
+      deviceId: string;
+      /** A keyframed scene: the drag shapes the key nearest the playhead, not the resting placement. */
+      kind: "key";
+      keyId: string;
+      pose: SceneDocDevicePose;
       clearGround?: true;
     };
 
@@ -41,7 +50,7 @@ interface DeviceEditState {
   selected: { sceneIndex: number; deviceId: string } | null;
   /** Which manipulation the attached gizmo performs (the position drill's Move/Rotate/Scale pills). */
   gizmoMode: GizmoMode;
-  /** A finished gizmo drag awaiting the inspector's `patchDoc` write; the two variants mirror the Position drill's two write branches, so a laid-out scene keeps editing its `deviceLayout` delta and a block-less one keeps editing raw placement. */
+  /** A finished gizmo drag awaiting the inspector's `patchDoc` write; the variants mirror the Position drill's write branches, so a laid-out scene keeps editing its `deviceLayout` delta and a block-less one keeps editing raw placement, while a keyframed scene edits the nearest key instead. */
   pendingCommit: DeviceEditCommit | null;
   acknowledgements: Record<number, DeviceEditAcknowledgement>;
   select: (selected: DeviceEditState["selected"]) => void;

@@ -192,3 +192,47 @@ describe("device gizmo grounded preview", () => {
     expect(deviceGizmoMovedY(pose([0, 1.35, 0]), grounded)).toBe(true);
   });
 });
+
+describe("deviceGizmoCommit, key branch", () => {
+  it("shapes the nearest key rather than the resting placement", () => {
+    const result = commit({
+      dragged: pose([1.5, 0.4, 0], [0, 20, 0], 1.5),
+      rendered: pose([0, -0.3, 0], [0, 0, 0], 1),
+      authored: { position: [0, -0.3, 0] },
+      keyed: { keyId: "k2", pose: {} },
+    });
+    expect(result).toEqual({
+      sceneIndex: 2,
+      deviceId: "d1",
+      kind: "key",
+      keyId: "k2",
+      pose: { offset: [1.5, 0.7, 0], rotationDeg: [0, 20, 0], scale: 1.5 },
+    });
+  });
+
+  it("adds to the pose the key already holds", () => {
+    const result = commit({
+      dragged: pose([1, 0, 0], [0, 10, 0], 2),
+      rendered: pose([0, 0, 0], [0, 0, 0], 1),
+      keyed: { keyId: "k1", pose: { offset: [0.5, 0, 0], rotationDeg: [0, 5, 0], scale: 1.5 } },
+    });
+    expect(result.kind === "key" && result.pose).toEqual({
+      offset: [1.5, 0, 0],
+      rotationDeg: [0, 15, 0],
+      scale: 3,
+    });
+  });
+
+  it("carries the key's other fields through untouched", () => {
+    const result = commit({ keyed: { keyId: "k1", pose: { lidDeg: 45 } } });
+    expect(result.kind === "key" && result.pose.lidDeg).toBe(45);
+  });
+
+  it("outranks the layout delta, since the keyed pose is what the render shows", () => {
+    const result = commit({
+      delta: { offset: [9, 9, 9] },
+      keyed: { keyId: "k1", pose: {} },
+    });
+    expect(result.kind).toBe("key");
+  });
+});

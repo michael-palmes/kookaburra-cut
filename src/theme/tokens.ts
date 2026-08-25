@@ -50,7 +50,7 @@ export interface ThemeLightSpec {
   color?: string;
 }
 
-/** Shadow-map tokens: fixed values are an EXPORT CONTRACT (the GSAA σ²/κ precedent). Shadows render only when a scene stages a floor/backdrop (hybrid decision); the v7 procedural blob shadows remain the default everywhere else. */
+/** Shadow-map tokens: fixed values are an EXPORT CONTRACT (the GSAA σ²/κ precedent). Shadows render only when a scene stages a floor/backdrop (hybrid decision); the devices' own analytic presentation shadows remain the default everywhere else. */
 export interface ThemeShadowSpec {
   technique: "map" | "none";
   /** False disables real cast shadows and catchers while retaining the configured style. */

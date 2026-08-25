@@ -18,6 +18,34 @@
       "durationMs": 1000
     },
     {
+      "file": "scenes/shadow-studio.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-overhead.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-drop.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-backlight.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-feather.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-window.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-wetfloor.tsx",
+      "durationMs": 1000
+    },
+    {
       "file": "scenes/shadow-none.tsx",
       "durationMs": 1000
     },

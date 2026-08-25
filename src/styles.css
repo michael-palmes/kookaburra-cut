@@ -4899,6 +4899,17 @@ button.beat-status {
   background: var(--warning);
   border-color: transparent;
 }
+.anim-lane.lane-device {
+  --lane-accent: var(--info);
+}
+.anim-lane.lane-device .anim-seg {
+  border-color: rgba(76, 159, 239, 0.48);
+  background: rgba(76, 159, 239, 0.12);
+}
+.anim-lane.lane-device .anim-lane-row > .btn.primary {
+  background: var(--info);
+  border-color: transparent;
+}
 
 .anim-key {
   position: absolute;
