@@ -37,10 +37,12 @@ import {
 } from "../engine/transitionCatalog";
 import {
   EXT2_MIN_TYPE,
+  EXT3_MIN_TYPE,
   EXTENDED_MIN_TYPE,
   fragmentShader,
   fragmentShaderExt,
   fragmentShaderExt2,
+  fragmentShaderExt3,
   SHAPE_ID,
   TYPE_ID,
   vertexShader,
@@ -144,6 +146,7 @@ interface PreviewHandles {
   matSdr: ShaderMaterial;
   matExt: ShaderMaterial;
   matExt2: ShaderMaterial;
+  matExt3: ShaderMaterial;
   texA: Texture;
   texB: Texture;
   raf: number;
@@ -194,6 +197,7 @@ function TransitionPreview({
     const matSdr = makePreviewMaterial(fragmentShader, false);
     const matExt = makePreviewMaterial(fragmentShaderExt, true);
     const matExt2 = makePreviewMaterial(fragmentShaderExt2, true);
+    const matExt3 = makePreviewMaterial(fragmentShaderExt3, true);
     const mesh = new Mesh(new PlaneGeometry(2, 2), matSdr);
     mesh.frustumCulled = false;
     scene.add(mesh);
@@ -206,6 +210,7 @@ function TransitionPreview({
       matSdr,
       matExt,
       matExt2,
+      matExt3,
       texA: sampleSlideTexture(fallbackA, "a"),
       texB: sampleSlideTexture(fallbackB, "b"),
       raf: 0,
@@ -250,11 +255,13 @@ function TransitionPreview({
       const p = s ? applyTransitionEase(s.ease, progress) : progress < 0.5 ? 0 : 1;
       const id = TYPE_ID[type];
       const mat =
-        id >= EXT2_MIN_TYPE
-          ? handles.matExt2
-          : id >= EXTENDED_MIN_TYPE
-            ? handles.matExt
-            : handles.matSdr;
+        id >= EXT3_MIN_TYPE
+          ? handles.matExt3
+          : id >= EXT2_MIN_TYPE
+            ? handles.matExt2
+            : id >= EXTENDED_MIN_TYPE
+              ? handles.matExt
+              : handles.matSdr;
       handles.mesh.material = mat;
       const u = mat.uniforms;
       const params = resolveTransitionParams(s ?? { type: "crossfade", durationMs: 600 });
@@ -285,6 +292,7 @@ function TransitionPreview({
       matSdr.dispose();
       matExt.dispose();
       matExt2.dispose();
+      matExt3.dispose();
       mesh.geometry.dispose();
       renderer.dispose();
       renderer.forceContextLoss();

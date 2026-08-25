@@ -1,6 +1,6 @@
 /** Pure global → local time mapping for a sequence of scenes (no React, no clock): scenes lay back-to-back, but a transition makes the next scene start early by its clamped duration (the overlap/cross-dissolve model, so total = Σdurations − Σoverlaps); resolveAt maps a global ms onto the 1 (solo) or 2 (mid-transition) active scenes and their scene-local times. Pure functions, so preview and export agree by construction (see docs/determinism.md). */
 
-/** The composite transition types (see engine/transitionShader.ts): the legacy four (crossfade/dip/slide/wipe) render through the v1 GLSL1 materials, the extended pack (blur/push/zoom/whip/luma/glitch) through the GLSL3 materials, and the v14 pack (slice/dissolve/warp) through a third material generation so earlier programs stay source-identical. */
+/** The composite transition types (see engine/transitionShader.ts): the legacy four (crossfade/dip/slide/wipe) render through the v1 GLSL1 materials, the extended pack (blur/push/zoom/whip/luma/glitch) through the GLSL3 materials, the v14 pack (slice/dissolve/warp) through a third material generation, and the v15 pack (inkbleed through spinblur) through a fourth, so earlier programs stay source-identical. */
 export type TransitionType =
   | "crossfade"
   | "dip"
@@ -14,7 +14,20 @@ export type TransitionType =
   | "glitch"
   | "slice"
   | "dissolve"
-  | "warp";
+  | "warp"
+  | "inkbleed"
+  | "flowmorph"
+  | "shockwave"
+  | "glasssweep"
+  | "rackfocus"
+  | "halftone"
+  | "lightsweep"
+  | "shatter"
+  | "pixelstretch"
+  | "chromasplit"
+  | "datamosh"
+  | "prism"
+  | "spinblur";
 
 /** Progress easing names; absent means linear, so stored specs without one keep exact bytes. */
 export type TransitionEase = "linear" | "smooth" | "snappy";
@@ -26,8 +39,8 @@ export function applyTransitionEase(ease: TransitionEase | undefined, t: number)
   return t;
 }
 
-/** Procedural luma-wipe ramp shapes. */
-export type TransitionShape = "linear" | "radial" | "iris";
+/** Procedural ramp/aperture shapes: linear/radial/iris are the luma ramps; hex is the rack-focus aperture (the v15 pack reuses the shared shape field with per-type meanings). */
+export type TransitionShape = "linear" | "radial" | "iris" | "hex";
 
 /** Resolved per-type parameters, all defaults baked (see resolveTransitionParams). */
 export interface TransitionParams {
@@ -117,7 +130,16 @@ export function defaultDirection(type: TransitionType): [number, number] {
     case "whip":
     case "luma":
     case "slice":
+    case "glasssweep":
+    case "halftone":
+    case "lightsweep":
+    case "chromasplit":
+    case "datamosh":
       return [1, 0];
+    case "inkbleed":
+    case "shatter":
+    case "pixelstretch":
+      return [0, -1];
     default:
       return [0, 0];
   }
@@ -137,6 +159,19 @@ const KNOWN_TYPES: readonly TransitionType[] = [
   "slice",
   "dissolve",
   "warp",
+  "inkbleed",
+  "flowmorph",
+  "shockwave",
+  "glasssweep",
+  "rackfocus",
+  "halftone",
+  "lightsweep",
+  "shatter",
+  "pixelstretch",
+  "chromasplit",
+  "datamosh",
+  "prism",
+  "spinblur",
 ];
 
 /** Per-type `intensity` defaults (unused types keep 0). */
@@ -148,6 +183,46 @@ const INTENSITY_DEFAULTS: Partial<Record<TransitionType, number>> = {
   slice: 0.35,
   dissolve: 0.35,
   warp: 0.2,
+  inkbleed: 0.5,
+  flowmorph: 0.4,
+  shockwave: 0.5,
+  glasssweep: 0.5,
+  rackfocus: 0.5,
+  halftone: 0.3,
+  lightsweep: 0.6,
+  shatter: 0.5,
+  pixelstretch: 0.5,
+  chromasplit: 0.4,
+  datamosh: 0.6,
+  prism: 0.5,
+  spinblur: 0.5,
+};
+
+/** v15 per-type defaults for the shared params; older types keep the flat fallbacks below, so their resolution is byte-identical. */
+const SOFTNESS_DEFAULTS: Partial<Record<TransitionType, number>> = {
+  inkbleed: 0.12,
+  shockwave: 0.1,
+  glasssweep: 0.18,
+  rackfocus: 0.25,
+  lightsweep: 0.15,
+  pixelstretch: 0.15,
+  chromasplit: 0.2,
+};
+
+const STEPS_DEFAULTS: Partial<Record<TransitionType, number>> = {
+  shockwave: 1,
+  datamosh: 10,
+  prism: 6,
+};
+
+const BLOCKS_DEFAULTS: Partial<Record<TransitionType, [number, number]>> = {
+  halftone: [45, 45],
+  shatter: [12, 12],
+  datamosh: [28, 28],
+};
+
+const SHAPE_DEFAULTS: Partial<Record<TransitionType, TransitionShape>> = {
+  halftone: "radial",
 };
 
 /** Normalizes an authored spec: unknown types degrade to `crossfade` with a warning, since workspace project.json is hand- or Claude-edited and a typo must never feed an undefined uniform, so the timeline only ever carries known types. */
@@ -172,14 +247,20 @@ export function resolveTransitionParams(spec: TransitionSpec): TransitionParams 
       : dflt;
   return {
     intensity: num(spec.intensity, INTENSITY_DEFAULTS[spec.type] ?? 0, 0, 1),
-    softness: num(spec.softness, 0.08, 0.005, 0.5),
+    softness: num(spec.softness, SOFTNESS_DEFAULTS[spec.type] ?? 0.08, 0.005, 0.5),
     center: pair(spec.center, [0.5, 0.5], 0, 1),
-    blocks: pair(spec.blocks, [24, 14], 1, 128).map(Math.round) as [number, number],
+    blocks: pair(spec.blocks, BLOCKS_DEFAULTS[spec.type] ?? [24, 14], 1, 128).map(Math.round) as [
+      number,
+      number,
+    ],
     shape:
-      spec.shape === "radial" || spec.shape === "iris" || spec.shape === "linear"
+      spec.shape === "radial" ||
+      spec.shape === "iris" ||
+      spec.shape === "linear" ||
+      spec.shape === "hex"
         ? spec.shape
-        : "linear",
-    steps: Math.round(num(spec.steps, 12, 1, 60)),
+        : (SHAPE_DEFAULTS[spec.type] ?? "linear"),
+    steps: Math.round(num(spec.steps, STEPS_DEFAULTS[spec.type] ?? 12, 1, 60)),
     parallax: num(spec.parallax, 0.5, 0, 1),
   };
 }
