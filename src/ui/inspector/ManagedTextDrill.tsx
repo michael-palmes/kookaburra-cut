@@ -131,6 +131,8 @@ export interface ManagedTextDrillProps {
   mutateIcon?: (doc: SceneDoc, itemKey: string, value: string | undefined) => SceneDoc | null;
   notice?: string | null;
   disabled?: boolean;
+  /** The host's Delete key reaches the drill here: holds the selected-element delete while the drill is live. */
+  deleteSelectedRef?: { current: (() => boolean) | null };
 }
 
 const TYPE_OPTIONS: SegmentedOption<SceneManagedTextItemType>[] = [
@@ -511,6 +513,7 @@ export function ManagedTextDrill({
   mutateIcon,
   notice,
   disabled = false,
+  deleteSelectedRef,
 }: ManagedTextDrillProps) {
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
@@ -652,6 +655,23 @@ export function ManagedTextDrill({
       },
     });
   };
+
+  // The Delete key removes the selected element only; the last element takes its emptied group with it (closing the drill).
+  const deleteSelectedElement = () => {
+    if (disabled || !selectedGroup || chromeGroup || !selected) return false;
+    if (isSingleItemGroup) {
+      void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
+    } else {
+      void runStructural({ type: "remove-item", itemKey: selected.key });
+    }
+    return true;
+  };
+  if (deleteSelectedRef) deleteSelectedRef.current = deleteSelectedElement;
+  useEffect(() => {
+    return () => {
+      if (deleteSelectedRef) deleteSelectedRef.current = null;
+    };
+  }, [deleteSelectedRef]);
 
   const openAddMenu = (button: HTMLButtonElement) => {
     if (!selectedGroup || disabled) return;
