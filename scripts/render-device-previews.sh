@@ -25,9 +25,9 @@ if [[ ! -x "$BLENDER" ]]; then
   exit 1
 fi
 
-# render <device-id> <colour-id> <blend-path>
+# render <device-id> <colour-id> <blend-path> [camera-roll-deg]
 render() {
-  local device="$1" id="$2" blend="$3"
+  local device="$1" id="$2" blend="$3" roll="${4:-0}"
   local out_dir="src/assets/device-previews/$device"
   if [[ "$DEVICE" != "all" && "$DEVICE" != "$device" ]]; then return; fi
   if [[ ! -f "$blend" ]]; then
@@ -37,7 +37,7 @@ render() {
   mkdir -p "$out_dir"
   echo "[assets:device-previews] $device/$id"
   "$BLENDER" -b "$blend" --python scripts/blender-render-preview.py -- \
-    "$PWD/$out_dir/$id.png" "$SIZE" >/dev/null
+    "$PWD/$out_dir/$id.png" "$SIZE" 0.9 "$roll" >/dev/null
 }
 
 SRC15="$KOOKABURRA_ASSETS_DIR/Licensed Apple iPhone 15 Pro"
@@ -54,6 +54,11 @@ render iphone-17-pro deep-blue "$SRC17/APPLE_iPhone 17 Pro_Deep Blue.blend"
 SRCMBP="$KOOKABURRA_ASSETS_DIR/Licensed Apple 2023 M2 MacBook Pro/uploads-files-4559180-APPLE_M2+MacBook+Pro_2023_BLEND"
 render macbook-pro-16 silver "$SRCMBP/APPLE_M2 MacBook Pro_2023_16 Inch_Silver.blend"
 render macbook-pro-16 space-grey "$SRCMBP/APPLE_M2 MacBook Pro_2023_16 Inch_Space Grey.blend"
+
+# Camera roll -90 cards the portrait-authored studio in the device's landscape identity.
+SRCIPAD="$KOOKABURRA_ASSETS_DIR/Licensed iPad Pro/iPad+Pro+(M4+2024)+-+11&13+INCH_BLEND"
+render ipad-pro-13 silver "$SRCIPAD/iPad Pro (M4 2024) - 13 INCH - Silver.blend" -90
+render ipad-pro-13 space-black "$SRCIPAD/iPad Pro (M4 2024) - 13 INCH - Space Black.blend" -90
 
 echo "[assets:device-previews] done:"
 ls -lh src/assets/device-previews/*/

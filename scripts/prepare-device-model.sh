@@ -14,7 +14,7 @@ set -euo pipefail
 
 DEVICE="${1:-}"
 if [[ -z "$DEVICE" ]]; then
-  echo "usage: prepare-device-model.sh <iphone-15-pro|iphone-17-pro|macbook-pro-16> [blend]" >&2
+  echo "usage: prepare-device-model.sh <iphone-15-pro|iphone-17-pro|macbook-pro-16|ipad-pro-13> [blend]" >&2
   exit 2
 fi
 
@@ -48,6 +48,17 @@ case "$DEVICE" in
     # Simplify OFF: even with locked borders it creases the wide keycaps (spacebar, right shift, F3, F5).
     EXTRA_FLAGS="--join false --flatten false --simplify false"
     ;;
+  ipad-pro-13)
+    DEFAULT_BLEND="${KOOKABURRA_ASSETS_DIR:-}/Licensed iPad Pro/iPad+Pro+(M4+2024)+-+11&13+INCH_BLEND/iPad Pro (M4 2024) - 13 INCH - Silver.blend"
+    OUT="src/assets/models/licensed/1a8f4c65-0cd1-42c2-a5cd-ffb632ec372b.glb"
+    YAW=0
+    # Portrait-authored; roll -90 lands landscape with the camera edge up, USB-C right.
+    ROLL=-90
+    # The vendor stages an Apple Pencil Pro beside the device; the catalog ships the iPad alone.
+    EXCLUDE="Apple_Pencil_Pro"
+    # The roll re-rotates this material's mesh UVs so screen media stays upright.
+    SCREEN_MATERIAL="SCREEN"
+    ;;
   *)
     echo "[assets:$DEVICE] unknown device id: $DEVICE" >&2
     exit 2
@@ -58,6 +69,9 @@ BLEND="${2:-${BLEND:-$DEFAULT_BLEND}}"
 BLENDER="${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}"
 TEXTURE_SIZE="${TEXTURE_SIZE:-2048}"
 EXTRA_FLAGS="${EXTRA_FLAGS:-}"
+ROLL="${ROLL:-0}"
+EXCLUDE="${EXCLUDE:-}"
+SCREEN_MATERIAL="${SCREEN_MATERIAL:-}"
 TMPDIR="$(mktemp -d)"
 RAW="$TMPDIR/$DEVICE-raw.glb"
 
@@ -73,8 +87,8 @@ fi
 
 mkdir -p "$(dirname "$OUT")"
 
-echo "[assets:$DEVICE] exporting: $BLEND (yaw $YAW)"
-"$BLENDER" -b "$BLEND" --python scripts/blender-export-glb.py -- "$RAW" "$YAW"
+echo "[assets:$DEVICE] exporting: $BLEND (yaw $YAW, roll $ROLL)"
+"$BLENDER" -b "$BLEND" --python scripts/blender-export-glb.py -- "$RAW" "$YAW" "$ROLL" "$EXCLUDE" "$SCREEN_MATERIAL"
 
 echo "[assets:$DEVICE] optimising -> $OUT"
 # sharp needs its native postinstall; pnpm dlx blocks build scripts unless allowed.
