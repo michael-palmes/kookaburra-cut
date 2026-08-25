@@ -3,9 +3,7 @@
   "name": "Preview Lab \u2014 stage (dev-only)",
   "version": 2,
   "themeId": "kookaburra-studio-white",
-  "formats": [
-    "16:9"
-  ],
+  "formats": ["16:9"],
   "scenes": [
     {
       "file": "scenes/shadow-soft.tsx",
