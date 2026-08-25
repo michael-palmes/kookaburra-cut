@@ -377,6 +377,28 @@ describe("the mode catalogue", () => {
     expect(SHADOW_FRAG).toMatch(/uniform\s+float\s+uFillOpacity;/);
   });
 
+  it("floors the pool's footprint for the pool-led modes, so upright phones still seat", () => {
+    for (const mode of [DEVICE_SHADOW_MODES.overhead, DEVICE_SHADOW_MODES.feather]) {
+      // Wider than any handset's thickness-only sliver (grown or not).
+      expect(mode.ambientMinHalf ?? 0).toBeGreaterThan(0.184);
+    }
+    // The casts keep the true silhouette: no floor on the directional modes.
+    expect(DEVICE_SHADOW_MODES.soft.ambientMinHalf).toBeUndefined();
+    expect(DEVICE_SHADOW_MODES.long.ambientMinHalf).toBeUndefined();
+  });
+
+  it("pads the quad out to the floored pool", () => {
+    const mode = DEVICE_SHADOW_MODES.feather;
+    const slabs = deviceShadowSlabs(PHONE, REST);
+    const plane = shadowPlane(mode, -1.3, 1);
+    const light = shadowLightDirection(mode);
+    const floored = shadowQuad(slabs, plane, light, mode, 1);
+    const bare = shadowQuad(slabs, plane, light, { ...mode, ambientMinHalf: undefined }, 1);
+    expect(floored && bare && floored.size[1]).toBeGreaterThan(
+      (bare as { size: [number, number] }).size[1],
+    );
+  });
+
   it("aims lightDirection correctly at the compass points", () => {
     expect(lightDirection(0, 0)).toEqual([0, 0, 1]);
     const overhead = lightDirection(0, 90);

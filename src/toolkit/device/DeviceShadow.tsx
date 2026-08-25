@@ -52,6 +52,7 @@ function makeUniforms() {
     uFadeLength: { value: 1 },
     uFalloff: { value: 1 },
     uAmbient: { value: new Vector2() },
+    uAmbientMin: { value: 0 },
     uSlabC0: a.c,
     uSlabU0: a.u,
     uSlabV0: a.v,
@@ -125,6 +126,7 @@ function refreshUniforms(
     Math.min(mode.ambientBlur * scale, SHADOW_AMBIENT_MAX_BLUR),
     mode.ambientOpacity,
   );
+  uniforms.uAmbientMin.value = (mode.ambientMinHalf ?? 0) * scale;
   writeSlab(uniforms, 0, slabs[0], light);
   writeSlab(uniforms, 1, slabs[1], light);
   uniforms.uSlabOn1.value = slabs[1] ? 1 : 0;

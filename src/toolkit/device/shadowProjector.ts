@@ -68,6 +68,8 @@ export interface ShadowModeSpec {
   /** The contact pool: a heavily blurred copy of the footprint projected STRAIGHT DOWN onto the receiver rather than along the key, so it sits under the device and grounds it the way ambient occlusion does. Zero opacity disables it. */
   ambientBlur: number;
   ambientOpacity: number;
+  /** Minimum half-extent of the pool's silhouette, in fitted units before the placement scale: an upright handset projects straight down to a sliver its own thickness wide, so the pool-led modes (Overhead, Feather) floor it to stay visible under phones. Absent leaves the true footprint. */
+  ambientMinHalf?: number;
   /** Twin studio only: a second, unswept cast from a second light (the fill softbox); absent everywhere else. */
   fill?: { azimuthDeg: number; elevationDeg: number; opacity: number };
 }
@@ -146,7 +148,8 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
     sweepLength: 0,
     sweepBlur: 0,
     ambientBlur: 0.3,
-    ambientOpacity: 0.22,
+    ambientOpacity: 0.3,
+    ambientMinHalf: 0.28,
   },
   drop: {
     receiver: "behind",
@@ -188,7 +191,8 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
     sweepLength: 0,
     sweepBlur: 0,
     ambientBlur: 0.5,
-    ambientOpacity: 0.3,
+    ambientOpacity: 0.4,
+    ambientMinHalf: 0.32,
   },
   window: {
     receiver: "floor",
@@ -470,7 +474,10 @@ export function shadowQuad(
   maxY = Math.max(maxY, maxY + sweep[1] * sweepLen);
   const penumbra =
     shadowPenumbra(mode, maxDistance, scale) + (mode.sweepBlur + SHADOW_QUAD_MARGIN) * scale;
-  const pad = Math.max(penumbra, Math.min(mode.ambientBlur * scale, SHADOW_AMBIENT_MAX_BLUR));
+  const ambientReach =
+    Math.min(mode.ambientBlur * scale, SHADOW_AMBIENT_MAX_BLUR) +
+    (mode.ambientMinHalf ?? 0) * scale;
+  const pad = Math.max(penumbra, ambientReach);
   return {
     centre: [(minX + maxX) / 2, (minY + maxY) / 2],
     size: [maxX - minX + pad * 2, maxY - minY + pad * 2],
@@ -507,6 +514,7 @@ uniform float uOpacity;
 uniform float uFadeLength;
 uniform float uFalloff;
 uniform vec2 uAmbient;
+uniform float uAmbientMin;
 uniform vec3 uSlabC0;
 uniform vec3 uSlabU0;
 uniform vec3 uSlabV0;
@@ -527,15 +535,15 @@ float sdRoundBox(vec2 p, vec2 b, float r) {
   return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
 }
 
-// Probes one slab from a receiver point: x is the signed distance to its silhouette, y how far along the light the slab sits. A slab behind the receiver occludes nothing and returns the miss sentinel.
-vec2 slabProbe(vec2 p, vec3 light, vec3 c, vec3 u, vec3 v, vec3 n, vec3 h) {
+// Probes one slab from a receiver point: x is the signed distance to its silhouette, y how far along the light the slab sits. minHalf floors the silhouette (the pool's minimum footprint; zero for the casts). A slab behind the receiver occludes nothing and returns the miss sentinel.
+vec2 slabProbe(vec2 p, vec3 light, float minHalf, vec3 c, vec3 u, vec3 v, vec3 n, vec3 h) {
   vec3 world = uPlaneOrigin + uPlaneE1 * p.x + uPlaneE2 * p.y;
   float denom = dot(light, n);
   if (abs(denom) < 1e-4) return vec2(SLAB_MISS, SLAB_MISS);
   float s = dot(c - world, n) / denom;
   if (s <= 0.0) return vec2(SLAB_MISS, SLAB_MISS);
   vec3 q = world + light * s - c;
-  return vec2(sdRoundBox(vec2(dot(q, u), dot(q, v)), h.xy, h.z), s);
+  return vec2(sdRoundBox(vec2(dot(q, u), dot(q, v)), max(h.xy, vec2(minHalf)), h.z), s);
 }
 
 // One probe's coverage: the penumbra widens with the slab's distance from the receiver, which softens a floating device's shadow and blurs a tall one toward its far end. blurAdd carries the sun sweep's extra ramp; fadeOn mutes the distance fade for the ambient pool.
@@ -547,9 +555,9 @@ float probeCoverage(vec2 probe, float blurAdd, float fadeOn) {
   return cover * mix(1.0, fade, fadeOn);
 }
 
-float shade(vec2 p, vec3 light, float blurAdd, float fadeOn) {
-  float a = probeCoverage(slabProbe(p, light, uSlabC0, uSlabU0, uSlabV0, uSlabN0, uSlabH0), blurAdd, fadeOn);
-  float b = probeCoverage(slabProbe(p, light, uSlabC1, uSlabU1, uSlabV1, uSlabN1, uSlabH1), blurAdd, fadeOn);
+float shade(vec2 p, vec3 light, float minHalf, float blurAdd, float fadeOn) {
+  float a = probeCoverage(slabProbe(p, light, minHalf, uSlabC0, uSlabU0, uSlabV0, uSlabN0, uSlabH0), blurAdd, fadeOn);
+  float b = probeCoverage(slabProbe(p, light, minHalf, uSlabC1, uSlabU1, uSlabV1, uSlabN1, uSlabH1), blurAdd, fadeOn);
   return max(a, b * uSlabOn1);
 }
 
@@ -558,10 +566,10 @@ void main() {
   float along = uSweepLen > 0.0 ? clamp(dot(vPos, uSweep), 0.0, uSweepLen) : 0.0;
   float t = uSweepLen > 0.0 ? along / uSweepLen : 0.0;
   // "cast" is a GLSL reserved word: naming this variable after what it is fails to compile.
-  float thrown = shade(vPos - uSweep * along, uLight, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff) * uOpacity;
+  float thrown = shade(vPos - uSweep * along, uLight, 0.0, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff) * uOpacity;
   // Twin studio's second softbox, an unswept cast; zero opacity keeps every other mode's arithmetic exact (multiplying by 1.0 is lossless).
-  float fill = uFillOpacity > 0.0 ? shade(vPos, uFillLight, 0.0, 1.0) * uFillOpacity : 0.0;
-  float ambient = uAmbient.y > 0.0 ? shade(vPos, uPlaneNormal, uAmbient.x, 0.0) * uAmbient.y : 0.0;
+  float fill = uFillOpacity > 0.0 ? shade(vPos, uFillLight, 0.0, 0.0, 1.0) * uFillOpacity : 0.0;
+  float ambient = uAmbient.y > 0.0 ? shade(vPos, uPlaneNormal, uAmbientMin, uAmbient.x, 0.0) * uAmbient.y : 0.0;
   float alpha = 1.0 - (1.0 - thrown) * (1.0 - fill) * (1.0 - ambient);
   if (alpha <= 0.001) discard;
   gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
