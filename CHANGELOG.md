@@ -4,6 +4,28 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Thirteen new shader transitions in a fourth material generation: ink bleed,
+  flow morph, shockwave, glass sweep, rack focus, halftone, light sweep,
+  shatter, pixel stretch, chroma split, datamosh, prism fold and spin blur,
+  each with its own options.
+- A declarative options schema on the transition catalogue: every transition's
+  parameters (intensity, softness, focal point, blocks, steps, parallax,
+  shapes) now render as labelled controls in the picker, including the
+  previously hidden parameters on the existing thirteen types.
+- Hovering a transition card plays that transition in the picker's live
+  preview, so a click is no longer needed to see it.
+- The picker groups its cards into four feel sections: dissolves and focus,
+  wipes and reveals, motion, digital and bold.
+
+### Fixed
+
+- The transition drill stays open when a transition or option is applied;
+  leaving is back, cancel or Escape.
+
 ## [0.14.0] - 2026-08-25
 
 ### Added
