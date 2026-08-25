@@ -92,10 +92,14 @@ normally and simply shows no editing affordances.
       "media": { "src": "assets/demo.mp4", "kind": "video", "startMs": 0, "fit": "cover" },
       "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
       "motion": { "preset": "none" },        // opt-in: none|turntable|float|tilt-reveal|push-in (+ params)
-      "shadow": "soft",                      // soft | long | sun | none — one analytic projector casts
-                                             // the device's REAL silhouette (size, yaw, lid, float) from
-                                             // a virtual key: soft = tight contact pool on the floor,
-                                             // long = low rake, sun = 45° smear on a plane behind
+      "shadow": "soft",                      // one analytic projector casts the device's REAL silhouette
+                                             // (size, yaw, lid, float). Floor family: soft (tight contact
+                                             // pool), long (low rake), studio (opposed key + fill), overhead
+                                             // (tabletop pool), backlight (toward the camera), feather (pool
+                                             // only), window (wide + airy), wetfloor (short sharp forward
+                                             // fade). Behind-plane family: sun (45° smear), drop (the
+                                             // app-store card offset). Or none. NOTE: a staged floor runs
+                                             // real map shadows and the presentation shadow stands down.
       "lidDeg": 90                           // laptops only: lid opening in degrees (0 closed, default 90)
     }
   ],

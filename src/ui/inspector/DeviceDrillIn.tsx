@@ -17,6 +17,7 @@ import {
   type DeviceShadowMode,
   effectiveDeviceShadowMode,
 } from "../../toolkit/device/Device";
+import { DEVICE_SHADOW_CHOICES } from "../../toolkit/device/shadowProjector";
 import type { V3 } from "../../toolkit/types";
 import { ComparisonSideIcon } from "../ComparisonSideIcon";
 import { ColourPicker } from "../colour/ColourPicker";
@@ -117,12 +118,7 @@ const DEVICE_MOTIONS: Array<{
   { id: "tilt-reveal", label: "Tilt reveal" },
 ];
 
-const DEVICE_SHADOWS: Array<{ id: DeviceShadowMode; label: string }> = [
-  { id: "soft", label: "Soft contact" },
-  { id: "long", label: "Long & smooth" },
-  { id: "sun", label: "Sun sweep" },
-  { id: "none", label: "None" },
-];
+const DEVICE_SHADOWS = DEVICE_SHADOW_CHOICES;
 
 const DEVICE_POSES: Array<{ id: string; label: string; rotationDeg: V3 }> = [
   { id: "front", label: "Front on", rotationDeg: [0, 0, 0] },

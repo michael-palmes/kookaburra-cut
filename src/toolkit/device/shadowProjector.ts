@@ -17,8 +17,34 @@ export const SHADOW_QUAD_MARGIN = 0.12;
 /** Ambient (unswept) contact term: capped so a wildly scaled device cannot wash the floor. */
 export const SHADOW_AMBIENT_MAX_BLUR = 1.6;
 
-/** The three presentation modes' parameter sets. */
-export type DeviceShadowMode = "soft" | "long" | "sun" | "none";
+/** The presentation modes' parameter sets. */
+export type DeviceShadowMode =
+  | "soft"
+  | "long"
+  | "sun"
+  | "studio"
+  | "overhead"
+  | "drop"
+  | "backlight"
+  | "feather"
+  | "window"
+  | "wetfloor"
+  | "none";
+
+/** The picker order and display copy, the single list every shadow picker renders. */
+export const DEVICE_SHADOW_CHOICES: Array<{ id: DeviceShadowMode; label: string }> = [
+  { id: "soft", label: "Soft contact" },
+  { id: "long", label: "Long & smooth" },
+  { id: "sun", label: "Sun sweep" },
+  { id: "studio", label: "Twin studio" },
+  { id: "overhead", label: "Overhead" },
+  { id: "drop", label: "Card drop" },
+  { id: "backlight", label: "Backlight" },
+  { id: "feather", label: "Feather" },
+  { id: "window", label: "Window light" },
+  { id: "wetfloor", label: "Wet floor" },
+  { id: "none", label: "None" },
+];
 
 export interface ShadowModeSpec {
   /** Where the shadow lands: the stage floor under the device, or a plane behind it. */
@@ -42,12 +68,14 @@ export interface ShadowModeSpec {
   /** The contact pool: a heavily blurred copy of the footprint projected STRAIGHT DOWN onto the receiver rather than along the key, so it sits under the device and grounds it the way ambient occlusion does. Zero opacity disables it. */
   ambientBlur: number;
   ambientOpacity: number;
+  /** Twin studio only: a second, unswept cast from a second light (the fill softbox); absent everywhere else. */
+  fill?: { azimuthDeg: number; elevationDeg: number; opacity: number };
 }
 
 /** The bundled rig's key light sits at [4, 6, 5], so both floor modes rake away from it: the shadow falls back-left exactly as the lit device's highlights imply. */
 export const KEY_LIGHT_AZIMUTH_DEG = 38.65980825409009;
 
-/** The mode catalogue. Soft contact reads as a tight strip under the device plus a broad ambient pool; Long & smooth drops the same key to a low rake for a long eased tail; Sun sweep keeps its plane behind the device and its 45-degree down-right smear. */
+/** The mode catalogue. The floor family: Soft contact (tight strip + broad pool), Long & smooth (low rake, long eased tail), Twin studio (opposed key + fill softboxes), Overhead (near-vertical tabletop pool), Backlight (low light from behind, cast toward the camera), Feather (grounding pool alone, no directional cast), Window light (mid-height, wide and airy), Wet floor (short sharp forward fade hinting at a glossy floor). The behind-plane family: Sun sweep (the 45-degree smear) and Card drop (a small down-right offset with an even blur, the app-store mockup shadow). */
 export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, ShadowModeSpec> = {
   soft: {
     receiver: "floor",
@@ -90,6 +118,105 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
     sweepBlur: 0.79,
     ambientBlur: 0,
     ambientOpacity: 0,
+  },
+  studio: {
+    receiver: "floor",
+    azimuthDeg: 50,
+    elevationDeg: 40,
+    blurNear: 0.05,
+    softness: 0.07,
+    opacity: 0.32,
+    fadeLength: 4.5,
+    falloff: 1.5,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0.35,
+    ambientOpacity: 0.18,
+    fill: { azimuthDeg: -50, elevationDeg: 40, opacity: 0.17 },
+  },
+  overhead: {
+    receiver: "floor",
+    azimuthDeg: KEY_LIGHT_AZIMUTH_DEG,
+    elevationDeg: 82,
+    blurNear: 0.035,
+    softness: 0.06,
+    opacity: 0.5,
+    fadeLength: 2.2,
+    falloff: 1.3,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0.3,
+    ambientOpacity: 0.22,
+  },
+  drop: {
+    receiver: "behind",
+    azimuthDeg: -25,
+    elevationDeg: 28,
+    blurNear: 0.1,
+    softness: 0.04,
+    opacity: 0.32,
+    fadeLength: 40,
+    falloff: 1.3,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0,
+    ambientOpacity: 0,
+  },
+  backlight: {
+    receiver: "floor",
+    azimuthDeg: 172,
+    elevationDeg: 22,
+    blurNear: 0.05,
+    softness: 0.09,
+    opacity: 0.42,
+    fadeLength: 6,
+    falloff: 1.8,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0.25,
+    ambientOpacity: 0.14,
+  },
+  feather: {
+    receiver: "floor",
+    azimuthDeg: 0,
+    elevationDeg: 90,
+    blurNear: 0.04,
+    softness: 0.06,
+    opacity: 0,
+    fadeLength: 2,
+    falloff: 1.4,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0.5,
+    ambientOpacity: 0.3,
+  },
+  window: {
+    receiver: "floor",
+    azimuthDeg: 55,
+    elevationDeg: 34,
+    blurNear: 0.08,
+    softness: 0.11,
+    opacity: 0.3,
+    fadeLength: 7,
+    falloff: 1.4,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0.3,
+    ambientOpacity: 0.15,
+  },
+  wetfloor: {
+    receiver: "floor",
+    azimuthDeg: 180,
+    elevationDeg: 48,
+    blurNear: 0.03,
+    softness: 0.05,
+    opacity: 0.46,
+    fadeLength: 2.6,
+    falloff: 2.2,
+    sweepLength: 0,
+    sweepBlur: 0,
+    ambientBlur: 0.2,
+    ambientOpacity: 0.12,
   },
 };
 
@@ -219,12 +346,17 @@ export function deviceShadowSlabs(
   });
 }
 
-/** Unit vector from the origin toward the key light. */
-export function shadowLightDirection(mode: ShadowModeSpec): V3 {
-  const az = mode.azimuthDeg * DEG2RAD;
-  const el = mode.elevationDeg * DEG2RAD;
+/** Unit vector from the origin toward a light at (azimuth, elevation) degrees. */
+export function lightDirection(azimuthDeg: number, elevationDeg: number): V3 {
+  const az = azimuthDeg * DEG2RAD;
+  const el = elevationDeg * DEG2RAD;
   const ce = Math.cos(el);
   return [ce * Math.sin(az), Math.sin(el), ce * Math.cos(az)];
+}
+
+/** Unit vector from the origin toward the key light. */
+export function shadowLightDirection(mode: ShadowModeSpec): V3 {
+  return lightDirection(mode.azimuthDeg, mode.elevationDeg);
 }
 
 /** The receiver plane in the device group's local frame: an origin plus the mounted mesh's own orthonormal basis, so plane coordinates ARE the quad's local xy. */
@@ -293,7 +425,9 @@ export function shadowQuad(
   const denomPlane = dot(light, plane.normal);
   if (Math.abs(denomPlane) < 1e-4) return null;
   let maxDistance = 0;
-  const directions = mode.ambientOpacity > 0 ? [light, plane.normal] : [light];
+  const directions = [light];
+  if (mode.ambientOpacity > 0) directions.push(plane.normal);
+  if (mode.fill) directions.push(lightDirection(mode.fill.azimuthDeg, mode.fill.elevationDeg));
   for (const slab of slabs) {
     for (const direction of directions) {
       const half = slabSilhouetteHalf(slab, direction);
@@ -361,6 +495,8 @@ uniform vec3 uPlaneOrigin;
 uniform vec3 uPlaneE1;
 uniform vec3 uPlaneE2;
 uniform vec3 uLight;
+uniform vec3 uFillLight;
+uniform float uFillOpacity;
 uniform vec3 uPlaneNormal;
 uniform vec2 uSweep;
 uniform float uSweepLen;
@@ -423,8 +559,10 @@ void main() {
   float t = uSweepLen > 0.0 ? along / uSweepLen : 0.0;
   // "cast" is a GLSL reserved word: naming this variable after what it is fails to compile.
   float thrown = shade(vPos - uSweep * along, uLight, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff) * uOpacity;
+  // Twin studio's second softbox, an unswept cast; zero opacity keeps every other mode's arithmetic exact (multiplying by 1.0 is lossless).
+  float fill = uFillOpacity > 0.0 ? shade(vPos, uFillLight, 0.0, 1.0) * uFillOpacity : 0.0;
   float ambient = uAmbient.y > 0.0 ? shade(vPos, uPlaneNormal, uAmbient.x, 0.0) * uAmbient.y : 0.0;
-  float alpha = 1.0 - (1.0 - thrown) * (1.0 - ambient);
+  float alpha = 1.0 - (1.0 - thrown) * (1.0 - fill) * (1.0 - ambient);
   if (alpha <= 0.001) discard;
   gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
 }

@@ -224,6 +224,13 @@ describe("DeviceDrillIn", () => {
       "Soft contact",
       "Long & smooth",
       "Sun sweep",
+      "Twin studio",
+      "Overhead",
+      "Card drop",
+      "Backlight",
+      "Feather",
+      "Window light",
+      "Wet floor",
       "None",
     ]);
     expect(captures.options[0]?.selected).toBe(true);
@@ -519,6 +526,13 @@ describe("DeviceDrillIn comparison sides", () => {
       "Soft contact",
       "Long & smooth",
       "Sun sweep",
+      "Twin studio",
+      "Overhead",
+      "Card drop",
+      "Backlight",
+      "Feather",
+      "Window light",
+      "Wet floor",
       "None",
     ]);
   });

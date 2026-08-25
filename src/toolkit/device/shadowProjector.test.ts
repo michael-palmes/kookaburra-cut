@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEVICE_SHADOW_CHOICES,
   DEVICE_SHADOW_MODES,
   deviceShadowSlabs,
+  lightDirection,
   SHADOW_FRAG,
   SHADOW_VERT,
   type ShadowPose,
@@ -297,5 +299,89 @@ describe("the shader source", () => {
       expect(SHADOW_FRAG).toContain(`uniform`);
       expect(SHADOW_FRAG).toMatch(new RegExp(`uniform\\s+\\w+\\s+${uniform};`));
     }
+  });
+});
+
+describe("the mode catalogue", () => {
+  it("keeps the picker list and the parameter table in lockstep", () => {
+    const choices = DEVICE_SHADOW_CHOICES.map((choice) => choice.id).filter((id) => id !== "none");
+    expect(choices.sort()).toEqual(Object.keys(DEVICE_SHADOW_MODES).sort());
+  });
+
+  it("puts Overhead nearly straight above, for the symmetric tabletop pool", () => {
+    const light = shadowLightDirection(DEVICE_SHADOW_MODES.overhead);
+    expect(light[1]).toBeGreaterThan(0.98);
+  });
+
+  it("throws Backlight and Wet floor forward, toward the camera", () => {
+    for (const mode of [DEVICE_SHADOW_MODES.backlight, DEVICE_SHADOW_MODES.wetfloor]) {
+      const plane = shadowPlane(mode, -1.3, 1);
+      const sweep = shadowSweepDirection(plane, shadowLightDirection(mode));
+      // The floor plane's +y is world -z, so a forward cast is negative there.
+      expect(sweep[1]).toBeLessThan(-0.9);
+    }
+    // Wet floor is the short sharp one of the pair.
+    expect(DEVICE_SHADOW_MODES.wetfloor.fadeLength).toBeLessThan(
+      DEVICE_SHADOW_MODES.backlight.fadeLength,
+    );
+    expect(DEVICE_SHADOW_MODES.wetfloor.blurNear).toBeLessThan(
+      DEVICE_SHADOW_MODES.backlight.blurNear,
+    );
+  });
+
+  it("gives Feather no directional cast at all", () => {
+    expect(DEVICE_SHADOW_MODES.feather.opacity).toBe(0);
+    expect(DEVICE_SHADOW_MODES.feather.ambientOpacity).toBeGreaterThan(0);
+  });
+
+  it("offsets Card drop down-right on the plane behind, with no smear", () => {
+    const mode = DEVICE_SHADOW_MODES.drop;
+    expect(mode.receiver).toBe("behind");
+    expect(mode.sweepLength).toBe(0);
+    const light = shadowLightDirection(mode);
+    const plane = shadowPlane(mode, -1.3, 1);
+    // The silhouette slides opposite the light: light up-left means the cast lands down-right.
+    const slabs = deviceShadowSlabs(PHONE, REST);
+    const quad = shadowQuad(slabs, plane, light, mode, 1);
+    expect(quad?.centre[0]).toBeGreaterThan(0);
+    expect(quad?.centre[1]).toBeLessThan(0);
+  });
+
+  it("gives Twin studio two opposed casts with the key darker than the fill", () => {
+    const mode = DEVICE_SHADOW_MODES.studio;
+    expect(mode.fill).toBeDefined();
+    expect(Math.sign(mode.fill?.azimuthDeg ?? 0)).toBe(-Math.sign(mode.azimuthDeg));
+    expect(mode.fill?.opacity ?? 1).toBeLessThan(mode.opacity);
+  });
+
+  it("grows Twin studio's quad to hold both casts", () => {
+    const mode = DEVICE_SHADOW_MODES.studio;
+    const single = { ...mode, fill: undefined };
+    const slabs = deviceShadowSlabs(PHONE, REST);
+    const plane = shadowPlane(mode, -1.3, 1);
+    const light = shadowLightDirection(mode);
+    const both = shadowQuad(slabs, plane, light, mode, 1);
+    const one = shadowQuad(slabs, plane, light, single, 1);
+    expect(both && one && both.size[0]).toBeGreaterThan(
+      (one as { size: [number, number] }).size[0],
+    );
+  });
+
+  it("keeps Window light wider and lighter than Long & smooth", () => {
+    expect(DEVICE_SHADOW_MODES.window.softness).toBeGreaterThan(DEVICE_SHADOW_MODES.long.softness);
+    expect(DEVICE_SHADOW_MODES.window.opacity).toBeLessThan(DEVICE_SHADOW_MODES.long.opacity);
+  });
+
+  it("declares the fill uniforms the studio mode writes", () => {
+    expect(SHADOW_FRAG).toMatch(/uniform\s+vec3\s+uFillLight;/);
+    expect(SHADOW_FRAG).toMatch(/uniform\s+float\s+uFillOpacity;/);
+  });
+
+  it("aims lightDirection correctly at the compass points", () => {
+    expect(lightDirection(0, 0)).toEqual([0, 0, 1]);
+    const overhead = lightDirection(0, 90);
+    expect(overhead[1]).toBeCloseTo(1, 12);
+    const east = lightDirection(90, 0);
+    expect(east[0]).toBeCloseTo(1, 12);
   });
 });

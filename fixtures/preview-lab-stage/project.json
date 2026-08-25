@@ -3,7 +3,9 @@
   "name": "Preview Lab \u2014 stage (dev-only)",
   "version": 2,
   "themeId": "kookaburra-studio-white",
-  "formats": ["16:9"],
+  "formats": [
+    "16:9"
+  ],
   "scenes": [
     {
       "file": "scenes/shadow-soft.tsx",
@@ -15,6 +17,34 @@
     },
     {
       "file": "scenes/shadow-sun.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-studio.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-overhead.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-drop.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-backlight.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-feather.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-window.tsx",
+      "durationMs": 1000
+    },
+    {
+      "file": "scenes/shadow-wetfloor.tsx",
       "durationMs": 1000
     },
     {

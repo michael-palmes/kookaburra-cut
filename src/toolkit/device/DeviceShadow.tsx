@@ -6,6 +6,7 @@ import {
   DEVICE_SHADOW_MODES,
   type DeviceShadowMode,
   deviceShadowSlabs,
+  lightDirection,
   SHADOW_AMBIENT_MAX_BLUR,
   SHADOW_FRAG,
   SHADOW_VERT,
@@ -39,6 +40,8 @@ function makeUniforms() {
     uPlaneE1: { value: new Vector3() },
     uPlaneE2: { value: new Vector3() },
     uLight: { value: new Vector3() },
+    uFillLight: { value: new Vector3() },
+    uFillOpacity: { value: 0 },
     uPlaneNormal: { value: new Vector3() },
     uSweep: { value: new Vector2() },
     uSweepLen: { value: 0 },
@@ -104,6 +107,9 @@ function refreshUniforms(
   uniforms.uPlaneE1.value.set(...plane.e1);
   uniforms.uPlaneE2.value.set(...plane.e2);
   uniforms.uLight.value.set(...light);
+  const fillDir = mode.fill ? lightDirection(mode.fill.azimuthDeg, mode.fill.elevationDeg) : null;
+  if (fillDir) uniforms.uFillLight.value.set(...fillDir);
+  uniforms.uFillOpacity.value = mode.fill?.opacity ?? 0;
   uniforms.uPlaneNormal.value.set(...plane.normal);
   const sweep = shadowSweepDirection(plane, light);
   uniforms.uSweep.value.set(sweep[0], sweep[1]);
