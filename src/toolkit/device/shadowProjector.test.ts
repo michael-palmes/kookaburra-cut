@@ -12,7 +12,6 @@ import {
   shadowPlane,
   shadowQuad,
   shadowSweepDirection,
-  slabSilhouetteHalf,
 } from "./shadowProjector";
 
 // Catalog literals rather than DEVICE_CATALOG: the catalog drags three and the glb asset imports
@@ -110,17 +109,25 @@ describe("deviceShadowSlabs", () => {
   });
 });
 
-describe("slabSilhouetteHalf", () => {
-  it("leaves the outline alone when the light is dead on the slab's face", () => {
-    const [slab] = deviceShadowSlabs(PHONE, REST);
-    expect(slabSilhouetteHalf(slab, [0, 0, 1])).toEqual([1.25 / 2, 2.6 / 2]);
-  });
-
-  it("grows the outline by the thickness as the light rakes across it", () => {
-    const [slab] = deviceShadowSlabs(PHONE, REST);
-    const raking = slabSilhouetteHalf(slab, [Math.SQRT1_2, 0, Math.SQRT1_2]);
-    expect(raking[0]).toBeCloseTo(1.25 / 2 + 0.184 / 2, 12);
-    expect(raking[1]).toBeCloseTo(2.6 / 2, 12);
+describe("the quad at grazing angles", () => {
+  it("stays bounded when the device turns side-on to the light", () => {
+    // The regression Michael's side-on screenshot caught: the old mid-plane silhouette divided
+    // by dot(light, normal) and exploded into a harsh-edged blob near 90 degrees of yaw.
+    const mode = DEVICE_SHADOW_MODES.soft;
+    const plane = shadowPlane(mode, -1.3, 1);
+    const light = shadowLightDirection(mode);
+    const flat = shadowQuad(deviceShadowSlabs(PHONE, REST), plane, light, mode, 1);
+    const sideOn = shadowQuad(
+      deviceShadowSlabs(PHONE, { ...REST, rotation: [0, Math.PI / 2 - 0.02, 0] }),
+      plane,
+      light,
+      mode,
+      1,
+    );
+    if (!flat || !sideOn) throw new Error("no quad");
+    // A thin phone edge-on stays the same order of size, never a blow-up (the old maths grew past 5x here).
+    expect(sideOn.size[0]).toBeLessThan(flat.size[0] * 2);
+    expect(sideOn.size[1]).toBeLessThan(flat.size[1] * 2);
   });
 });
 
@@ -375,6 +382,18 @@ describe("the mode catalogue", () => {
   it("declares the fill uniforms the studio mode writes", () => {
     expect(SHADOW_FRAG).toMatch(/uniform\s+vec3\s+uFillLight;/);
     expect(SHADOW_FRAG).toMatch(/uniform\s+float\s+uFillOpacity;/);
+  });
+
+  it("packs each slab as a vec4 (halves, half thickness, corner radius)", () => {
+    expect(SHADOW_FRAG).toMatch(/uniform\s+vec4\s+uSlabH0;/);
+    expect(SHADOW_FRAG).toMatch(/uniform\s+vec4\s+uSlabH1;/);
+  });
+
+  it("keeps every loop bound constant, the ANGLE translation rule", () => {
+    for (const loop of SHADOW_FRAG.matchAll(/for\s*\(int i = 0; i < (\d+); i\+\+\)/g)) {
+      expect(Number(loop[1])).toBeGreaterThan(0);
+    }
+    expect([...SHADOW_FRAG.matchAll(/for\s*\(/g)].length).toBe(2);
   });
 
   it("floors the pool's footprint for the pool-led modes, so upright phones still seat", () => {

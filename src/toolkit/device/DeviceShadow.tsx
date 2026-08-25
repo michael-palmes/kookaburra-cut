@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo } from "react";
-import { ShaderMaterial, Vector2, Vector3 } from "three";
+import { ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
 import type { V3 } from "../types";
 import type { DeviceSpec } from "./catalog";
 import {
@@ -18,7 +18,6 @@ import {
   shadowPlane,
   shadowQuad,
   shadowSweepDirection,
-  slabSilhouetteHalf,
 } from "./shadowProjector";
 
 /** The presentation shadow: one analytic projector, one quad, driven by the device's live pose. Mounted OUTSIDE the animated inner group so the receiver stays put on the floor while the occluder moves, which is what lets a float lift widen and lighten its own shadow. Maths, mode parameters and the shaders: `shadowProjector.ts`. */
@@ -29,7 +28,7 @@ function makeUniforms() {
     u: { value: new Vector3() },
     v: { value: new Vector3() },
     n: { value: new Vector3() },
-    h: { value: new Vector3() },
+    h: { value: new Vector4() },
   });
   const a = slab();
   const b = slab();
@@ -69,27 +68,22 @@ function makeUniforms() {
 
 type Uniforms = ReturnType<typeof makeUniforms>;
 
-function writeSlab(
-  uniforms: Uniforms,
-  index: 0 | 1,
-  slab: ShadowSlab | undefined,
-  light: V3,
-): void {
+function writeSlab(uniforms: Uniforms, index: 0 | 1, slab: ShadowSlab | undefined): void {
   const c = index === 0 ? uniforms.uSlabC0 : uniforms.uSlabC1;
   const u = index === 0 ? uniforms.uSlabU0 : uniforms.uSlabU1;
   const v = index === 0 ? uniforms.uSlabV0 : uniforms.uSlabV1;
   const n = index === 0 ? uniforms.uSlabN0 : uniforms.uSlabN1;
   const h = index === 0 ? uniforms.uSlabH0 : uniforms.uSlabH1;
   if (!slab) {
-    h.value.set(0, 0, 0);
+    h.value.set(0, 0, 0, 0);
     return;
   }
   c.value.set(...slab.center);
   u.value.set(...slab.u);
   v.value.set(...slab.v);
   n.value.set(...slab.n);
-  const half = slabSilhouetteHalf(slab, light);
-  h.value.set(half[0], half[1], Math.min(slab.radius, Math.min(half[0], half[1])));
+  // (halfU, halfV, halfThickness, cornerRadius): the shader's true 3D rounded box.
+  h.value.set(slab.half[0], slab.half[1], slab.thickness / 2, slab.radius);
 }
 
 /** Per-render uniform refresh, the `LayeredScreenshot` style: every value is a pure function of the pose, so preview and export cannot drift. */
@@ -127,8 +121,8 @@ function refreshUniforms(
     mode.ambientOpacity,
   );
   uniforms.uAmbientMin.value = (mode.ambientMinHalf ?? 0) * scale;
-  writeSlab(uniforms, 0, slabs[0], light);
-  writeSlab(uniforms, 1, slabs[1], light);
+  writeSlab(uniforms, 0, slabs[0]);
+  writeSlab(uniforms, 1, slabs[1]);
   uniforms.uSlabOn1.value = slabs[1] ? 1 : 0;
 }
 
