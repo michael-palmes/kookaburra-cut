@@ -97,7 +97,7 @@ normally and simply shows no editing affordances.
                                              // pool), long (low rake), studio (opposed key + fill), overhead
                                              // (tabletop pool), backlight (toward the camera), feather (pool
                                              // only), window (wide + airy), wetfloor (short sharp forward
-                                             // fade). Behind-plane family: sun (45° smear), drop (the
+                                             // fade). Behind-plane family: sun (45° fade), drop (the
                                              // app-store card offset). Or none. NOTE: a staged floor runs
                                              // real map shadows and the presentation shadow stands down.
       "lidDeg": 90                           // laptops only: lid opening in degrees (0 closed, default 90)
