@@ -28,7 +28,7 @@ Everything else (visibility, pointer routing, the write contract) is shared.
 | Item | Family | Host | Modes | Writes |
 | --- | --- | --- | --- | --- |
 | Staged object | 3D | `ObjectPrimitive` → `SceneGizmo` | move / rotate / scale | `objects[].placement` |
-| Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | `deviceLayout` delta, else `devices[].placement` |
+| Device | 3D | `DeviceGizmo` → `SceneGizmo` | move / rotate / scale | the nearest `deviceTrack` key when the scene is keyframed, else the `deviceLayout` delta, else `devices[].placement` |
 | Stage media | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
 | Stage clip with chrome | 3D | `StageImageGizmo` → `SceneGizmo` | move / rotate / scale | `media[].stage` |
 | Staged chart | 3D | `Chart.tsx` (`StagedChart`) → `SceneGizmo` | move / rotate / scale | `chart.placement` |
@@ -229,7 +229,7 @@ precision as the inspector's own controls.
 | Gizmo | Field | Precision and range |
 | --- | --- | --- |
 | Object / staged chart | `placement.position,rotationDeg,scale` | The group is read back at pointer-up, so the doc lands exactly what is on screen; scale is uniformised to the furthest-moved axis |
-| Device | `deviceLayout` delta `offset,rotationDeg,scale` when a layout block is live, else `placement` | `committed = authored + (dragged - rendered)`, scale multiplying; 3dp positions, 1dp degrees, 3dp scale, minimum scale 0.01 |
+| Device | the `deviceTrack` key nearest the playhead when the scene is keyframed (it outranks the rest: the keyed pose is what the render shows), else the `deviceLayout` delta `offset,rotationDeg,scale` when a layout block is live, else `placement` | `committed = authored + (dragged - rendered)`, scale multiplying; 3dp positions, 1dp degrees, 3dp scale, minimum scale 0.01 |
 | Stage media | `media[].stage.position,rotationDeg,size` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for clips, `STAGE_MEDIA_SIZE_RANGE`) |
 | Overlay-placed media | `media[].overlay.position,size,rotationDeg` | 2dp positions and size, 1dp degrees, clamped to the inspector ranges (widened for the Window host, `OVERLAY_MEDIA_SIZE_RANGE`) |
 | Text | `<key>OffsetX/OffsetY`, `<key>Size`, `<key>RotationDeg` | 2dp world units, whole percent (0.01..10 multiplier), 1dp degrees; a neutral value deletes the key so the scene's own layout resurfaces |

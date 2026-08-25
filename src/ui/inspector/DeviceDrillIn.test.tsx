@@ -218,6 +218,7 @@ describe("DeviceDrillIn", () => {
     ]);
     expect(captures.toggles).toEqual([
       expect.objectContaining({ label: "Rest on floor", checked: true }),
+      expect.objectContaining({ label: "Keyframes", checked: false }),
     ]);
     expect(captures.options.map((option) => option.label)).toEqual([
       "Soft contact",

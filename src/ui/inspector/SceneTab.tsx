@@ -2755,7 +2755,11 @@ export function SceneTab({
           (next) => {
             const target = next.devices?.find((device) => device.id === commit.deviceId);
             if (!target || (commit.kind === "delta" && !next.deviceLayout)) return false;
-            if (commit.kind === "delta") {
+            if (commit.kind === "key") {
+              const key = next.deviceTrack?.keys.find((k) => k.id === commit.keyId);
+              if (!key) return false;
+              key.pose = { ...key.pose, [commit.deviceId]: commit.pose };
+            } else if (commit.kind === "delta") {
               mutateDelta(next, commit.deviceId, (delta) => Object.assign(delta, commit.delta));
             } else {
               mutatePlacement(next, commit.deviceId, (placement) =>

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDeviceEditStore } from "../../engine/deviceEditStore";
+import { useDeviceTrackEditStore } from "../../engine/deviceTrackEditStore";
 import { optionPreviewStill } from "../../engine/optionPreviews";
 import type { SceneDoc, SceneDocDeviceSpec } from "../../engine/sceneDocSchema";
 import {
@@ -423,6 +424,26 @@ function DeviceMotionIcon({ preset }: { preset: DeviceMotionPreset }) {
   );
 }
 
+/** Keyframes: the lane's own diamond on a track, so the toggle reads as the timeline it opens. */
+function KeyframeIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.5 10h3M14.5 10h3" />
+      <path d="m10 5.5 4.5 4.5L10 14.5 5.5 10z" />
+    </svg>
+  );
+}
+
 function DevicePoseIcon({ pose }: { pose: (typeof DEVICE_POSES)[number]["id"] }) {
   const transform = pose === "front" ? undefined : pose === "editorial" ? "skewY(-7)" : "skewY(7)";
   return (
@@ -499,6 +520,7 @@ export function DeviceDrillIn({
   const nextDeviceButtonRef = useRef<HTMLButtonElement>(null);
   const pendingNavigationFocus = useRef<"previous" | "next" | null>(null);
   const gizmoMode = useDeviceEditStore((state) => state.gizmoMode);
+  const trackOpen = useDeviceTrackEditStore((state) => state.open);
   const devices = doc.devices ?? [];
   const deviceIndex = devices.findIndex((candidate) => candidate.id === deviceId);
   const device = devices[deviceIndex];
@@ -586,6 +608,21 @@ export function DeviceDrillIn({
     if (!candidate) return;
     pendingNavigationFocus.current = direction;
     onSelectDevice(candidate.id);
+  };
+
+  // The device track is one per scene, so its toggle reveals the lane rather than editing this device; a scene that already carries keys always shows it.
+  const keyframesOn = trackOpen || doc.deviceTrack !== undefined;
+  const setKeyframesOn = (on: boolean) => {
+    if (settingsDisabled) return;
+    useDeviceTrackEditStore.getState().setOpen(on);
+    if (!on && doc.deviceTrack !== undefined) {
+      void patchDoc(
+        (next) => {
+          delete next.deviceTrack;
+        },
+        { history: "device keyframes off" },
+      );
+    }
   };
 
   // The After side edits the narrow `compare.b` surface: finish, shadow and screen media. Model, arrangement, position, motion and lid stay shared, so they only render for Before.
@@ -1014,6 +1051,13 @@ export function DeviceDrillIn({
               <span className="drill-group-hint">
                 Moves the device itself. For a cinematic move, animate the Camera instead.
               </span>
+              <ToggleRow
+                icon={<KeyframeIcon />}
+                label="Keyframes"
+                description="Opens the Devices lane, where keys move every device in the scene. The preset above still plays on top."
+                checked={keyframesOn}
+                onChange={setKeyframesOn}
+              />
             </DrillGroup>
           )}
 
