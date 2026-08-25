@@ -1,6 +1,6 @@
 [package]
 name = "kookaburra-cut"
-version = "0.15.0"
+version = "0.15.1"
 description = "AI driven deterministic animated-video studio"
 authors = ["Michael Palmes"]
 license = "MIT OR Apache-2.0"

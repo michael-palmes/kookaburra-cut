@@ -88,6 +88,16 @@ sidecar. Instead run `pnpm setup:ffmpeg:release` (pinned static build).
 `sign-and-notarize.sh` guards this with `otool -L` and refuses to proceed unless the sidecars
 link system libraries only.
 
+**A missing licensed model silently drops that device.** `src/assets/models/licensed/*.glb` is
+gitignored and `modelUrl.ts` resolves it through `import.meta.glob`, which is fixed at BUILD
+time. A model absent from the building checkout fails nothing: the device is hidden from the
+pickers and saved references render through the Android fallback, the documented clean-clone
+path. v0.15.0 shipped exactly this way, without the iPad Pro 13 it had just added, because the
+glb was generated in that PR's worktree and never copied back to the release checkout. Gate
+projects do not catch it, since each stages only the devices it uses. `release.sh` now reads
+the UUID constants out of `modelUrl.ts` and refuses to build when any mapped glb is missing;
+regenerate them with `KOOKABURRA_ASSETS_DIR=<private assets folder> pnpm assets:devices`.
+
 **Never call `trash::delete`.** The crate's default macOS backend shells out to `osascript` →
 "tell Finder to delete". TCC attributes that Apple Event to *us*, and under the hardened runtime
 with no `NSAppleEventsUsageDescription` it is **silently denied** — so every delete fails in a

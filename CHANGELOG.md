@@ -4,6 +4,15 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-08-26
+
+### Fixed
+
+- The iPad Pro 13 now appears in the device catalogue. The 0.15.0 build was
+  packaged without the iPad's 3D model, so the device it introduced was hidden
+  from the pickers and any saved reference to it rendered as the Android
+  handset.
+
 ## [0.15.0] - 2026-08-25
 
 ### Added
