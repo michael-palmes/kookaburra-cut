@@ -7,8 +7,9 @@ import {
 } from "./deviceSampleMedia";
 
 describe("sampleVideoForDevice", () => {
-  it("uses the laptop recording only for the laptop model", () => {
+  it("uses the laptop recording for landscape screens", () => {
     expect(sampleVideoForDevice("macbook-pro-16")).toBe(SAMPLE_LAPTOP_VIDEO);
+    expect(sampleVideoForDevice("ipad-pro-13")).toBe(SAMPLE_LAPTOP_VIDEO);
     expect(sampleVideoForDevice("iphone-17-pro")).toBe(SAMPLE_PHONE_VIDEO);
     expect(sampleVideoForDevice("android")).toBe(SAMPLE_PHONE_VIDEO);
   });

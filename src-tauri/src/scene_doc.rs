@@ -37,7 +37,7 @@ fn device_model_and_colour<'a>(
     let model = model.unwrap_or("android");
     let default_colour = match model {
         "iphone-15-pro" => "natural-titanium",
-        "iphone-17-pro" | "macbook-pro-16" => "silver",
+        "iphone-17-pro" | "macbook-pro-16" | "ipad-pro-13" => "silver",
         _ => "graphite",
     };
     (model, colour.unwrap_or(default_colour))
