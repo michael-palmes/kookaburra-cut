@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEVICE_SHADOW_MODES,
+  deviceShadowSlabs,
   SHADOW_FRAG,
   SHADOW_VERT,
-  deviceShadowSlabs,
   type ShadowPose,
   shadowLightDirection,
   shadowPenumbra,
