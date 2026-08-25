@@ -113,6 +113,13 @@ normally and simply shows no editing affordances.
     "gap": 0.35,                             // edge-to-edge world units at 16:9; other aspects compress
     "devices": { "d2": { "offset": [0.1,0,-0.2], "rotationDeg": [0,-4,0], "scale": 1.1 } }  // per-device deltas on the preset base
   },
+  "deviceTrack": {                           // OPT-IN device animation (see "Device tracks")
+    "keys": [
+      { "id": "k1", "tMs": 0,   "pose": { "d1": { "offset": [0,0,0], "rotationDeg": [0,0,0], "scale": 1 } } },
+      { "id": "k2", "tMs": 900, "pose": { "d1": { "offset": [0.6,0.4,0], "scale": 1.2 }, "d2": { "lidDeg": 100 } } }
+    ],
+    "segments": [ { "from": "k1", "to": "k2", "ease": "inOutCubic" } ]
+  },
   "animatedTrack": "camera"                  // which keyed track animates this scene:
                                              // "camera" (the absent default) or "layeredScreenshot";
                                              // comparison scenes always stack the divider lane, no flag needed
@@ -538,6 +545,27 @@ everywhere else devices keep their own presentation shadows, `toolkit/device/sha
 primitive whether a stage owns the lighting (Device/HeroObject stand their bundled lit
 sets down). Environments (`environment.source`: bundled `kookaburra:*` HDRI/Lightformer ids)
 apply at the compositor seam per scene — never mount drei `<Environment>` in a staged scene.
+
+### Device tracks
+
+`deviceTrack` keyframes the scene's devices: ONE track, each key carrying a pose
+per device id (the lighting-track shape), so a multi-device scene moves in
+concert on one lane. It is opt-in, and absent means every device renders exactly
+as it does without it.
+
+A pose is a **delta on whatever the scene already resolves** for that device (the
+`deviceLayout` block, or its own `placement`): `offset` and `rotationDeg` ADD,
+`scale` MULTIPLIES, and `lidDeg` is the one absolute, since an angle has no
+meaningful delta. Absent fields hold the device's resting value, so a key only
+carries what it moves, and deleting the block reverts the scene exactly.
+
+The `motion` presets still layer ON TOP of the sampled pose, so a device can
+drift across the stage while gently floating. The presentation shadow follows the
+whole result: a keyed lift detaches and softens its own shadow.
+
+In the app: the device drill's **Motion > Keyframes** toggle opens the Devices
+lane, "＋ Animation" adds the first one, and dragging the gizmo shapes the key
+nearest the playhead.
 
 ### Fixed background (v11)
 

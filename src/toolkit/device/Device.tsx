@@ -32,6 +32,7 @@ import { registerPresentTiming } from "../../engine/presentTimingRegistry";
 import { resolveAssetUrl } from "../../engine/project";
 import { SceneOutline } from "../../engine/SceneOutline";
 import { ProjectIdContext, SceneDocContext, useSceneContext } from "../../engine/sceneContext";
+import { deviceTrackPoseAt, resolveDeviceTrack } from "../../engine/sceneDeviceTrack";
 import type { SceneDeviceProps } from "../../engine/sceneDoc";
 import { coverCropRect, remapUv, type UvRect } from "../../engine/screenFit";
 import { useTimeline } from "../../engine/timeline";
@@ -493,12 +494,22 @@ export function Device(props: DeviceProps) {
   }, [scene, activeSpec, colourSpec, screenMaterial]);
   const fittedHeight = deviceFittedHeight(activeSpec.id);
 
-  // Lid angle: a static pose from the doc (pure data, no clock), applied pre-paint.
+  // The opt-in keyframe track: a delta on the resolved placement, sampled before the motion presets so both layer.
+  const sceneDoc = useContext(SceneDocContext);
+  const track = useMemo(() => resolveDeviceTrack(sceneDoc ?? undefined), [sceneDoc]);
+  const authoredLidDeg = lidDeg ?? activeSpec.lid?.defaultDeg;
+  const keyed = deviceTrackPoseAt(track, id ?? "", localMs, authoredLidDeg);
+
+  // Lid angle: the doc's pose, or the track's when a key holds one; a pure function of the frame either way, applied pre-paint.
+  const renderedLidDeg = keyed.lidDeg ?? authoredLidDeg;
   useLayoutEffect(() => {
     if (!lidNode || !activeSpec.lid) return;
-    const open = Math.max(0, Math.min(activeSpec.lid.openDeg, lidDeg ?? activeSpec.lid.defaultDeg));
+    const open = Math.max(
+      0,
+      Math.min(activeSpec.lid.openDeg, renderedLidDeg ?? activeSpec.lid.defaultDeg),
+    );
     (lidNode as Object3D).rotation.x = lidBaseX * (open / activeSpec.lid.openDeg);
-  }, [lidNode, lidBaseX, lidDeg, activeSpec]);
+  }, [lidNode, lidBaseX, renderedLidDeg, activeSpec]);
 
   // Real shadows on map-shadowed stages flip the private clone's meshes; inert (no recompiles, no shadow passes) for unstaged scenes, where no shadow-casting light exists.
   useLayoutEffect(() => {
@@ -552,24 +563,31 @@ export function Device(props: DeviceProps) {
       break;
   }
 
-  const groundY = -(fittedHeight / 2) * raw.scale - GROUND_EPSILON;
+  // The keyed scale carries the device AND its grounding, so a scaled key still stands on the floor.
+  const animatedScale = raw.scale * keyed.scale;
+  const groundY = -(fittedHeight / 2) * animatedScale - GROUND_EPSILON;
   // Everything the inner group applies, handed to the shadow projector so the cast follows the pose.
   const shadowPose: ShadowPose = {
-    scale: raw.scale,
+    scale: animatedScale,
     rotation: [
-      raw.rotationDeg[0] * DEG2RAD + introRotX,
-      raw.rotationDeg[1] * DEG2RAD + spinY + introRotY,
-      raw.rotationDeg[2] * DEG2RAD,
+      (raw.rotationDeg[0] + keyed.rotationDeg[0]) * DEG2RAD + introRotX,
+      (raw.rotationDeg[1] + keyed.rotationDeg[1]) * DEG2RAD + spinY + introRotY,
+      (raw.rotationDeg[2] + keyed.rotationDeg[2]) * DEG2RAD,
     ],
-    offset: [0, floatY, 0],
+    offset: [keyed.offset[0], keyed.offset[1] + floatY, keyed.offset[2]],
     introScale,
-    lidDeg: lidDeg ?? activeSpec.lid?.defaultDeg ?? 0,
+    lidDeg: keyed.lidDeg ?? 0,
   };
   // Grounded placement: the pure anchor resolver is shared with object-bound camera aims.
   const grounded = (pose: DevicePose): V3 =>
     resolveDeviceWorldAnchor(
       { model: activeSpec.id },
-      { position: pose.position, rotationDeg: pose.rotationDeg, scale: pose.scale, ground },
+      {
+        position: pose.position,
+        rotationDeg: pose.rotationDeg,
+        scale: pose.scale * keyed.scale,
+        ground,
+      },
       stageFloorY,
     ) ?? pose.position;
   const renderedCommitted = { ...committed, position: grounded(committed) };
@@ -597,15 +615,15 @@ export function Device(props: DeviceProps) {
         )}
         {/* Float rides an inner group; the shadow reads its pose instead of riding with it, so the receiver stays on the floor while the occluder lifts. */}
         <group
-          position={[0, floatY, 0]}
+          position={[keyed.offset[0], keyed.offset[1] + floatY, keyed.offset[2]]}
           rotation={[
-            raw.rotationDeg[0] * DEG2RAD + introRotX,
-            raw.rotationDeg[1] * DEG2RAD + spinY + introRotY,
-            raw.rotationDeg[2] * DEG2RAD,
+            (raw.rotationDeg[0] + keyed.rotationDeg[0]) * DEG2RAD + introRotX,
+            (raw.rotationDeg[1] + keyed.rotationDeg[1]) * DEG2RAD + spinY + introRotY,
+            (raw.rotationDeg[2] + keyed.rotationDeg[2]) * DEG2RAD,
           ]}
           scale={introScale}
         >
-          <group scale={raw.scale * fit}>
+          <group scale={animatedScale * fit}>
             <primitive object={root} />
             {editTarget && (
               <SceneOutline
