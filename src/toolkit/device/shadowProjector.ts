@@ -49,7 +49,7 @@ export const DEVICE_SHADOW_CHOICES: Array<{ id: DeviceShadowMode; label: string 
 export interface ShadowModeSpec {
   /** Where the shadow lands: the stage floor under the device, or a plane behind it. */
   receiver: "floor" | "behind";
-  /** Key light, in degrees. Floor modes are world-frame: azimuth 0 sits at +Z (behind the camera), positive turns toward +X; elevation 90 is straight overhead. Behind-plane modes are PLANE-frame (the plane turns with the device): azimuth measured in-plane from +x toward +y, elevation off the plane toward its normal, so the sweep keeps its signature angle at any device yaw. */
+  /** Key light, in degrees. Floor modes are world-frame: azimuth 0 sits at +Z (behind the camera), positive turns toward +X; elevation 90 is straight overhead. Behind-plane modes anchor to the SCREEN instead: azimuth is the direction the cast falls, measured from +x (right) toward -y (down), projected onto the device's plane, so the sweep reads down-right at 45 whatever the device's yaw or tilt; elevation is off the plane toward its normal. */
   azimuthDeg: number;
   elevationDeg: number;
   /** Penumbra half-width where the device meets the receiver, in world units before the placement scale. */
@@ -109,16 +109,17 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
   },
   sun: {
     receiver: "behind",
-    // Plane-frame: light from the upper left at 45, so the sweep runs down-right.
-    azimuthDeg: 135,
+    // The cast falls down-right at 45 ON SCREEN, whatever the device pose.
+    azimuthDeg: 45,
     elevationDeg: 35,
-    blurNear: 0.05,
-    softness: 0.02,
-    opacity: 0.38,
+    // Generous contact blur: the whole sweep is soft, leading edge included, never a crisp rim on the outline.
+    blurNear: 0.12,
+    softness: 0.03,
+    opacity: 0.3,
     fadeLength: 40,
-    falloff: 1.5,
-    sweepLength: 2.8,
-    sweepBlur: 0.32,
+    falloff: 2,
+    sweepLength: 2.2,
+    sweepBlur: 0.18,
     ambientBlur: 0,
     ambientOpacity: 0,
   },
@@ -154,8 +155,8 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
   },
   drop: {
     receiver: "behind",
-    // Plane-frame: a shallow light off the upper left, the card's small down-right offset.
-    azimuthDeg: 130,
+    // The card's small offset falls down-right on screen, from a shallow anchored light.
+    azimuthDeg: 45,
     elevationDeg: 24,
     blurNear: 0.1,
     softness: 0.04,
@@ -360,19 +361,40 @@ export function lightDirection(azimuthDeg: number, elevationDeg: number): V3 {
   return [ce * Math.sin(az), Math.sin(el), ce * Math.cos(az)];
 }
 
-/** Unit vector toward the key light, in the device group's frame. Floor modes read the world-frame convention; behind-plane modes compose their plane-frame azimuth/elevation over the plane's basis, so the light (and the sweep it drives) turns with the device. */
+/** Unit vector toward the key light, in the device group's frame. Floor modes read the world-frame convention. Behind-plane modes anchor to the SCREEN: the mode's fall direction (its azimuth in the screen's xy) projects onto the device's plane and the light leans opposite it at the mode's elevation, so a sun sweep falls down-right however the device yaws or tilts (a device-frame light sent tilted sweeps wandering, the "funky at most angles" fault). */
 export function shadowLightDirection(mode: ShadowModeSpec, plane?: ShadowPlane): V3 {
   if (mode.receiver === "behind" && plane) {
     const az = mode.azimuthDeg * DEG2RAD;
     const el = mode.elevationDeg * DEG2RAD;
-    const t1 = Math.cos(el) * Math.cos(az);
-    const t2 = Math.cos(el) * Math.sin(az);
-    const n = Math.sin(el);
-    return [
-      plane.e1[0] * t1 + plane.e2[0] * t2 + plane.normal[0] * n,
-      plane.e1[1] * t1 + plane.e2[1] * t2 + plane.normal[1] * n,
-      plane.e1[2] * t1 + plane.e2[2] * t2 + plane.normal[2] * n,
-    ];
+    // The in-plane direction whose SCREEN (xy) projection is the fall diagonal: solve
+    // [e1.xy e2.xy][a b] = fall. Plain projection skews up to ~40 degrees on a tilted
+    // plane; the solve keeps the rendered sweep on the diagonal exactly.
+    const fx = Math.cos(az);
+    const fy = -Math.sin(az);
+    const n = plane.normal;
+    const det = plane.e1[0] * plane.e2[1] - plane.e2[0] * plane.e1[1];
+    let flat: V3;
+    if (Math.abs(det) > 1e-4) {
+      const a = (fx * plane.e2[1] - fy * plane.e2[0]) / det;
+      const b = (fy * plane.e1[0] - fx * plane.e1[1]) / det;
+      flat = [
+        plane.e1[0] * a + plane.e2[0] * b,
+        plane.e1[1] * a + plane.e2[1] * b,
+        plane.e1[2] * a + plane.e2[2] * b,
+      ];
+    } else {
+      // The plane is edge-on to the screen; degrade to its own down-right diagonal.
+      flat = [
+        (plane.e1[0] - plane.e2[0]) * Math.SQRT1_2,
+        (plane.e1[1] - plane.e2[1]) * Math.SQRT1_2,
+        (plane.e1[2] - plane.e2[2]) * Math.SQRT1_2,
+      ];
+    }
+    const len = Math.hypot(flat[0], flat[1], flat[2]);
+    flat = [flat[0] / len, flat[1] / len, flat[2] / len];
+    const ce = Math.cos(el);
+    const se = Math.sin(el);
+    return [-flat[0] * ce + n[0] * se, -flat[1] * ce + n[1] * se, -flat[2] * ce + n[2] * se];
   }
   return lightDirection(mode.azimuthDeg, mode.elevationDeg);
 }

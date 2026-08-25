@@ -142,16 +142,26 @@ describe("shadowSweepDirection", () => {
     expect(Math.hypot(...sweep)).toBeCloseTo(1, 12);
   });
 
-  it("keeps the sun sweep pointing down-right on the plane behind, at any yaw", () => {
+  it("keeps the sun sweep falling down-right ON SCREEN, at any yaw or tilt", () => {
     const mode = DEVICE_SHADOW_MODES.sun;
-    for (const yaw of [0, 45, 78]) {
-      const pose = { ...REST, rotation: [0, (yaw * Math.PI) / 180, 0] as [number, number, number] };
+    for (const rotation of [
+      [0, 0, 0],
+      [0, Math.PI / 4, 0],
+      [0, (78 * Math.PI) / 180, 0],
+      [-0.4, 0.6, 0.1],
+    ] as [number, number, number][]) {
+      const pose = { ...REST, rotation };
       const slabs = deviceShadowSlabs(PHONE, pose);
       const plane = shadowPlane(mode, -1.3, 1, pose, slabs);
       const sweep = shadowSweepDirection(plane, shadowLightDirection(mode, plane));
-      // Plane-frame light: the sweep holds its signature 45-degree down-right whatever the device does.
-      expect(sweep[0]).toBeCloseTo(Math.SQRT1_2, 6);
-      expect(sweep[1]).toBeCloseTo(-Math.SQRT1_2, 6);
+      // Map the in-plane sweep back to world: it must track the screen's down-right diagonal.
+      const world = [
+        plane.e1[0] * sweep[0] + plane.e2[0] * sweep[1],
+        plane.e1[1] * sweep[0] + plane.e2[1] * sweep[1],
+      ];
+      const len = Math.hypot(world[0], world[1]);
+      // The 2x2 solve pins the screen projection to the diagonal at any pose.
+      expect((world[0] * Math.SQRT1_2 - world[1] * Math.SQRT1_2) / len).toBeGreaterThan(0.999);
     }
   });
 
