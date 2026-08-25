@@ -4,7 +4,7 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.15.0] - 2026-08-25
 
 ### Added
 
@@ -20,6 +20,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preview, so a click is no longer needed to see it.
 - The picker groups its cards into four feel sections: dissolves and focus,
   wipes and reveals, motion, digital and bold.
+- Devices cast their real shadow from one analytic projector that follows the
+  true silhouette and pose, so lifts, spins and lid angles read correctly.
+- Ten presentation shadow modes in one ordered picker, from Soft contact
+  through to Wet floor, including a sun sweep that draws the outline and its
+  swept copy as one hull fading down the screen diagonal.
+- Device keyframes: pose deltas per device sit under the motion presets with
+  their own Devices timeline lane, and a gizmo drag shapes the nearest key.
+- The iPad Pro 13 joins the device catalogue as its first tablet, in Silver and
+  Space Black, with preview cards, screen media and the analytic cast shadow.
+- A Start delay in the device Screen group holds a screen video's first frame
+  until the delay elapses, set in seconds and settable per comparison side.
+
+### Changed
+
+- The Left-right, Up-down and Depth device position sliders keep any typed
+  value, in the device drill and in Arrange devices; the thumb pins at either
+  end of the track rather than clamping the number.
+- Presentation shadows stand down on staged floors, where the floor already
+  receives the scene's own shadows.
 
 ### Fixed
 
