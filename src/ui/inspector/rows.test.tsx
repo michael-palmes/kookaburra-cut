@@ -72,6 +72,30 @@ describe("InspectorSliderRow", () => {
     expect(html).toContain("0.25");
     expect(html.match(/type="range"/g)).toHaveLength(1);
   });
+
+  it("pins the thumb at a soft end while the value keeps the typed number", () => {
+    const softRow = (value: number) => (
+      <InspectorSliderRow
+        icon={<span>x</span>}
+        label="Left-right"
+        value={value}
+        min={-3}
+        max={3}
+        step={0.01}
+        overflowMin
+        overflowMax
+        onCommit={() => undefined}
+      />
+    );
+
+    const over = renderToStaticMarkup(softRow(9));
+    expect(over).toContain('value="3"');
+    expect(over).toContain("9.00");
+
+    const under = renderToStaticMarkup(softRow(-9));
+    expect(under).toContain('value="-3"');
+    expect(under).toContain("-9.00");
+  });
 });
 
 describe("SegmentedRow", () => {

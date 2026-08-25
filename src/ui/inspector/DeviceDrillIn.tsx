@@ -924,6 +924,8 @@ export function DeviceDrillIn({
                       min={axis === 0 ? -3 : axis === 1 ? -1.5 : -2}
                       max={axis === 0 ? 3 : axis === 1 ? 1.5 : 2}
                       step={0.01}
+                      overflowMin
+                      overflowMax
                       onInput={(value) =>
                         patchDevice(
                           (next, candidate) =>

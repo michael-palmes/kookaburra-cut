@@ -468,6 +468,8 @@ export function ArrangeDevicesDrill({
                 min={-3}
                 max={3}
                 step={0.01}
+                overflowMin
+                overflowMax
                 onInput={(value) => live((next) => setNudgeAxis(next, selected.id, 0, value))}
                 onCommit={(value) =>
                   commit((next) => setNudgeAxis(next, selected.id, 0, value), "device position")
@@ -480,6 +482,8 @@ export function ArrangeDevicesDrill({
                 min={-1.5}
                 max={1.5}
                 step={0.01}
+                overflowMin
+                overflowMax
                 onInput={(value) => live((next) => setNudgeAxis(next, selected.id, 1, value))}
                 onCommit={(value) =>
                   commit((next) => setNudgeAxis(next, selected.id, 1, value), "device position")
@@ -492,6 +496,8 @@ export function ArrangeDevicesDrill({
                 min={-2}
                 max={2}
                 step={0.01}
+                overflowMin
+                overflowMax
                 onInput={(value) => live((next) => setNudgeAxis(next, selected.id, 2, value))}
                 onCommit={(value) =>
                   commit((next) => setNudgeAxis(next, selected.id, 2, value), "device position")
