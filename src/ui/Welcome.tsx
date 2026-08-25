@@ -12,7 +12,9 @@ import {
   snapshotUrl,
   type WorkspaceProjectInfo,
 } from "../engine/workspace";
+import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { NamePromptModal } from "./NamePromptModal";
+import { projectCardMenuItems } from "./projectCardMenu";
 import {
   ALL_PROJECTS,
   filterProjectLibrary,
@@ -136,41 +138,37 @@ function ProjectCard({
   const meta = [formatDuration(project.durationMs), formatLastOpened(project.lastOpenedMs)]
     .filter(Boolean)
     .join(" · ");
-  // The ⋯ management menu: a sibling of the card button, never inside it (nested buttons; the WKWebView img-in-button trap).
-  const [menuOpen, setMenuOpen] = useState(false);
+  // The ⋯ management button: a sibling of the card button, never inside it (nested buttons; the WKWebView img-in-button trap).
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [prompt, setPrompt] = useState<"rename" | "duplicate" | "group" | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!confirmDelete) return;
-    const timer = window.setTimeout(() => setConfirmDelete(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [confirmDelete]);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-        setError(null);
-      }
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [menuOpen]);
+
+  const openMenu = (x: number, y: number, returnFocus?: HTMLElement) => {
+    setError(null);
+    setMenu({
+      x,
+      y,
+      ariaLabel: `Manage ${project.name}`,
+      returnFocus: returnFocus ?? null,
+      items: projectCardMenuItems({
+        onRename: () => setPrompt("rename"),
+        onDuplicate: () => setPrompt("duplicate"),
+        onMoveToGroup: () => setPrompt("group"),
+        onDelete: () =>
+          deleteProject(project.slug)
+            .then(onChanged)
+            .catch((e) => setError(String(e))),
+      }),
+    });
+  };
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: right-click alias for the ⋯ menu button — keyboard users have the button itself
     <div
       className="project-card-wrap"
-      ref={menuRef}
       onContextMenu={(e) => {
-        // Right-click = the ⋯ menu.
         e.preventDefault();
-        setMenuOpen(true);
-        setConfirmDelete(false);
-        setError(null);
+        openMenu(e.clientX, e.clientY);
       }}
     >
       <button type="button" className="project-card" onClick={onOpen} title={project.name}>
@@ -187,71 +185,19 @@ function ProjectCard({
         className="project-card-menu-btn"
         aria-label={`Manage ${project.name}`}
         aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={() => {
-          setMenuOpen((v) => !v);
-          setConfirmDelete(false);
-          setError(null);
+        aria-expanded={menu !== null}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          openMenu(r.left, r.bottom + 4, e.currentTarget);
         }}
       >
         ⋯
       </button>
-      {menuOpen && (
-        <div className="rail-menu project-card-menu" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("rename");
-            }}
-          >
-            Rename…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("duplicate");
-            }}
-          >
-            Duplicate…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("group");
-            }}
-          >
-            Move to group…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={`rail-menu-item${confirmDelete ? " danger" : ""}`}
-            onClick={() => {
-              if (!confirmDelete) {
-                setConfirmDelete(true);
-                return;
-              }
-              setConfirmDelete(false);
-              setMenuOpen(false);
-              deleteProject(project.slug)
-                .then(onChanged)
-                .catch((e) => setError(String(e)));
-            }}
-            title="Moves the project folder to the Trash"
-          >
-            {confirmDelete ? "Really delete?" : "Delete…"}
-          </button>
-          {error && <p className="modal-error project-card-menu-error">{error}</p>}
-        </div>
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {error && (
+        <p className="modal-error project-card-menu-error" role="alert">
+          {error}
+        </p>
       )}
       {prompt === "rename" && (
         <NamePromptModal

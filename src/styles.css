@@ -3048,8 +3048,8 @@ button.beat-status {
   background: var(--surface-hover);
 }
 
-/* Project-card management (v12 · M2 B4): hover-revealed ⋯ beside each card, with the
-   rail-menu dropdown re-used for the actions. */
+/* Project-card management (v12 · M2 B4): hover-revealed ⋯ beside each card; the
+   actions open the shared context menu. */
 .project-card-wrap {
   position: relative;
 }
@@ -3073,16 +3073,6 @@ button.beat-status {
 .project-card-wrap:hover .project-card-menu-btn,
 .project-card-menu-btn[aria-expanded="true"] {
   opacity: 1;
-}
-/* Variant CONTAINS the base class (the .modal.media-modal specificity lesson): the
-   rail-menu's own top/left anchors are for the rail and must lose here. */
-.rail-menu.project-card-menu {
-  position: absolute;
-  top: 34px;
-  right: 6px;
-  left: auto;
-  bottom: auto;
-  z-index: 10;
 }
 .project-card-menu-error {
   margin: var(--space-1) var(--space-2);
