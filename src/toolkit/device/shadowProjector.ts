@@ -421,9 +421,10 @@ void main() {
   // Slide back along the sweep to the nearest translate of the silhouette: the closed form of the union over the whole smear.
   float along = uSweepLen > 0.0 ? clamp(dot(vPos, uSweep), 0.0, uSweepLen) : 0.0;
   float t = uSweepLen > 0.0 ? along / uSweepLen : 0.0;
-  float cast = shade(vPos - uSweep * along, uLight, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff) * uOpacity;
+  // "cast" is a GLSL reserved word: naming this variable after what it is fails to compile.
+  float thrown = shade(vPos - uSweep * along, uLight, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff) * uOpacity;
   float ambient = uAmbient.y > 0.0 ? shade(vPos, uPlaneNormal, uAmbient.x, 0.0) * uAmbient.y : 0.0;
-  float alpha = 1.0 - (1.0 - cast) * (1.0 - ambient);
+  float alpha = 1.0 - (1.0 - thrown) * (1.0 - ambient);
   if (alpha <= 0.001) discard;
   gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
 }

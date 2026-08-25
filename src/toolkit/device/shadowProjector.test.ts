@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEVICE_SHADOW_MODES,
+  SHADOW_FRAG,
+  SHADOW_VERT,
   deviceShadowSlabs,
   type ShadowPose,
   shadowLightDirection,
@@ -217,5 +219,83 @@ describe("shadowPenumbra", () => {
       DEVICE_SHADOW_MODES.soft.blurNear,
       12,
     );
+  });
+});
+
+// The words GLSL ES reserves for future use. ANGLE's Metal backend enforces them, and a
+// rejected shader here fails SILENTLY (three logs, the quad just never draws), which is
+// exactly how `float cast` shipped a device with no shadow at all on 2026-08-25. The
+// troika `inout` patch is the same lesson (docs/determinism.md, "macOS 27").
+const GLSL_RESERVED = [
+  "asm",
+  "cast",
+  "class",
+  "double",
+  "enum",
+  "extern",
+  "external",
+  "filter",
+  "fixed",
+  "flat",
+  "goto",
+  "half",
+  "inline",
+  "input",
+  "interface",
+  "long",
+  "namespace",
+  "noinline",
+  "output",
+  "packed",
+  "partition",
+  "public",
+  "resource",
+  "row_major",
+  "sampler3DRect",
+  "short",
+  "sizeof",
+  "static",
+  "superp",
+  "template",
+  "this",
+  "typedef",
+  "union",
+  "unsigned",
+  "using",
+  "volatile",
+];
+
+describe("the shader source", () => {
+  it("never declares an identifier GLSL reserves", () => {
+    for (const source of [SHADOW_VERT, SHADOW_FRAG]) {
+      for (const word of GLSL_RESERVED) {
+        expect(source).not.toMatch(
+          new RegExp(`\\b(float|vec[234]|int|bool|mat[234])\\s+${word}\\b`),
+        );
+      }
+    }
+  });
+
+  it("keeps every uniform the projector writes declared in the fragment stage", () => {
+    for (const uniform of [
+      "uPlaneOrigin",
+      "uPlaneE1",
+      "uPlaneE2",
+      "uLight",
+      "uPlaneNormal",
+      "uSweep",
+      "uSweepLen",
+      "uSweepBlur",
+      "uBlurNear",
+      "uSoftness",
+      "uOpacity",
+      "uFadeLength",
+      "uFalloff",
+      "uAmbient",
+      "uSlabOn1",
+    ]) {
+      expect(SHADOW_FRAG).toContain(`uniform`);
+      expect(SHADOW_FRAG).toMatch(new RegExp(`uniform\\s+\\w+\\s+${uniform};`));
+    }
   });
 });
