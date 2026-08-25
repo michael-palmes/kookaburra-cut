@@ -8,6 +8,7 @@ import {
   defaultDraft,
   describeSpec,
   draftToSpec,
+  formatDelaySeconds,
   specToDraft,
   TEXT_PRESET_CATALOG,
 } from "./textAnimationOptions";
@@ -37,6 +38,18 @@ describe("TEXT_PRESET_CATALOG (the vocabulary pin)", () => {
     expect(byName["fade-scale"].hasScaleParams).toBe(true);
     expect(byName["twist-scale"].hasDirection).toBe(true);
     expect(byName["scatter-scale"].perCharacter).toBe(true);
+    // Wave-2: orbit takes the direction chips; the per-glyph presets are marked per-character.
+    expect(byName.orbit.hasDirection).toBe(true);
+    for (const preset of [
+      "tracking",
+      "orbit",
+      "develop",
+      "flip-cascade",
+      "converge",
+      "vapor",
+    ] as const) {
+      expect(byName[preset].perCharacter, preset).toBe(true);
+    }
   });
 });
 
@@ -70,6 +83,16 @@ describe("draftToSpec (the written sidecar shapes)", () => {
     const twist = draftToSpec({ ...defaultDraft("twist-scale"), direction: "from-right" });
     expect(twist.direction).toBe("from-right");
     expect(parseTextAnimationSpec(twist, "pin")).toEqual(twist);
+    const orbit = draftToSpec({ ...defaultDraft("orbit"), direction: "from-right" });
+    expect(orbit.direction).toBe("from-right");
+    expect(parseTextAnimationSpec(orbit, "pin")).toEqual(orbit);
+  });
+
+  it("writes delayMs only when positive, and it round-trips the parser", () => {
+    expect(draftToSpec(defaultDraft("fade")).delayMs).toBeUndefined();
+    const spec = draftToSpec({ ...defaultDraft("fade"), delayMs: 4500 });
+    expect(spec.delayMs).toBe(4500);
+    expect(parseTextAnimationSpec(spec, "pin")).toEqual(spec);
   });
 
   it("word/char deliveries always write a NON-ZERO staggerMs (stagger needs it at resolve)", () => {
@@ -106,6 +129,22 @@ describe("specToDraft (seeding)", () => {
     expect(draft.staggerMs).toBe(42);
     expect(draft.delivery).toBe("word");
   });
+
+  it("round-trips a start delay", () => {
+    const draft = specToDraft({ in: "fade", out: "none", staggerMs: 0, delayMs: 750 });
+    expect(draft.delayMs).toBe(750);
+    expect(draftToSpec(draft).delayMs).toBe(750);
+    expect(specToDraft({ in: "fade", out: "none", staggerMs: 0 }).delayMs).toBe(0);
+  });
+});
+
+describe("formatDelaySeconds", () => {
+  it("spells milliseconds as trimmed seconds", () => {
+    expect(formatDelaySeconds(0)).toBe("0s");
+    expect(formatDelaySeconds(500)).toBe("0.5s");
+    expect(formatDelaySeconds(1234)).toBe("1.234s");
+    expect(formatDelaySeconds(3000)).toBe("3s");
+  });
 });
 
 describe("describeSpec", () => {
@@ -116,6 +155,9 @@ describe("describeSpec", () => {
     );
     expect(describeSpec({ in: "fade", out: "none", staggerMs: 0, delivery: "all-at-once" })).toBe(
       "Fade",
+    );
+    expect(describeSpec({ in: "fade", out: "none", staggerMs: 0, delayMs: 500 })).toBe(
+      "Fade · 0.5s delay",
     );
   });
 });

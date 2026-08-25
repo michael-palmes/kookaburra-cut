@@ -1,4 +1,4 @@
-import type { TextAnimationSpec } from "../theme/tokens";
+import type { TextAnimationSpec, TextLookSpec } from "../theme/tokens";
 import type { FormatInfo } from "../toolkit/types";
 import {
   type CompareChipTextKey,
@@ -137,6 +137,16 @@ export function resolveManagedTextGroups(
   return [...resolved, ...chromeGroups];
 }
 
+/** The Edit-text drill's style controls a mounted primitive can flag as inert; rows with no hint show everything. */
+export type ManagedTextStyleControl =
+  | "font"
+  | "colour"
+  | "size"
+  | "x"
+  | "y"
+  | "rotation"
+  | "spacing";
+
 export interface VirtualManagedTextRegistration {
   key: string;
   /** Resolved copy, including the mounted primitive's fallback when the sidecar has no value. */
@@ -156,6 +166,10 @@ export interface VirtualManagedTextRegistration {
   };
   /** Resolved code-owned motion, captured as an item exception before takeover. */
   motion?: TextAnimationSpec;
+  /** Resolved code-owned text look, captured as an item exception before takeover. */
+  look?: TextLookSpec;
+  /** Style controls the mounted primitive ignores, hidden by the drill; absent shows every control. */
+  inertStyleControls?: readonly ManagedTextStyleControl[];
 }
 
 export interface VirtualManagedTextOptions {
@@ -175,6 +189,9 @@ export interface ManagedTextModel {
   chromeKeys: readonly string[];
   textStyle?: Record<string, string | number>;
   textAnimationOverrides?: Record<string, TextAnimationSpec>;
+  textLookOverrides?: Record<string, TextLookSpec>;
+  /** Per-key controls the mounted primitive flags inert; rows without an entry show everything. */
+  inertStyleControls?: Record<string, readonly ManagedTextStyleControl[]>;
 }
 
 export type ManagedTextRenderRole = "scene" | "embedded" | "managed";
@@ -495,10 +512,16 @@ function unusedKey(preferred: string, used: Set<string>): string {
   return `${preferred}-${suffix}`;
 }
 
+interface VirtualMetadataCapture {
+  textStyle: Record<string, string | number>;
+  textAnimationOverrides: Record<string, TextAnimationSpec>;
+  textLookOverrides: Record<string, TextLookSpec>;
+  inertStyleControls: Record<string, readonly ManagedTextStyleControl[]>;
+}
+
 function captureVirtualMetadata(
   registration: VirtualManagedTextRegistration,
-  textStyle: Record<string, string | number>,
-  textAnimationOverrides: Record<string, TextAnimationSpec>,
+  capture: VirtualMetadataCapture,
 ): void {
   const style = registration.style;
   if (style) {
@@ -512,10 +535,29 @@ function captureVirtualMetadata(
       ["RotationDeg", style.rotationDeg],
     ];
     for (const [suffix, value] of values) {
-      if (value !== undefined) textStyle[`${registration.key}${suffix}`] = value;
+      if (value !== undefined) capture.textStyle[`${registration.key}${suffix}`] = value;
     }
   }
-  if (registration.motion) textAnimationOverrides[registration.key] = registration.motion;
+  if (registration.motion) capture.textAnimationOverrides[registration.key] = registration.motion;
+  if (registration.look) capture.textLookOverrides[registration.key] = registration.look;
+  if (registration.inertStyleControls?.length) {
+    capture.inertStyleControls[registration.key] = registration.inertStyleControls;
+  }
+}
+
+function capturedModelFields(capture: VirtualMetadataCapture): Partial<ManagedTextModel> {
+  return {
+    ...(Object.keys(capture.textStyle).length > 0 ? { textStyle: capture.textStyle } : {}),
+    ...(Object.keys(capture.textAnimationOverrides).length > 0
+      ? { textAnimationOverrides: capture.textAnimationOverrides }
+      : {}),
+    ...(Object.keys(capture.textLookOverrides).length > 0
+      ? { textLookOverrides: capture.textLookOverrides }
+      : {}),
+    ...(Object.keys(capture.inertStyleControls).length > 0
+      ? { inertStyleControls: capture.inertStyleControls }
+      : {}),
+  };
 }
 
 /** Host chrome the document itself contributes, appended to every ownership branch so a takeover cannot lose the rows. Keys already carried by the block win. */
@@ -540,24 +582,31 @@ export function deriveManagedTextModel(
       return { ownership: "managed", items: managedItems, chromeKeys };
     }
     const keys = new Set(blockKeys);
-    const textStyle: Record<string, string | number> = {};
-    const textAnimationOverrides: Record<string, TextAnimationSpec> = {};
+    const capture: VirtualMetadataCapture = {
+      textStyle: {},
+      textAnimationOverrides: {},
+      textLookOverrides: {},
+      inertStyleControls: {},
+    };
     for (const registration of registrations) {
       if (!keys.has(registration.key)) continue;
-      captureVirtualMetadata(registration, textStyle, textAnimationOverrides);
+      captureVirtualMetadata(registration, capture);
     }
     return {
       ownership: "managed",
       items: managedItems,
       chromeKeys,
-      ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
-      ...(Object.keys(textAnimationOverrides).length > 0 ? { textAnimationOverrides } : {}),
+      ...capturedModelFields(capture),
     };
   }
   const items: SceneManagedTextItem[] = [];
   const chromeKeys: string[] = [];
-  const textStyle: Record<string, string | number> = {};
-  const textAnimationOverrides: Record<string, TextAnimationSpec> = {};
+  const capture: VirtualMetadataCapture = {
+    textStyle: {},
+    textAnimationOverrides: {},
+    textLookOverrides: {},
+    inertStyleControls: {},
+  };
   const used = new Set<string>();
   const excluded = new Set(options.excludedKeys ?? []);
   if (options.icon !== undefined) {
@@ -587,7 +636,7 @@ export function deriveManagedTextModel(
         text,
       }),
     );
-    captureVirtualMetadata(registration, textStyle, textAnimationOverrides);
+    captureVirtualMetadata(registration, capture);
   }
   for (const item of chromeItemsFor(doc, used)) {
     used.add(item.key);
@@ -604,8 +653,7 @@ export function deriveManagedTextModel(
     ownership: "authored",
     items,
     chromeKeys,
-    ...(Object.keys(textStyle).length > 0 ? { textStyle } : {}),
-    ...(Object.keys(textAnimationOverrides).length > 0 ? { textAnimationOverrides } : {}),
+    ...capturedModelFields(capture),
   };
 }
 

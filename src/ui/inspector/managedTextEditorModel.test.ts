@@ -5,6 +5,7 @@ import type { SceneDoc } from "../../engine/sceneDocSchema";
 import type { FrameSpec } from "../../toolkit/frame/types";
 import {
   applyManagedTextStructuralAction,
+  describeManagedTextLook,
   describeManagedTextMotion,
   type ManagedTextStructuralAction,
   managedFrameIconValue,
@@ -14,6 +15,7 @@ import {
   managedTextVirtualOptionsForFrame,
   nextManagedTextKey,
   performManagedTextStructuralAction,
+  rebaseTextLookSpec,
   rebaseTextMotionSpec,
   setLegacyManagedTextIcon,
   setManagedFrameIcon,
@@ -24,7 +26,9 @@ import {
   setManagedTextIcon,
   setManagedTextPointCopy,
   setManagedTextStyle,
+  setTextLookSpec,
   setTextMotionSpec,
+  textLookSpec,
   textMotionSpec,
 } from "./managedTextEditorModel";
 
@@ -1452,6 +1456,64 @@ describe("managed text editor model", () => {
       durationMs: 900,
       ease: "outExpo",
     });
+  });
+
+  it("writes all-lines look independently from stable-key item exceptions", () => {
+    const doc: SceneDoc = { version: 1 };
+    const base = { preset: "gradient", colorA: "#ff0055" };
+    const exception = { preset: "none" };
+
+    const withBase = setTextLookSpec(doc, { kind: "all" }, base);
+    const withException = setTextLookSpec(withBase, { kind: "item", itemKey: "title" }, exception);
+
+    expect(textLookSpec(withException, { kind: "all" })).toEqual(base);
+    expect(textLookSpec(withException, { kind: "item", itemKey: "title" })).toEqual(exception);
+    expect(describeManagedTextLook(exception)).toBe("None");
+    expect(describeManagedTextLook(undefined)).toBe("Theme");
+    expect(describeManagedTextLook(base)).toBe("Gradient");
+
+    const followsBase = setTextLookSpec(
+      withException,
+      { kind: "item", itemKey: "title" },
+      undefined,
+    );
+    expect(followsBase.textLookOverrides).toBeUndefined();
+    expect(followsBase.textLook).toEqual(base);
+  });
+
+  it("rebases one look-field change without dropping a queued sibling change", () => {
+    const baseline = { preset: "outline", colorA: "#ffffff", strokeEm: 0.035 };
+    const strokeEdit = { ...baseline, strokeEm: 0.08 };
+    const queuedCurrent = { ...baseline, colorA: "#00ff88" };
+
+    expect(rebaseTextLookSpec(queuedCurrent, baseline, strokeEdit)).toEqual({
+      ...baseline,
+      strokeEm: 0.08,
+      colorA: "#00ff88",
+    });
+  });
+
+  it("copies and removes per-item look exceptions with the other side tables", () => {
+    const doc: SceneDoc = {
+      version: 1,
+      managedText: { items: [{ key: "title", type: "title", text: "Hello" }] },
+      textLookOverrides: { title: { preset: "neon" } },
+    };
+
+    const duplicated = applyManagedTextStructuralAction(doc, {
+      type: "duplicate-item",
+      itemKey: "title",
+    });
+    expect(duplicated?.doc.textLookOverrides).toEqual({
+      title: { preset: "neon" },
+      "title-2": { preset: "neon" },
+    });
+
+    const removed = applyManagedTextStructuralAction(doc, {
+      type: "remove-item",
+      itemKey: "title",
+    });
+    expect(removed?.doc.textLookOverrides).toBeUndefined();
   });
 
   describe("comparison chip rows", () => {

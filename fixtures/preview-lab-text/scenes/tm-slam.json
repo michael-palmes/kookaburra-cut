@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — slam",
+  "text": {
+    "headline": "LAUNCH DAY"
+  },
+  "textAnimation": { "in": "slam", "out": "none", "staggerMs": 0 }
+}

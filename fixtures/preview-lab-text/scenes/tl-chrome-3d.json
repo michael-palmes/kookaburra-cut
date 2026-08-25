@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Text look — chrome-3d",
+  "text": {
+    "headline": "POLISHED"
+  },
+  "textAnimation": { "in": "fade", "out": "none", "staggerMs": 0 },
+  "textLook": { "preset": "chrome-3d" }
+}

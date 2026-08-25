@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — develop",
+  "text": {
+    "headline": "UNVEILED"
+  },
+  "textAnimation": { "in": "develop", "out": "none", "staggerMs": 0 }
+}

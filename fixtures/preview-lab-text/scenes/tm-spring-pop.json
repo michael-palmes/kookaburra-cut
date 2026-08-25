@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — spring-pop",
+  "text": {
+    "headline": "Out of the box"
+  },
+  "textAnimation": { "in": "spring-pop", "out": "none", "staggerMs": 0 }
+}

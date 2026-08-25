@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — line-stretch",
+  "text": {
+    "headline": "PREMIERE"
+  },
+  "textAnimation": { "in": "line-stretch", "out": "none", "staggerMs": 0 }
+}

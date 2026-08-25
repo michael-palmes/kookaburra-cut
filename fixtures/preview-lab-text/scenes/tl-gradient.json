@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Text look — gradient",
+  "text": {
+    "headline": "AURORA"
+  },
+  "textAnimation": { "in": "fade", "out": "none", "staggerMs": 0 },
+  "textLook": { "preset": "gradient" }
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — chromatic",
+  "text": {
+    "headline": "IN FOCUS"
+  },
+  "textAnimation": { "in": "chromatic", "out": "none", "staggerMs": 0 }
+}

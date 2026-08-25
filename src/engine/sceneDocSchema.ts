@@ -1,9 +1,15 @@
 import { parseFontString } from "../theme/fontRef";
-import { parseBackdropSpec, parseBackgroundSpec, parseTextAnimationSpec } from "../theme/schema";
+import {
+  parseBackdropSpec,
+  parseBackgroundSpec,
+  parseTextAnimationSpec,
+  parseTextLookSpec,
+} from "../theme/schema";
 import type {
   FontRef,
   LightingSpec,
   TextAnimationSpec,
+  TextLookSpec,
   ThemeBackdrop,
   ThemeBackground,
 } from "../theme/tokens";
@@ -540,6 +546,12 @@ export interface SceneDoc {
   textAnimationForce?: boolean;
   /** Per-managed-item whole-spec motion exceptions, keyed by the item's stable key. */
   textAnimationOverrides?: Record<string, TextAnimationSpec>;
+  /** Text-look override: a whole spec replacing the theme's `textLook` for this scene (the textAnimation pattern, what the picker writes); explicit per-primitive TSX props still win unless `textLookForce`. */
+  textLook?: TextLookSpec;
+  /** Flips the resolution order for this scene (the panel's Override): text primitives ignore their own TSX look props and follow the sidecar/theme spec instead; absent means the normal prop-wins order. */
+  textLookForce?: boolean;
+  /** Per-managed-item whole-spec look exceptions, keyed by the item's stable key. */
+  textLookOverrides?: Record<string, TextLookSpec>;
   /** Partial lighting override: each present field fully replaces the layer below's (see `mergeLighting`); the long-shadow look is typically a per-scene low-elevation `sun` + `shadow` override rather than a whole new theme. Deep validation lives in `sceneLighting.ts`. */
   lighting?: LightingSpec;
   /** Overlay override: merges over the manifest's deck-wide `frame` for this scene (see `mergeFrameSpec`); `cutout` may be omitted to inherit the deck's shape, and `{enabled:false}` opts the scene out entirely. */
@@ -2007,6 +2019,21 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
     if (Object.keys(overrides).length > 0) out.textAnimationOverrides = overrides;
   } else if (doc.textAnimationOverrides !== undefined) {
     console.warn(`[sceneDoc] ${source}: textAnimationOverrides isn't an object, dropped`);
+  }
+  if (doc.textLook !== undefined) {
+    const textLook = parseTextLookSpec(doc.textLook, source);
+    if (textLook) out.textLook = textLook;
+  }
+  if (doc.textLookForce === true) out.textLookForce = true;
+  if (isRecord(doc.textLookOverrides)) {
+    const overrides: Record<string, TextLookSpec> = {};
+    for (const [key, value] of Object.entries(doc.textLookOverrides)) {
+      const spec = parseTextLookSpec(value, `${source} textLookOverrides.${key}`);
+      if (spec) overrides[key] = spec;
+    }
+    if (Object.keys(overrides).length > 0) out.textLookOverrides = overrides;
+  } else if (doc.textLookOverrides !== undefined) {
+    console.warn(`[sceneDoc] ${source}: textLookOverrides isn't an object, dropped`);
   }
   if (doc.lighting !== undefined) {
     const lighting = normalizeLighting(doc.lighting, source);

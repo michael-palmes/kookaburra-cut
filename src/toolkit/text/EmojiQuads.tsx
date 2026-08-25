@@ -31,6 +31,11 @@ export interface EmojiQuadState {
   rotZRad: number;
   /** Mask-reveal coverage multiplier, 0..1. */
   coverage: number;
+  /** Motion-pack v2 parity, all optional so legacy state builders stay untouched: X-axis card tip at `rotXPivotY` (the unit's centre Y; 0 when unrotated) and anisotropic scale composed with `scale`. */
+  rotXRad?: number;
+  rotXPivotY?: number;
+  scaleX?: number;
+  scaleY?: number;
 }
 
 /** The caret rectangle for one substituted placeholder: quad centre + x extent. */
@@ -83,14 +88,19 @@ export function EmojiQuads(props: {
         const tex = getEmojiTexture(s.key);
         const opacity = s.alpha * s.coverage;
         if (!tex || opacity <= 0) return null;
+        const pivotY = s.rotXPivotY ?? 0;
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: occurrences are position-stable per text
           <group key={`${s.key}:${i}`} position={[s.dx, s.dy, s.dz]}>
-            <group position={[s.rotYPivotX, 0, 0]} rotation={[0, s.rotYRad, 0]}>
+            <group position={[s.rotYPivotX, pivotY, 0]} rotation={[s.rotXRad ?? 0, s.rotYRad, 0]}>
               <group
-                position={[s.x - s.rotYPivotX, s.y + EMOJI_BASELINE_NUDGE_EM * fontSize, 0]}
+                position={[
+                  s.x - s.rotYPivotX,
+                  s.y - pivotY + EMOJI_BASELINE_NUDGE_EM * fontSize,
+                  0,
+                ]}
                 rotation={[0, 0, s.rotZRad]}
-                scale={s.scale}
+                scale={[s.scale * (s.scaleX ?? 1), s.scale * (s.scaleY ?? 1), s.scale]}
               >
                 <mesh>
                   <planeGeometry args={[size, size]} />

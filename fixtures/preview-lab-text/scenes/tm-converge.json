@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — converge",
+  "text": {
+    "headline": "IMPACT"
+  },
+  "textAnimation": { "in": "converge", "out": "none", "staggerMs": 0 }
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — ribbon",
+  "text": {
+    "headline": "Smooth by design"
+  },
+  "textAnimation": { "in": "ribbon", "out": "none", "staggerMs": 0 }
+}

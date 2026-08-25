@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "Text motion — dolly",
+  "text": {
+    "headline": "Closer than ever"
+  },
+  "textAnimation": { "in": "dolly", "out": "none", "staggerMs": 0 }
+}

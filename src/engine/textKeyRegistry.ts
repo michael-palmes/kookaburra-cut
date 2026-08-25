@@ -1,6 +1,10 @@
 import { create } from "zustand";
-import type { TextAnimationSpec } from "../theme/tokens";
-import type { ManagedTextRenderRole, VirtualManagedTextRegistration } from "./managedText";
+import type { TextAnimationSpec, TextLookSpec } from "../theme/tokens";
+import type {
+  ManagedTextRenderRole,
+  ManagedTextStyleControl,
+  VirtualManagedTextRegistration,
+} from "./managedText";
 import type { SceneManagedTextItemType } from "./sceneDocSchema";
 
 export interface TextKeyResolvedStyle {
@@ -21,6 +25,9 @@ export interface TextKeyMountRegistration {
   styleCapable?: boolean;
   style?: TextKeyResolvedStyle;
   codedMotion?: TextAnimationSpec;
+  codedLook?: TextLookSpec;
+  /** Style controls this mount ignores, so the drill hides them; absent shows everything. */
+  inertStyleControls?: readonly ManagedTextStyleControl[];
   /** Only scene-level registrations may become rows in a managed takeover. */
   managedTextRole?: ManagedTextRenderRole;
 }
@@ -35,6 +42,8 @@ interface TextKeyEntry {
   icon?: string;
   style?: TextKeyResolvedStyle;
   codedMotion?: TextAnimationSpec;
+  codedLook?: TextLookSpec;
+  inertStyleControls?: readonly ManagedTextStyleControl[];
 }
 
 interface TextKeyRegistryState {
@@ -56,6 +65,10 @@ function mergedEntry(mounts: Record<string, TextKeyMountRegistration>): TextKeyE
   const icon = values.find((value) => value.icon !== undefined)?.icon;
   const style = values.find((value) => value.style !== undefined)?.style;
   const codedMotion = values.find((value) => value.codedMotion !== undefined)?.codedMotion;
+  const codedLook = values.find((value) => value.codedLook !== undefined)?.codedLook;
+  const inertStyleControls = values.find(
+    (value) => value.inertStyleControls !== undefined,
+  )?.inertStyleControls;
   return {
     count: values.length,
     mounts,
@@ -66,6 +79,8 @@ function mergedEntry(mounts: Record<string, TextKeyMountRegistration>): TextKeyE
     ...(icon !== undefined ? { icon } : {}),
     ...(style !== undefined ? { style } : {}),
     ...(codedMotion !== undefined ? { codedMotion } : {}),
+    ...(codedLook !== undefined ? { codedLook } : {}),
+    ...(inertStyleControls !== undefined ? { inertStyleControls } : {}),
   };
 }
 
@@ -186,7 +201,7 @@ export function textKeyStyleCapable(index: number): Set<string> {
 export function virtualManagedTextRegistrations(index: number): VirtualManagedTextRegistration[] {
   const scene = useTextKeyRegistry.getState().keys[index] ?? {};
   return Object.entries(scene)
-    .map(([key, entry]) => {
+    .map(([key, entry]): VirtualManagedTextRegistration | null => {
       const sceneEntry = sceneOwnedEntry(entry);
       if (sceneEntry.resolvedText === undefined && sceneEntry.icon === undefined) return null;
       return {
@@ -196,9 +211,21 @@ export function virtualManagedTextRegistrations(index: number): VirtualManagedTe
         ...(sceneEntry.icon !== undefined ? { icon: sceneEntry.icon } : {}),
         ...(sceneEntry.style ? { style: structuredClone(sceneEntry.style) } : {}),
         ...(sceneEntry.codedMotion ? { motion: structuredClone(sceneEntry.codedMotion) } : {}),
+        ...(sceneEntry.codedLook ? { look: structuredClone(sceneEntry.codedLook) } : {}),
+        ...(sceneEntry.inertStyleControls
+          ? { inertStyleControls: [...sceneEntry.inertStyleControls] }
+          : {}),
       } satisfies VirtualManagedTextRegistration;
     })
     .filter((entry): entry is VirtualManagedTextRegistration => entry !== null);
+}
+
+function titleCaseKey(key: string): string {
+  return key
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 /** Stable names for the mounted lines whose own TSX motion can outrank inspector motion. */
@@ -206,11 +233,13 @@ export function codedTextMotionNames(index: number): string[] {
   const scene = useTextKeyRegistry.getState().keys[index] ?? {};
   return Object.entries(scene)
     .filter(([, entry]) => sceneOwnedEntry(entry).codedMotion !== undefined)
-    .map(([key]) =>
-      key
-        .split(/[-_]/)
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(" "),
-    );
+    .map(([key]) => titleCaseKey(key));
+}
+
+/** Stable names for the mounted lines whose own TSX look can outrank the inspector's text style. */
+export function codedTextLookNames(index: number): string[] {
+  const scene = useTextKeyRegistry.getState().keys[index] ?? {};
+  return Object.entries(scene)
+    .filter(([, entry]) => sceneOwnedEntry(entry).codedLook !== undefined)
+    .map(([key]) => titleCaseKey(key));
 }

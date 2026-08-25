@@ -5,6 +5,7 @@ import type {
   GradientSpec,
   LightingSpec,
   TextAnimationSpec,
+  TextLookSpec,
   Theme,
   ThemeBackdrop,
   ThemeBackground,
@@ -257,6 +258,10 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
     staggerMs: isNum(v.staggerMs) ? v.staggerMs : 0,
   };
   if (v.stagger === "char" || v.stagger === "word") spec.stagger = v.stagger;
+  if (isNum(v.delayMs)) spec.delayMs = v.delayMs;
+  else if (v.delayMs !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textAnimation.delayMs", dropped`);
+  }
   if (isNum(v.startScale)) spec.startScale = v.startScale;
   else if (v.startScale !== undefined) {
     console.warn(`[theme] ${source}: invalid "textAnimation.startScale" — dropped`);
@@ -289,6 +294,48 @@ export function parseTextAnimationSpec(v: unknown, source: string): TextAnimatio
   if (isStr(v.ease)) spec.ease = v.ease;
   else if (v.ease !== undefined) {
     console.warn(`[theme] ${source}: invalid "textAnimation.ease", dropped`);
+  }
+  return spec;
+}
+
+/** Text-look spec parser, exported for the sidecar's whole-spec `textLook` override. The preset NAME stays a raw string (validated later by `coerceLook` at resolve); params validate per-field, drop-and-warn, with range clamping left to resolve (the startScale pattern). */
+export function parseTextLookSpec(v: unknown, source: string): TextLookSpec | undefined {
+  if (!isRecord(v) || !isStr(v.preset)) {
+    console.warn(`[theme] ${source}: "textLook" needs a "preset" name, dropped`);
+    return undefined;
+  }
+  const spec: TextLookSpec = { preset: v.preset };
+  if (isStr(v.colorA)) spec.colorA = v.colorA;
+  else if (v.colorA !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.colorA", dropped`);
+  }
+  if (isStr(v.colorB)) spec.colorB = v.colorB;
+  else if (v.colorB !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.colorB", dropped`);
+  }
+  if (isNum(v.angleDeg)) spec.angleDeg = v.angleDeg;
+  else if (v.angleDeg !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.angleDeg", dropped`);
+  }
+  if (isNum(v.strokeEm)) spec.strokeEm = v.strokeEm;
+  else if (v.strokeEm !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.strokeEm", dropped`);
+  }
+  if (typeof v.hollow === "boolean") spec.hollow = v.hollow;
+  else if (v.hollow !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.hollow", dropped`);
+  }
+  if (isNum(v.intensity)) spec.intensity = v.intensity;
+  else if (v.intensity !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.intensity", dropped`);
+  }
+  if (isNum(v.offsetEm)) spec.offsetEm = v.offsetEm;
+  else if (v.offsetEm !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.offsetEm", dropped`);
+  }
+  if (isNum(v.curveDeg)) spec.curveDeg = v.curveDeg;
+  else if (v.curveDeg !== undefined) {
+    console.warn(`[theme] ${source}: invalid "textLook.curveDeg", dropped`);
   }
   return spec;
 }
@@ -420,6 +467,10 @@ export function parseThemeDoc(raw: unknown, source: string): Theme | undefined {
   if (raw.textAnimation !== undefined) {
     const textAnimation = parseTextAnimationSpec(raw.textAnimation, source);
     if (textAnimation) theme.textAnimation = textAnimation;
+  }
+  if (raw.textLook !== undefined) {
+    const textLook = parseTextLookSpec(raw.textLook, source);
+    if (textLook) theme.textLook = textLook;
   }
   if (raw.card !== undefined) {
     const card = raw.card;

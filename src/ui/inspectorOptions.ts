@@ -772,6 +772,9 @@ export function drillFollowsScene(id: string, scene: SceneDrillCapability): bool
   if (id.startsWith("text.motion:")) {
     return scene.textKeys.includes(id.slice("text.motion:".length));
   }
+  if (id.startsWith("text.look:")) {
+    return scene.textKeys.includes(id.slice("text.look:".length));
+  }
   const textIconScreen = textIconInspectorScreenForRoute(id);
   if (textIconScreen) return scene.textKeys.includes(textIconScreen.itemKey);
   if (id.startsWith("lighting.")) return scene.hasDoc;

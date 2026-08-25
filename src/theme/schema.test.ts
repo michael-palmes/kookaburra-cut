@@ -742,6 +742,67 @@ describe("parseThemeDoc degrade behaviour", () => {
     expect(parsed).toEqual({ in: "fade-scale", out: "none", staggerMs: 0 });
   });
 
+  it("parses textAnimation.delayMs per-field (any finite number, clamping left to resolve)", () => {
+    const doc = {
+      ...validDoc(),
+      textAnimation: { in: "fade", out: "none", staggerMs: 0, delayMs: 250 },
+    };
+    expect(parseThemeDoc(doc, "t")?.textAnimation).toEqual({
+      in: "fade",
+      out: "none",
+      staggerMs: 0,
+      delayMs: 250,
+    });
+    const bad = {
+      ...validDoc(),
+      textAnimation: { in: "fade", out: "none", delayMs: "soon" },
+    };
+    expect(parseThemeDoc(bad, "t")?.textAnimation).toEqual({
+      in: "fade",
+      out: "none",
+      staggerMs: 0,
+    });
+  });
+
+  it("parses textLook per-field, dropping invalid params without rejecting the theme", () => {
+    const doc = {
+      ...validDoc(),
+      textLook: {
+        preset: "gradient",
+        colorA: "#ff0055",
+        colorB: "#220011",
+        angleDeg: 45,
+        strokeEm: 0.05,
+        hollow: true,
+        intensity: 0.8,
+        offsetEm: 0.1,
+        curveDeg: 30,
+      },
+    };
+    expect(parseThemeDoc(doc, "t")?.textLook).toEqual({
+      preset: "gradient",
+      colorA: "#ff0055",
+      colorB: "#220011",
+      angleDeg: 45,
+      strokeEm: 0.05,
+      hollow: true,
+      intensity: 0.8,
+      offsetEm: 0.1,
+      curveDeg: 30,
+    });
+    const bad = {
+      ...validDoc(),
+      textLook: { preset: "neon", colorA: 7, intensity: "high", hollow: "yes", curveDeg: 30 },
+    };
+    const theme = parseThemeDoc(bad, "t");
+    expect(theme).toBeDefined();
+    expect(theme?.textLook).toEqual({ preset: "neon", curveDeg: 30 });
+    // A preset-less block drops whole, still without rejecting the theme.
+    const none = parseThemeDoc({ ...validDoc(), textLook: { colorA: "#fff" } }, "t");
+    expect(none).toBeDefined();
+    expect(none?.textLook).toBeUndefined();
+  });
+
   it("keeps an optional shadow colour (v8 · M2)", () => {
     const doc = {
       ...validDoc(),
