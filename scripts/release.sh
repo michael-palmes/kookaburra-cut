@@ -47,6 +47,25 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   exit 1
 fi
 
+# Licensed device models resolve through import.meta.glob at BUILD time, so a missing glb
+# silently HIDES that device in the shipped app instead of failing anywhere; 0.15.0 shipped
+# without the iPad for exactly this reason.
+echo "==> Checking licensed device models"
+MISSING_MODELS=""
+while IFS='|' read -r MODEL_CONST MODEL_GLB; do
+  [[ -n "$MODEL_GLB" ]] || continue
+  if [[ ! -f "$ROOT/src/assets/models/licensed/$MODEL_GLB" ]]; then
+    MISSING_MODELS="$MISSING_MODELS
+  $MODEL_CONST -> $MODEL_GLB"
+  fi
+done < <(sed -nE 's/^const ([A-Z0-9_]+)_GLB = "([^"]+\.glb)".*/\1|\2/p' "$ROOT/src/toolkit/device/modelUrl.ts")
+if [[ -n "$MISSING_MODELS" ]]; then
+  echo "ERROR: licensed device models missing from src/assets/models/licensed/:$MISSING_MODELS" >&2
+  echo "Those devices would be HIDDEN in the shipped app. Regenerate them first:" >&2
+  echo "  KOOKABURRA_ASSETS_DIR=<private assets folder> pnpm assets:devices" >&2
+  exit 1
+fi
+
 if [[ "$PUBLISH" == "1" ]] && ! git remote | grep -q .; then
   echo "No git remote configured; building and tagging locally only."
   PUBLISH=0
