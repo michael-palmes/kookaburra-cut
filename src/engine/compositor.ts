@@ -887,6 +887,11 @@ export function renderComposited(
         renderDofOverCanvas(gl, scene, camera, soloDof, dofUnion, size.x, size.y);
       }
     }
+    // Unframed scenes can still register panel content (the terminal block), drawn over the finished frame exactly as the overlay branch draws its own; a framed scene never reaches this (its draw sits inside the branch above).
+    if (!overlay) {
+      const panel = panelFor(idx);
+      if (panel) drawFramePanelOver(gl, scene, camera, hosts, persistent, panel, null);
+    }
     gl.setRenderTarget(prevTarget);
     releaseIdlePools({
       sceneTarget: !!overlay && usesSceneTarget(overlay),
@@ -997,6 +1002,11 @@ export function renderComposited(
       gl.setRenderTarget(tgtA);
       gl.render(scene, camera);
     }
+    // Panel content on a scene with no overlay PLAN (the terminal block). Guarded on the raw plan, not `overlayA`, so a framed scene under the hdr lane keeps its no-panel fallback unchanged.
+    if (!(overlays?.[tr.fromIndex] ?? null)) {
+      const panelA = panelFor(tr.fromIndex);
+      if (panelA) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelA, tgtA);
+    }
   }
 
   const sideDofB = dofUnion && cameras?.b?.dof ? cameras.b.dof : null;
@@ -1061,6 +1071,11 @@ export function renderComposited(
     } else {
       gl.setRenderTarget(tgtB);
       gl.render(scene, camera);
+    }
+    // The B-side twin of the A-side no-plan panel draw above.
+    if (!(overlays?.[tr.toIndex] ?? null)) {
+      const panelB = panelFor(tr.toIndex);
+      if (panelB) drawFramePanelOver(gl, scene, camera, hosts, persistent, panelB, tgtB);
     }
   }
 
