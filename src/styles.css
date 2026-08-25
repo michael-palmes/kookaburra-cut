@@ -6003,11 +6003,15 @@ button.beat-status {
   min-width: 0;
 }
 
+/* Feel groups are fieldsets (the group-chips precedent) — strip the UA chrome. */
 .transition-group {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .transition-group-title {

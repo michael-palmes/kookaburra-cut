@@ -647,15 +647,10 @@ export function TransitionModal({
             const items = TRANSITION_CATALOG.filter((m) => m.feel === feel);
             if (items.length === 0) return null;
             return (
-              <div
-                key={feel}
-                role="group"
-                aria-label={FEEL_LABELS[feel]}
-                className="transition-group"
-              >
+              <fieldset key={feel} aria-label={FEEL_LABELS[feel]} className="transition-group">
                 <span className="transition-group-title">{FEEL_LABELS[feel]}</span>
                 <div className="transition-grid">{items.map(typeCard)}</div>
-              </div>
+              </fieldset>
             );
           })}
         </div>
