@@ -1232,20 +1232,39 @@ rolling-gate project (`showcase-tour`):
 | Project | 16:9 | 9:16 | 1:1 | 4:5 | 5:4 | 3:2 | 2:3 | phone | phone-landscape |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
-| `showcase-tour` (rolling gate) | `28beda34…` | `b3e3dd72…` | stale | stale | stale | stale (pre-trim) | — | — | — |
+| `showcase-tour` (rolling gate) | `e52c8477…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
 | `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
-| `compare-spike` (before/after comparison gate) | `b6883733…` | stale | stale | stale | — | — | — | — | — |
-| `image-flip-spike` (image-orientation gate, eyeball it) | `ca4419d4…` | — | — | — | — | — | — | — | — |
+| `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
+| `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
 | `ws:layered-screenshot-spike` (LS gate, machine-local) | `4ec7b223…` | — | — | — | — | — | — | — | — |
 | `ws:video-window-spike` (VideoWindow gate, machine-local) | `6dfe68a6…` | — | — | — | — | — | — | — | — |
-| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | `fe701549…` | — | — | — | — | — | — | — | — |
-| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | `f5107f56…` | — | — | — | — | — | — | — | — |
-| `ws:multi-device-spike` (deviceLayout gate, machine-local) | `fb2d4f84…` | `c940b3b2…` | `ceb8e74c…` | — | — | — | — | — | — |
-| `ws:dof-spike` (depth-of-field gate, machine-local) | `a7a37eb0…` | `58d0ac28…` | — | — | — | — | — | — | — |
+| `ws:lighting-spike-fable` (v9 lighting gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:camera-rig-spike-opus` (camera rig gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:multi-device-spike` (deviceLayout gate, machine-local) | stale | stale | stale | — | — | — | — | — | — |
+| `ws:dof-spike` (depth-of-field gate, machine-local) | stale | stale | — | — | — | — | — | — | — |
 | `ws:chart-spike` (chart gate, machine-local) | `d58ff1f2…` | stale | stale | stale | — | — | — | — | — |
-| `ws:duplicate-spike` (scene-id heal gate, machine-local) | `c1888139…` | — | — | — | — | — | — | — | — |
-| `ws:overlay-spike` (overlay gate, machine-local) | `e5bc2b79…` | — | — | — | — | — | — | — | — |
+| `ws:duplicate-spike` (scene-id heal gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+| `ws:overlay-spike` (overlay gate, machine-local) | stale | — | — | — | — | — | — | — | — |
+
+> **2026-08-25 (analytic device shadows: a DELIBERATE rebase):** the three
+> presentation shadow modes moved off their fixed-size textures and the flat
+> sun sweep onto ONE analytic projector that casts the device's real silhouette
+> (`toolkit/device/shadowProjector.ts`). Every staged DEVICE therefore renders
+> differently: `showcase-tour` 16:9 re-recorded at `e52c8477…` after a passed
+> Verify ×2 and an eyeballed frame, and every other baseline over a
+> device-staging project is stale until its own leg reruns (`compare-spike`,
+> `image-flip-spike`, `ws:multi-device-spike`, `ws:camera-rig-spike-opus`,
+> `ws:lighting-spike-fable`, `ws:dof-spike`, `ws:duplicate-spike`,
+> `ws:overlay-spike`). `ws:launch-2026` stages NO device, so the
+> null-for-legacy sentinel stayed EQUAL at `eb89826c…` through the change, and
+> `ws:device-video-spike` verified identical twice (`e79a953e…`) as the
+> feature-matched gate. Record both AFTER the reserved-word fix: a shader whose
+> fragment stage ANGLE rejects fails SILENTLY (the quad simply never draws), so
+> the first pass of these legs recorded a device with no shadow at all. A
+> vitest now guards the shader source against every GLSL reserved word. The opt-in `deviceTrack` keyframes that ship beside it
+> move nothing on their own: no bundled project, template or repo fixture
+> carries the block, and a scene without one samples the resting pose.
 
 > **2026-08-23 (media hosting is authored: the `window` host):** where a media
 > entry renders now follows its HOST alone, never its kind or its chrome.
