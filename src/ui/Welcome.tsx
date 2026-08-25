@@ -12,7 +12,9 @@ import {
   snapshotUrl,
   type WorkspaceProjectInfo,
 } from "../engine/workspace";
+import { ContextMenu, type ContextMenuState } from "./ContextMenu";
 import { NamePromptModal } from "./NamePromptModal";
+import { projectCardMenuItems } from "./projectCardMenu";
 import {
   ALL_PROJECTS,
   filterProjectLibrary,
@@ -136,41 +138,37 @@ function ProjectCard({
   const meta = [formatDuration(project.durationMs), formatLastOpened(project.lastOpenedMs)]
     .filter(Boolean)
     .join(" · ");
-  // The ⋯ management menu: a sibling of the card button, never inside it (nested buttons; the WKWebView img-in-button trap).
-  const [menuOpen, setMenuOpen] = useState(false);
+  // The ⋯ management button: a sibling of the card button, never inside it (nested buttons; the WKWebView img-in-button trap).
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [prompt, setPrompt] = useState<"rename" | "duplicate" | "group" | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!confirmDelete) return;
-    const timer = window.setTimeout(() => setConfirmDelete(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [confirmDelete]);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) {
-        setMenuOpen(false);
-        setConfirmDelete(false);
-        setError(null);
-      }
-    };
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [menuOpen]);
+
+  const openMenu = (x: number, y: number, returnFocus?: HTMLElement) => {
+    setError(null);
+    setMenu({
+      x,
+      y,
+      ariaLabel: `Manage ${project.name}`,
+      returnFocus: returnFocus ?? null,
+      items: projectCardMenuItems({
+        onRename: () => setPrompt("rename"),
+        onDuplicate: () => setPrompt("duplicate"),
+        onMoveToGroup: () => setPrompt("group"),
+        onDelete: () =>
+          deleteProject(project.slug)
+            .then(onChanged)
+            .catch((e) => setError(String(e))),
+      }),
+    });
+  };
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: right-click alias for the ⋯ menu button — keyboard users have the button itself
     <div
       className="project-card-wrap"
-      ref={menuRef}
       onContextMenu={(e) => {
-        // Right-click = the ⋯ menu.
         e.preventDefault();
-        setMenuOpen(true);
-        setConfirmDelete(false);
-        setError(null);
+        openMenu(e.clientX, e.clientY);
       }}
     >
       <button type="button" className="project-card" onClick={onOpen} title={project.name}>
@@ -187,71 +185,19 @@ function ProjectCard({
         className="project-card-menu-btn"
         aria-label={`Manage ${project.name}`}
         aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={() => {
-          setMenuOpen((v) => !v);
-          setConfirmDelete(false);
-          setError(null);
+        aria-expanded={menu !== null}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          openMenu(r.left, r.bottom + 4, e.currentTarget);
         }}
       >
         ⋯
       </button>
-      {menuOpen && (
-        <div className="rail-menu project-card-menu" role="menu">
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("rename");
-            }}
-          >
-            Rename…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("duplicate");
-            }}
-          >
-            Duplicate…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="rail-menu-item"
-            onClick={() => {
-              setMenuOpen(false);
-              setPrompt("group");
-            }}
-          >
-            Move to group…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={`rail-menu-item${confirmDelete ? " danger" : ""}`}
-            onClick={() => {
-              if (!confirmDelete) {
-                setConfirmDelete(true);
-                return;
-              }
-              setConfirmDelete(false);
-              setMenuOpen(false);
-              deleteProject(project.slug)
-                .then(onChanged)
-                .catch((e) => setError(String(e)));
-            }}
-            title="Moves the project folder to the Trash"
-          >
-            {confirmDelete ? "Really delete?" : "Delete…"}
-          </button>
-          {error && <p className="modal-error project-card-menu-error">{error}</p>}
-        </div>
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {error && (
+        <p className="modal-error project-card-menu-error" role="alert">
+          {error}
+        </p>
       )}
       {prompt === "rename" && (
         <NamePromptModal
@@ -369,23 +315,30 @@ export function Welcome({
 
   const empty = projects !== null && projects.length === 0 && !loadError;
   const trimmedQuery = query.trim().toLowerCase();
+  // Searching is global: the rail follows to All while a query is active, and picking a group clears it (the ThemePicker convention).
+  const effectiveGroupId = trimmedQuery ? ALL_PROJECTS : activeGroupId;
   const groupRows = useMemo(() => projectGroupRows(projects ?? []), [projects]);
   const visibleProjects = useMemo(
-    () => filterProjectLibrary(projects ?? [], activeGroupId, query),
-    [projects, activeGroupId, query],
+    () => filterProjectLibrary(projects ?? [], effectiveGroupId, query),
+    [projects, effectiveGroupId, query],
   );
   const groups = groupRows.slice(2).map((row) => row.label);
   const slugs = useMemo(() => (projects ?? []).map((p) => p.slug), [projects]);
-  const inheritedGroup = selectedProjectGroup(activeGroupId);
+  const inheritedGroup = selectedProjectGroup(effectiveGroupId);
 
   useEffect(() => {
     if (!groupRows.some((row) => row.id === activeGroupId)) setActiveGroupId(ALL_PROJECTS);
   }, [activeGroupId, groupRows]);
 
+  const chooseGroup = (id: string) => {
+    setActiveGroupId(id);
+    setQuery("");
+  };
+
   const onGroupRailKeyDown = (e: React.KeyboardEvent) => {
     const current = Math.max(
       0,
-      groupRows.findIndex((row) => row.id === activeGroupId),
+      groupRows.findIndex((row) => row.id === effectiveGroupId),
     );
     let next = current;
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
@@ -396,7 +349,7 @@ export function Welcome({
     else if (e.key === "End") next = groupRows.length - 1;
     else return;
     e.preventDefault();
-    setActiveGroupId(groupRows[next].id);
+    chooseGroup(groupRows[next].id);
     groupRailRef.current?.querySelectorAll<HTMLElement>(".project-library-rail-row")[next]?.focus();
   };
 
@@ -463,10 +416,10 @@ export function Welcome({
               <button
                 key={row.id}
                 type="button"
-                className={`project-library-rail-row${activeGroupId === row.id ? " selected" : ""}`}
-                aria-pressed={activeGroupId === row.id}
-                tabIndex={activeGroupId === row.id ? 0 : -1}
-                onClick={() => setActiveGroupId(row.id)}
+                className={`project-library-rail-row${effectiveGroupId === row.id ? " selected" : ""}`}
+                aria-pressed={effectiveGroupId === row.id}
+                tabIndex={effectiveGroupId === row.id ? 0 : -1}
+                onClick={() => chooseGroup(row.id)}
               >
                 <span className="project-library-rail-label">{row.label}</span>
                 <span className="project-library-rail-count">{row.count}</span>
@@ -479,7 +432,7 @@ export function Welcome({
               <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
             )}
             {!trimmedQuery &&
-              activeGroupId === UNGROUPED_PROJECTS &&
+              effectiveGroupId === UNGROUPED_PROJECTS &&
               visibleProjects.length === 0 && (
                 <p className="welcome-no-matches">No ungrouped projects.</p>
               )}

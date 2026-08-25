@@ -131,6 +131,8 @@ export interface ManagedTextDrillProps {
   mutateIcon?: (doc: SceneDoc, itemKey: string, value: string | undefined) => SceneDoc | null;
   notice?: string | null;
   disabled?: boolean;
+  /** The host's Delete key reaches the drill here: holds the selected-element delete while the drill is live. */
+  deleteSelectedRef?: { current: (() => boolean) | null };
 }
 
 const TYPE_OPTIONS: SegmentedOption<SceneManagedTextItemType>[] = [
@@ -400,7 +402,9 @@ function CopyField({
   label,
   multiline = false,
   disabled,
+  onInput,
   onCommit,
+  onCancel,
   onReturn,
   inputRef,
 }: {
@@ -408,14 +412,40 @@ function CopyField({
   label: string;
   multiline?: boolean;
   disabled?: boolean;
+  /** Live tick per keystroke: the preview follows without minting history. */
+  onInput?: (value: string) => void;
   onCommit: (value: string) => void;
+  /** Escape: restores the pre-edit copy and returns it, or null when nothing was written. */
+  onCancel?: () => string | null;
   onReturn?: (value: string) => void;
   inputRef?: (element: HTMLInputElement | null) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  // While the user is typing the draft owns the field: live-write echoes lag the keystrokes and must not clobber it.
+  const editingRef = useRef(false);
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    if (!editingRef.current) setDraft(value);
+  }, [value]);
+  const change = (next: string) => {
+    editingRef.current = true;
+    setDraft(next);
+    onInput?.(next);
+  };
   const commit = () => {
-    if (draft !== value) onCommit(draft);
+    editingRef.current = false;
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      return;
+    }
+    // A live session must always commit (it collapses the ticks into one undo step), even when the echo caught up.
+    if (onInput || draft !== value) onCommit(draft);
+  };
+  const cancel = (element: HTMLInputElement | HTMLTextAreaElement) => {
+    cancelledRef.current = true;
+    editingRef.current = false;
+    setDraft(onCancel?.() ?? value);
+    element.blur();
   };
   if (multiline) {
     return (
@@ -425,13 +455,10 @@ function CopyField({
         value={draft}
         disabled={disabled}
         rows={3}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => change(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setDraft(value);
-            event.currentTarget.blur();
-          }
+          if (event.key === "Escape") cancel(event.currentTarget);
         }}
       />
     );
@@ -443,17 +470,16 @@ function CopyField({
       aria-label={label}
       value={draft}
       disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => change(event.target.value)}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           event.preventDefault();
+          editingRef.current = false;
+          onCommit(draft);
           onReturn?.(draft);
         }
-        if (event.key === "Escape") {
-          setDraft(value);
-          event.currentTarget.blur();
-        }
+        if (event.key === "Escape") cancel(event.currentTarget);
       }}
     />
   );
@@ -487,6 +513,7 @@ export function ManagedTextDrill({
   mutateIcon,
   notice,
   disabled = false,
+  deleteSelectedRef,
 }: ManagedTextDrillProps) {
   const optionsFor = (source: SceneDoc) => virtualOptionsForDoc?.(source) ?? virtualOptions;
   const model = deriveManagedTextModel(doc, registrations, optionsFor(doc));
@@ -512,6 +539,7 @@ export function ManagedTextDrill({
   const itemDrag = useRef<PointerReorderDrag | null>(null);
   const pointDrag = useRef<PointerReorderDrag | null>(null);
   const baselines = useRef(new Map<string, SceneDoc>());
+  const copySessions = useRef(new Map<string, { baseline: SceneDoc; value: string }>());
   const pointRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [pendingPointFocus, setPendingPointFocus] = useState<"add" | string | null>(null);
   const [itemDragVisual, setItemDragVisual] = useState<PointerReorderDrag | null>(null);
@@ -627,6 +655,23 @@ export function ManagedTextDrill({
       },
     });
   };
+
+  // The Delete key removes the selected element only; the last element takes its emptied group with it (closing the drill).
+  const deleteSelectedElement = () => {
+    if (disabled || !selectedGroup || chromeGroup || !selected) return false;
+    if (isSingleItemGroup) {
+      void runStructural({ type: "remove-group", groupKey: selectedGroup.key });
+    } else {
+      void runStructural({ type: "remove-item", itemKey: selected.key });
+    }
+    return true;
+  };
+  if (deleteSelectedRef) deleteSelectedRef.current = deleteSelectedElement;
+  useEffect(() => {
+    return () => {
+      if (deleteSelectedRef) deleteSelectedRef.current = null;
+    };
+  }, [deleteSelectedRef]);
 
   const openAddMenu = (button: HTMLButtonElement) => {
     if (!selectedGroup || disabled) return;
@@ -851,47 +896,51 @@ export function ManagedTextDrill({
     }
   };
 
-  const commitCopy = (item: SceneManagedTextItem, value: string) => {
-    if (disabled) return;
-    const next = setManagedTextCopy(doc, item.key, value, registrations, optionsFor(doc));
-    if (next) {
-      void writeDoc({
-        preview: next,
-        history: "edit text copy",
-        baseline: doc,
-        applyToCurrent: (current) =>
-          setManagedTextCopy(current, item.key, value, registrations, optionsFor(current)) ??
-          current,
-      });
-    }
-  };
-
-  const commitPointCopy = (item: SceneManagedTextItem, pointKey: string, value: string) => {
-    if (disabled) return;
-    const next = setManagedTextPointCopy(
-      doc,
-      item.key,
-      pointKey,
-      value,
-      registrations,
-      optionsFor(doc),
-    );
-    if (next) {
-      void writeDoc({
-        preview: next,
-        history: "edit bullet copy",
-        baseline: doc,
-        applyToCurrent: (current) =>
-          setManagedTextPointCopy(
-            current,
-            item.key,
-            pointKey,
-            value,
-            registrations,
-            optionsFor(current),
-          ) ?? current,
-      });
-    }
+  /** Copy fields write live while typing (the styleControl baseline pattern): history-free ticks per keystroke, one undo step on commit. */
+  const liveCopyControl = (
+    sessionKey: string,
+    committedValue: string,
+    history: string,
+    mutate: (source: SceneDoc, value: string) => SceneDoc | null,
+  ) => {
+    const write = (value: string, live: boolean) => {
+      if (disabled) return;
+      let session = copySessions.current.get(sessionKey);
+      if (live && !session) {
+        session = { baseline: doc, value: committedValue };
+        copySessions.current.set(sessionKey, session);
+      }
+      const baseline = session?.baseline ?? doc;
+      if (!live) copySessions.current.delete(sessionKey);
+      const next = mutate(baseline, value);
+      const applyToCurrent = (current: SceneDoc) => mutate(current, value) ?? current;
+      if (next) {
+        void writeDoc(
+          live
+            ? { preview: next, history: false, baseline, applyToCurrent }
+            : { preview: next, history, baseline, historyFromBaseline: true, applyToCurrent },
+        );
+      } else if (session) {
+        // The draft returned to the session's starting copy: restore it without minting history.
+        void writeDoc({ preview: baseline, history: false, baseline, applyToCurrent });
+      }
+    };
+    return {
+      onInput: (value: string) => write(value, true),
+      onCommit: (value: string) => write(value, false),
+      onCancel: () => {
+        const session = copySessions.current.get(sessionKey);
+        copySessions.current.delete(sessionKey);
+        if (!session) return null;
+        void writeDoc({
+          preview: session.baseline,
+          history: false,
+          baseline: session.baseline,
+          applyToCurrent: (current) => mutate(current, session.value) ?? current,
+        });
+        return session.value;
+      },
+    };
   };
 
   const commitIcon = (itemKey: string, value: string | undefined) => {
@@ -1294,7 +1343,19 @@ export function ManagedTextDrill({
                     label={`${itemLabel(selected.type)} copy`}
                     multiline
                     disabled={disabled}
-                    onCommit={(value) => commitCopy(selected, value)}
+                    {...liveCopyControl(
+                      `copy:${selected.key}`,
+                      selected.text ?? "",
+                      "edit text copy",
+                      (source, value) =>
+                        setManagedTextCopy(
+                          source,
+                          selected.key,
+                          value,
+                          registrations,
+                          optionsFor(source),
+                        ),
+                    )}
                   />
                 )}
                 {selected.type === "bullets" && (
@@ -1357,7 +1418,20 @@ export function ManagedTextDrill({
                             inputRef={(element) => {
                               pointRefs.current[point.key] = element;
                             }}
-                            onCommit={(value) => commitPointCopy(selected, point.key, value)}
+                            {...liveCopyControl(
+                              `copy:${selected.key}:${point.key}`,
+                              point.text,
+                              "edit bullet copy",
+                              (source, value) =>
+                                setManagedTextPointCopy(
+                                  source,
+                                  selected.key,
+                                  point.key,
+                                  value,
+                                  registrations,
+                                  optionsFor(source),
+                                ),
+                            )}
                             onReturn={(afterPointText) =>
                               void runStructural({
                                 type: "add-point",

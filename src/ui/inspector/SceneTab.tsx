@@ -24,7 +24,7 @@ import { useFormat } from "../../engine/format";
 import { mergeFrameSpec } from "../../engine/frameSchema";
 import type { GizmoMode } from "../../engine/gizmoMode";
 import type { GizmoDomain } from "../../engine/gizmoRegistry";
-import { useGizmoSectionOpen } from "../../engine/gizmoSections";
+import { gizmoDomainForDrillStack, useGizmoSectionOpen } from "../../engine/gizmoSections";
 import { pushHistory } from "../../engine/history";
 import { imageEditCommitMatches, useImageEditStore } from "../../engine/imageEditStore";
 import { useImageReconciliationStore } from "../../engine/imageReconciliationStore";
@@ -2293,6 +2293,7 @@ export function SceneTab({
   const overviewRootRef = useRef<HTMLDivElement>(null);
   // Assigned during the overview render, which the drill returns skip; the mount-once Delete handler can only reach the plan path through a ref.
   const deleteOverviewSelectionRef = useRef<(() => void) | null>(null);
+  const deleteSelectedTextItemRef = useRef<(() => boolean) | null>(null);
   const sceneIndexRef = useRef(sceneIndex);
   const projectIdRef = useRef(project.id);
   const sceneFileRef = useRef(project.sceneFiles[sceneIndex] ?? null);
@@ -2919,15 +2920,23 @@ export function SceneTab({
   // biome-ignore lint/correctness/useExhaustiveDependencies: every document replacement invalidates any armed menu action
   useEffect(() => setContentMenu(null), [doc]);
 
-  // Delete removes the selected content: inside a content drill through that drill's own trash, at the overview through the row's delete plan. The lanes bind Delete too, so a live keyframe selection wins.
+  // Delete removes the selected content: inside a content drill through that drill's own trash (the text drill takes the selected element instead of its group), at the overview through the row's delete plan. The lanes bind Delete too, so a live keyframe selection wins.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (isEditableTextTarget(e.target as HTMLElement | null)) return;
       if (isExporting() || modalOwnsKeyboard() || laneSelectionActive()) return;
-      const route = contentDeleteRoute(useUiStore.getState().inspector);
+      const inspector = useUiStore.getState().inspector;
+      const route = contentDeleteRoute(inspector);
       if (route === "drill") {
+        if (
+          gizmoDomainForDrillStack(inspector.drillStack) === "text" &&
+          deleteSelectedTextItemRef.current?.()
+        ) {
+          e.preventDefault();
+          return;
+        }
         if (clickInspectorRemoveAction()) e.preventDefault();
         return;
       }
@@ -6001,6 +6010,7 @@ export function SceneTab({
         }
         notice={error}
         disabled={textTakeoverBusy}
+        deleteSelectedRef={deleteSelectedTextItemRef}
       />
     );
   }
