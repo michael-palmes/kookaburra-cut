@@ -92,8 +92,10 @@ normally and simply shows no editing affordances.
       "media": { "src": "assets/demo.mp4", "kind": "video", "startMs": 0, "fit": "cover" },
       "placement": { "position": [0, -0.3, 0], "rotationDeg": [0, 0, 0], "scale": 1 },
       "motion": { "preset": "none" },        // opt-in: none|turntable|float|tilt-reveal|push-in (+ params)
-      "shadow": "soft",                      // soft | long | sun | none ("sun" = the Rotato-style
-                                             // 45° silhouette sweep on a flat plane behind the device)
+      "shadow": "soft",                      // soft | long | sun | none — one analytic projector casts
+                                             // the device's REAL silhouette (size, yaw, lid, float) from
+                                             // a virtual key: soft = tight contact pool on the floor,
+                                             // long = low rake, sun = 45° smear on a plane behind
       "lidDeg": 90                           // laptops only: lid opening in degrees (0 closed, default 90)
     }
   ],
@@ -532,7 +534,7 @@ sphere — EXPORT CONTRACT constants) and the resolved backdrop (sidecar `backdr
 theme's): cyclorama `floor` / `gradient` plane / `image` plane, all UNLIT exact-colour
 (`toneMapped:false`) with `ShadowMaterial` catchers. Real key-light shadow maps run ONLY
 when a backdrop is staged AND `lighting.shadow.technique === "map"` (the hybrid rule —
-everywhere else devices keep their procedural blob shadows). `useSceneStaged()` tells a
+everywhere else devices keep their own presentation shadows, `toolkit/device/shadowProjector.ts`). `useSceneStaged()` tells a
 primitive whether a stage owns the lighting (Device/HeroObject stand their bundled lit
 sets down). Environments (`environment.source`: bundled `kookaburra:*` HDRI/Lightformer ids)
 apply at the compositor seam per scene — never mount drei `<Environment>` in a staged scene.

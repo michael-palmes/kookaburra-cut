@@ -707,9 +707,20 @@ camera exactly:
   a material only when a shadow-CASTING light lights it; and the only casting
   light is `<SceneStage>`'s key, which casts ONLY when the scene stages a
   floor/backdrop AND the theme's shadow technique is `"map"`. Every unstaged
-  project is therefore untouched. Procedural presentation shadows remain
+  project is therefore untouched. The devices' presentation shadows remain
   independent: `Device` still defaults to `"soft"` while its meshes also
   cast and receive real shadows when the map rig is active.
+- **Device presentation shadows are one analytic projector, and export
+  contract.** `toolkit/device/shadowProjector.ts` back-projects the device's
+  rounded-rect silhouette from a receiver plane toward a virtual key light,
+  widening the penumbra with the occluder's distance from that plane. All three
+  modes are parameter sets over it (`DEVICE_SHADOW_MODES`), and the silhouette
+  comes from STATIC catalog constants (`DeviceShadowSpec`, measured per model
+  beside `fittedHeight`), never the runtime bbox, so a clean clone without the
+  licensed glbs casts the same shadow as a build with them. Every value is a
+  pure function of the frame's pose, including the motion presets, so a float
+  lift softens and slides its own shadow without any accumulation. Changing a
+  mode parameter or a model's silhouette re-renders every staged device.
 - **The shadow rig is export contract.** Theme tokens (mapSize, softness→radius,
   bias, catcher opacity/tint) plus the fixed constants in SceneStage
   (LIGHT_RADIUS, the ortho shadow frustum ±8 / near 0.5 / far 30, radius scale 8,
