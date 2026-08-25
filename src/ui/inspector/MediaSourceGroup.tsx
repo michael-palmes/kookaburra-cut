@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 import { DrillGroup } from "./rows";
 
 /** The one media source group: a thumbnail, the file name and a detail line over Change and Edit. The device Screen group and the media drill's Source group are the same surface, so they share this component and the `device-editor-media-*` styling seam. */
@@ -63,6 +63,8 @@ export interface MediaSourceGroupProps {
   changeButtonRef?: Ref<HTMLButtonElement>;
   onChange: () => void;
   onEdit?: () => void;
+  /** Host-specific rows under the actions, e.g. the device screen's start delay. */
+  children?: ReactNode;
 }
 
 export function MediaSourceGroup({
@@ -76,6 +78,7 @@ export function MediaSourceGroup({
   changeButtonRef,
   onChange,
   onEdit,
+  children,
 }: MediaSourceGroupProps) {
   const thumbnailSize = previewUrl ? mediaThumbnailSize(aspectRatio) : undefined;
   return (
@@ -116,6 +119,7 @@ export function MediaSourceGroup({
           Edit
         </button>
       </div>
+      {children}
     </DrillGroup>
   );
 }
