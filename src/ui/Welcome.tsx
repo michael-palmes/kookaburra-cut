@@ -315,23 +315,30 @@ export function Welcome({
 
   const empty = projects !== null && projects.length === 0 && !loadError;
   const trimmedQuery = query.trim().toLowerCase();
+  // Searching is global: the rail follows to All while a query is active, and picking a group clears it (the ThemePicker convention).
+  const effectiveGroupId = trimmedQuery ? ALL_PROJECTS : activeGroupId;
   const groupRows = useMemo(() => projectGroupRows(projects ?? []), [projects]);
   const visibleProjects = useMemo(
-    () => filterProjectLibrary(projects ?? [], activeGroupId, query),
-    [projects, activeGroupId, query],
+    () => filterProjectLibrary(projects ?? [], effectiveGroupId, query),
+    [projects, effectiveGroupId, query],
   );
   const groups = groupRows.slice(2).map((row) => row.label);
   const slugs = useMemo(() => (projects ?? []).map((p) => p.slug), [projects]);
-  const inheritedGroup = selectedProjectGroup(activeGroupId);
+  const inheritedGroup = selectedProjectGroup(effectiveGroupId);
 
   useEffect(() => {
     if (!groupRows.some((row) => row.id === activeGroupId)) setActiveGroupId(ALL_PROJECTS);
   }, [activeGroupId, groupRows]);
 
+  const chooseGroup = (id: string) => {
+    setActiveGroupId(id);
+    setQuery("");
+  };
+
   const onGroupRailKeyDown = (e: React.KeyboardEvent) => {
     const current = Math.max(
       0,
-      groupRows.findIndex((row) => row.id === activeGroupId),
+      groupRows.findIndex((row) => row.id === effectiveGroupId),
     );
     let next = current;
     if (e.key === "ArrowDown" || e.key === "ArrowRight") {
@@ -342,7 +349,7 @@ export function Welcome({
     else if (e.key === "End") next = groupRows.length - 1;
     else return;
     e.preventDefault();
-    setActiveGroupId(groupRows[next].id);
+    chooseGroup(groupRows[next].id);
     groupRailRef.current?.querySelectorAll<HTMLElement>(".project-library-rail-row")[next]?.focus();
   };
 
@@ -409,10 +416,10 @@ export function Welcome({
               <button
                 key={row.id}
                 type="button"
-                className={`project-library-rail-row${activeGroupId === row.id ? " selected" : ""}`}
-                aria-pressed={activeGroupId === row.id}
-                tabIndex={activeGroupId === row.id ? 0 : -1}
-                onClick={() => setActiveGroupId(row.id)}
+                className={`project-library-rail-row${effectiveGroupId === row.id ? " selected" : ""}`}
+                aria-pressed={effectiveGroupId === row.id}
+                tabIndex={effectiveGroupId === row.id ? 0 : -1}
+                onClick={() => chooseGroup(row.id)}
               >
                 <span className="project-library-rail-label">{row.label}</span>
                 <span className="project-library-rail-count">{row.count}</span>
@@ -425,7 +432,7 @@ export function Welcome({
               <p className="welcome-no-matches">No projects match “{query.trim()}”.</p>
             )}
             {!trimmedQuery &&
-              activeGroupId === UNGROUPED_PROJECTS &&
+              effectiveGroupId === UNGROUPED_PROJECTS &&
               visibleProjects.length === 0 && (
                 <p className="welcome-no-matches">No ungrouped projects.</p>
               )}
