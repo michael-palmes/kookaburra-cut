@@ -5995,11 +5995,32 @@ button.beat-status {
   min-width: 0;
 }
 
+.transition-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  flex: 1 1 55%;
+  min-width: 0;
+}
+
+.transition-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.transition-group-title {
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .transition-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
-  flex: 1 1 55%;
   min-width: 0;
   align-content: start;
 }
@@ -6078,6 +6099,12 @@ button.beat-status {
 .transition-dip {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
+}
+
+.transition-advanced {
+  display: flex;
+  flex-direction: column;
   gap: 0.4rem;
 }
 
