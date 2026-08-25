@@ -1256,7 +1256,7 @@ Declared on the OUTGOING scene (manifest `"version": 2`): `"transition": { "type
 (clamped) overlap; the last scene never carries one. Always write `"version": 2` at the
 manifest top level when authoring transitions. Legacy unversioned manifests stored each
 transition on the incoming scene instead; the loader shifts them (identical output) and any
-app edit migrates the file in place, so never mix the two placements in one file. Thirteen
+app edit migrates the file in place, so never mix the two placements in one file. Twenty-six
 types; unknown types degrade to `crossfade` with a console warning. All params are
 optional (defaults shown); every value is clamped on load. Any transition may also carry
 `ease`: `"linear"` (absent, the byte contract for stored specs) | `"smooth"` | `"snappy"`,
@@ -1277,9 +1277,22 @@ applied CPU-side to progress with endpoints preserved.
 | `slice` | move | `direction` [1,0] · `intensity` 0.35 (stagger) · `blocks[0]` strip count | hash-staggered strips slide out revealing B |
 | `dissolve` | mask | `intensity` 0.35 (noise scale) · `softness` 0.08 | organic value-noise threshold, soft edge |
 | `warp` | mix | `intensity` 0.2 · `center` [0.5,0.5] | lens pull toward centre, restrained RGB split at mid |
+| `inkbleed` | mask | `direction` [0,-1] · `intensity` 0.5 (bleed scale) · `softness` 0.12 | noise-perturbed frontier wicks along the axis, melty edge |
+| `flowmorph` | mix | `intensity` 0.4 (flow) · `parallax` 0.5 (drift asymmetry) | curl-noise currents advect A out and B in |
+| `shockwave` | mask | `center` [0.5,0.5] · `intensity` 0.5 (refraction) · `softness` 0.1 (front width) · `steps` 1 (aftershocks, 1-3) | refractive pressure front with dispersion + crest lift |
+| `glasssweep` | mask | `direction` [1,0] · `softness` 0.18 (bar width) · `intensity` 0.5 (refraction) | refracting bar, per-channel dispersion, rim light |
+| `rackfocus` | mix | `intensity` 0.5 (max defocus) · `softness` 0.25 (highlight bloom) · `shape` "linear" (disc) \| "hex" | 19-tap aperture bokeh, highlight-weighted |
+| `halftone` | mix | `direction` [1,0] (screen angle) · `blocks[0]` 45 (dot pitch) · `intensity` 0.3 (ink gain) · `shape` "radial" (dot) \| "linear" (line) · `color` (ink; default theme background) | per-channel rotated print screens through an ink plate |
+| `lightsweep` | mask | `direction` [1,0] · `softness` 0.15 (streak width) · `intensity` 0.6 (bloom) · `color` (flash tint; picker bakes #ffffff) | anamorphic streak flare over a band reveal |
+| `shatter` | mask | `direction` [0,-1] · `blocks[0]` 12 (cell density) · `intensity` 0.5 (scatter) · `parallax` 0.5 (stagger) | voronoi shards drift/rotate out, rim-lit edges |
+| `pixelstretch` | mix | `direction` [0,-1] · `intensity` 0.5 (streak length) · `softness` 0.15 (key band) | luma-keyed smear, bright pixels hold longest |
+| `chromasplit` | mix | `direction` [1,0] · `intensity` 0.4 (split distance) · `softness` 0.2 (ghost overlap) | channels peel apart, reconverge into B |
+| `datamosh` | mix | `blocks[0]` 28 (blocks across) · `steps` 10 (refresh stages) · `intensity` 0.6 (mosh strength) | macroblock motion smear + hashed I-frame refresh sweep |
+| `prism` | mix | `steps` 6 (facets, 3-16) · `intensity` 0.5 (refraction spin) · `center` [0.5,0.5] | faceted refraction fold with edge glints |
+| `spinblur` | mix | `center` [0.5,0.5] · `intensity` 0.5 (whirl) · `shape` "linear" (clockwise) \| "radial" (anticlockwise) | partial-rotation whip under 12-tap angular blur |
 
 `direction` is one of the four unit axes. Gate project: `fixtures/transition-spike` (every
-non-slide/wipe seam incl. the v14 pack + eased boundaries); `ws:launch-2026` keeps
+non-slide/wipe seam incl. the v14 and v15 packs + eased boundaries); `ws:launch-2026` keeps
 slide/wipe coverage.
 
 ## Project manifest v3 fields (effects · camera · persistent)

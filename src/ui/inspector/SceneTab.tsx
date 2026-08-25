@@ -5810,7 +5810,6 @@ export function SceneTab({
                 },
               ],
             });
-            closeDrill();
             onTimingChanged();
           }}
           onApplyAll={
@@ -5832,7 +5831,6 @@ export function SceneTab({
                       },
                     ],
                   });
-                  closeDrill();
                   onTimingChanged();
                 }
               : undefined

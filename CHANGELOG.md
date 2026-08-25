@@ -4,6 +4,59 @@ All notable changes to Kookaburra Cut are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Thirteen new shader transitions in a fourth material generation: ink bleed,
+  flow morph, shockwave, glass sweep, rack focus, halftone, light sweep,
+  shatter, pixel stretch, chroma split, datamosh, prism fold and spin blur,
+  each with its own options.
+- A declarative options schema on the transition catalogue: every transition's
+  parameters (intensity, softness, focal point, blocks, steps, parallax,
+  shapes) now render as labelled controls in the picker, including the
+  previously hidden parameters on the existing thirteen types.
+- Hovering a transition card plays that transition in the picker's live
+  preview, so a click is no longer needed to see it.
+- The picker groups its cards into four feel sections: dissolves and focus,
+  wipes and reveals, motion, digital and bold.
+
+### Fixed
+
+- The transition drill stays open when a transition or option is applied;
+  leaving is back, cancel or Escape.
+
+## [0.14.0] - 2026-08-25
+
+### Added
+
+- A creative text motion pack: twenty in and out presets sampled per character
+  or per word, among them orbit, slam, highlight wipe, word cycle, spotlight,
+  converge and vapor, driven by new per-unit fields for rotation, stretch, mask
+  clip, accent mix, SDF weight and chromatic echoes.
+- Nine named text looks, themeable and settable per line: gradient, outline,
+  neon, offset print, highlight block, frosted, arc, plus 3D glass and chrome.
+- A Text style catalogue drill with a rendered preview card for every motion
+  preset and look, a delay start, and a pinned delivery and timing footer.
+- Size as a percentage on every typography element, reaching the counter, the
+  brand lockup, chips and 3D text.
+
+### Changed
+
+- Project cards on the welcome screen open the shared context menu from the
+  overflow button and on right click, with leading icons and a move to group
+  glyph.
+- Welcome search covers every project, with the rail following to All, and
+  picking a group clears the query.
+
+### Fixed
+
+- Text drill copy fields write while you type: the preview follows each
+  keystroke, the edit commits as one undo step, and Escape restores the copy as
+  it was.
+- Delete in the text drill removes the selected element rather than the group.
+  The last element takes its emptied group with it and closes the drill.
+
 ## [0.13.0] - 2026-08-24
 
 ### Added

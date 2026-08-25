@@ -169,14 +169,20 @@ Determinism rules specific to the composite path:
 
 The extended transition types (blur, push, zoom, whip, procedural luma/iris,
 glitch) live in **separate GLSL3 materials** (`engine/transitionShader.ts`) so
-the original crossfade/dip/slide/wipe programs stay source-identical, and the
-v14 pack (slice, dissolve, warp) is a third generation for the same reason;
-legacy projects' byte-identity is structural. Glitch/slice/dissolve randomness
-is an integer PCG hash (never `fract(sin)`: integer ops are exact across
-compiles); all tap counts and per-type defaults are export contract; unknown
-transition types degrade to crossfade with a warning. Progress easing
-(`ease: smooth | snappy`) is applied CPU-side before the uniforms, endpoints
-preserved; absent means linear, so stored specs keep exact bytes.
+the original crossfade/dip/slide/wipe programs stay source-identical, the
+v14 pack (slice, dissolve, warp) is a third generation for the same reason,
+and the v15 pack (inkbleed, flowmorph, shockwave, glasssweep, rackfocus,
+halftone, lightsweep, shatter, pixelstretch, chromasplit, datamosh, prism,
+spinblur) is a fourth; legacy projects' byte-identity is structural. All
+hashed randomness is an integer PCG hash (never `fract(sin)`: integer ops are
+exact across compiles); all tap counts, kernel positions, noise octaves and
+per-type defaults are export contract; unknown transition types degrade to
+crossfade with a warning. The v15 body opens with an explicit endpoint guard
+(progress <= 0 selects A raw, >= 1 selects B raw) on top of the bell
+convention, so seam frames stay byte-equal to the solo neighbours even for
+accumulation-heavy types (weighted bokeh sums, rotation resampling). Progress
+easing (`ease: smooth | snappy`) is applied CPU-side before the uniforms,
+endpoints preserved; absent means linear, so stored specs keep exact bytes.
 
 ## Embedded video
 
@@ -1233,7 +1239,7 @@ rolling-gate project (`showcase-tour`):
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ws:launch-2026` (legacy sentinel: must stay EQUAL) | `eb89826c…` | stale | stale | stale | — | — | — | — | — |
 | `showcase-tour` (rolling gate) | `13b5994d…` | stale | stale | stale | stale | stale (pre-trim) | — | — | — |
-| `transition-spike` (transition gate) | `6b058e1b…` | `74e02850…` | — | — | — | — | — | — | — |
+| `transition-spike` (transition gate) | `fb727cac…` | `a6383707…` | — | — | — | — | — | — | — |
 | `transition-bg-spike` (animated-background transition gate) | `2df76336…` | — | — | — | — | — | — | — | — |
 | `compare-spike` (before/after comparison gate) | stale | stale | stale | stale | — | — | — | — | — |
 | `image-flip-spike` (image-orientation gate, eyeball it) | stale | — | — | — | — | — | — | — | — |
@@ -1758,6 +1764,17 @@ rolling-gate project (`showcase-tour`):
 > change: re-recorded `showcase-tour` `da74c52b…` → `97af238c…` (Verify ×2
 > EQUAL) after eyeballing the abyss scene's raised device via
 > `--action screenshot`.
+
+> **2026-08-25 (v15 transition pack):** thirteen new shader types (inkbleed,
+> flowmorph, shockwave, glasssweep, rackfocus, halftone, lightsweep, shatter,
+> pixelstretch, chromasplit, datamosh, prism, spinblur) landed as a fourth
+> material generation with an explicit endpoint guard; every earlier program
+> stays source-identical and both merge anchors held EQUAL in the same session
+> (`showcase-tour` `28beda34…`, `ws:launch-2026` `eb89826c…`).
+> `transition-spike` gained thirteen scenes covering every new seam, a
+> deliberate content change: re-recorded `6b058e1b…` → `fb727cac…` (16:9) and
+> `74e02850…` → `a6383707…` (9:16), Verify ×2 EQUAL in both aspects, after
+> eyeballing all thirteen seams mid-transition via `--action screenshot`.
 
 > **2026-07-20 (transition ownership flip, manifest v2):** both anchors held
 > EQUAL through the flip (`da74c52b…` on the migrated v2 manifest, `b70c9788…`

@@ -180,6 +180,19 @@ describe("normalizeTransitionType (v10 M2)", () => {
       "slice",
       "dissolve",
       "warp",
+      "inkbleed",
+      "flowmorph",
+      "shockwave",
+      "glasssweep",
+      "rackfocus",
+      "halftone",
+      "lightsweep",
+      "shatter",
+      "pixelstretch",
+      "chromasplit",
+      "datamosh",
+      "prism",
+      "spinblur",
     ] as const) {
       expect(normalizeTransitionType(t)).toBe(t);
     }
@@ -241,6 +254,31 @@ describe("resolveTransitionParams (v10 M2)", () => {
     });
     expect(p.shape).toBe("linear");
     expect(p.softness).toBeCloseTo(0.08);
+  });
+
+  it("bakes v15 per-type defaults without touching older types", () => {
+    const base = { durationMs: 600 } as const;
+    const gs = resolveTransitionParams({ type: "glasssweep", ...base });
+    expect(gs.softness).toBeCloseTo(0.18);
+    expect(gs.intensity).toBeCloseTo(0.5);
+    const dm = resolveTransitionParams({ type: "datamosh", ...base });
+    expect(dm.steps).toBe(10);
+    expect(dm.blocks).toEqual([28, 28]);
+    const ht = resolveTransitionParams({ type: "halftone", ...base });
+    expect(ht.blocks).toEqual([45, 45]);
+    expect(ht.shape).toBe("radial");
+    expect(resolveTransitionParams({ type: "prism", ...base }).steps).toBe(6);
+    // Older types keep the flat fallbacks byte-identically.
+    const gl = resolveTransitionParams({ type: "glitch", ...base });
+    expect(gl.softness).toBeCloseTo(0.08);
+    expect(gl.blocks).toEqual([24, 14]);
+    expect(gl.steps).toBe(12);
+    expect(gl.shape).toBe("linear");
+  });
+
+  it("accepts the hex aperture shape", () => {
+    const p = resolveTransitionParams({ type: "rackfocus", durationMs: 600, shape: "hex" });
+    expect(p.shape).toBe("hex");
   });
 
   it("resolveAt carries baked params on the resolved transition", () => {

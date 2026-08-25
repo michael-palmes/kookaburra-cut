@@ -73,11 +73,14 @@ import {
 import type { Resolved, ResolvedTransition } from "./sceneTimeline";
 import {
   EXT2_MIN_TYPE,
+  EXT3_MIN_TYPE,
   EXTENDED_MIN_TYPE,
   fragmentShader,
   fragmentShaderExt,
   fragmentShaderExt2,
   fragmentShaderExt2Hdr,
+  fragmentShaderExt3,
+  fragmentShaderExt3Hdr,
   fragmentShaderExtHdr,
   fragmentShaderHdr,
   SHAPE_ID,
@@ -113,6 +116,9 @@ interface CompositorState {
   /** v14 pack (types 10-12, GLSL3), its own generation for the same reason. */
   materialExt2: ShaderMaterial;
   materialExt2Hdr: ShaderMaterial;
+  /** v15 pack (types 13-25, GLSL3), its own generation for the same reason. */
+  materialExt3: ShaderMaterial;
+  materialExt3Hdr: ShaderMaterial;
   /** The comparison mask pair (before/after split), its own generation so it never recompiles the transition programs. */
   compareMaterial: ShaderMaterial;
   compareMaterialHdr: ShaderMaterial;
@@ -292,6 +298,8 @@ function ensureState(w: number, h: number): CompositorState {
   const materialExtHdr = makeCompositeMaterial(fragmentShaderExtHdr, true);
   const materialExt2 = makeCompositeMaterial(fragmentShaderExt2, true);
   const materialExt2Hdr = makeCompositeMaterial(fragmentShaderExt2Hdr, true);
+  const materialExt3 = makeCompositeMaterial(fragmentShaderExt3, true);
+  const materialExt3Hdr = makeCompositeMaterial(fragmentShaderExt3Hdr, true);
   const compareMaterial = makeCompareMaterial(compareFragmentShader);
   const compareMaterialHdr = makeCompareMaterial(compareFragmentShaderHdr);
   const quadScene = new Scene();
@@ -323,6 +331,8 @@ function ensureState(w: number, h: number): CompositorState {
     materialExtHdr,
     materialExt2,
     materialExt2Hdr,
+    materialExt3,
+    materialExt3Hdr,
     compareMaterial,
     compareMaterialHdr,
     mesh,
@@ -1065,17 +1075,21 @@ export function renderComposited(
   // Effects: composites in linear into the composer (which owns tone-map + sRGB encode); no effects: composites straight to the default FB with sRGB encode, the original path, unchanged.
   const id = TYPE_ID[tr.type];
   const activeMaterial =
-    id >= EXT2_MIN_TYPE
+    id >= EXT3_MIN_TYPE
       ? hdrLane
-        ? st.materialExt2Hdr
-        : st.materialExt2
-      : id >= EXTENDED_MIN_TYPE
+        ? st.materialExt3Hdr
+        : st.materialExt3
+      : id >= EXT2_MIN_TYPE
         ? hdrLane
-          ? st.materialExtHdr
-          : st.materialExt
-        : hdrLane
-          ? st.materialHdr
-          : st.material;
+          ? st.materialExt2Hdr
+          : st.materialExt2
+        : id >= EXTENDED_MIN_TYPE
+          ? hdrLane
+            ? st.materialExtHdr
+            : st.materialExt
+          : hdrLane
+            ? st.materialHdr
+            : st.material;
   st.mesh.material = activeMaterial;
   setCompositeUniforms(
     activeMaterial.uniforms,
