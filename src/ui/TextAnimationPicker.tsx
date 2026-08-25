@@ -25,6 +25,7 @@ export function DebouncedRange({
   onCommit,
   onInput,
   overflowMax = false,
+  overflowMin = false,
   formatValue,
   disabled = false,
 }: {
@@ -38,6 +39,8 @@ export function DebouncedRange({
   onInput?: (v: number) => void;
   /** Soft max: the track still spans min..max, but a typed value past max is kept and the thumb pins at 100%. */
   overflowMax?: boolean;
+  /** Soft min: the mirror of `overflowMax`, a typed value below min is kept and the thumb pins at 0%. */
+  overflowMin?: boolean;
   /** Spelling of the value button (default `toFixed(2)`); typing edits the plain number. */
   formatValue?: (v: number) => string;
   disabled?: boolean;
@@ -93,13 +96,16 @@ export function DebouncedRange({
     }
     onCommit(dragValue.current);
   }
-  // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision (a soft max only clamps the floor).
+  // Double-click the number to type a value: clamps to [min, max] but keeps the typed precision (a soft end doesn't clamp its own side).
   function finishEdit(commit: boolean) {
     setEditing(false);
     if (!commit) return;
     const parsed = Number(text);
     if (!Number.isFinite(parsed)) return;
-    const clamped = overflowMax ? Math.max(min, parsed) : Math.min(max, Math.max(min, parsed));
+    const clamped = Math.min(
+      overflowMax ? Number.POSITIVE_INFINITY : max,
+      Math.max(overflowMin ? Number.NEGATIVE_INFINITY : min, parsed),
+    );
     if (pending.current !== null) {
       window.clearTimeout(pending.current);
       pending.current = null;
@@ -117,7 +123,7 @@ export function DebouncedRange({
         min={min}
         max={max}
         step={step}
-        value={overflowMax ? Math.min(v, max) : v}
+        value={Math.min(overflowMax ? max : v, Math.max(overflowMin ? min : v, v))}
         aria-label={label}
         disabled={disabled}
         onChange={(e) => schedule(Number(e.target.value))}

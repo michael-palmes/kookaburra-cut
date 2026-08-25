@@ -12,6 +12,7 @@ import {
   resolveAvailableDeviceId,
 } from "../../toolkit/device/catalog";
 import {
+  type DeviceMediaSpec,
   type DeviceMotionPreset,
   type DevicePlacement,
   type DeviceShadowMode,
@@ -313,7 +314,7 @@ function ChevronIcon() {
 function DeviceControlIcon({
   type,
 }: {
-  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid";
+  type: "x" | "y" | "depth" | "tilt" | "turn" | "roll" | "size" | "lid" | "delay";
 }) {
   const glyph = {
     x: <path d="M2.6 8h10.8M4.8 5.8 2.6 8l2.2 2.2M11.2 5.8 13.4 8l-2.2 2.2" />,
@@ -343,6 +344,13 @@ function DeviceControlIcon({
       <>
         <path d="M3 12.5h10" />
         <path d="M4.5 11.5 6 4.5h6l1.5 7" />
+      </>
+    ),
+    delay: (
+      <>
+        <circle cx="8" cy="8.8" r="4.8" />
+        <path d="M8 6.4v2.4l1.9 1.2" />
+        <path d="M6.4 2.2h3.2" />
       </>
     ),
   }[type];
@@ -557,9 +565,7 @@ export function DeviceDrillIn({
     );
   }
 
-  const patchDevice = (mutate: DeviceMutation, history: string, preview = false) => {
-    if (settingsDisabled) return;
-    const patch = (next: SceneDoc) => mutateDocDevice(next, device.id, mutate);
+  const patchWithGesture = (patch: (next: SceneDoc) => void, history: string, preview: boolean) => {
     if (preview) {
       if (!dragBaseline.current) dragBaseline.current = structuredClone(doc);
       const baseline = dragBaseline.current;
@@ -574,6 +580,11 @@ export function DeviceDrillIn({
     dragBaseline.current = null;
     if (baseline) void commitFromBaseline(baseline, patch);
     else void patchDoc(patch, { history });
+  };
+
+  const patchDevice = (mutate: DeviceMutation, history: string, preview = false) => {
+    if (settingsDisabled) return;
+    patchWithGesture((next) => mutateDocDevice(next, device.id, mutate), history, preview);
   };
 
   const duplicate = () => {
@@ -661,6 +672,32 @@ export function DeviceDrillIn({
       },
       { history: "match the before side" },
     );
+  };
+
+  // Screen video start delay: seconds in the UI, `media.startMs` in the doc (0 deletes the field). After writes its own `compare.b.media` override, materialising an inherited spec first.
+  const setScreenDelay = (seconds: number, preview = false) => {
+    if (settingsDisabled) return;
+    const base = routing.media;
+    if (base?.kind !== "video") return;
+    const startMs = Math.max(0, Math.round(seconds * 1000));
+    const apply = (spec: DeviceMediaSpec): DeviceMediaSpec => {
+      const media = { ...spec };
+      if (startMs === 0) delete media.startMs;
+      else media.startMs = startMs;
+      return media;
+    };
+    const patch = after
+      ? (next: SceneDoc) => {
+          if (!next.compare) return;
+          next.compare.b ??= {};
+          next.compare.b.media ??= {};
+          next.compare.b.media[device.id] = apply(next.compare.b.media[device.id] ?? base);
+        }
+      : (next: SceneDoc) =>
+          mutateDocDevice(next, device.id, (_next, candidate) => {
+            if (candidate.media?.kind === "video") candidate.media = apply(candidate.media);
+          });
+    patchWithGesture(patch, "screen start delay", preview);
   };
 
   const modelId: DeviceId = resolveAvailableDeviceId(device.model);
@@ -820,7 +857,23 @@ export function DeviceDrillIn({
           editDisabled={!routing.editVideoTarget}
           onChange={() => onChangeScreenMedia(device.id)}
           onEdit={onEditScreenMedia ? () => onEditScreenMedia(device.id) : undefined}
-        />
+        >
+          {routing.media?.kind === "video" && (
+            <InspectorSliderRow
+              icon={<DeviceControlIcon type="delay" />}
+              label="Start delay"
+              value={(routing.media.startMs ?? 0) / 1000}
+              min={0}
+              max={10}
+              step={0.1}
+              overflowMax
+              formatValue={(v) => `${Number(v.toFixed(2))}s`}
+              disabled={settingsDisabled}
+              onInput={(value) => setScreenDelay(value, true)}
+              onCommit={(value) => setScreenDelay(value)}
+            />
+          )}
+        </MediaSourceGroup>
 
         {!after && (
           <DrillGroup label="Arrangement">
@@ -871,6 +924,8 @@ export function DeviceDrillIn({
                       min={axis === 0 ? -3 : axis === 1 ? -1.5 : -2}
                       max={axis === 0 ? 3 : axis === 1 ? 1.5 : 2}
                       step={0.01}
+                      overflowMin
+                      overflowMax
                       onInput={(value) =>
                         patchDevice(
                           (next, candidate) =>

@@ -183,6 +183,7 @@ export function InspectorSliderRow({
   onCommit,
   onInput,
   overflowMax,
+  overflowMin,
   formatValue,
   disabled = false,
 }: {
@@ -196,6 +197,8 @@ export function InspectorSliderRow({
   onInput?: (value: number) => void;
   /** Soft max: typing past `max` keeps the value while the thumb pins at 100%. */
   overflowMax?: boolean;
+  /** Soft min: typing below `min` keeps the value while the thumb pins at 0%. */
+  overflowMin?: boolean;
   formatValue?: (value: number) => string;
   disabled?: boolean;
 }) {
@@ -215,6 +218,7 @@ export function InspectorSliderRow({
         onCommit={onCommit}
         onInput={onInput}
         overflowMax={overflowMax}
+        overflowMin={overflowMin}
         formatValue={formatValue}
       />
     </div>

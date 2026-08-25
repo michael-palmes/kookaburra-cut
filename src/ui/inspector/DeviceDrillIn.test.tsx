@@ -212,6 +212,7 @@ describe("DeviceDrillIn", () => {
       "Scale",
     ]);
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Start delay",
       "Left-right",
       "Up-down",
       "Depth",
@@ -248,8 +249,13 @@ describe("DeviceDrillIn", () => {
     const doc = deviceDoc();
     deviceStore.gizmoMode = "rotate";
     const rotateHtml = renderToStaticMarkup(<DeviceDrillIn {...props(doc)} />);
-    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Tilt", "Turn", "Roll"]);
-    expect(captures.sliders.map(({ value }) => value)).toEqual([-6, 14, 0]);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Start delay",
+      "Tilt",
+      "Turn",
+      "Roll",
+    ]);
+    expect(captures.sliders.map(({ value }) => value)).toEqual([0.3, -6, 14, 0]);
     expect(rotateHtml).toContain('class="device-editor-pose-choice selected"');
     expect(rotateHtml).toContain("Front on");
     expect(rotateHtml).toContain("Editorial");
@@ -259,8 +265,8 @@ describe("DeviceDrillIn", () => {
     captures.segments.length = 0;
     deviceStore.gizmoMode = "scale";
     renderToStaticMarkup(<DeviceDrillIn {...props(doc)} />);
-    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Size"]);
-    expect(captures.sliders[0]?.value).toBe(1.35);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Start delay", "Size"]);
+    expect(captures.sliders[1]?.value).toBe(1.35);
   });
 
   it("retains the live laptop lid control", () => {
@@ -338,6 +344,39 @@ describe("DeviceDrillIn", () => {
     expect(working.devices?.[1].colour).toBe("custom:#abcdef");
     expect(working.devices?.[1].placement?.ground).toBeUndefined();
     expect(working.devices?.[1].shadow).toBe("sun");
+  });
+
+  it("writes the screen start delay in ms and clears the field at zero", () => {
+    const doc = deviceDoc();
+    let working = structuredClone(doc);
+    const histories: Array<string | false | undefined> = [];
+    const patchDoc: DevicePatchDoc = async (patch, options) => {
+      const next = structuredClone(working);
+      patch(next);
+      working = next;
+      histories.push(options?.history);
+    };
+
+    renderToStaticMarkup(<DeviceDrillIn {...props(doc)} patchDoc={patchDoc} />);
+    const delay = captures.sliders.find((slider) => slider.label === "Start delay");
+    expect(delay?.value).toBe(0.3);
+    delay?.onCommit(1.5);
+    expect(working.devices?.[1].media).toEqual({
+      src: "assets/demo.mov",
+      kind: "video",
+      startMs: 1500,
+    });
+    delay?.onCommit(0);
+    expect(working.devices?.[1].media).toEqual({ src: "assets/demo.mov", kind: "video" });
+    expect(histories).toEqual(["screen start delay", "screen start delay"]);
+  });
+
+  it("offers no start delay without screen video media", () => {
+    renderToStaticMarkup(
+      <DeviceDrillIn {...props(deviceDoc())} deviceId="d3" screenMediaPreviewUrl={undefined} />,
+    );
+
+    expect(captures.sliders.some((slider) => slider.label === "Start delay")).toBe(false);
   });
 
   it("exposes a custom finish as the selected toggle in its labelled group", () => {
@@ -499,6 +538,7 @@ describe("DeviceDrillIn comparison sides", () => {
     expect(html).toContain("Push-in settle");
     expect(html).not.toContain("Match the before side");
     expect(captures.sliders.map((slider) => slider.label)).toEqual([
+      "Start delay",
       "Left-right",
       "Up-down",
       "Depth",
@@ -521,7 +561,7 @@ describe("DeviceDrillIn comparison sides", () => {
     expect(html).not.toContain("Push-in settle");
     expect(html).not.toContain("Reset position");
     expect(html).not.toContain("Match the before side");
-    expect(captures.sliders).toEqual([]);
+    expect(captures.sliders.map((slider) => slider.label)).toEqual(["Start delay"]);
     expect(captures.options.map((option) => option.label)).toEqual([
       "Soft contact",
       "Long & smooth",
@@ -599,6 +639,34 @@ describe("DeviceDrillIn comparison sides", () => {
     );
     expect(overridden).toContain("after.mp4");
     expect(overridden).not.toContain("Same as before");
+  });
+
+  it("writes the After start delay through compare.b.media, materialising the inherited spec", () => {
+    const doc = comparisonDoc();
+    let working = structuredClone(doc);
+    const patchDoc: DevicePatchDoc = async (patch) => {
+      const next = structuredClone(working);
+      patch(next);
+      working = next;
+    };
+
+    renderToStaticMarkup(
+      <DeviceDrillIn
+        {...props(doc)}
+        patchDoc={patchDoc}
+        comparison={{ side: "b", onSideChange: () => undefined }}
+      />,
+    );
+    const delay = captures.sliders.find((slider) => slider.label === "Start delay");
+    expect(delay?.value).toBe(0.3);
+    delay?.onCommit(2);
+
+    expect(working.compare?.b?.media?.d2).toEqual({
+      src: "assets/demo.mov",
+      kind: "video",
+      startMs: 2000,
+    });
+    expect(working.devices?.[1].media?.startMs).toBe(300);
   });
 });
 
