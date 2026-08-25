@@ -42,7 +42,7 @@ text, as required by GPLv2 §3.
 
 ## Trademarks
 
-"Apple", "iPhone" and "MacBook Pro" are trademarks of Apple Inc. The export presets name
+"Apple", "iPhone", "iPad" and "MacBook Pro" are trademarks of Apple Inc. The export presets name
 compatibility targets for third-party platforms: Meta, TikTok, YouTube,
 LinkedIn, X, Reddit, Telegram, whose names and logos are trademarks of their
 respective owners. These names are used only to identify device models and

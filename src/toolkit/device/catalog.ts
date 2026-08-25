@@ -4,6 +4,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import previewAndroidBlack from "../../assets/device-previews/android/black.png?url";
 import previewAndroidGraphite from "../../assets/device-previews/android/graphite.png?url";
 import previewAndroidWhite from "../../assets/device-previews/android/white.png?url";
+import previewIpadSilver from "../../assets/device-previews/ipad-pro-13/silver.png?url";
+import previewIpadSpaceBlack from "../../assets/device-previews/ipad-pro-13/space-black.png?url";
 import previewBlack from "../../assets/device-previews/iphone-15-pro/black-titanium.png?url";
 import previewBlue from "../../assets/device-previews/iphone-15-pro/blue-titanium.png?url";
 import previewNatural from "../../assets/device-previews/iphone-15-pro/natural-titanium.png?url";
@@ -15,6 +17,8 @@ import previewMbpSilver from "../../assets/device-previews/macbook-pro-16/silver
 import previewMbpGrey from "../../assets/device-previews/macbook-pro-16/space-grey.png?url";
 import {
   androidModelUrl,
+  ipadPro13ModelAvailable,
+  ipadPro13ModelUrl,
   iphone15ProModelAvailable,
   iphone17ProModelAvailable,
   iphone17ProModelUrl,
@@ -94,7 +98,12 @@ export interface DeviceSpec {
   lid?: { node: string; openDeg: number; defaultDeg: number };
 }
 
-export type DeviceId = "iphone-15-pro" | "iphone-17-pro" | "macbook-pro-16" | "android";
+export type DeviceId =
+  | "iphone-15-pro"
+  | "iphone-17-pro"
+  | "macbook-pro-16"
+  | "ipad-pro-13"
+  | "android";
 
 /** The generated Android's colour slots: the frame + camera metal share one finish, the back glass another; names match the OBJ's materials. */
 const ANDROID_FRAME_MATERIALS = [
@@ -240,6 +249,41 @@ export const DEVICE_CATALOG: Record<DeviceId, DeviceSpec> = {
     // DISPLAY.001 in the glb ("DISPLAY001" after three.js name sanitising), authored open at 110 degrees.
     lid: { node: "DISPLAY001", openDeg: 110, defaultDeg: 90 },
   },
+  "ipad-pro-13": {
+    id: "ipad-pro-13",
+    name: "iPad Pro 13″",
+    form: "tablet",
+    glbUrl: ipadPro13ModelUrl,
+    // 2752 x 2064 display, landscape identity (camera edge up); matches the measured screen mesh (0.2642 x 0.1981 m).
+    screen: { material: "SCREEN", aspect: 2752 / 2064 },
+    // 281.6 x 215.5 mm body, height-fitted to 2.6.
+    layoutWidth: 3.4,
+    fittedHeight: 2.6,
+    // 5.1 mm slab (the antenna split band; the camera plateau is a bump on the outline, not part of it) and a 15.3 mm corner (silhouette circle fit), at the same fit.
+    shadow: { thickness: 0.061, radius: 0.184 },
+    colours: [
+      // Silver is the authored (no-override) finish; Space Black per the vendor's colour .blend, extracted 2026-08-25 via scripts/dump-glb-materials.mjs, linear to sRGB hex. The body's colour lives in its baked base-colour texture, so that override is a multiply tint (Space Black / Silver factors, 0.04 / 0.65 linear = #464646 sRGB).
+      { id: "silver", name: "Silver", overrides: {}, swatch: "#d3d3d3" },
+      {
+        id: "space-black",
+        name: "Space Black",
+        overrides: {
+          "ALUMINUM Rough Body": { color: "#464646" },
+          "ALUMINUM Rough.001": { color: "#383838" },
+          "ALUMINUM Polished Logo": { color: "#383838" },
+          PL_ANTENNA: { color: "#383838" },
+          "MT_ACC CONN": { color: "#6c6c6c" },
+          "PL_ACC CON": { color: "#3f3f3f" },
+        },
+        swatch: "#383838",
+      },
+    ],
+    defaultColour: "silver",
+    previews: {
+      silver: previewIpadSilver,
+      "space-black": previewIpadSpaceBlack,
+    },
+  },
   "iphone-15-pro": {
     id: "iphone-15-pro",
     name: "iPhone 15 Pro",
@@ -318,6 +362,7 @@ export const FALLBACK_DEVICE_ID: DeviceId = "android";
 export const DEVICE_AVAILABILITY: Readonly<Record<DeviceId, boolean>> = {
   "iphone-17-pro": iphone17ProModelAvailable,
   "macbook-pro-16": macbookPro16ModelAvailable,
+  "ipad-pro-13": ipadPro13ModelAvailable,
   "iphone-15-pro": iphone15ProModelAvailable,
   android: true,
 };

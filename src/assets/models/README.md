@@ -26,10 +26,14 @@ toolkit primitives. Three tiers share one contract:
   | `iphone-15-pro` | `licensed/6241bad0-f016-4c0f-95c0-9aac0930a6ac.glb` | `pnpm assets:phone` |
   | `iphone-17-pro` | `licensed/e1bfddac-38f7-48a6-adf0-0d0120b7e937.glb` | `pnpm assets:iphone-17-pro` |
   | `macbook-pro-16` | `licensed/b30d3bc4-a66b-4376-95d1-30978b87212c.glb` | `pnpm assets:macbook-pro-16` |
+  | `ipad-pro-13` | `licensed/1a8f4c65-0cd1-42c2-a5cd-ffb632ec372b.glb` | `pnpm assets:ipad-pro-13` |
 
-  All three run `scripts/prepare-device-model.sh` (Blender export with a
+  All of them run `scripts/prepare-device-model.sh` (Blender export with a
   per-device corrective yaw, then gltf-transform optimise; needs
   `KOOKABURRA_ASSETS_DIR` pointing at the private vendor-blend folder).
+  The iPad is portrait-authored: its export adds a corrective roll (-90, so the
+  landscape camera edge is up at identity) and excludes the Apple Pencil Pro
+  the vendor stages beside the device.
   `pnpm assets:devices` rebuilds the lot. Sanity-check any rebuilt glb with
   `scripts/blender-render-glb-check.py` (renders the glTF +Z view, which must
   be the screen, dead-on) and `scripts/dump-glb-materials.mjs` (material names
