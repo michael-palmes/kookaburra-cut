@@ -21,24 +21,35 @@ import { fsUrl } from "../engine/media";
 import type { LoadedProject } from "../engine/project";
 import {
   applyTransitionEase,
+  defaultDirection,
   resolveTransitionParams,
   type TransitionEase,
   type TransitionSpec,
   type TransitionType,
 } from "../engine/sceneTimeline";
-import { DIRECTION_OPTIONS, TRANSITION_CATALOG } from "../engine/transitionCatalog";
+import {
+  DIRECTION_OPTIONS,
+  FEEL_LABELS,
+  FEEL_ORDER,
+  TRANSITION_CATALOG,
+  type TransitionMeta,
+  type TransitionParamDef,
+} from "../engine/transitionCatalog";
 import {
   EXT2_MIN_TYPE,
+  EXT3_MIN_TYPE,
   EXTENDED_MIN_TYPE,
   fragmentShader,
   fragmentShaderExt,
   fragmentShaderExt2,
+  fragmentShaderExt3,
   SHAPE_ID,
   TYPE_ID,
   vertexShader,
   vertexShader300,
 } from "../engine/transitionShader";
 import { ColourPicker } from "./colour/ColourPicker";
+import { DebouncedRange } from "./TextAnimationPicker";
 import { TransitionWriteQueue } from "./transitionWriteQueue";
 import { useEscapeClose } from "./useEscapeClose";
 
@@ -135,6 +146,7 @@ interface PreviewHandles {
   matSdr: ShaderMaterial;
   matExt: ShaderMaterial;
   matExt2: ShaderMaterial;
+  matExt3: ShaderMaterial;
   texA: Texture;
   texB: Texture;
   raf: number;
@@ -159,6 +171,13 @@ function TransitionPreview({
   const containerRef = useRef<HTMLDivElement>(null);
   const specRef = useRef(spec);
   specRef.current = spec;
+  const startRef = useRef(performance.now());
+
+  // A type change (pick or hover) restarts the cycle just before the run so the new transition shows straight away; param edits stay mid-loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restart on type change
+  useEffect(() => {
+    startRef.current = performance.now() - Math.max(0, HOLD_MS - 200);
+  }, [spec?.type]);
 
   // A fresh canvas + context per effect run, torn down with forceContextLoss on cleanup; never reuse a WebGLRenderer's canvas, since the old GL state vs the new renderer's default caches leaves texture binds stale and every sample reads black (found live under StrictMode's double-mount). Re-runs when the thumb URLs land, so flats render first and loaded thumbs swap in asynchronously.
   useEffect(() => {
@@ -178,6 +197,7 @@ function TransitionPreview({
     const matSdr = makePreviewMaterial(fragmentShader, false);
     const matExt = makePreviewMaterial(fragmentShaderExt, true);
     const matExt2 = makePreviewMaterial(fragmentShaderExt2, true);
+    const matExt3 = makePreviewMaterial(fragmentShaderExt3, true);
     const mesh = new Mesh(new PlaneGeometry(2, 2), matSdr);
     mesh.frustumCulled = false;
     scene.add(mesh);
@@ -190,6 +210,7 @@ function TransitionPreview({
       matSdr,
       matExt,
       matExt2,
+      matExt3,
       texA: sampleSlideTexture(fallbackA, "a"),
       texB: sampleSlideTexture(fallbackB, "b"),
       raf: 0,
@@ -223,11 +244,10 @@ function TransitionPreview({
       handles.texB = t;
     });
 
-    const start = performance.now();
     const cycle = HOLD_MS + RUN_MS + HOLD_MS;
     const frame = (now: number) => {
       if (handles.disposed) return;
-      const t = (now - start) % cycle;
+      const t = Math.max(0, now - startRef.current) % cycle;
       const progress = t < HOLD_MS ? 0 : t < HOLD_MS + RUN_MS ? (t - HOLD_MS) / RUN_MS : 1;
       const s = specRef.current;
       // None: a hard cut at the midpoint, rendered through the crossfade branch at 0/1.
@@ -235,11 +255,13 @@ function TransitionPreview({
       const p = s ? applyTransitionEase(s.ease, progress) : progress < 0.5 ? 0 : 1;
       const id = TYPE_ID[type];
       const mat =
-        id >= EXT2_MIN_TYPE
-          ? handles.matExt2
-          : id >= EXTENDED_MIN_TYPE
-            ? handles.matExt
-            : handles.matSdr;
+        id >= EXT3_MIN_TYPE
+          ? handles.matExt3
+          : id >= EXT2_MIN_TYPE
+            ? handles.matExt2
+            : id >= EXTENDED_MIN_TYPE
+              ? handles.matExt
+              : handles.matSdr;
       handles.mesh.material = mat;
       const u = mat.uniforms;
       const params = resolveTransitionParams(s ?? { type: "crossfade", durationMs: 600 });
@@ -247,15 +269,7 @@ function TransitionPreview({
       u.texB.value = handles.texB;
       u.progress.value = p;
       u.type.value = TYPE_ID[type];
-      const dir =
-        s?.direction ??
-        (type === "slide" ||
-        type === "wipe" ||
-        type === "push" ||
-        type === "whip" ||
-        type === "slice"
-          ? [1, 0]
-          : [0, 0]);
+      const dir = s?.direction ?? defaultDirection(type);
       (u.direction.value as Vector2).set(dir[0], dir[1]);
       (u.dipColor.value as Vector3).setFromColor(new Color(s?.color ?? fallbackB.background));
       u.intensity.value = params.intensity;
@@ -278,6 +292,7 @@ function TransitionPreview({
       matSdr.dispose();
       matExt.dispose();
       matExt2.dispose();
+      matExt3.dispose();
       mesh.geometry.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -301,6 +316,151 @@ const ARROWS: Record<string, string> = {
   Up: "M4 14 L10 6 L16 14",
   Down: "M4 6 L10 14 L16 6",
 };
+
+/** Line glyphs for the advanced param rows, keyed by param key (the ARROWS convention). */
+const PARAM_ICONS: Record<string, string> = {
+  intensity: "M4 14 A6 6 0 1 1 16 14 M10 14 L13.5 9.5",
+  softness: "M4 10 a6 6 0 1 0 12 0 a6 6 0 1 0 -12 0 M7 10 a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0",
+  steps: "M3 16 L7 16 L7 12 L11 12 L11 8 L15 8 L15 4",
+  parallax: "M4 5 L12 5 L12 12 L4 12 Z M8 9 L16 9 L16 16 L8 16",
+  blocksX: "M4 4 H16 V16 H4 Z M10 4 V16 M4 10 H16",
+  blocksY: "M4 4 H16 V16 H4 Z M4 10 H16 M10 10 V16",
+  centerX: "M10 3 V8 M10 12 V17 M3 10 H8 M12 10 H17",
+  centerY: "M10 3 V8 M10 12 V17 M3 10 H8 M12 10 H17",
+  shape: "M4 12 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0 M11 4 H17 V10 H11 Z",
+};
+
+function ParamIcon({ id }: { id: string }) {
+  return (
+    <svg
+      className="inspector-slider-row-icon"
+      width="17"
+      height="17"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
+      <path
+        d={PARAM_ICONS[id] ?? PARAM_ICONS.intensity}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** One schema-driven advanced control; writing a value equal to the type's baked default drops the key, so untouched specs keep exact bytes (the ease-chip convention). */
+function TransitionParamRow({
+  row,
+  draft,
+  persist,
+}: {
+  row: TransitionParamDef;
+  draft: TransitionSpec;
+  persist: (next: TransitionSpec) => void;
+}) {
+  const resolved = resolveTransitionParams(draft);
+  const defaults = resolveTransitionParams({ type: draft.type, durationMs: draft.durationMs });
+
+  const dropKey = (key: "intensity" | "softness" | "steps" | "parallax" | "blocks" | "center") => {
+    const next = { ...draft };
+    delete next[key];
+    persist(next);
+  };
+
+  if (row.kind === "choice") {
+    return (
+      <div className="popover-row">
+        <span className="popover-inline slider-row-label">
+          <ParamIcon id="shape" />
+          {row.label}
+        </span>
+        <span className="transition-ease">
+          {row.options.map((opt) => {
+            const active = resolved.shape === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={`btn btn-small${active ? " selected" : ""}`}
+                aria-pressed={active}
+                onClick={() => persist({ ...draft, shape: opt.value })}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </span>
+      </div>
+    );
+  }
+
+  if (row.kind === "point") {
+    const commitAxis = (axis: 0 | 1, v: number) => {
+      const next: [number, number] = axis === 0 ? [v, resolved.center[1]] : [resolved.center[0], v];
+      if (next[0] === defaults.center[0] && next[1] === defaults.center[1]) dropKey("center");
+      else persist({ ...draft, center: next });
+    };
+    return (
+      <>
+        {([0, 1] as const).map((axis) => (
+          <div className="popover-row" key={axis}>
+            <span className="popover-inline slider-row-label">
+              <ParamIcon id={axis === 0 ? "centerX" : "centerY"} />
+              {row.label} {axis === 0 ? "X" : "Y"}
+            </span>
+            <DebouncedRange
+              value={resolved.center[axis]}
+              min={0}
+              max={1}
+              step={0.01}
+              label={`${row.label} ${axis === 0 ? "X" : "Y"}`}
+              onCommit={(v) => commitAxis(axis, v)}
+            />
+          </div>
+        ))}
+      </>
+    );
+  }
+
+  const integer = row.step >= 1;
+  const value =
+    row.key === "blocksX"
+      ? resolved.blocks[0]
+      : row.key === "blocksY"
+        ? resolved.blocks[1]
+        : resolved[row.key];
+  const commit = (v: number) => {
+    if (row.key === "blocksX" || row.key === "blocksY") {
+      const next: [number, number] =
+        row.key === "blocksX" ? [v, resolved.blocks[1]] : [resolved.blocks[0], v];
+      if (next[0] === defaults.blocks[0] && next[1] === defaults.blocks[1]) dropKey("blocks");
+      else persist({ ...draft, blocks: next });
+      return;
+    }
+    if (v === defaults[row.key]) dropKey(row.key);
+    else persist({ ...draft, [row.key]: v });
+  };
+  return (
+    <div className="popover-row">
+      <span className="popover-inline slider-row-label">
+        <ParamIcon id={row.key} />
+        {row.label}
+      </span>
+      <DebouncedRange
+        value={value}
+        min={row.min}
+        max={row.max}
+        step={row.step}
+        label={row.label}
+        onCommit={commit}
+        formatValue={integer ? (v) => String(Math.round(v)) : undefined}
+      />
+    </div>
+  );
+}
 
 export function TransitionModal({
   project,
@@ -332,6 +492,25 @@ export function TransitionModal({
   const [confirmAll, setConfirmAll] = useState(false);
   const [writeQueue] = useState(() => new TransitionWriteQueue());
   const applyingAll = useRef(false);
+  const [hoverType, setHoverType] = useState<TransitionType | "none" | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+
+  // Hovering (or focusing) a card previews its type in the side canvas without touching the applied draft; the short delay keeps grid sweeps from thrashing the GL loop.
+  const setHover = (type: TransitionType | "none" | null) => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    if (type === null) {
+      setHoverType(null);
+      return;
+    }
+    hoverTimer.current = window.setTimeout(() => setHoverType(type), 120);
+  };
 
   const persistDraft = (next: TransitionSpec | null) => {
     if (applyingAll.current) return;
@@ -351,6 +530,21 @@ export function TransitionModal({
   const themeIn = project.sceneThemes[boundaryIndex + 1] ?? project.theme;
   const themeOut = project.sceneThemes[boundaryIndex] ?? project.theme;
   const meta = draft ? TRANSITION_CATALOG.find((m) => m.type === draft.type) : null;
+
+  const previewSpec = useMemo(() => {
+    if (hoverType === null) return draft;
+    if (hoverType === "none") return null;
+    if (draft?.type === hoverType) return draft;
+    const m = TRANSITION_CATALOG.find((mm) => mm.type === hoverType);
+    if (!m) return draft;
+    const hoverDraft: TransitionSpec = {
+      type: hoverType,
+      durationMs: m.defaultDurationMs,
+      ease: "smooth",
+      ...(m.presets ?? {}),
+    };
+    return hoverDraft;
+  }, [hoverType, draft]);
 
   const pick = (type: TransitionType | null) => {
     if (type === null) {
@@ -405,44 +599,65 @@ export function TransitionModal({
     persistDraft({ ...draft, durationMs: Math.round(seconds * 1000) });
   };
 
+  const typeCard = (m: TransitionMeta) => (
+    <div
+      key={m.type}
+      role="option"
+      tabIndex={0}
+      aria-selected={draft?.type === m.type}
+      className={`transition-card${draft?.type === m.type ? " selected" : ""}`}
+      onClick={() => pick(m.type)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") pick(m.type);
+      }}
+      onMouseEnter={() => setHover(m.type)}
+      onMouseLeave={() => setHover(null)}
+      onFocus={() => setHover(m.type)}
+      onBlur={() => setHover(null)}
+    >
+      <span className="transition-card-label">{m.label}</span>
+      <span className="transition-card-hint">{m.hint}</span>
+    </div>
+  );
+
   const body = (
     <>
       <div className="transition-body">
-        <div className="transition-grid" role="listbox" aria-label="Transition type">
-          <div
-            role="option"
-            tabIndex={0}
-            aria-selected={draft === null}
-            className={`transition-card${draft === null ? " selected" : ""}`}
-            onClick={() => pick(null)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") pick(null);
-            }}
-          >
-            <span className="transition-card-label">None (cut)</span>
-            <span className="transition-card-hint">Hard cut — the project gets longer</span>
-          </div>
-          {TRANSITION_CATALOG.map((m) => (
+        <div className="transition-groups" role="listbox" aria-label="Transition type">
+          <div className="transition-grid">
             <div
-              key={m.type}
               role="option"
               tabIndex={0}
-              aria-selected={draft?.type === m.type}
-              className={`transition-card${draft?.type === m.type ? " selected" : ""}`}
-              onClick={() => pick(m.type)}
+              aria-selected={draft === null}
+              className={`transition-card${draft === null ? " selected" : ""}`}
+              onClick={() => pick(null)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") pick(m.type);
+                if (e.key === "Enter" || e.key === " ") pick(null);
               }}
+              onMouseEnter={() => setHover("none")}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover("none")}
+              onBlur={() => setHover(null)}
             >
-              <span className="transition-card-label">{m.label}</span>
-              <span className="transition-card-hint">{m.hint}</span>
+              <span className="transition-card-label">None (cut)</span>
+              <span className="transition-card-hint">Hard cut — the project gets longer</span>
             </div>
-          ))}
+          </div>
+          {FEEL_ORDER.map((feel) => {
+            const items = TRANSITION_CATALOG.filter((m) => m.feel === feel);
+            if (items.length === 0) return null;
+            return (
+              <fieldset key={feel} aria-label={FEEL_LABELS[feel]} className="transition-group">
+                <span className="transition-group-title">{FEEL_LABELS[feel]}</span>
+                <div className="transition-grid">{items.map(typeCard)}</div>
+              </fieldset>
+            );
+          })}
         </div>
 
         <div className="transition-side">
           <TransitionPreview
-            spec={draft}
+            spec={previewSpec}
             thumbA={fsUrlA}
             thumbB={fsUrlB}
             fallbackA={themeOut.colors}
@@ -547,6 +762,19 @@ export function TransitionModal({
               )}
             </div>
           )}
+
+          {draft && meta?.params?.length ? (
+            <div className="transition-advanced">
+              {meta.params.map((row) => (
+                <TransitionParamRow
+                  key={`${draft.type}:${row.kind}:${row.label}`}
+                  row={row}
+                  draft={draft}
+                  persist={persistDraft}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 
