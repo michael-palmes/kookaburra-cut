@@ -472,6 +472,39 @@ export function shadowSweepDirection(plane: ShadowPlane, light: V3): [number, nu
   return len < 1e-6 ? [0, 0] : [x / len, y / len];
 }
 
+/** The sun sweep's occluder set, per slab: the swept shadow of a convex solid is the HULL of the root, the far copy and the tangent band between them (the Rotato boundary: a straight line leaving each corner). The band is an oriented box along the sweep whose cross extents are the slab's support widths, so its sides lie exactly on the tangent lines; the union of the three probes IS the hull. */
+export function sweptMiddleSlab(slab: ShadowSlab, sweepWorld: V3, planeNormal: V3): ShadowSlab {
+  const len = Math.hypot(sweepWorld[0], sweepWorld[1], sweepWorld[2]);
+  const a1: V3 = [sweepWorld[0] / len, sweepWorld[1] / len, sweepWorld[2] / len];
+  const a2: V3 = [
+    planeNormal[1] * a1[2] - planeNormal[2] * a1[1],
+    planeNormal[2] * a1[0] - planeNormal[0] * a1[2],
+    planeNormal[0] * a1[1] - planeNormal[1] * a1[0],
+  ];
+  const a3: V3 = [
+    a1[1] * a2[2] - a1[2] * a2[1],
+    a1[2] * a2[0] - a1[0] * a2[2],
+    a1[0] * a2[1] - a1[1] * a2[0],
+  ];
+  const support = (d: V3): number =>
+    slab.half[0] * Math.abs(dot(d, slab.u)) +
+    slab.half[1] * Math.abs(dot(d, slab.v)) +
+    (slab.thickness / 2) * Math.abs(dot(d, slab.n));
+  return {
+    center: [
+      slab.center[0] + sweepWorld[0] / 2,
+      slab.center[1] + sweepWorld[1] / 2,
+      slab.center[2] + sweepWorld[2] / 2,
+    ],
+    u: a1,
+    v: a2,
+    n: a3,
+    half: [len / 2, support(a2)],
+    thickness: support(a3) * 2,
+    radius: Math.min(slab.radius, support(a2), support(a3)),
+  };
+}
+
 /** Penumbra half-width for an occluder `distance` from the receiver: the contact blur plus the light's apparent size over that gap. The physical law the whole projector turns on, so a floating device's shadow softens and a tall one blurs toward its far end. */
 export function shadowPenumbra(mode: ShadowModeSpec, distance: number, scale: number): number {
   return mode.blurNear * scale + mode.softness * Math.max(0, distance);
@@ -588,6 +621,18 @@ uniform vec3 uPlaneNormal;
 uniform vec2 uSweep;
 uniform float uSweepLen;
 uniform float uSweepBlur;
+uniform vec2 uSweepFrom;
+uniform vec3 uSweepWorld;
+uniform vec3 uSlabM0C;
+uniform vec3 uSlabM0U;
+uniform vec3 uSlabM0V;
+uniform vec3 uSlabM0N;
+uniform vec4 uSlabM0H;
+uniform vec3 uSlabM1C;
+uniform vec3 uSlabM1U;
+uniform vec3 uSlabM1V;
+uniform vec3 uSlabM1N;
+uniform vec4 uSlabM1H;
 uniform float uBlurNear;
 uniform float uSoftness;
 uniform float uOpacity;
@@ -670,12 +715,31 @@ float shade(vec2 p, vec3 light, float minHalf, float blurAdd, float fadeOn) {
   return max(a, b);
 }
 
+// The sun sweep: the swept shadow of a convex solid is the HULL of the root silhouette, the far
+// copy and the tangent band between them, probed as a union so the boundary leaves each corner as
+// a straight tangent line (the Rotato look; a nearest-translate smear kinks at the corners).
+float sweptShade(vec2 p, vec3 light, float blurAdd, float fadeOn) {
+  vec3 world = uPlaneOrigin + uPlaneE1 * p.x + uPlaneE2 * p.y;
+  float root = probeCoverage(slabProbe(world, light, 0.0, uSlabC0, uSlabU0, uSlabV0, uSlabN0, uSlabH0), blurAdd, fadeOn);
+  float far0 = probeCoverage(slabProbe(world, light, 0.0, uSlabC0 + uSweepWorld, uSlabU0, uSlabV0, uSlabN0, uSlabH0), blurAdd, fadeOn);
+  float band = probeCoverage(slabProbe(world, light, 0.0, uSlabM0C, uSlabM0U, uSlabM0V, uSlabM0N, uSlabM0H), blurAdd, fadeOn);
+  float sum0 = max(root, max(far0, band));
+  if (uSlabOn1 > 0.0) {
+    float root1 = probeCoverage(slabProbe(world, light, 0.0, uSlabC1, uSlabU1, uSlabV1, uSlabN1, uSlabH1), blurAdd, fadeOn);
+    float far1 = probeCoverage(slabProbe(world, light, 0.0, uSlabC1 + uSweepWorld, uSlabU1, uSlabV1, uSlabN1, uSlabH1), blurAdd, fadeOn);
+    float band1 = probeCoverage(slabProbe(world, light, 0.0, uSlabM1C, uSlabM1U, uSlabM1V, uSlabM1N, uSlabM1H), blurAdd, fadeOn);
+    sum0 = max(sum0, max(root1, max(far1, band1)));
+  }
+  return sum0;
+}
+
 void main() {
-  // Slide back along the sweep to the nearest translate of the silhouette: the closed form of the union over the whole smear.
-  float along = uSweepLen > 0.0 ? clamp(dot(vPos, uSweep), 0.0, uSweepLen) : 0.0;
-  float t = uSweepLen > 0.0 ? along / uSweepLen : 0.0;
+  // The blur and fade ramp runs from the sweep's ROOT (the silhouette), not the plane origin, so the softening is even across the whole cast.
+  float t = uSweepLen > 0.0 ? clamp(dot(vPos - uSweepFrom, uSweep) / uSweepLen, 0.0, 1.0) : 0.0;
   // "cast" is a GLSL reserved word: naming this variable after what it is fails to compile.
-  float thrown = shade(vPos - uSweep * along, uLight, 0.0, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff) * uOpacity;
+  float thrown = (uSweepLen > 0.0
+    ? sweptShade(vPos, uLight, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff)
+    : shade(vPos, uLight, 0.0, 0.0, 1.0)) * uOpacity;
   // Twin studio's second softbox, an unswept cast; zero opacity keeps every other mode's arithmetic exact (multiplying by 1.0 is lossless).
   float fill = uFillOpacity > 0.0 ? shade(vPos, uFillLight, 0.0, 0.0, 1.0) * uFillOpacity : 0.0;
   float ambient = uAmbient.y > 0.0 ? shade(vPos, uPlaneNormal, uAmbientMin, uAmbient.x, 0.0) * uAmbient.y : 0.0;

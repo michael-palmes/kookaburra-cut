@@ -12,6 +12,7 @@ import {
   shadowPlane,
   shadowQuad,
   shadowSweepDirection,
+  sweptMiddleSlab,
 } from "./shadowProjector";
 
 // Catalog literals rather than DEVICE_CATALOG: the catalog drags three and the glb asset imports
@@ -235,6 +236,29 @@ describe("shadowQuad", () => {
     const one = quadFor(PHONE, "soft");
     const two = quadFor(PHONE, "soft", { ...REST, scale: 2 });
     expect(two.size[0]).toBeGreaterThan(one.size[0] * 1.5);
+  });
+});
+
+describe("sweptMiddleSlab", () => {
+  const sweepWorld: [number, number, number] = [Math.SQRT1_2 * 2.2, -Math.SQRT1_2 * 2.2, 0];
+
+  it("spans root to far copy with its sides on the tangent lines", () => {
+    const [slab] = deviceShadowSlabs(PHONE, REST);
+    const mid = sweptMiddleSlab(slab, sweepWorld, [0, 0, 1]);
+    // Centre halfway along the sweep, first axis along it.
+    expect(mid.center[0]).toBeCloseTo(sweepWorld[0] / 2, 12);
+    expect(mid.center[1]).toBeCloseTo(sweepWorld[1] / 2, 12);
+    expect(mid.u[0]).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(mid.half[0]).toBeCloseTo(1.1, 12);
+    // Cross half-extent equals the slab's support width perpendicular to the sweep, so the band's sides ARE the corner tangents.
+    const expected = (1.25 / 2) * Math.SQRT1_2 + (2.6 / 2) * Math.SQRT1_2;
+    expect(mid.half[1]).toBeCloseTo(expected, 12);
+  });
+
+  it("keeps the band inside the slab thickness", () => {
+    const [slab] = deviceShadowSlabs(PHONE, REST);
+    const mid = sweptMiddleSlab(slab, sweepWorld, [0, 0, 1]);
+    expect(mid.thickness).toBeCloseTo(0.184, 12);
   });
 });
 
