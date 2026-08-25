@@ -159,6 +159,13 @@ function TransitionPreview({
   const containerRef = useRef<HTMLDivElement>(null);
   const specRef = useRef(spec);
   specRef.current = spec;
+  const startRef = useRef(performance.now());
+
+  // A type change (pick or hover) restarts the cycle just before the run so the new transition shows straight away; param edits stay mid-loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restart on type change
+  useEffect(() => {
+    startRef.current = performance.now() - Math.max(0, HOLD_MS - 200);
+  }, [spec?.type]);
 
   // A fresh canvas + context per effect run, torn down with forceContextLoss on cleanup; never reuse a WebGLRenderer's canvas, since the old GL state vs the new renderer's default caches leaves texture binds stale and every sample reads black (found live under StrictMode's double-mount). Re-runs when the thumb URLs land, so flats render first and loaded thumbs swap in asynchronously.
   useEffect(() => {
@@ -223,11 +230,10 @@ function TransitionPreview({
       handles.texB = t;
     });
 
-    const start = performance.now();
     const cycle = HOLD_MS + RUN_MS + HOLD_MS;
     const frame = (now: number) => {
       if (handles.disposed) return;
-      const t = (now - start) % cycle;
+      const t = Math.max(0, now - startRef.current) % cycle;
       const progress = t < HOLD_MS ? 0 : t < HOLD_MS + RUN_MS ? (t - HOLD_MS) / RUN_MS : 1;
       const s = specRef.current;
       // None: a hard cut at the midpoint, rendered through the crossfade branch at 0/1.
@@ -332,6 +338,25 @@ export function TransitionModal({
   const [confirmAll, setConfirmAll] = useState(false);
   const [writeQueue] = useState(() => new TransitionWriteQueue());
   const applyingAll = useRef(false);
+  const [hoverType, setHoverType] = useState<TransitionType | "none" | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    },
+    [],
+  );
+
+  // Hovering (or focusing) a card previews its type in the side canvas without touching the applied draft; the short delay keeps grid sweeps from thrashing the GL loop.
+  const setHover = (type: TransitionType | "none" | null) => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    if (type === null) {
+      setHoverType(null);
+      return;
+    }
+    hoverTimer.current = window.setTimeout(() => setHoverType(type), 120);
+  };
 
   const persistDraft = (next: TransitionSpec | null) => {
     if (applyingAll.current) return;
@@ -351,6 +376,21 @@ export function TransitionModal({
   const themeIn = project.sceneThemes[boundaryIndex + 1] ?? project.theme;
   const themeOut = project.sceneThemes[boundaryIndex] ?? project.theme;
   const meta = draft ? TRANSITION_CATALOG.find((m) => m.type === draft.type) : null;
+
+  const previewSpec = useMemo(() => {
+    if (hoverType === null) return draft;
+    if (hoverType === "none") return null;
+    if (draft?.type === hoverType) return draft;
+    const m = TRANSITION_CATALOG.find((mm) => mm.type === hoverType);
+    if (!m) return draft;
+    const hoverDraft: TransitionSpec = {
+      type: hoverType,
+      durationMs: m.defaultDurationMs,
+      ease: "smooth",
+      ...(m.presets ?? {}),
+    };
+    return hoverDraft;
+  }, [hoverType, draft]);
 
   const pick = (type: TransitionType | null) => {
     if (type === null) {
@@ -418,6 +458,10 @@ export function TransitionModal({
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") pick(null);
             }}
+            onMouseEnter={() => setHover("none")}
+            onMouseLeave={() => setHover(null)}
+            onFocus={() => setHover("none")}
+            onBlur={() => setHover(null)}
           >
             <span className="transition-card-label">None (cut)</span>
             <span className="transition-card-hint">Hard cut — the project gets longer</span>
@@ -433,6 +477,10 @@ export function TransitionModal({
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") pick(m.type);
               }}
+              onMouseEnter={() => setHover(m.type)}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(m.type)}
+              onBlur={() => setHover(null)}
             >
               <span className="transition-card-label">{m.label}</span>
               <span className="transition-card-hint">{m.hint}</span>
@@ -442,7 +490,7 @@ export function TransitionModal({
 
         <div className="transition-side">
           <TransitionPreview
-            spec={draft}
+            spec={previewSpec}
             thumbA={fsUrlA}
             thumbB={fsUrlB}
             fallbackA={themeOut.colors}
