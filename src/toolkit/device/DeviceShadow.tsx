@@ -7,7 +7,6 @@ import {
   type DeviceShadowMode,
   deviceShadowSlabs,
   lightDirection,
-  sweptMiddleSlab,
   SHADOW_AMBIENT_MAX_BLUR,
   SHADOW_FRAG,
   SHADOW_VERT,
@@ -15,10 +14,13 @@ import {
   type ShadowPlane,
   type ShadowPose,
   type ShadowSlab,
+  SUN_HULL_MAX,
   shadowLightDirection,
   shadowPlane,
   shadowQuad,
   shadowSweepDirection,
+  sunSweepHull,
+  sweepRampSpan,
 } from "./shadowProjector";
 
 /** The presentation shadow: one analytic projector, one quad, driven by the device's live pose. Mounted OUTSIDE the animated inner group so the receiver stays put on the floor while the occluder moves, which is what lets a float lift widen and lighten its own shadow. Maths, mode parameters and the shaders: `shadowProjector.ts`. */
@@ -47,17 +49,9 @@ function makeUniforms() {
     uSweepLen: { value: 0 },
     uSweepBlur: { value: 0 },
     uSweepFrom: { value: new Vector2() },
-    uSweepWorld: { value: new Vector3() },
-    uSlabM0C: { value: new Vector3() },
-    uSlabM0U: { value: new Vector3() },
-    uSlabM0V: { value: new Vector3() },
-    uSlabM0N: { value: new Vector3() },
-    uSlabM0H: { value: new Vector4() },
-    uSlabM1C: { value: new Vector3() },
-    uSlabM1U: { value: new Vector3() },
-    uSlabM1V: { value: new Vector3() },
-    uSlabM1N: { value: new Vector3() },
-    uSlabM1H: { value: new Vector4() },
+    uHull: { value: Array.from({ length: SUN_HULL_MAX + 1 }, () => new Vector2()) },
+    uHullCount: { value: 0 },
+    uHullRadius: { value: 0 },
     uBlurNear: { value: 0 },
     uSoftness: { value: 0 },
     uOpacity: { value: 0 },
@@ -80,19 +74,6 @@ function makeUniforms() {
 }
 
 type Uniforms = ReturnType<typeof makeUniforms>;
-
-function writeMiddleSlab(uniforms: Uniforms, index: 0 | 1, slab: ShadowSlab): void {
-  const c = index === 0 ? uniforms.uSlabM0C : uniforms.uSlabM1C;
-  const u = index === 0 ? uniforms.uSlabM0U : uniforms.uSlabM1U;
-  const v = index === 0 ? uniforms.uSlabM0V : uniforms.uSlabM1V;
-  const n = index === 0 ? uniforms.uSlabM0N : uniforms.uSlabM1N;
-  const h = index === 0 ? uniforms.uSlabM0H : uniforms.uSlabM1H;
-  c.value.set(...slab.center);
-  u.value.set(...slab.u);
-  v.value.set(...slab.v);
-  n.value.set(...slab.n);
-  h.value.set(slab.half[0], slab.half[1], slab.thickness / 2, slab.radius);
-}
 
 function writeSlab(uniforms: Uniforms, index: 0 | 1, slab: ShadowSlab | undefined): void {
   const c = index === 0 ? uniforms.uSlabC0 : uniforms.uSlabC1;
@@ -135,38 +116,27 @@ function refreshUniforms(
   const sweep = shadowSweepDirection(plane, light);
   uniforms.uSweep.value.set(sweep[0], sweep[1]);
   const sweepLen = sweep[0] === 0 && sweep[1] === 0 ? 0 : mode.sweepLength * scale;
-  uniforms.uSweepLen.value = sweepLen;
   uniforms.uSweepBlur.value = mode.sweepBlur * scale;
   if (sweepLen > 0) {
-    // World sweep vector plus the tangent-band slabs: the hull pieces the swept probe unions.
-    const sweepWorld: V3 = [
-      (plane.e1[0] * sweep[0] + plane.e2[0] * sweep[1]) * sweepLen,
-      (plane.e1[1] * sweep[0] + plane.e2[1] * sweep[1]) * sweepLen,
-      (plane.e1[2] * sweep[0] + plane.e2[2] * sweep[1]) * sweepLen,
-    ];
-    uniforms.uSweepWorld.value.set(...sweepWorld);
-    writeMiddleSlab(uniforms, 0, sweptMiddleSlab(slabs[0], sweepWorld, plane.normal));
-    if (slabs[1]) writeMiddleSlab(uniforms, 1, sweptMiddleSlab(slabs[1], sweepWorld, plane.normal));
-    // The ramp anchors at the root: the slab centre projected along the light onto the plane.
-    const rel: V3 = [
-      slabs[0].center[0] - plane.origin[0],
-      slabs[0].center[1] - plane.origin[1],
-      slabs[0].center[2] - plane.origin[2],
-    ];
-    const denom =
-      light[0] * plane.normal[0] + light[1] * plane.normal[1] + light[2] * plane.normal[2];
-    const along =
-      (rel[0] * plane.normal[0] + rel[1] * plane.normal[1] + rel[2] * plane.normal[2]) /
-      (denom === 0 ? 1 : denom);
-    const hit: V3 = [
-      rel[0] - light[0] * along,
-      rel[1] - light[1] * along,
-      rel[2] - light[2] * along,
-    ];
+    // ONE polygon: the outline hulled with its swept copy; the ring closes on the first vertex and pads by repeating it.
+    const offset = (mode.sweepOffset ?? 0) * scale;
+    const hull = sunSweepHull(slabs, plane, sweep, sweepLen, offset);
+    for (let i = 0; i <= SUN_HULL_MAX; i++) {
+      const vert = hull.verts[i < hull.verts.length ? i : 0];
+      uniforms.uHull.value[i].set(vert[0], vert[1]);
+    }
+    uniforms.uHullCount.value = hull.verts.length;
+    uniforms.uHullRadius.value = hull.radius;
+    // The fade ramp spans the whole cast, leading corner to the throw's tip: one downslope, no plateau.
+    const span = sweepRampSpan(slabs, plane, sweep);
     uniforms.uSweepFrom.value.set(
-      hit[0] * plane.e1[0] + hit[1] * plane.e1[1] + hit[2] * plane.e1[2],
-      hit[0] * plane.e2[0] + hit[1] * plane.e2[1] + hit[2] * plane.e2[2],
+      sweep[0] * (span.start + offset),
+      sweep[1] * (span.start + offset),
     );
+    uniforms.uSweepLen.value = span.end - span.start + sweepLen;
+  } else {
+    uniforms.uHullCount.value = 0;
+    uniforms.uSweepLen.value = 0;
   }
   uniforms.uBlurNear.value = mode.blurNear * scale;
   // Dimensionless: the light's apparent size, not a length, so it must not scale with the device.

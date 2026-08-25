@@ -7,12 +7,14 @@ import {
   SHADOW_FRAG,
   SHADOW_VERT,
   type ShadowPose,
+  SUN_HULL_MAX,
   shadowLightDirection,
   shadowPenumbra,
   shadowPlane,
   shadowQuad,
   shadowSweepDirection,
-  sweptMiddleSlab,
+  sunSweepHull,
+  sweepRampSpan,
 } from "./shadowProjector";
 
 // Catalog literals rather than DEVICE_CATALOG: the catalog drags three and the glb asset imports
@@ -239,26 +241,90 @@ describe("shadowQuad", () => {
   });
 });
 
-describe("sweptMiddleSlab", () => {
-  const sweepWorld: [number, number, number] = [Math.SQRT1_2 * 2.2, -Math.SQRT1_2 * 2.2, 0];
+describe("sunSweepHull", () => {
+  const sweep: [number, number] = [Math.SQRT1_2, -Math.SQRT1_2];
+  const hullFor = (spec: typeof PHONE | typeof LAPTOP, pose: ShadowPose = REST) => {
+    const mode = DEVICE_SHADOW_MODES.sun;
+    const slabs = deviceShadowSlabs(spec, pose);
+    const plane = shadowPlane(mode, -1.3, 1, pose, slabs);
+    return sunSweepHull(slabs, plane, sweep, 1.4);
+  };
 
-  it("spans root to far copy with its sides on the tangent lines", () => {
-    const [slab] = deviceShadowSlabs(PHONE, REST);
-    const mid = sweptMiddleSlab(slab, sweepWorld, [0, 0, 1]);
-    // Centre halfway along the sweep, first axis along it.
-    expect(mid.center[0]).toBeCloseTo(sweepWorld[0] / 2, 12);
-    expect(mid.center[1]).toBeCloseTo(sweepWorld[1] / 2, 12);
-    expect(mid.u[0]).toBeCloseTo(Math.SQRT1_2, 12);
-    expect(mid.half[0]).toBeCloseTo(1.1, 12);
-    // Cross half-extent equals the slab's support width perpendicular to the sweep, so the band's sides ARE the corner tangents.
-    const expected = (1.25 / 2) * Math.SQRT1_2 + (2.6 / 2) * Math.SQRT1_2;
-    expect(mid.half[1]).toBeCloseTo(expected, 12);
+  it("hulls a phone's outline with its swept copy into one hexagon", () => {
+    const hull = hullFor(PHONE);
+    // Two rounded rects offset along the diagonal: four shared tangent corners plus one extreme corner each.
+    expect(hull.verts).toHaveLength(6);
+    expect(hull.radius).toBeCloseTo(0.204, 12);
+    const xs = hull.verts.map((v) => v[0]);
+    const ys = hull.verts.map((v) => v[1]);
+    // Spans the (shrunk) outline at the root and the full throw at the tail, down-right.
+    expect(Math.min(...xs)).toBeCloseTo(-(1.25 / 2 - 0.204), 12);
+    expect(Math.max(...xs)).toBeCloseTo(1.25 / 2 - 0.204 + 1.4 * Math.SQRT1_2, 12);
+    expect(Math.min(...ys)).toBeCloseTo(-(2.6 / 2 - 0.204) - 1.4 * Math.SQRT1_2, 12);
+    expect(Math.max(...ys)).toBeCloseTo(2.6 / 2 - 0.204, 12);
   });
 
-  it("keeps the band inside the slab thickness", () => {
-    const [slab] = deviceShadowSlabs(PHONE, REST);
-    const mid = sweptMiddleSlab(slab, sweepWorld, [0, 0, 1]);
-    expect(mid.thickness).toBeCloseTo(0.184, 12);
+  it("winds counterclockwise, the orientation the shader's outward normals assume", () => {
+    const { verts } = hullFor(PHONE);
+    let area = 0;
+    for (let i = 0; i < verts.length; i++) {
+      const [ax, ay] = verts[i];
+      const [bx, by] = verts[(i + 1) % verts.length];
+      area += ax * by - bx * ay;
+    }
+    expect(area).toBeGreaterThan(0);
+  });
+
+  it("merges a laptop's base and lid into ONE polygon within the shader's budget", () => {
+    const { verts } = hullFor(LAPTOP);
+    expect(verts.length).toBeGreaterThanOrEqual(4);
+    expect(verts.length).toBeLessThanOrEqual(SUN_HULL_MAX);
+  });
+
+  it("stays one convex polygon at Michael's yawed poses", () => {
+    for (const rotation of [
+      [0, Math.PI / 4, 0],
+      [-0.4, 0.6, 0.1],
+    ] as [number, number, number][]) {
+      const { verts } = hullFor(PHONE, { ...REST, rotation });
+      expect(verts.length).toBeGreaterThanOrEqual(4);
+      expect(verts.length).toBeLessThanOrEqual(SUN_HULL_MAX);
+    }
+  });
+});
+
+describe("sweepRampSpan", () => {
+  const sweep: [number, number] = [Math.SQRT1_2, -Math.SQRT1_2];
+
+  it("spans the outline corner to corner along the sweep", () => {
+    const mode = DEVICE_SHADOW_MODES.sun;
+    const slabs = deviceShadowSlabs(PHONE, REST);
+    const plane = shadowPlane(mode, -1.3, 1, REST, slabs);
+    const support = (1.25 / 2) * Math.SQRT1_2 + (2.6 / 2) * Math.SQRT1_2;
+    const span = sweepRampSpan(slabs, plane, sweep);
+    expect(span.start).toBeCloseTo(-support, 12);
+    expect(span.end).toBeCloseTo(support, 12);
+  });
+
+  it("follows a float offset, so the ramp travels with the device", () => {
+    const mode = DEVICE_SHADOW_MODES.sun;
+    const pose: ShadowPose = { ...REST, offset: [0.5, 0, 0] };
+    const slabs = deviceShadowSlabs(PHONE, pose);
+    const plane = shadowPlane(mode, -1.3, 1, pose, slabs);
+    const rest = sweepRampSpan(deviceShadowSlabs(PHONE, REST), plane, sweep);
+    const span = sweepRampSpan(slabs, plane, sweep);
+    expect(span.start).toBeCloseTo(rest.start + 0.5 * Math.SQRT1_2, 6);
+    expect(span.end).toBeCloseTo(rest.end + 0.5 * Math.SQRT1_2, 6);
+  });
+
+  it("projects along the plane normal, so a laptop base's raking streak sits inside the fade", () => {
+    const mode = DEVICE_SHADOW_MODES.sun;
+    const slabs = deviceShadowSlabs(LAPTOP, REST);
+    const plane = shadowPlane(mode, -1.3, 1, REST, slabs);
+    const span = sweepRampSpan(slabs, plane, sweep);
+    // The compact outline's span, nowhere near the light-projected streak's reach.
+    expect(span.end - span.start).toBeLessThan(6);
+    expect(span.end).toBeGreaterThan(span.start);
   });
 });
 
@@ -445,7 +511,7 @@ describe("the mode catalogue", () => {
     for (const loop of SHADOW_FRAG.matchAll(/for\s*\(int i = 0; i < (\d+); i\+\+\)/g)) {
       expect(Number(loop[1])).toBeGreaterThan(0);
     }
-    expect([...SHADOW_FRAG.matchAll(/for\s*\(/g)].length).toBe(2);
+    expect([...SHADOW_FRAG.matchAll(/for\s*\(/g)].length).toBe(3);
   });
 
   it("floors the pool's footprint for the pool-led modes, so upright phones still seat", () => {

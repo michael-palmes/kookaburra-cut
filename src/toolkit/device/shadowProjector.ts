@@ -65,6 +65,8 @@ export interface ShadowModeSpec {
   /** Sun sweep only: the silhouette is smeared this far along the receiver, its penumbra widening by `sweepBlur` over the smear. Zero leaves a plain projection. */
   sweepLength: number;
   sweepBlur: number;
+  /** Sun sweep only: the whole cast starts this far down the sweep. Matched to `blurNear` (the drop-shadow rule), it hides every up-left blurred edge behind the device, so the shadow swells out of the outline instead of haloing it. */
+  sweepOffset?: number;
   /** The contact pool: a heavily blurred copy of the footprint projected STRAIGHT DOWN onto the receiver rather than along the key, so it sits under the device and grounds it the way ambient occlusion does. Zero opacity disables it. */
   ambientBlur: number;
   ambientOpacity: number;
@@ -111,15 +113,18 @@ export const DEVICE_SHADOW_MODES: Record<Exclude<DeviceShadowMode, "none">, Shad
     receiver: "behind",
     // The cast falls down-right at 45 ON SCREEN, whatever the device pose.
     azimuthDeg: 45,
-    elevationDeg: 35,
-    // Generous contact blur: the whole sweep is soft, leading edge included, never a crisp rim on the outline.
-    blurNear: 0.12,
+    // Only steers the sweep solve: the outline itself projects straight onto the plane (sunSweepHull), so the shadow hugs the device and the sweep alone carries the diagonal.
+    elevationDeg: 78,
+    // Soft from the very root: nothing about this cast is hard-edged.
+    blurNear: 0.22,
     softness: 0.03,
-    opacity: 0.3,
+    // Peak of the eased downslope; the visible swell beside the device reads at roughly half this.
+    opacity: 0.4,
     fadeLength: 40,
-    falloff: 2,
-    sweepLength: 2.2,
-    sweepBlur: 0.18,
+    falloff: 1,
+    sweepLength: 1.8,
+    sweepBlur: 0.55,
+    sweepOffset: 0.22,
     ambientBlur: 0,
     ambientOpacity: 0,
   },
@@ -472,37 +477,106 @@ export function shadowSweepDirection(plane: ShadowPlane, light: V3): [number, nu
   return len < 1e-6 ? [0, 0] : [x / len, y / len];
 }
 
-/** The sun sweep's occluder set, per slab: the swept shadow of a convex solid is the HULL of the root, the far copy and the tangent band between them (the Rotato boundary: a straight line leaving each corner). The band is an oriented box along the sweep whose cross extents are the slab's support widths, so its sides lie exactly on the tangent lines; the union of the three probes IS the hull. */
-export function sweptMiddleSlab(slab: ShadowSlab, sweepWorld: V3, planeNormal: V3): ShadowSlab {
-  const len = Math.hypot(sweepWorld[0], sweepWorld[1], sweepWorld[2]);
-  const a1: V3 = [sweepWorld[0] / len, sweepWorld[1] / len, sweepWorld[2] / len];
-  const a2: V3 = [
-    planeNormal[1] * a1[2] - planeNormal[2] * a1[1],
-    planeNormal[2] * a1[0] - planeNormal[0] * a1[2],
-    planeNormal[0] * a1[1] - planeNormal[1] * a1[0],
-  ];
-  const a3: V3 = [
-    a1[1] * a2[2] - a1[2] * a2[1],
-    a1[2] * a2[0] - a1[0] * a2[2],
-    a1[0] * a2[1] - a1[1] * a2[0],
-  ];
-  const support = (d: V3): number =>
-    slab.half[0] * Math.abs(dot(d, slab.u)) +
-    slab.half[1] * Math.abs(dot(d, slab.v)) +
-    (slab.thickness / 2) * Math.abs(dot(d, slab.n));
-  return {
-    center: [
-      slab.center[0] + sweepWorld[0] / 2,
-      slab.center[1] + sweepWorld[1] / 2,
-      slab.center[2] + sweepWorld[2] / 2,
-    ],
-    u: a1,
-    v: a2,
-    n: a3,
-    half: [len / 2, support(a2)],
-    thickness: support(a3) * 2,
-    radius: Math.min(slab.radius, support(a2), support(a3)),
+/** Convex hull of 2D points (monotone chain), counterclockwise, first vertex not repeated. */
+function convexHull(points: Array<[number, number]>): Array<[number, number]> {
+  const sorted = [...points].sort((a, b) => (a[0] === b[0] ? a[1] - b[1] : a[0] - b[0]));
+  const turn = (o: [number, number], a: [number, number], b: [number, number]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const march = (pts: Array<[number, number]>) => {
+    const out: Array<[number, number]> = [];
+    for (const p of pts) {
+      while (out.length >= 2 && turn(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
   };
+  return [...march(sorted), ...march([...sorted].reverse())];
+}
+
+/** How many hull vertices the shader's fixed loop can hold (its uniform array is one larger, closing the ring). */
+export const SUN_HULL_MAX = 15;
+
+/** The sun sweep's whole occluder as ONE convex polygon in plane coordinates (plus the shared corner radius the shader inflates it by): every slab's rounded outline projected straight onto the receiver, hulled together with its copy swept to the throw's end. One shape means one soft edge and one gradient; probing root, band and far copies separately is what read as two overlapping shadows. */
+export function sunSweepHull(
+  slabs: ShadowSlab[],
+  plane: ShadowPlane,
+  sweep: [number, number],
+  sweepLen: number,
+  offset = 0,
+): { verts: Array<[number, number]>; radius: number } {
+  let radius = Number.POSITIVE_INFINITY;
+  for (const slab of slabs) radius = Math.min(radius, slab.radius);
+  if (!Number.isFinite(radius)) radius = 0;
+  const points: Array<[number, number]> = [];
+  for (const slab of slabs) {
+    const hu = Math.max(slab.half[0] - radius, 0);
+    const hv = Math.max(slab.half[1] - radius, 0);
+    const hn = Math.max(slab.thickness / 2 - radius, 0);
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const corner: V3 = [
+            slab.center[0] + slab.u[0] * hu * sx + slab.v[0] * hv * sy + slab.n[0] * hn * sz,
+            slab.center[1] + slab.u[1] * hu * sx + slab.v[1] * hv * sy + slab.n[1] * hn * sz,
+            slab.center[2] + slab.u[2] * hu * sx + slab.v[2] * hv * sy + slab.n[2] * hn * sz,
+          ];
+          const rel: V3 = [
+            corner[0] - plane.origin[0],
+            corner[1] - plane.origin[1],
+            corner[2] - plane.origin[2],
+          ];
+          const x = dot(rel, plane.e1) + sweep[0] * offset;
+          const y = dot(rel, plane.e2) + sweep[1] * offset;
+          points.push([x, y], [x + sweep[0] * sweepLen, y + sweep[1] * sweepLen]);
+        }
+      }
+    }
+  }
+  return { verts: convexHull(points).slice(0, SUN_HULL_MAX), radius };
+}
+
+/** The device outline's span along the sweep direction (projected straight onto the plane): the fade ramp runs from `start` (the leading corner) to `end` plus the throw, so the WHOLE cast sits on one downslope. Anchoring the ramp at the trailing corner instead left everything beside the device at full flat opacity: a hard dark slab, not a fade. */
+export function sweepRampSpan(
+  slabs: ShadowSlab[],
+  plane: ShadowPlane,
+  sweep: [number, number],
+): { start: number; end: number } {
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const slab of slabs) {
+    const halfN = slab.thickness / 2;
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const corner: V3 = [
+            slab.center[0] +
+              slab.u[0] * slab.half[0] * sx +
+              slab.v[0] * slab.half[1] * sy +
+              slab.n[0] * halfN * sz,
+            slab.center[1] +
+              slab.u[1] * slab.half[0] * sx +
+              slab.v[1] * slab.half[1] * sy +
+              slab.n[1] * halfN * sz,
+            slab.center[2] +
+              slab.u[2] * slab.half[0] * sx +
+              slab.v[2] * slab.half[1] * sy +
+              slab.n[2] * halfN * sz,
+          ];
+          const rel: V3 = [
+            corner[0] - plane.origin[0],
+            corner[1] - plane.origin[1],
+            corner[2] - plane.origin[2],
+          ];
+          const along = dot(rel, plane.e1) * sweep[0] + dot(rel, plane.e2) * sweep[1];
+          start = Math.min(start, along);
+          end = Math.max(end, along);
+        }
+      }
+    }
+  }
+  if (!Number.isFinite(start)) return { start: 0, end: 0 };
+  return { start, end };
 }
 
 /** Penumbra half-width for an occluder `distance` from the receiver: the contact blur plus the light's apparent size over that gap. The physical law the whole projector turns on, so a floating device's shadow softens and a tall one blurs toward its far end. */
@@ -622,17 +696,9 @@ uniform vec2 uSweep;
 uniform float uSweepLen;
 uniform float uSweepBlur;
 uniform vec2 uSweepFrom;
-uniform vec3 uSweepWorld;
-uniform vec3 uSlabM0C;
-uniform vec3 uSlabM0U;
-uniform vec3 uSlabM0V;
-uniform vec3 uSlabM0N;
-uniform vec4 uSlabM0H;
-uniform vec3 uSlabM1C;
-uniform vec3 uSlabM1U;
-uniform vec3 uSlabM1V;
-uniform vec3 uSlabM1N;
-uniform vec4 uSlabM1H;
+uniform vec2 uHull[16];
+uniform float uHullCount;
+uniform float uHullRadius;
 uniform float uBlurNear;
 uniform float uSoftness;
 uniform float uOpacity;
@@ -715,30 +781,38 @@ float shade(vec2 p, vec3 light, float minHalf, float blurAdd, float fadeOn) {
   return max(a, b);
 }
 
-// The sun sweep: the swept shadow of a convex solid is the HULL of the root silhouette, the far
-// copy and the tangent band between them, probed as a union so the boundary leaves each corner as
-// a straight tangent line (the Rotato look; a nearest-translate smear kinks at the corners).
-float sweptShade(vec2 p, vec3 light, float blurAdd, float fadeOn) {
-  vec3 world = uPlaneOrigin + uPlaneE1 * p.x + uPlaneE2 * p.y;
-  float root = probeCoverage(slabProbe(world, light, 0.0, uSlabC0, uSlabU0, uSlabV0, uSlabN0, uSlabH0), blurAdd, fadeOn);
-  float far0 = probeCoverage(slabProbe(world, light, 0.0, uSlabC0 + uSweepWorld, uSlabU0, uSlabV0, uSlabN0, uSlabH0), blurAdd, fadeOn);
-  float band = probeCoverage(slabProbe(world, light, 0.0, uSlabM0C, uSlabM0U, uSlabM0V, uSlabM0N, uSlabM0H), blurAdd, fadeOn);
-  float sum0 = max(root, max(far0, band));
-  if (uSlabOn1 > 0.0) {
-    float root1 = probeCoverage(slabProbe(world, light, 0.0, uSlabC1, uSlabU1, uSlabV1, uSlabN1, uSlabH1), blurAdd, fadeOn);
-    float far1 = probeCoverage(slabProbe(world, light, 0.0, uSlabC1 + uSweepWorld, uSlabU1, uSlabV1, uSlabN1, uSlabH1), blurAdd, fadeOn);
-    float band1 = probeCoverage(slabProbe(world, light, 0.0, uSlabM1C, uSlabM1U, uSlabM1V, uSlabM1N, uSlabM1H), blurAdd, fadeOn);
-    sum0 = max(sum0, max(root1, max(far1, band1)));
+// The sun sweep's whole occluder is ONE convex polygon on the plane (the device outline hulled
+// with its swept copy, built CPU-side by sunSweepHull), so the cast is a single shape with a
+// single soft edge: nothing to seam, stack or double up. Signed distance is the max over the
+// edges' outward half-planes (counterclockwise winding), inflated by the shared corner radius;
+// padding entries past uHullCount are masked out branchlessly.
+float sunSd(vec2 p) {
+  float d = -1e5;
+  for (int i = 0; i < 15; i++) {
+    vec2 a = uHull[i];
+    vec2 e = uHull[i + 1] - a;
+    vec2 nrm = vec2(e.y, -e.x) / max(length(e), 1e-6);
+    float on = step(float(i) + 0.5, uHullCount);
+    d = max(d, mix(-1e5, dot(p - a, nrm), on));
   }
-  return sum0;
+  return d - uHullRadius;
+}
+
+// The sweep: one soft-edged shape on one downslope. The ramp spans the WHOLE cast (leading corner
+// to the throw's tip, so there is no full-opacity plateau anywhere) and eases with a smoothstep
+// (zero slope at both ends, so the fade has no visible kinks), while the blur grows along it.
+float sweptShade(vec2 p, float t) {
+  float blur = max(uBlurNear + uSweepBlur * t, 1e-4);
+  float cover = 1.0 - smoothstep(-blur, blur, sunSd(p));
+  float ease = 1.0 - t * t * (3.0 - 2.0 * t);
+  return cover * pow(ease, uFalloff);
 }
 
 void main() {
-  // The blur and fade ramp runs from the sweep's ROOT (the silhouette), not the plane origin, so the softening is even across the whole cast.
   float t = uSweepLen > 0.0 ? clamp(dot(vPos - uSweepFrom, uSweep) / uSweepLen, 0.0, 1.0) : 0.0;
   // "cast" is a GLSL reserved word: naming this variable after what it is fails to compile.
-  float thrown = (uSweepLen > 0.0
-    ? sweptShade(vPos, uLight, uSweepBlur * t, 1.0) * pow(1.0 - t, uFalloff)
+  float thrown = (uHullCount > 0.5
+    ? sweptShade(vPos, t)
     : shade(vPos, uLight, 0.0, 0.0, 1.0)) * uOpacity;
   // Twin studio's second softbox, an unswept cast; zero opacity keeps every other mode's arithmetic exact (multiplying by 1.0 is lossless).
   float fill = uFillOpacity > 0.0 ? shade(vPos, uFillLight, 0.0, 0.0, 1.0) * uFillOpacity : 0.0;
