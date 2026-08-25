@@ -47,7 +47,7 @@ describe("TransitionModal", () => {
       expect(html, m.type).toContain(`>${m.label}</span>`);
     }
     for (const feel of FEEL_ORDER) {
-      expect(html).toContain(FEEL_LABELS[feel].replace("&", "&amp;"));
+      expect(html).toContain(FEEL_LABELS[feel].replaceAll("&", "&amp;"));
     }
   });
 
