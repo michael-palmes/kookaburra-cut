@@ -736,7 +736,7 @@ pub fn write_terminal_snapshot(
     if stem.is_empty()
         || !stem
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
     {
         return Err("the scene stem must be a plain name".into());
     }

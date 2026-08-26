@@ -10754,3 +10754,63 @@ textarea.text-inspector-copy-input {
   gap: var(--space-1);
   padding: var(--space-2);
 }
+
+/* ── Scene terminal overlay ─────────────────────────────────────── */
+/* The live xterm over the active scene's terminal block (SceneTerminalOverlay): positioned as frame fractions inside the stage frame, empty regions click-through. */
+.scene-terminal-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-terminal-host {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: text;
+}
+
+.scene-terminal-host.focused {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.scene-terminal-scale {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.scene-terminal-chip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.scene-terminal-chip:hover {
+  background: var(--surface-elevated);
+}
+
+.scene-terminal-chip.quiet {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.scene-terminal-host:hover .scene-terminal-chip.quiet,
+.scene-terminal-chip.quiet:focus-visible {
+  opacity: 1;
+}

@@ -14,7 +14,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Deserialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 /// Pause/resume gate shared with a session's reader thread.
 #[derive(Default)]
@@ -62,6 +62,9 @@ pub struct SpawnOptions {
     pub path_prepend: Option<String>,
     pub cols: u16,
     pub rows: u16,
+    /// Opts out of the F-006 workspace confinement: scene terminals may open a user-chosen start path (docs/decisions.md). The path must still resolve to a real directory, and commands are never auto-run there.
+    #[serde(default)]
+    pub allow_external_cwd: bool,
 }
 
 /// `prepend:inherited`, degrading to just `prepend` when nothing is inherited; a trailing `:` would put the CURRENT DIRECTORY on the PATH (POSIX empty-entry rule).
@@ -86,14 +89,28 @@ pub fn pty_spawn(
     options: SpawnOptions,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    // F-006: confine the terminal cwd to the workspace root; the panel only ever opens a ws: project folder, so a path outside it is never legitimate.
+    // F-006: confine the terminal cwd to the workspace root unless the caller explicitly opts out (scene terminals open a user-chosen start path). Every path still has to resolve to a real directory, `~` expands against the user's home, and nothing is ever auto-run in it.
     let root = crate::workspace::require_root(&app, &settings)?
         .canonicalize()
         .map_err(|e| e.to_string())?;
-    let cwd = PathBuf::from(&options.cwd)
+    let raw = options.cwd.trim();
+    let requested = if raw == "~" || raw.starts_with("~/") {
+        let home = app.path().home_dir().map_err(|e| e.to_string())?;
+        if raw == "~" {
+            home
+        } else {
+            home.join(&raw[2..])
+        }
+    } else {
+        PathBuf::from(raw)
+    };
+    let cwd = requested
         .canonicalize()
         .map_err(|e| format!("terminal working directory not found: {e}"))?;
-    if !cwd.starts_with(&root) {
+    if !cwd.is_dir() {
+        return Err("the terminal working directory must be a folder".into());
+    }
+    if !cwd.starts_with(&root) && !options.allow_external_cwd {
         return Err("the terminal can only open inside the workspace".into());
     }
 
