@@ -8,6 +8,7 @@ import {
   type Texture,
   Vector2,
 } from "three";
+import { assetVersionKey, useAssetVersionStore } from "../store/assetVersionStore";
 import { useEditorStore } from "../store/editorStore";
 import { useTheme } from "../theme";
 import { AssetBoundary } from "../toolkit/media/AssetBoundary";
@@ -205,12 +206,17 @@ function TerminalWindow({
 
   const mac = terminal.chrome.style === "mac";
   const { window, screen, grid, cell, radius, titleBarHeight } = layout;
+  const snapshotSrc = terminal.snapshot?.src ?? null;
+  // Recaptures overwrite the snapshot in place, so the version suffix is what makes a re-bake a genuinely new URL (the app-icon rule).
+  const version = useAssetVersionStore((s) =>
+    projectId && snapshotSrc ? (s.versions[assetVersionKey(projectId, snapshotSrc)] ?? 0) : 0,
+  );
   let snapshotUrl: string | null = null;
-  if (terminal.snapshot?.src) {
+  if (snapshotSrc) {
     try {
-      snapshotUrl = resolveAssetUrl(projectId, terminal.snapshot.src);
+      snapshotUrl = resolveAssetUrl(projectId, snapshotSrc) + (version > 0 ? `?v=${version}` : "");
     } catch (e) {
-      console.warn(`[terminal] snapshot "${terminal.snapshot.src}" unresolved:`, e);
+      console.warn(`[terminal] snapshot "${snapshotSrc}" unresolved:`, e);
     }
   }
 
