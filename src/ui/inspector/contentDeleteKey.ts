@@ -12,6 +12,7 @@ const DELETABLE_DRILL_DOMAINS = new Set<GizmoDomain>([
   "objects",
   "chart",
   "text",
+  "terminal",
 ]);
 
 export function contentDeleteRoute(inspector: InspectorState): ContentDeleteRoute {

@@ -438,6 +438,7 @@ describe("deriveSceneOverview", () => {
           pose: { spread: 0, azimuthDeg: 0, elevationDeg: 0, zoom: 1, pan: [0, 0] },
         },
         compare: {},
+        terminal: {},
       }),
       { frame: { cutout: { shape: "rounded-rect" } } },
     );
@@ -445,7 +446,7 @@ describe("deriveSceneOverview", () => {
     for (const id of ["device", "text", "image", "video", "object"] as const) {
       expect(options[id]).toMatchObject({ singleton: false, disabled: false });
     }
-    for (const id of ["chart", "screenshotStack", "comparison"] as const) {
+    for (const id of ["chart", "screenshotStack", "comparison", "terminal"] as const) {
       expect(options[id]).toMatchObject({
         singleton: true,
         disabled: true,
@@ -461,6 +462,7 @@ describe("deriveSceneOverview", () => {
       "chart",
       "screenshotStack",
       "comparison",
+      "terminal",
     ]);
   });
 });

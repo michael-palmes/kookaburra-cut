@@ -6,7 +6,14 @@ import { stageCutout, worldViewportRect } from "./stageViewport";
 /** Live handles onto each mounted gizmo's pickable geometry, published by `<SceneGizmo>` (the sceneHostRegistry idiom: a module Map, plain register/read functions, no store). DOM overlays read it to decide whether a pointer belongs to a gizmo handle or to them; the export path never imports it. */
 
 /** Which inspector section owns a gizmo. */
-export type GizmoDomain = "objects" | "chart" | "devices" | "media" | "text" | "decorations";
+export type GizmoDomain =
+  | "objects"
+  | "chart"
+  | "devices"
+  | "media"
+  | "text"
+  | "decorations"
+  | "terminal";
 
 /** The canvas box in client pixels, as a plain object so the routing maths stays node-testable. */
 export interface StageRect {

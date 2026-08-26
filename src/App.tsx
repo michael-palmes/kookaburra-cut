@@ -166,6 +166,7 @@ import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
 import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
+import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TerminalPanel } from "./ui/TerminalPanel";
 import { TextGizmo } from "./ui/TextGizmo";
 import { ThemeMode } from "./ui/ThemeMode";
@@ -1467,6 +1468,7 @@ export default function App() {
   const mediaSectionOpen = useGizmoSectionOpen("media");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
+  const terminalSectionOpen = useGizmoSectionOpen("terminal");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -2204,6 +2206,18 @@ export default function App() {
                     <ChartHeroGizmo
                       project={project}
                       sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  terminalSectionOpen && (
+                    <TerminalGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
                       onDocChanged={handleDocChanged}
                     />
                   )}

@@ -1,7 +1,12 @@
 import "@xterm/xterm/css/xterm.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useCameraEditStore } from "../engine/cameraEditStore";
-import { type LoadedProject, workspaceProjectPath, workspaceSlug } from "../engine/project";
+import {
+  type LoadedProject,
+  sceneFileStem,
+  workspaceProjectPath,
+  workspaceSlug,
+} from "../engine/project";
 import type { SceneDoc } from "../engine/sceneDocSchema";
 import { resolveSceneTerminal, sceneTerminalLayout } from "../engine/sceneTerminal";
 import { bakeTerminalSnapshot } from "../engine/sceneTerminalBake";
@@ -11,7 +16,9 @@ import {
   getSceneTerminalSession,
   type SceneTerminalStatus,
   sceneTerminalKey,
+  sceneTerminalSessionsVersion,
   startSceneTerminalSession,
+  subscribeSceneTerminalSessions,
 } from "../engine/sceneTerminalSession";
 import { resolveTerminalColours } from "../engine/sceneTerminalTheme";
 import { useEditorStore } from "../store/editorStore";
@@ -49,12 +56,7 @@ export function SceneTerminalOverlay({
   const { commit } = useGizmoDocWrite(project, sceneIndex, onDocChanged);
 
   const slug = workspaceSlug(project.id);
-  const sceneFile = project.sceneFiles[sceneIndex] ?? "";
-  const stem =
-    sceneFile
-      .split("/")
-      .pop()
-      ?.replace(/\.tsx$/, "") ?? "";
+  const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
   const key = sceneTerminalKey(slug, stem);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -89,18 +91,43 @@ export function SceneTerminalOverlay({
   }, [key, terminal, theme, project.id, stem, doc, commit]);
   captureRef.current = capture;
 
-  // Attach a live session's DOM on mount (or scene change), detach without killing on the way out; leaving the scene captures first (the scene-leave rule). Keyed by the session alone: capture rides the ref so doc churn can't re-run the attach.
+  // The registry version, so a session the inspector drill starts (or kills) reaches this mounted overlay.
+  const sessionsTick = useSyncExternalStore(
+    subscribeSceneTerminalSessions,
+    sceneTerminalSessionsVersion,
+    sceneTerminalSessionsVersion,
+  );
+  /** Set when this overlay asked for the session, so the attach below focuses it once open. */
+  const focusOnAttach = useRef(false);
+
+  // Attach the live session's DOM: a fresh terminal opens here (fonts first, glyph metrics are measured at open), a surviving one re-appends with scrollback intact; detach without killing on the way out, capturing first (the scene-leave rule). Keyed by session identity alone: capture rides the ref so doc churn can't re-run the attach.
   useEffect(() => {
-    const entry = getSceneTerminalSession(key);
-    const host = scaleRef.current;
-    if (entry && host) {
-      if (entry.term.element) host.appendChild(entry.term.element);
+    void sessionsTick;
+    let cancelled = false;
+    void (async () => {
+      const entry = getSceneTerminalSession(key);
+      const host = scaleRef.current;
+      if (!entry || !host) {
+        setStatus("idle");
+        return;
+      }
+      if (!entry.term.element) {
+        await document.fonts.ready;
+        if (cancelled) return;
+        entry.term.open(host);
+      } else if (entry.term.element.parentElement !== host) {
+        host.appendChild(entry.term.element);
+      }
       entry.notify = setStatus;
       setStatus(entry.status);
-    } else {
-      setStatus("idle");
-    }
+      if (focusOnAttach.current) {
+        focusOnAttach.current = false;
+        dirty.current = true;
+        entry.term.focus();
+      }
+    })();
     return () => {
+      cancelled = true;
       captureRef.current();
       const live = getSceneTerminalSession(key);
       if (live) {
@@ -109,7 +136,7 @@ export function SceneTerminalOverlay({
       }
       setFocused(false);
     };
-  }, [key]);
+  }, [key, sessionsTick]);
 
   // The live session follows the sidecar's theme, font size and grid size.
   useEffect(() => {
@@ -176,18 +203,12 @@ export function SceneTerminalOverlay({
     if (!terminal || !colours) return;
     const cwd = terminal.startPath ?? workspaceProjectPath(slug);
     if (!cwd) return;
+    // The registry bump re-runs the attach effect, which opens and focuses the fresh terminal.
+    focusOnAttach.current = true;
     try {
-      const entry = await startSceneTerminalSession({ key, cwd, terminal, colours });
-      const host = scaleRef.current;
-      if (host) {
-        await document.fonts.ready;
-        entry.term.open(host);
-        entry.notify = setStatus;
-        setStatus("running");
-        dirty.current = true;
-        entry.term.focus();
-      }
+      await startSceneTerminalSession({ key, cwd, terminal, colours });
     } catch (e) {
+      focusOnAttach.current = false;
       console.warn("[terminal] session start failed:", e);
     }
   }, [key, slug, terminal, colours]);

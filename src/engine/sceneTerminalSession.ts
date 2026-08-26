@@ -20,6 +20,24 @@ export interface SceneTerminalLive {
 
 const live = new Map<string, SceneTerminalLive>();
 
+// A tiny external store over the registry, so a mounted overlay adopts a session the inspector drill starts (the sceneHostRegistry subscribe idiom).
+let version = 0;
+const listeners = new Set<() => void>();
+
+function bump(): void {
+  version += 1;
+  for (const listener of listeners) listener();
+}
+
+export function subscribeSceneTerminalSessions(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function sceneTerminalSessionsVersion(): number {
+  return version;
+}
+
 export function sceneTerminalKey(slug: string, sceneStem: string): string {
   return `${slug}#${sceneStem}`;
 }
@@ -129,6 +147,7 @@ export async function startSceneTerminalSession(opts: {
     // Pre-typed, never submitted: buffered PTY input that the shell's line editor shows at the first prompt.
     entry.session.paste(terminal.startCommand);
   }
+  bump();
   return entry;
 }
 
@@ -140,4 +159,5 @@ export function killSceneTerminalSession(key: string): void {
   entry.notify = undefined;
   entry.session.dispose();
   entry.term.dispose();
+  bump();
 }

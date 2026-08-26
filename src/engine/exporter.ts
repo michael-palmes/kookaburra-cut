@@ -71,6 +71,7 @@ import { resolveSceneDocMedia } from "./sceneMedia";
 import { buildSceneRenderStates, resolveFrameSceneStates } from "./sceneState";
 import { resolveAt, type SceneSlot } from "./sceneTimeline";
 import { snapshotSceneStageFloors } from "./stageRegistry";
+import { useTerminalEditStore } from "./terminalEditStore";
 import { configureDeterministicEngine } from "./timeline";
 import { awaitTitleMeasuresSettled } from "./titleBlockMeasure";
 
@@ -312,11 +313,12 @@ async function exportPreamble(
   onStep?: (step: number) => void,
 ): Promise<void> {
   configureDeterministicEngine();
-  // Explicit, not incidental: an object, chart, device or image gizmo selected when an export starts must never reach a frame.
+  // Explicit, not incidental: an object, chart, device, image or terminal gizmo selected when an export starts must never reach a frame.
   useObjectEditStore.getState().select(null);
   useChartEditStore.getState().select(null);
   useDeviceEditStore.getState().select(null);
   useImageEditStore.getState().select(null);
+  useTerminalEditStore.getState().select(null);
   // With themes, preloads exactly the fonts the project renders (bundled and workspace-pinned system fonts, plus sidecar `<key>Font` overrides); the no-theme form preloads the bundled defaults.
   await preloadAppFonts(
     opts.theme
