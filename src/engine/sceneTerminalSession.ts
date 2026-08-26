@@ -3,7 +3,7 @@
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { type ITheme, Terminal } from "@xterm/xterm";
-import type { ResolvedSceneTerminal } from "./sceneTerminal";
+import { type ResolvedSceneTerminal, sanitizeStartCommand } from "./sceneTerminal";
 import { TERMINAL_FONT_STACK } from "./sceneTerminalRaster";
 import type { SceneTerminalColours } from "./sceneTerminalTheme";
 import { spawnTerminalSession, type TerminalSession } from "./terminal";
@@ -144,8 +144,9 @@ export async function startSceneTerminalSession(opts: {
   });
   live.set(opts.key, entry);
   if (terminal.startCommand) {
-    // Pre-typed, never submitted: buffered PTY input that the shell's line editor shows at the first prompt.
-    entry.session.paste(terminal.startCommand);
+    // Pre-typed, never submitted: a single sanitised line, so a newline can't reach the shell as Enter before bracketed-paste mode is up (docs/decisions.md).
+    const command = sanitizeStartCommand(terminal.startCommand);
+    if (command) entry.session.paste(command);
   }
   bump();
   return entry;

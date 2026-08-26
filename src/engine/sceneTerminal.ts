@@ -109,6 +109,14 @@ function parseRun(raw: unknown): SceneTerminalRun | null {
   return run;
 }
 
+/** A pre-typed start command is a single reviewable line the presenter runs by hand (docs/decisions.md, "never auto-runs"): xterm turns `\n` into `\r` (Enter) and only wraps a paste in bracketed-paste markers once the shell has enabled the mode, so a newline in an imported pack's command could auto-run before the prompt is ready. Keep the first line only (never join two commands) and drop control/format chars (ESC included, so a `\x1b[201~` can't close the wrapper). */
+export function sanitizeStartCommand(raw: string): string {
+  return raw
+    .split(/[\r\n]/, 1)[0]
+    .replace(/[\p{Cc}\p{Cf}]/gu, "")
+    .trim();
+}
+
 function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot | undefined {
   if (!isRecord(raw) || !Array.isArray(raw.grid)) {
     console.warn(`[sceneDoc] ${source}: terminal.snapshot needs a "grid" array, dropped`);
@@ -178,12 +186,16 @@ export function parseSceneTerminal(raw: unknown, source: string): SceneDocTermin
       console.warn(`[sceneDoc] ${source}: terminal.${key} isn't a finite number, dropped`);
     }
   }
-  for (const key of ["startPath", "startCommand"] as const) {
-    const value = raw[key];
-    if (typeof value === "string" && value.length > 0) out[key] = value;
-    else if (value !== undefined) {
-      console.warn(`[sceneDoc] ${source}: terminal.${key} isn't a non-empty string, dropped`);
-    }
+  if (typeof raw.startPath === "string" && raw.startPath.length > 0) out.startPath = raw.startPath;
+  else if (raw.startPath !== undefined) {
+    console.warn(`[sceneDoc] ${source}: terminal.startPath isn't a non-empty string, dropped`);
+  }
+  if (typeof raw.startCommand === "string" && raw.startCommand.length > 0) {
+    const command = sanitizeStartCommand(raw.startCommand);
+    if (command.length > 0) out.startCommand = command;
+    else console.warn(`[sceneDoc] ${source}: terminal.startCommand had no runnable text, dropped`);
+  } else if (raw.startCommand !== undefined) {
+    console.warn(`[sceneDoc] ${source}: terminal.startCommand isn't a non-empty string, dropped`);
   }
   if (Array.isArray(raw.position) && finiteNum(raw.position[0]) && finiteNum(raw.position[1])) {
     out.position = [raw.position[0], raw.position[1]];
