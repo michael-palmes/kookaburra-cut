@@ -1,5 +1,6 @@
 import { revealInFinder } from "../../engine/packs";
 import { type ImportOutcome, type ItemOutcome, KIND_LABELS } from "../types";
+import type { TerminalReviewRow } from "./terminalReview";
 
 const GROUPS: { outcome: ItemOutcome; label: string }[] = [
   { outcome: "added", label: "Added" },
@@ -12,12 +13,14 @@ const GROUPS: { outcome: ItemOutcome; label: string }[] = [
 /** Screen 4. The primary action opens the first imported project, which is where F-001 asks. That second consent should feel like a normal project open, not another scary dialog. */
 export function SummaryView({
   outcome,
+  terminals,
   queued,
   onOpenProject,
   onNextPack,
   onClose,
 }: {
   outcome: ImportOutcome;
+  terminals: TerminalReviewRow[];
   queued: number;
   onOpenProject: (slug: string) => void;
   onNextPack: () => void;
@@ -44,6 +47,28 @@ export function SummaryView({
             <div className="packs-verdict-body">
               <strong>Stopped at {outcome.stoppedAt}</strong>
               Everything listed as added or replaced below is on your Mac. Nothing else was written.
+            </div>
+          </div>
+        )}
+
+        {terminals.length > 0 && (
+          <div className="packs-verdict packs-verdict-warn">
+            <span className="packs-verdict-icon" aria-hidden="true">
+              !
+            </span>
+            <div className="packs-verdict-body">
+              <strong>Terminal scenes came with pre-typed commands</strong>
+              Nothing runs on its own: a pre-typed command only runs when you press Enter on it.
+              Review these before presenting, since they were written by the pack's author.
+              {terminals.map((row) => (
+                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
+                  <span className="packs-verdict-note">
+                    {row.project} · {row.scene}
+                    {row.startPath ? ` · opens at ${row.startPath}` : ""}
+                  </span>
+                  {row.command && <code className="packs-terminal-command">{row.command}</code>}
+                </div>
+              ))}
             </div>
           </div>
         )}
