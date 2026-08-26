@@ -49,6 +49,13 @@ fn open_present_window(app: &AppHandle, target: &PresentTarget) -> Result<(), St
         .theme(Some(tauri::Theme::Dark))
         .background_color(tauri::window::Color(0x00, 0x00, 0x00, 0xFF));
     let window = builder.build().map_err(|e| e.to_string())?;
+    // Scene-terminal sessions spawned by this window die with it; the editor rail's (label `main`) keep the live-until-app-exit rule.
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            crate::pty::kill_sessions_owned_by(&handle.state::<crate::pty::PtyState>(), "present");
+        }
+    });
     #[cfg(target_os = "macos")]
     crate::deflash_webview(&window);
     #[cfg(not(target_os = "macos"))]

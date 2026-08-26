@@ -41,6 +41,8 @@ struct PtySession {
     killer: Box<dyn ChildKiller + Send + Sync>,
     master: Box<dyn MasterPty + Send>,
     gate: Arc<FlowGate>,
+    /// Label of the window that spawned the session. The rail's `main` sessions live until the app exits; the present window's die with it (`kill_sessions_owned_by` from its destroy hook).
+    owner: String,
 }
 
 type SessionMap = Arc<Mutex<HashMap<u32, PtySession>>>;
@@ -84,6 +86,7 @@ fn user_shell() -> String {
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, PtyState>,
     settings: State<'_, crate::workspace::SettingsState>,
     options: SpawnOptions,
@@ -193,6 +196,7 @@ pub fn pty_spawn(
                 killer,
                 master: pty.master,
                 gate: gate.clone(),
+                owner: window.label().to_string(),
             },
         );
     }
@@ -258,6 +262,16 @@ pub fn pty_kill(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
         let _ = session.killer.kill();
     }
     Ok(())
+}
+
+/// Kill every session a window label owns (the present window's destroy hook): each child gets the `pty_kill` treatment, and the reader threads reap and deregister as usual.
+pub fn kill_sessions_owned_by(state: &PtyState, owner: &str) {
+    if let Ok(mut map) = state.sessions.lock() {
+        for session in map.values_mut().filter(|s| s.owner == owner) {
+            session.gate.set(false);
+            let _ = session.killer.kill();
+        }
+    }
 }
 
 /// Frontend watermark flow control: pause stops draining the PTY (the kernel buffer then backpressures the child); resume unparks the reader.

@@ -13,12 +13,15 @@ interface PresentStore {
   videoPaused: boolean;
   /** True once the Suspense scene tree has committed (all scene assets resolved and mounted). */
   scenesCommitted: boolean;
+  /** True while the slide's terminal owns the keyboard: the deck keys and click-to-advance stand down. */
+  terminalFocused: boolean;
   setSceneCount: (n: number) => void;
   dispatch: (e: DeckEvent) => void;
   setAnchor: (sceneIndex: number, clockMs: number) => void;
   setEndFade: (opacity: number) => void;
   setVideoPaused: (paused: boolean) => void;
   setScenesCommitted: (committed: boolean) => void;
+  setTerminalFocused: (focused: boolean) => void;
   reset: () => void;
 }
 
@@ -29,6 +32,7 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   endFade: 0,
   videoPaused: false,
   scenesCommitted: false,
+  terminalFocused: false,
   setSceneCount: (n) => set({ sceneCount: n }),
   dispatch: (e) => set({ deck: stepDeck(get().deck, e, get().sceneCount) }),
   setAnchor: (sceneIndex, clockMs) =>
@@ -38,6 +42,7 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
   },
   setVideoPaused: (paused) => set({ videoPaused: paused }),
   setScenesCommitted: (committed) => set({ scenesCommitted: committed }),
+  setTerminalFocused: (focused) => set({ terminalFocused: focused }),
   reset: () =>
     set({
       deck: initialDeckState(),
@@ -45,5 +50,6 @@ export const usePresentStore = create<PresentStore>((set, get) => ({
       endFade: 0,
       videoPaused: false,
       scenesCommitted: false,
+      terminalFocused: false,
     }),
 }));
