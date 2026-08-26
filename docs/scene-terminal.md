@@ -79,7 +79,11 @@ preview never rasterise.
 One PTY registry idiom, three hosts. Sessions are keyed `${slug}#${sceneStem}`
 (`src/engine/sceneTerminalSession.ts`), survive component unmount like the
 rail's, run at the LOGICAL cols x rows (no fit addon, the overlay scales
-visually), and pre-type `startCommand` via bracketed paste.
+visually), and pre-type `startCommand` onto the prompt. That command is reduced
+to a single line with control chars stripped (`sanitizeStartCommand`, at parse
+and again at the paste boundary), so an imported pack's newline can never reach
+the shell as Enter and auto-run: the "never auto-runs" guarantee does not rest
+on bracketed-paste timing.
 
 1. **Export**: no sessions, no DOM. The panel renders the baked PNG or the
    empty frame.
@@ -109,6 +113,19 @@ visually), and pre-type `startCommand` via bracketed paste.
   phase so it cannot double as an advance (the next outside click advances).
 - A failed spawn (a pack-imported `startPath` missing on this machine) leaves
   the baked snapshot showing, never an error card.
+
+## Shared projects
+
+A terminal block travels in `.kbpack` projects like any sidecar data, so the
+author of a shared file chooses the command and the start path. Three layers
+keep that safe: the command is sanitised to one line at parse and at the paste
+boundary (above), no session exists until the user opens the project through
+the F-001 trust gate, and the import summary lists every pre-typed command and
+custom start path read from the landed sidecars
+(`src/packs/import/terminalReview.ts`), so the user reviews the author's
+commands before ever presenting. A start path alone executes nothing; a spawn
+at a missing path surfaces on the Start chip in the editor and silently leaves
+the snapshot in Present.
 
 ## Editing
 
