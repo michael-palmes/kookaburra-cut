@@ -108,6 +108,11 @@ describe("sanitizeStartCommand (never auto-runs)", () => {
     expect(sanitizeStartCommand("\u0003\u0004echo hi")).toBe("echo hi");
   });
 
+  it("caps the length, keeping the visible head of the line", () => {
+    const long = `echo ${"x".repeat(600)}`;
+    expect(sanitizeStartCommand(long)).toBe(long.slice(0, 512));
+  });
+
   it("collapses to empty when nothing runnable survives", () => {
     expect(sanitizeStartCommand("\n\n")).toBe("");
     expect(sanitizeStartCommand("   ")).toBe("");

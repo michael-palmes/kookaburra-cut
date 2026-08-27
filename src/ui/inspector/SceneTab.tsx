@@ -70,6 +70,7 @@ import { canRigConvertToOrbit, orbitToRig, rigToOrbit } from "../../engine/scene
 import {
   resolveSceneTerminal,
   type SceneDocTerminal,
+  sanitizeStartCommand,
   TERMINAL_COLS_MAX,
   TERMINAL_COLS_MIN,
   TERMINAL_FONT_PX_MAX,
@@ -6710,8 +6711,9 @@ export function SceneTab({
                   placeholder="pnpm dev"
                   onCommit={(value) =>
                     patchTerminal((t) => {
-                      const trimmed = value.trim();
-                      if (trimmed) t.startCommand = trimmed;
+                      // Stored canonical: the same single-line rule parse and paste enforce.
+                      const command = sanitizeStartCommand(value);
+                      if (command) t.startCommand = command;
                       else delete t.startCommand;
                     }, "set terminal start command")
                   }
@@ -6723,7 +6725,10 @@ export function SceneTab({
                   onClick={() => void startSession()}
                 />
               </DrillGroup>
-              <DrillGroup label="Snapshot" hint="Video export renders the captured snapshot.">
+              <DrillGroup
+                label="Snapshot"
+                hint="Video export renders the captured snapshot. It saves whatever is on screen into the project, and travels with packs, so avoid capturing secrets."
+              >
                 <ActionRow
                   icon={<TerminalActionIcon kind="capture" />}
                   label="Capture snapshot"

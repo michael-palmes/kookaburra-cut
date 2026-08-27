@@ -109,12 +109,16 @@ function parseRun(raw: unknown): SceneTerminalRun | null {
   return run;
 }
 
-/** A pre-typed start command is a single reviewable line the presenter runs by hand (docs/decisions.md, "never auto-runs"): xterm turns `\n` into `\r` (Enter) and only wraps a paste in bracketed-paste markers once the shell has enabled the mode, so a newline in an imported pack's command could auto-run before the prompt is ready. Keep the first line only (never join two commands) and drop control/format chars (ESC included, so a `\x1b[201~` can't close the wrapper). */
+/** The pre-typed line stays reviewable at a glance; nothing legitimate approaches this. */
+const COMMAND_MAX_CHARS = 512;
+
+/** A pre-typed start command is a single reviewable line the presenter runs by hand (docs/decisions.md, "never auto-runs"): xterm turns `\n` into `\r` (Enter) and only wraps a paste in bracketed-paste markers once the shell has enabled the mode, so a newline in an imported pack's command could auto-run before the prompt is ready. Keep the first line only (never join two commands), drop control/format chars (ESC included, so a `\x1b[201~` can't close the wrapper) and cap the length. */
 export function sanitizeStartCommand(raw: string): string {
   return raw
     .split(/[\r\n]/, 1)[0]
     .replace(/[\p{Cc}\p{Cf}]/gu, "")
-    .trim();
+    .trim()
+    .slice(0, COMMAND_MAX_CHARS);
 }
 
 function parseSnapshot(raw: unknown, source: string): SceneDocTerminalSnapshot | undefined {
