@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { AUDIO_MARKERS_VERSION, DEFAULT_AUDIO_FADE_OUT_MS, withAudioDefaults } from "./project";
+import {
+  AUDIO_MARKERS_VERSION,
+  type AudioFadeCurve,
+  DEFAULT_AUDIO_FADE_OUT_MS,
+  withAudioDefaults,
+} from "./project";
 
 describe("withAudioDefaults", () => {
   it("fills the house fade-out when the block omits it", () => {
@@ -18,6 +23,19 @@ describe("withAudioDefaults", () => {
 
   it("leaves fade-in undefaulted (cold starts are intended)", () => {
     expect(withAudioDefaults({ file: "assets/song.mp3" }).fadeInMs).toBeUndefined();
+  });
+
+  it("defaults the fade-out curve to smooth and keeps an authored one", () => {
+    expect(withAudioDefaults({ file: "a.mp3" }).fadeOutCurve).toBe("smooth");
+    expect(withAudioDefaults({ file: "a.mp3", fadeOutCurve: "scurve" }).fadeOutCurve).toBe(
+      "scurve",
+    );
+  });
+
+  it("degrades an unknown curve id to smooth", () => {
+    expect(
+      withAudioDefaults({ file: "a.mp3", fadeOutCurve: "wobble" as AudioFadeCurve }).fadeOutCurve,
+    ).toBe("smooth");
   });
 });
 

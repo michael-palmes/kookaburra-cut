@@ -111,14 +111,31 @@ pub(crate) struct AudioOptions {
     pub(crate) fade_in_ms: u64,
     #[serde(default)]
     pub(crate) fade_out_ms: u64,
+    /// Schema fade-out shape ("smooth"|"linear"|"scurve"|"exponential"|"logarithmic"); absent or unknown → qsin, the legacy curve.
+    #[serde(default)]
+    pub(crate) fade_out_curve: Option<String>,
     #[serde(default)]
     pub(crate) start_offset_ms: u64,
+    /// Probed track length; with it the fade-out anchors at the AUDIBLE end (the earlier of the track running out post-offset and the timeline's end). Absent keeps the legacy timeline anchor.
+    #[serde(default)]
+    pub(crate) track_duration_ms: Option<u64>,
+}
+
+/// Schema curve id → afade curve name; unknown ids keep the legacy qsin.
+fn afade_curve(id: Option<&str>) -> &'static str {
+    match id {
+        Some("linear") => "tri",
+        Some("scurve") => "hsin",
+        Some("exponential") => "exp",
+        Some("logarithmic") => "log",
+        _ => "qsin",
+    }
 }
 
 /// The soundtrack's audio sample rate, fixed so sample counts are exact integers per frame (48000/60fps = 800); changing it is an audio-baseline rebase.
 pub(crate) const AUDIO_RATE: u64 = 48_000;
 
-/// Builds the sample-exact `-af` filter graph: trim the offset, apply gain, pad-or-cut to EXACTLY the video's sample count (never `-shortest`, muxer interleaving heuristics aren't a duration contract), then the fades; all numbers are integer samples or fixed-decimal seconds derived from integer ms so the string never floats between runs, fades use `curve=qsin` (quarter-sine, the perceptually even "smooth" fade that the preview envelope mirrors), and the fade-out anchors at the TIMELINE's end (the padded/cut sample count), never the track's.
+/// Builds the sample-exact `-af` filter graph: trim the offset, apply gain, pad-or-cut to EXACTLY the video's sample count (never `-shortest`, muxer interleaving heuristics aren't a duration contract), then the fades; all numbers are integer samples or fixed-decimal seconds derived from integer ms so the string never floats between runs. The fade-in is `curve=qsin`; the fade-out takes the schema's curve (default qsin) and anchors at the AUDIBLE end: the earlier of the track running out (when `track_duration_ms` is known) and the padded/cut timeline end. The preview envelope mirrors both.
 pub(crate) fn audio_filter_graph(
     audio: &AudioOptions,
     total_frames: u32,
@@ -177,10 +194,21 @@ pub(crate) fn audio_filter_graph_gained(
     if audio.fade_out_ms > 0 {
         let out_s = audio.fade_out_ms as f64 / 1000.0;
         let total_s = n_samples as f64 / AUDIO_RATE as f64;
+        // The fade sits at the AUDIBLE end: where the track runs out (post-offset, after any leading silence) when that lands before the timeline's end.
+        let end_s = match audio.track_duration_ms {
+            Some(track_ms) => {
+                let remaining_ms = track_ms.saturating_sub(audio.start_offset_ms);
+                let track_end_s = leading_silence_samples as f64 / AUDIO_RATE as f64
+                    + remaining_ms as f64 / 1000.0;
+                total_s.min(track_end_s)
+            }
+            None => total_s,
+        };
         parts.push(format!(
-            "afade=t=out:st={:.6}:d={:.3}:curve=qsin",
-            (total_s - out_s).max(0.0),
-            out_s
+            "afade=t=out:st={:.6}:d={:.3}:curve={}",
+            (end_s - out_s).max(0.0),
+            out_s,
+            afade_curve(audio.fade_out_curve.as_deref())
         ));
     }
     Ok(parts.join(","))
@@ -751,7 +779,9 @@ mod audio_graph_tests {
             gain_db: 0.0,
             fade_in_ms,
             fade_out_ms,
+            fade_out_curve: None,
             start_offset_ms: 0,
+            track_duration_ms: None,
         }
     }
 
@@ -798,6 +828,54 @@ mod audio_graph_tests {
         let legacy = audio_filter_graph(&opts(500, 1000), 600, 60).unwrap();
         let gained = audio_filter_graph_gained(&opts(500, 1000), 600, 60, 0.0, 0).unwrap();
         assert_eq!(gained, legacy);
+    }
+
+    /// A track outlasting the video keeps the legacy timeline anchor byte-for-byte; a shorter one pulls the fade to its own audible end.
+    #[test]
+    fn fade_out_anchors_at_the_audible_end() {
+        let legacy = audio_filter_graph(&opts(0, 1000), 600, 60).unwrap();
+        let mut long = opts(0, 1000);
+        long.track_duration_ms = Some(15_000);
+        assert_eq!(audio_filter_graph(&long, 600, 60).unwrap(), legacy);
+
+        let mut short = opts(0, 1000);
+        short.track_duration_ms = Some(7_500);
+        let graph = audio_filter_graph(&short, 600, 60).unwrap();
+        assert!(graph.contains("afade=t=out:st=6.500000:d=1.000:curve=qsin"));
+    }
+
+    /// The start offset eats into the audible end, and a poster-frame lead pushes it out.
+    #[test]
+    fn audible_end_accounts_for_offset_and_leading_silence() {
+        let mut audio = opts(0, 1000);
+        audio.start_offset_ms = 2_000;
+        audio.track_duration_ms = Some(7_500);
+        let graph = audio_filter_graph(&audio, 600, 60).unwrap();
+        assert!(graph.contains("afade=t=out:st=4.500000:d=1.000:curve=qsin"));
+
+        let led = audio_filter_graph_gained(&audio, 601, 60, 0.0, 1).unwrap();
+        assert!(led.contains("afade=t=out:st=4.516667:d=1.000:curve=qsin"));
+    }
+
+    /// Each schema curve id maps to its afade name; unknown ids keep the legacy qsin.
+    #[test]
+    fn fade_out_curve_ids_map_to_afade_names() {
+        for (id, name) in [
+            ("smooth", "qsin"),
+            ("linear", "tri"),
+            ("scurve", "hsin"),
+            ("exponential", "exp"),
+            ("logarithmic", "log"),
+            ("wobble", "qsin"),
+        ] {
+            let mut audio = opts(0, 1000);
+            audio.fade_out_curve = Some(id.into());
+            let graph = audio_filter_graph(&audio, 600, 60).unwrap();
+            assert!(
+                graph.contains(&format!(":curve={name}")),
+                "{id} → {name}: {graph}"
+            );
+        }
     }
 }
 
@@ -870,7 +948,9 @@ mod legacy_argv_goldens {
             gain_db: -2.0,
             fade_in_ms: 0,
             fade_out_ms: 1000,
+            fade_out_curve: None,
             start_offset_ms: 0,
+            track_duration_ms: None,
         };
         let args =
             legacy_export_args(&base_options(Codec::Libx264, Some(audio)), "/out/x.mp4").unwrap();
@@ -1268,7 +1348,9 @@ mod spec_argv_goldens {
             gain_db: -2.0,
             fade_in_ms: 0,
             fade_out_ms: 0,
+            fade_out_curve: None,
             start_offset_ms: 0,
+            track_duration_ms: None,
         });
         let mut spec = reels_1080p30();
         spec.audio = Some(EncodeAudio {
@@ -1292,7 +1374,9 @@ mod spec_argv_goldens {
             gain_db: 0.0,
             fade_in_ms: 500,
             fade_out_ms: 1000,
+            fade_out_curve: None,
             start_offset_ms: 0,
+            track_duration_ms: None,
         });
         let mut spec = reels_1080p30();
         spec.poster_frame = true;

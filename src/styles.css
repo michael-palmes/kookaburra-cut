@@ -7923,6 +7923,20 @@ button.inspector-scene-overview-group-main:hover .inspector-scene-overview-group
   border-color: var(--accent-border);
 }
 
+/* Music drill: fade-out shape chips lead with their curve glyph (fieldset reset — it exists for the accessible label, not for chrome). */
+.music-fade-curves {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.music-fade-curves .chip {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
 /* Copy-from-project scene list: scene-manager rows re-used as a tick list. */
 .scene-pick-row {
   cursor: pointer;

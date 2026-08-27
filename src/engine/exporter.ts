@@ -493,7 +493,9 @@ async function exportProjectHeld(
             gainDb: opts.audio.gainDb ?? 0,
             fadeInMs: opts.audio.fadeInMs ?? 0,
             fadeOutMs: opts.audio.fadeOutMs ?? 0,
+            fadeOutCurve: opts.audio.fadeOutCurve ?? null,
             startOffsetMs: opts.audio.startOffsetMs ?? 0,
+            trackDurationMs: Math.round(opts.audio.durationMs),
           }
         : null,
     },

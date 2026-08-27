@@ -73,20 +73,25 @@ import {
   setPreviewAudioMuted,
   setPreviewAudioProject,
   syncPreviewAudioPlaying,
+  updatePreviewAudioSpec,
 } from "./engine/previewAudio";
 import { setPreviewClipStride, setPreviewPlaybackActive } from "./engine/previewMedia";
 import { SETTLE_STEPS, settleProjectOpen } from "./engine/previewSettle";
 import {
   type AudioMarkersSpec,
   bumpWorkspaceReloadToken,
+  DEFAULT_AUDIO_FADE_OUT_MS,
   isWorkspaceProjectId,
   type LoadedProject,
   listAllProjects,
   loadProject,
+  type ProjectAudio,
+  type ProjectAudioSpec,
   type ProjectListing,
   resolveAssetPath,
   sceneFileStem,
   WORKSPACE_PROJECT_PREFIX,
+  withAudioDefaults,
   workspaceProjectPath,
   workspaceSlug,
 } from "./engine/project";
@@ -631,6 +636,50 @@ export default function App() {
       setToast({ kind: "success", message: `Soundtrack: ${rel.split("/").pop()}` });
     } catch (e) {
       setToast({ kind: "error", message: `Soundtrack failed: ${String(e)}` });
+    }
+  }
+
+  /** Live envelope while a Music slider drags: preview-only, nothing writes. */
+  const handlePreviewAudio = useCallback((patch: Partial<ProjectAudioSpec>) => {
+    const current = loadedProjectRef.current;
+    if (!current?.audio) return;
+    updatePreviewAudioSpec({ ...current.audio, ...patch });
+  }, []);
+
+  /** Merge mix fields into project.json's audio block (file and markers kept) with manifest history, then patch the loaded project in place so the drill, beat lane and preview envelope follow without a reload flash. */
+  async function handlePatchAudio(patch: Partial<ProjectAudioSpec>) {
+    const current = loadedProjectRef.current;
+    if (!current?.audio || !isWorkspaceProjectId(current.id)) return;
+    try {
+      const slug = workspaceSlug(current.id);
+      const manifestBefore = await readProjectManifestSnapshot(slug);
+      const manifest = JSON.parse(manifestBefore);
+      if (typeof manifest.audio?.file !== "string") return;
+      const audio = { ...manifest.audio, ...patch };
+      // House defaults store as ABSENCE so untouched projects never carry the keys; fadeOutMs 0 is the explicit opt-out and stays.
+      if (audio.gainDb === 0) delete audio.gainDb;
+      if (audio.fadeInMs === 0) delete audio.fadeInMs;
+      if (audio.startOffsetMs === 0) delete audio.startOffsetMs;
+      if (audio.fadeOutMs === DEFAULT_AUDIO_FADE_OUT_MS) delete audio.fadeOutMs;
+      if (audio.fadeOutCurve === "smooth") delete audio.fadeOutCurve;
+      await invoke("set_project_audio", { slug, audio });
+      pushHistory({
+        label: "music settings",
+        changes: [
+          {
+            kind: "manifest",
+            slug,
+            before: manifestBefore,
+            after: await readProjectManifestSnapshot(slug),
+            reload: false,
+          },
+        ],
+      });
+      const merged = withAudioDefaults({ ...current.audio, ...patch }) as ProjectAudio;
+      setProject((prev) => (prev?.audio ? { ...prev, audio: merged } : prev));
+      updatePreviewAudioSpec(merged);
+    } catch (e) {
+      setToast({ kind: "error", message: `Music settings failed: ${String(e)}` });
     }
   }
 
@@ -2343,6 +2392,8 @@ export default function App() {
               onSetAppIcon={(rel) => void handleSetAppIcon(rel)}
               onSetSoundtrack={() => void handleSetSoundtrack()}
               onRemoveSoundtrack={() => void handleRemoveSoundtrack()}
+              onPatchAudio={(patch) => void handlePatchAudio(patch)}
+              onPreviewAudio={handlePreviewAudio}
               onOpenEditVideo={(i, rel, slot, targetId) =>
                 void handleOpenEditVideo(i, rel, slot, targetId)
               }
