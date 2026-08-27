@@ -7,14 +7,14 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Deserialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 /// Pause/resume gate shared with a session's reader thread.
 #[derive(Default)]
@@ -41,6 +41,8 @@ struct PtySession {
     killer: Box<dyn ChildKiller + Send + Sync>,
     master: Box<dyn MasterPty + Send>,
     gate: Arc<FlowGate>,
+    /// Label of the window that spawned the session. The rail's `main` sessions live until the app exits; the present window's die with it (`kill_sessions_owned_by` from its destroy hook).
+    owner: String,
 }
 
 type SessionMap = Arc<Mutex<HashMap<u32, PtySession>>>;
@@ -62,6 +64,9 @@ pub struct SpawnOptions {
     pub path_prepend: Option<String>,
     pub cols: u16,
     pub rows: u16,
+    /// Opts out of the F-006 workspace confinement: scene terminals may open a user-chosen start path (docs/decisions.md). The path must still resolve to a real directory, and commands are never auto-run there.
+    #[serde(default)]
+    pub allow_external_cwd: bool,
 }
 
 /// `prepend:inherited`, degrading to just `prepend` when nothing is inherited; a trailing `:` would put the CURRENT DIRECTORY on the PATH (POSIX empty-entry rule).
@@ -81,20 +86,45 @@ fn user_shell() -> String {
 #[tauri::command]
 pub fn pty_spawn(
     app: AppHandle,
+    window: tauri::Window,
     state: State<'_, PtyState>,
     settings: State<'_, crate::workspace::SettingsState>,
     options: SpawnOptions,
     on_data: Channel<InvokeResponseBody>,
 ) -> Result<u32, String> {
-    // F-006: confine the terminal cwd to the workspace root; the panel only ever opens a ws: project folder, so a path outside it is never legitimate.
+    // F-006: confine the terminal cwd to the workspace root unless the caller explicitly opts out (scene terminals open a user-chosen start path). Every path still has to resolve to a real directory, `~` expands against the user's home, and nothing is ever auto-run in it.
     let root = crate::workspace::require_root(&app, &settings)?
         .canonicalize()
         .map_err(|e| e.to_string())?;
-    let cwd = PathBuf::from(&options.cwd)
+    let raw = options.cwd.trim();
+    let requested = if raw == "~" || raw.starts_with("~/") {
+        let home = app.path().home_dir().map_err(|e| e.to_string())?;
+        if raw == "~" {
+            home
+        } else {
+            home.join(&raw[2..])
+        }
+    } else {
+        PathBuf::from(raw)
+    };
+    let cwd = requested
         .canonicalize()
         .map_err(|e| format!("terminal working directory not found: {e}"))?;
+    if !cwd.is_dir() {
+        return Err("the terminal working directory must be a folder".into());
+    }
     if !cwd.starts_with(&root) {
-        return Err("the terminal can only open inside the workspace".into());
+        if !options.allow_external_cwd {
+            return Err("the terminal can only open inside the workspace".into());
+        }
+        // The opt-out seats an interactive prompt somewhere, never runs a command there, and never in a system directory (defence in depth after F-001: a sidecar path must not become `shell -c` outside the workspace).
+        if options.command.is_some() {
+            return Err("commands can only run inside the workspace".into());
+        }
+        const DENIED_ROOTS: [&str; 5] = ["/System", "/usr", "/bin", "/sbin", "/private"];
+        if cwd == Path::new("/") || DENIED_ROOTS.iter().any(|p| cwd.starts_with(p)) {
+            return Err("the terminal cannot open in a system directory".into());
+        }
     }
 
     let pty = native_pty_system()
@@ -176,6 +206,7 @@ pub fn pty_spawn(
                 killer,
                 master: pty.master,
                 gate: gate.clone(),
+                owner: window.label().to_string(),
             },
         );
     }
@@ -241,6 +272,16 @@ pub fn pty_kill(state: State<'_, PtyState>, id: u32) -> Result<(), String> {
         let _ = session.killer.kill();
     }
     Ok(())
+}
+
+/// Kill every session a window label owns (the present window's destroy hook): each child gets the `pty_kill` treatment, and the reader threads reap and deregister as usual.
+pub fn kill_sessions_owned_by(state: &PtyState, owner: &str) {
+    if let Ok(mut map) = state.sessions.lock() {
+        for session in map.values_mut().filter(|s| s.owner == owner) {
+            session.gate.set(false);
+            let _ = session.killer.kill();
+        }
+    }
 }
 
 /// Frontend watermark flow control: pause stops draining the PTY (the kernel buffer then backpressures the child); resume unparks the reader.

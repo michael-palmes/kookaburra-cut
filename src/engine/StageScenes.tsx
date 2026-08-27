@@ -120,10 +120,10 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
               <project.persistent />
             </PersistentLayer>
           )}
-          {/* Overlay panels: one per framed scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
+          {/* Overlay panels: one per framed or terminal-carrying scene, siblings of the scene hosts so they lay out against the full frame (not the cutout). The compositor draws the active scene's panel over its composited slide. */}
           {project?.scenes.map((_, i) => {
             const frame = project.sceneFrames[i];
-            if (!frame) return null;
+            if (!frame && !project.sceneDocs[i]?.terminal) return null;
             const slot = project.slots[i];
             return (
               <FramePanel
@@ -133,7 +133,7 @@ export function StageScenes({ project }: { project: LoadedProject | null }) {
                 durationMs={slot.durationMs}
                 doc={project.sceneDocs[i]}
                 theme={project.sceneThemes[i]}
-                frame={frame}
+                frame={frame ?? undefined}
               />
             );
           })}

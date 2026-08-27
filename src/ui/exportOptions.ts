@@ -1,6 +1,7 @@
 /** Pure option/maths logic for the export modal, the stageOptions/textAnimationOptions pattern: everything the modal computes lives here, unit-pinned, so the component is layout only. The size-estimate and Fit-to-cap maths are golden-tested (decision 18: estimate = (video + audio) kbps × duration × 1.05 mux margin; over-cap warns amber + one-click fit, never silent, never blocking). */
 
 import type { AspectName } from "../engine/format";
+import type { SceneDocTerminal } from "../engine/sceneTerminal";
 import {
   type EncodeSpec,
   EXPORT_PRESET_VERSION,
@@ -333,6 +334,24 @@ export function highQualityEncode(posterFrame: boolean): EncodeSpec | undefined 
   return posterFrame
     ? withPosterFrame(resolvePresetToEncodeSpec(HIGH_QUALITY_DISPLAY_DOC), true)
     : undefined;
+}
+
+/** Scenes whose terminal has no baked snapshot export the themed empty frame; warn, never block. Docs and files are index-parallel (`LoadedProject`), labels fall back to the file stem (the perfProbe pattern). */
+export function terminalSnapshotWarning(
+  sceneDocs: ({ name?: string; terminal?: SceneDocTerminal } | undefined)[],
+  sceneFiles: string[],
+): string | null {
+  const names: string[] = [];
+  sceneDocs.forEach((doc, i) => {
+    if (!doc?.terminal || doc.terminal.snapshot?.src) return;
+    const file = sceneFiles[i] ?? "";
+    names.push(doc.name ?? file.replace(/^scenes\//, "").replace(/\.tsx$/, ""));
+  });
+  if (names.length === 0) return null;
+  const list = names.map((n) => `"${n}"`).join(", ");
+  return names.length === 1
+    ? `Heads up: the terminal in ${list} has no captured snapshot, so it exports as an empty prompt. Capture one from the scene's Terminal panel.`
+    : `Heads up: the terminals in ${list} have no captured snapshots, so they export as empty prompts. Capture them from each scene's Terminal panel.`;
 }
 
 /** Slug for Save-as-preset: the workspace slug rules (lowercase, hyphenated). */

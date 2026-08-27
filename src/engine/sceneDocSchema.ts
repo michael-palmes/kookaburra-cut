@@ -46,6 +46,7 @@ import {
   DEFAULT_SCENE_MEDIA_WINDOW_RADIUS,
   sceneMediaFromLegacy,
 } from "./sceneMedia";
+import { parseSceneTerminal, type SceneDocTerminal } from "./sceneTerminal";
 
 export type { SceneDocDof } from "./dof";
 
@@ -590,6 +591,8 @@ export interface SceneDoc {
   compare?: SceneDocCompare;
   /** The chart block (one per scene): data, appearance, axes, labels and the keyframed data track. Defaults and sampling live in `sceneChart.ts`. */
   chart?: SceneDocChart;
+  /** The terminal block (one per scene): screen-locked panel content, interactive in preview and Present, exporting its captured snapshot. Defaults and layout live in `sceneTerminal.ts`. */
+  terminal?: SceneDocTerminal;
   /** Which animated track drives this scene; absent = "camera" (null-for-legacy). Switching never deletes the other tracks' keys. */
   animatedTrack?: "camera" | "layeredScreenshot" | "compare" | "chart" | "lighting";
 }
@@ -2134,6 +2137,10 @@ export function parseSceneDoc(raw: unknown, source: string): SceneDoc | undefine
   if (doc.chart !== undefined) {
     const chart = parseChart(doc.chart, source);
     if (chart) out.chart = chart;
+  }
+  if (doc.terminal !== undefined) {
+    const terminal = parseSceneTerminal(doc.terminal, source);
+    if (terminal) out.terminal = terminal;
   }
   if (
     doc.animatedTrack === "camera" ||

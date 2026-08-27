@@ -164,7 +164,9 @@ import { animationLaneMasterOpen, clearSecondaryLaneSelections } from "./ui/lane
 import { MediaLibrary } from "./ui/MediaLibrary";
 import { PlaybackBar } from "./ui/PlaybackBar";
 import { PresentModal } from "./ui/PresentModal";
+import { SceneTerminalOverlay } from "./ui/SceneTerminalOverlay";
 import { ShortcutsSheet } from "./ui/ShortcutsSheet";
+import { TerminalGizmo } from "./ui/TerminalGizmo";
 import { TerminalPanel } from "./ui/TerminalPanel";
 import { TextGizmo } from "./ui/TextGizmo";
 import { ThemeMode } from "./ui/ThemeMode";
@@ -1466,6 +1468,7 @@ export default function App() {
   const mediaSectionOpen = useGizmoSectionOpen("media");
   const textSectionOpen = useGizmoSectionOpen("text");
   const chartSectionOpen = useGizmoSectionOpen("chart");
+  const terminalSectionOpen = useGizmoSectionOpen("terminal");
   const lsLaneOpen = useLayeredScreenshotEditStore((s) => s.laneOpen);
   const lsEditOpen = useLayeredScreenshotEditStore((s) => s.laneOpen || s.open);
   // The F-001 consent request `loadProject` is currently blocked on, if any.
@@ -2128,6 +2131,15 @@ export default function App() {
                   {/* The scene tree itself is shared with the hidden render window (engine/StageScenes): scenes resolve assets against the loaded project, which lags the store's projectId by a render during a switch (see ProjectIdContext). */}
                   <StageScenes project={project} />
                 </Canvas>
+                {/* The live scene terminal: below the tool and gizmo layers so their handles stay reachable, self-gated on the doc's terminal block and paused playback. */}
+                {project && isWorkspaceProjectId(project.id) && !exporting && !isAutoRun && (
+                  <SceneTerminalOverlay
+                    project={project}
+                    sceneIndex={camSceneIndex}
+                    aspect={format.width / format.height}
+                    onDocChanged={handleDocChanged}
+                  />
+                )}
                 {/* Armed move tool drag surface (camera or screenshot stack, per the active scene's animated track): DOM above the canvas, exactly the letterboxed frame, so drags map 1:1 to rendered pixels. The ghost path rides the same guard, above the tool surface but click-through except on its key dots. */}
                 {project &&
                   isWorkspaceProjectId(project.id) &&
@@ -2194,6 +2206,18 @@ export default function App() {
                     <ChartHeroGizmo
                       project={project}
                       sceneIndex={camSceneIndex}
+                      onDocChanged={handleDocChanged}
+                    />
+                  )}
+                {project &&
+                  isWorkspaceProjectId(project.id) &&
+                  !exporting &&
+                  !isAutoRun &&
+                  terminalSectionOpen && (
+                    <TerminalGizmo
+                      project={project}
+                      sceneIndex={camSceneIndex}
+                      aspect={format.width / format.height}
                       onDocChanged={handleDocChanged}
                     />
                   )}

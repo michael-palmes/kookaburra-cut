@@ -559,8 +559,9 @@ pub fn unused_media(
     let rels = workspace::project_media_rels(&root, &slug)?;
     let project = root.join(&slug);
     let texts = project_texts(&project);
-    let backfilled: std::collections::HashSet<String> =
-        workspace::backfilled_sample_names(&app).into_iter().collect();
+    let backfilled: std::collections::HashSet<String> = workspace::backfilled_sample_names(&app)
+        .into_iter()
+        .collect();
     Ok(unreferenced_rels(&texts, &rels)
         .into_iter()
         .filter(|rel| {
@@ -720,6 +721,38 @@ pub fn import_media_bytes(
     let candidate = free_asset_name(&assets, &base, &ext);
     std::fs::write(assets.join(&candidate), bytes).map_err(|e| e.to_string())?;
     Ok(Some(format!("assets/{candidate}")))
+}
+
+/// One scene's terminal snapshot PNG into the project's `assets/`, OVERWRITING the canonical `terminal-<stem>.png` (the app-icon rule: an app-owned asset with one home, so recaptures never litter collision suffixes; `assetVersionStore` cache-busts readers). Headers carry the slug and the scene stem, the body is the raw PNG; temp-then-rename so a failed write never truncates the previous bake. Returns the project-relative path.
+#[tauri::command]
+pub fn write_terminal_snapshot(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    request: tauri::ipc::Request,
+) -> Result<String, String> {
+    let slug = request_header(&request, "x-kookaburra-slug")?;
+    workspace::validate_slug(&slug)?;
+    let stem = request_header(&request, "x-kookaburra-stem")?;
+    if stem.is_empty()
+        || !stem
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
+        return Err("the scene stem must be a plain name".into());
+    }
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("write_terminal_snapshot expects a raw binary body".into());
+    };
+    let root = workspace::require_root(&app, &state)?;
+    let assets = root.join(&slug).join("assets");
+    std::fs::create_dir_all(&assets).map_err(|e| e.to_string())?;
+    let name = format!("terminal-{stem}.png");
+    let tmp = assets.join(format!("terminal-{stem}.tmp.png"));
+    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    let dest = assets.join(&name);
+    std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())?;
+    workspace::touch_now(&dest);
+    Ok(format!("assets/{name}"))
 }
 
 /// One picked CSV's bytes into the project's `assets/`, for the chart data modal: the copy beside the project is what lets Re-import re-read the numbers silently. Same headers, raw body, slugged stem and collision suffixes as `import_media_bytes`, but the delimited types stay out of `MEDIA_EXTENSIONS` so the file never surfaces in a media browser. Returns the project-relative path.

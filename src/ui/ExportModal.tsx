@@ -44,6 +44,7 @@ import {
   resolveDraft,
   slugifyPresetName,
   specChips,
+  terminalSnapshotWarning,
   withPosterFrame,
 } from "./exportOptions";
 import { useEscapeClose } from "./useEscapeClose";
@@ -279,6 +280,9 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
       ? `Heads up — matching this platform's volume turns the soundtrack up by ${delta.toFixed(1)} dB, so the loudest moments may distort after upload. Starting with a louder track avoids this.`
       : "Heads up — this soundtrack already peaks near full volume, so the loudest moments may distort after upload.";
   })();
+
+  // Selection-independent pre-flight (warn, never block): uncaptured terminals export their empty frame.
+  const terminalWarning = terminalSnapshotWarning(project.sceneDocs, project.sceneFiles);
 
   const loudnessGainFor = useCallback(
     async (
@@ -549,6 +553,7 @@ export function ExportModal({ project, currentAspect, busy, onExport, onClose }:
                 thumbnails, but each host still chooses its own.
               </span>
             </div>
+            {terminalWarning && <p className="export-loudness export-warn">{terminalWarning}</p>}
             {error && <p className="modal-error">{error}</p>}
           </section>
 
