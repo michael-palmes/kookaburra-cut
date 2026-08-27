@@ -9,6 +9,7 @@ import {
   stageAndPlan,
 } from "../../engine/packs";
 import { PackGlyph } from "../PackGlyph";
+import { reviewImportedTerminals, type TerminalReviewRow } from "../terminalReview";
 import type { ImportOutcome, ImportPlan, PackInspection, PackProgress, Resolution } from "../types";
 import { CodeView } from "./CodeView";
 import { ConflictsView } from "./ConflictsView";
@@ -16,7 +17,6 @@ import { ContentsView } from "./ContentsView";
 import { ErrorView } from "./ErrorView";
 import { SummaryView } from "./SummaryView";
 import { TrustView } from "./TrustView";
-import { reviewImportedTerminals, type TerminalReviewRow } from "./terminalReview";
 
 type Step =
   | { name: "choose" }

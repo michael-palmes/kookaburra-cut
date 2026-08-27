@@ -1,9 +1,9 @@
-/** Post-import review of terminal blocks in the projects a pack just wrote: every pre-typed command and custom start path, surfaced on the summary screen so a file shared by someone else is reviewed before a session ever starts. Reads the landed sidecars off disk (what landed is what matters, never the archive or the publisher's manifest); any read failure degrades to no rows, since the summary must never fail on a review. */
+/** Review of terminal blocks in workspace projects, for the two sharing boundaries: the import summary lists every pre-typed command and custom start path a pack just wrote, and the export picker warns that snapshots and commands travel with the pack. Reads the sidecars off disk (what is on disk is what matters, never the archive or the publisher's manifest); any read failure degrades to no rows, since neither screen may fail on a review. */
 
 import { invoke } from "@tauri-apps/api/core";
-import { readProjectManifestSnapshot } from "../../engine/projectEdit";
-import { parseSceneTerminal } from "../../engine/sceneTerminal";
-import type { ImportOutcome } from "../types";
+import { readProjectManifestSnapshot } from "../engine/projectEdit";
+import { parseSceneTerminal } from "../engine/sceneTerminal";
+import type { ImportOutcome } from "./types";
 
 export interface TerminalReviewRow {
   project: string;
@@ -13,6 +13,8 @@ export interface TerminalReviewRow {
   file: string;
   command: string | null;
   startPath: string | null;
+  /** A captured grid travels in the sidecar (and its PNG in assets), pixels and all. */
+  hasSnapshot: boolean;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -29,23 +31,19 @@ export function terminalReviewRows(
     const terminal = parseSceneTerminal(doc.terminal, `${project}/${file}`);
     const command = terminal?.startCommand ?? null;
     const startPath = terminal?.startPath ?? null;
-    if (!command && !startPath) continue;
+    const hasSnapshot = terminal?.snapshot != null;
+    if (!command && !startPath && !hasSnapshot) continue;
     const name = typeof doc.name === "string" ? doc.name.trim() : "";
     const scene = name || file.replace(/^scenes\//, "").replace(/\.tsx$/, "");
-    rows.push({ project, scene, file, command, startPath });
+    rows.push({ project, scene, file, command, startPath, hasSnapshot });
   }
   return rows;
 }
 
-/** Rows for every project the import landed (added, replaced or kept-both under its final slug). */
-export async function reviewImportedTerminals(
-  outcome: ImportOutcome,
+/** Rows for the named workspace projects, read from their on-disk sidecars. */
+export async function reviewProjectTerminals(
+  projects: { slug: string; name: string }[],
 ): Promise<TerminalReviewRow[]> {
-  const projects = outcome.results.filter(
-    (r) =>
-      r.kind === "project" &&
-      (r.outcome === "added" || r.outcome === "replaced" || r.outcome === "keptBoth"),
-  );
   const rows: TerminalReviewRow[] = [];
   for (const project of projects) {
     try {
@@ -69,4 +67,19 @@ export async function reviewImportedTerminals(
     }
   }
   return rows;
+}
+
+/** The import summary's slice: projects the import landed, commands and custom paths only (the recipient already sees the snapshot pixels on the slide). */
+export async function reviewImportedTerminals(
+  outcome: ImportOutcome,
+): Promise<TerminalReviewRow[]> {
+  const projects = outcome.results
+    .filter(
+      (r) =>
+        r.kind === "project" &&
+        (r.outcome === "added" || r.outcome === "replaced" || r.outcome === "keptBoth"),
+    )
+    .map((r) => ({ slug: r.slug, name: r.name }));
+  const rows = await reviewProjectTerminals(projects);
+  return rows.filter((r) => r.command || r.startPath);
 }

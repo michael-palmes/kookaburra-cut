@@ -25,6 +25,7 @@ import {
   toPlanSelection,
   totalBytes,
 } from "./selection";
+import { reviewProjectTerminals, type TerminalReviewRow } from "./terminalReview";
 import {
   formatBytes,
   ITEM_KINDS,
@@ -98,6 +99,26 @@ export function ExportView({ onClose }: { onClose: () => void }) {
   const bytes = useMemo(() => totalBytes(state, items), [state, items]);
   const included = useMemo(() => items.filter((i) => isIncluded(state, i)), [state, items]);
   const hasFonts = included.some((i) => i.kind === "font");
+
+  // Author-side terminal review: snapshots and pre-typed commands travel with the pack, so say so before the sign (docs/scene-terminal.md, Shared projects).
+  const [terminalRows, setTerminalRows] = useState<TerminalReviewRow[]>([]);
+  const includedProjects = useMemo(
+    () => included.filter((i) => i.kind === "project").map((i) => ({ slug: i.slug, name: i.name })),
+    [included],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    if (includedProjects.length === 0) {
+      setTerminalRows([]);
+      return;
+    }
+    void reviewProjectTerminals(includedProjects).then((rows) => {
+      if (!cancelled) setTerminalRows(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [includedProjects]);
 
   const visible = tab === "details" ? [] : items.filter((i) => i.kind === tab);
   const direct = visible.filter((i) => !isAuto(i));
@@ -289,6 +310,23 @@ export function ExportView({ onClose }: { onClose: () => void }) {
           )}
 
           {hasFonts && <p className="packs-disclaimer">{FONT_DISCLAIMER}</p>}
+
+          {terminalRows.length > 0 && (
+            <div className="packs-warning" style={{ marginLeft: 0, marginTop: 14 }}>
+              <div>
+                Terminal content travels with this pack: snapshots show whatever was on that screen
+                when captured, and pre-typed commands ride in the sidecars.
+              </div>
+              {terminalRows.map((row) => (
+                <div key={`${row.project}:${row.file}`}>
+                  {row.project} · {row.scene}
+                  {row.hasSnapshot ? " · snapshot" : ""}
+                  {row.startPath ? ` · opens at ${row.startPath}` : ""}
+                  {row.command ? ` · ${row.command}` : ""}
+                </div>
+              ))}
+            </div>
+          )}
 
           {plan && plan.warnings.length > 0 && (
             <div className="packs-warning" style={{ marginLeft: 0, marginTop: 14 }}>

@@ -1,6 +1,6 @@
 import { revealInFinder } from "../../engine/packs";
+import type { TerminalReviewRow } from "../terminalReview";
 import { type ImportOutcome, type ItemOutcome, KIND_LABELS } from "../types";
-import type { TerminalReviewRow } from "./terminalReview";
 
 const GROUPS: { outcome: ItemOutcome; label: string }[] = [
   { outcome: "added", label: "Added" },

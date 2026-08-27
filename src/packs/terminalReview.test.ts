@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { terminalReviewRows } from "./terminalReview";
 
 describe("terminalReviewRows", () => {
-  it("collects only scenes whose terminal pre-types a command or sets a start path", () => {
+  it("collects scenes whose terminal pre-types a command, sets a start path or carries a snapshot", () => {
     const rows = terminalReviewRows("Launch", [
       { file: "scenes/01-plain.tsx", doc: { version: 1 } },
       { file: "scenes/02-idle.tsx", doc: { version: 1, terminal: { cols: 90 } } },
@@ -14,6 +14,10 @@ describe("terminalReviewRows", () => {
         file: "scenes/04-repo.tsx",
         doc: { version: 1, terminal: { startPath: "~/Projects/demo" } },
       },
+      {
+        file: "scenes/05-shot.tsx",
+        doc: { version: 1, terminal: { snapshot: { grid: [[["$ ls"]]] } } },
+      },
     ]);
     expect(rows).toEqual([
       {
@@ -22,6 +26,7 @@ describe("terminalReviewRows", () => {
         file: "scenes/03-demo.tsx",
         command: "pnpm dev",
         startPath: null,
+        hasSnapshot: false,
       },
       {
         project: "Launch",
@@ -29,6 +34,15 @@ describe("terminalReviewRows", () => {
         file: "scenes/04-repo.tsx",
         command: null,
         startPath: "~/Projects/demo",
+        hasSnapshot: false,
+      },
+      {
+        project: "Launch",
+        scene: "05-shot",
+        file: "scenes/05-shot.tsx",
+        command: null,
+        startPath: null,
+        hasSnapshot: true,
       },
     ]);
   });
