@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -113,8 +113,18 @@ pub fn pty_spawn(
     if !cwd.is_dir() {
         return Err("the terminal working directory must be a folder".into());
     }
-    if !cwd.starts_with(&root) && !options.allow_external_cwd {
-        return Err("the terminal can only open inside the workspace".into());
+    if !cwd.starts_with(&root) {
+        if !options.allow_external_cwd {
+            return Err("the terminal can only open inside the workspace".into());
+        }
+        // The opt-out seats an interactive prompt somewhere, never runs a command there, and never in a system directory (defence in depth after F-001: a sidecar path must not become `shell -c` outside the workspace).
+        if options.command.is_some() {
+            return Err("commands can only run inside the workspace".into());
+        }
+        const DENIED_ROOTS: [&str; 5] = ["/System", "/usr", "/bin", "/sbin", "/private"];
+        if cwd == Path::new("/") || DENIED_ROOTS.iter().any(|p| cwd.starts_with(p)) {
+            return Err("the terminal cannot open in a system directory".into());
+        }
     }
 
     let pty = native_pty_system()
