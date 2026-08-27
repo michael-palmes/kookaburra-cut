@@ -52,7 +52,7 @@ export interface DeviceSideRouting {
   overridesAppearance: boolean;
   /** Where Change screen media writes. */
   mediaTarget: "device" | "compareDevice";
-  /** Where Edit video opens; null when this side resolves to no video. */
+  /** Where Edit opens (a still joins the editor as a freeze-frame); null when this side resolves to no media. */
   editVideoTarget: "device" | "compareDevice" | null;
 }
 
@@ -74,6 +74,6 @@ export function deviceSideRouting(
     shadow: appearance?.shadow ?? device?.shadow,
     overridesAppearance: appearance?.colour !== undefined || appearance?.shadow !== undefined,
     mediaTarget: target,
-    editVideoTarget: media?.kind === "video" ? target : null,
+    editVideoTarget: media ? target : null,
   };
 }
