@@ -96,7 +96,9 @@ on bracketed-paste timing.
    Rust-side, the path must resolve to a real directory).
 3. **Present** (`src/present/PresentTerminalOverlay.tsx`): a separate webview,
    so it spawns fresh sessions per presentation run on the scene's `entering`
-   phase (the pre-typed command sits on the prompt by the hold). Revisited
+   phase (the pre-typed command sits on the prompt by the hold); a custom
+   `startPath` waits for the first click instead (Shared projects, below).
+   Revisited
    slides re-adopt their session. No capture in Present, deliberately. Rust
    tags each PTY with its owner window and kills present-owned sessions on the
    window's Destroyed event; the editor's follow the rail's live-until-app-exit
@@ -117,15 +119,19 @@ on bracketed-paste timing.
 ## Shared projects
 
 A terminal block travels in `.kbpack` projects like any sidecar data, so the
-author of a shared file chooses the command and the start path. Three layers
+author of a shared file chooses the command and the start path. Four layers
 keep that safe: the command is sanitised to one line at parse and at the paste
-boundary (above), no session exists until the user opens the project through
-the F-001 trust gate, and the import summary lists every pre-typed command and
+boundary (above); no session exists until the user opens the project through
+the F-001 trust gate; the import summary lists every pre-typed command and
 custom start path read from the landed sidecars
-(`src/packs/import/terminalReview.ts`), so the user reviews the author's
-commands before ever presenting. A start path alone executes nothing; a spawn
-at a missing path surfaces on the Start chip in the editor and silently leaves
-the snapshot in Present.
+(`src/packs/import/terminalReview.ts`); and a custom start path never
+auto-spawns in Present, the first click on the terminal starts that session
+(project-folder decks keep the spawn-on-entry magic). A start path runs
+nothing of the pack's, but a login shell still runs the user's own init files
+and cwd hooks (direnv-style), which is why the click gate exists. In Rust the
+F-006 opt-out covers interactive shells only, never a `-c` command, and
+refuses system directories. A spawn at a missing path surfaces on the Start
+chip in the editor and silently leaves the snapshot in Present.
 
 ## Editing
 
