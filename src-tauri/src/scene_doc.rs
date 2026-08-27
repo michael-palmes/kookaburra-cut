@@ -1043,6 +1043,55 @@ pub fn copy_scene_to_project(
     })
 }
 
+/// One scene of a workspace project as listed to the copy-from picker.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneListing {
+    pub index: usize,
+    pub name: String,
+    pub duration_ms: u64,
+}
+
+/// List another project's scenes without loading it: manifest order, sidecar display names with the file-stem fallback (the loaded-project derivation).
+#[tauri::command]
+pub fn list_project_scenes(
+    app: AppHandle,
+    state: State<'_, SettingsState>,
+    slug: String,
+) -> Result<Vec<SceneListing>, String> {
+    let root = workspace::require_root(&app, &state)?;
+    workspace::validate_slug(&slug)?;
+    let project = root.join(&slug);
+    let text = std::fs::read_to_string(project.join(MANIFEST_FILENAME))
+        .map_err(|e| format!("reading {slug}/project.json: {e}"))?;
+    let manifest: Value =
+        serde_json::from_str(&text).map_err(|e| format!("project.json isn't valid JSON: {e}"))?;
+    let scenes = manifest
+        .get("scenes")
+        .and_then(Value::as_array)
+        .ok_or("project.json has no scenes array")?;
+    Ok(scenes
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            let file = entry.get("file").and_then(Value::as_str).unwrap_or("");
+            let stem = file.trim_start_matches("scenes/").trim_end_matches(".tsx");
+            let doc_name = std::fs::read_to_string(project.join(file.replace(".tsx", ".json")))
+                .ok()
+                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+                .and_then(|doc| doc.get("name").and_then(Value::as_str).map(str::to_string));
+            SceneListing {
+                index,
+                name: doc_name.unwrap_or_else(|| stem.to_string()),
+                duration_ms: entry
+                    .get("durationMs")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(DEFAULT_SCENE_DURATION_MS),
+            }
+        })
+        .collect())
+}
+
 /// Set a project's project-level theme (`project.json.themeId`, atomic), the New-project theme step and the main-window theme mode; the id is either a bundled `kookaburra-*` or a workspace `ws:<slug>`, the frontend resolves (and degrades) it on load.
 #[tauri::command]
 pub fn set_project_theme(

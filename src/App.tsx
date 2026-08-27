@@ -2367,6 +2367,14 @@ export default function App() {
                   message: `Copied ${count} scene${count === 1 ? "" : "s"} to ${destName}`,
                 })
               }
+              onScenesCopiedFrom={(sourceName, count) => {
+                bumpWorkspaceReloadToken();
+                setLoadNonce((n) => n + 1);
+                setToast({
+                  kind: "success",
+                  message: `Copied ${count} scene${count === 1 ? "" : "s"} from ${sourceName}`,
+                });
+              }}
             />
           )}
         </div>

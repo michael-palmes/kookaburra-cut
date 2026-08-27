@@ -48,6 +48,13 @@ export function copySceneToProject(
   return invoke("copy_scene_to_project", { slug, index, destSlug });
 }
 
+/** Another project's scenes for the copy-from picker: manifest order, sidecar display names with the file-stem fallback. */
+export function listProjectScenes(
+  slug: string,
+): Promise<{ index: number; name: string; durationMs: number }[]> {
+  return invoke("list_project_scenes", { slug });
+}
+
 /** The raw project.json text; the undo history's manifest snapshot. */
 export function readProjectManifestSnapshot(slug: string): Promise<string> {
   return invoke("read_project_manifest_snapshot", { slug });

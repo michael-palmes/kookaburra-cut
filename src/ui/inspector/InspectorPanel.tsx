@@ -33,6 +33,7 @@ import { useThemeCardMenu } from "../themeCardMenu";
 import { useEscapeClose } from "../useEscapeClose";
 import { InspectorNavigationShell } from "./InspectorNavigationShell";
 import { ProjectCopyDrill } from "./ProjectCopyDrill";
+import { ProjectCopyFromDrill } from "./ProjectCopyFromDrill";
 import { ActionRow, DrillBack, PopoverChoice, RowIcon } from "./rows";
 import { ScenesDrillIn } from "./ScenesDrillIn";
 import { SceneTab } from "./SceneTab";
@@ -131,6 +132,7 @@ export function InspectorPanel({
   onSetRenderSettings,
   onSetTypography,
   onScenesCopied,
+  onScenesCopiedFrom,
 }: {
   project: LoadedProject;
   aspect: AspectName;
@@ -184,6 +186,8 @@ export function InspectorPanel({
   onSetTypography: (headline: string | null, body: string | null, chart: string | null) => void;
   /** Every scene in a Copy-to-project run landed; App toasts. */
   onScenesCopied: (destName: string, count: number) => void;
+  /** Every scene in a Copy-from-project run landed; App reloads this project and toasts. */
+  onScenesCopiedFrom: (sourceName: string, count: number) => void;
 }) {
   const isWorkspace = isWorkspaceProjectId(project.id);
   const tab = useUiStore((s) => s.inspector.tab);
@@ -551,6 +555,17 @@ export function InspectorPanel({
               onScenesCopied(destName, count);
             }}
           />
+        ) : (tab === "project" || !isWorkspace) &&
+          drillIn === "project.scenes.copyFrom" &&
+          isWorkspace ? (
+          <ProjectCopyFromDrill
+            slug={workspaceSlug(project.id)}
+            onBack={() => setDrillIn(null)}
+            onDone={(sourceName, count) => {
+              setDrillIn(null);
+              onScenesCopiedFrom(sourceName, count);
+            }}
+          />
         ) : (tab === "project" || !isWorkspace) && drillIn === "project.scenes" && isWorkspace ? (
           <>
             <ScenesDrillIn
@@ -586,6 +601,7 @@ export function InspectorPanel({
                 void onDeleteScenes(indices).finally(() => setScenesBusy(false));
               }}
               onCopyToProject={requestSceneCopy}
+              onCopyFromProject={() => setDrillIn("project.scenes.copyFrom")}
             />
             {duplicating !== null && (
               <DuplicateSceneDialog
