@@ -136,7 +136,8 @@ export async function startSceneTerminalSession(opts: {
   entry.session = await spawnTerminalSession({
     term,
     cwd: opts.cwd,
-    allowExternalCwd: true,
+    // The F-006 opt-out only when the block actually leaves the workspace (docs/decisions.md).
+    allowExternalCwd: terminal.startPath != null,
     onExit: () => {
       entry.status = "exited";
       entry.notify?.("exited");

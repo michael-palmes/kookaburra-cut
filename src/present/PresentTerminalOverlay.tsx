@@ -17,7 +17,7 @@ import {
 import { resolveTerminalColours } from "../engine/sceneTerminalTheme";
 import { usePresentStore } from "./presentStore";
 
-/** The slide's live terminal in Present: a fresh session per presentation run (this webview's registry starts empty; revisited slides re-adopt theirs), spawned quietly as the scene enters so the pre-typed command is on the prompt by the hold. Click the terminal to type (the click never advances); while focused the deck keys stand down (`terminalFocused`), plain Esc stays with the shell, and Shift+Esc or a click outside hands the keyboard back, that outside click swallowed in the capture phase so it never doubles as an advance. Rust kills this window's PTYs on destroy. */
+/** The slide's live terminal in Present: a fresh session per presentation run (this webview's registry starts empty; revisited slides re-adopt theirs), spawned quietly as the scene enters so the pre-typed command is on the prompt by the hold (project-folder sessions only: a custom start path waits for the first click on the terminal). Click the terminal to type (the click never advances); while focused the deck keys stand down (`terminalFocused`), plain Esc stays with the shell, and Shift+Esc or a click outside hands the keyboard back, that outside click swallowed in the capture phase so it never doubles as an advance. Rust kills this window's PTYs on destroy. */
 
 export function PresentTerminalOverlay({
   project,
@@ -52,16 +52,25 @@ export function PresentTerminalOverlay({
   const [attached, setAttached] = useState(false);
   const [focused, setFocused] = useState(false);
   const focusedRef = useRef(false);
+  // A click-started session focuses once its DOM attaches (focus needs the opened textarea).
+  const focusOnAttachRef = useRef(false);
+  // In flight between spawn and registry-set: a click during that window must not start a second PTY.
+  const spawnPendingRef = useRef(false);
 
-  // Spawn quietly on scene entry; a failed spawn (a pack's machine-specific start path) leaves the baked snapshot showing, never an error card mid-show.
+  // Spawn quietly on scene entry; a failed spawn (a pack's machine-specific start path) leaves the baked snapshot showing, never an error card mid-show. A custom start path never auto-spawns: sidecar data must not open a shell outside the project on its own, so the first click on the terminal starts that session instead (docs/scene-terminal.md).
   useEffect(() => {
     if (!terminal || !colours || !atRest || !stem) return;
-    if (getSceneTerminalSession(key)) return;
-    const cwd = terminal.startPath ?? workspaceProjectPath(slug);
+    if (terminal.startPath || spawnPendingRef.current || getSceneTerminalSession(key)) return;
+    const cwd = workspaceProjectPath(slug);
     if (!cwd) return;
-    void startSceneTerminalSession({ key, cwd, terminal, colours }).catch((e) => {
-      console.warn("[present] terminal session start failed:", e);
-    });
+    spawnPendingRef.current = true;
+    void startSceneTerminalSession({ key, cwd, terminal, colours })
+      .catch((e) => {
+        console.warn("[present] terminal session start failed:", e);
+      })
+      .finally(() => {
+        spawnPendingRef.current = false;
+      });
   }, [key, slug, stem, terminal, colours, atRest]);
 
   // Attach the session's DOM (open fresh, re-append on a revisited slide); detach without killing on the way out.
@@ -83,6 +92,10 @@ export function PresentTerminalOverlay({
         host.appendChild(entry.term.element);
       }
       setAttached(true);
+      if (focusOnAttachRef.current) {
+        focusOnAttachRef.current = false;
+        entry.term.focus();
+      }
     })();
     return () => {
       cancelled = true;
@@ -171,10 +184,29 @@ export function PresentTerminalOverlay({
           width: pct(grid.width / aspect),
           height: pct(grid.height),
         }}
+        title={attached ? undefined : "Click to start the terminal session"}
         onClick={(e) => {
           // Focus, never advance: the surface behind is the advance control.
           e.stopPropagation();
-          getSceneTerminalSession(key)?.term.focus();
+          const entry = getSceneTerminalSession(key);
+          if (entry) {
+            entry.term.focus();
+            return;
+          }
+          // The custom-start-path session the spawn effect deliberately skipped: this click is the consent.
+          if (!colours || !stem || spawnPendingRef.current) return;
+          const cwd = terminal.startPath ?? workspaceProjectPath(slug);
+          if (!cwd) return;
+          spawnPendingRef.current = true;
+          focusOnAttachRef.current = true;
+          void startSceneTerminalSession({ key, cwd, terminal, colours })
+            .catch((err) => {
+              focusOnAttachRef.current = false;
+              console.warn("[present] terminal session start failed:", err);
+            })
+            .finally(() => {
+              spawnPendingRef.current = false;
+            });
         }}
       >
         <div ref={scaleRef} className="scene-terminal-scale" />
