@@ -58,6 +58,10 @@ export function sceneWebsiteSession(key: string): SceneWebsiteSession {
   return useSceneWebsiteSessionStore.getState().sessions[key] ?? EMPTY_SESSION;
 }
 
+export function websiteSessionClaimsStage(session: SceneWebsiteSession | undefined): boolean {
+  return session?.active === true || session?.pendingOrigin != null;
+}
+
 export const WEBSITE_ACTIVATE_REQUEST_EVENT = "kookaburra:website-activate-request";
 export const WEBSITE_DEACTIVATE_REQUEST_EVENT = "kookaburra:website-deactivate-request";
 

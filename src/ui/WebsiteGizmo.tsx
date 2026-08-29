@@ -8,7 +8,11 @@ import {
   type SceneDocWebsite,
   sceneWebsiteLayout,
 } from "../engine/sceneWebsite";
-import { sceneWebsiteKey, useSceneWebsiteSessionStore } from "../engine/sceneWebsiteSession";
+import {
+  sceneWebsiteKey,
+  useSceneWebsiteSessionStore,
+  websiteSessionClaimsStage,
+} from "../engine/sceneWebsiteSession";
 import { useWebsiteEditStore } from "../engine/websiteEditStore";
 import { Gizmo2D, type Gizmo2DGesture, type Gizmo2DItem } from "./gizmo/Gizmo2D";
 import type { Pt } from "./gizmo/gizmo2dMath";
@@ -44,10 +48,12 @@ export function WebsiteGizmo({
   const website = useMemo(() => resolveSceneWebsite(doc ?? undefined), [doc]);
   const stem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
   const sessionKey = sceneWebsiteKey(project.id, stem);
-  const live = useSceneWebsiteSessionStore((state) => state.sessions[sessionKey]?.active ?? false);
+  const interactionClaimed = useSceneWebsiteSessionStore((state) =>
+    websiteSessionClaimsStage(state.sessions[sessionKey]),
+  );
 
   const items = useMemo<Gizmo2DItem[]>(() => {
-    if (!website || live) return [];
+    if (!website || interactionClaimed) return [];
     return [
       {
         id: ITEM_ID,
@@ -68,7 +74,7 @@ export function WebsiteGizmo({
         },
       },
     ];
-  }, [website, live, aspect]);
+  }, [website, interactionClaimed, aspect]);
 
   const frameGuides = useCallback(
     (rect: StageRect) => ({
