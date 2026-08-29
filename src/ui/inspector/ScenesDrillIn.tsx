@@ -39,6 +39,7 @@ export function ScenesDrillIn({
   onPasteBackground,
   onDelete,
   onCopyToProject,
+  onCopyFromProject,
 }: {
   scenes: SceneManagerRow[];
   /** An op is in flight; interactions disable rather than queue. */
@@ -59,6 +60,8 @@ export function ScenesDrillIn({
   onDelete: (indices: number[]) => void;
   /** Open the copy-to-project drill for the given selection (the host routes the request). */
   onCopyToProject: (indices: number[]) => void;
+  /** Open the copy-from-project drill (selection-independent, so it seats apart on the left). */
+  onCopyFromProject: () => void;
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -287,6 +290,16 @@ export function ScenesDrillIn({
         </p>
       </div>
       <div className="inspector-drill-actions">
+        <button
+          type="button"
+          className="btn btn-left"
+          disabled={busy}
+          title="Copy scenes from another project"
+          onClick={onCopyFromProject}
+        >
+          <SceneMenuIcon id="copy-from-project" />
+          Copy from…
+        </button>
         <button
           type="button"
           className="btn"

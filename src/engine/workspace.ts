@@ -45,6 +45,8 @@ export interface WorkspaceProjectInfo {
   snapshotPath: string | null;
   snapshotMtimeMs: number | null;
   lastOpenedMs: number | null;
+  /** Newest content edit (unix ms) across the manifest, scenes and assets. */
+  contentMtimeMs: number | null;
   /** Welcome-screen section heading, from project.json. */
   group: string | null;
 }

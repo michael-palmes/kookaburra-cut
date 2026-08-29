@@ -23,6 +23,7 @@ function render(busy = false) {
       onPasteBackground={vi.fn()}
       onDelete={vi.fn()}
       onCopyToProject={vi.fn()}
+      onCopyFromProject={vi.fn()}
     />,
   );
 }
@@ -32,26 +33,28 @@ function footer(html: string) {
 }
 
 describe("ScenesDrillIn", () => {
-  it("seats a Duplicate and a Delete button in the footer", () => {
+  it("seats Copy from, Duplicate and Delete buttons in the footer", () => {
     const html = render();
     expect(html).toContain('class="inspector-drill-actions"');
+    expect(html).toContain("Copy from…<");
     expect(html).toContain(">Duplicate<");
     expect(html).toContain(">Delete<");
+    expect(html).toContain('class="btn btn-left"');
     expect(html).toContain('class="btn scene-manager-delete"');
   });
 
-  it("gives both footer buttons a leading icon", () => {
-    expect(footer(render()).match(/viewBox="0 0 20 20"/g)).toHaveLength(2);
+  it("gives every footer button a leading icon", () => {
+    expect(footer(render()).match(/viewBox="0 0 20 20"/g)).toHaveLength(3);
   });
 
-  it("disables both actions with nothing selected", () => {
+  it("disables only the selection actions with nothing selected", () => {
     expect(footer(render()).match(/disabled=""/g)).toHaveLength(2);
   });
 
-  it("disables the footer while an op is in flight", () => {
+  it("disables the whole footer while an op is in flight", () => {
     const html = footer(render(true));
     expect(html).toContain(">Working…<");
-    expect(html.match(/disabled=""/g)).toHaveLength(2);
+    expect(html.match(/disabled=""/g)).toHaveLength(3);
   });
 
   it("renders one row per scene with its length", () => {

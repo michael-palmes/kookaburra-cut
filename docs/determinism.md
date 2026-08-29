@@ -231,7 +231,7 @@ picture-only; sound belongs to the project soundtrack (below).
 ## Audio
 
 A project may declare ONE soundtrack (`project.json`
-`audio: { file, gainDb?, fadeInMs?, fadeOutMs?, startOffsetMs? }`,
+`audio: { file, gainDb?, fadeInMs?, fadeOutMs?, fadeOutCurve?, startOffsetMs? }`,
 assets-relative). The output hash covers the audio bytes, so `Verify ×2` gates
 the mix like every pixel. Rules:
 
@@ -246,15 +246,18 @@ the mix like every pixel. Rules:
   heuristics are not a duration contract). Fades are `afade` with fixed-decimal
   seconds derived from integer ms; gain is `volume=<dB>`; every filter string is
   identical run-to-run.
-- **Every soundtrack fades out at the TIMELINE's end by default.** `fadeOutMs`
+- **Every soundtrack fades out at its AUDIBLE end by default.** `fadeOutMs`
   omitted → `DEFAULT_AUDIO_FADE_OUT_MS` (1000); an explicit `0` opts out. The
   default is applied ONCE, in `loadProject`'s audio resolver
   (`withAudioDefaults`, engine/project.ts): preview and export read the same
-  resolved object, so the lanes cannot disagree. Fade curves are `curve=qsin`
-  (quarter-sine, both directions; the argv shape is pinned by
-  `audio_graph_tests`), and the fade-out anchor is the padded/cut timeline
-  length, never the track's own end. The null path is unaffected by ANY of this:
-  no `audio` block, no `-af`.
+  resolved object, so the lanes cannot disagree. The fade-in is `curve=qsin`;
+  the fade-out takes `fadeOutCurve` ("smooth" qsin default, "linear" tri,
+  "scurve" hsin, "exponential" exp, "logarithmic" log; unknown ids degrade to
+  qsin) and anchors at the AUDIBLE end: the earlier of the track running out
+  (post-offset, via the probed `trackDurationMs`) and the padded/cut timeline
+  length. A track that outlasts the video therefore keeps the legacy timeline
+  anchor byte-for-byte (the argv shape is pinned by `audio_graph_tests`). The
+  null path is unaffected by ANY of this: no `audio` block, no `-af`.
 - **Codec per container:** AAC 192k in `.mp4`, `pcm_s16le` in `.mov` (ProRes),
   both under `-flags:a +bitexact` (suppresses the encoder tag; the existing
   `-fflags +bitexact -map_metadata -1` already covers the muxer). PCM is

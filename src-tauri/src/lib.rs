@@ -1457,6 +1457,7 @@ pub fn run() {
             scene_doc::scaffold_scene,
             scene_doc::duplicate_scene,
             scene_doc::copy_scene_to_project,
+            scene_doc::list_project_scenes,
             scene_doc::ensure_unique_scene_ids,
             bridge::bridge_claim_request,
             bridge::bridge_write_response,

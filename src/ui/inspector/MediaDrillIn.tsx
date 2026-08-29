@@ -755,6 +755,7 @@ export function MediaDrillIn({
                   min={stageSizeRange[0]}
                   max={stageSizeRange[1]}
                   step={0.01}
+                  overflowMax
                   onInput={(value) =>
                     patchMedia(
                       (candidate) => {
@@ -826,6 +827,7 @@ export function MediaDrillIn({
                   min={overlaySizeRange[0]}
                   max={overlaySizeRange[1]}
                   step={0.01}
+                  overflowMax
                   onInput={(value) =>
                     patchMedia(
                       (candidate) => {

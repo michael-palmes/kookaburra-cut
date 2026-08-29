@@ -7650,7 +7650,7 @@ export function SceneTab({
           deviceRouting.editVideoTarget
             ? (id) => {
                 const target = deviceSideRouting(doc, id, compareSide);
-                if (target.media?.kind === "video" && target.editVideoTarget) {
+                if (target.media && target.editVideoTarget) {
                   onOpenEditVideo(sceneIndex, target.media.src, target.editVideoTarget, id);
                 }
               }

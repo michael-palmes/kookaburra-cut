@@ -90,14 +90,27 @@ export function outgoingSceneTransitions(
 }
 
 /** A project with its scene modules imported and theme resolved, ready to render/export. */
+/** Fade-out shapes, each mapping to an ffmpeg afade curve mirrored by the preview envelope. */
+export const AUDIO_FADE_CURVES = [
+  "smooth",
+  "linear",
+  "scurve",
+  "exponential",
+  "logarithmic",
+] as const;
+
+export type AudioFadeCurve = (typeof AUDIO_FADE_CURVES)[number];
+
 /** The project.json `audio` block, as authored. */
 export interface ProjectAudioSpec {
   /** Assets-relative path (the house rule; never absolute/remote). */
   file: string;
   gainDb?: number;
   fadeInMs?: number;
-  /** Omitted → DEFAULT_AUDIO_FADE_OUT_MS at the timeline's end; an explicit 0 opts out. */
+  /** Omitted → DEFAULT_AUDIO_FADE_OUT_MS at the track's audible end; an explicit 0 opts out. */
   fadeOutMs?: number;
+  /** Omitted or unknown → "smooth" (the legacy qsin shape). */
+  fadeOutCurve?: AudioFadeCurve;
   startOffsetMs?: number;
   markers?: AudioMarkersSpec;
 }
@@ -138,16 +151,20 @@ export interface ProjectAudio extends ProjectAudioSpec {
   sampleRate: number;
 }
 
-/** Every soundtrack fades out smoothly over the last second of the TIMELINE unless project.json says otherwise (`fadeOutMs: 0` disables; any value overrides). Resolved here so preview and export read the same object and can never disagree. */
+/** Every soundtrack fades out smoothly over the last second before its AUDIBLE end (the earlier of track end and timeline end) unless project.json says otherwise (`fadeOutMs: 0` disables; any value overrides). Resolved here so preview and export read the same object and can never disagree. */
 export const DEFAULT_AUDIO_FADE_OUT_MS = 1000;
 
 /** The authored spec with house defaults applied and markers sanitised (exported for tests). */
 export function withAudioDefaults(spec: ProjectAudioSpec): ProjectAudioSpec {
   const { markers, ...rest } = spec;
   const valid = sanitiseAudioMarkers(markers);
+  const curve = AUDIO_FADE_CURVES.includes(spec.fadeOutCurve as AudioFadeCurve)
+    ? spec.fadeOutCurve
+    : "smooth";
   return {
     ...rest,
     fadeOutMs: spec.fadeOutMs ?? DEFAULT_AUDIO_FADE_OUT_MS,
+    fadeOutCurve: curve,
     ...(valid ? { markers: valid } : {}),
   };
 }

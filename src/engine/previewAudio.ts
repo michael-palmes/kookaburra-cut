@@ -3,7 +3,7 @@
 import { useClockStore } from "./clock";
 import { isExporting } from "./exportState";
 import { fsUrl } from "./media";
-import type { LoadedProject, ProjectAudio } from "./project";
+import type { AudioFadeCurve, LoadedProject, ProjectAudio } from "./project";
 
 const DRIFT_RESTART_S = 0.25;
 
@@ -29,15 +29,32 @@ let state: PreviewAudioState | null = null;
 let wantPlaying = false;
 let muted = false;
 
-/** afade's `curve=qsin`, the mux's fade shape, mirrored so preview ≈ export. */
+const clamp01 = (t: number): number => Math.min(1, Math.max(0, t));
+
+/** afade's `curve=qsin`, the mux's fade-in shape, mirrored so preview ≈ export. */
 function qsin(t: number): number {
-  return Math.sin((Math.PI / 2) * Math.min(1, Math.max(0, t)));
+  return Math.sin((Math.PI / 2) * clamp01(t));
+}
+
+/** afade's gain curves (ffmpeg af_afade fade_gain), mirrored per fade-out shape so preview ≈ export. */
+const FADE_OUT_CURVES: Record<AudioFadeCurve, (t: number) => number> = {
+  smooth: qsin,
+  linear: clamp01,
+  scurve: (t) => (1 - Math.cos(Math.PI * clamp01(t))) / 2,
+  exponential: (t) => 0.1 ** ((1 - clamp01(t)) * 5),
+  logarithmic: (t) => clamp01(1 + 0.2 * Math.log10(clamp01(t))),
+};
+
+/** Where the soundtrack stops being heard: the earlier of the timeline's end and the track running out (post-offset); the fade-out anchors here, the mux's rule. */
+function audibleEndMs(a: ProjectAudio, totalMs: number): number {
+  return Math.min(totalMs, Math.max(0, a.durationMs - (a.startOffsetMs ?? 0)));
 }
 
 function envelope(a: ProjectAudio, totalMs: number, tMs: number): number {
   const base = 10 ** ((a.gainDb ?? 0) / 20);
   const fadeIn = a.fadeInMs ? qsin(tMs / a.fadeInMs) : 1;
-  const fadeOut = a.fadeOutMs ? qsin((totalMs - tMs) / a.fadeOutMs) : 1;
+  const curve = FADE_OUT_CURVES[a.fadeOutCurve ?? "smooth"] ?? qsin;
+  const fadeOut = a.fadeOutMs ? curve((audibleEndMs(a, totalMs) - tMs) / a.fadeOutMs) : 1;
   return muted ? 0 : base * fadeIn * fadeOut;
 }
 
@@ -131,6 +148,14 @@ export function setPreviewAudioProject(project: LoadedProject | null): void {
       console.warn("[audio] preview decode failed (preview stays silent):", e);
     }
   })();
+}
+
+/** Live-update the mix params (gain, fades, offset) without re-decoding: the Music drill's slider-drag lane. No-op without a loaded soundtrack. */
+export function updatePreviewAudioSpec(audio: ProjectAudio): void {
+  const s = state;
+  if (!s) return;
+  s.audio = audio;
+  applyTick(s);
 }
 
 /** Follow the transport. Safe to call redundantly; a no-audio project is a no-op. */

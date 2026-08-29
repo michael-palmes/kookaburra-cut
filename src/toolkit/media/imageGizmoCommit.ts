@@ -19,7 +19,7 @@ export interface StageImageGizmoPose {
   size: number;
 }
 
-/** Size ranges a drag writes within: the image family's inspector ranges, widened for windowed media so a window's own default (a whole-frame fraction on Overlay, `DEFAULT_SCENE_MEDIA_VIDEO_STAGE_SIZE` on Stage) is not silently shrunk by the first drag. */
+/** Size ranges a drag writes within: the image family's inspector ranges, widened for windowed media so a window's own default (a whole-frame fraction on Overlay, `DEFAULT_SCENE_MEDIA_VIDEO_STAGE_SIZE` on Stage) is not silently shrunk by the first drag. The inspector's Size rails are soft at the top (a typed value may exceed the max); a gizmo drag still clamps back into range. */
 export const STAGE_MEDIA_SIZE_RANGE = { image: [0.05, 5], window: [0.05, 12] } as const;
 export const OVERLAY_MEDIA_SIZE_RANGE = { image: [0.03, 0.6], window: [0.03, 1] } as const;
 

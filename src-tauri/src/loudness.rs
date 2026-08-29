@@ -27,7 +27,9 @@ pub async fn measure_loudness(
     gain_db: f64,
     fade_in_ms: u64,
     fade_out_ms: u64,
+    fade_out_curve: Option<String>,
     start_offset_ms: u64,
+    track_duration_ms: Option<u64>,
     total_frames: u32,
     fps: u32,
     poster_frame: bool,
@@ -41,7 +43,9 @@ pub async fn measure_loudness(
         gain_db,
         fade_in_ms,
         fade_out_ms,
+        fade_out_curve,
         start_offset_ms,
+        track_duration_ms,
     };
     let graph = audio_filter_graph_gained(&audio, total_frames, fps, 0.0, u32::from(poster_frame))?;
 

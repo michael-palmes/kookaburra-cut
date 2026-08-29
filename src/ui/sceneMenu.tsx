@@ -9,6 +9,7 @@ export type SceneMenuIconId =
   | "rename"
   | "duplicate"
   | "copy-to-project"
+  | "copy-from-project"
   | "duration"
   | "manage"
   | "copy-background"
@@ -62,6 +63,21 @@ export function SceneMenuIcon({ id }: { id: SceneMenuIconId }) {
         >
           <rect x="9.5" y="4.5" width="7" height="11" rx="1.5" />
           <path d="M3.5 10h5.5M6.5 7.5L9 10l-2.5 2.5" />
+        </svg>
+      );
+    case "copy-from-project":
+      return (
+        <svg
+          width="17"
+          height="17"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="3.5" y="4.5" width="7" height="11" rx="1.5" />
+          <path d="M11 10h5.5M14 7.5L16.5 10 14 12.5" />
         </svg>
       );
     case "duration":
