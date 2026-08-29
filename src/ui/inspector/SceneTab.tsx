@@ -91,6 +91,31 @@ import {
 import { resolveTerminalColours, TERMINAL_THEME_PRESETS } from "../../engine/sceneTerminalTheme";
 import { useLargestSceneText, useSceneTextRegistry } from "../../engine/sceneTextRegistry";
 import { listCachedSceneThumbs } from "../../engine/sceneThumbs";
+import {
+  normaliseWebsiteOrigin,
+  normaliseWebsiteUrl,
+  resolveSceneWebsite,
+  type SceneDocWebsite,
+  WEBSITE_VIEWPORT_HEIGHT_MAX,
+  WEBSITE_VIEWPORT_HEIGHT_MIN,
+  WEBSITE_VIEWPORT_WIDTH_MAX,
+  WEBSITE_VIEWPORT_WIDTH_MIN,
+} from "../../engine/sceneWebsite";
+import {
+  captureWebsite,
+  closeWebsite,
+  importWebsiteImage,
+  listWebsiteGrants,
+  revokeWebsiteOrigin,
+} from "../../engine/sceneWebsiteNative";
+import {
+  requestSceneWebsiteActivation,
+  requestSceneWebsiteDeactivation,
+  sceneWebsiteKey,
+  sceneWebsiteSession,
+  useSceneWebsiteSessionStore,
+} from "../../engine/sceneWebsiteSession";
+import { resolveWebsiteColours } from "../../engine/sceneWebsiteTheme";
 import { captureCurrentFrame } from "../../engine/snapshots";
 import {
   useSceneHostStageBackdrop,
@@ -109,7 +134,9 @@ import {
   virtualManagedTextRegistrations,
 } from "../../engine/textKeyRegistry";
 import { TRANSITION_CATALOG } from "../../engine/transitionCatalog";
+import { useWebsiteEditStore } from "../../engine/websiteEditStore";
 import { DEFAULT_LOOP_BLEND_MS } from "../../present/cameraLoop";
+import { useAssetVersionStore } from "../../store/assetVersionStore";
 import { useUiStore } from "../../store/uiStore";
 import { formatFontString, parseFontString } from "../../theme/fontRef";
 import { preloadAppFonts } from "../../theme/fonts";
@@ -536,6 +563,104 @@ function TerminalActionIcon({ kind }: { kind: "folder" | "play" | "capture" }) {
   );
 }
 
+function WebsiteActionIcon({ kind }: { kind: "open" | "capture" | "image" | "remove" }) {
+  if (kind === "capture") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <rect x="3" y="5" width="14" height="11" rx="2" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="10" cy="10.5" r="2.75" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M7 5l1-1.5h4L13 5" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (kind === "image") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <rect x="3" y="3.5" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="7" cy="7.5" r="1.25" fill="currentColor" />
+        <path d="m5 14 3.3-3.2 2.3 2 2.1-1.7L15 14" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
+    );
+  }
+  if (kind === "remove") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path
+          d="M4 5.5h12M7 5.5V4h6v1.5M6 8v7.5h8V8M8.5 9.5v4M11.5 9.5v4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M3 10h14M10 3c2.4 2.4 2.4 11.6 0 14M10 3C7.6 5.4 7.6 14.6 10 17"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+    </svg>
+  );
+}
+
+function WebsiteViewportIcon({ shape }: { shape: "wide" | "tablet" | "phone" | "custom" }) {
+  const rect = {
+    wide: { x: 2, y: 5, width: 16, height: 10 },
+    tablet: { x: 4, y: 3, width: 12, height: 14 },
+    phone: { x: 6.5, y: 2, width: 7, height: 16 },
+    custom: { x: 3, y: 4, width: 14, height: 12 },
+  }[shape];
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect {...rect} rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      {shape === "custom" && <path d="M6 8h8M6 11h5" stroke="currentColor" strokeWidth="1.3" />}
+    </svg>
+  );
+}
+
+function WebsiteAppearanceIcon({ mode }: { mode: "theme" | "light" | "dark" }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <circle cx="10" cy="10" r="6.5" stroke="currentColor" strokeWidth="1.5" />
+      {mode === "theme" ? (
+        <path d="M10 3.5v13" stroke="currentColor" strokeWidth="1.5" />
+      ) : (
+        <circle
+          cx="10"
+          cy="10"
+          r="3"
+          fill={mode === "dark" ? "currentColor" : "none"}
+          stroke="currentColor"
+          strokeWidth="1.2"
+        />
+      )}
+    </svg>
+  );
+}
+
+function WebsiteShadowIcon({ strength }: { strength: "none" | "soft" | "strong" }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      {strength !== "none" && (
+        <rect
+          x={strength === "strong" ? 5 : 4}
+          y={strength === "strong" ? 6 : 5}
+          width="12"
+          height="10"
+          rx="2"
+          fill="currentColor"
+          opacity={strength === "strong" ? 0.45 : 0.22}
+        />
+      )}
+      <rect x="3" y="3" width="12" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 /** A committed text row (the copy-field rule: draft while typing, commit on blur or Enter, Escape restores). */
 function TerminalTextRow({
   label,
@@ -605,6 +730,8 @@ function SceneRowIcon({ id }: { id: string }) {
           <path d="M5.5 8l2.5 2-2.5 2M10.5 12.5h4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
+    case "website.edit":
+      return <WebsiteActionIcon kind="open" />;
     case "lighting":
       return (
         <svg
@@ -2256,8 +2383,40 @@ export function SceneTab({
     activeFormat,
     activeStageFloorY,
   );
+  const websiteStem = sceneFileStem(project.sceneFiles[sceneIndex] ?? "");
+  const websiteSessionKey = sceneWebsiteKey(project.id, websiteStem);
+  const websiteSession = useSceneWebsiteSessionStore((state) => state.sessions[websiteSessionKey]);
+  const [websiteCaptureBusy, setWebsiteCaptureBusy] = useState(false);
+  const [websiteGrants, setWebsiteGrants] = useState<string[]>([]);
+  const [websiteGrantBusy, setWebsiteGrantBusy] = useState<string | null>(null);
   const drillIn = useUiStore((s) => s.inspector.drillIn);
   const drillStack = useUiStore((s) => s.inspector.drillStack);
+  const refreshWebsiteGrants = useCallback(async () => {
+    if (!slug) {
+      setWebsiteGrants([]);
+      return;
+    }
+    const projectPath = workspaceProjectPath(slug);
+    if (!projectPath) {
+      setWebsiteGrants([]);
+      return;
+    }
+    try {
+      setWebsiteGrants(await listWebsiteGrants(projectPath));
+    } catch (grantError) {
+      console.warn("[website] listing origin grants failed:", grantError);
+      setWebsiteGrants([]);
+    }
+  }, [slug]);
+  const websiteGrantRefreshKey = `${websiteSession?.state ?? "idle"}\u0000${websiteSession?.currentOrigin ?? ""}\u0000${websiteSession?.pendingOrigin?.origin ?? ""}`;
+  useEffect(() => {
+    void websiteGrantRefreshKey;
+    if (drillIn !== "website.edit") {
+      setWebsiteGrants([]);
+      return;
+    }
+    void refreshWebsiteGrants();
+  }, [drillIn, refreshWebsiteGrants, websiteGrantRefreshKey]);
   // The back bar names the screen it pops to: the parent group (or a detail with children), else the row list.
   const backLabel =
     drillStack.length > 1
@@ -3631,6 +3790,43 @@ export function SceneTab({
       useTerminalEditStore.getState().select({ sceneIndex: expectedSceneIndex });
       focusContentAddActivator();
       jumpDrill(["terminal.edit"]);
+    });
+  };
+  const addWebsite = () => {
+    const expectedProjectId = project.id;
+    const expectedSceneIndex = sceneIndex;
+    const expectedSceneFile = project.sceneFiles[sceneIndex] ?? null;
+    const expectedUi = useUiStore.getState();
+    const expectedDrillStack = [...expectedUi.inspector.drillStack];
+    const expectedNavigationSequence = expectedUi.inspectorNavigation.sequence;
+    void patchDocResult(
+      (next) => {
+        if (next.website) return false;
+        next.website = {};
+      },
+      { history: "add Website" },
+    ).then((succeeded) => {
+      const state = useUiStore.getState();
+      if (
+        !succeeded ||
+        projectIdRef.current !== expectedProjectId ||
+        sceneIndexRef.current !== expectedSceneIndex ||
+        sceneFileRef.current !== expectedSceneFile ||
+        state.inspector.tab !== "scene" ||
+        state.inspectorNavigation.sequence !== expectedNavigationSequence ||
+        state.inspector.drillStack.join("\u0000") !== expectedDrillStack.join("\u0000")
+      ) {
+        contentAddActivatorRef.current = null;
+        return;
+      }
+      setOverviewSelection({
+        sceneIndex: expectedSceneIndex,
+        rowId: "website",
+        domain: "website",
+      });
+      useWebsiteEditStore.getState().select({ sceneIndex: expectedSceneIndex });
+      focusContentAddActivator();
+      jumpDrill(["website.edit"]);
     });
   };
   const addChartSeries = () => {
@@ -6481,6 +6677,467 @@ export function SceneTab({
       </div>
     );
   }
+  if (drillIn === "website.edit" && doc?.website) {
+    const website = resolveSceneWebsite(doc);
+    const websiteTheme = sceneTheme ?? project.theme;
+    const patchWebsite = (mutate: (value: SceneDocWebsite) => void, history: string) =>
+      void patchDoc(
+        (next) => {
+          if (next.website) mutate(next.website);
+        },
+        { history },
+      );
+    const setUrl = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) {
+        requestSceneWebsiteDeactivation(websiteSessionKey);
+        patchWebsite((next) => delete next.url, "clear Website URL");
+        setError(null);
+        return;
+      }
+      const info = normaliseWebsiteUrl(trimmed);
+      if (!info) {
+        setError(
+          "Use HTTPS, or HTTP on localhost, 127.0.0.1 or [::1] with an explicit port. Credentials are not allowed in the URL.",
+        );
+        return;
+      }
+      requestSceneWebsiteDeactivation(websiteSessionKey);
+      patchWebsite((next) => {
+        next.url = info.url;
+        const requested = [...(next.requestedOrigins ?? [])];
+        if (!requested.includes(info.origin)) requested.push(info.origin);
+        next.requestedOrigins = requested;
+      }, "set Website URL");
+      setError(null);
+    };
+    const writeCapture = async (
+      result: Awaited<ReturnType<typeof captureWebsite>>,
+      source: "snapshot" | "image",
+    ) => {
+      if (!website) return;
+      useAssetVersionStore.getState().bump(project.id, result.src);
+      await patchDoc(
+        (next) => {
+          if (!next.website) return;
+          next.website.capture = {
+            src: result.src,
+            width: result.width,
+            height: result.height,
+            source,
+            ...(result.sourceOrigin ? { sourceOrigin: result.sourceOrigin } : {}),
+            fingerprint: website.fingerprint,
+          };
+        },
+        { history: source === "snapshot" ? "capture Website" : "choose Website image" },
+      );
+    };
+    const captureCurrentWebsite = async () => {
+      const current = sceneWebsiteSession(websiteSessionKey);
+      if (!current.viewId || !current.active || current.state !== "ready") return;
+      setWebsiteCaptureBusy(true);
+      setError(null);
+      try {
+        await writeCapture(await captureWebsite(current.viewId), "snapshot");
+      } catch (captureError) {
+        setError(`Website capture failed: ${String(captureError)}`);
+      } finally {
+        setWebsiteCaptureBusy(false);
+      }
+    };
+    const chooseWebsiteImage = async () => {
+      if (!website || !websiteStem) return;
+      const projectPath = workspaceProjectPath(slug);
+      if (!projectPath) return;
+      const picked = await openFolderPicker({
+        multiple: false,
+        title: "Choose a Website poster image",
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+      });
+      if (typeof picked !== "string") return;
+      setWebsiteCaptureBusy(true);
+      setError(null);
+      try {
+        const colours = resolveWebsiteColours(website, websiteTheme);
+        const result = await importWebsiteImage({
+          projectPath,
+          sceneStem: websiteStem,
+          sourcePath: picked,
+          width: website.viewport.width,
+          height: website.viewport.height,
+          background: colours.page,
+        });
+        await writeCapture(result, "image");
+      } catch (imageError) {
+        setError(`Website image import failed: ${String(imageError)}`);
+      } finally {
+        setWebsiteCaptureBusy(false);
+      }
+    };
+    const removeWebsiteGrant = async (origin: string) => {
+      const projectPath = workspaceProjectPath(slug);
+      if (!projectPath) return;
+      setWebsiteGrantBusy(origin);
+      setError(null);
+      try {
+        await revokeWebsiteOrigin(projectPath, origin);
+        const current = sceneWebsiteSession(websiteSessionKey);
+        if (
+          website?.origin === origin ||
+          current.currentOrigin === origin ||
+          current.pendingOrigin?.origin === origin
+        ) {
+          if (current.viewId) void closeWebsite(current.viewId).catch(() => {});
+          useSceneWebsiteSessionStore.getState().clear(websiteSessionKey);
+        }
+        await refreshWebsiteGrants();
+      } catch (grantError) {
+        setError(`Removing Website approval failed: ${String(grantError)}`);
+      } finally {
+        setWebsiteGrantBusy(null);
+      }
+    };
+    const liveReady = websiteSession?.active && websiteSession.state === "ready";
+    const captureValue = website?.capture
+      ? website.captureStale
+        ? "Stale"
+        : website.capture.source === "image"
+          ? "Image"
+          : "Current"
+      : "None";
+    return (
+      <div className="inspector-drill website-drill">
+        <DrillBack
+          label={backLabel}
+          title="Website"
+          onClick={closeDrill}
+          actions={
+            <DrillHeaderAction
+              kind="remove"
+              label="Remove Website"
+              onClick={() => {
+                const current = sceneWebsiteSession(websiteSessionKey);
+                if (current.viewId) void closeWebsite(current.viewId).catch(() => {});
+                useSceneWebsiteSessionStore.getState().clear(websiteSessionKey);
+                useWebsiteEditStore.getState().select(null);
+                void patchDoc((next) => {
+                  next.website = undefined;
+                });
+                closeDrill();
+              }}
+            />
+          }
+        />
+        <div className="inspector-drill-body">
+          {website && (
+            <>
+              <DrillGroup
+                label="Page"
+                hint="Saving a URL does not load it. Opening live asks before the first request to each origin."
+              >
+                <TerminalTextRow
+                  label="URL"
+                  value={website.url ?? ""}
+                  placeholder="https://example.com"
+                  onCommit={setUrl}
+                />
+                <ActionRow
+                  icon={<WebsiteActionIcon kind="open" />}
+                  label={liveReady ? "Show captured poster" : "Open live on stage"}
+                  value={
+                    websiteSession?.state === "loading"
+                      ? "Loading"
+                      : websiteSession?.state === "needsGrant"
+                        ? "Approval needed"
+                        : undefined
+                  }
+                  chevron={false}
+                  disabled={!website.url || websiteSession?.state === "loading"}
+                  onClick={() =>
+                    liveReady
+                      ? requestSceneWebsiteDeactivation(websiteSessionKey)
+                      : requestSceneWebsiteActivation(websiteSessionKey)
+                  }
+                />
+              </DrillGroup>
+              <DrillGroup label="Viewport">
+                <SegmentedRow
+                  ariaLabel="Website viewport preset"
+                  options={[
+                    {
+                      value: "desktop",
+                      label: "Desktop",
+                      icon: <WebsiteViewportIcon shape="wide" />,
+                    },
+                    {
+                      value: "tablet",
+                      label: "Tablet",
+                      icon: <WebsiteViewportIcon shape="tablet" />,
+                    },
+                    {
+                      value: "mobile",
+                      label: "Mobile",
+                      icon: <WebsiteViewportIcon shape="phone" />,
+                    },
+                    {
+                      value: "custom",
+                      label: "Custom",
+                      icon: <WebsiteViewportIcon shape="custom" />,
+                    },
+                  ]}
+                  value={website.viewport.preset}
+                  onChange={(preset) =>
+                    patchWebsite((next) => {
+                      next.viewport = { ...(next.viewport ?? {}), preset };
+                    }, "set Website viewport")
+                  }
+                />
+                <SegmentedRow
+                  ariaLabel="Website viewport orientation"
+                  options={[
+                    {
+                      value: "landscape",
+                      label: "Landscape",
+                      icon: <WebsiteViewportIcon shape="wide" />,
+                    },
+                    {
+                      value: "portrait",
+                      label: "Portrait",
+                      icon: <WebsiteViewportIcon shape="phone" />,
+                    },
+                  ]}
+                  value={website.viewport.orientation}
+                  onChange={(orientation) =>
+                    patchWebsite((next) => {
+                      next.viewport = { ...(next.viewport ?? {}), orientation };
+                    }, "orient Website viewport")
+                  }
+                />
+                {website.viewport.preset === "custom" && (
+                  <>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Width</span>
+                      <NumberField
+                        label="Website viewport width"
+                        value={website.viewport.width}
+                        decimals={0}
+                        min={WEBSITE_VIEWPORT_WIDTH_MIN}
+                        max={WEBSITE_VIEWPORT_WIDTH_MAX}
+                        step={1}
+                        onCommit={(width) =>
+                          patchWebsite((next) => {
+                            next.viewport = {
+                              ...(next.viewport ?? {}),
+                              width: Math.round(width),
+                            };
+                          }, "resize Website viewport")
+                        }
+                      />
+                    </div>
+                    <div className="popover-row">
+                      <span className="popover-inline slider-row-label">Height</span>
+                      <NumberField
+                        label="Website viewport height"
+                        value={website.viewport.height}
+                        decimals={0}
+                        min={WEBSITE_VIEWPORT_HEIGHT_MIN}
+                        max={WEBSITE_VIEWPORT_HEIGHT_MAX}
+                        step={1}
+                        onCommit={(height) =>
+                          patchWebsite((next) => {
+                            next.viewport = {
+                              ...(next.viewport ?? {}),
+                              height: Math.round(height),
+                            };
+                          }, "resize Website viewport")
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Zoom</span>
+                  <NumberField
+                    label="Website page zoom"
+                    value={website.viewport.zoom}
+                    decimals={2}
+                    min={0.5}
+                    max={2}
+                    step={0.05}
+                    onCommit={(zoom) =>
+                      patchWebsite((next) => {
+                        next.viewport = { ...(next.viewport ?? {}), zoom };
+                      }, "set Website zoom")
+                    }
+                  />
+                </div>
+              </DrillGroup>
+              <DrillGroup label="Browser frame">
+                <SegmentedRow
+                  ariaLabel="Website frame appearance"
+                  options={[
+                    {
+                      value: "match-theme",
+                      label: "Theme",
+                      icon: <WebsiteAppearanceIcon mode="theme" />,
+                    },
+                    {
+                      value: "light",
+                      label: "Light",
+                      icon: <WebsiteAppearanceIcon mode="light" />,
+                    },
+                    {
+                      value: "dark",
+                      label: "Dark",
+                      icon: <WebsiteAppearanceIcon mode="dark" />,
+                    },
+                  ]}
+                  value={website.frame.appearance}
+                  onChange={(appearance) =>
+                    patchWebsite((next) => {
+                      next.frame = { ...(next.frame ?? {}), appearance };
+                    }, "set Website appearance")
+                  }
+                />
+                <SegmentedRow
+                  ariaLabel="Website frame shadow"
+                  options={[
+                    {
+                      value: "none",
+                      label: "None",
+                      icon: <WebsiteShadowIcon strength="none" />,
+                    },
+                    {
+                      value: "soft",
+                      label: "Soft",
+                      icon: <WebsiteShadowIcon strength="soft" />,
+                    },
+                    {
+                      value: "strong",
+                      label: "Strong",
+                      icon: <WebsiteShadowIcon strength="strong" />,
+                    },
+                  ]}
+                  value={website.frame.shadow}
+                  onChange={(shadow) =>
+                    patchWebsite((next) => {
+                      next.frame = { ...(next.frame ?? {}), shadow };
+                    }, "set Website shadow")
+                  }
+                />
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Corners</span>
+                  <NumberField
+                    label="Website corner radius"
+                    value={website.frame.cornerRadius}
+                    decimals={0}
+                    min={0}
+                    max={32}
+                    step={1}
+                    onCommit={(cornerRadius) =>
+                      patchWebsite((next) => {
+                        next.frame = { ...(next.frame ?? {}), cornerRadius };
+                      }, "set Website corners")
+                    }
+                  />
+                </div>
+              </DrillGroup>
+              <DrillGroup label="Placement" hint="Drag the stage outline to move or resize.">
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Width %</span>
+                  <NumberField
+                    label="Website width"
+                    value={Math.round(website.size * 100)}
+                    decimals={0}
+                    min={5}
+                    max={150}
+                    step={1}
+                    onCommit={(size) =>
+                      patchWebsite((next) => {
+                        next.size = size / 100;
+                      }, "resize Website")
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">X %</span>
+                  <NumberField
+                    label="Website horizontal position"
+                    value={Math.round(website.position[0] * 100)}
+                    decimals={0}
+                    min={-150}
+                    max={150}
+                    step={1}
+                    onCommit={(x) =>
+                      patchWebsite((next) => {
+                        next.position = [x / 100, website.position[1]];
+                      }, "move Website")
+                    }
+                  />
+                </div>
+                <div className="popover-row">
+                  <span className="popover-inline slider-row-label">Y %</span>
+                  <NumberField
+                    label="Website vertical position"
+                    value={Math.round(website.position[1] * 100)}
+                    decimals={0}
+                    min={-150}
+                    max={150}
+                    step={1}
+                    onCommit={(y) =>
+                      patchWebsite((next) => {
+                        next.position = [website.position[0], y / 100];
+                      }, "move Website")
+                    }
+                  />
+                </div>
+              </DrillGroup>
+              <DrillGroup
+                label="Export poster"
+                hint="The PNG becomes a project asset and may travel in packs. Check the current page for account details, tokens or other secrets before capturing."
+              >
+                <ActionRow
+                  icon={<WebsiteActionIcon kind="capture" />}
+                  label={websiteCaptureBusy ? "Capturing…" : "Capture current view"}
+                  value={captureValue}
+                  chevron={false}
+                  disabled={!liveReady || websiteCaptureBusy}
+                  onClick={() => void captureCurrentWebsite()}
+                />
+                <ActionRow
+                  icon={<WebsiteActionIcon kind="image" />}
+                  label="Choose image…"
+                  chevron={false}
+                  disabled={websiteCaptureBusy}
+                  onClick={() => void chooseWebsiteImage()}
+                />
+              </DrillGroup>
+              {websiteGrants.length > 0 && (
+                <DrillGroup
+                  label="Approved origins"
+                  hint="Removing an origin closes a live page using it. Loopback approvals last only for this app session."
+                >
+                  {websiteGrants.map((origin) => (
+                    <ActionRow
+                      key={origin}
+                      icon={<WebsiteActionIcon kind="remove" />}
+                      label={origin}
+                      value={normaliseWebsiteOrigin(origin)?.loopback ? "Session only" : "Remove"}
+                      chevron={false}
+                      danger
+                      disabled={websiteGrantBusy !== null}
+                      onClick={() => void removeWebsiteGrant(origin)}
+                    />
+                  ))}
+                </DrillGroup>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (drillIn === "terminal.edit" && doc?.terminal) {
     const terminal = resolveSceneTerminal(doc);
     const terminalTheme = sceneTheme ?? project.theme;
@@ -8184,6 +8841,8 @@ export function SceneTab({
         return "chart";
       case "terminal":
         return "terminal";
+      case "website":
+        return "website";
       default:
         return null;
     }
@@ -8221,6 +8880,9 @@ export function SceneTab({
       case "terminal":
         useTerminalEditStore.getState().select({ sceneIndex });
         break;
+      case "website":
+        useWebsiteEditStore.getState().select({ sceneIndex });
+        break;
       case "screenshotStack":
       case "comparison":
         break;
@@ -8249,7 +8911,9 @@ export function SceneTab({
                 ? "objects"
                 : target.kind === "chart"
                   ? "chart"
-                  : null;
+                  : target.kind === "website"
+                    ? "website"
+                    : null;
     setOverviewSelection({ sceneIndex, rowId: plan.nextRowId, domain });
     switch (target.kind) {
       case "text":
@@ -8273,6 +8937,9 @@ export function SceneTab({
         break;
       case "chart":
         useChartEditStore.getState().select({ sceneIndex });
+        break;
+      case "website":
+        useWebsiteEditStore.getState().select({ sceneIndex });
         break;
       case "screenshotStack":
       case "comparison":
@@ -8306,6 +8973,9 @@ export function SceneTab({
         break;
       case "terminal":
         useTerminalEditStore.getState().select(null);
+        break;
+      case "website":
+        useWebsiteEditStore.getState().select(null);
         break;
       case "screenshotStack":
         useLayeredScreenshotEditStore.getState().reset();
@@ -8765,6 +9435,10 @@ export function SceneTab({
           captureContentAddActivator();
           addTerminal();
           break;
+        case "website":
+          captureContentAddActivator();
+          addWebsite();
+          break;
       }
     };
     if (!contentPickerOpen) {
@@ -8822,6 +9496,8 @@ export function SceneTab({
         return <SceneRowIcon id="compare.edit" />;
       case "terminal":
         return <SceneRowIcon id="terminal.edit" />;
+      case "website":
+        return <SceneRowIcon id="website.edit" />;
     }
   };
 

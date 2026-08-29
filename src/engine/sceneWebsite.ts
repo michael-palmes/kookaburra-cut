@@ -112,8 +112,10 @@ function hasExplicitPort(value: string): boolean {
   return /:\d+$/.test(authority);
 }
 
-/** Apply the authored top-level URL policy. Null is safe failure and never triggers a request. */
-export function normaliseWebsiteUrl(value: string): WebsiteUrlInfo | null {
+function normaliseWebsiteUrlWithPolicy(
+  value: string,
+  requireExplicitLoopbackPort: boolean,
+): WebsiteUrlInfo | null {
   const authored = value.trim();
   if (!authored) return null;
   let parsed: URL;
@@ -126,8 +128,18 @@ export function normaliseWebsiteUrl(value: string): WebsiteUrlInfo | null {
   const hostname = parsed.hostname.toLowerCase();
   const loopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
   if (parsed.protocol !== "https:" && !(parsed.protocol === "http:" && loopback)) return null;
-  if (loopback && !hasExplicitPort(authored)) return null;
+  if (loopback && requireExplicitLoopbackPort && !hasExplicitPort(authored)) return null;
   return { url: authored, origin: parsed.origin, loopback };
+}
+
+/** Apply the authored top-level URL policy. Null is safe failure and never triggers a request. */
+export function normaliseWebsiteUrl(value: string): WebsiteUrlInfo | null {
+  return normaliseWebsiteUrlWithPolicy(value, true);
+}
+
+/** Normalise a canonical origin, whose default port may have been removed by URL serialisation. */
+export function normaliseWebsiteOrigin(value: string): WebsiteUrlInfo | null {
+  return normaliseWebsiteUrlWithPolicy(value, false);
 }
 
 function parseRequestedOrigins(raw: unknown, source: string): string[] | undefined {
@@ -137,7 +149,7 @@ function parseRequestedOrigins(raw: unknown, source: string): string[] | undefin
   }
   const origins: string[] = [];
   for (const value of raw) {
-    const info = typeof value === "string" ? normaliseWebsiteUrl(value) : null;
+    const info = typeof value === "string" ? normaliseWebsiteOrigin(value) : null;
     if (!info) {
       console.warn(
         `[sceneDoc] ${source}: website.requestedOrigins contains an unsafe origin, dropped`,
@@ -232,7 +244,7 @@ function parseCapture(raw: unknown, source: string): SceneDocWebsiteCapture | un
     console.warn(`[sceneDoc] ${source}: website.capture.source is invalid, dropped`);
   }
   if (typeof raw.sourceOrigin === "string") {
-    const info = normaliseWebsiteUrl(raw.sourceOrigin);
+    const info = normaliseWebsiteOrigin(raw.sourceOrigin);
     if (info) out.sourceOrigin = info.origin;
     else console.warn(`[sceneDoc] ${source}: website.capture.sourceOrigin is unsafe, dropped`);
   } else if (raw.sourceOrigin !== undefined) {

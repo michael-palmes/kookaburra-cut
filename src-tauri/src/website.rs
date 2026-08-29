@@ -7,7 +7,7 @@ use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, Manager, State, Webview, WebviewBuilder, WebviewUrl, Window};
 use url::Url;
 
-use crate::workspace;
+use crate::{media, workspace};
 
 const MAX_WEBSITE_VIEWS: usize = 8;
 const WEBSITE_DATA_STORE: [u8; 16] = [
@@ -126,8 +126,26 @@ pub struct WebsiteCaptureResponse {
     pub src: String,
     pub width: u32,
     pub height: u32,
-    pub source_origin: String,
+    pub source_origin: Option<String>,
     pub content_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebsiteDataRecordSummary {
+    pub display_name: String,
+    pub data_types: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebsiteImportImageRequest {
+    pub project_path: String,
+    pub scene_stem: String,
+    pub source_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub background: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -237,6 +255,14 @@ fn validate_scene_stem(stem: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_import_source_dimensions(width: u32, height: u32) -> Result<(), String> {
+    let pixels = u64::from(width) * u64::from(height);
+    if width == 0 || height == 0 || width > 16_384 || height > 16_384 || pixels > 100_000_000 {
+        return Err("Website image source dimensions are unsafe".into());
+    }
+    Ok(())
+}
+
 fn has_explicit_port(input: &str) -> bool {
     let Some((_, rest)) = input.split_once("://") else {
         return false;
@@ -296,7 +322,7 @@ fn parse_navigation_url(input: &str) -> Result<(Url, String, bool), String> {
 fn normalise_requested_origins(values: &[String]) -> Result<HashSet<String>, String> {
     values
         .iter()
-        .map(|value| parse_website_url(value).map(|(_, origin, _)| origin))
+        .map(|value| parse_navigation_url(value).map(|(_, origin, _)| origin))
         .collect()
 }
 
@@ -425,6 +451,26 @@ fn normalise_png(bytes: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Strin
             .map_err(|_| "website capture could not encode the PNG")?;
     }
     Ok(output)
+}
+
+fn store_capture(
+    project_dir: &std::path::Path,
+    scene_stem: &str,
+    png: &[u8],
+) -> Result<(String, String), String> {
+    let content_hash = hex_bytes(&Sha256::digest(png));
+    let assets = project_dir.join("assets").join("website");
+    std::fs::create_dir_all(&assets).map_err(|error| error.to_string())?;
+    let name = format!("{scene_stem}.png");
+    let temporary = assets.join(format!(".{scene_stem}.{}.tmp", &content_hash[..12]));
+    std::fs::write(&temporary, png).map_err(|error| error.to_string())?;
+    let destination = assets.join(&name);
+    if let Err(error) = std::fs::rename(&temporary, &destination) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(format!("replacing website capture: {error}"));
+    }
+    workspace::touch_now(&destination);
+    Ok((format!("assets/website/{name}"), content_hash))
 }
 
 fn persistent_grant(
@@ -718,10 +764,10 @@ pub fn website_open(
                 view.ready = false;
             }
             view.used_at = used_at;
-            (view.webview.clone(), should_navigate)
+            (view.webview.clone(), should_navigate, view.ready)
         })
     };
-    if let Some((existing, should_navigate)) = existing {
+    if let Some((existing, should_navigate, ready)) = existing {
         existing
             .set_bounds(bounds.rect())
             .map_err(|error| error.to_string())?;
@@ -729,7 +775,6 @@ pub fn website_open(
             &existing,
             effective_page_zoom(bounds, request.viewport_width, request.zoom),
         )?;
-        existing.show().map_err(|error| error.to_string())?;
         if should_navigate {
             existing
                 .navigate(authored_url)
@@ -737,7 +782,11 @@ pub fn website_open(
         }
         return Ok(WebsiteOpenResponse {
             view_id: id,
-            state: "loading",
+            state: if ready && !should_navigate {
+                "ready"
+            } else {
+                "loading"
+            },
             origin,
             loopback,
         });
@@ -753,6 +802,7 @@ pub fn website_open(
             bounds.size(),
         )
         .map_err(|error| error.to_string())?;
+    child.hide().map_err(|error| error.to_string())?;
     if let Err(error) = harden_native_webview(
         &child,
         &app,
@@ -814,7 +864,7 @@ pub fn website_open(
     for displaced in displaced {
         let _ = displaced.close();
     }
-    if let Err(error) = child.navigate(authored_url).and_then(|_| child.show()) {
+    if let Err(error) = child.navigate(authored_url) {
         if let Ok(mut registry) = state.0.lock() {
             registry.views.remove(&id);
         }
@@ -830,6 +880,33 @@ pub fn website_open(
 }
 
 #[tauri::command]
+pub fn website_show(
+    webview: Webview,
+    state: State<'_, WebsiteState>,
+    view_id: String,
+) -> Result<(), String> {
+    let owner = require_caller(&webview, &["main", "present"])?;
+    let child = {
+        let mut registry = state.0.lock().map_err(|_| "website state poisoned")?;
+        let used_at = next_tick(&mut registry);
+        let view = registry
+            .views
+            .get_mut(&view_id)
+            .ok_or_else(|| "website view is unavailable".to_string())?;
+        if view.owner != owner {
+            return Err("website view belongs to another window".into());
+        }
+        if !view.ready {
+            return Err("website view is not ready".into());
+        }
+        view.active = true;
+        view.used_at = used_at;
+        view.webview.clone()
+    };
+    child.show().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn website_grant_origin(
     app: AppHandle,
     webview: Webview,
@@ -840,7 +917,7 @@ pub fn website_grant_origin(
 ) -> Result<(), String> {
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
-    let (_, origin, loopback) = parse_website_url(&origin)?;
+    let (_, origin, loopback) = parse_navigation_url(&origin)?;
     if loopback {
         state
             .0
@@ -870,7 +947,7 @@ pub fn website_revoke_origin(
 ) -> Result<(), String> {
     require_caller(&webview, &["main"])?;
     let project_key = canonical_project_key(&app, &settings, &project_path)?;
-    let (_, origin, loopback) = parse_website_url(&origin)?;
+    let (_, origin, loopback) = parse_navigation_url(&origin)?;
     if loopback {
         state
             .0
@@ -926,12 +1003,38 @@ pub fn website_list_grants(
 pub fn website_resume_pending(
     app: AppHandle,
     webview: Webview,
+    settings: State<'_, workspace::SettingsState>,
     state: State<'_, WebsiteState>,
     view_id: String,
     requested_origins: Vec<String>,
 ) -> Result<(), String> {
     require_caller(&webview, &["main"])?;
     let mut requested = normalise_requested_origins(&requested_origins)?;
+    let (project_key, authored_origin, pending) = {
+        let registry = state.0.lock().map_err(|_| "website state poisoned")?;
+        let view = registry
+            .views
+            .get(&view_id)
+            .ok_or_else(|| "website view is unavailable".to_string())?;
+        if view.owner != "main" {
+            return Err("website view belongs to another window".into());
+        }
+        (
+            view.project_key.clone(),
+            view.authored_url.origin().ascii_serialization(),
+            view.pending_url.clone(),
+        )
+    };
+    requested.insert(authored_origin);
+    if let Some(url) = pending.as_ref() {
+        let (_, origin, loopback) = parse_navigation_url(url.as_str())?;
+        if !requested.contains(&origin) {
+            return Err("pending Website origin is not requested by this scene".into());
+        }
+        if !origin_granted(&app, &settings, &state, &project_key, &origin, loopback)? {
+            return Err("pending Website origin is not approved for this project".into());
+        }
+    }
     let (child, pending) = {
         let mut registry = state.0.lock().map_err(|_| "website state poisoned")?;
         let view = registry
@@ -941,14 +1044,15 @@ pub fn website_resume_pending(
         if view.owner != "main" {
             return Err("website view belongs to another window".into());
         }
-        requested.insert(view.authored_url.origin().ascii_serialization());
+        if view.pending_url != pending {
+            return Err("pending Website navigation changed before approval".into());
+        }
         view.requested_origins = requested;
         (view.webview.clone(), view.pending_url.take())
     };
     if let Some(url) = pending {
         child.navigate(url).map_err(|error| error.to_string())?;
     }
-    let _ = app;
     Ok(())
 }
 
@@ -1077,27 +1181,105 @@ pub async fn website_capture(
     };
     let native_png = capture_native_png(&child, width).await?;
     let png = normalise_png(&native_png, width, height)?;
-    let content_hash = hex_bytes(&Sha256::digest(&png));
     let project_dir = workspace::confine_readable(&app, &settings, &project_key)?;
+    if !project_dir.is_dir() {
+        return Err("website project path is no longer available".into());
+    }
+    let (src, content_hash) = store_capture(&project_dir, &scene_stem, &png)?;
+    Ok(WebsiteCaptureResponse {
+        src,
+        width,
+        height,
+        source_origin: Some(source_origin),
+        content_hash,
+    })
+}
+
+#[tauri::command]
+pub async fn website_import_image(
+    app: AppHandle,
+    webview: Webview,
+    settings: State<'_, workspace::SettingsState>,
+    request: WebsiteImportImageRequest,
+) -> Result<WebsiteCaptureResponse, String> {
+    require_caller(&webview, &["main"])?;
+    let WebsiteImportImageRequest {
+        project_path,
+        scene_stem,
+        source_path,
+        width,
+        height,
+        background,
+    } = request;
+    validate_scene_stem(&scene_stem)?;
+    if !(320..=3_840).contains(&width) || !(240..=2_160).contains(&height) {
+        return Err("website image dimensions are outside the supported range".into());
+    }
+    let colour = background
+        .strip_prefix('#')
+        .filter(|value| value.len() == 6 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(|| "website image background must be an sRGB hex colour".to_string())?;
+    let source = std::fs::canonicalize(&source_path)
+        .map_err(|error| format!("reading selected Website image: {error}"))?;
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp") {
+        return Err("Website image must be PNG, JPEG or WebP".into());
+    }
+    let metadata = std::fs::metadata(&source).map_err(|error| error.to_string())?;
+    if !metadata.is_file() || metadata.len() > 250 * 1024 * 1024 {
+        return Err("Website image must be a regular file no larger than 250 MB".into());
+    }
+    let probe = media::probe_media(&app, &source).await?;
+    validate_import_source_dimensions(probe.width, probe.height)?;
+    let project_dir = workspace::confine_readable(&app, &settings, &project_path)?;
     if !project_dir.is_dir() {
         return Err("website project path is no longer available".into());
     }
     let assets = project_dir.join("assets").join("website");
     std::fs::create_dir_all(&assets).map_err(|error| error.to_string())?;
-    let name = format!("{scene_stem}.png");
-    let temporary = assets.join(format!(".{scene_stem}.{}.tmp", &content_hash[..12]));
-    std::fs::write(&temporary, &png).map_err(|error| error.to_string())?;
-    let destination = assets.join(&name);
-    if let Err(error) = std::fs::rename(&temporary, &destination) {
+    let temporary = assets.join(format!(".{scene_stem}.import-{}.png", std::process::id()));
+    let filter = format!(
+        "scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x{colour}"
+    );
+    let result = media::run_sidecar(
+        &app,
+        "ffmpeg",
+        vec![
+            "-y".into(),
+            "-nostdin".into(),
+            "-hide_banner".into(),
+            "-loglevel".into(),
+            "error".into(),
+            "-i".into(),
+            source.to_string_lossy().into_owned(),
+            "-vf".into(),
+            filter,
+            "-frames:v".into(),
+            "1".into(),
+            "-map_metadata".into(),
+            "-1".into(),
+            temporary.to_string_lossy().into_owned(),
+        ],
+        media::SidecarPriority::Foreground,
+    )
+    .await;
+    if let Err(error) = result {
         let _ = std::fs::remove_file(&temporary);
-        return Err(format!("replacing website capture: {error}"));
+        return Err(format!("normalising Website image: {error}"));
     }
-    workspace::touch_now(&destination);
+    let encoded = std::fs::read(&temporary).map_err(|error| error.to_string());
+    let _ = std::fs::remove_file(&temporary);
+    let png = normalise_png(&encoded?, width, height)?;
+    let (src, content_hash) = store_capture(&project_dir, &scene_stem, &png)?;
     Ok(WebsiteCaptureResponse {
-        src: format!("assets/website/{name}"),
+        src,
         width,
         height,
-        source_origin,
+        source_origin: None,
         content_hash,
     })
 }
@@ -1170,6 +1352,22 @@ pub fn close_owner(state: &State<'_, WebsiteState>, owner: &str) {
     }
 }
 
+fn close_all(state: &State<'_, WebsiteState>) {
+    let children = {
+        let Ok(mut registry) = state.0.lock() else {
+            return;
+        };
+        registry
+            .views
+            .drain()
+            .map(|(_, value)| value.webview)
+            .collect::<Vec<_>>()
+    };
+    for child in children {
+        let _ = child.close();
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn set_native_zoom(webview: &Webview, zoom: f64) -> Result<(), String> {
     use objc2_web_kit::WKWebView;
@@ -1203,20 +1401,22 @@ mod macos {
     use objc2_foundation::{
         MainThreadMarker, NSArray, NSDictionary, NSError, NSNumber, NSObjectProtocol, NSString,
         NSURLAuthenticationChallenge, NSURLAuthenticationMethodServerTrust, NSURLCredential,
-        NSURLSessionAuthChallengeDisposition, NSURL,
+        NSURLSessionAuthChallengeDisposition, NSURL, NSUUID,
     };
     use objc2_web_kit::{
         WKAudiovisualMediaTypes, WKFrameInfo, WKMediaCaptureType, WKNavigation, WKNavigationAction,
         WKNavigationActionPolicy, WKNavigationDelegate, WKNavigationResponse,
         WKNavigationResponsePolicy, WKOpenPanelParameters, WKPermissionDecision, WKScriptMessage,
         WKScriptMessageHandler, WKSecurityOrigin, WKSnapshotConfiguration, WKUIDelegate,
-        WKUserContentController, WKWebView, WKWebViewConfiguration, WKWindowFeatures,
+        WKUserContentController, WKWebView, WKWebViewConfiguration, WKWebsiteDataRecord,
+        WKWebsiteDataStore, WKWindowFeatures,
     };
     use tauri::{Manager, Webview};
     use url::Url;
 
     use super::{
-        emit_to_owner, navigation_allowed, record_load_state, AppHandle, WebsiteFocusState,
+        emit_to_owner, navigation_allowed, record_load_state, AppHandle, WebsiteDataRecordSummary,
+        WebsiteFocusState, WEBSITE_DATA_STORE,
     };
 
     static mut WEBSITE_UI_DELEGATE_KEY: u8 = 0;
@@ -1287,7 +1487,7 @@ mod macos {
                 decision_handler: &Block<dyn Fn(WKNavigationResponsePolicy)>,
             ) {
                 let policy = unsafe {
-                    if response.isForMainFrame() && !response.canShowMIMEType() {
+                    if !response.canShowMIMEType() {
                         WKNavigationResponsePolicy::Cancel
                     } else {
                         WKNavigationResponsePolicy::Allow
@@ -1639,6 +1839,91 @@ mod macos {
             })
             .map_err(|error| error.to_string())
     }
+
+    fn website_data_store(mtm: MainThreadMarker) -> Retained<WKWebsiteDataStore> {
+        let identifier = NSUUID::from_bytes(WEBSITE_DATA_STORE);
+        unsafe { WKWebsiteDataStore::dataStoreForIdentifier(&identifier, mtm) }
+    }
+
+    pub fn list_data(
+        sender: tokio::sync::oneshot::Sender<Result<Vec<WebsiteDataRecordSummary>, String>>,
+    ) {
+        let mtm = MainThreadMarker::new().expect("Website data runs on the main thread");
+        let store = website_data_store(mtm);
+        let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
+        let sender = Arc::new(Mutex::new(Some(sender)));
+        let callback = RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+            let records = unsafe { records.as_ref() };
+            let mut summaries = records
+                .to_vec()
+                .into_iter()
+                .map(|record| WebsiteDataRecordSummary {
+                    display_name: unsafe { record.displayName() }.to_string(),
+                    data_types: unsafe { record.dataTypes() }
+                        .to_vec()
+                        .into_iter()
+                        .map(|value| value.to_string())
+                        .collect(),
+                })
+                .collect::<Vec<_>>();
+            summaries.sort_by(|left, right| left.display_name.cmp(&right.display_name));
+            if let Ok(mut sender) = sender.lock() {
+                if let Some(sender) = sender.take() {
+                    let _ = sender.send(Ok(summaries));
+                }
+            }
+        });
+        unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
+    }
+
+    pub fn clear_data(
+        display_name: Option<String>,
+        sender: tokio::sync::oneshot::Sender<Result<(), String>>,
+    ) {
+        let mtm = MainThreadMarker::new().expect("Website data runs on the main thread");
+        let store = website_data_store(mtm);
+        let types = unsafe { WKWebsiteDataStore::allWebsiteDataTypes(mtm) };
+        let fetch_store = store.clone();
+        let fetch_types = types.clone();
+        let sender = Arc::new(Mutex::new(Some(sender)));
+        let fetch_sender = sender.clone();
+        let callback = RcBlock::new(move |records: NonNull<NSArray<WKWebsiteDataRecord>>| {
+            let records = unsafe { records.as_ref() };
+            let selected = records
+                .to_vec()
+                .into_iter()
+                .filter(|record| match display_name.as_ref() {
+                    Some(name) => unsafe { record.displayName() }.to_string() == *name,
+                    None => true,
+                })
+                .collect::<Vec<_>>();
+            if selected.is_empty() {
+                if let Ok(mut sender) = fetch_sender.lock() {
+                    if let Some(sender) = sender.take() {
+                        let _ = sender.send(Ok(()));
+                    }
+                }
+                return;
+            }
+            let selected = NSArray::from_retained_slice(&selected);
+            let completion_sender = fetch_sender.clone();
+            let completion = RcBlock::new(move || {
+                if let Ok(mut sender) = completion_sender.lock() {
+                    if let Some(sender) = sender.take() {
+                        let _ = sender.send(Ok(()));
+                    }
+                }
+            });
+            unsafe {
+                fetch_store.removeDataOfTypes_forDataRecords_completionHandler(
+                    &fetch_types,
+                    &selected,
+                    &completion,
+                )
+            };
+        });
+        unsafe { store.fetchDataRecordsOfTypes_completionHandler(&types, &callback) };
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -1649,6 +1934,42 @@ async fn capture_native_png(webview: &Webview, width: u32) -> Result<Vec<u8>, St
         .await
         .map_err(|_| "website capture timed out".to_string())?
         .map_err(|_| "website capture was cancelled".to_string())?
+}
+
+#[tauri::command]
+pub async fn website_list_data(
+    app: AppHandle,
+    webview: Webview,
+) -> Result<Vec<WebsiteDataRecordSummary>, String> {
+    require_caller(&webview, &["settings"])?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || macos::list_data(sender))
+        .map_err(|error| error.to_string())?;
+    tokio::time::timeout(std::time::Duration::from_secs(15), receiver)
+        .await
+        .map_err(|_| "listing Website data timed out".to_string())?
+        .map_err(|_| "listing Website data was cancelled".to_string())?
+}
+
+#[tauri::command]
+pub async fn website_clear_data(
+    app: AppHandle,
+    webview: Webview,
+    state: State<'_, WebsiteState>,
+    display_name: Option<String>,
+) -> Result<(), String> {
+    require_caller(&webview, &["settings"])?;
+    if display_name.as_ref().is_some_and(|value| value.is_empty()) {
+        return Err("Website data record name cannot be empty".into());
+    }
+    close_all(&state);
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || macos::clear_data(display_name, sender))
+        .map_err(|error| error.to_string())?;
+    tokio::time::timeout(std::time::Duration::from_secs(15), receiver)
+        .await
+        .map_err(|_| "clearing Website data timed out".to_string())?
+        .map_err(|_| "clearing Website data was cancelled".to_string())?
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -1699,6 +2020,18 @@ mod tests {
         assert!(parse_website_url("http://[::1]:3000/demo").is_ok());
         assert!(parse_website_url("http://localhost/demo").is_err());
         assert!(parse_website_url("https://localhost/demo").is_err());
+        assert_eq!(
+            normalise_requested_origins(&["http://localhost".into()]).unwrap(),
+            HashSet::from(["http://localhost".into()])
+        );
+    }
+
+    #[test]
+    fn imported_image_dimensions_are_bounded_before_decode() {
+        assert!(validate_import_source_dimensions(4_096, 4_096).is_ok());
+        assert!(validate_import_source_dimensions(0, 900).is_err());
+        assert!(validate_import_source_dimensions(20_000, 1).is_err());
+        assert!(validate_import_source_dimensions(16_384, 16_384).is_err());
     }
 
     #[test]

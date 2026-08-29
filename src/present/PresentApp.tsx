@@ -28,6 +28,7 @@ import { SceneBackground } from "../toolkit/stage/FixedBackdrop";
 import { TextFallback } from "../toolkit/text/TitleBlock";
 import { PresentCompositorDriver } from "./PresentCompositorDriver";
 import { PresentTerminalOverlay } from "./PresentTerminalOverlay";
+import { PresentWebsiteOverlay } from "./PresentWebsiteOverlay";
 import { startPresentAmbience, stopPresentAmbience } from "./presentAmbience";
 import { usePresentStore } from "./presentStore";
 
@@ -98,6 +99,7 @@ export function PresentApp() {
   const videoPaused = usePresentStore((s) => s.videoPaused);
   const committed = usePresentStore((s) => s.scenesCommitted);
   const terminalFocused = usePresentStore((s) => s.terminalFocused);
+  const websiteFocused = usePresentStore((s) => s.websiteFocused);
   const [stageReady, setStageReady] = useState(false);
   const mode = target?.mode ?? "slideshow";
   const animatedFixtureLightSets = useMemo(
@@ -263,7 +265,8 @@ export function PresentApp() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // A focused slide terminal owns the keyboard (Escape included: shells and TUIs use it); Shift+Esc in the terminal hands it back.
-      if (usePresentStore.getState().terminalFocused) return;
+      const present = usePresentStore.getState();
+      if (present.terminalFocused || present.websiteFocused) return;
       if (e.key === "Escape") {
         const win = getCurrentWindow();
         void win.isFullscreen().then((fs) => (fs ? win.setFullscreen(false) : win.close()));
@@ -282,7 +285,7 @@ export function PresentApp() {
   // Cursor hides after a short idle so it never sits over shared content; a focused terminal keeps it, the pointer is in use.
   useEffect(() => {
     if (!project) return;
-    if (terminalFocused) {
+    if (terminalFocused || websiteFocused) {
       void getCurrentWindow()
         .setCursorVisible(true)
         .catch(() => {});
@@ -309,7 +312,7 @@ export function PresentApp() {
         .setCursorVisible(true)
         .catch(() => {});
     };
-  }, [project, terminalFocused]);
+  }, [project, terminalFocused, websiteFocused]);
 
   const spec = FORMATS[(target?.aspect as AspectName) ?? "16:9"] ?? FORMATS["16:9"];
   const aspect = spec.width / spec.height;
@@ -398,7 +401,13 @@ export function PresentApp() {
                   )}
                   {project.scenes.map((_, i) => {
                     const frame = project.sceneFrames[i];
-                    if (!frame && !project.sceneDocs[i]?.terminal) return null;
+                    if (
+                      !frame &&
+                      !project.sceneDocs[i]?.terminal &&
+                      !project.sceneDocs[i]?.website
+                    ) {
+                      return null;
+                    }
                     const slot = project.slots[i];
                     const active = mode === "slideshow" && deck.sceneIndex === i;
                     return (
@@ -422,6 +431,9 @@ export function PresentApp() {
           </Canvas>
           {mode === "slideshow" && stageReady && (
             <PresentTerminalOverlay project={project} aspect={aspect} />
+          )}
+          {mode === "slideshow" && stageReady && (
+            <PresentWebsiteOverlay project={project} aspect={aspect} />
           )}
         </div>
       )}

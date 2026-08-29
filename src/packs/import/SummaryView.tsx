@@ -1,6 +1,7 @@
 import { revealInFinder } from "../../engine/packs";
 import type { TerminalReviewRow } from "../terminalReview";
 import { type ImportOutcome, type ItemOutcome, KIND_LABELS } from "../types";
+import type { WebsiteReviewRow } from "../websiteReview";
 
 const GROUPS: { outcome: ItemOutcome; label: string }[] = [
   { outcome: "added", label: "Added" },
@@ -14,6 +15,7 @@ const GROUPS: { outcome: ItemOutcome; label: string }[] = [
 export function SummaryView({
   outcome,
   terminals,
+  websites,
   queued,
   onOpenProject,
   onNextPack,
@@ -21,6 +23,7 @@ export function SummaryView({
 }: {
   outcome: ImportOutcome;
   terminals: TerminalReviewRow[];
+  websites: WebsiteReviewRow[];
   queued: number;
   onOpenProject: (slug: string) => void;
   onNextPack: () => void;
@@ -67,6 +70,32 @@ export function SummaryView({
                     {row.startPath ? ` · opens at ${row.startPath}` : ""}
                   </span>
                   {row.command && <code className="packs-terminal-command">{row.command}</code>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {websites.length > 0 && (
+          <div className="packs-verdict packs-verdict-warn">
+            <span className="packs-verdict-icon" aria-hidden="true">
+              !
+            </span>
+            <div className="packs-verdict-body">
+              <strong>Website scenes request network access</strong>
+              Nothing has loaded and no approval travelled with the pack. Each origin asks for local
+              approval before its first request.
+              {websites.map((row) => (
+                <div className="packs-terminal-review-row" key={`${row.project}:${row.file}`}>
+                  <span className="packs-verdict-note">
+                    {row.project} · {row.scene}
+                  </span>
+                  {row.origins.map((origin) => (
+                    <code className="packs-terminal-command" key={origin.origin}>
+                      {origin.origin}
+                      {origin.loopback ? " · local address, session approval only" : ""}
+                    </code>
+                  ))}
                 </div>
               ))}
             </div>

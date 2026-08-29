@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseSceneDoc } from "./sceneDocSchema";
 import {
+  normaliseWebsiteOrigin,
   normaliseWebsiteUrl,
   parseSceneWebsite,
   resolveSceneWebsite,
@@ -42,6 +43,21 @@ describe("normaliseWebsiteUrl", () => {
       expect(normaliseWebsiteUrl(value), value).toBeNull();
     }
   });
+
+  it("accepts serialised default-port loopback only as a canonical origin", () => {
+    expect(normaliseWebsiteUrl("http://localhost:80/demo")).toMatchObject({
+      origin: "http://localhost",
+    });
+    expect(normaliseWebsiteUrl("http://localhost")).toBeNull();
+    expect(normaliseWebsiteOrigin("http://localhost")).toMatchObject({
+      origin: "http://localhost",
+      loopback: true,
+    });
+    expect(normaliseWebsiteOrigin("https://localhost")).toMatchObject({
+      origin: "https://localhost",
+      loopback: true,
+    });
+  });
 });
 
 describe("parseSceneWebsite", () => {
@@ -66,6 +82,23 @@ describe("parseSceneWebsite", () => {
       ...block,
       requestedOrigins: ["https://example.com", "https://auth.example.com"],
       capture: { ...block.capture, sourceOrigin: "https://example.com" },
+    });
+  });
+
+  it("retains canonical default-port loopback origins", () => {
+    expect(
+      parseSceneWebsite(
+        {
+          url: "http://localhost:80/demo",
+          requestedOrigins: ["http://localhost"],
+          capture: { sourceOrigin: "http://localhost" },
+        },
+        "test",
+      ),
+    ).toEqual({
+      url: "http://localhost:80/demo",
+      requestedOrigins: ["http://localhost"],
+      capture: { sourceOrigin: "http://localhost" },
     });
   });
 

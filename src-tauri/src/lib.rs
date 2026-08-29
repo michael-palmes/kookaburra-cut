@@ -1569,8 +1569,12 @@ pub fn run() {
             website::website_resume_pending,
             website::website_set_bounds,
             website::website_set_zoom,
+            website::website_show,
             website::website_action,
             website::website_capture,
+            website::website_import_image,
+            website::website_list_data,
+            website::website_clear_data,
             website::website_hide,
             website::website_close
         ]))
